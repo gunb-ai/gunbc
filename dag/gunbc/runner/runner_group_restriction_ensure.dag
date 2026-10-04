@@ -3,11 +3,12 @@ module gunbc.runner_group_restriction_ensure
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository_numeric_identity }
+import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
 import gunbc.runner_group_restriction_observation {
-  ShakedownRunnerGroupRestriction, MicrovmRunnerGroupStanding,
-  RunnerGroupRestrictedToShakedownWorkflow, RunnerGroupRestrictionRefused,
-  RunnerGroupAbsent, observe_shakedown_runner_group_restriction, microvm_shakedown_runner_group_name,
+  RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
+  RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
+  RunnerGroupAbsent, observe_runner_group_restriction, microvm_shakedown_runner_group_name,
   microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
 }
 
@@ -16,7 +17,7 @@ import gunbc.runner_group_restriction_observation {
 // The group gunbc.runner_jit_mint plan_jit_mint requires is one the organization does not have
 // until it is created, and creating it is an org-admin effect. This module owns the PLAN -- what
 // the group must be, and which of three things a read of the organization's groups says to do --
-// so the effect is never performed on a guess: a group already restricted to exactly the shakedown
+// so the effect is never performed on a guess: a group already restricted to exactly its
 // workflow is left alone (no request is filed, no operator is asked), an absent one is created, and
 // a group holding the name with any other restriction is REFUSED rather than edited, because the
 // update is a different effect that nobody has modeled or approved. After a create, the
@@ -38,16 +39,55 @@ type RunnerGroupCreateSubject {
   selected_workflow: NonEmptyStr
 }
 
-fn microvm_runner_group_create_subject() -> RunnerGroupCreateSubject {
+// EVERY RESTRICTED GROUP IS THIS SHAPE: selected visibility with one repository, no public
+// repositories, restricted to exactly one workflow. Only the name, the repository and the workflow
+// differ, so they are the constructor's arguments and the three walls are not re-spelled per group.
+fn restricted_runner_group_subject(name: NonEmptyStr, repository_id: Int, selected_workflow: NonEmptyStr) -> RunnerGroupCreateSubject {
   RunnerGroupCreateSubject {
     organization: org_actions_organization,
-    name: microvm_shakedown_runner_group_name,
+    name: name,
     visibility: SelectedRepositories,
-    selected_repository_id: gunbc_repository_numeric_identity.repository_id,
+    selected_repository_id: repository_id,
     allows_public_repositories: false,
     restricted_to_workflows: true,
-    selected_workflow: microvm_shakedown_selected_workflow(),
+    selected_workflow: selected_workflow,
   }
+}
+
+fn microvm_runner_group_create_subject() -> RunnerGroupCreateSubject {
+  restricted_runner_group_subject(
+    name: microvm_shakedown_runner_group_name,
+    repository_id: gunbc_repository_numeric_identity.repository_id,
+    selected_workflow: microvm_shakedown_selected_workflow(),
+  )
+}
+
+// GUNBC-PRIVATE'S HEAL PUBLISHER IS HEADED FOR microVMs, IN A GROUP ONLY ITS PUBLISHER MAY USE
+// (operator 2026-09-29). Its identity (gunbc.auth.heal_publisher_federation
+// private_heal_publisher_federation) will admit a self-hosted runner, and the OIDC token cannot say
+// WHICH one -- so the wall that keeps pull-request code off the machine is this group: restricted to
+// exactly the publisher's workflow at the default branch, and to gunbc-private alone. The selected
+// workflow IS the federation's workflow_ref, one string for both. The group name is also the runner
+// label the publish job selects (strategy.private_heal_publisher_workflow).
+//
+// CREATING THE GROUP NARROWS AND WIDENS NOTHING, so it is ensured now. The federation's pin stays
+// github-hosted until a controller mints guests into this group after reading its restriction back
+// (review 72445): the flip and that minting path land together, in one change.
+data private_heal_publisher_runner_group_name: NonEmptyStr = "heal-publisher-private"
+
+fn private_heal_publisher_runner_group_subject() -> RunnerGroupCreateSubject {
+  restricted_runner_group_subject(
+    name: private_heal_publisher_runner_group_name,
+    repository_id: private_heal_publisher_federation().numeric_identity.repository_id,
+    selected_workflow: heal_publisher_federation_workflow_ref(f: private_heal_publisher_federation()) as NonEmptyStr,
+  )
+}
+
+// THE ROSTER THE ENSURE RUN WALKS, like gcp_iam_converge_targets: each group is read, left alone when
+// already restricted, created under its own approval when absent, and refused when it holds the
+// name with any other restriction.
+fn restricted_runner_groups() -> List<RunnerGroupCreateSubject> {
+  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject()]
 }
 
 // The subject as one line, the text the operator reads and the intent a request digests.
@@ -63,7 +103,7 @@ fn runner_group_create_subject_text(s: RunnerGroupCreateSubject) -> String {
 }
 
 type RunnerGroupEnsurePlan
-  = GroupAlreadyRestricted { restriction: ShakedownRunnerGroupRestriction }
+  = GroupAlreadyRestricted { restriction: RestrictedRunnerGroup }
   | GroupCreateRequired { subject: RunnerGroupCreateSubject }
   | GroupEnsureRefused { cause: NonEmptyStr }
 
@@ -71,8 +111,8 @@ type RunnerGroupEnsurePlan
 // unreadable list, a duplicated name, a group holding the name with another restriction -- refuses
 // the ensure, because the update is a different effect nobody has modeled or approved.
 fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupEnsurePlan {
-  match observe_shakedown_runner_group_restriction(name: subject.name, listed: listed) {
-    RunnerGroupRestrictedToShakedownWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
+  match observe_runner_group_restriction(name: subject.name, selected_workflow: subject.selected_workflow, listed: listed) {
+    RunnerGroupRestrictedToWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
     RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => GroupCreateRequired { subject: subject }
     RunnerGroupRestrictionRefused { name, cause } =>
       GroupEnsureRefused { cause: join([
@@ -85,7 +125,7 @@ fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGro
 // THE READBACK AFTER A CREATE. The only admitted outcome is the sealed restriction; an absent group
 // after a 201 is as much a refusal as a wrongly restricted one.
 type RunnerGroupCreateReadback
-  = CreatedGroupRestricted { restriction: ShakedownRunnerGroupRestriction }
+  = CreatedGroupRestricted { restriction: RestrictedRunnerGroup }
   | CreatedGroupNotRestricted { cause: NonEmptyStr }
 
 fn readback_after_create(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupCreateReadback {

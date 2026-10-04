@@ -8,7 +8,6 @@ import v2.test.parse.supplied_token_stream_support {
   supplied_stream_parse
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.logic { Bool }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -86,13 +85,15 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
   }
 }
 
-// A -- dag_grammar_else_less_if_stmt_expr (extdeps.uri_path guards): parsed, then refused at
-// lowering with its own typed cause, never dropped or rewritten.
-test fn else_less_if_refuses_at_lowering_with_its_cause_holds() -> Bool {
+// A -- an else-less if_expr at statement position (dag_grammar_if_expr_expr; extdeps.uri_path guards): an early-return guard
+// followed by a statement parses and lowers, to Branch(c, arm, rest of the spine)
+// (v2.compiler.body_lowering_fold body_lower_guard_branch). It refused
+// body_lowering_reason_else_less_if_unlowered until the guard had a lowered form; a guard that falls
+// through still refuses (v2.test.claim.namespace_xl0.return_tail_position).
+test fn an_early_return_guard_parses_and_lowers_holds() -> Bool {
   match cb2_normalized_7() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_fatal_reason(d: d) == ^body_lowering_reason_else_less_if_unlowered
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 

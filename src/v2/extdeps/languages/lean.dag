@@ -1,4 +1,5 @@
 module v2.extdeps.languages.lean
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
@@ -36,8 +37,8 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Optional, PointwisePower, Present, empty_map, map_insert }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.collection { Absent, Map, Optional, PointwisePower, Present, empty_map, map_insert }
+import v2.std.logic { bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
 import std.algebra { Cons, Empty, list_snoc_item }
 import std.integer {
@@ -51,7 +52,8 @@ import std.integer {
   ReturnSaturating
 }
 import std.measure { BitWidth, bit_width, bit_width_count }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, Empty, fold_list, list_map }
+import v2.std.algebra { BooleanAlgebra, Empty, fold_list, list_map }
+import v2.std.algebra_structure_signature { boolean_algebra_type_node, commutative_ring_type_node }
 import v2.std.text { String }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
@@ -69,7 +71,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -470,7 +472,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -481,7 +483,7 @@ fn lean_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn lean_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn lean_signedness_node(signedness: Signedness) -> Node {
@@ -855,7 +857,8 @@ fn lean_lex_rules() -> LexRuleSet {
       lean_lex_rule(token_class: ^lean_token_lparen, text: "("),
       lean_lex_rule(token_class: ^lean_token_colon, text: " : "),
       lean_lex_rule(token_class: ^lean_token_rparen, text: ")")
-    ]
+    ],
+    modes: []
   }
 }
 

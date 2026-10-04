@@ -97,7 +97,7 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>
 fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   match pattern {
     Present { value: Bind { declaration: d } } => dag_collect_insert_slots(node: d, slots: slots, collision_errors: collision_errors)
-    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: fbs } } =>
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } } =>
       dag_collect_nodes_list(nodes: fbs, slots: slots, collision_errors: collision_errors)
     Present { value: LitPattern { value: _ } } => slots
     Present { value: Wildcard } => slots

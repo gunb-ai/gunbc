@@ -43,26 +43,26 @@ fn actuator_toolchain_requirement_includes_tool(
   fold(
     requirement.required_tools,
     init: false,
-    f: (acc, tool) => acc || tool.name == tool_name
+    f: (acc, tool) => acc || tool.program.invocation == tool_name
   )
 }
 
 fn actuator_toolchain_requirement_is_complete(requirement: ActuatorToolchainRequirement) -> Bool {
   actuator_toolchain_requirement_includes_tool(
     requirement: requirement,
-    tool_name: curl_cli_tool.name,
+    tool_name: curl_cli_tool.program.invocation,
   )
     && actuator_toolchain_requirement_includes_tool(
       requirement: requirement,
-      tool_name: websocat_cli_tool.name,
+      tool_name: websocat_cli_tool.program.invocation,
     )
     && actuator_toolchain_requirement_includes_tool(
       requirement: requirement,
-      tool_name: nbdkit_cli_tool.name,
+      tool_name: nbdkit_cli_tool.program.invocation,
     )
     && actuator_toolchain_requirement_includes_tool(
       requirement: requirement,
-      tool_name: socat_cli_tool.name,
+      tool_name: socat_cli_tool.program.invocation,
     )
 }
 
@@ -82,10 +82,10 @@ data bmc_credential_actuator_toolchain_requirement: ActuatorToolchainRequirement
 fn bmc_credential_actuator_toolchain_is_complete() -> Bool {
   actuator_toolchain_requirement_includes_tool(
     requirement: bmc_credential_actuator_toolchain_requirement,
-    tool_name: curl_cli_tool.name,
+    tool_name: curl_cli_tool.program.invocation,
   )
     && actuator_toolchain_requirement_includes_tool(
       requirement: bmc_credential_actuator_toolchain_requirement,
-      tool_name: gcloud_cli_tool.name,
+      tool_name: gcloud_cli_tool.program.invocation,
     )
 }

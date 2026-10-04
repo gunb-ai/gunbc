@@ -1,5 +1,7 @@
 module gunbc.gunbc_cli_command
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { String, List, NonEmptyStr }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import gunbc.cli_invoke {
@@ -47,7 +49,7 @@ fn gunbc_test_invocation_words(label: String) -> List<InvocationWord> {
 
 // THE ARGV REALIZATION. The path is relative because it names a build output inside the checkout
 // the job is standing in, not an installed program -- the same fact and the same reason as
-// `gunbc.claim_executor_cli` `claim_executor_release_path` -- and it is DERIVED from the two facts
+// `gunbc.claim_executor_cli` `claim_executor_program` -- and it is DERIVED from the two facts
 // `gunbc.cli_invoke` already owns, the bin name and the release directory, rather than respelled
 // as a third literal.
 //
@@ -63,7 +65,7 @@ fn gunbc_test_invocation_words(label: String) -> List<InvocationWord> {
 // is separate from either.
 fn gunbc_test_command(label: String) -> ArgvCommand {
   argv_command(
-    program: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr,
+    program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
     arguments: invocation_words_bare(words: gunbc_test_invocation_words(label: label)),
   )
 }

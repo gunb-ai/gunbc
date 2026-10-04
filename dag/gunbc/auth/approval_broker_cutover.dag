@@ -776,7 +776,13 @@ fn dark_install_evidence(
     expected_release: expected_release,
     dark: match read {
       ServeLivenessUnreachable { detail: d } => DarkUnitNotStarted { detail: d }
-      _ => DarkUnitListening { port: listening_port }
+      ServeLivenessBodyUnparseable => DarkUnitListening { port: listening_port }
+      ServeLivenessBodyNotAnObject => DarkUnitListening { port: listening_port }
+      ServeLivenessRevisionAbsent => DarkUnitListening { port: listening_port }
+      ServeLivenessRevisionDuplicated { count: _ } => DarkUnitListening { port: listening_port }
+      ServeLivenessRevisionNotAString => DarkUnitListening { port: listening_port }
+      ServeLivenessRevisionMalformed { text: _ } => DarkUnitListening { port: listening_port }
+      ServeLivenessObserved { revision: _ } => DarkUnitListening { port: listening_port }
     },
     release_readback: release_readback_from_read(read: read),
     demand: DemandUnmeasured { missing: "the six readings stage 3 takes against this dark process" as NonEmptyStr },

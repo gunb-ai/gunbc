@@ -1,14 +1,18 @@
 module extdeps.tools.curl
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int, HttpStatus, http_status_of }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_curl }
+import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -20,9 +24,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data curl_pinned_version: VersionConstraint = ">= 7.68"
 
 data curl_cli_tool: CliTool = CliTool {
-  name: "curl",
+  program: curl_program(),
   min_version: Present { value: curl_pinned_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
+// ── EXIT STATUSES: WHICH ONES ARE THE NETWORK ─────────────────────────────────────────────────
+//
+// curl(1) EXIT CODES. The ones that say the far side could not be reached: 6 could not resolve host,
+// 7 failed to connect, 28 operation timeout, 35 TLS/SSL connect error, 52 empty reply from server, 56
+// failure receiving network data. Anything else (22 is an HTTP error under --fail) is the source
+// answering, so a caller must not read it as reachability.
+data curl_unreachable_exit_statuses: List<String> = ["6", "7", "28", "35", "52", "56"]
+
+fn curl_exit_status_is_unreachable(status: String) -> Bool {
+  any(curl_unreachable_exit_statuses, s => s == status)
 }
 
 data curl_localhost_connect_timeout: Second = second(count: 2)
@@ -56,13 +72,13 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data curl_program: NonEmptyStr = "curl"
+fn curl_program() -> ProgramIdentity = cataloged_program(invocation: "curl")
 
 // A bounded GET as argv words: -f makes an HTTP error a non-zero exit instead of a body, -sS keeps
 // the error text on stderr while suppressing the progress meter.
 fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second) -> List<String> {
   [
-    curl_program as String, "-fsS",
+    curl_program().invocation as String, "-fsS",
     "--connect-timeout", to_string(second_count(s: connect_timeout)),
     "--max-time", to_string(second_count(s: max_time)),
     url,
@@ -70,7 +86,37 @@ fn curl_bounded_get_argv(url: String, connect_timeout: Second, max_time: Second)
 }
 
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
-  argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
+  argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
+}
+
+// THE BMCWEB SESSION LOGIN the srv3 install path runs (gunbc.host_effect_realize
+// Srv3BmcwebSessionLogin): POST the JSON login body FROM A FILE (--data @file) and write the
+// response to a file. The credential never reaches argv: the body path does, the password bytes
+// stay in the file the caller's materialization bracket owns (the same bracket/argv split
+// curl_ftps_upload_command below records). The word list is byte-identical to the raw flag list
+// this builder replaces (extdeps.bmc.webui.nbd_proxy_serve bmcweb_session_login_curl_args,
+// deleted with it); no behavior change is intended or made by this builder.
+// NOT CHANGED HERE, DELIBERATELY, AND NOW VISIBLE AT THE TOOL: the list carries no --fail, so an
+// HTTP error status is still exit 0 with the error body written to the response file -- the
+// fail-open shape curl_download_command's comment names. Whether the login should fail closed on
+// a status is the caller's convergence law (the token extract step reads the file), so the
+// question moves with the carrier instead of being re-decided silently in a rename.
+fn curl_bmcweb_session_login_command(
+  bmc_host: NonEmptyStr,
+  request_body_file: NonEmptyStr,
+  response_path: NonEmptyStr,
+) -> ArgvCommand {
+  argv_command(
+    program: curl_program(),
+    arguments: [
+      "-sk",
+      "-X", "POST",
+      concat("https://", concat(bmc_host as String, "/login")),
+      "-H", "Content-Type: application/json",
+      "--data", concat("@", request_body_file as String),
+      "-o", response_path as String,
+    ],
+  )
 }
 
 // THE FTPS UPLOAD, WHOSE FLAGS ARE DERIVED FROM THE MODELED ENDPOINT RATHER THAN CHOSEN HERE.
@@ -106,7 +152,7 @@ fn curl_ftps_upload_command(
   skip_verification: Bool,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_program,
+    program: curl_program(),
     arguments: concat(
       ["-fsS", "--ssl-reqd", "--netrc-file", netrc_path as String, "-T", local_path],
       concat(if skip_verification { ["-k"] } else { [] }, [url]),
@@ -119,13 +165,25 @@ fn curl_ftps_upload_command(
 // SECOND CliTool whose min_version is this constraint rather than silently raising curl_pinned_version:
 // the download and FTPS builders above genuinely need no more than 7.68, and a fleet host that
 // carries 7.68 still runs them correctly. curl_cli_tool stays the 7.68 pin; the SigV4 builders
-// emit curl_aws_sigv4_cli_tool.name so a 7.68 host that satisfies curl_cli_tool still owes 7.75
+// emit curl_aws_sigv4_cli_tool.program so a 7.68 host that satisfies curl_cli_tool still owes 7.75
 // on the path that spells --aws-sigv4.
 data curl_aws_sigv4_min_version: VersionConstraint = ">= 7.75"
 
 data curl_aws_sigv4_cli_tool: CliTool = CliTool {
-  name: curl_program,
+  program: curl_program(),
   min_version: Present { value: curl_aws_sigv4_min_version },
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
+// %header{} IN --write-out LANDED IN curl 7.84.0 (curl.se/docs/manpage.html, "-w, --write-out
+// <format>": "header{name}" ... "Added in 7.84.0"). Only the entity-tag-reporting form of the S3
+// builders spells it, so it is a THIRD row on the same pattern as the SigV4 one: a host carrying
+// 7.75 still runs every status-only S3 transfer, and owes 7.84 only on the path that reads a tag.
+data curl_write_out_header_min_version: VersionConstraint = ">= 7.84"
+
+data curl_s3_entity_tag_cli_tool: CliTool = CliTool {
+  program: curl_program(),
+  min_version: Present { value: curl_write_out_header_min_version },
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
 
@@ -209,25 +267,59 @@ fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStat
 
 data curl_if_none_match_any_header: String = "If-None-Match: *"
 
+// If-Match carries the entity tag verbatim as the store returned it, quotes included (RFC 9110
+// section 8.8.3: the quotes are part of the entity-tag).
+fn curl_if_match_header(tag: ObjectEntityTag) -> String {
+  join(["If-Match: ", tag.value as String], "")
+}
+
+fn curl_put_precondition_arguments(precondition: ObjectPutPrecondition) -> List<String> {
+  match precondition {
+    PutUnconditional => []
+    PutIfAbsent => ["-H", curl_if_none_match_any_header]
+    PutIfMatch { tag: t } => ["-H", curl_if_match_header(tag: t)]
+  }
+}
+
+// WHAT A TRANSFER REPORTS ON STDOUT. Status alone is the form every existing consumer reads (an
+// emitted shell compares the whole stdout to "200"). A store used as a compare-and-set also needs the
+// representation's entity tag, the validator its next If-Match must carry, so that form prints the
+// tag on a second line from the response header (curl's %header{} write-out variable, curl 7.84.0,
+// curl_s3_entity_tag_cli_tool). An absent header
+// prints an empty line, which the classifier reads as no tag rather than an empty one.
+type S3TransferReport
+  = ReportStatus
+  | ReportStatusAndEntityTag
+
+data curl_http_code_then_etag_write_out_format: String = "%\{http_code\}\n%header\{etag\}"
+
+fn curl_s3_write_out_format(report: S3TransferReport) -> String {
+  match report {
+    ReportStatus => curl_http_code_write_out_format
+    ReportStatusAndEntityTag => curl_http_code_then_etag_write_out_format
+  }
+}
+
 fn curl_sigv4_s3_upload_command(
   url: String,
   local_path: String,
   netrc_path: FilePath,
   sigv4_region: NonEmptyStr,
-  create_only: Bool,
+  precondition: ObjectPutPrecondition,
+  report: S3TransferReport,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_aws_sigv4_cli_tool.name,
+    program: curl_program(),
     arguments: concat(
       [
         "-fsS",
         "--netrc-file", netrc_path as String,
         "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
         "-o", "/dev/null",
-        "-w", curl_http_code_write_out_format,
+        "-w", curl_s3_write_out_format(report: report),
       ],
       concat(
-        if create_only { ["-H", curl_if_none_match_any_header] } else { [] },
+        curl_put_precondition_arguments(precondition: precondition),
         ["-T", local_path, url],
       ),
     ),
@@ -239,15 +331,16 @@ fn curl_sigv4_s3_download_command(
   destination: String,
   netrc_path: FilePath,
   sigv4_region: NonEmptyStr,
+  report: S3TransferReport,
 ) -> ArgvCommand {
   argv_command(
-    program: curl_aws_sigv4_cli_tool.name,
+    program: curl_program(),
     arguments: [
       "-fsS",
       "--netrc-file", netrc_path as String,
       "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
       "-o", destination,
-      "-w", curl_http_code_write_out_format,
+      "-w", curl_s3_write_out_format(report: report),
       url,
     ],
   )

@@ -12,7 +12,7 @@ fn ncl_atom(s: Symbol) -> Node {
 }
 
 fn ncl_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn ncl_conj() -> Node {

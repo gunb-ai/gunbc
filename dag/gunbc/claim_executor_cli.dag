@@ -1,5 +1,7 @@
 module gunbc.claim_executor_cli
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
@@ -13,7 +15,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 // relative because it names a build output inside the checkout the job is standing in, not an
 // installed program; that is a real difference from every extdeps tool row, whose absolute paths
 // exist because a sudoers rule or an ambient PATH would otherwise decide which binary ran.
-data claim_executor_release_path: NonEmptyStr = "target/release/claim_executor"
+fn claim_executor_program() -> ProgramIdentity = uncataloged_program(invocation: "target/release/claim_executor")
 
 // The mode flag is a parameter rather than one builder per mode: the binary's modes are a growing
 // list this repository controls, and the SHAPE of the invocation -- one mode, then whatever operands
@@ -22,7 +24,7 @@ data claim_executor_release_path: NonEmptyStr = "target/release/claim_executor"
 // it by coincidence.
 fn claim_executor_command(mode_flag: String, operands: List<String>) -> ArgvCommand {
   argv_command(
-    program: claim_executor_release_path,
+    program: claim_executor_program(),
     arguments: append([mode_flag], items: operands),
   )
 }

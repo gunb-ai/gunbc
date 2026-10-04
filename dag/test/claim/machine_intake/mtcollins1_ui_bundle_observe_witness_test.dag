@@ -1,0 +1,130 @@
+module test.claim.machine_intake.mtcollins1_ui_bundle_observe_witness_test
+
+import std.types { Bool, List, String }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+import gunbc.machine_intake_mtcollins1_ui_bundle_observe {
+  UiBundleDigestDrifted,
+  UiBundleDigestMatches,
+  UiBundleFirmwareDiffers,
+  UiBundleFirmwareExpected,
+  UiBundleFirmwareUnread,
+  firmware_revision_of_mc_info,
+  ServedRef, ServedRefLocal, ServedRefOtherOrigin, ServedRefEmpty, served_ref_reading,
+  served_html_references, served_js_references, served_references,
+  ServedFileRow, ServedFileBudgetReached, served_crawl, mtcollins1_ui_bundle_file_budget,
+  mtcollins1_ui_bundle_artifact_glob, mtcollins1_ui_bundle_receipt_path, mtcollins1_ui_bundle_dir, mtcollins1_ui_bundle_file_path,
+  ui_bundle_digest_comparison,
+  ui_bundle_firmware_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// `ipmitool mc info` as it prints, with the revision a parameter so the pair differs in one value.
+fn mc_info_with(revision: String) -> String {
+  join([
+    "Device ID                 : 32",
+    "Device Revision           : 1",
+    concat("Firmware Revision         : ", revision),
+    "IPMI Version              : 2.0",
+    "Manufacturer ID           : 10876",
+  ], "\n")
+}
+
+test fn the_revision_is_the_value_after_the_colon() -> Bool {
+  match firmware_revision_of_mc_info(stdout: mc_info_with(revision: "0.32")) {
+    Present { value: r } => r == "0.32"
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING PAIR: one value differs, and only 0.32 admits the fetch.
+test fn only_the_expected_revision_admits_the_fetch() -> Bool {
+  (match ui_bundle_firmware_standing(success: true, stdout: mc_info_with(revision: "0.32"), exit_code: 0, stderr: "") {
+    UiBundleFirmwareExpected { revision: r } => (r as String) == "0.32"
+    _ => false
+  })
+    && (match ui_bundle_firmware_standing(success: true, stdout: mc_info_with(revision: "0.33"), exit_code: 0, stderr: "") {
+      UiBundleFirmwareDiffers { revision: r, expected: e } => (r as String) == "0.33" && (e as String) == "0.32"
+      _ => false
+    })
+}
+
+// An unanswered read and an answer with no revision are both unread, never a revision.
+test fn an_unread_revision_never_admits_the_fetch() -> Bool {
+  (match ui_bundle_firmware_standing(success: false, stdout: "", exit_code: 124, stderr: "") {
+    UiBundleFirmwareUnread { detail: d } => string_contains(s: d, pattern: "124")
+    _ => false
+  })
+    && (match ui_bundle_firmware_standing(success: true, stdout: "Device ID : 32", exit_code: 0, stderr: "") {
+      UiBundleFirmwareUnread { detail: _ } => true
+      _ => false
+    })
+}
+
+// DRIFT IS REPORTED, AND THE CITED DIGEST RIDES WITH IT.
+test fn the_cited_digest_matches_and_any_other_drifts() -> Bool {
+  (match ui_bundle_digest_comparison(observed: megarac_source_min_js_sha256_2026_09_27 as String) { UiBundleDigestMatches => true _ => false })
+    && (match ui_bundle_digest_comparison(observed: "0000000000000000000000000000000000000000000000000000000000000000") {
+      UiBundleDigestDrifted { cited: c } => c == megarac_source_min_js_sha256_2026_09_27
+      _ => false
+    })
+}
+
+// ── THE SERVED FILES ARE DERIVED BY PARSING, NOT LISTED ──────────────────────────────────────────────
+// A viewer page's scripts: every <script> src, and require.js's data-main as the file it loads.
+test fn an_html_page_yields_its_script_sources_and_data_main() -> Bool {
+  let html = "<html><head><script src=\"libs/require.js\" data-main=\"viewer-main\"></script><script type='text/javascript' src='./js/viewer.min.js?v=12'></script><style></style></head><body><script>var x=1;</script></body></html>"
+  served_html_references(html: html) == ["libs/require.js", "viewer-main.js", "./js/viewer.min.js?v=12"]
+}
+
+// A script's KVM libraries, as the 2026-09-30 source.min.js spells them: a require-config path (a module
+// id, loaded as <id>.js) and a Worker constructed from a file name, in either quote.
+test fn a_script_yields_its_kvm_libraries_as_files() -> Bool {
+  let js = "paths:\{videosocket:\"./libs/kvm/videosocket\",decode_worker:\"./libs/kvm/ast/decode_worker.min\"},this.decodeWorker=new Worker('./libs/kvm/ast/decode_worker.js');var s=\"./libs/media/cdimage\""
+  served_js_references(js: js) == ["./libs/kvm/videosocket.js", "./libs/kvm/ast/decode_worker.min.js", "./libs/kvm/ast/decode_worker.js"]
+}
+
+// Only HTML and scripts are parsed; anything else yields no references.
+test fn only_pages_and_scripts_are_parsed_for_references() -> Bool {
+  served_references(path: "viewer.html", text: "<script src=\"a.js\"></script>") == ["a.js"]
+    && served_references(path: "libs/kvm/x.js", text: "\"./libs/kvm/y\"") == ["./libs/kvm/y.js"]
+    && served_references(path: "images/logo.png", text: "\"./libs/kvm/y\"") == []
+}
+
+// A reference becomes a path under the controller's root; another origin is kept, never fetched.
+test fn a_reference_reads_as_a_root_path_or_another_origin() -> Bool {
+  (match served_ref_reading(reference: "./js/viewer.min.js?v=12#x") { ServedRefLocal { path: p } => p == "js/viewer.min.js"  _ => false })
+    && (match served_ref_reading(reference: "/libs/require.js") { ServedRefLocal { path: p } => p == "libs/require.js"  _ => false })
+    && (match served_ref_reading(reference: "https://cdn.example/jquery.js") { ServedRefOtherOrigin { reference: r } => r == "https://cdn.example/jquery.js"  _ => false })
+    && (match served_ref_reading(reference: "//cdn.example/x.js") { ServedRefOtherOrigin { reference: _ } => true  _ => false })
+    && (match served_ref_reading(reference: "?v=1") { ServedRefEmpty => true  _ => false })
+}
+
+// THE BUDGET'S EDGE IS A ROW, NOT A SILENT CUT: with nothing left to spend, the crawl fetches nothing and
+// records every distinct unvisited path. (No GET is made on this path, so it runs without a controller.)
+test fn the_budget_edge_names_every_unvisited_path() -> Bool {
+  let queue = [
+    ServedRef { path: "viewer.html", found_by: "seed" },
+    ServedRef { path: "libs/kvm/videosocket.js", found_by: "viewer.html" },
+    ServedRef { path: "viewer.html", found_by: "libs/kvm/x.js" },
+  ]
+  match served_crawl(queue: queue, seen: [], rows: [], remaining: 0).first() {
+    Present { value: row } =>
+      match row {
+        ServedFileBudgetReached { budget: b, unvisited: u } => b == (mtcollins1_ui_bundle_file_budget as Int) && u == ["viewer.html", "libs/kvm/videosocket.js"]
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ONE GLOB CARRIES THE RECEIPT AND EVERY KEPT FILE.
+test fn the_upload_glob_covers_the_receipt_and_every_kept_file() -> Bool {
+  let prefix = substring(s: mtcollins1_ui_bundle_artifact_glob, start: 0, end: string_length(mtcollins1_ui_bundle_artifact_glob) - 1)
+  starts_with(s: mtcollins1_ui_bundle_receipt_path, prefix: prefix)
+    && starts_with(s: mtcollins1_ui_bundle_file_path(served: "libs/kvm/ast/decode_worker.js"), prefix: concat(mtcollins1_ui_bundle_dir, "/"))
+    && starts_with(s: mtcollins1_ui_bundle_dir, prefix: prefix)
+    && mtcollins1_ui_bundle_file_path(served: "libs/kvm/ast/decode_worker.js") == concat(mtcollins1_ui_bundle_dir, "/libs__kvm__ast__decode_worker.js")
+}

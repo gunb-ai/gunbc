@@ -2,6 +2,7 @@ module gunbc.design_argument
 
 import std.types { String, List }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 
 // A NONEMPTY COLLECTION OF DECLARATION REFERENCES. The DAG language has no generic NonEmptyList
 // carrier, so this is the established corpus shape: one required first element plus the remaining
@@ -202,6 +203,7 @@ data conformance_domains: List<ConformanceDomain> = [
         decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator"),
         decl_ref(module_path: "extdeps.realization.cache_purity", decl_name: "CachePurityVerdict"),
         decl_ref(module_path: "std.computation_identity", decl_name: "ComputationIdentity"),
+        decl_ref(module_path: "std.algebra", decl_name: "algebra_profile_equality_extensional"),
       ],
     },
     tells: [
@@ -211,7 +213,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a second derivation of the same named relation in the same declared scope, or one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity) -- one subject may lawfully carry entity, demand, evaluation, result-content, occurrence, revision and locator keys",
       "a cache or memo key that omits a declared input the result depends on"
     ],
-    narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key), and occurrence identity within one source graph (std.occurrence_identity). This row owns the key RELATION -- what relation, what scope, what complete canonical preimage derives it, what equality and collision disposition govern it -- and whether the declared inputs are complete. Faithful realization of an admitted identity and result contract (completeness, readback, retention, transport, refusal, binding; cache purity as one discriminator) is owned by conformance-realization. Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
+    narrative: "the row's scope today is the three keying relations that have a consumed home: structural node identity (v2.std.node content_hash over std.content_hash HashFamily), the request and artifact keys of std.materialization_provider (request_key, artifact_request_key), and occurrence identity within one source graph (std.occurrence_identity) -- plus the declared-equality admissibility of a key TYPE (std.algebra algebra_profile_equality_extensional), which governs whether distinct keys of a finite map are decidably distinct (consumed by the map-literal duplicate-key check, docs/plans/map-literal-introduction-design.md). That admissibility is instantiation-blind at this rung: an opaque brand or a type parameter admits unjudged, and its next-rung trigger is instantiation-grain admission (v1 infer equality_admission_wall_note). This row owns the key RELATION -- what relation, what scope, what complete canonical preimage derives it, what equality and collision disposition govern it -- and whether the declared inputs are complete. Faithful realization of an admitted identity and result contract (completeness, readback, retention, transport, refusal, binding; cache purity as one discriminator) is owned by conformance-realization. Two further relations -- demand identity (the question asked) and the dependency read set an answer consumed -- are a declared frontier, not members: they have no home authority yet, are modeled by docs/plans/demand-engine-program.md, and enter this row when M1 of that program lands their carriers; until then a reviewer asks nothing about them under this row (DESIGN §3b: a home that owns only part of a claimed scope is a scope mismatch, so the scope is stated at what the homes own). Each member is a named keying relation within a named scope, derived rather than authored; the relation model is docs/plans/keying-relation-design.md",
   },
   ConformanceDomain {
     key: "conformance-observability",

@@ -1,0 +1,255 @@
+module gunbc.bmc_megarac_web_adapter
+
+import std.types { Bool, HttpStatus, Int, List, Map }
+import std.measure { Second, second_count }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.algebra { Empty, Cons }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_bool, json_string, json_null, serialize_json }
+import extdeps.bmc.megarac {
+  MegaRacLoginSession, megarac_login_session_json, megarac_services_kvm_json, megarac_kvm_websocket_path,
+}
+import gunbc.bmc_model {
+  BmcWorld, BmcEvent, BmcScheduledEvent, BmcAcPowerLost, BmcPowerRestored, BmcSolSessionDropped, BmcKvmStreamClosed, BootOverrideNone, BootOverrideCdromEfiNextBoot, BmcPowerOn, BmcPowerOff, BmcKvmIdle, BmcKvmStreaming, BmcKvmClosedByController, BmcWebLoginAccepted, BmcWebLoginRefused,
+  bmc_web_login, bmc_kvm_viewer_count, bmc_kvm_connect, bmc_web_logout, bmc_advance,
+}
+
+// THE PROTOCOL ADAPTER BETWEEN THE ONE BMC MODEL AND A REAL HTTP+WebSocket CLIENT: the second
+// adapter over gunbc.bmc_model, beside gunbc.bmc_dry_realization. It holds no controller state and
+// decides nothing: every answer is a gunbc.bmc_model transition, encoded with the extdeps.bmc.megarac
+// wire renderers.
+//
+// A TRANSITION TABLE, NOT A TRANSCRIPT (hold on gunbc#12490, 2026-09-28). The adapter explores the
+// model from the initial world over a finite request alphabet -- login with each credential pair it
+// is asked about, the services read, connect and logout with every token a reachable world holds plus
+// one foreign token, and an advance to each scheduled event's instant -- and records, for each
+// reachable world and each request, the model's answer and the world it leads to. The transport keys
+// every ACTUAL request by what it carries (the submitted credentials, the X-CSRFTOKEN header, the
+// /kvm token) against the CURRENT world, answers with that row and moves to its world. A request
+// the table does not hold is refused as unmodeled; the transport never decides a BMC question itself.
+//
+// TIME IS AN INPUT, AND ABSOLUTE. A scheduled event fires at its instant on the world's clock -- the
+// transport's start -- not at a delay from each connection: an advance row exists only at the event's
+// own instant.
+type MegaRacWebRequest
+  = MegaRacWebLogin { username: String, password: String }
+  | MegaRacWebServices {}
+  | MegaRacWebConnect { token: String }
+  | MegaRacWebLogout { token: String }
+  | MegaRacWebAdvance { at: Second }
+
+// A REQUEST, ENCODED WITH ITS FIELD BOUNDARIES: the operation and its arguments as a JSON object, so
+// ("admin", "pw secret") and ("admin pw", "secret") can never become one row. The transport keys an
+// incoming request by the same structure (operation plus argument list), never by a joined string.
+fn megarac_web_request_json(r: MegaRacWebRequest) -> JsonValue {
+  let op_args = match r {
+    MegaRacWebLogin { username: u, password: p } => ["login", u, p]
+    MegaRacWebServices {} => ["services"]
+    MegaRacWebConnect { token: t } => ["connect", t]
+    MegaRacWebLogout { token: t } => ["logout", t]
+    MegaRacWebAdvance { at: a } => ["advance", to_string(second_count(s: a) as Int)]
+  }
+  json_object(members: [
+    json_kv(key: "op", value: json_string(s: match op_args.first() { Present { value: o } => o  Absent => "" })),
+    json_kv(key: "args", value: json_array(elements: map(op_args.skip(n: 1), x => json_string(s: x)))),
+  ])
+}
+
+// The answer a request gets, and the stream the transport must hold after it.
+type MegaRacWebAnswer {
+  status: HttpStatus
+  body: String
+  stream_open: Bool
+}
+
+type MegaRacWebStep {
+  world: BmcWorld
+  answer: MegaRacWebAnswer
+}
+
+fn megarac_stream_open(world: BmcWorld) -> Bool {
+  match world.web.kvm {
+    BmcKvmStreaming { session: _ } => true
+    BmcKvmIdle {} => false
+    BmcKvmClosedByController { session: _ } => false
+  }
+}
+
+// THE RENDERER'S REFUSALS. 0.32's refusal wire was not captured (extdeps.bmc.megarac states none), so a
+// refused login, connect or logout is rendered with these statuses and an empty JSON object. They are
+// this adapter's choice, typed as such: the observer keys only on "not ok === 0" and "no 101", so no
+// claim about the controller rests on them. A captured refusal replaces them.
+data megarac_web_login_refusal_status: HttpStatus = 401
+data megarac_web_connect_refusal_status: HttpStatus = 403
+data megarac_web_logout_refusal_status: HttpStatus = 401
+
+fn megarac_web_refusal(world: BmcWorld, status: HttpStatus) -> MegaRacWebAnswer {
+  MegaRacWebAnswer { status: status, body: serialize_json(v: json_object(members: [])), stream_open: megarac_stream_open(world: world) }
+}
+
+// ONE REQUEST AGAINST ONE WORLD, answered by the model.
+fn megarac_web_step(world: BmcWorld, request: MegaRacWebRequest, extended_privilege: Int) -> MegaRacWebStep {
+  match request {
+    MegaRacWebLogin { username: u, password: p } => {
+      let login = bmc_web_login(world: world, username: u, password: p)
+      match login.reply {
+        BmcWebLoginAccepted { session: x } =>
+          MegaRacWebStep { world: login.world, answer: MegaRacWebAnswer { status: 200, body: serialize_json(v: megarac_login_session_json(session: MegaRacLoginSession { csrf_token: x.csrf_token, privilege: x.privilege, extended_privilege: extended_privilege, racsession_id: x.id })), stream_open: megarac_stream_open(world: login.world) } }
+        BmcWebLoginRefused {} =>
+          MegaRacWebStep { world: login.world, answer: megarac_web_refusal(world: login.world, status: megarac_web_login_refusal_status) }
+      }
+    }
+    MegaRacWebServices {} =>
+      MegaRacWebStep { world: world, answer: MegaRacWebAnswer { status: 200, body: serialize_json(v: megarac_services_kvm_json(viewer_count: bmc_kvm_viewer_count(world: world))), stream_open: megarac_stream_open(world: world) } }
+    MegaRacWebConnect { token: t } => {
+      let c = bmc_kvm_connect(world: world, csrf_token: t)
+      MegaRacWebStep { world: c.world, answer: if c.accepted { MegaRacWebAnswer { status: 101, body: "", stream_open: megarac_stream_open(world: c.world) } } else { megarac_web_refusal(world: c.world, status: megarac_web_connect_refusal_status) } }
+    }
+    MegaRacWebLogout { token: t } => {
+      let o = bmc_web_logout(world: world, csrf_token: t)
+      MegaRacWebStep { world: o.world, answer: if o.released { MegaRacWebAnswer { status: 200, body: serialize_json(v: json_object(members: [])), stream_open: megarac_stream_open(world: o.world) } } else { megarac_web_refusal(world: o.world, status: megarac_web_logout_refusal_status) } }
+    }
+    MegaRacWebAdvance { at: a } => {
+      let w = bmc_advance(world: world, now: a)
+      MegaRacWebStep { world: w, answer: MegaRacWebAnswer { status: 200, body: "", stream_open: megarac_stream_open(world: w) } }
+    }
+  }
+}
+
+// A WORLD'S IDENTITY IN THE TABLE IS ITS COMPLETE CANONICAL ENCODING: every field of the world --
+// power, the pending schedule (each event's instant and kind), the fired history, and every web field
+// (the account, the sessions, the next session id, the other viewers, the stream, the canvas flag) --
+// through the typed JSON emitter (extdeps.languages.json.emit), whose serialization is canonical for a
+// given value. Two worlds are one table state exactly when these encodings are equal, and the
+// encoding omits nothing a transition reads, so two worlds that would answer any request differently
+// can never share a row. It is an exact key rather than a digest: a world is a record value, not a
+// v2.std.node Node, and std.content_hash over its encoding would add a collision disposition without
+// removing any work, since the table carries the key itself.
+fn bmc_event_json(e: BmcEvent) -> JsonValue {
+  match e {
+    BmcAcPowerLost {} => json_string(s: "ac_power_lost")
+    BmcKvmStreamClosed {} => json_string(s: "kvm_stream_closed")
+    BmcPowerRestored {} => json_string(s: "power_restored")
+    BmcSolSessionDropped {} => json_string(s: "sol_session_dropped")
+  }
+}
+
+fn bmc_scheduled_json(e: BmcScheduledEvent) -> JsonValue {
+  json_object(members: [json_kv(key: "at", value: json_int(n: second_count(s: e.at) as Int)), json_kv(key: "event", value: bmc_event_json(e: e.event))])
+}
+
+fn megarac_web_world_json(world: BmcWorld) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "power", value: json_string(s: match world.power { BmcPowerOn => "on"  BmcPowerOff => "off" })),
+    json_kv(key: "pending", value: json_array(elements: map(world.pending, e => bmc_scheduled_json(e: e)))),
+    json_kv(key: "fired", value: json_array(elements: map(world.fired, e => bmc_scheduled_json(e: e)))),
+    json_kv(key: "account", value: match world.web.account {
+      Absent => json_null()
+      Present { value: a } => json_object(members: [json_kv(key: "username", value: json_string(s: a.username)), json_kv(key: "password", value: json_string(s: a.password)), json_kv(key: "privilege", value: json_int(n: a.privilege))])
+    }),
+    json_kv(key: "sessions", value: json_array(elements: map(world.web.sessions, x => json_object(members: [json_kv(key: "id", value: json_int(n: x.id)), json_kv(key: "csrf", value: json_string(s: x.csrf_token)), json_kv(key: "privilege", value: json_int(n: x.privilege))])))),
+    json_kv(key: "next", value: json_int(n: world.web.next_session_id)),
+    json_kv(key: "others", value: json_int(n: world.web.other_kvm_viewers)),
+    json_kv(key: "kvm", value: match world.web.kvm {
+      BmcKvmIdle {} => json_string(s: "idle")
+      BmcKvmStreaming { session: k } => json_array(elements: [json_string(s: "streaming"), json_int(n: k)])
+      BmcKvmClosedByController { session: k } => json_array(elements: [json_string(s: "closed"), json_int(n: k)])
+    }),
+    json_kv(key: "canvas_readable", value: json_bool(b: world.web.canvas_readable)),
+    json_kv(key: "boot_override", value: json_string(s: match world.boot_override { BootOverrideNone => "none"  BootOverrideCdromEfiNextBoot => "cdrom_efi_next_boot" })),
+    json_kv(key: "sel", value: json_array(elements: map(world.sel, r => json_array(elements: [json_string(s: r.id_hex), json_string(s: r.date), json_string(s: r.time), json_string(s: r.sensor), json_string(s: r.event), json_string(s: r.state)])))),
+    json_kv(key: "sol_session_open", value: json_bool(b: world.sol_session_open)),
+    json_kv(key: "cycle_off_interval", value: json_int(n: second_count(s: world.cycle_off_interval) as Int)),
+    json_kv(key: "host_booted_at", value: match world.host_booted_at { Absent => json_null()  Present { value: t } => json_int(n: second_count(s: t) as Int) }),
+    json_kv(key: "booted_via_override", value: json_bool(b: world.booted_via_override)),
+    json_kv(key: "sol_drop_after_boot", value: match world.sol_drop_after_boot { Absent => json_null()  Present { value: t } => json_int(n: second_count(s: t) as Int) }),
+  ])
+}
+
+fn megarac_web_world_text(world: BmcWorld) -> String {
+  serialize_json(v: megarac_web_world_json(world: world))
+}
+
+data megarac_web_foreign_token: String = "csrf-foreign"
+
+// THE REQUESTS ASKED OF ONE WORLD: the credential pairs the caller names, the services read, connect
+// and logout with every token this world holds plus the foreign one, and an advance to each pending
+// event's instant.
+fn megarac_web_alphabet(world: BmcWorld, credentials: List<MegaRacWebRequest>) -> List<MegaRacWebRequest> {
+  let tokens: List<String> = map(world.web.sessions, x => x.csrf_token).concat([megarac_web_foreign_token])
+  let connects: List<MegaRacWebRequest> = map(tokens, t => MegaRacWebConnect { token: t })
+  let logouts: List<MegaRacWebRequest> = map(tokens, t => MegaRacWebLogout { token: t })
+  let advances: List<MegaRacWebRequest> = map(world.pending, e => MegaRacWebAdvance { at: e.at })
+  credentials.concat([MegaRacWebServices {}]).concat(connects).concat(logouts).concat(advances)
+}
+
+type MegaRacWebRow {
+  from: String
+  request: MegaRacWebRequest
+  answer: MegaRacWebAnswer
+  to: String
+}
+
+// THE EXPLORATION'S ACCUMULATORS ARE LINEAR IN WHAT THEY HOLD: rows and the frontier grow by a Cons
+// prepend (their order carries no meaning -- the transport keys rows, and a depth level is a set), and
+// the seen worlds are a v2.std.collection Map, so membership is a lookup, not a scan.
+type MegaRacWebExploration {
+  frontier: List<BmcWorld>
+  seen: Map<String, Bool>
+  rows: List<MegaRacWebRow>
+}
+
+fn megarac_web_explore_world(acc: MegaRacWebExploration, world: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int) -> MegaRacWebExploration {
+  let from = megarac_web_world_text(world: world)
+  fold(megarac_web_alphabet(world: world, credentials: credentials), acc, (a, r) => {
+    let step = megarac_web_step(world: world, request: r, extended_privilege: extended_privilege)
+    let to = megarac_web_world_text(world: step.world)
+    let row = MegaRacWebRow { from: from, request: r, answer: step.answer, to: to }
+    match map_lookup(m: a.seen, key: to) {
+      Present { value: _ } => MegaRacWebExploration { frontier: a.frontier, seen: a.seen, rows: Cons { head: row, tail: a.rows } }
+      Absent => MegaRacWebExploration { frontier: Cons { head: step.world, tail: a.frontier }, seen: map_insert(m: a.seen, key: to, value: true), rows: Cons { head: row, tail: a.rows } }
+    }
+  })
+}
+
+// Breadth-first to a bounded depth. A request sequence longer than the depth reaches a world the
+// table does not describe, and the transport refuses there rather than guessing.
+fn megarac_web_explore(frontier: List<BmcWorld>, seen: Map<String, Bool>, rows: List<MegaRacWebRow>, depth: Int, credentials: List<MegaRacWebRequest>, extended_privilege: Int) -> List<MegaRacWebRow> {
+  if depth <= 0 || count(frontier) == 0 { rows } else {
+    let start: MegaRacWebExploration = MegaRacWebExploration { frontier: Empty, seen: seen, rows: rows }
+    let next: MegaRacWebExploration = fold(frontier, start, (acc, w) => megarac_web_explore_world(acc: acc, world: w, credentials: credentials, extended_privilege: extended_privilege))
+    megarac_web_explore(frontier: next.frontier, seen: next.seen, rows: next.rows, depth: depth - 1, credentials: credentials, extended_privilege: extended_privilege)
+  }
+}
+
+// THE DEPTH A SERVED TABLE IS EXPLORED TO: long enough for a client's whole session (login, services,
+// connect, the controller's own events, logout) with room for a retry. A caller asking a narrower
+// question -- one transition -- names a smaller depth.
+data megarac_web_exploration_depth: Int = 6
+
+// CONSUMER (DESIGN §3c, declared frontier). megarac_web_transition_table is consumed by the loopback
+// transport in gunbc#12492 (gunbc.bmc_megarac_web_transport), which enforces it against every real
+// request the KVM observer's failure controls send -- viewer seat busy, /kvm closed mid session,
+// canvas unreadable. TRIGGER: gunbc#12492 lands. The transport itself, and its process lifecycle, are
+// in that change beside their consumers; this module stays pure.
+//
+// THE TABLE THE TRANSPORT ENFORCES, as one JSON document: the initial world, the canvas flag, the
+// /kvm path, and one row per (world, request): from, the structured request, status, stream_open, to,
+// body. The transport refuses a table in which two rows share a (world, request).
+fn megarac_web_transition_table(initial: BmcWorld, credentials: List<MegaRacWebRequest>, extended_privilege: Int, depth: Int) -> String {
+  let start = megarac_web_world_text(world: initial)
+  let rows = megarac_web_explore(frontier: [initial], seen: map_insert(m: empty_map(), key: start, value: true), rows: Empty, depth: depth, credentials: credentials, extended_privilege: extended_privilege)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "initial", value: json_string(s: start)),
+    json_kv(key: "canvas_readable", value: json_bool(b: initial.web.canvas_readable)),
+    json_kv(key: "kvm_path", value: json_string(s: megarac_kvm_websocket_path as String)),
+    json_kv(key: "rows", value: json_array(elements: map(rows, r => json_object(members: [
+      json_kv(key: "from", value: json_string(s: r.from)),
+      json_kv(key: "request", value: megarac_web_request_json(r: r.request)),
+      json_kv(key: "status", value: json_int(n: r.answer.status as Int)),
+      json_kv(key: "stream_open", value: json_bool(b: r.answer.stream_open)),
+      json_kv(key: "to", value: json_string(s: r.to)),
+      json_kv(key: "body", value: json_string(s: r.answer.body)),
+    ])))),
+  ]))
+}

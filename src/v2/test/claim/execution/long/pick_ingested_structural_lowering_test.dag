@@ -1,5 +1,6 @@
 module v2.test.long.pick_ingested_structural_lowering
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.eval {
@@ -14,7 +15,7 @@ import v2.compiler.eval {
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -23,7 +24,6 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
@@ -49,7 +49,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.node {
   Arrow,
@@ -58,7 +57,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -262,7 +261,7 @@ test fn pick_ingested_normalized_swapped_arms_structural_red_holds() -> Bool {
   )
 }
 
-fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
+fn pick_ingested_resolved_module_from_source(source: String) -> Outcome<ResolvedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
@@ -286,7 +285,7 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
   bind_outcome(
     o: pick_ingested_resolved_module_from_source(source: source),
     f: fn(resolved) {
-      match pick_ingested_find_arrow_in_module(root: resolved) {
+      match pick_ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } => outcome_accepted(value: arrow)
         Absent =>
           outcome_rejected(
@@ -297,6 +296,37 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
       }
     }
   )
+}
+
+// THE SIX INGESTED ARROWS ARE NULLARY PRODUCERS, rostered warm in
+// v2.workflow.floor_pure_producer_share: each is the whole tokenize->parse->normalize->resolve->
+// find-arrow route over one module-constant source, the work no execution row below is about. The
+// rows read the produced arrow and pay only for evaluating it (DESIGN section 3: a witness
+// discriminates at one interface, and supplies the layers beneath it). The route itself stays
+// executed: by these producers at preparation, and by the pipeline, parse and normalize rows above,
+// which run it per claim.
+fn pick_ingested_true_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick_ingested_source)
+}
+
+fn pick_ingested_false_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick_ingested_false_source)
+}
+
+fn pick_ingested_swapped_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick_ingested_swapped_source)
+}
+
+fn pick2_ingested_true_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick2_ingested_source)
+}
+
+fn pick2_ingested_false_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick2_ingested_false_source)
+}
+
+fn pick2_ingested_swapped_arrow() -> Outcome<Node> {
+  pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source)
 }
 
 fn pick_eval_pick_call(callee: Node) -> Node {
@@ -314,8 +344,8 @@ fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: OccurrenceSynthetic,
     children: [
-      Edge { label: Named { name: ^pick_eval_actual }, target: call },
-      Edge { label: Named { name: ^pick_eval_expected }, target: expected }
+      Edge { label: Authored { name: ^pick_eval_actual }, target: call },
+      Edge { label: Authored { name: ^pick_eval_expected }, target: expected }
     ]
   }
 }
@@ -405,7 +435,7 @@ fn pick_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool 
 }
 
 test fn pick_ingested_pick_true_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick_ingested_source) {
+  match pick_ingested_true_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
@@ -418,7 +448,7 @@ test fn pick_ingested_pick_true_executes_holds() -> Bool {
 }
 
 test fn pick_ingested_pick_false_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick_ingested_false_source) {
+  match pick_ingested_false_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
@@ -431,7 +461,7 @@ test fn pick_ingested_pick_false_executes_holds() -> Bool {
 }
 
 test fn pick_ingested_swapped_arms_red_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick_ingested_swapped_source) {
+  match pick_ingested_swapped_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
@@ -462,7 +492,7 @@ test fn pick_ingested_parsed_module_from_source_holds() -> Bool {
 }
 
 test fn pick2_ingested_pick_true_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick2_ingested_source) {
+  match pick2_ingested_true_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
@@ -475,7 +505,7 @@ test fn pick2_ingested_pick_true_executes_holds() -> Bool {
 }
 
 test fn pick2_ingested_pick_false_executes_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick2_ingested_false_source) {
+  match pick2_ingested_false_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(
@@ -488,7 +518,7 @@ test fn pick2_ingested_pick_false_executes_holds() -> Bool {
 }
 
 test fn pick2_ingested_swapped_arms_red_holds() -> Bool {
-  match pick_ingested_arrow_from_source(source: pick2_ingested_swapped_source) {
+  match pick2_ingested_swapped_arrow() {
     Accepted { value: arrow, diagnostics: _ } =>
       pick_eval_run_passes(
         run: pick_eval_run(

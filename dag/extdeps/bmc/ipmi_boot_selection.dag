@@ -4,6 +4,8 @@ import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE CLI SURFACE IS ipmitool's BOOT-FLAG ENCODER, not the IPMI wire itself. The IPMI 2.0
 // chassis boot parameter has separate valid, persistence and boot-type bits; ipmitool exposes
@@ -15,6 +17,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "github.com/ipmitool/ipmitool/blob/master/lib/ipmi_chassis.c"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi_boot_selection",
+      decl_name: "IpmiBootSelection",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type IpmiBootDevice

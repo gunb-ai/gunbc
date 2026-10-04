@@ -1,29 +1,45 @@
 module v2.compiler.emit_semantic_decl
 
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import std.types { List }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclSerializeProfile,
   semantic_decl_emission_from_target,
+  semantic_decl_profile_binding_spellings_over,
   semantic_decl_serialize_target,
   target_semantic_enum_surface_from_coproduct,
   target_semantic_struct_surface_from_record
 }
-import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel, concrete_syntax_token_list_from_node }
+import v2.std.collection { Absent, Map, Present, empty_map, map_get }
+import v2.std.qualified_name { declaration_reference_path_optional }
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetTypeExprAtom,
+  TargetTypeExpression,
+  concrete_syntax_token_list_from_node,
+  target_atom_type_spelling,
+  target_type_expr_declaration_reference_emitted,
+  target_type_expression_spelling,
+  type_expression_projection_from_target
+}
 import v2.std.diagnostic {
+  Accepted,
+  Rejected,
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
   Unavailable,
   bind_outcome,
   node_locus,
+  outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Disj, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import std.algebra { Empty }
+import v2.std.algebra { contains }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -36,7 +52,8 @@ fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
 fn emit_decl_surface(
   surface: Node,
   rules: Node,
-  profile: TargetSemanticDeclSerializeProfile
+  profile: TargetSemanticDeclSerializeProfile,
+  host_binding_spellings: Map<Symbol, String>
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: surface),
@@ -48,7 +65,7 @@ fn emit_decl_surface(
             o: concrete_syntax_token_list_from_node(list_node: tokens_root),
             f: fn(tokens) {
               bind_outcome(
-                o: semantic_decl_serialize_target(profile: profile, rules: rules),
+                o: semantic_decl_serialize_target(profile: profile, rules: rules, host_binding_spellings: host_binding_spellings),
                 f: fn(serialize_target) {
                   serialize_concrete_syntax_tokens_to_source(
                     target: serialize_target,
@@ -64,45 +81,67 @@ fn emit_decl_surface(
   )
 }
 
+// A TYPE DECLARATION THROUGH THE TARGET'S SEMANTIC ROWS, THE ONE ROUTE. Its field and variant types are
+// spelled by produced_type_binding_over the realization host (the base target whose atom realization
+// rows match) and the map each declaration is serialized with -- its profile's rows over the emitting
+// target's own binding_spellings. There is no route that
+// binds a type as itself: a type the target cannot spell refuses, located, rather than printing its
+// interned name.
 fn emit_semantic_type_decl(
   name: Symbol,
   params: List<Symbol>,
   node: Node,
-  target: TargetModel
+  target: TargetModel,
+  realization_host: TargetModel
 ) -> Outcome<Medium<String>> {
+  let host_binding_spellings = target.binding_spellings
   bind_outcome(
     o: semantic_decl_emission_from_target(target: target),
     f: fn(emission) {
       match node.kind {
         TypeNode { connective: Disj } =>
           bind_outcome(
-            o: target_semantic_enum_surface_from_coproduct(
-              projection: emission.surface,
-              name: name,
-              params: params,
-              coproduct: node
-            ),
-            f: fn(surface) {
-              emit_decl_surface(
-                surface: surface,
-                rules: emission.enum_translation_rules,
-                profile: emission.enum_serialize_profile
+            o: semantic_decl_profile_binding_spellings_over(profile: emission.enum_serialize_profile, base: host_binding_spellings),
+            f: fn(spellings) {
+              bind_outcome(
+                o: target_semantic_enum_surface_from_coproduct(
+                  projection: emission.surface,
+                  name: name,
+                  params: params,
+                  coproduct: node,
+                  type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
+                ),
+                f: fn(surface) {
+                  emit_decl_surface(
+                    surface: surface,
+                    rules: emission.enum_translation_rules,
+                    profile: emission.enum_serialize_profile,
+                    host_binding_spellings: host_binding_spellings
+                  )
+                }
               )
             }
           )
         TypeNode { connective: Conj } =>
           bind_outcome(
-            o: target_semantic_struct_surface_from_record(
-              projection: emission.surface,
-              name: name,
-              params: params,
-              record: node
-            ),
-            f: fn(surface) {
-              emit_decl_surface(
-                surface: surface,
-                rules: emission.struct_translation_rules,
-                profile: emission.struct_serialize_profile
+            o: semantic_decl_profile_binding_spellings_over(profile: emission.struct_serialize_profile, base: host_binding_spellings),
+            f: fn(spellings) {
+              bind_outcome(
+                o: target_semantic_struct_surface_from_record(
+                  projection: emission.surface,
+                  name: name,
+                  params: params,
+                  record: node,
+                  type_binding: semantic_decl_type_binding(params: params, resolve: produced_type_binding_over(target: realization_host, spellings: spellings))
+                ),
+                f: fn(surface) {
+                  emit_decl_surface(
+                    surface: surface,
+                    rules: emission.struct_translation_rules,
+                    profile: emission.struct_serialize_profile,
+                    host_binding_spellings: host_binding_spellings
+                  )
+                }
               )
             }
           )
@@ -111,3 +150,78 @@ fn emit_semantic_type_decl(
     }
   )
 }
+
+// A declaration's own type parameter is bound by the declaration itself (`Pair<K, V> { key: K }`), so it is
+// spelled by its own name; every other type goes through the resolver. A parameter is recognized by
+// identity against the declaration's binder list, never by the shape or case of its name.
+fn semantic_decl_type_binding(params: List<Symbol>, resolve: fn(Node) -> Outcome<Symbol>) -> fn(Node) -> Outcome<Symbol> {
+  fn(type_node) {
+    match type_node.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if contains(xs: params, item: id, eq: fn(a, b) { a == b }) { outcome_accepted(value: id) } else { resolve(type_node) }
+      _ => resolve(type_node)
+    }
+  }
+}
+
+fn emit_type_reference_unrealized_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^produced_decl_type_ref_unrealized,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// HOW A SIGNATURE TYPE IS SPELLED, IN ONE ORDER, AND NEVER BY FABRICATION. A reference to a declared
+// type (the resolved declaration-reference node) is spelled by the target's own declaration-reference
+// form -- the rule the type-expression translate already applies (v2.std.compilers.target_model
+// target_type_expr_declaration_reference_emitted; Rust: `crate::<module>::<Name>`, the same for this
+// module's types and another's). A kernel carrier atom binds its atom realization row's surface symbol
+// (target_atom_type_spelling), which the target's binding_spellings spell. Failing both, an explicit
+// binding_spellings entry for the atom itself is used as written. Anything else refuses, located.
+// Before this, every type atom was bound as itself and an unmapped one printed its interned name
+// (`bool_node_symbol`), and a declared type's reference refused as an unsupported shape.
+// STANDING, STATED: Int still reaches `i32` through its explicit binding_spellings entry, not through a
+// realization row -- the target has no Int atom realization (there is no integer value-template kind to
+// give one), so that route is not yet unified with Bool's.
+fn produced_type_binding(target: TargetModel) -> fn(Node) -> Outcome<Symbol> {
+  produced_type_binding_over(target: target, spellings: target.binding_spellings)
+}
+
+// The same order, with the explicit-entry step read from the map the caller will SERIALIZE with -- for a
+// type declaration that is the serialize profile's rows over the target's own map
+// (v2.std.compilers.semantic_decl_emission semantic_decl_profile_binding_spellings_over), so an atom is
+// admitted exactly when the serialization that follows spells it, and never reaches the interned-name
+// spelling bound_spelling_from_map gives an unmapped identifier.
+fn produced_type_binding_over(target: TargetModel, spellings: Map<Symbol, String>) -> fn(Node) -> Outcome<Symbol> {
+  fn(type_node) {
+    match declaration_reference_path_optional(node: type_node) {
+      Present { value: path } =>
+        bind_outcome(
+          o: type_expression_projection_from_target(target: target),
+          f: fn(projection) {
+            bind_outcome(
+              o: target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: type_node),
+              f: fn(emitted) {
+                outcome_accepted(value: target_type_expression_spelling(form: TargetTypeExpression { kind: TargetTypeExprAtom, node: emitted }))
+              }
+            )
+          }
+        )
+      Absent =>
+        match type_node.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            match translate_target_atom_realization_for_carrier(target: target, source_carrier: type_node) {
+              Accepted { value: row, diagnostics: _ } => outcome_accepted(value: target_atom_type_spelling(row: row))
+              Rejected { diagnostics: _ } =>
+                match map_get(spellings, id) {
+                  Accepted { value: Present { value: _ }, diagnostics: _ } => outcome_accepted(value: id)
+                  _ => outcome_rejected(d: emit_type_reference_unrealized_diagnostic(node: type_node))
+                }
+            }
+          _ => outcome_rejected(d: emit_type_reference_unrealized_diagnostic(node: type_node))
+        }
+    }
+  }
+}
+

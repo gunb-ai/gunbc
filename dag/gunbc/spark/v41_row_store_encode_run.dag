@@ -93,7 +93,11 @@ fn v41_store_run_digest(r: V41StoreRun) -> Sha256Digest? {
   match r {
     V41StorePresent { store: _, digest: d, size: _ } => Present { value: d }
     V41StoreEncoded { store: _, digest: d, size: _ } => Present { value: d }
-    _ => none
+    V41StoreSizeMismatch { store: _, digest: _, observed: _, derived: _ } => none
+    V41StoreSizeUnread { store: _, digest: _, cause: _ } => none
+    V41StoreDigestUnread { store: _, encoded: _, cause: _ } => none
+    V41StoreEncodeFailed { store: _, cause: _ } => none
+    V41StorePresenceFailed { store: _, cause: _ } => none
   }
 }
 

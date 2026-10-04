@@ -1,0 +1,712 @@
+module gunbc.auth.session_store
+
+// THE SESSION STORE, the file-backed realization the serve seam resolves opaque session ids
+// through. LAYOUT DISCIPLINE FOLLOWS THE ROADMAP EVENT CARRIER (gunbc.roadmap.roadmap_event_carrier):
+// one content-shaped file per session under a directory hanging off the instance root, beside the
+// carrier's own worktree, so a serving process's authentication state lives in the SAME state
+// directory family as its event state and nowhere ambient. The store is the realization BECAUSE the
+// session model (gunbc.auth.session) names operations, not locations: the model decides over a
+// SessionCookieStanding; THIS module answers which standing a wire cookie arrives with, and a
+// store with different consistency could realize the same three operations later without the seam
+// changing.
+//
+// WHAT THE STORE REFUSES RATHER THAN HIDES, the same discipline the carrier keeps: an unreadable
+// store is Unread, never a silently anonymous request — the standings fold keeps ABSENT, UNKNOWN,
+// and UNREAD distinct because their remedies differ (nothing / re-login / fix the store). A session
+// file that does not decode is a deployment fact about ONE file, carried as Malformed with the file
+// named. And ABSENCE IS ESTABLISHED FROM A LISTING, never from a failed read (the
+// filesystem_listing_observation discipline): "the read failed" and "the store holds no such
+// session" are different facts, and only the second mints an Unknown standing.
+
+import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_entry_presence,
+}
+import extdeps.languages.json.emit {
+  serialize_json, json_object, json_kv, json_string, JsonValue,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string, json_document_gap_text,
+  JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.uri { Uri, Http, Https, uri_wire }
+import gunbc.auth.session {
+  AuthenticatedSession, SessionAuthMethod, AuthMethodGoogleOidc,
+  SessionClient, SessionClientTrackerWeb, SessionClientApprovalsWeb, session_client_label,
+  CsrfToken, session_not_expired, SessionProfile,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieUnknown,
+  SessionCookieUnread, SessionCookieMalformed,
+  SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
+  session_cookie_id_of_header,
+}
+import gunbc.principal_projection {
+  PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
+}
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthSessions }
+
+data session_store_file_suffix: String = ".json"
+
+data session_file_schema: String = "gunbc-auth-session/v1"
+
+// THE STORE LAYOUT, one fact: the directory. Files are derived from it by session id, so no
+// caller builds a store path from an unadmitted string.
+type SessionStoreLayout {
+  root: FilePath
+}
+
+// BUILT FROM THE INSTANCE the way the event carrier builds its worktree: the instance root the
+// process already owns, plus the one directory segment this store adds.
+fn session_store_layout_for_instance(instance: HostDashboardInstance) -> SessionStoreLayout {
+  SessionStoreLayout {
+    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthSessions),
+  }
+}
+
+// A path is built only from an AuthStoreKey (gunbc.auth.auth_store_key): a session id read from a
+// Cookie header that is not one cannot name a file under the store.
+fn session_store_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, session_store_file_suffix], "")
+}
+
+fn session_store_file_path(layout: SessionStoreLayout, key: AuthStoreKey) -> String {
+  join([layout.root as String, "/", session_store_file_name(key: key)], "")
+}
+
+// ── The session file codec ─────────────────────────────────────────────────────────────────────
+// ONE FILE PER SESSION, the session record serialized as one JSON object. The wire is the
+// durable spelling: the principal rides its ruling label (principal:<authority>/<namespace>/
+// <subject>, principal_projection's one spelling), so a file written under one model revision
+// decodes under any revision whose label parse holds — the same round-trip discipline the v3
+// event codec keeps. The CSRF token rides the file because the file is owner-only (0600); the
+// cookie value itself is NEVER in the store (the store maps an id to a session; the id is the
+// only cookie fact). The profile rides as THREE OPTIONAL MEMBERS: a login whose token carried
+// no picture, name, or email writes no such member, and a file written before the projection
+// landed decodes each to absent — never a malformed file, so the projection never forces a
+// re-login (the never-blocks law at the durable carrier).
+fn authenticated_session_json(session: AuthenticatedSession) -> String {
+  serialize_json(v: json_object(members: concat(concat([
+    json_kv(key: "schema", value: json_string(s: session_file_schema)),
+    json_kv(key: "session_id", value: json_string(s: session.session_id as String)),
+    json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+    json_kv(key: "authenticated_at", value: json_string(s: session.authenticated_at)),
+    json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+    json_kv(key: "auth_method", value: json_string(s: session_auth_method_label(method: session.auth_method))),
+    json_kv(key: "client", value: json_string(s: session_client_label(client: session.client) as String)),
+    json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
+  ], session_profile_picture_members(picture: session.profile.picture)), concat(session_profile_name_members(name: session.profile.name), session_profile_email_members(email: session.profile.email)))))
+}
+
+// THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the
+// member's ABSENCE on the wire, never an empty string standing in for none. The spelling is
+// the Uri wire form (https://… or http://…), the same claim the ID-token reader admitted.
+fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
+  match picture {
+    Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
+// never an empty string standing in for none.
+fn session_profile_name_members(name: String?) -> List<JsonValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, the same law again.
+fn session_profile_email_members(email: Email?) -> List<JsonValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
+    Absent => []
+  }
+}
+
+// THE ONE METHOD SPELLING: the closed coproduct has exactly one constructor, and the wire says
+// which one it is by name. A second method arrives as a second arm and a second wire name here,
+// never as an unadmitted string.
+fn session_auth_method_label(method: SessionAuthMethod) -> String {
+  match method {
+    AuthMethodGoogleOidc => "google-oidc"
+  }
+}
+
+type SessionFileDecode
+  = SessionFileDecoded { session: AuthenticatedSession }
+  | SessionFileMalformed { detail: String }
+
+// THE DECODE, three-valued per member through the JSON field readers: every member the session
+// record requires is present, well shaped, and consistent (the file's session_id matches the id
+// that located the file; the auth_method names the one admitted method; the client names an
+// admitted client; the principal parses as the one label spelling), or the file is Malformed
+// with the located cause. A malformed session file is a deployment fact about ONE session, so
+// the refusal names the member that refused rather than refusing the whole store. The picture
+// name, and email members are the THREE OPTIONAL members: each absent decodes to none (a file
+// written before the projection landed is a projection-less profile, never a malformed file), a
+// present picture decodes only as the http/https Uri spellings, and a present name or email
+// decodes only as non-empty — the same admissions the ID-token reader keeps.
+fn authenticated_session_of_json(text: String) -> SessionFileDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } =>
+      SessionFileMalformed { detail: concat("the session file is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      session_file_decode_members(doc: doc)
+  }
+}
+
+fn session_required_string(doc: JsonValue, key: String) -> SessionFileField {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => SessionFileFieldMalformed { detail: join(["member ", key, " is absent"], "") }
+    FieldMalformed { cause: c } => SessionFileFieldMalformed { detail: join(["member ", key, " refused: ", c], "") }
+    FieldRead { value: v } => SessionFileFieldRead { value: v }
+  }
+}
+
+type SessionFileField
+  = SessionFileFieldRead { value: String }
+  | SessionFileFieldMalformed { detail: String }
+
+fn session_file_decode_members(doc: JsonValue) -> SessionFileDecode {
+  let schema_read = session_required_string(doc: doc, key: "schema")
+  match schema_read {
+    SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+    SessionFileFieldRead { value: schema } =>
+      if schema != session_file_schema {
+        SessionFileMalformed {
+          detail: join(["member schema is \"", schema, "\", not \"", session_file_schema, "\""], ""),
+        }
+      } else {
+        session_file_decode_body(doc: doc)
+      }
+  }
+}
+
+fn session_file_decode_body(doc: JsonValue) -> SessionFileDecode {
+  let session_id = session_required_string(doc: doc, key: "session_id")
+  let principal = session_required_string(doc: doc, key: "principal")
+  let authenticated_at = session_required_string(doc: doc, key: "authenticated_at")
+  let expires_at = session_required_string(doc: doc, key: "expires_at")
+  let auth_method = session_required_string(doc: doc, key: "auth_method")
+  let client = session_required_string(doc: doc, key: "client")
+  let csrf = session_required_string(doc: doc, key: "csrf")
+  match session_id {
+    SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+    SessionFileFieldRead { value: sid } =>
+      match principal {
+        SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileFieldRead { value: p_label } =>
+          match authenticated_at {
+            SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+            SessionFileFieldRead { value: at } =>
+              match expires_at {
+                SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+                SessionFileFieldRead { value: exp } =>
+                  match auth_method {
+                    SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+                    SessionFileFieldRead { value: method } =>
+                      if method != "google-oidc" {
+                        SessionFileMalformed { detail: join(["member auth_method is \"", method, "\", not the admitted \"google-oidc\""], "") }
+                      } else {
+                        match client {
+                          SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+                          SessionFileFieldRead { value: client_label } =>
+                            match csrf {
+                              SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
+                              SessionFileFieldRead { value: csrf_value } =>
+                                session_file_decode_finish(
+                                  doc: doc,
+                                  session_id: sid,
+                                  principal_label: p_label,
+                                  authenticated_at: at,
+                                  expires_at: exp,
+                                  client_label: client_label,
+                                  csrf_value: csrf_value,
+                                )
+                            }
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE OPTIONAL PICTURE MEMBER, decoded three-valued like every wire fact. ABSENT names a file
+// written before the projection landed (or a login whose token carried no picture) and decodes
+// to none — never Malformed, so an old file is never a forced re-login. PRESENT decodes only as
+// the http/https Uri spellings the ID-token reader admits (the file is the durable spelling of
+// the same claim, so the admission is the same), and any other spelling is Malformed with the
+// member named.
+type SessionFilePicture
+  = SessionFilePictureRead { picture: Uri? }
+  | SessionFilePictureMalformed { detail: String }
+
+fn session_file_picture_of(doc: JsonValue) -> SessionFilePicture {
+  match json_field_string(obj: doc, key: "picture") {
+    FieldAbsent => SessionFilePictureRead { picture: none }
+    FieldMalformed { cause: c } => SessionFilePictureMalformed { detail: join(["member picture refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if starts_with(s: raw, prefix: "https://") {
+        SessionFilePictureRead {
+          picture: Present { value: Uri { scheme: Https, locator: substring(s: raw, start: 8, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else if starts_with(s: raw, prefix: "http://") {
+        SessionFilePictureRead {
+          picture: Present { value: Uri { scheme: Http, locator: substring(s: raw, start: 7, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else {
+        SessionFilePictureMalformed { detail: "member picture is present but is not an http/https Uri spelling" }
+      }
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, decoded three-valued like the picture. ABSENT names a file written
+// before the projection landed and decodes to none — never Malformed. PRESENT decodes only as
+// a non-empty string (the mint never writes an empty name, so a present empty member names a
+// malformed file with the member named).
+type SessionFileName
+  = SessionFileNameRead { name: String? }
+  | SessionFileNameMalformed { detail: String }
+
+fn session_file_name_of(doc: JsonValue) -> SessionFileName {
+  match json_field_string(obj: doc, key: "name") {
+    FieldAbsent => SessionFileNameRead { name: none }
+    FieldMalformed { cause: c } => SessionFileNameMalformed { detail: join(["member name refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileNameMalformed { detail: "member name is present but empty" }
+      } else {
+        SessionFileNameRead { name: Present { value: raw } }
+      }
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, decoded three-valued like the name: ABSENT decodes to none;
+// PRESENT decodes only as a non-empty string (the mint never writes an empty email).
+type SessionFileEmail
+  = SessionFileEmailRead { email: Email? }
+  | SessionFileEmailMalformed { detail: String }
+
+fn session_file_email_of(doc: JsonValue) -> SessionFileEmail {
+  match json_field_string(obj: doc, key: "email") {
+    FieldAbsent => SessionFileEmailRead { email: none }
+    FieldMalformed { cause: c } => SessionFileEmailMalformed { detail: join(["member email refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileEmailMalformed { detail: "member email is present but empty" }
+      } else {
+        SessionFileEmailRead { email: Present { value: raw as Email } }
+      }
+  }
+}
+
+fn session_file_decode_finish(
+  doc: JsonValue,
+  session_id: String,
+  principal_label: String,
+  authenticated_at: String,
+  expires_at: String,
+  client_label: String,
+  csrf_value: String,
+) -> SessionFileDecode {
+  match session_file_picture_of(doc: doc) {
+    SessionFilePictureMalformed { detail: d } => SessionFileMalformed { detail: d }
+    SessionFilePictureRead { picture: pic } =>
+      match session_file_name_of(doc: doc) {
+        SessionFileNameMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileNameRead { name: nm } =>
+      match session_file_email_of(doc: doc) {
+        SessionFileEmailMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileEmailRead { email: em } =>
+      match principal_ref_parse_label(s: principal_label) {
+        Absent =>
+          SessionFileMalformed {
+            detail: join(["member principal \"", principal_label, "\" is not the principal label spelling"], ""),
+          }
+        Present { value: p } =>
+          if session_id == "" {
+            SessionFileMalformed { detail: "member session_id is empty" }
+          } else if csrf_value == "" {
+            SessionFileMalformed { detail: "member csrf is empty" }
+          } else if authenticated_at == "" {
+            SessionFileMalformed { detail: "member authenticated_at is empty" }
+          } else if expires_at == "" {
+            SessionFileMalformed { detail: "member expires_at is empty" }
+          } else {
+            match session_client_of_label(label: client_label) {
+              Absent =>
+                SessionFileMalformed {
+                  detail: join(["member client is \"", client_label, "\", not an admitted client label"], ""),
+                }
+              Present { value: client } =>
+                SessionFileDecoded {
+                  session: AuthenticatedSession {
+                    session_id: session_id as NonEmptyStr,
+                    principal: p,
+                    authenticated_at: authenticated_at,
+                    expires_at: expires_at,
+                    auth_method: AuthMethodGoogleOidc,
+                    client: client,
+                    csrf: CsrfToken { token: csrf_value as NonEmptyStr },
+                    profile: SessionProfile { picture: pic, name: nm, email: em },
+                  }
+                }
+            }
+          }
+      }
+        }
+        }
+  }
+}
+
+// THE CLIENT LABEL FOLD, the decode twin of session_client_label: the closed coproduct is
+// walked by its labels, so an unadmitted client string refuses rather than landing in a
+// catch-all.
+fn session_client_of_label(label: String) -> SessionClient? {
+  if label == (session_client_label(client: SessionClientTrackerWeb) as String) {
+    Present { value: SessionClientTrackerWeb }
+  } else if label == (session_client_label(client: SessionClientApprovalsWeb) as String) {
+    Present { value: SessionClientApprovalsWeb }
+  } else {
+    none
+  }
+}
+
+// ── The store operations ───────────────────────────────────────────────────────────────────────
+// THREE OPERATIONS AND NOTHING ELSE, the carrier's grain: save one session, resolve one id,
+// delete one id. Everything about WHERE sessions live is this module; the seam asks the
+// questions, the model decides over the answers.
+
+type SessionStoreSave
+  = SessionStoreSaved { session_id: NonEmptyStr }
+  | SessionStoreSaveRefused { step: String, reason: String }
+
+// THE SAVE IS OWNER-ONLY (0600): the file carries the session's CSRF token, so it takes the
+// WriteOwnerOnly realization exactly like the credential files do (the publisher-token pattern).
+// The session id is a 256-bit random draw the login realization mints fresh (a re-login never
+// reuses an id), so existence-check-and-create buys nothing the draw does not already give; the
+// refusal arms carry the host's own words.
+fn session_store_save(layout: SessionStoreLayout, session: AuthenticatedSession) -> SessionStoreSave {
+  match auth_store_key_of(raw: session.session_id as String) {
+    Absent => SessionStoreSaveRefused { step: "key", reason: "the session id is not a store key ([A-Za-z0-9_-], at most 128)" }
+    Present { value: key } => session_store_save_keyed(layout: layout, key: key, session: session)
+  }
+}
+
+fn session_store_save_keyed(layout: SessionStoreLayout, key: AuthStoreKey, session: AuthenticatedSession) -> SessionStoreSave {
+  let path = session_store_file_path(layout: layout, key: key)
+  let written = Filesystem.WriteOwnerOnly(path: path, content: authenticated_session_json(session: session))
+  if written.success {
+    SessionStoreSaved { session_id: session.session_id }
+  } else {
+    SessionStoreSaveRefused { step: "write", reason: written.error }
+  }
+}
+
+type SessionStoreLookup
+  = SessionStoreFound { session: AuthenticatedSession }
+  | SessionStoreUnknown { session_id: NonEmptyStr }
+  | SessionStoreUnread { session_id: NonEmptyStr, detail: String }
+  | SessionStoreEntryMalformed { session_id: NonEmptyStr, detail: String }
+
+// THE LOOKUP, absence established from a listing and never from a failed read: the listing is
+// folded through filesystem_file_observation, so "the store could not be listed", "the file was
+// listed and would not read", and "no such file is listed" are three answers that keep their
+// remedies. The id lands in every refusal so a located cause can name the session a request
+// claimed.
+// A session id that is not a store key names no session: it cannot have been minted, so it is
+// Unknown without any filesystem read.
+fn session_store_lookup(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreLookup {
+  match auth_store_key_of(raw: session_id as String) {
+    Absent => SessionStoreUnknown { session_id: session_id }
+    Present { value: key } => session_store_lookup_keyed(layout: layout, key: key)
+  }
+}
+
+fn session_store_lookup_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreLookup {
+  let session_id = key.value
+  let name = session_store_file_name(key: key)
+  let path = session_store_file_path(layout: layout, key: key)
+  let listing_result = Filesystem.List(path: layout.root as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.root as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  let read_result = Filesystem.Read(path: path)
+  let observation = filesystem_file_observation(
+    listing: listing,
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+  )
+  match observation {
+    FilesystemFileAbsent(absence) =>
+      SessionStoreUnknown { session_id: absence.name as NonEmptyStr }
+    FilesystemFileRead { path: _, content: c } =>
+      match authenticated_session_of_json(text: c) {
+        SessionFileDecoded { session: s } => SessionStoreFound { session: s }
+        SessionFileMalformed { detail: d } => SessionStoreEntryMalformed { session_id: session_id, detail: d }
+      }
+    FilesystemFileIndeterminate { cause: c } =>
+      SessionStoreUnread { session_id: session_id, detail: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } =>
+      SessionStoreUnread { session_id: session_id, detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      SessionStoreUnread { session_id: session_id, detail: c }
+  }
+}
+
+type SessionStoreDelete
+  = SessionStoreDeleted { session_id: NonEmptyStr }
+  | SessionStoreNothingToDelete { session_id: NonEmptyStr }
+  | SessionStoreDeleteRefused { session_id: NonEmptyStr, detail: String }
+
+// THE DELETE IS IDEMPOTENT BY CONSTRUCTION: logout with an already-reaped session is a success
+// (the desired end state already holds), distinguished from a deletion the host refused, which
+// carries the host's words. Absence is established the same way the lookup establishes it — from
+// the listing, never from the delete's failure — and a listing that could not be taken refuses
+// the delete rather than guessing.
+fn session_store_delete(layout: SessionStoreLayout, session_id: NonEmptyStr) -> SessionStoreDelete {
+  match auth_store_key_of(raw: session_id as String) {
+    Absent => SessionStoreDeleteRefused { session_id: session_id, detail: "the session id is not a store key; nothing outside the store is touched" }
+    Present { value: key } => session_store_delete_keyed(layout: layout, key: key)
+  }
+}
+
+fn session_store_delete_keyed(layout: SessionStoreLayout, key: AuthStoreKey) -> SessionStoreDelete {
+  let session_id = key.value
+  let name = session_store_file_name(key: key)
+  let listing_result = Filesystem.List(path: layout.root as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.root as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  match filesystem_entry_presence(listing: listing, name: name) {
+    FilesystemEntryAbsent(absence) =>
+      SessionStoreNothingToDelete { session_id: absence.name as NonEmptyStr }
+    FilesystemEntryListed { directory: _, name: _ } =>
+      let deleted = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
+      if deleted.success {
+        SessionStoreDeleted { session_id: session_id }
+      } else {
+        SessionStoreDeleteRefused { session_id: session_id, detail: deleted.error }
+      }
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      SessionStoreDeleteRefused { session_id: session_id, detail: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+      SessionStoreDeleteRefused { session_id: session_id, detail: c }
+  }
+}
+
+type SessionStorePurge
+  = SessionStorePurged { deleted: Int }
+  | SessionStorePurgeRefused { step: String, reason: String }
+
+// ROTATION ON AUTHENTICATION, the store half of the ruling's "rotated on every
+// authentication": a login mints a fresh session_id and purges every OTHER session of the
+// SAME principal, so a re-login is what actually invalidates what a stolen cookie could
+// replay — a fresh cookie alone would leave the old session live server-side until its
+// natural expiry. The purge is strict and fail-closed: a listing that cannot be taken, or
+// ANY entry of the store that cannot be read or decoded, refuses the purge with the file
+// named, and the login refuses with it — minting a new session while an unreadable old one
+// may still be live would be the silent widen the rotation guarantee exists to refuse.
+// Entries that decode cleanly but name another principal are untouched, and the freshly
+// minted session (except_session_id) is never a purge target.
+fn session_store_purge_principal(
+  layout: SessionStoreLayout,
+  principal: PrincipalRef,
+  except_session_id: NonEmptyStr,
+) -> SessionStorePurge {
+  let listing_result = Filesystem.List(path: layout.root as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.root as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  match listing {
+    FilesystemDirectoryListed(listed) =>
+      session_store_purge_listed(layout: layout, principal: principal, except_session_id: except_session_id, entries: split(s: listed.entries, delimiter: "\n"))
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      SessionStorePurgeRefused { step: "list", reason: e }
+    FilesystemDirectorySubjectRefused { directory: d, cause: c } =>
+      SessionStorePurgeRefused { step: "list-subject", reason: join(["the store directory ", d, " is not an admitted subject: ", c], "") }
+  }
+}
+
+fn session_store_purge_listed(
+  layout: SessionStoreLayout,
+  principal: PrincipalRef,
+  except_session_id: NonEmptyStr,
+  entries: List<String>,
+) -> SessionStorePurge {
+  match session_store_purge_targets(layout: layout, principal: principal, except_session_id: except_session_id, entries: entries, refused: none, targets: []) {
+    SessionStorePurgePlanRefused { step: s, reason: r } => SessionStorePurgeRefused { step: s, reason: r }
+    SessionStorePurgePlan { targets: ts } => session_store_purge_execute(layout: layout, targets: ts, deleted: 0)
+  }
+}
+
+type SessionStorePurgePlan
+  = SessionStorePurgePlan { targets: List<NonEmptyStr> }
+  | SessionStorePurgePlanRefused { step: String, reason: String }
+
+// THE PLANNING FOLD reads every listed entry once and collects the deletion targets; the
+// first unreadable or malformed entry refuses the whole purge, because the guarantee is over
+// the principal's WHOLE session set, and a fold that skips the entry it could not read has
+// exactly the hole the guarantee refuses.
+fn session_store_purge_targets(
+  layout: SessionStoreLayout,
+  principal: PrincipalRef,
+  except_session_id: NonEmptyStr,
+  entries: List<String>,
+  refused: SessionStorePurgePlanRefused?,
+  targets: List<NonEmptyStr>,
+) -> SessionStorePurgePlan {
+  match refused {
+    Present { value: r } => r
+    Absent =>
+      match entries.first() {
+        Absent => SessionStorePurgePlan { targets: targets }
+        Present { value: entry } =>
+          let rest = entries.skip(n: 1)
+          if entry == "" || !ends_with(s: entry, suffix: session_store_file_suffix) {
+            session_store_purge_targets(
+              layout: layout,
+              principal: principal,
+              except_session_id: except_session_id,
+              entries: rest,
+              refused: refused,
+              targets: targets,
+            )
+          } else {
+            let entry_id = substring(s: entry, start: 0, end: string_length(s: entry) - string_length(s: session_store_file_suffix))
+            if entry_id == "" || entry_id == (except_session_id as String) {
+              session_store_purge_targets(
+                layout: layout,
+                principal: principal,
+                except_session_id: except_session_id,
+                entries: rest,
+                refused: refused,
+                targets: targets,
+              )
+            } else {
+              let read = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
+              match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+                FilesystemReadRefused { error: e } =>
+                  SessionStorePurgePlanRefused {
+                    step: join(["read ", entry], ""),
+                    reason: e,
+                  }
+                FilesystemReadSucceeded { content: c } =>
+                  match authenticated_session_of_json(text: c) {
+                    SessionFileMalformed { detail: d } =>
+                      SessionStorePurgePlanRefused {
+                        step: join(["decode ", entry], ""),
+                        reason: d,
+                      }
+                    SessionFileDecoded { session: s } =>
+                      if principal_ref_eq(a: s.principal, b: principal) {
+                        session_store_purge_targets(
+                          layout: layout,
+                          principal: principal,
+                          except_session_id: except_session_id,
+                          entries: rest,
+                          refused: refused,
+                          targets: list_push(targets, s.session_id),
+                        )
+                      } else {
+                        session_store_purge_targets(
+                          layout: layout,
+                          principal: principal,
+                          except_session_id: except_session_id,
+                          entries: rest,
+                          refused: refused,
+                          targets: targets,
+                        )
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn session_store_purge_execute(layout: SessionStoreLayout, targets: List<NonEmptyStr>, deleted: Int) -> SessionStorePurge {
+  match targets.first() {
+    Absent => SessionStorePurged { deleted: deleted }
+    Present { value: target } =>
+      match auth_store_key_of(raw: target as String) {
+        Absent => SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: "a listed session entry is not a store key; refusing rather than deleting outside the store" }
+        Present { value: key } => {
+          let deleted_result = Filesystem.Delete(path: session_store_file_path(layout: layout, key: key))
+          if deleted_result.success {
+            session_store_purge_execute(layout: layout, targets: targets.skip(n: 1), deleted: deleted + 1)
+          } else {
+            SessionStorePurgeRefused { step: join(["delete ", target as String], ""), reason: deleted_result.error }
+          }
+        }
+      }
+  }
+}
+
+// ── The standing seam ──────────────────────────────────────────────────────────────────────────
+// THE FOLD THE SERVE SEAM DECIDES OVER: wire cookie header + store lookup + clock = the
+// standing. The parse is pure syntax; the lookup is the store's three-valued answer; the
+// clock decides expiry. Absent (no header / no session cookie in it), Malformed (syntax),
+// Unknown (id the store does not hold), Unread (store or clock could not be read), and the
+// Valid/Expired pair stay DISTINCT arms end to end, because each names a different remedy.
+fn session_cookie_standing_of(
+  cookie_header: String,
+  layout: SessionStoreLayout,
+  observed_at: Timestamp,
+) -> SessionCookieStanding {
+  match session_cookie_id_of_header(cookie_header: cookie_header) {
+    SessionCookieIdNotPresent => SessionCookieAbsent
+    SessionCookieIdMalformed { detail: d } => SessionCookieMalformed { detail: d }
+    SessionCookieIdParsed { session_id: id } =>
+      session_cookie_standing_of_lookup(layout: layout, session_id: id, observed_at: observed_at)
+  }
+}
+
+fn session_cookie_standing_of_lookup(
+  layout: SessionStoreLayout,
+  session_id: NonEmptyStr,
+  observed_at: Timestamp,
+) -> SessionCookieStanding {
+  session_cookie_standing_of_store_result(
+    lookup: session_store_lookup(layout: layout, session_id: session_id),
+    observed_at: observed_at,
+  )
+}
+
+// THE PURE SECOND HALF, separated so the witness drives each store arm without a filesystem:
+// found sessions split on the clock comparison, and every store refusal keeps its standing arm.
+fn session_cookie_standing_of_store_result(
+  lookup: SessionStoreLookup,
+  observed_at: Timestamp,
+) -> SessionCookieStanding {
+  match lookup {
+    SessionStoreFound { session: s } =>
+      if session_not_expired(session: s, observed_at: observed_at) {
+        SessionCookieValid { session: s }
+      } else {
+        SessionCookieExpired { session: s, observed_at: observed_at }
+      }
+    SessionStoreUnknown { session_id: id } => SessionCookieUnknown { session_id: id }
+    SessionStoreUnread { session_id: _, detail: d } => SessionCookieUnread { detail: d }
+    SessionStoreEntryMalformed { session_id: _, detail: d } => SessionCookieMalformed { detail: d }
+  }
+}
+

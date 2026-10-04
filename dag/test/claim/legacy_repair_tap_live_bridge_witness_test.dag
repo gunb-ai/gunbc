@@ -2,6 +2,7 @@ module test.claim.legacy_repair_tap_live_bridge_witness
 
 import std.types { String, Bool, List, list_length }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
 import std.content_hash { structural_content_hash }
 import std.decl_ref { decl_ref }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }

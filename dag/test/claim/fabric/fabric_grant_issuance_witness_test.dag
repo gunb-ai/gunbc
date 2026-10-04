@@ -41,6 +41,7 @@ import product.fabric.grant_issue {
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

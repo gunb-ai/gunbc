@@ -1,6 +1,7 @@
 module v2.std.symbol_index
 
 
+import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra {
   HeadAbsent,
@@ -26,8 +27,8 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
+import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -84,6 +85,10 @@ type SymbolIndex {
   global_bare: Map<Symbol, GlobalBareBindingState>
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
+  renaming_aliases: Map<QualifiedName, Symbol>
+  declared_type_params: Map<QualifiedName, Node>
+  declared_resources: Map<QualifiedName, ResourceDeclared>
+  namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -96,12 +101,40 @@ type DeclaredPayloadKind
   = VariantArmPayload
   | RecordTypePayload
 
+// A PATH THAT DECLARES A `resource`, stored as the map's value for the reason DeclaredPayloadKind is:
+// a Map<QualifiedName, Bool> could record false and a presence read would still answer resource, so
+// every value this type has IS a resource declaration. It is an empty record, not a one-variant
+// coproduct: `type T = V` spells an alias to a type named V. It is not a DeclaredPayloadKind arm, because
+// that map answers "is this path a constructor payload" (v2.compiler.resolve
+// resolve_path_is_declared_payload) and a resource is not one. Written by v2.compiler.symbol_index_fill
+// from the captured resource names (ModuleBindingSource resource_declarations); read through
+// symbol_index_declares_resource_at.
+// CONSUMER: v2.compiler.resolve resolve_arrow_resource_requirements, which refuses an operation's
+// `requires` member that does not resolve to a path marked here (D13 step a). That route's controls are
+// v2.test.claim.normalize.operation_requires_edge.
+type ResourceDeclared {}
+
+// A PATH THAT BINDS A SERVICE NAMESPACE BODY: a prefix segment of a dotted service name
+// (`service shell.Find` binds `<module>.shell` to a marked namespace body; v2.compiler.body_lowering_fold
+// body_lower_service_node). Stored as the map's value for the reason ResourceDeclared is. Written by
+// v2.compiler.symbol_index_fill, which can tell a marked body from its mark; read by
+// symbol_index_lexical_collect. A namespace body is a PATH SEGMENT, NEVER A LEXICAL FRAME (ruling
+// 2026-10-01, the operator's nesting ban): its members stay reachable by their qualified paths, but
+// the unqualified ancestor walk neither collects names declared inside it nor answers with it. The
+// module's own body is never an entry (it is the root the fill starts from), so this marks only the
+// service spine. General lexical ascent is XL-5's namespace cut; this boundary is scoped to the spine.
+type NamespaceBodyDeclared {}
+
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
     global_bare: empty_map(),
     bound_declarings: empty_map(),
-    declared_payloads: empty_map()
+    declared_payloads: empty_map(),
+    renaming_aliases: empty_map(),
+    declared_type_params: empty_map(),
+    declared_resources: empty_map(),
+    namespace_bodies: empty_map()
   }
 }
 
@@ -176,7 +209,11 @@ fn symbol_index_track_global_bare(
                 value: GlobalBareAmbiguous { paths: Cons { head: qualified_path, tail: paths } }
               ),
               bound_declarings: index.bound_declarings,
-              declared_payloads: index.declared_payloads
+              declared_payloads: index.declared_payloads,
+              renaming_aliases: index.renaming_aliases,
+              declared_type_params: index.declared_type_params,
+              declared_resources: index.declared_resources,
+              namespace_bodies: index.namespace_bodies
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -192,7 +229,11 @@ fn symbol_index_track_global_bare(
                   }
                 ),
                 bound_declarings: index.bound_declarings,
-                declared_payloads: index.declared_payloads
+                declared_payloads: index.declared_payloads,
+                renaming_aliases: index.renaming_aliases,
+                declared_type_params: index.declared_type_params,
+                declared_resources: index.declared_resources,
+                namespace_bodies: index.namespace_bodies
               }
             }
           Absent =>
@@ -204,12 +245,23 @@ fn symbol_index_track_global_bare(
                 value: GlobalBareUnique { node: resolved, path: qualified_path }
               ),
               bound_declarings: index.bound_declarings,
-              declared_payloads: index.declared_payloads
+              declared_payloads: index.declared_payloads,
+              renaming_aliases: index.renaming_aliases,
+              declared_type_params: index.declared_type_params,
+              declared_resources: index.declared_resources,
+              namespace_bodies: index.namespace_bodies
             }
         }
         Rejected { diagnostics: _ } => index
       }
   }
+}
+
+// THE RENAMED HEAD OF A PURE-RENAMING ALIAS, as recorded when the declaration was recorded
+// (v2.std.type_binder type_alias_renaming, decided once on the declaration). Absent for every other
+// path, including an alias that reorders, drops or fixes its binders.
+fn symbol_index_renaming_alias_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Symbol> {
+  map_lookup(m: index.renaming_aliases, key: qualified_path)
 }
 
 fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolved: Node) -> SymbolIndex {
@@ -221,7 +273,14 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     ),
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
-    declared_payloads: index.declared_payloads
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: match type_alias_renaming(target: resolved) {
+      PureRenamingOf { head: head } => map_insert(m: index.renaming_aliases, key: qualified_path, value: head)
+      NotARenaming => index.renaming_aliases
+    },
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -247,7 +306,11 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     entries: index.entries,
     global_bare: index.global_bare,
     bound_declarings: index.bound_declarings,
-    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind)
+    declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
   }
 }
 
@@ -259,6 +322,80 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
 // or Absent for a path that denotes no declared payload. The caller matches on it.
 fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
   map_lookup(m: index.declared_payloads, key: qualified_path)
+}
+
+// A GENERIC DECLARATION'S TYPE PARAMETERS, IN DECLARATION ORDER, KEYED BY ITS DECLARING PATH. The
+// entry a generic declaration binds is its MEMBER (v2.compiler.symbol_index_fill
+// symbol_index_declared: no reader of a member meets a binder), so the member alone cannot say which
+// of its field types are type variables or in what order an instantiation's arguments bind them. That
+// fact is v2.std.type_binder type_decl_view's GenericTypeDecl binders, and the fill arm that already
+// dispatches on that view records it here. Consumer: v2.compiler.infer's coproduct match, which
+// instantiates a matched variant's field types at the scrutinee's type arguments. A path with no row
+// declares no parameters; a non-generic declaration writes none.
+fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
+    namespace_bodies: index.namespace_bodies
+  }
+}
+
+fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {})
+  }
+}
+
+fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  match map_lookup(m: index.namespace_bodies, key: qualified_path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  match map_lookup(m: index.declared_resources, key: qualified_path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: Node) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
+  }
+}
+
+fn symbol_index_declared_type_params_at(index: SymbolIndex, qualified_path: QualifiedName) -> List<Symbol> {
+  match symbol_index_declared_binders_at(index: index, qualified_path: qualified_path) {
+    Present { value: binders } => binder_conj_names(conj: binders)
+    Absent => Empty
+  }
+}
+
+// THE BINDER CONJ A DECLARATION BINDS, kinds included (v2.std.type_binder type_param_kind_optional).
+// Absent for a declaration that binds no type parameters.
+fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
+  map_lookup(m: index.declared_type_params, key: qualified_path)
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
@@ -366,14 +503,22 @@ fn symbol_index_bind_at(
         key: binding_path,
         value: list_snoc_item(xs: prior, item: declaring_path)
       ),
-      declared_payloads: index.declared_payloads
+      declared_payloads: index.declared_payloads,
+      renaming_aliases: index.renaming_aliases,
+      declared_type_params: index.declared_type_params,
+      declared_resources: index.declared_resources,
+      namespace_bodies: index.namespace_bodies
     }
     if is_empty(xs: prior) {
       SymbolIndex {
         entries: map_insert(m: recorded.entries, key: binding_path, value: resolved),
         global_bare: recorded.global_bare,
         bound_declarings: recorded.bound_declarings,
-        declared_payloads: recorded.declared_payloads
+        declared_payloads: recorded.declared_payloads,
+        renaming_aliases: recorded.renaming_aliases,
+        declared_type_params: recorded.declared_type_params,
+        declared_resources: recorded.declared_resources,
+        namespace_bodies: recorded.namespace_bodies
       }
     } else {
       recorded
@@ -436,17 +581,27 @@ fn symbol_index_candidates_at(
   }
 }
 
+// A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (symbol_index_binds_namespace_body_at): a position that binds
+// one contributes no candidates, and a candidate that binds one is never an answer, so from inside
+// `shell.Find.Run` neither a sibling service `Env` nor the prefix `shell` binds bare. The walk still
+// ascends past it to the module, whose own names stay in scope.
 fn symbol_index_lexical_collect(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol,
   acc: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
-  let with_current = fold_list(
-    xs: symbol_index_candidates_at(index: index, position: position, name: name),
-    empty: acc,
-    cons: fn(a, candidate) { list_snoc_item(xs: a, item: candidate) }
-  )
+  let with_current = if symbol_index_binds_namespace_body_at(index: index, qualified_path: position) {
+    acc
+  } else {
+    fold_list(
+      xs: symbol_index_candidates_at(index: index, position: position, name: name),
+      empty: acc,
+      cons: fn(a, candidate) {
+        if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) { a } else { list_snoc_item(xs: a, item: candidate) }
+      }
+    )
+  }
   if is_empty(xs: position) {
     with_current
   } else {

@@ -60,6 +60,7 @@ type HostConvergenceSubject
   | SparkRuntimeImage
   | RunnerHostFiles
   | RunnerPasswordSessionTools
+  | RunnerBrowserToolchain
   | HostCredentialCustody
   | MicrovmHost
   | GuestImage
@@ -244,7 +245,8 @@ fn row_is_well_formed(row: HostConvergenceCensusRow) -> HostConvergenceCensusRef
           Absent => none
         }
       }
-    _ => none
+    RetainAuthority => none
+    OutsideHostConvergence { protocol: _ } => none
   }
 }
 
@@ -681,6 +683,15 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
     first_consumer: cite(module_path: "gunbc.runner_password_session_tool_converge", decl_name: "runner_password_session_tool_converge_ci_wet"),
+  ),
+  census_row(
+    identity: cite(module_path: "gunbc.runner_browser_toolchain", decl_name: "runner_browser_toolchain_converge_ci_wet"),
+    subject: RunnerBrowserToolchain,
+    phases: protocol_phases(false, true, false, false, true, true, true),
+    current_authority: cite(module_path: "gunbc.runner_browser_toolchain", decl_name: "runner_browser_toolchain_converge_ci_wet"),
+    persistent_host_effect: ReachesPersistentHostMutation,
+    disposition: BindToAuthority { target: fleet_plan() },
+    first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.host_credential_custody_converge", decl_name: "host_credential_custody_converge_ci_wet"),

@@ -281,9 +281,19 @@ fn specification_citation_read_byte_standing(publisher: SpecificationCitationRea
             if ps != 200 || ms != 200 {
               ReadBytesNotComparable
             } else { if pb == mb && pd == md { RecordedReadBytesAgree } else { RecordedReadBytesDiffer } }
-          _ => ReadBytesNotComparable
+          DocumentLocatorFetchRefused { http_status: _, detail: _ } => ReadBytesNotComparable
+          DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => ReadBytesNotComparable
+          DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => ReadBytesNotComparable
+          PeerSessionPdfTextIngested { peer_session: _, detail: _ } => ReadBytesNotComparable
+          DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: _, detail: _ } => ReadBytesNotComparable
+          OperatorSuppliedDocumentText {} => ReadBytesNotComparable
         }
-      _ => ReadBytesNotComparable
+      DocumentLocatorFetchRefused { http_status: _, detail: _ } => ReadBytesNotComparable
+      DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => ReadBytesNotComparable
+      DatedPublisherLocatorMirrorTextIngested { mirror: _, capture_date: _, peer_session: _, detail: _ } => ReadBytesNotComparable
+      PeerSessionPdfTextIngested { peer_session: _, detail: _ } => ReadBytesNotComparable
+      DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: _, detail: _ } => ReadBytesNotComparable
+      OperatorSuppliedDocumentText {} => ReadBytesNotComparable
     }
   }
 }

@@ -10,15 +10,17 @@ pub use crate::extdeps_languages_python_types::{
     python_algebra_inhabitants, python_callable, python_cast_syntax, python_optional_template,
     python_type_checkpoints,
 };
-pub use crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint;
 pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::*;
+pub use crate::extdeps_languages_rust_representation::{
+    rust_exact_type_checkpoint, rust_representation_eq,
+};
 pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
     rust_type_checkpoints,
 };
 pub use crate::gunbc_rust_source_type_bindings::{
-    checkpoint_row_migration_rows, rust_source_type_binding_rows,
+    checkpoint_row_migration_rows, rust_source_type_binding_rows, rust_source_variant_value_rows,
 };
 use crate::std_coercion::RealizationGround::{
     GroundedByCheckpointRow, GroundedByHostNumericAlias, GroundedByUnidentifiedBareRow,
@@ -37,12 +39,17 @@ pub use crate::std_coercion::{
     TypeCheckpoint, TypeDeclarationProvenance, TypeRealizationDecision,
 };
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_target_representation::ExactBindingResolution;
 use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
+use crate::std_target_representation::VariantParentIdentity::*;
+use crate::std_target_representation::VariantValueRealization::*;
 pub use crate::std_target_representation::{
     checkpoint_row_disposition_keeps_bare_row, checkpoint_row_migration_for, resolve_exact_binding,
+    variant_value_realization,
+};
+pub use crate::std_target_representation::{
+    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
 };
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
@@ -161,11 +168,7 @@ pub fn type_reference_identity_note() -> String {
 pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
-        "String" => Rc::new(vec![
-            "src/v2/std/text.dag".to_string(),
-            "dag/std/string_type.dag".to_string(),
-        ]),
-        "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
+        "String" => Rc::new(vec!["src/v2/std/text.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
 }
@@ -205,7 +208,7 @@ pub fn provenance_declares_structurally(
 pub fn numeric_realization_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account.".to_string()
+            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is the naturals' one declaration and realizes natively (gunbc.structural_realization_bindings kernel_grounding_rows binds it to the kernel integer), while a user-declared Peano coproduct spelled Nat in another module must NOT -- so a bare-name rule realizes the wrong one. (Until the Nat de-fork, operator ruling A 2026-09-30, the second declaration was v2.std.nat.Nat, in the corpus.) decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -822,4 +825,35 @@ pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         ),
         template_application_tests(),
     )
+}
+
+pub fn rust_variant_value_realization(
+    parent: Rc<VariantParentIdentity>,
+    variant: String,
+) -> Rc<VariantValueRealization> {
+    crate::std_target_representation::variant_value_realization(
+        parent.clone(),
+        variant.clone(),
+        rust_source_type_binding_rows(),
+        rust_source_variant_value_rows(),
+        |a, b| {
+            crate::extdeps_languages_rust_representation::rust_representation_eq(
+                a.clone(),
+                b.clone(),
+            )
+        },
+    )
+}
+
+pub fn rust_variant_arm_is_bound_somewhere(variant: String) -> bool {
+    {
+        let mut __found = false;
+        for v in rust_source_variant_value_rows().iter().cloned() {
+            if (v.variant.clone() == variant.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }

@@ -1,6 +1,14 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
+
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+
+import v2.std.dependency { DependencyView }
+
+import v2.std.node { Authored }
 import v2.std.collection { Map, optional_absent, optional_present }
 import v2.std.optional { Optional, Absent, Present }
+import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim, lens_structural_resolution_actual }
 
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
@@ -17,7 +25,7 @@ data sr_unbound_use: Node = sr_unbound_claim_atom(s: ^sr_unbound_use_symbol)
 data sr_unbound_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_unbound_use }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -91,7 +99,7 @@ fn unbound_symbol_at_use_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

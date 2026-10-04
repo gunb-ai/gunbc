@@ -1,5 +1,7 @@
 module extdeps.tools.gnu_coreutils
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, FilePath, String, List, Int }
 import std.measure { Second, second_count }
 import extdeps.version { VersionConstraint }
@@ -35,18 +37,19 @@ data min_coreutils_version: VersionConstraint = ">= 8.0"
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data cat_program: NonEmptyStr = "cat"
-data mktemp_program: NonEmptyStr = "mktemp"
-data cp_program: NonEmptyStr = "cp"
-data printf_program: NonEmptyStr = "printf"
-data true_program: NonEmptyStr = "true"
-data whoami_program: NonEmptyStr = "whoami"
-data readlink_program: NonEmptyStr = "readlink"
-data ls_program: NonEmptyStr = "ls"
-data install_program: NonEmptyStr = "install"
-data sort_program: NonEmptyStr = "sort"
+fn cat_program() -> ProgramIdentity = uncataloged_program(invocation: "cat")
+fn mktemp_program() -> ProgramIdentity = uncataloged_program(invocation: "mktemp")
+fn cp_program() -> ProgramIdentity = uncataloged_program(invocation: "cp")
+fn printf_program() -> ProgramIdentity = uncataloged_program(invocation: "printf")
+fn true_program() -> ProgramIdentity = uncataloged_program(invocation: "true")
+fn whoami_program() -> ProgramIdentity = uncataloged_program(invocation: "whoami")
+fn readlink_program() -> ProgramIdentity = uncataloged_program(invocation: "readlink")
+fn ls_program() -> ProgramIdentity = uncataloged_program(invocation: "ls")
+fn install_program() -> ProgramIdentity = uncataloged_program(invocation: "install")
+fn sort_program() -> ProgramIdentity = uncataloged_program(invocation: "sort")
 data cut_program: NonEmptyStr = "cut"
-data od_program: NonEmptyStr = "od"
+fn od_program() -> ProgramIdentity = uncataloged_program(invocation: "od")
+fn mkdir_program() -> ProgramIdentity = uncataloged_program(invocation: "mkdir")
 
 // -1 ALONE, AND THE NAME CARRIES IT FOR THE SAME REASON rm_force_command's DOES. `-1` forces ONE
 // ENTRY PER LINE, which is what makes the output splittable by the caller: ls(1) columnates when
@@ -56,7 +59,7 @@ data od_program: NonEmptyStr = "od"
 // non-hidden entries DIRECTLY under `path`. A caller needing hidden entries or a recursive walk
 // needs its own builder and its own name, not a flags parameter here.
 fn ls_one_per_line_command(path: String) -> ArgvCommand {
-  argv_command(program: ls_program, arguments: ["-1", path])
+  argv_command(program: ls_program(), arguments: ["-1", path])
 }
 
 // mktemp -d WITH A TEMPLATE: coreutils creates a NEW directory named from the template (trailing
@@ -67,11 +70,34 @@ fn ls_one_per_line_command(path: String) -> ArgvCommand {
 // extdeps.crypto.hash records for sha256sum, folding when a transport row can be read from the
 // operation itself.
 fn mktemp_directory_command(template: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: mktemp_program, arguments: ["-d", template as String])
+  argv_command(program: mktemp_program(), arguments: ["-d", template as String])
+}
+
+// mkdir -p: create the directory and any missing parents; an existing directory is success.
+fn mkdir_parents_command(path: String) -> ArgvCommand {
+  argv_command(program: mkdir_program(), arguments: ["-p", "--", path])
+}
+
+// ln WITHOUT -s IS A HARD LINK, and without -f it REFUSES when the destination exists (coreutils
+// "ln invocation"): the create-only publication step. A second name for the same inode, never a
+// replacement of the bytes behind an existing name.
+fn ln_hard_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: ln_program(), arguments: ["--", source, destination])
+}
+
+// ls -ld: ONE long-format line for the path itself, never its contents. The -n form prints numeric
+// uid and gid where the plain form prints names. Both are portable argv, which a printf-format
+// `stat -c %u...` is not under a far-side shell re-parse allowlist that excludes `%`.
+fn ls_long_directory_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-ld", "--", path])
+}
+
+fn ls_long_directory_numeric_command(path: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-ldn", "--", path])
 }
 
 fn cat_command(path: String) -> ArgvCommand {
-  argv_command(program: cat_program, arguments: [path])
+  argv_command(program: cat_program(), arguments: [path])
 }
 
 // od(1) OVER ONE BYTE SPAN, AS HEX: -j skips `offset` bytes and -N reads at most `length`, both byte
@@ -80,11 +106,11 @@ fn cat_command(path: String) -> ArgvCommand {
 // of equal lines is not its bytes. The output is whitespace-separated hex; a span past the end prints
 // fewer bytes than asked, which the caller's length check reads, never a padded answer.
 fn od_hex_span_command(path: String, offset: Int, length: Int) -> ArgvCommand {
-  argv_command(program: od_program, arguments: ["-An", "-v", "-tx1", "-j", to_string(offset), "-N", to_string(length), "--", path])
+  argv_command(program: od_program(), arguments: ["-An", "-v", "-tx1", "-j", to_string(offset), "-N", to_string(length), "--", path])
 }
 
 fn cp_command(source: String, destination: String) -> ArgvCommand {
-  argv_command(program: cp_program, arguments: [source, destination])
+  argv_command(program: cp_program(), arguments: [source, destination])
 }
 
 // install(1) COPYING /dev/null CREATES AN EMPTY FILE WITH ITS FINAL OWNER AND MODE IN ONE STEP.
@@ -93,7 +119,7 @@ fn cp_command(source: String, destination: String) -> ArgvCommand {
 // sit under the default umask. Mode is an octal spelling because that is what -m documents.
 fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
   argv_command(
-    program: install_program,
+    program: install_program(),
     arguments: ["-m", octal_mode as String, "-o", to_string(uid), "-g", to_string(gid), "/dev/null", path],
   )
 }
@@ -103,7 +129,7 @@ fn install_empty_file_command(path: String, octal_mode: NonEmptyStr, uid: Int, g
 // directory refuses instead of destroying its contents. The recursive form is a different operation
 // and needs its own name and its own call site, not a flags parameter here.
 fn rm_force_command(path: String) -> ArgvCommand {
-  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_flag as String, path])
+  argv_command(program: rm_program(), arguments: [coreutils_rm_force_flag as String, path])
 }
 
 // THE SIBLING THE ANNOTATION ABOVE PROMISED, MINTED ONLY WHEN A CALLER ACTUALLY NEEDED IT AND
@@ -117,7 +143,7 @@ fn rm_force_command(path: String) -> ArgvCommand {
 // claimed it issued `rm -rf` while it issued `rm -f` -- a §4c annotation asserting the very
 // property that failed, which no Accepted program could contradict.
 fn rm_recursive_force_command(path: String) -> ArgvCommand {
-  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, path])
+  argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, path])
 }
 
 // THE RECURSIVE DELETE THAT STAYS ON ONE FILE SYSTEM. GNU rm's --one-file-system: "when removing a
@@ -127,7 +153,7 @@ fn rm_recursive_force_command(path: String) -> ArgvCommand {
 // file system's contents; with this flag rm skips it, fails, and leaves the directory present --
 // which an absence readback then reports, rather than a host path being emptied through a mount.
 fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
-  argv_command(program: coreutils_rm_binary_name, arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
+  argv_command(program: rm_program(), arguments: [coreutils_rm_force_recursive_flags as String, coreutils_rm_one_file_system_flag as String, path])
 }
 
 // ln(1) -- GNU coreutils, "ln: Make links between files". -s makes a SYMBOLIC link, -f removes an
@@ -141,9 +167,12 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
 // with the same argv and the same -T rationale; its two consumers (gunbc.package_delivery
 // publish_codex_runtime_current_link and the event-log real-execution witness) were moved onto this
 // builder and the service deleted, so one upstream fact has one declaration (review 68813 on
-// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget configfs_op_line still
-// hand-spells `ln -sf` inside a script string; that is a declared frontier of its own
-// (configfs_op_render_dissolution_trigger) and folds onto this row when it dissolves.
+// #11760) -- the direction gunbc.plans.transport_argv_anemia_dissolution names. extdeps.linux.usb_gadget
+// configfs_op_line WAS the last hand-spelled `ln -sf` inside a script string; that frontier has now
+// folded: the gadget's symlink op mints through ln_symbolic_force_into_directory_command (the
+// into-directory sibling below), because the -T form refuses precisely the into-directory case the
+// configfs procedure needs to succeed. The renderer's retirement obligation is discharged -- the
+// declaration is deleted, and its trigger went with it.
 //
 // -T IS THE FAIL-CLOSED HALF AND -n IS NOT A SUBSTITUTE FOR IT (sunny-ant-606 review of #11760).
 // -n covers only a symlink-to-directory; against a REAL directory at LINK_NAME, `ln -sfn T D` exits
@@ -153,37 +182,82 @@ fn rm_recursive_force_one_file_system_command(path: String) -> ArgvCommand {
 // returns success. The target is spelled as given and never resolved: a symlink's target is text the
 // kernel reads at open time, which is the whole reason gunbc.runner_guest_image can point a file
 // inside an image at a path that exists only once that image has booted.
-data coreutils_ln_binary_name: NonEmptyStr = "ln"
+fn ln_program() -> ProgramIdentity = uncataloged_program(invocation: "ln")
 data coreutils_ln_symbolic_force_exact_destination_flags: NonEmptyStr = "-sfnT"
 
 fn ln_symbolic_force_command(target: String, link_name: String) -> ArgvCommand {
   argv_command(
-    program: coreutils_ln_binary_name,
+    program: ln_program(),
     arguments: [coreutils_ln_symbolic_force_exact_destination_flags as String, target, link_name],
   )
 }
 
+// THE INTO-DIRECTORY SIBLING, AND WHY IT IS NOT THE BUILDER ABOVE WITH FEWER FLAGS. configfs's
+// gadget procedure adds a function INSTANCE to a configuration DIRECTORY -- `ln -sf T D/` makes
+// basename(T) a symlink inside D, which is the operation the kernel's gadget_configfs procedure
+// spells. The -sfnT form above REFUSES exactly that case: D is a real directory, and -T makes
+// that a nonzero exit, so folding the gadget onto it would mint a setup that refuses on a live
+// host. Two spellings, two different success contracts -- two operations, two names, no flags
+// parameter (the same rule the -f/-rf split above records).
+//
+// THE DESTINATION ARRIVES DIRECTORY-SPELLED, AND THAT IS LOAD-BEARING, NOT SPELLING PREFERENCE.
+// With the trailing separator, a D that does not exist fails with ENOENT instead of minting a
+// LINK NAMED D -- the fail-closed half of "into the directory"; without it, `ln -sf T D` on a
+// missing D silently creates that stray link and reports success. The one live caller
+// (extdeps.linux.usb_gadget configfs_prepared_realization) DERIVES the destination directory-spelled
+// from the prepared link operation's own validated fields -- the configuration name cannot carry a
+// slash or a dot segment (configfs_name_verdict refuses it one preparation earlier) -- so the
+// contract is enforced by construction upstream of any argv, not hoped for here.
+//
+// PATH-RESOLVED program spelling, for the reason program_spelling_is_an_observation_claim
+// (extdeps.exec.command) records: the gadget setup runs on an OpenBMC image over ssh, whose
+// filesystem this repository has not observed, so an absolute path would fabricate a host fact.
+data coreutils_ln_symbolic_force_into_directory_flags: NonEmptyStr = "-sf"
+
+fn ln_symbolic_force_into_directory_command(target: String, directory: String) -> ArgvCommand {
+  argv_command(
+    program: ln_program(),
+    arguments: [coreutils_ln_symbolic_force_into_directory_flags as String, target, directory],
+  )
+}
+
+// rmdir(1) -- GNU coreutils, "rmdir: remove directories if they are empty". rmdir REFUSES a
+// non-empty directory, which is the fail-closed half: a removal that would empty a directory
+// holding something it did not create stops instead of destroying it. This builder mints the
+// plain command and carries NO tolerance policy: "an already-absent directory is already
+// converged" is configfs TEARDOWN policy -- a property of the gadget teardown's five rmdir
+// operations, not of every rmdir invocation -- so its declared frontier lives beside
+// ConfigfsRmdir in extdeps.linux.usb_gadget (moved there per review on a28daf4844, finding 3,
+// from this module, where it fronted a declaration whose other callers have no such policy).
+//
+// PATH-RESOLVED spelling for the same unobserved-OpenBMC reason the ln sibling above carries.
+fn rmdir_program() -> ProgramIdentity = uncataloged_program(invocation: "rmdir")
+
+fn rmdir_command(path: String) -> ArgvCommand {
+  argv_command(program: rmdir_program(), arguments: [path])
+}
+
 // The format string is the first operand and the values follow it, exactly as printf(1) takes them.
 fn printf_command(format: String, values: List<String>) -> ArgvCommand {
-  argv_command(program: printf_program, arguments: append([format], items: values))
+  argv_command(program: printf_program(), arguments: append([format], items: values))
 }
 
 // true(1) does nothing and exits 0. It is a real utility rather than a placeholder, and it is here
 // because a control that asks "does the runner report success for a command that succeeds and
 // prints nothing" needs a program whose whole contract is exactly that.
 fn true_command() -> ArgvCommand {
-  argv_command(program: true_program, arguments: [])
+  argv_command(program: true_program(), arguments: [])
 }
 
 fn whoami_command() -> ArgvCommand {
-  argv_command(program: whoami_program, arguments: [])
+  argv_command(program: whoami_program(), arguments: [])
 }
 
 // readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
 // makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
 // executing", and a non-symlink there is a broken assumption, not empty output.
 fn readlink_command(path: String) -> ArgvCommand {
-  argv_command(program: readlink_program, arguments: [path])
+  argv_command(program: readlink_program(), arguments: [path])
 }
 
 // install(1) — GNU coreutils, "Setting file attributes" / install invocation. The flags used
@@ -248,6 +322,39 @@ fn coreutils_install_directory_owned_argv(
   ]
 }
 
+// install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
+// ownership following the invoking principal. Its one caller reaches it through
+// sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
+// elevation itself; the owned variants above exist for callers that create as one principal and
+// hand the file over. install does NOT create missing parents -- that is upstream behaviour,
+// stated at the section comment above so a caller does not assume otherwise.
+fn coreutils_install_file_argv(mode: NonEmptyStr, source: String, dest: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    source,
+    dest,
+  ]
+}
+
+// dd(1) -- GNU coreutils, "dd: convert and copy a file". This repository's one use is the
+// BYTE-EXACT STAGED WRITE: `dd of=PATH status=none` truncates and overwrites PATH from stdin, and
+// status=none suppresses the statistics line dd otherwise prints to stderr, so the command's log
+// carries only what the caller chose to log. dd rather than tee because tee ECHOES the bytes into
+// its own stdout -- the command log would carry the unit file's contents twice, once as payload
+// and once as log; the reasoning is recorded at gunbc.typed_remote_file_write, whose convergence
+// law this builder serves on the LocalShell and SshShell transports. `of=PATH` is ONE word -- dd's
+// own operand grammar, not a flag and a separate path -- and the PAYLOAD is never an argv element:
+// it crosses as stdin, so no byte of it can change the command's meaning.
+data coreutils_dd_binary_name: NonEmptyStr = "dd"
+
+fn dd_program() -> ProgramIdentity = uncataloged_program(invocation: coreutils_dd_binary_name)
+
+fn dd_overwrite_path_command(path: String) -> ArgvCommand {
+  argv_command(program: dd_program(), arguments: [concat("of=", path), "status=none"])
+}
+
 // rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
 // repository and the distinction between them is load-bearing, not stylistic: -f removes a file
 // and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY
@@ -255,7 +362,7 @@ fn coreutils_install_directory_owned_argv(
 // weaker rm -r; -rf removes a tree. Choosing -rf where -d was meant turns a loud refusal into
 // silent destruction, so the three carry separate names rather than a flags parameter a caller
 // fills in.
-data coreutils_rm_binary_name: NonEmptyStr = "rm"
+fn rm_program() -> ProgramIdentity = uncataloged_program(invocation: "rm")
 data coreutils_rm_force_flag: NonEmptyStr = "-f"
 data coreutils_rm_empty_directory_flag: NonEmptyStr = "-d"
 data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
@@ -263,12 +370,12 @@ data coreutils_rm_force_recursive_flags: NonEmptyStr = "-rf"
 data coreutils_rm_one_file_system_flag: NonEmptyStr = "--one-file-system"
 
 fn coreutils_rm_force_argv(paths: List<String>) -> List<String> {
-  concat([coreutils_rm_binary_name as String, coreutils_rm_force_flag as String], paths)
+  concat([rm_program().invocation as String, coreutils_rm_force_flag as String], paths)
 }
 
 fn coreutils_rm_empty_directory_argv(path: String) -> List<String> {
   [
-    coreutils_rm_binary_name as String,
+    rm_program().invocation as String,
     coreutils_rm_empty_directory_flag as String,
     path,
   ]
@@ -276,7 +383,7 @@ fn coreutils_rm_empty_directory_argv(path: String) -> List<String> {
 
 fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
   [
-    coreutils_rm_binary_name as String,
+    rm_program().invocation as String,
     coreutils_rm_force_recursive_flags as String,
     path,
   ]
@@ -285,7 +392,7 @@ fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
 // `timeout` RUNS A COMMAND UNDER A DEADLINE THE COMMAND ITSELF CANNOT EXTEND, which is the only
 // reason it is here. Coreutils documents it as running COMMAND with a time limit, sending a signal
 // when the limit is reached and exiting 124 if it fired.
-data coreutils_timeout_binary_name: NonEmptyStr = "timeout"
+fn timeout_program() -> ProgramIdentity = uncataloged_program(invocation: "timeout")
 
 // `--kill-after` IS PART OF THE OPERATION, NOT A REFINEMENT OF IT. Plain `timeout` sends TERM and
 // then WAITS: a process that ignores TERM, or one wedged in the kernel, outlives the deadline it was
@@ -310,12 +417,12 @@ fn coreutils_duration_operand(d: Second) -> String {
 
 fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -> ArgvCommand {
   argv_command(
-    program: coreutils_timeout_binary_name,
+    program: timeout_program(),
     arguments: concat(
       [
         "--kill-after", coreutils_duration_operand(d: kill_after),
         coreutils_duration_operand(d: duration),
-        command.program as String,
+        command.program.invocation as String,
       ],
       command.arguments,
     ),
@@ -335,3 +442,29 @@ fn df_available_bytes_argv(path: String) -> List<String> {
   [df_program as String, "-B1", "--output=avail", path]
 }
 
+
+// Copy a file with ownership established before an unprivileged consumer can open it.
+fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [
+    coreutils_install_mode_flag as String, mode as String,
+    coreutils_install_owner_flag as String, to_string(uid),
+    coreutils_install_group_flag as String, to_string(gid), source, destination,
+  ])
+}
+
+// mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
+// a directory to move into -- so publishing a staged tree over an absent path renames it, and a
+// destination that still exists as a non-empty directory is an error rather than a nested copy.
+// Within one file system the rename is atomic: a reader sees the old path absent or the new tree
+// whole, never a partial one.
+fn mv_program() -> ProgramIdentity = uncataloged_program(invocation: "mv")
+
+fn mv_exact_destination_command(source: String, destination: String) -> ArgvCommand {
+  argv_command(program: mv_program(), arguments: ["-T", source, destination])
+}
+
+// sort -o FILE FILE sorts a file in place (sort reads all input before opening the output, so the
+// same path is safe). Byte order needs LC_ALL=C in the environment, which is the caller's binding.
+fn sort_in_place_command(path: String) -> ArgvCommand {
+  argv_command(program: sort_program(), arguments: ["-o", path, path])
+}

@@ -4,12 +4,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 import std.types { FilePath, NonEmptyStr }
-import extdeps.shell
 import extdeps.tools.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
 import extdeps.brew   { brew_install_url }
 import extdeps.apt { apt_installed_bin_path }
 import extdeps.version { VersionConstraint }
+import extdeps.exec.program { ProgramIdentity }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -32,19 +32,10 @@ type InstallSource
     }
 
 type CliTool {
-  name: NonEmptyStr
+  program: ProgramIdentity
   min_version: VersionConstraint?
   installable_via: List<InstallSource>
 }
-
-type ResolvedTool {
-  tool: CliTool
-  path: FilePath
-}
-
-type ResolveResult
-  = Resolved { resolved: ResolvedTool }
-  | NotFound { tool: CliTool, hint: String }
 
 fn one_hint(source: InstallSource) -> String {
   match source {
@@ -123,7 +114,7 @@ fn apt_binary_path_of(tool: CliTool) -> FilePath? {
         Absent =>
           match source {
             SourceApt { package: _, bin_dir: d } =>
-              Present { value: apt_installed_bin_path(bin_dir: d, binary: tool.name) }
+              Present { value: apt_installed_bin_path(bin_dir: d, binary: tool.program.invocation) }
             SourceCoreutils => none
             SourceRustup => none
             SourceBrew { formula: _ } => none
@@ -136,27 +127,3 @@ fn apt_binary_path_of(tool: CliTool) -> FilePath? {
   )
 }
 
-// Migrated off shell.Which.Check to shell.PosixCommandV.Check (crisp-wren-896, PR #8590): no fleet
-// host's OperatingSystemSurface carries a package-set authority, our own CI/falsifier runner
-// included, so `which`'s external-binary presence was never an established fact here either, and
-// command -v's weaker, dominant POSIX-shell assumption holds everywhere `which` did. UNLIKE the
-// other four migrated call sites, this function reads .path as a resolved filesystem path rather
-// than keying on .exists alone, so TWO hazards genuinely apply here rather than being ruled out:
-// (1) command -v prints the bare NAME rather than a resolved path when the probed command is a
-// shell builtin or alias, not an external binary -- every tool.name this resolves is expected to be
-// an external binary (coreutils, rustup, apt, brew, or a GitHub-release install), so this is not
-// believed to bite in practice, but it is not structurally excluded the way it is for the four
-// .exists-only sites; (2) under WET execution PosixCommandV.Check.path comes back as a bare stdout
-// String rather than a real Optional, so the Present/Absent match below relies on the same
-// Value::Null / Optional realization straddle (DESIGN open thread) that gunbc.host_cli_dependency's
-// which_path_realization_limit_note and gunbc.roadmap_belt_actuate's belt_program_available_note
-// document -- this function has no current live caller in the tree (verified by grep, PR #8590), so
-// the straddle is undischarged debt rather than an observed WET failure.
-
-fn resolve(tool: CliTool) -> ResolveResult {
-  let check = shell.PosixCommandV.Check(command: tool.name)
-  match check.path {
-    Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
-    Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
-  }
-}

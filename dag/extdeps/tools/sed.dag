@@ -1,7 +1,8 @@
 module extdeps.tools.sed
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, Bool, Int, Unit }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -15,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data sed_cli_tool: CliTool = CliTool {
-  name: "sed",
+  program: sed_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -37,6 +38,7 @@ data sed_cli_tool: CliTool = CliTool {
 // string, which is the failure this operation's first consumer exists to catch.
 service sed.Sed {
   operation InPlaceSubstitute {
+    requires opaque
     input { expression: NonEmptyStr, path: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
@@ -47,6 +49,7 @@ service sed.Sed {
   }
 
   operation ScriptsSuppressAutoPrint {
+    requires opaque
     input { arguments: List<String>, path: NonEmptyStr }
     output {
       lines: List<String> from "stdout_lines"
@@ -65,10 +68,10 @@ service sed.Sed {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data sed_program: NonEmptyStr = "sed"
+fn sed_program() -> ProgramIdentity = cataloged_program(invocation: "sed")
 
 fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
-  argv_command(program: sed_program, arguments: ["-i", expression, path])
+  argv_command(program: sed_program(), arguments: ["-i", expression, path])
 }
 
 // The -e flag pairing, spelled once. A caller names the scripts its program is made of; this

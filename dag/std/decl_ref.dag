@@ -1,10 +1,16 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
+// A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
+// exactly as a field is declared in its body. So a reference to one is identified by
+// (owner, TypeParameter { name }) on this one carrier, not by a second identity type
+// (quiet-gull-780 ruling, cause 3 of node adhoc-439a4122-576). The owner is the nearest enclosing
+// declaration whose header binds the name.
 type DeclField
   = WholeDeclaration
   | NamedField { field_name: NonEmptyStr }
+  | TypeParameter { name: NonEmptyStr }
 
 type DeclarationRef {
   module_path: NonEmptyStr
@@ -62,17 +68,33 @@ fn decl_field_ref(module_path: String, decl_name: String, field_name: String) ->
   }
 }
 
+fn decl_type_parameter_ref(module_path: String, decl_name: String, parameter: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: TypeParameter { name: parameter as NonEmptyStr },
+  }
+}
+
 fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
   match a {
     WholeDeclaration =>
       match b {
         WholeDeclaration => true
         NamedField { field_name: _ } => false
+        TypeParameter { name: _ } => false
       }
     NamedField { field_name: fa } =>
       match b {
         WholeDeclaration => false
         NamedField { field_name: fb } => fa == fb
+        TypeParameter { name: _ } => false
+      }
+    TypeParameter { name: pa } =>
+      match b {
+        WholeDeclaration => false
+        NamedField { field_name: _ } => false
+        TypeParameter { name: pb } => pa == pb
       }
   }
 }
@@ -95,6 +117,11 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
       concat(
         ref.module_path as String,
         concat("::", concat(ref.decl_name as String, concat("::", f as String))),
+      )
+    TypeParameter { name: t } =>
+      concat(
+        ref.module_path as String,
+        concat("::", concat(ref.decl_name as String, concat("::<", concat(t as String, ">")))),
       )
   }
 }

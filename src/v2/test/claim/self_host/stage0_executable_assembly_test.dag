@@ -1,5 +1,6 @@
 module v2.test.claim.self_host.stage0_executable_assembly_test
 
+import std.types { List }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.self_host.stage0_executable_assembly {
   BinaryEntrypointOwner,
@@ -46,8 +47,6 @@ import v2.workflow.rust_crate_partition {
   stage0_unit_std_core
 }
 import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // THE WALL THE MONOLITH-MEMBERSHIP JOIN USED TO STAND IN FOR.
@@ -668,13 +667,20 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
 
 // EVERY SPECIMEN NAMED, so the witness above cannot pass vacuously on a population that has quietly
 // lost a member. The dispatch module is the one that was in the crate all along with no owner this
-// census could name. The count is asserted beside the members because naming members alone cannot
-// see an ADDED row: a new wet lib module reaching lib.rs with no row here would leave all three
-// conjuncts below true.
+// census could name. Completeness is an identity join in BOTH directions (DESIGN section 5), never a
+// count: every live row is a named (basename, route) pair below, so an ADDED wet lib module with no
+// pair here goes red, and every pair is live, so a lost one goes red. The count literal this replaced
+// was copied from the tree and broke when gunbc#12183 registered release_locus_seed_constants_generated.
+// The PathIncluded member is named apart because this population must exclude it.
 test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
   let rows = stage0_live_wet_lib_module_registrations()
-  (length(xs: rows) == 3)
-    && any(xs: rows, predicate: fn(r) { (r.basename == "v1_interpreter_dispatch_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: MacroUsePubModSpliced)) })
-    && any(xs: rows, predicate: fn(r) { (r.basename == "evaluation_budget_consequence_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
-    && any(xs: rows, predicate: fn(r) { (r.basename == "gunbc_file_transport_generated") && (probe_route_name(route: r.declaration_route) == probe_route_name(route: PlainPubMod)) })
+  let named = [
+    WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },
+    WetActuatorGeneratedRegistration { basename: "evaluation_budget_consequence_generated", declaration_route: PlainPubMod },
+    WetActuatorGeneratedRegistration { basename: "gunbc_file_transport_generated", declaration_route: PlainPubMod },
+    WetActuatorGeneratedRegistration { basename: "release_locus_seed_constants_generated", declaration_route: PlainPubMod }
+  ]
+  !any(xs: rows, predicate: fn(r) { r.basename == "bootstrap_stage0_crate_layout_generated" })
+    && !any(xs: rows, predicate: fn(r) { !any(xs: named, predicate: fn(n) { (n.basename == r.basename) && (probe_route_name(route: n.declaration_route) == probe_route_name(route: r.declaration_route)) }) })
+    && !any(xs: named, predicate: fn(n) { !any(xs: rows, predicate: fn(r) { (n.basename == r.basename) && (probe_route_name(route: n.declaration_route) == probe_route_name(route: r.declaration_route)) }) })
 }

@@ -187,9 +187,27 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // protocol above stands, and these rows are tightened from broker_demand_observed_max when it runs.
 // The instrument for this figure is the sibling serves' cgroup accounting, named honestly as a
 // reading of the same binary's boot resolve rather than of the broker itself.
-data approval_broker_slice_memory_max: ByteSize = byte_size(10737418240)
+//
+// RE-SIZED 2026-09-30 FROM THE STAGE-3 READINGS, SUPERSEDING THE 2026-09-21 RULING'S 10 GiB MAX /
+// 9 GiB HIGH (approved by proud-deer-538 / the operator for the enrolment repair). That ruling's
+// figure was a sibling-serve reading, and the broker's own cold load is above it: on srv1 the
+// 81d292e9 incarnation sat reclaim-throttled at MemoryHigh for 17 minutes (slice memory.events
+// high=506770, max=35, oom_kill=1; full pressure ~85%) and reached `listening` 9 s after the bound
+// was lifted at runtime. The five incarnations of the one-per-route-class protocol above, each
+// cold-started under a lifted bound and made to serve exactly one route class, then read
+// memory.peak (2026-09-30 03:38-03:53Z):
+//   cold-load-only 10,837,032,960 / 10,834,006,016 B; submission-and-notification 11,329,523,712 B;
+//   confirm-page 11,325,730,816 B; redemption 11,327,987,712 B; status-poll 11,332,878,336 B.
+// Unthrottled cold boot was 162-172 s. The maximum is 11,332,878,336 B (~10.55 GiB).
+//
+// THE MARGIN IS STATED, NOT A ROUND NUMBER BY FIAT. MemoryHigh is the measured max plus ~33%
+// (14 GiB), because the two WRITING classes were measured while the broker was dark and refused them
+// before the store (503, marker approval-broker/broker), so their store half is unmeasured and the
+// margin is what covers it; MemoryMax sits 2 GiB above that for the kill boundary. Tighten both from
+// broker_demand_observed_max once the writing classes are read under BrokerServesAndWrites.
+data approval_broker_slice_memory_max: ByteSize = byte_size(17179869184)
 
-data approval_broker_slice_memory_high: ByteSize = byte_size(9663676416)
+data approval_broker_slice_memory_high: ByteSize = byte_size(15032385536)
 
 // ── THE REPOSITORY CONVERGENCE ONESHOT'S OWN BOUND ──────────────────────────────────────────
 // IT HAS ITS OWN ENVELOPE BECAUSE A SHARED ONE IS A MOVING TARGET. The oneshot ran inside the roadmap

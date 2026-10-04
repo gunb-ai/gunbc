@@ -1,8 +1,15 @@
 module extdeps.standards.ieee_754_2019
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
 import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.bit { Bit }
+import std.algebra { Ordering, Less, Equal, Greater }
+import std.approximate_field {
+  Precision, BinaryPrecision, RoundingMode, ToNearestEven, SpecialValues, QuietAndSignalingNaN,
+  SignedInfinity, SignedZero, SubnormalPolicy, GradualUnderflow
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -37,4 +44,212 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   },
   first_citation: extdeps.standards.ieee_754_2019.extdeps_external_authority_anchor,
   further_citations: []
+}
+
+// THE BINARY INTERCHANGE FORMAT PARAMETERS, IEEE 754-2019 §3.6 Table 3.5, named by the table's own
+// symbols: k storage width, p precision, emax, w exponent field width, t trailing significand field
+// width. They are Int, not a Nat refinement: which Nat is the integer family's root is an open fork
+// in gunbc.defork_type_name_census, and a standard's module must not pick its side by import.
+type BinaryInterchangeFormat {
+  k: Int
+  p: Int
+  emax: Int
+  w: Int
+  t: Int
+}
+
+data binary32: BinaryInterchangeFormat = BinaryInterchangeFormat { k: 32, p: 24, emax: 127, w: 8, t: 23 }
+
+data binary64: BinaryInterchangeFormat = BinaryInterchangeFormat { k: 64, p: 53, emax: 1023, w: 11, t: 52 }
+
+// binary64 INHABITS the generic std.approximate_field algebra: these are its parameters, each cited
+// to the clause that fixes it. The Field base (the arithmetic operations of §5.4) is not supplied
+// here; that is the frontier on which a full ApproximateField<FieldOfFractions<Int>> value for
+// binary64 lands, and nothing below pretends to it.
+data binary64_precision: Precision = BinaryPrecision { significand_bits: 53, exponent_bits: 11 }
+
+data binary64_default_rounding: RoundingMode = ToNearestEven
+
+data binary64_special_values: SpecialValues = SpecialValues {
+  nan: QuietAndSignalingNaN,
+  infinity: SignedInfinity,
+  signed_zero: SignedZero
+}
+
+data binary64_subnormal_policy: SubnormalPolicy = GradualUnderflow
+
+// A fact of this module cited to its clause under the spec's own term. The std vocabulary spells
+// the rounding attribute generically (ToNearestEven); the standard's name for it is
+// roundTiesToEven, and that name lives here, as data on the citation, not as a second variant.
+type Ieee754ClauseCitation {
+  citation: FactCitation
+  clause: NonEmptyStr
+  spec_term: NonEmptyStr
+}
+
+fn ieee_754_2019_cite(decl_name: String, clause: NonEmptyStr, spec_term: NonEmptyStr) -> Ieee754ClauseCitation {
+  Ieee754ClauseCitation {
+    citation: FactCitation {
+      fact: decl_ref(module_path: "extdeps.standards.ieee_754_2019", decl_name: decl_name),
+      authority: extdeps_external_authority_anchor
+    },
+    clause: clause,
+    spec_term: spec_term
+  }
+}
+
+data ieee_754_2019_clause_citations: List<Ieee754ClauseCitation> = [
+  ieee_754_2019_cite(decl_name: "binary32", clause: "3.6 Table 3.5", spec_term: "binary32"),
+  ieee_754_2019_cite(decl_name: "binary64", clause: "3.6 Table 3.5", spec_term: "binary64"),
+  ieee_754_2019_cite(decl_name: "binary64_precision", clause: "3.6 Table 3.5", spec_term: "p, w"),
+  ieee_754_2019_cite(decl_name: "binary64_default_rounding", clause: "4.3.3", spec_term: "roundTiesToEven"),
+  ieee_754_2019_cite(decl_name: "binary64_special_values", clause: "3.3, 6.1, 6.2, 6.3", spec_term: "quiet NaN, signaling NaN, infinity, signed zero"),
+  ieee_754_2019_cite(decl_name: "binary64_subnormal_policy", clause: "3.4", spec_term: "subnormal numbers"),
+  ieee_754_2019_cite(decl_name: "BinaryInterchangeEncoding", clause: "3.4", spec_term: "S, E, T"),
+  ieee_754_2019_cite(decl_name: "class", clause: "5.7.2", spec_term: "class"),
+  ieee_754_2019_cite(decl_name: "compare_quiet", clause: "5.11", spec_term: "comparison relations"),
+  ieee_754_2019_cite(decl_name: "quiet_nan_trailing_significand_leading_bit", clause: "6.2.1", spec_term: "quiet NaN d1")
+]
+
+// THE ENCODING, §3.4: sign bit S, biased exponent field E (w bits), trailing significand field T
+// (t bits), each field MSB first. The widths are a construction fact of the FORMAT, so the encoding
+// carries the format it was admitted under and binary_interchange_encoding refuses a field whose
+// length disagrees with it. RUNG, stated honestly: mechanically preventable, not structural -- the
+// record constructor stays public and a record-field Length<N> refinement does not exist yet; the
+// next-rung trigger is gunbc.plans.cardinality_refinement P3 (record-field `where Length<N>`).
+type BinaryInterchangeEncoding {
+  format: BinaryInterchangeFormat
+  s: Bit
+  e: List<Bit>
+  t: List<Bit>
+}
+
+type EncodingFieldWidthRefusal
+  = BiasedExponentFieldWidth { expected_w: Int, observed: Int }
+  | TrailingSignificandFieldWidth { expected_t: Int, observed: Int }
+
+type EncodingAdmission
+  = EncodingAdmitted { encoding: BinaryInterchangeEncoding }
+  | EncodingRefused { refusal: EncodingFieldWidthRefusal }
+
+fn binary_interchange_encoding(format: BinaryInterchangeFormat, s: Bit, e: List<Bit>, t: List<Bit>) -> EncodingAdmission {
+  if list_length(e) != format.w {
+    EncodingRefused { refusal: BiasedExponentFieldWidth { expected_w: format.w, observed: list_length(e) } }
+  } else {
+    if list_length(t) != format.t {
+      EncodingRefused { refusal: TrailingSignificandFieldWidth { expected_t: format.t, observed: list_length(t) } }
+    } else {
+      EncodingAdmitted { encoding: BinaryInterchangeEncoding { format: format, s: s, e: e, t: t } }
+    }
+  }
+}
+
+// A field read as the unsigned integer its bits spell MSB first. The widest field is t = 52 for
+// binary64, inside Int's range; this is the whole of the arithmetic the module does.
+fn bit_field_value(bits: List<Bit>) -> Int {
+  bits |> fold(init: 0, f: (acc, b) => if b { acc * 2 + 1 } else { acc * 2 })
+}
+
+fn bit_field_all_ones(bits: List<Bit>) -> Bool {
+  bits |> all(b => b)
+}
+
+fn bit_field_all_zeros(bits: List<Bit>) -> Bool {
+  bits |> all(b => b == false)
+}
+
+// §6.2.1: a quiet NaN's trailing significand field has its first bit d1 = 1, a signaling NaN's
+// d1 = 0. MSB first, d1 is set exactly when the field's value exceeds half its all-ones value.
+fn quiet_nan_trailing_significand_leading_bit(t: List<Bit>) -> Bool {
+  bit_field_value(t) * 2 > (t |> fold(init: 0, f: (acc, _b) => acc * 2 + 1))
+}
+
+// §5.7.2 class(x): the ten classes under the standard's own names.
+type Ieee754Class
+  = SignalingNaN
+  | QuietNaN
+  | NegativeInfinity
+  | NegativeNormal
+  | NegativeSubnormal
+  | NegativeZero
+  | PositiveZero
+  | PositiveSubnormal
+  | PositiveNormal
+  | PositiveInfinity
+
+fn class(x: BinaryInterchangeEncoding) -> Ieee754Class {
+  if bit_field_all_ones(x.e) {
+    if bit_field_all_zeros(x.t) {
+      if x.s { NegativeInfinity } else { PositiveInfinity }
+    } else {
+      if quiet_nan_trailing_significand_leading_bit(x.t) { QuietNaN } else { SignalingNaN }
+    }
+  } else {
+    if bit_field_all_zeros(x.e) {
+      if bit_field_all_zeros(x.t) {
+        if x.s { NegativeZero } else { PositiveZero }
+      } else {
+        if x.s { NegativeSubnormal } else { PositiveSubnormal }
+      }
+    } else {
+      if x.s { NegativeNormal } else { PositiveNormal }
+    }
+  }
+}
+
+fn is_nan(x: BinaryInterchangeEncoding) -> Bool {
+  bit_field_all_ones(x.e) && (bit_field_all_zeros(x.t) == false)
+}
+
+fn is_zero(x: BinaryInterchangeEncoding) -> Bool {
+  bit_field_all_zeros(x.e) && bit_field_all_zeros(x.t)
+}
+
+// §5.11: every pair of operands stands in exactly one of four relations. Unordered is the
+// standard's answer when either operand is a NaN, and it is the ONLY answer a NaN operand gets:
+// an Ordering is produced solely for non-NaN operands, so no caller can read a NaN as ordered.
+// This is compareQuiet's relation, NOT totalOrder (§5.10), which orders NaNs by sign and payload
+// and is not implemented here.
+type ComparisonRelation
+  = Ordered { ordering: Ordering }
+  | Unordered
+
+// Non-NaN operands of one format: +0 and -0 are equal (§5.11); otherwise negative precedes
+// positive, and within one sign the magnitude order IS the lexicographic order of (E, T) -- which
+// places infinity (E all ones) above every finite value without a special case.
+fn compare_quiet(a: BinaryInterchangeEncoding, b: BinaryInterchangeEncoding) -> ComparisonRelation {
+  if is_nan(a) || is_nan(b) {
+    Unordered
+  } else {
+    if is_zero(a) && is_zero(b) {
+      Ordered { ordering: Equal }
+    } else {
+      if a.s != b.s {
+        if a.s { Ordered { ordering: Less } } else { Ordered { ordering: Greater } }
+      } else {
+        let magnitude = magnitude_ordering(a: a, b: b)
+        if a.s { Ordered { ordering: ordering_reverse(o: magnitude) } } else { Ordered { ordering: magnitude } }
+      }
+    }
+  }
+}
+
+fn int_ordering(a: Int, b: Int) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+fn magnitude_ordering(a: BinaryInterchangeEncoding, b: BinaryInterchangeEncoding) -> Ordering {
+  match int_ordering(a: bit_field_value(a.e), b: bit_field_value(b.e)) {
+    Less => Less
+    Greater => Greater
+    Equal => int_ordering(a: bit_field_value(a.t), b: bit_field_value(b.t))
+  }
+}
+
+fn ordering_reverse(o: Ordering) -> Ordering {
+  match o {
+    Less => Greater
+    Greater => Less
+    Equal => Equal
+  }
 }

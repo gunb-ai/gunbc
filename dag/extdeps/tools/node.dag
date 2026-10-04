@@ -1,7 +1,9 @@
 module extdeps.tools.node
 
-import std.types { NonEmptyStr, Bool, Unit }
-import std.string_type { String }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { NonEmptyStr, Bool, Unit, Int, List }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -15,8 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn node_program() -> ProgramIdentity = cataloged_program(invocation: "node")
+
 data node_cli_tool: CliTool = CliTool {
-  name: "node",
+  program: node_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nodejs, bin_dir: apt_bin_dir }],
 }
@@ -28,6 +32,7 @@ data node_cli_tool: CliTool = CliTool {
 
 service nodejs.Cli {
   operation Version {
+    requires none
     input {}
     output {
       version: String from "stdout"
@@ -52,5 +57,60 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.tools.node.extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [extdeps.tools.node.node_v24_21_0_shasums_authority]
+}
+
+// THE RUNTIME PLAYWRIGHT 1.62.1 REQUIRES IS NOT THE ONE apt PROVIDES ON THE FLEET. Both Playwright
+// packages declare engines.node ">=20" (extdeps.automation.playwright PlaywrightNpmTarball
+// node_engine_floor_major), and Ubuntu 24.04's `nodejs` package is the 18.x line, so node_cli_tool's
+// apt source cannot satisfy that consumer. The official release archive is the route: nodejs.org
+// publishes every archive's sha256 in SHASUMS256.txt beside it, so the digest here is upstream's
+// published figure, cited, not an observation of ours.
+data node_v24_21_0_shasums_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "nodejs.org/dist/v24.21.0/SHASUMS256.txt"
+  }
+}
+
+type NodeReleaseVersion = NonEmptyStr where brand("NodeReleaseVersion")
+
+type NodeReleaseArchive {
+  version: NodeReleaseVersion
+  major: Int
+  platform_arch: NonEmptyStr
+  url: NonEmptyStr
+  file_name: NonEmptyStr
+  sha256: NonEmptyStr
+  published_by: ExternalAuthority
+}
+
+// v24.21.0 is the newest release of the current LTS line (Krypton) in nodejs.org/dist/index.json on
+// 2026-09-28. The archive unpacks to one directory named after the file stem, with the binary at
+// bin/node.
+data node_v24_21_0_linux_arm64: NodeReleaseArchive = NodeReleaseArchive {
+  version: "v24.21.0" as NodeReleaseVersion,
+  major: 24,
+  platform_arch: "linux-arm64",
+  url: "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.xz",
+  file_name: "node-v24.21.0-linux-arm64.tar.xz",
+  sha256: "6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2",
+  published_by: extdeps.tools.node.node_v24_21_0_shasums_authority,
+}
+
+data node_release_archive_strip_components: Int = 1
+
+data node_release_binary_relative: NonEmptyStr = "bin/node"
+
+// THE BINARY IS A PARAMETER, NOT `node` ON PATH, because the runtime a consumer means is a
+// particular installed release (node_v24_21_0_linux_arm64) and PATH would answer with whatever the
+// host happens to carry -- on the fleet, the apt 18.x line that release exists to avoid.
+fn node_version_command(node_binary: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: cataloged_program(invocation: node_binary), arguments: ["--version"])
+}
+
+// `node -e <script> <args...>`: with -e, process.argv[1] onward are the trailing operands, so a
+// caller passes data as operands rather than splicing it into the program text.
+fn node_eval_command(node_binary: NonEmptyStr, script: String, operands: List<String>) -> ArgvCommand {
+  argv_command(program: cataloged_program(invocation: node_binary), arguments: concat(["-e", script], operands))
 }

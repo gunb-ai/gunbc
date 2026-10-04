@@ -1,0 +1,266 @@
+module v2.test.claim.body_lowering.qualified_construct
+
+import std.types { List }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.compilers.target_model { target_value_expr_record_construct_gate }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
+import v2.std.node_query { construct_tag_optional, construct_tag_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
+import v2.std.algebra { fold_list, length }
+import v2.std.text { String }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A QUALIFIED CONSTRUCTOR IS THE SAME CONSTRUCT AS ITS UNQUALIFIED SPELLING, BY IDENTITY.
+//
+// The subject is the construct's tag (v2.std.node CoreEdgeLabel ConstructTagEdge): a record construction, a
+// fielded constructor pattern and a nullary constructor value each carry the constructor as a
+// REFERENCE -- the authored path before resolution, a declaration reference after it -- so
+// `v2.test.qcp.QcRow { n: true }` and an imported `QcRow { n: true }` resolve to one node, and the
+// path is never trimmed to its last segment (docs/plans/construct-tag-reference-design.md).
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL: every claim below reaches the production fold
+// (tokenize, parse, normalize with body lowering, and resolve through
+// v2.compiler.name_resolve resolve_in_context) from inline source text. Each
+// consumer's resolution is a nullary warm producer, enrolled in v2.workflow.floor_pure_producer_share
+// beside the ingest, for the cost reason v2.test.claim.namespace_xl0.cross_module_reference_resolution
+// records.
+//
+// THE RED ON BASE. qc_a_resolved_user_construct_reads_its_tag_holds is the control for
+// gunbc.recurring_failure_mode construct_tag_read_by_label_equality_after_resolve_rewrote_the_target:
+// on the base this lane started from, construct_tag_optional answered Absent for a resolved user
+// construct (measured 2026-09-29, the resolved PcrA specimen in that row), so this claim was red there.
+// The provider also carries a FIELD PROJECTION body (qcp_read). It is not about constructs: it is the
+// unmarked Conj body v2.std.node arrow_body_record_construct_conforms must keep admitting beside the
+// construct marker. Narrowing that admission refused v2.std.diagnostic on the native route, and every
+// claim below shares this ingest, so the narrowing reddens all of them.
+data qc_provider_source: String = "module v2.test.qcp\n\nimport std.types { Bool }\n\ntype QcShape\n  = QcRow { n: Bool }\n  | QcNone\n\ntype QcBox {\n  n: Bool\n}\n\nfn qcp_box() -> QcBox { QcBox { n: true } }\n\nfn qcp_read() -> Bool { qcp_box().n }\n"
+
+data qc_provider_b_source: String = "module v2.test.qcp_b\n\nimport std.types { Bool }\n\ntype QcOther\n  = QcRow { n: Bool }\n  | QcElse\n"
+
+data qc_bare_source: String = "module v2.test.qc_bare\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape, QcRow, QcNone }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n\nfn qc_empty() -> QcShape { QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    QcRow { n: x } => x\n    QcNone => false\n  }\n}\n"
+
+data qc_qualified_source: String = "module v2.test.qc_qualified\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_empty() -> QcShape { v2.test.qcp.QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    v2.test.qcp.QcRow { n: x } => x\n    v2.test.qcp.QcNone => false\n  }\n}\n"
+
+data qc_twins_source: String = "module v2.test.qc_twins\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\nimport v2.test.qcp_b { QcOther }\n\nfn qc_one() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_two() -> QcOther { v2.test.qcp_b.QcRow { n: false } }\n"
+
+data qc_type_tag_source: String = "module v2.test.qc_type_tag\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_wrong() -> QcShape { v2.test.qcp.QcShape { n: true } }\n"
+
+data qc_unqualified_unimported_source: String = "module v2.test.qc_unimported\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n"
+
+data qc_bodyless_source: String = "module v2.test.qc_bodyless\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow }\n"
+
+// The seven's own form, verbatim in its position: the then-arm of v2.compiler.tokenize
+// lex_walk_artifact constructs v2.std.diagnostic.Rejected with a record body. This module is
+// lowered, not resolved -- v2.std.diagnostic is not in this ingest -- so it establishes that the form
+// reaches the construct production with its whole authored path.
+data qc_seven_form_source: String = "module v2.test.qc_seven_form\n\nfn qc_refuse() -> v2.std.diagnostic.Outcome<Int> {\n  v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }\n}\n"
+
+fn qc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data qc_ingest: SourceRootIngest = [
+  qc_read(source: qc_provider_source, id: ^qc_provider_read, unit: ^qc_provider_cu, path: "src/v2/test/fixture/qualified_construct/provider.dag"),
+  qc_read(source: qc_provider_b_source, id: ^qc_provider_b_read, unit: ^qc_provider_b_cu, path: "src/v2/test/fixture/qualified_construct/provider_b.dag"),
+  qc_read(source: qc_bare_source, id: ^qc_bare_read, unit: ^qc_bare_cu, path: "src/v2/test/fixture/qualified_construct/bare.dag"),
+  qc_read(source: qc_qualified_source, id: ^qc_qualified_read, unit: ^qc_qualified_cu, path: "src/v2/test/fixture/qualified_construct/qualified.dag"),
+  qc_read(source: qc_twins_source, id: ^qc_twins_read, unit: ^qc_twins_cu, path: "src/v2/test/fixture/qualified_construct/twins.dag"),
+  qc_read(source: qc_type_tag_source, id: ^qc_type_tag_read, unit: ^qc_type_tag_cu, path: "src/v2/test/fixture/qualified_construct/type_tag.dag"),
+  qc_read(source: qc_unqualified_unimported_source, id: ^qc_unimported_read, unit: ^qc_unimported_cu, path: "src/v2/test/fixture/qualified_construct/unimported.dag"),
+  qc_read(source: qc_bodyless_source, id: ^qc_bodyless_read, unit: ^qc_bodyless_cu, path: "src/v2/test/fixture/qualified_construct/bodyless.dag"),
+  qc_read(source: qc_seven_form_source, id: ^qc_seven_form_read, unit: ^qc_seven_form_cu, path: "src/v2/test/fixture/qualified_construct/seven_form.dag")
+]
+
+fn qc_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: qc_ingest, lm: dag_language_model())
+}
+
+fn qc_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match qc_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn qc_resolved_bare() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_bare") }
+fn qc_resolved_qualified() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_qualified") }
+fn qc_resolved_twins() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_twins") }
+fn qc_resolved_type_tag() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_type_tag") }
+fn qc_resolved_unimported() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_unimported") }
+fn qc_resolved_bodyless() -> Outcome<ResolvedTree> { qc_resolve_subject(subject: "v2.test.qc_bodyless") }
+
+fn qc_constructs(root: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
+    match construct_tag_optional(n: n) {
+      Present { value: _ } => list_snoc_item(xs: acc, item: n)
+      Absent => acc
+    }
+  })
+}
+
+fn qc_construct_hashes(o: Outcome<ResolvedTree>) -> List<Hash> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(qc_constructs(root: t.root), init: Empty, f: fn(acc, n) { list_snoc_item(xs: acc, item: content_hash(n: n)) })
+  }
+}
+
+fn qc_construct_paths(o: Outcome<ResolvedTree>) -> List<String> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(qc_constructs(root: t.root), init: Empty, f: fn(acc, n) {
+        match construct_tag_path_optional(n: n) {
+          Present { value: path } => list_snoc_item(xs: acc, item: qualified_name_to_dotted_string(qn: path))
+          Absent => list_snoc_item(xs: acc, item: "<no path>")
+        }
+      })
+  }
+}
+
+fn qc_reference_count(o: Outcome<ResolvedTree>, dotted: String) -> Int {
+  match o {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: t, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: t.root), init: 0, f: fn(acc, n) {
+        match declaration_reference_path_optional(node: n) {
+          Present { value: path } => if qualified_name_to_dotted_string(qn: path) == dotted { acc + 1 } else { acc }
+          Absent => acc
+        }
+      })
+  }
+}
+
+fn qc_pairwise_equal(xs: List<Hash>, ys: List<Hash>) -> Bool {
+  match xs {
+    Empty => match ys { Empty => true  Cons { head: _, tail: _ } => false }
+    Cons { head: x, tail: xt } =>
+      match ys {
+        Empty => false
+        Cons { head: y, tail: yt } => (x == y) && qc_pairwise_equal(xs: xt, ys: yt)
+      }
+  }
+}
+
+// (a) and (c): the construction and the fielded pattern, spelled qualified, resolve to the same
+// constructs as their imported bare spelling -- two constructs each, equal by content.
+test fn qc_qualified_constructs_equal_their_unqualified_form_holds() -> Bool {
+  let bare = qc_construct_hashes(o: qc_resolved_bare())
+  (length(xs: bare) == 2) && qc_pairwise_equal(xs: bare, ys: qc_construct_hashes(o: qc_resolved_qualified()))
+}
+
+// The tag binds the VARIANT's own declaration, never its coproduct, in both spellings.
+test fn qc_a_resolved_user_construct_reads_its_tag_holds() -> Bool {
+  qc_construct_paths(o: qc_resolved_qualified()) == ["v2.test.qcp.QcRow", "v2.test.qcp.QcRow"]
+    && qc_construct_paths(o: qc_resolved_bare()) == ["v2.test.qcp.QcRow", "v2.test.qcp.QcRow"]
+}
+
+// (b): the nullary value and the nullary pattern, spelled qualified, are references to the variant,
+// as the bare spelling is. The first-atom pattern reader answered `v2` for the qualified pattern.
+test fn qc_qualified_nullary_binds_the_variant_holds() -> Bool {
+  (qc_reference_count(o: qc_resolved_qualified(), dotted: "v2.test.qcp.QcNone") == 2)
+    && (qc_reference_count(o: qc_resolved_bare(), dotted: "v2.test.qcp.QcNone") == 2)
+}
+
+// Identity, not spelling: two variants with one leaf in two modules bind two declarations.
+test fn qc_same_leaf_in_two_modules_binds_two_declarations_holds() -> Bool {
+  qc_construct_paths(o: qc_resolved_twins()) == ["v2.test.qcp.QcRow", "v2.test.qcp_b.QcRow"]
+}
+
+// A tag that resolves to the coproduct TYPE rather than a variant refuses, located, by identity.
+test fn qc_a_type_tag_refuses_as_not_a_constructor_holds() -> Bool {
+  match qc_resolved_type_tag() {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_construct_tag_not_a_constructor
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// MUTATION, THE QUALIFIER DROPPED: without it and without an import the constructor is unbound --
+// the path is what bound it, not a corpus search for its leaf.
+test fn qc_dropping_the_qualifier_unbinds_the_constructor_holds() -> Bool {
+  match qc_resolved_unimported() {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// MUTATION, THE RECORD BODY DROPPED: the same path with no body is a reference to the variant and
+// no construct at all.
+test fn qc_dropping_the_record_body_is_not_a_construct_holds() -> Bool {
+  (length(xs: qc_construct_hashes(o: qc_resolved_bodyless())) == 0)
+    && (qc_reference_count(o: qc_resolved_bodyless(), dotted: "v2.test.qcp.QcRow") == 1)
+}
+
+fn qc_normalized_constructs_of(module_dotted: String) -> List<Node> {
+  match qc_fixture_normalized() {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: roots, diagnostics: _ } =>
+      fold(normalized_tree_roots_to_nodes(roots: roots), init: Empty, f: fn(acc, root) {
+        fold(qc_constructs(root: root), init: acc, f: fn(inner, n) {
+          match construct_tag_path_optional(n: n) {
+            Present { value: path } =>
+              if qualified_name_to_dotted_string(qn: path) == module_dotted { list_snoc_item(xs: inner, item: n) } else { inner }
+            Absent => inner
+          }
+        })
+      })
+  }
+}
+
+// THE SEVEN'S FORM REACHES THE CONSTRUCT PRODUCTION WITH ITS WHOLE PATH (the file refusal that held
+// v2.compiler.tokenize out of the index was this form declining to a fatal unsupported_form).
+test fn qc_the_sevens_form_lowers_to_a_construct_holds() -> Bool {
+  length(xs: qc_normalized_constructs_of(module_dotted: "v2.std.diagnostic.Rejected")) == 1
+}
+
+// THE EMISSION GATE, BOTH WAYS: a resolved construct is admitted, and the same construct before
+// resolution -- an authored path, not an identity -- is refused.
+test fn qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds() -> Bool {
+  let resolved_admitted = match qc_resolved_qualified() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match qc_constructs(root: t.root) {
+        Cons { head: c, tail: _ } => target_value_expr_record_construct_gate(node: c)
+        Empty => false
+      }
+  }
+  let unresolved_refused = match qc_normalized_constructs_of(module_dotted: "v2.test.qcp.QcRow") {
+    Cons { head: c, tail: _ } => !target_value_expr_record_construct_gate(node: c)
+    Empty => false
+  }
+  resolved_admitted && unresolved_refused
+}

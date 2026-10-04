@@ -210,17 +210,56 @@ fn criterion_standing_text(s: CriterionStanding) -> String {
   }
 }
 
-fn standing_is_changes(s: CriterionStanding) -> Bool { match s { CriterionChangesRequested { key: _, reasons: _ } => true  _ => false } }
-fn standing_is_approved(s: CriterionStanding) -> Bool { match s { CriterionApproved { key: _, summary: _ } => true  _ => false } }
-fn standing_is_running(s: CriterionStanding) -> Bool { match s { CriterionReviewerRunning { key: _ } => true  _ => false } }
+fn standing_is_changes(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => true
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => false
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
+fn standing_is_approved(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => true
+    CriterionChangesRequested { key: _, reasons: _ } => false
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => false
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
+fn standing_is_running(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => false
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => true
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
 fn standing_blocks(s: CriterionStanding) -> Bool {
   match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => false
     CriterionCannotJudge { key: _, reason: _ } => true
     CriterionUndecodable { key: _, reason: _ } => true
     CriterionUnreadable { key: _, detail: _ } => true
+    CriterionReviewerRunning { key: _ } => false
     CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
     CriterionReviewerUnobserved { key: _, reason: _ } => true
-    _ => false
+    CriterionAwaitingReviewer { key: _ } => false
   }
 }
 

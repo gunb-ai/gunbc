@@ -3255,7 +3255,20 @@ fn materialize_codex_runtime_bundle_finish_after_install(
             release_parent: release_parent,
           ) {
             CodexRuntimeMaterialized { bundle: _ } => true
-            _ => false
+            CodexRuntimeLockRefused { admission: _ } => false
+            CodexRuntimeExactClosureRefused { closure: _ } => false
+            CodexRuntimeTargetObservationRefused { observation: _ } => false
+            CodexRuntimeAcquisitionRefused { acquisition: _ } => false
+            CodexRuntimeWorkspaceRefused { cause: _ } => false
+            CodexRuntimeCacheSeedRefused { path: _, stderr: _ } => false
+            CodexRuntimeNpmCiOfflineRefused { stderr: _ } => false
+            CodexRuntimeExecutableAbsent { path: _ } => false
+            CodexRuntimePlatformPackageAbsent { path: _ } => false
+            CodexRuntimeIdentityObservationRefused => false
+            CodexRuntimeReceiptObservationRefused { cause: _ } => false
+            CodexRuntimeReleaseRefused { cause: _ } => false
+            CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause: _ } => false
+            CodexRuntimeHostDependencyRefused { tool: _, hint: _ } => false
           }
         Absent => false
       }

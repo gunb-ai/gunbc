@@ -4,22 +4,24 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 import gunbc.fleet_converge_plan {
-  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly,
 }
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
-  fleet_converge_mode_step_if, fleet_converge_mode_scope,
+  fleet_converge_mode_step_if, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy, HostResetReturn,
   RunnerPasswordSessionToolConverge,
+  RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
-  fleet_converge_job_edges, fleet_converge_release_bins_job_id,
+  fleet_converge_job_edges, fleet_converge_release_bins_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
+  fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, ApprovalDeviceEnrolmentCodeIssue, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -208,14 +210,6 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
     && mode_input_has_choice_options(v: entry.value, expected: ["plan", "apply"])
 }
 
-// THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
-// `dashboard-deploy` job was added (and on to 8 with the broker dark install, the microVM controller
-// install, the launch-deployment receipt and the mtcollins1 boot, its own job because it federates as
-// its own identity, gunbc.auth.mtcollins1_boot_federation) -- not because the check was in the way. Naming each job without
-// pinning the total would let a fourth job appear unobserved; pinning the total without naming them
-// would pass for any set of jobs at all. Together they are an exact partition, which is the identity
-// join DESIGN section 5 asks for rather than a count standing in for one.
-//
 // EVERY JOB THAT TOUCHES A HOST NEEDS `build`, and that is the property this witness is really about:
 // the release binaries are produced once and consumed by everything that installs them, so a job
 // that mutates a host without that edge would be installing whatever happened to be lying around.
@@ -231,8 +225,7 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 //
 // gunbc.fleet_converge_workflow fleet_converge_job_edges is ids and lists of strings, built
 // independently of any Job and CONSUMED BY the eight builders for their `needs`, so reading it
-// forces no job body. The partition is still exact -- every row named, and the count pinned so an
-// eighth cannot appear unobserved -- and the property the witness is really about is unchanged:
+// forces no job body. The partition is an identity join against the mode roster (below), and the property the witness is really about is unchanged:
 // every job that touches a host waits for `build`, because the release binaries are produced once
 // and a job without that edge installs whatever was lying around. host-reset-return is held to it
 // most sharply, since it POWER-CYCLES its subject.
@@ -255,27 +248,99 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
 // this file run the real workflow end to end, so the edges asserted here are known to reach the
 // emitted jobs. Reading the roster alone would otherwise establish the graph a builder was TOLD,
 // never the graph the workflow emits.
-test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  let edges = fleet_converge_job_edges
+// THE EXPECTED JOB SET IS DERIVED, NOT COPIED (operator ruling 2026-09-28: no hardcoded lists).
+//
+// The id literal this claim used to compare against was a measurement of the current tree, so it
+// went red on every added job (namecheap-observe) while establishing nothing (DESIGN section 5).
+// Completeness is now an identity join: the edge roster's ids must equal the release-bins job plus
+// the job each rostered mode's work runs in (gunbc.fleet_converge_workflow
+// fleet_converge_mode_job_id), compared as sets. The two directions are separate, named results --
+// an edge row no rostered mode reaches, and a rostered mode's job with no edge row -- so a red names
+// its identities rather than two unequal lists.
+fn fleet_converge_expected_job_ids() -> List<String> {
+  concat([fleet_converge_release_bins_job_id as String],
+    map(fleet_converge_workflow_modes, m => fleet_converge_mode_job_id(mode: m) as String))
+}
+
+fn fleet_converge_job_roster_missing(edges: List<FleetConvergeJobEdge>, expected: List<String>) -> List<String> {
+  filter(expected, x => !any(edges, e => (e.id as String) == x))
+}
+
+fn fleet_converge_job_roster_extra(edges: List<FleetConvergeJobEdge>, expected: List<String>) -> List<String> {
+  filter(map(edges, e => e.id as String), id => !any(expected, x => x == id))
+}
+
+// A DUPLICATED EDGE ROW IS ITS OWN RED: the set join cannot see it, and the builders' lookup takes
+// the first match, so a second row with different needs would be silently ignored.
+fn fleet_converge_job_roster_duplicated(edges: List<FleetConvergeJobEdge>) -> List<String> {
+  filter(map(edges, e => e.id as String), id => length(filter(edges, e => (e.id as String) == id)) > 1)
+}
+
+fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: List<String>) -> Bool {
   let build = [fleet_converge_release_bins_job_id as String]
-  map(edges, e => e.id as String) == [
-    "build",
-    "fleet-converge",
-    "mtcollins1-boot",
-    "host-reset-return",
-    "dashboard-deploy",
-    "approval-broker-dark-install",
-    "microvm-controller-install",
-    "rlm-launch-deployment-receipt",
-    "gcp-iam-converge",
-  ]
+  fleet_converge_job_roster_missing(edges: edges, expected: expected) == []
+    && fleet_converge_job_roster_extra(edges: edges, expected: expected) == []
+    && fleet_converge_job_roster_duplicated(edges: edges) == []
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
+      e.needs == []
+    } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
       e.needs == []
     } else {
       e.needs == build
     })
 }
 
+test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
+  fleet_converge_job_edges_hold(edges: fleet_converge_job_edges, expected: fleet_converge_expected_job_ids())
+}
+
+// CONTROLS: the join must name the identity that breaks it, in each direction.
+test fn fleet_converge_job_roster_red_names_a_job_with_no_rostered_mode() -> Bool {
+  let edges = concat(fleet_converge_job_edges,
+    [FleetConvergeJobEdge { id: "orphan-job" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] }])
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+    && fleet_converge_job_roster_extra(edges: edges, expected: fleet_converge_expected_job_ids()) == ["orphan-job"]
+}
+
+test fn fleet_converge_job_roster_red_names_a_rostered_mode_job_with_no_edge() -> Bool {
+  let edges = filter(fleet_converge_job_edges, e => (e.id as String) != "namecheap-observe")
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+    && fleet_converge_job_roster_missing(edges: edges, expected: fleet_converge_expected_job_ids()) == ["namecheap-observe"]
+}
+
+test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
+  let edges = concat(fleet_converge_job_edges,
+    [FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [] }])
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+    && fleet_converge_job_roster_duplicated(edges: edges) == ["namecheap-observe", "namecheap-observe"]
+}
+
+// A JOB ROSTERED AS BUILDING ITS OWN PAIR IS HELD TO DOING SO: its edge needs nothing, and the step
+// it builds with is the compiler pair product's own build line. The red: a rostered job that still
+// waits on `build` (two binary sources, one of them unread) breaks the edge property.
+test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> Bool {
+  fleet_converge_in_job_compiler_pair_jobs != []
+    && all(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) { e.needs == [] } else { true })
+    && match fleet_converge_mtcollins1_boot_pair_build_step() {
+      RunStep { name: _, id: i, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        string_contains(s: r, pattern: "--bin claim_executor") && string_contains(s: r, pattern: "--bin gunbc")
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+}
+
+test fn fleet_converge_job_roster_red_on_a_pair_job_that_still_waits_on_build() -> Bool {
+  let edges = map(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
+    FleetConvergeJobEdge { id: e.id, needs: [fleet_converge_release_bins_job_id as String] }
+  } else { e })
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+}
+
+test fn fleet_converge_job_roster_red_on_an_edge_that_skips_build() -> Bool {
+  let edges = map(fleet_converge_job_edges, e => if (e.id as String) == "namecheap-observe" {
+    FleetConvergeJobEdge { id: e.id, needs: [] }
+  } else { e })
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
+}
 
 fn expected_fleet_converge_yml_content() -> String {
   match expected_fleet_converge_yml() {
@@ -452,30 +517,53 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // budget (re-derive with claim_batch --entry on this file, its `[witness] ... eval_steps=` line). fleet_converge_build_job_steps() is prelude ++ own steps, and the job
 // and its backstop sum both consume it, so membership in the own list is membership in the job.
 //
-// IT ASSERTS THE ROUTE, NOT ONLY THE ID. This is the one claim that runs the real producer, so an id
+// IT ASSERTS THE ROUTE, NOT ONLY THE ID, over the admission step's own producer (its membership in the
+// build job is the next claim's, which runs the real list). An id
 // match alone would stay green over a step whose env no longer hands the dispatch inputs to the
 // admission, or whose run invokes a different entry: it holds that the step reaches the modeled fold
 // (host_reset_return_dispatch_admission_wet reads both env names) with both inputs wired. Control:
-// dropping fleet_converge_reset_observer_dispatch_admission_step() from the own list turns this red,
-// and so does removing its own-mode gate (it once ran, for minutes, on every mode's dispatch).
+// removing its own-mode gate turns this red (it once ran, for minutes, on every mode's dispatch), and
+// so does letting that gate drift from fleet_converge_host_reset_return_step_if, the one gate the
+// consuming host-reset-return job also reads (the_host_reset_return_job_is_gated_by_the_admissions_gate
+// holds the job's side): the admission must run in exactly the mode whose job it protects, or the
+// observer refusal is skipped where it applies. Content, membership and the job's gate are three
+// claims because they are three producers; joined in one, the claim built the whole job list and the
+// whole host-reset-return job to read one step and one field.
+test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs() -> Bool {
+  match fleet_converge_reset_observer_dispatch_admission_step() {
+    RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
+        && (match c {
+              Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn) && g == fleet_converge_host_reset_return_step_if
+              Absent => false
+            })
+        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
+        && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
+        && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
+        && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
+// MEMBERSHIP, FROM THE REAL PRODUCER: the build job's own steps include EXACTLY the step the claim
+// above holds -- structural equality, so a same-id step with another gate, entry or env is not it.
+// This is the one claim that runs fleet_converge_build_job_own_steps, so it is the section 3
+// inhabitance half and cannot be supplied away; it is over the new-witness eval-step budget under
+// the declared drop gunbc.rung_drop fleet_build_job_membership_new_witness_eval_step_cost, because
+// demanding the list constructs every sibling release-bins step. Control: dropping the admission
+// step from the own list turns this red.
 test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
-  any(
-    fleet_converge_build_job_own_steps(),
-    st => match st {
-      RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
-        match i {
-          Present { value: v } =>
-            v == "reset_observer_dispatch_admission"
-              && (match c { Present { value: g } => g == fleet_converge_mode_step_if(mode: HostResetReturn)  Absent => false })
-              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.entry)
-              && string_contains(s: r, pattern: gunbc_ci_host_reset_dispatch_admission_target.function)
-              && step_env_binds(env: e, key: host_reset_dispatch_mode_env as String, input: "${{ github.event.inputs.mode }}")
-              && step_env_binds(env: e, key: host_reset_observer_label_env as String, input: "${{ github.event.inputs.reset_observer }}")
-          Absent => false
-        }
-      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-    }
-  )
+  any(fleet_converge_build_job_own_steps(), st => st == fleet_converge_reset_observer_dispatch_admission_step())
+}
+
+// THE JOB'S SIDE OF THE SAME GATE, from the real job producer: the host-reset-return job is gated by
+// fleet_converge_host_reset_return_step_if, the gate the dispatch admission step carries. Control:
+// gating the job by any other condition, or ungating it, turns this red.
+test fn the_host_reset_return_job_is_gated_by_the_admissions_gate() -> Bool {
+  match fleet_converge_host_reset_return_job().if_condition {
+    Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
+    Absent => false
+  }
 }
 
 fn step_env_binds(env: List<YamlKeyValue>?, key: String, input: String) -> Bool {
@@ -542,6 +630,12 @@ test fn the_password_session_tool_mode_is_on_the_roster_with_distinct_wires() ->
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
+test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge))
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
@@ -572,6 +666,7 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
       LaunchEnvironment => false
       FabricExecutionCellsOnly => false
       FabricAllocationStoreOnly => false
+    WorkspaceAllocationOnly => false
     }
   }
   let plans_present = all(
@@ -787,11 +882,29 @@ test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -
   string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+// The boot prelude is bash_build nodes rendered by v2.workflow.bash_emit bash_emit_stmts, which quotes
+// every literal word, so the bound is read as the two quoted words that render emits -- the same
+// argv pair the committed fleet-converge.yml boot step carries -- not as the space-joined spelling
+// the hand-composed preludes above print. A prelude that drops or rebinds the bound still goes red.
 test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
 }
 
 test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+// THE LOCK KEY IS THE MUTATED SUBJECT, NOT THE DISPATCH HOST, IN BOTH DIRECTIONS: the enrolment-code
+// issue (the approval device store alone) leaves srv1's key, so a Spark V4.1 or D0 dispatch can no
+// longer supersede a pending enrolment; two issues still share one group; and the keyring converge,
+// which D0 must serialise with, still shares D0's group. Reverting the mode's row to the executor
+// domain turns the first conjunct red.
+test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool {
+  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1")
+  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1")
+    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+}

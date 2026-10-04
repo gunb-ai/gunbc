@@ -1,6 +1,8 @@
 module gunbc.spark.v41_capacity_measurement
 
 import v2.std.algebra { filter }
+import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
+import gunbc.spark.serving_performance_subject { ServingSubjectKey }
 import v2.std.collection { list_at_optional }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min, nat_max }
@@ -10,9 +12,10 @@ import std.measure {
   BasisPoint, basis_point, basis_point_count, concurrent_request_hundredths_count,
   Gibibyte, gibibyte, gibibyte_to_byte_size,
 }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, ContentHash }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
+import std.staircase { StepVerdict, StepStops, StepContinues, StaircaseOutcome, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StaircasePlanEmpty, StaircasePlanLevelDuplicated, run_staircase }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.engine_args { VllmPrefixCachingRequest, PrefixCachingExplicit, PrefixCachingOmitted }
@@ -671,12 +674,12 @@ type V41StaircaseStop
   | StopSloBreach { concurrency: Nat, which: NonEmptyStr, observed: Millisecond }
   | StopReadingMissing { concurrency: Nat, cause: NonEmptyStr }
 
-type V41StaircaseOutcome
-  = StaircaseStopped { last_sustained: Nat?, stop: V41StaircaseStop }
-  | StaircaseCompleted { last_sustained: Nat }
-  | StaircaseRefused { cause: NonEmptyStr }
-
-type V41StairScan { outcome: V41StaircaseOutcome?, last: Nat?, previous_per_request: Nat? }
+// THE UNSIGNED-POLICY REFUSAL IS V4.1'S OWN ARM. std.staircase has no policy gate by design (the
+// thresholds' sign-off is this module's V41PolicyStanding), so the gate is applied here, before the
+// generic staircase runs, and its refusal is a V4.1 fact beside the generic outcome rather than in it.
+type V41StaircaseRun
+  = V41StaircasePolicyUnsigned { cause: NonEmptyStr }
+  | V41StaircaseRan { outcome: StaircaseOutcome<Nat, V41StaircaseStop> }
 
 fn v41_step_stop(policy: V41CapacityPolicy, step: V41StaircaseStepReading, previous_per_request: Nat?) -> V41StaircaseStop? {
   let c = step.concurrency
@@ -731,40 +734,36 @@ fn v41_slo_stop(policy: V41CapacityPolicy, c: Nat, latency: ClientBenchLatency) 
   }
 }
 
-// THE STAIRCASE RUNS IN PLAN ORDER AND STOPS AT THE FIRST STOP RULE. A step reading that is missing
-// for a planned concurrency is a StopReadingMissing, never a skipped step: a staircase with a hole
-// cannot claim anything above the hole.
-fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List<V41StaircaseStepReading>) -> V41StaircaseOutcome {
+// THE STAIRCASE RUNS IN PLAN ORDER AND STOPS AT THE FIRST STOP RULE, through std.staircase
+// run_staircase: a step reading missing or duplicated at a planned concurrency is a StopReadingMissing,
+// never a skipped step, so nothing is claimed above a hole. Readings are joined to this run BEFORE the
+// staircase sees them, so a reading from another run is a hole here, never data. The accumulator is the
+// previous step's per-request refault, which the superlinear-refault rule compares against.
+type V41StairCarry { previous_per_request: Nat? }
+
+fn v41_step_verdict(p: V41CapacityPolicy, carry: V41StairCarry, step: V41StaircaseStepReading) -> StepVerdict<V41StaircaseStop, V41StairCarry> {
+  match v41_step_stop(policy: p, step: step, previous_per_request: carry.previous_per_request) {
+    Present { value: stop } => StepStops { stop: stop }
+    Absent => StepContinues { acc: V41StairCarry { previous_per_request: Present { value: (step.refault_file_after - step.refault_file_before) / step.concurrency } } }
+  }
+}
+
+fn v41_run_staircase(policy: V41PolicyStanding, run_id: NonEmptyStr, steps: List<V41StaircaseStepReading>) -> V41StaircaseRun {
   match policy {
     PolicyProposed { proposal: _, reasons: _ } =>
-      StaircaseRefused { cause: "the staircase thresholds are an unsigned proposal; operator sign-off is required before any stop rule is applied" as NonEmptyStr }
-    PolicyOperatorSigned { policy: p, ruling: _ } => {
-      let scan = fold(v41_staircase_concurrencies, init: V41StairScan { outcome: none, last: none, previous_per_request: none }, f: (acc, c) =>
-        match acc.outcome {
-          Present { value: _ } => acc
-          Absent => {
-            let at = filter(steps, s => s.concurrency == c && s.run_id == run_id)
-            if length(at) != 1 {
-              V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: StopReadingMissing { concurrency: c, cause: "no single step reading for this run at this concurrency" as NonEmptyStr } } }, last: acc.last, previous_per_request: acc.previous_per_request }
-            } else {
-              match list_at_optional(xs: at, index: 0) {
-                Absent => acc
-                Present { value: step } => match v41_step_stop(policy: p, step: step, previous_per_request: acc.previous_per_request) {
-                  Present { value: stop } => V41StairScan { outcome: Present { value: StaircaseStopped { last_sustained: acc.last, stop: stop } }, last: acc.last, previous_per_request: acc.previous_per_request }
-                  Absent => V41StairScan { outcome: none, last: Present { value: c }, previous_per_request: Present { value: (step.refault_file_after - step.refault_file_before) / c } }
-                }
-              }
-            }
-          }
-        })
-      match scan.outcome {
-        Present { value: o } => o
-        Absent => match scan.last {
-          Present { value: l } => StaircaseCompleted { last_sustained: l }
-          Absent => StaircaseRefused { cause: "the staircase plan is empty" as NonEmptyStr }
-        }
+      V41StaircasePolicyUnsigned { cause: "the staircase thresholds are an unsigned proposal; operator sign-off is required before any stop rule is applied" as NonEmptyStr }
+    PolicyOperatorSigned { policy: p, ruling: _ } =>
+      V41StaircaseRan {
+        outcome: run_staircase(
+          plan: v41_staircase_concurrencies,
+          readings: filter(steps, s => s.run_id == run_id),
+          level_key: c => to_string(c),
+          reading_level: s => s.concurrency,
+          init: V41StairCarry { previous_per_request: none },
+          stop_of: (carry, c, step) => v41_step_verdict(p: p, carry: carry, step: step),
+          missing: (c, cause) => StopReadingMissing { concurrency: c, cause: cause },
+        ),
       }
-    }
   }
 }
 
@@ -861,17 +860,21 @@ fn v41_probe_verdict_cell_is(v: V41ProbeVerdict, cell: V41ProbeCell) -> Bool {
 }
 
 // SLA SUSTAINABLE: the last staircase step before the first stop.
-fn v41_sla_capacity(o: V41StaircaseOutcome) -> V41Capacity {
+fn v41_sla_capacity(o: V41StaircaseRun) -> V41Capacity {
   match o {
-    StaircaseRefused { cause: c } => CapacityRefused { cause: c }
-    StaircaseCompleted { last_sustained: l } => CapacityAt { concurrency: l }
-    StaircaseStopped { last_sustained: l, stop: s } => match s {
-      StopReadingMissing { concurrency: c, cause: why } => CapacityRefused { cause: join(["a reading is missing at x", to_string(c), ": ", why as String], "") as NonEmptyStr }
-      StopKvPreemption { concurrency: _, preemptions: _ } => v41_last_or_below(l: l)
-      StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => v41_last_or_below(l: l)
-      StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => v41_last_or_below(l: l)
-      StopNvmeLatency { concurrency: _, mean_read_await: _ } => v41_last_or_below(l: l)
-      StopSloBreach { concurrency: _, which: _, observed: _ } => v41_last_or_below(l: l)
+    V41StaircasePolicyUnsigned { cause: c } => CapacityRefused { cause: c }
+    V41StaircaseRan { outcome: r } => match r {
+      StaircaseRefused { refusal: StaircasePlanEmpty } => CapacityRefused { cause: "the staircase plan is empty" as NonEmptyStr }
+      StaircaseRefused { refusal: StaircasePlanLevelDuplicated { level: c } } => CapacityRefused { cause: join(["the staircase plan names x", to_string(c), " twice"], "") as NonEmptyStr }
+      StaircaseCompleted { last_sustained: l } => CapacityAt { concurrency: l }
+      StaircaseStopped { last_sustained: l, stop: s } => match s {
+        StopReadingMissing { concurrency: c, cause: why } => CapacityRefused { cause: join(["a reading is missing at x", to_string(c), ": ", why as String], "") as NonEmptyStr }
+        StopKvPreemption { concurrency: _, preemptions: _ } => v41_last_or_below(l: l)
+        StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => v41_last_or_below(l: l)
+        StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => v41_last_or_below(l: l)
+        StopNvmeLatency { concurrency: _, mean_read_await: _ } => v41_last_or_below(l: l)
+        StopSloBreach { concurrency: _, which: _, observed: _ } => v41_last_or_below(l: l)
+      }
     }
   }
 }
@@ -887,7 +890,7 @@ fn v41_capacity_report(
   run_id: NonEmptyStr,
   startup: V41StartupAdmission,
   probes: List<V41ProbeReading>,
-  staircase: V41StaircaseOutcome,
+  staircase: V41StaircaseRun,
 ) -> V41CapacityReport {
   V41CapacityReport {
     run_id: run_id,
@@ -906,21 +909,19 @@ fn v41_capacity_wire(c: V41Capacity) -> String {
   }
 }
 
-// ── THE PRODUCTION GATE, WHICH DOES NOT GATE THE MEASUREMENT SERVE ─────────────────────────────
+// ── THE REPORT IS V4.1'S WORKLOAD CALIBRATION, NOT ITS OWN PRODUCTION GATE ────────────────────
 //
-// The measurement serve is admitted with a no-production-traffic contract: it is what produces the
-// report, so gating it on the report would be circular. Production admission requires all three
-// capacities to be CapacityAt, and it admits the MINIMUM of the three. The larger two are headroom
-// on axes that are not the binding one.
-type V41ServingRealization
-  = V41MeasurementServe { run_id: NonEmptyStr }
-  | V41ProductionServe
-
-type V41ServingAdmission
-  = MeasurementServeAdmitted { run_id: NonEmptyStr }
-  | ProductionAdmitted { run_id: NonEmptyStr, concurrency: Nat }
-  | ProductionRefused { cause: NonEmptyStr }
-
+// V4.1's production admission was a fold of its own here (v41_serving_admission), consumed by nothing
+// but its witnesses, and it asked no quality question and bound its report to no subject. It is
+// deleted (deforking cut 5): production admission for every model is gunbc.spark.serving_promotion
+// serving_promotion_standing, and this report enters it as the shared WorkloadCalibrationReceipt.
+// The projection keeps the old fold's law -- all three capacities must be CapacityAt, and the
+// sustained concurrency is their MINIMUM -- and states what the report does not observe: accepted
+// turns and their observation window, preemptions, restarts and OOM events are absent, so the promotion fold names them
+// missing rather than reading the report as a clean run. The measurement serve itself is not gated on
+// the report (that would be circular); it runs as a bounded experiment. Its route into a launch's
+// promotion receipts is a declared frontier, not yet a call: gunbc.spark.serving_promotion
+// serving_promotion_calibration_producer_frontier names the trigger.
 fn v41_capacity_at(c: V41Capacity) -> Nat? {
   match c {
     CapacityAt { concurrency: n } => Present { value: n }
@@ -929,20 +930,31 @@ fn v41_capacity_at(c: V41Capacity) -> Nat? {
   }
 }
 
-fn v41_serving_admission(realization: V41ServingRealization, report: V41CapacityReport?) -> V41ServingAdmission {
-  match realization {
-    V41MeasurementServe { run_id: r } => MeasurementServeAdmitted { run_id: r }
-    V41ProductionServe => match report {
-      Absent => ProductionRefused { cause: "no V4.1 capacity report has been admitted; the first serving action is the measurement" as NonEmptyStr }
-      Present { value: rep } => match v41_capacity_at(c: rep.kv_admission) {
-        Absent => ProductionRefused { cause: join(["KV admission: ", v41_capacity_wire(c: rep.kv_admission)], "") as NonEmptyStr }
-        Present { value: kv } => match v41_capacity_at(c: rep.engram_resident) {
-          Absent => ProductionRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: rep.engram_resident)], "") as NonEmptyStr }
-          Present { value: en } => match v41_capacity_at(c: rep.sla_sustainable) {
-            Absent => ProductionRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: rep.sla_sustainable)], "") as NonEmptyStr }
-            Present { value: sla } => ProductionAdmitted { run_id: rep.run_id, concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla) }
-          }
-        }
+type V41CalibrationProjection
+  = V41CalibrationProjected { receipt: WorkloadCalibrationReceipt }
+  | V41CalibrationRefused { cause: NonEmptyStr }
+
+fn v41_calibration_receipt(report: V41CapacityReport, subject_key: ServingSubjectKey, trace_digest: ContentHash) -> V41CalibrationProjection {
+  match v41_capacity_at(c: report.kv_admission) {
+    Absent => V41CalibrationRefused { cause: join(["KV admission: ", v41_capacity_wire(c: report.kv_admission)], "") as NonEmptyStr }
+    Present { value: kv } => match v41_capacity_at(c: report.engram_resident) {
+      Absent => V41CalibrationRefused { cause: join(["Engram resident: ", v41_capacity_wire(c: report.engram_resident)], "") as NonEmptyStr }
+      Present { value: en } => match v41_capacity_at(c: report.sla_sustainable) {
+        Absent => V41CalibrationRefused { cause: join(["SLA sustainable: ", v41_capacity_wire(c: report.sla_sustainable)], "") as NonEmptyStr }
+        Present { value: sla } => V41CalibrationProjected { receipt: WorkloadCalibrationReceipt {
+          subject_key: subject_key,
+          trace_digest: trace_digest,
+          run_id: report.run_id,
+          accepted_turns: none,
+          observation_window: none,
+          sustained_concurrency: nat_min(a: nat_min(a: kv, b: en), b: sla),
+          realized_transport: none,
+          preemptions: none,
+          engine_restarts: none,
+          out_of_memory_events: none,
+          stalls_or_lost_requests: none,
+          evidence: join(["V4.1 capacity report, run ", report.run_id as String, ": the minimum of KV admission, Engram residency and SLA-sustainable concurrency"], "") as NonEmptyStr,
+        } }
       }
     }
   }

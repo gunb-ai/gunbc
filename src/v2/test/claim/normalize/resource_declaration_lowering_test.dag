@@ -1,0 +1,393 @@
+module v2.test.claim.normalize.resource_declaration_lowering
+
+import v2.compiler.normalize { normalize, normalize_census, type_declaration_kind_capture }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree, census_tree_binding_source }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_declares_resource_at, symbol_index_lookup }
+import v2.std.diagnostic { Accepted, Diagnostics, NonEmptyDiagnostics, None, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
+import v2.std.algebra { fold_list }
+import v2.std.optional { Absent, Present }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import std.types { List }
+
+// DECLARATION-GRADE RESOURCE LOWERING (v2.compiler.body_lowering_fold body_lower_resource_decl). A
+// resource lowers to a service's shape -- its capabilities are operation Arrows of its payload -- and
+// its kind, mode, expires and acquire entries are validated against their homes and not carried
+// (gunbc.recurring_failure_mode resource_contract_validated_but_not_carried); its name rides on the
+// captured DeclaredResource kind, from which v2.compiler.symbol_index_fill marks the path a resource. Every entry is read or the
+// declaration refuses at the entry; nothing is skipped the way v1 skips an acquire body.
+//
+// SUPPLIED TOKEN STREAMS, as v2.test.claim.normalize.service_declaration_lowering supplies them: each
+// is paired below with a claim that the real tokenizer produces exactly it, so supplying it removes no
+// execution of the real path (DESIGN section 3 pairing obligation).
+// A resource with one capability beside a record: the census claims read which path is a resource.
+data valid_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability now {}\n}\ntype T {}\n"
+
+// Every property entry the grammar admits, with no capability: the full door reads each against its home.
+data entries_source: String = "module m\nresource N {\n  kind: Observation\n  mode: ReadWrite\n  expires: true\n  acquire { hermetic }\n  release {}\n}\n"
+// RED: a kind value no std.resource_contract ResourceKind variant projects to refuses at the entry rather than riding as a name.
+data unknown_kind_source: String = "module m\nresource N {\n  kind: Capabilty\n  mode: Read\n}\n"
+// RED: a declaration stating its kind twice has no single kind; it refuses at the second entry.
+data repeated_kind_source: String = "module m\nresource N {\n  kind: Capability\n  kind: Observation\n  mode: Read\n}\n"
+// RED: a declaration with no mode has none to carry, and no default exists; it refuses at the declaration.
+data missing_mode_source: String = "module m\nresource N {\n  kind: Capability\n}\n"
+// RED: an acquire body holding anything but `hermetic` refuses at parse, where v1 skipped it token by token.
+data acquire_unknown_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  acquire { wet }\n}\n"
+
+fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize_census(parse_tree: tree) })
+}
+
+fn full_of_stream(tokens: TokenStream) -> Outcome<NormalizedTree> {
+  bind_outcome(o: supplied_stream_parse(tokens: tokens), f: fn(tree) { normalize(parse_tree: tree) })
+}
+
+fn index_of(t: CensusTree) -> SymbolIndex {
+  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+}
+
+fn path_of(names: List<String>) -> FreeMonoid<Symbol> {
+  fold_list(xs: names, empty: Cons { head: ^m, tail: Empty }, cons: fn(acc, n) { list_snoc_item(xs: acc, item: symbol_intern_lexeme(lexeme: n)) })
+}
+
+fn indexes(index: SymbolIndex, names: List<String>) -> Bool {
+  match symbol_index_lookup(index: index, qualified_path: path_of(names: names)) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The census door admits the declaration, indexes its capability as a member, and marks the resource
+// path -- and only it -- as a declared resource: the record beside it is not one.
+test fn census_admits_a_resource_and_marks_only_its_path_holds() -> Bool {
+  match census_of_stream(tokens: valid_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      let index = index_of(t: t)
+      symbol_index_declares_resource_at(index: index, qualified_path: path_of(names: ["N"]))
+        && indexes(index: index, names: ["N", "now"])
+        && !symbol_index_declares_resource_at(index: index, qualified_path: path_of(names: ["T"]))
+        && indexes(index: index, names: ["T"])
+  }
+}
+
+// THE FULL DOOR ADMITS IT TOO, with every property entry read against its home. A resource sets nothing aside, so unlike a service with a transport it
+// reaches resolution: a fn's `requires`/`uses` reference to it must resolve on the route that compiles.
+test fn full_door_admits_a_resource_holds() -> Bool {
+  match full_of_stream(tokens: entries_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+// The normalize capture names the resource, and only it: the record beside it is captured as a
+// record, so the resource names the index marks are exactly the admitted resource declarations.
+test fn the_capture_names_the_resource_and_only_it_holds() -> Bool {
+  match supplied_stream_parse(tokens: valid_stream()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(
+        xs: type_declaration_kind_capture(nodes: node_subtree_nodes(root: tree)),
+        empty: 0,
+        cons: fn(found, k) {
+          match k {
+            DeclaredResource { name: n } => if n == ^N { found + 1 } else { found + 100 }
+            DeclaredRecord { name: _ } => found
+            DeclaredRefinement { name: _ } => found
+          }
+        }
+      ) == 1
+  }
+}
+
+test fn an_unknown_kind_refuses_located_RED() -> Bool {
+  match census_of_stream(tokens: unknown_kind_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_value_unknown
+  }
+}
+
+test fn a_repeated_kind_refuses_located_RED() -> Bool {
+  match census_of_stream(tokens: repeated_kind_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_entry_repeated
+  }
+}
+
+test fn a_missing_mode_refuses_RED() -> Bool {
+  match census_of_stream(tokens: missing_mode_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_resource_entry_missing
+  }
+}
+
+test fn an_acquire_body_other_than_hermetic_refuses_RED() -> Bool {
+  match census_of_stream(tokens: acquire_unknown_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn valid_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "now", file: ^resource_lowering_probe, start: 67, end: 70 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 71, end: 72 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 72, end: 73 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 74, end: 75 },
+    Token { class: ^dag_token_kw_type, lexeme: "type", file: ^resource_lowering_probe, start: 76, end: 80 },
+    Token { class: ^dag_token_ident, lexeme: "T", file: ^resource_lowering_probe, start: 81, end: 82 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 83, end: 84 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 84, end: 85 }
+  ])
+}
+
+test fn valid_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: valid_source, file: ^resource_lowering_probe, supplied: valid_stream())
+}
+
+fn unknown_kind_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capabilty", file: ^resource_lowering_probe, start: 30, end: 39 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 42, end: 46 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 46, end: 47 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 48, end: 52 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 53, end: 54 }
+  ])
+}
+
+test fn unknown_kind_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: unknown_kind_source, file: ^resource_lowering_probe, supplied: unknown_kind_stream())
+}
+
+fn repeated_kind_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Observation", file: ^resource_lowering_probe, start: 49, end: 60 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 63, end: 67 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 69, end: 73 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 74, end: 75 }
+  ])
+}
+
+test fn repeated_kind_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: repeated_kind_source, file: ^resource_lowering_probe, supplied: repeated_kind_stream())
+}
+
+fn missing_mode_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 41, end: 42 }
+  ])
+}
+
+test fn missing_mode_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: missing_mode_source, file: ^resource_lowering_probe, supplied: missing_mode_stream())
+}
+
+fn acquire_unknown_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "acquire", file: ^resource_lowering_probe, start: 56, end: 63 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 64, end: 65 },
+    Token { class: ^dag_token_ident, lexeme: "wet", file: ^resource_lowering_probe, start: 66, end: 69 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 70, end: 71 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 72, end: 73 }
+  ])
+}
+
+test fn acquire_unknown_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: acquire_unknown_source, file: ^resource_lowering_probe, supplied: acquire_unknown_stream())
+}
+
+fn entries_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Observation", file: ^resource_lowering_probe, start: 30, end: 41 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 44, end: 48 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 48, end: 49 },
+    Token { class: ^dag_token_ident, lexeme: "ReadWrite", file: ^resource_lowering_probe, start: 50, end: 59 },
+    Token { class: ^dag_token_ident, lexeme: "expires", file: ^resource_lowering_probe, start: 62, end: 69 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^resource_lowering_probe, start: 71, end: 75 },
+    Token { class: ^dag_token_ident, lexeme: "acquire", file: ^resource_lowering_probe, start: 78, end: 85 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 86, end: 87 },
+    Token { class: ^dag_token_ident, lexeme: "hermetic", file: ^resource_lowering_probe, start: 88, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 97, end: 98 },
+    Token { class: ^dag_token_ident, lexeme: "release", file: ^resource_lowering_probe, start: 101, end: 108 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 109, end: 110 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 110, end: 111 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 112, end: 113 }
+  ])
+}
+
+test fn entries_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: entries_source, file: ^resource_lowering_probe, supplied: entries_stream())
+}
+
+// A capability output field with an `= 1` default: since XL-2 PR2c-ii (#12948) a default lowers onto its
+// binder, so the capability is admitted and nothing is set aside. This claim asserted the pre-#12948 set-aside
+// and stood red on main from #12948 until XL-2 PR3b-i corrected it (re-run against main at 3756d624).
+data default_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int = 1 }\n  }\n}\n"
+
+// The census outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and the claim reads it.
+fn rdl_default_tail_census() -> Outcome<CensusTree> {
+  census_of_stream(tokens: default_tail_stream())
+}
+
+test fn a_default_tail_lowers_onto_its_binder_holds() -> Bool {
+  match rdl_default_tail_census() {
+    Accepted { value: _, diagnostics: d } => reason_count_is_zero(d: d, reason: ^body_lowering_reason_interface_member_unmodeled)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn default_tail_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^resource_lowering_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "output", file: ^resource_lowering_probe, start: 75, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "o", file: ^resource_lowering_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 87, end: 90 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^resource_lowering_probe, start: 91, end: 92 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^resource_lowering_probe, start: 93, end: 94 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 95, end: 96 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 99, end: 100 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 101, end: 102 }
+  ])
+}
+
+test fn default_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: default_tail_source, file: ^resource_lowering_probe, supplied: default_tail_stream())
+}
+
+// A well-formed io tail on a capability output field with a `from "k"` wire key: the shared io grammar admits it, and it refuses as a service's
+// set-aside member does -- the owned fatal service_realization_unreachable at the capability, with
+// interface_member_unmodeled pending at the tail -- never as the malformed-entry cause.
+data wire_key_tail_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n  capability c {\n    output { o: Int from \"k\" }\n  }\n}\n"
+
+test fn a_wire_key_tail_refuses_as_a_service_set_aside_RED() -> Bool {
+  match census_of_stream(tokens: wire_key_tail_stream()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      (diagnostics_fatal_reason(d: r) == ^body_lowering_reason_service_realization_unreachable)
+        && carries(ne: r, reason: ^body_lowering_reason_interface_member_unmodeled)
+        && !carries(ne: r, reason: ^body_lowering_reason_resource_entry_unread)
+  }
+}
+
+fn wire_key_tail_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^resource_lowering_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^resource_lowering_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_ident, lexeme: "resource", file: ^resource_lowering_probe, start: 9, end: 17 },
+    Token { class: ^dag_token_ident, lexeme: "N", file: ^resource_lowering_probe, start: 18, end: 19 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 20, end: 21 },
+    Token { class: ^dag_token_ident, lexeme: "kind", file: ^resource_lowering_probe, start: 24, end: 28 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "Capability", file: ^resource_lowering_probe, start: 30, end: 40 },
+    Token { class: ^dag_token_ident, lexeme: "mode", file: ^resource_lowering_probe, start: 43, end: 47 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "Read", file: ^resource_lowering_probe, start: 49, end: 53 },
+    Token { class: ^dag_token_ident, lexeme: "capability", file: ^resource_lowering_probe, start: 56, end: 66 },
+    Token { class: ^dag_token_ident, lexeme: "c", file: ^resource_lowering_probe, start: 67, end: 68 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 69, end: 70 },
+    Token { class: ^dag_token_ident, lexeme: "output", file: ^resource_lowering_probe, start: 75, end: 81 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^resource_lowering_probe, start: 82, end: 83 },
+    Token { class: ^dag_token_ident, lexeme: "o", file: ^resource_lowering_probe, start: 84, end: 85 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^resource_lowering_probe, start: 85, end: 86 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^resource_lowering_probe, start: 87, end: 90 },
+    Token { class: ^dag_token_ident, lexeme: "from", file: ^resource_lowering_probe, start: 91, end: 95 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"k\"", file: ^resource_lowering_probe, start: 96, end: 99 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 100, end: 101 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 104, end: 105 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^resource_lowering_probe, start: 106, end: 107 }
+  ])
+}
+
+test fn wire_key_tail_stream_is_what_tokenize_produces_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: wire_key_tail_source, file: ^resource_lowering_probe, supplied: wire_key_tail_stream())
+}
+
+fn reason_count_is_zero(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => true
+    Some { diagnostics: ne } => !carries(ne: ne, reason: reason)
+  }
+}
+
+fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  fold_list(xs: ne.tail, empty: ne.head.reason == reason, cons: fn(found, x) { found || (x.reason == reason) })
+}

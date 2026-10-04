@@ -1,5 +1,6 @@
 module v2.std.bounded_lattice_completeness
 
+import std.types { List }
 import v2.std.algebra {
   BoundedLatticeComplete,
   BoundedLatticeInstanceCompleteness,
@@ -13,7 +14,6 @@ import v2.std.algebra {
   fold_list_right
 }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -30,17 +30,19 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
   Symbol,
-  fold_node
+  fold_node,
+  StructuralLabel,
 }
+import v2.std.optional { Absent, Present }
 import v2.std.node_query {
+  binder_node_parts,
   NamedChildAmbiguous,
   NamedChildFound,
   NamedChildMissing,
@@ -60,6 +62,17 @@ fn bounded_lattice_lattice_field_completeness(lattice: Node) -> BoundedLatticeIn
   }
 }
 
+// THE NODE A FIELD'S SHAPE IS READ FROM. The scan meets both declared types, whose fields are binders
+// (v2.std.node_query binder_node_parts: a binder node identifies itself by its own labels), and values,
+// whose fields are the values themselves; a binder's subject is its type, any other field's is the
+// target.
+fn bounded_lattice_field_subject(target: Node) -> Node {
+  match binder_node_parts(n: target) {
+    Present { value: parts } => parts.type_node
+    Absent => target
+  }
+}
+
 fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstanceCompleteness {
   match named_child_lookup(root: instance, name: ^bounded_lattice_field_top) {
     NamedChildFound { target: _ } =>
@@ -67,7 +80,7 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
         NamedChildFound { target: _ } =>
           match named_child_lookup(root: instance, name: ^bounded_lattice_field_lattice) {
             NamedChildFound { target: lattice } =>
-              bounded_lattice_lattice_field_completeness(lattice: lattice)
+              bounded_lattice_lattice_field_completeness(lattice: bounded_lattice_field_subject(target: lattice))
             NamedChildMissing => BoundedLatticePartial { missing: MissingLatticeField }
             NamedChildAmbiguous => BoundedLatticePartial { missing: MissingLatticeField }
           }
@@ -130,12 +143,13 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
 fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
   if any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {
-      Named { name: sym } =>
+      Authored { name: sym } =>
         sym == ^algebra_edge
           || sym == ^inhabitant_edge
           || sym == ^lattice_field_meet
           || sym == ^lattice_field_join
           || sym == ^boolean_algebra_field_bounded_lattice
+      StructuralLabel { label: _ } => false
       Positional => false
     }
   } else {

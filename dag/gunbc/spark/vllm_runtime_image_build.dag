@@ -26,11 +26,13 @@ import extdeps.docker.cli {
 import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire, oci_content_digest_encoded_hex, parse_oci_content_digest_wire }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import gunbc.host_disk_observation { HostDiskObservation, DiskObserved, DiskObservationRefused, DiskUnobserved, host_disk_free_space_argv, host_disk_observation_of_df }
-import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
-import extdeps.ssh.client_options { serialize_ssh_client_options }
-import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
-import extdeps.tools.gnu_coreutils { rm_force_command }
-import gunbc.output_policy { OutcomeIsData }
+import extdeps.tools.gnu_coreutils { rm_force_command, mv_exact_destination_command }
+import gunbc.artifact_acquisition { AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text }
+import gunbc.spark.spark_file_blob { spark_file_blob_handler, spark_read_file_digest, SparkFileDigestRead, SparkFileDigestUnread }
+import gunbc.spark.fabric_blob_peer {
+  FabricBlobHolder, FabricBlobServing, FabricBlobServeRefused, fabric_blob_serve, fabric_blob_serve_stop,
+  fabric_blob_subject, fabric_blob_path, fabric_blob_root, fabric_blob_staging_directory, fabric_blob_pull_policy,
+}
 import gunbc.spark.vllm_image_identity {
   vllm_image_repository, glm53_image_repository, vllm_image_repository_for, glm53_derived_key_inputs, glm53_derived_key, glm53_derived_tag, vllm_image_build_key_inputs, vllm_image_build_key, vllm_image_tag_for_key, vllm_image_tag,
 }
@@ -74,7 +76,7 @@ import gunbc.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, fleet_ssh_attempt_identity,
   materialize_fleet_known_hosts_anchor, known_hosts_materialization_receipt,
   fleet_ssh_execution_context_of, fleet_ssh_credential_identity, fleet_ssh_credential_locus_label,
-  fleet_openssh_trust_policy_of, fleet_openssh_trust_options,
+  fleet_openssh_trust_policy_of,
 }
 import gunbc.fleet_ssh_credential_verify {
   FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
@@ -571,8 +573,14 @@ fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionC
 // the key without adding it here would have reproduced exactly that: a tag and a key that say
 // connectors-on while docker falls back to the Dockerfile's `false`, which is one identity standing for
 // two different sets of bytes. Keyed and passed are the same decision, made once.
+// FLASHINFER_VERSION IS PASSED, NOT LEFT AT THE DOCKERFILE'S DEFAULT. The recipe's flashinfer_version is
+// an input of the image's build key (gunbc.spark.vllm_image_identity), and upstream's Dockerfile installs
+// flashinfer-jit-cache at `ARG FLASHINFER_VERSION`; omitting the argument made the key name a version the
+// build never read, which held only while every recipe's version equalled its revision's default. The V4.1
+// candidate's 0.7.1rc1 is the first that does not.
 fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
   [
+    DockerBuildArg { name: "FLASHINFER_VERSION" as NonEmptyStr, value: r.flashinfer_version as String },
     DockerBuildArg { name: "CUDA_VERSION" as NonEmptyStr, value: r.cuda_version as String },
     DockerBuildArg { name: "BUILD_BASE_IMAGE" as NonEmptyStr, value: r.build_base_image as String },
     DockerBuildArg { name: "torch_cuda_arch_list" as NonEmptyStr, value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) },
@@ -1225,8 +1233,11 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // ── DISTRIBUTION: A BUILT IMAGE LEAVES ITS BUILD HOST, NAMED BY ITS CONFIGURATION DIGEST ──────
 //
 // THE FLEET RUNS NO REGISTRY, so a lane-built image reaches another host as BYTES: docker save on
-// the source, scp through the executor (the only side holding the fleet private key), docker load
-// on each target, and a readback. Rebuilding per host was the alternative and it re-pays a
+// the source into its fabric blob root, a pull of that blob by each target straight from the source
+// over the fabric rail (gunbc.spark.fabric_blob_peer), docker load on each target, and a readback.
+// The bytes used to go source -> executor -> target by scp, both legs on the Sparks' wireless
+// management link; a band-steering roam broke the upload mid-transfer on 2026-10-01 and every re-run
+// restarted from zero, while the rail between the two Sparks sat idle. Rebuilding per host was the alternative and it re-pays a
 // multi-hour compile for a fact one host already holds; that is DESIGN §2's redundant work,
 // refused. Modeled 2026-09-17 when the GLM derived image (33GB) had to leave srv10 for srv9/11/12,
 // and made subject-generic 2026-09-26 when the V4.1 produced image had to leave srv8 for srv5.
@@ -1244,8 +1255,8 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 //
 // THE BYTES ARE STATED BEFORE THEY MOVE. The image's Size (extdeps.docker.cli
 // docker_image_inspect_size_from_stdout) is the requirement at every place a copy lands: the
-// source's staging directory (the saved tar), the executor's (the relayed tar), and on each target
-// both the staging directory and the daemon's data root as the daemon itself reports it (the tar,
+// source's blob root (the saved tar), and on each target both the blob root and the daemon's data
+// root as the daemon itself reports it (the tar,
 // then the loaded layers, which coexist until the tar is removed). The two target paths'
 // filesystem identity is not read, and on the Sparks both sit on the root filesystem, so each is
 // required to hold BOTH copies -- an upper bound, exact where they share a filesystem, which is the
@@ -1253,8 +1264,7 @@ fn vllm_source_acquire_wet(host: String) -> ProcessExit
 // figures; a data root the daemon does not name refuses too, rather than reading a default path.
 // Every figure is a ByteSize from the inspect reader onward, so a requirement and a free-space
 // reading are one quantity compared as one type.
-data vllm_image_transfer_tar_stem: NonEmptyStr = "/tmp/gunbc-vllm-image" as NonEmptyStr
-data vllm_image_transfer_staging_directory: NonEmptyStr = "/tmp" as NonEmptyStr
+data vllm_image_transfer_tar_stem: NonEmptyStr = join([fabric_blob_staging_directory as String, "/gunbc-vllm-image"], "") as NonEmptyStr
 
 type VllmImageDistributionSubject {
   tag: NonEmptyStr
@@ -1267,14 +1277,6 @@ type VllmImageDistributionSubject {
 fn vllm_image_transfer_tar_path(config: OciContentDigest) -> NonEmptyStr {
   join([vllm_image_transfer_tar_stem as String, "-", oci_content_digest_encoded_hex(d: config), ".tar"], "") as NonEmptyStr
 }
-
-// THE LOCAL LEGS' ABSOLUTE PROGRAM PATHS ON THE EXECUTOR are filesystem observations, not
-// spellings to assume (extdeps.exec.command program_spelling_is_an_observation_claim): scp and rm
-// read 2026-09-17 on srv2. The ArgvCommand builders keep their PATH-resolved names; the runner is
-// handed the observed absolute path beside the command's arguments.
-data vllm_image_transfer_scp_path: NonEmptyStr = "/usr/bin/scp" as NonEmptyStr
-data vllm_image_transfer_rm_path: NonEmptyStr = "/usr/bin/rm" as NonEmptyStr
-data vllm_image_transfer_df_path: NonEmptyStr = "/usr/bin/df" as NonEmptyStr
 
 // THE GLM ARM'S TARGETS ARE ITS ROSTER MINUS THE SOURCE: the image is already on the host that
 // built it, and delivering there would move 33GB to no end.
@@ -1349,19 +1351,6 @@ fn vllm_image_remote_disk_refusal(ctx: SparkMaterializeContext, step: NonEmptySt
   }
 }
 
-fn vllm_image_local_disk_refusal(step: NonEmptyStr, path: NonEmptyStr, required: ByteSize) -> String? {
-  let place = join(["executor:", path as String], "")
-  let argv = host_disk_free_space_argv(path: path as String)
-  let r = gunbc.WitnessBin.Run(
-    workdir: "." as FilePath,
-    bin_path: vllm_image_transfer_df_path as FilePath,
-    args: argv.skip(n: 1),
-    expect: OutcomeIsData,
-  )
-  vllm_image_disk_refusal(step: step, place: place, required: required,
-    reading: host_disk_observation_of_df(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr, observed_on: "executor" as NonEmptyStr))
-}
-
 // THE TARGET'S TWO SHARES: the staging directory, and the data root the daemon names. The root is
 // read from `docker info` on the target itself, so the free-space read is of the filesystem the
 // load writes to, and a daemon that names no root refuses.
@@ -1374,7 +1363,7 @@ fn vllm_image_target_disk_refusal(ctx: SparkMaterializeContext, size: ByteSize) 
         DockerRootDirUnreadable { cause: why } => Present { value: join(["deliver-data-root: ", why], "") }
         DockerRootDir { path: root } =>
           vllm_image_first_refusal(refusals: [
-            vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-staging" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: both),
+            vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-staging" as NonEmptyStr, path: fabric_blob_root, required: both),
             vllm_image_remote_disk_refusal(ctx: ctx, step: "deliver-disk-data-root" as NonEmptyStr, path: root, required: both),
           ])
       }
@@ -1386,30 +1375,6 @@ fn vllm_image_first_refusal(refusals: List<String?>) -> String? {
     Present { value: _ } => acc
     Absent => r
   })
-}
-
-// THE WORKDIR IS THE RUN'S OWN CWD, NOT /tmp: the trust words carry the anchor's path as the
-// materialization wrote it -- target/fleet-ssh-attempt-...-known-hosts-<id>, CWD-RELATIVE, exactly
-// like this module's receipt paths. The first distribution run (2026-09-17) set /tmp here and scp
-// strict-checked against a known_hosts that was not there: "No ED25519 host key is known for
-// 192.168.1.237". The anchor and the receipts share the one assumption this module already makes:
-// the operator invokes the run from the repository root.
-fn vllm_image_local_leg(step: NonEmptyStr, bin_path: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome {
-  let r = gunbc.WitnessBin.Run(
-    workdir: "." as FilePath,
-    bin_path: bin_path as FilePath,
-    args: command.arguments,
-    expect: OutcomeIsData,
-  )
-  if r.success {
-    ImageLegRan { stdout: trim(s: r.stdout) }
-  } else {
-    ImageLegFailed { step: step, cause: join(["local leg ", bin_path as String, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
-  }
-}
-
-fn vllm_image_local_scp_leg(step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome {
-  vllm_image_local_leg(step: step, bin_path: vllm_image_transfer_scp_path, command: command)
 }
 
 type VllmImageHostDelivery
@@ -1452,50 +1417,77 @@ fn vllm_image_target_ctx(source_ctx: SparkMaterializeContext, host: HostIdentity
 }
 
 // ONE HOST'S DELIVERY, IN ORDER, from a host the pre-read found needing the image: the disk share,
-// upload, load, the readback, and only then the tar's removal. A readback that is not the subject
-// after a successful load is a refusal, not a retry -- the bytes that landed are not the bytes the
-// source holds, and that is a located fact.
+// the blob pulled over the fabric rail from the source (gunbc.spark.fabric_blob_peer, digested and
+// published by gunbc.spark.spark_file_blob), load, the readback, and only then the blob's removal. A
+// readback that is not the subject after a successful load is a refusal, not a retry -- the bytes
+// that landed are not the bytes the source holds, and that is a located fact.
 fn vllm_image_deliver_to_host(
   host: HostIdentity,
   source_ctx: SparkMaterializeContext,
-  trust_words: List<String>,
-  tar: NonEmptyStr,
+  holder: FabricBlobHolder,
+  tar_hex: NonEmptyStr,
   image: VllmImageDistributionSubject,
   size: ByteSize,
 ) -> VllmImageHostDelivery
 {
   let ctx = vllm_image_target_ctx(source_ctx: source_ctx, host: host)
   let want = render_oci_content_digest_wire(d: image.config)
-  match spark_reach_endpoint(host: host, path: ReachManagementLan) {
-    Absent => VllmImageHostDeliveryRefused { host: host, step: "deliver-reach" as NonEmptyStr, cause: join(["no ", spark_reach_path_wire(p: ReachManagementLan), " endpoint for ", host as String], "") }
-    Present { value: endpoint } =>
-      match vllm_image_target_disk_refusal(ctx: ctx, size: size) {
-        Present { value: why } => VllmImageHostDeliveryRefused { host: host, step: "deliver-disk" as NonEmptyStr, cause: why }
+  let blob = fabric_blob_path(hex: tar_hex)
+  match vllm_image_target_disk_refusal_after_root(ctx: ctx, size: size) {
+    Present { value: why } => VllmImageHostDeliveryRefused { host: host, step: "deliver-disk" as NonEmptyStr, cause: why }
+    Absent =>
+      match vllm_image_pull_outcome(outcome: acquire_artifact(
+        subject: fabric_blob_subject(identity: join(["image-tar ", want], "") as NonEmptyStr, hex: tar_hex, holders: [holder]),
+        handler: spark_file_blob_handler(ctx: ctx, policy: fabric_blob_pull_policy),
+      )) {
+        Present { value: why } => VllmImageHostDeliveryRefused { host: host, step: "deliver-pull" as NonEmptyStr, cause: why }
         Absent =>
-          match vllm_image_local_scp_leg(step: "deliver-upload" as NonEmptyStr, command: scp_upload_command(trust_words: trust_words, principal: spark_managed_executor_login, endpoint: endpoint as NonEmptyStr, local_path: tar, remote_path: tar)) {
+          match vllm_docker_leg(ctx: ctx, step: "deliver-load" as NonEmptyStr, command: docker_image_load_command(input_path: blob)) {
             ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
             ImageLegRan { stdout: _ } =>
-              match vllm_docker_leg(ctx: ctx, step: "deliver-load" as NonEmptyStr, command: docker_image_load_command(input_path: tar)) {
-                ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
-                ImageLegRan { stdout: _ } =>
-                  match vllm_image_read_held(ctx: ctx, step: "deliver-readback" as NonEmptyStr, tag: image.tag) {
-                    VllmImageHeldUnread { step: st, cause: why } =>
-                      VllmImageHostDeliveryRefused { host: host, step: st, cause: join(["the load reported success and the readback did not read: ", why], "") }
-                    VllmImageNotHeld =>
-                      VllmImageHostDeliveryRefused { host: host, step: "deliver-readback" as NonEmptyStr, cause: "the load reported success and the daemon names no image under the tag" }
-                    VllmImageHeldAs { id: id, size: _ } =>
-                      if (id as String) != want {
-                        VllmImageHostDeliveryRefused { host: host, step: "deliver-readback" as NonEmptyStr, cause: join(["the load reported success and the tag names ", id as String, ", not ", want], "") }
-                      } else {
-                        match vllm_docker_leg(ctx: ctx, step: "deliver-cleanup" as NonEmptyStr, command: rm_force_command(path: tar as String)) {
-                          ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
-                          ImageLegRan { stdout: _ } => VllmImageHostDelivered { host: host, digest: want as NonEmptyStr, already_present: false }
-                        }
-                      }
+              match vllm_image_read_held(ctx: ctx, step: "deliver-readback" as NonEmptyStr, tag: image.tag) {
+                VllmImageHeldUnread { step: st, cause: why } =>
+                  VllmImageHostDeliveryRefused { host: host, step: st, cause: join(["the load reported success and the readback did not read: ", why], "") }
+                VllmImageNotHeld =>
+                  VllmImageHostDeliveryRefused { host: host, step: "deliver-readback" as NonEmptyStr, cause: "the load reported success and the daemon names no image under the tag" }
+                VllmImageHeldAs { id: id, size: _ } =>
+                  if (id as String) != want {
+                    VllmImageHostDeliveryRefused { host: host, step: "deliver-readback" as NonEmptyStr, cause: join(["the load reported success and the tag names ", id as String, ", not ", want], "") }
+                  } else {
+                    match vllm_docker_leg(ctx: ctx, step: "deliver-cleanup" as NonEmptyStr, command: rm_force_command(path: blob as String)) {
+                      ImageLegFailed { step: st, cause: why } => VllmImageHostDeliveryRefused { host: host, step: st, cause: why }
+                      ImageLegRan { stdout: _ } => VllmImageHostDelivered { host: host, digest: want as NonEmptyStr, already_present: false }
+                    }
                   }
               }
           }
       }
+  }
+}
+
+// THE BLOB ROOT EXISTS BEFORE ITS FREE SPACE IS READ. df answers for an existing path, and a host
+// that has never held a blob has no root yet -- so the first wet run (fleet-converge 36908917446)
+// refused at the disk read with `df: /var/lib/gunbc/blobs: No such file or directory` before a byte
+// moved. Creating the directories is idempotent and is what every later leg needs anyway.
+fn vllm_image_blob_directories_command() -> ArgvCommand {
+  mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: fabric_blob_staging_directory as String)
+}
+
+fn vllm_image_target_disk_refusal_after_root(ctx: SparkMaterializeContext, size: ByteSize) -> String? {
+  match vllm_docker_leg(ctx: ctx, step: "deliver-staging" as NonEmptyStr, command: vllm_image_blob_directories_command()) {
+    ImageLegFailed { step: st, cause: why } => Present { value: join([st as String, ": ", why], "") }
+    ImageLegRan { stdout: _ } => vllm_image_target_disk_refusal(ctx: ctx, size: size)
+  }
+}
+
+// THE PULL'S OUTCOME, AS THE DELIVERY READS IT: the blob published (fetched now, or already there from
+// an interrupted earlier run that got as far as publishing) lets the load proceed; anything else is the
+// fold's own refusal text, which already names the source and the state.
+fn vllm_image_pull_outcome(outcome: AcquisitionOutcome) -> String? {
+  match outcome {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => none
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => none
+    AcquisitionRefused { cause: c } => Present { value: acquisition_refusal_text(cause: c) }
   }
 }
 
@@ -1581,46 +1573,62 @@ fn vllm_image_settled_deliveries(reads: List<VllmImageTargetRead>, image: VllmIm
 }
 
 // THE MOVE ITSELF, ONCE THE SOURCE IS KNOWN TO HOLD THE SUBJECT AND AT LEAST ONE TARGET NEEDS IT:
-// the source's and the executor's disk shares, save (as root through the privileged leg, then chmod
-// so the executor principal can read it back out), pull the tar to the executor, deliver to each
-// target that needs it, and remove the staging tars on the executor and the source.
+// the source's disk share, save (as root through the privileged leg) into the blob staging
+// directory, digest the tar and publish it into the blob root under that digest, serve the root on
+// the source's rail address, deliver to each target that needs it, then stop serving and remove the
+// source's blob. The tar's sha256 is READ on the source after the save, never assumed: `docker save`
+// is not guaranteed to reproduce bytes, so the configuration digest names the image and the tar's own
+// digest names this one transfer's bytes, and every target is held to it before anything is loaded.
 fn vllm_image_move(
   source_ctx: SparkMaterializeContext,
-  source_endpoint: NonEmptyStr,
   image: VllmImageDistributionSubject,
   size: ByteSize,
   needing: List<HostIdentity>,
 ) -> VllmImageDistribution
 {
   let tar = vllm_image_transfer_tar_path(config: image.config)
-  let trust_words = serialize_ssh_client_options(options: fleet_openssh_trust_options(policy: source_ctx.trust))
-  match vllm_image_first_refusal(refusals: [
-    vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: vllm_image_copies(size: size, copies: 1)),
-    vllm_image_local_disk_refusal(step: "distribute-disk-executor" as NonEmptyStr, path: vllm_image_transfer_staging_directory, required: vllm_image_copies(size: size, copies: 1)),
-  ]) {
-    Present { value: why } => VllmImageDistributionRefused { step: "distribute-disk" as NonEmptyStr, cause: why }
-    Absent =>
-      match vllm_docker_leg(ctx: source_ctx, step: "distribute-save" as NonEmptyStr, command: docker_image_save_command(image: image.tag, output_path: tar)) {
-        ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
-        ImageLegRan { stdout: _ } =>
-          match vllm_docker_leg(ctx: source_ctx, step: "distribute-save-chmod" as NonEmptyStr, command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "644" as NonEmptyStr, path: tar as String)) {
+  match vllm_docker_leg(ctx: source_ctx, step: "distribute-staging" as NonEmptyStr, command: vllm_image_blob_directories_command()) {
+    ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match vllm_image_remote_disk_refusal(ctx: source_ctx, step: "distribute-disk-source" as NonEmptyStr, path: fabric_blob_root, required: vllm_image_copies(size: size, copies: 1)) {
+        Present { value: why } => VllmImageDistributionRefused { step: "distribute-disk" as NonEmptyStr, cause: why }
+        Absent =>
+          match vllm_docker_leg(ctx: source_ctx, step: "distribute-save" as NonEmptyStr, command: docker_image_save_command(image: image.tag, output_path: tar)) {
             ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
             ImageLegRan { stdout: _ } =>
-              match vllm_image_local_scp_leg(step: "distribute-download" as NonEmptyStr, command: scp_download_command(trust_words: trust_words, principal: spark_managed_executor_login, endpoint: source_endpoint, remote_path: tar, local_path: tar)) {
-                ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
-                ImageLegRan { stdout: _ } => {
-                  let delivered = map(needing, h => vllm_image_deliver_to_host(host: h, source_ctx: source_ctx, trust_words: trust_words, tar: tar, image: image, size: size))
-                  match vllm_image_local_leg(step: "distribute-local-cleanup" as NonEmptyStr, bin_path: vllm_image_transfer_rm_path, command: rm_force_command(path: tar as String)) {
-                    ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
-                    ImageLegRan { stdout: _ } =>
-                      match vllm_docker_leg(ctx: source_ctx, step: "distribute-source-cleanup" as NonEmptyStr, command: rm_force_command(path: tar as String)) {
-                        ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
-                        ImageLegRan { stdout: _ } => VllmImageDistributed { deliveries: delivered }
-                      }
-                  }
-                }
+              match spark_read_file_digest(ctx: source_ctx, path: tar) {
+                SparkFileDigestUnread { cause: why } => VllmImageDistributionRefused { step: "distribute-digest" as NonEmptyStr, cause: why as String }
+                SparkFileDigestRead { hex: h } =>
+                  vllm_image_move_published(source_ctx: source_ctx, image: image, size: size, needing: needing, tar: tar, tar_hex: h as NonEmptyStr)
               }
           }
+      }
+  }
+}
+
+fn vllm_image_move_published(
+  source_ctx: SparkMaterializeContext,
+  image: VllmImageDistributionSubject,
+  size: ByteSize,
+  needing: List<HostIdentity>,
+  tar: NonEmptyStr,
+  tar_hex: NonEmptyStr,
+) -> VllmImageDistribution
+{
+  let blob = fabric_blob_path(hex: tar_hex)
+  match vllm_docker_leg(ctx: source_ctx, step: "distribute-publish" as NonEmptyStr, command: mv_exact_destination_command(source: tar as String, destination: blob as String)) {
+    ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+    ImageLegRan { stdout: _ } =>
+      match fabric_blob_serve(ctx: source_ctx) {
+        FabricBlobServeRefused { holder: _, step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+        FabricBlobServing { serving: holder } => {
+          let delivered = map(needing, h => vllm_image_deliver_to_host(host: h, source_ctx: source_ctx, holder: holder, tar_hex: tar_hex, image: image, size: size))
+          let stopped = fabric_blob_serve_stop(ctx: source_ctx)
+          match vllm_docker_leg(ctx: source_ctx, step: "distribute-source-cleanup" as NonEmptyStr, command: rm_force_command(path: blob as String)) {
+            ImageLegFailed { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
+            ImageLegRan { stdout: _ } => VllmImageDistributed { deliveries: delivered }
+          }
+        }
       }
   }
 }
@@ -1632,7 +1640,6 @@ fn vllm_image_move(
 // hosts is the CALLER's: which subject holds them and which claims fence them differ by arm.
 fn distribute_vllm_image(
   source_ctx: SparkMaterializeContext,
-  source_endpoint: NonEmptyStr,
   image: VllmImageDistributionSubject,
   targets: List<HostIdentity>,
 ) -> VllmImageDistribution
@@ -1657,7 +1664,7 @@ fn distribute_vllm_image(
         if count(needing) == 0 {
           VllmImageDistributed { deliveries: settled }
         } else {
-          match vllm_image_move(source_ctx: source_ctx, source_endpoint: source_endpoint, image: image, size: size, needing: needing) {
+          match vllm_image_move(source_ctx: source_ctx, image: image, size: size, needing: needing) {
             VllmImageDistributionRefused { step: st, cause: why } => VllmImageDistributionRefused { step: st, cause: why }
             VllmImageDistributed { deliveries: moved } => VllmImageDistributed { deliveries: concat(settled, moved) }
           }
@@ -1704,7 +1711,6 @@ fn glm53_image_distribute_wet() -> ProcessExit
                 Present { value: config } =>
                   distribute_vllm_image(
                     source_ctx: ctx,
-                    source_endpoint: target.endpoint,
                     image: VllmImageDistributionSubject { tag: identity_tag, config: config },
                     targets: vllm_image_distribution_targets(source: source),
                   )

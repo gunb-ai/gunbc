@@ -256,7 +256,11 @@ fn console_lease_gap(console_lease: HeldLease) -> CollectorGap? {
   let verdict = held_lease_observed_verdict(observed: console_lease.observed)
   match verdict {
     Converged => none
-    _ => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+    Absent => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+    Drifted => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+    Conflict => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+    Inaccessible => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
+    UnknownRefused => Present { value: ConsoleLeaseNotHeld { verdict: verdict } }
   }
 }
 

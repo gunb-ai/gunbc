@@ -1,14 +1,16 @@
 module gunbc.fabric_writer_roster
 
+import gunbc.fabric_storage_binding { fabric_storage_binding_for }
 import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent }
+import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for }
-import gunbc.fabric_storage_placement { fabric_storage_placement }
-import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered }
-import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
+import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
+import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric_writer_identity_observe {
-  FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, NotAReadingOfTheDoor,
+  FabricWriterIdentityReceipt, fabric_writer_identity_ground, WriterUserPrincipalObserved, WriterPrincipalUnavailable, WriterLocalPeerObserved, NotAReadingOfTheDoor,
 }
 
 // THE SERVED DOOR'S WRITER ROSTER: the tailnet USER principals admitted to put and advance through
@@ -27,21 +29,20 @@ import gunbc.fabric_writer_identity_observe {
 // stripped header or a direct connection produces (extdeps.tailscale.identity), and none is a
 // principal.
 //
-// WHAT THIS ROSTER DOES NOT WALL: the placed host's in-process writers, which never reach the
-// served door (their wall is the store directories' ownership, gunbc.fabric_storage_placement
-// fabric_storage_directory); and anything that reaches the backend socket without the proxy, for
-// which the header is self-asserted (extdeps.tailscale.identity's deployment property).
+// THE HEADER IS BELIEVED ONLY FROM THE PROXY: the door is a unix socket whose peer the kernel
+// attests, so a login is read only when the peer is the tailscale proxy, and a local process that
+// sends the header is judged as itself (fabric_door_principal_of).
 type FabricWriterIdentityObservation {
   run: NonEmptyStr
   receipt: FabricWriterIdentityReceipt
 }
 
 // THE READINGS, 2026-09-27 (fleet-converge mode fabric_writer_identity_observe, one run per host).
-// NONE IS A LOGIN: srv1 is the placed host and read unproxied, and srv3 and srv4 could not resolve
-// the door's tailnet name (curl exit 6), so the roster is EMPTY and the door refuses every served
-// put and advance -- costing no writer that works today, since none reached the door. The binding
-// each row carries is DERIVED from the current placement (fabric_storage_binding_for), not a copy
-// of the URL the run printed, so a moved placement moves it.
+// NONE IS A LOGIN: srv1 is the placed host and, before the door cutover, read unproxied; srv3 and
+// srv4 could not resolve the placed host's tailnet name (curl exit 6). So the roster is EMPTY and
+// the door refuses every proxied put and advance -- costing no writer that works today, since none
+// reached the door. The binding each row carries is DERIVED from the current placement
+// (fabric_storage_binding_for), not a copy of the URL the run printed.
 fn recorded_binding(host: String) -> FabricStorageBinding {
   fabric_storage_binding_for(placement: fabric_storage_placement(), executor: host as HostIdentity)
 }
@@ -53,7 +54,7 @@ fn door_unresolved() -> NonEmptyStr {
 fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation> {
   [
     FabricWriterIdentityObservation { run: "36347411725" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
-      host: "srv1" as HostIdentity, binding: recorded_binding(host: "srv1"),
+      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root()) },
       read: FabricIdentityUnproxied, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
     FabricWriterIdentityObservation { run: "36347414620" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
       host: "srv3" as HostIdentity, binding: recorded_binding(host: "srv3"),
@@ -68,6 +69,7 @@ fn observed_login(o: FabricWriterIdentityObservation) -> List<NonEmptyStr> {
   match fabric_writer_identity_ground(read: o.receipt.read) {
     WriterUserPrincipalObserved { login: l } => [l]
     WriterPrincipalUnavailable { reason: _ } => []
+    WriterLocalPeerObserved { user: _ } => []
     NotAReadingOfTheDoor { reason: _ } => []
   }
 }
@@ -81,16 +83,43 @@ fn fabric_served_writer_roster() -> List<NonEmptyStr> {
   fabric_served_writer_roster_of(observations: fabric_writer_identity_observations())
 }
 
-type FabricServedWriterAdmission
-  = FabricServedWriterAdmitted { login: NonEmptyStr }
-  | FabricServedWriterRefused { refusal: FabricWriterRefusal }
+// THE DOOR'S TWO ROSTERS, ONE ADMISSION. A proxied request (the peer is the tailscale proxy) is
+// admitted by its login against the served roster above; a local peer is admitted by its account
+// against the door directory's dependents (gunbc.fabric_storage_placement
+// fabric_storage_door_local_writers), the same declaration the kernel enforces on the socket's
+// directory. A proxied request with no login, a local peer outside that roster, and a peer the
+// kernel did not attest are each refused, and each refusal is its own arm of std.fabric_storage FabricWriterRefusal.
+type FabricDoorWriterAdmission
+  = FabricDoorWriterAdmitted { principal: NonEmptyStr }
+  | FabricDoorWriterRefused { refusal: FabricWriterRefusal }
+
+fn fabric_door_principal_of(tailscale_identity: String, peer_user: String) -> FabricDoorPrincipal {
+  if peer_user == "" { DoorUnattested }
+  else if peer_user == (fabric_storage_door_proxy_peer as String) { DoorProxied { identity: tailnet_identity_of(header_value: tailscale_identity) } }
+  else { DoorLocalPeer { user: peer_user as NonEmptyStr } }
+}
+
+fn listed(roster: List<NonEmptyStr>, name: NonEmptyStr) -> Bool {
+  any(roster, r => (r as String) == (name as String))
+}
 
 // The comparison is exact, as extdeps.tailscale.identity requires of any identity match.
-fn fabric_served_writer_admission_over(roster: List<NonEmptyStr>, identity: TailnetIdentity) -> FabricServedWriterAdmission {
-  match identity {
-    TailnetIdentityAbsent => FabricServedWriterRefused { refusal: WriterLoginAbsent }
-    TailnetUser { login: l } =>
-      if any(roster, r => (r as String) == (l as String)) { FabricServedWriterAdmitted { login: l } }
-      else { FabricServedWriterRefused { refusal: WriterLoginUnrostered { login: l } } }
+fn fabric_door_writer_admission_over(logins: List<NonEmptyStr>, locals: List<NonEmptyStr>, principal: FabricDoorPrincipal) -> FabricDoorWriterAdmission {
+  match principal {
+    DoorUnattested => FabricDoorWriterRefused { refusal: WriterPeerUnattested }
+    DoorLocalPeer { user: u } =>
+      if listed(roster: locals, name: u) { FabricDoorWriterAdmitted { principal: u } }
+      else { FabricDoorWriterRefused { refusal: WriterPeerUnrostered { account: u } } }
+    DoorProxied { identity: i } =>
+      match i {
+        TailnetIdentityAbsent => FabricDoorWriterRefused { refusal: WriterLoginAbsent }
+        TailnetUser { login: l } =>
+          if listed(roster: logins, name: l) { FabricDoorWriterAdmitted { principal: l } }
+          else { FabricDoorWriterRefused { refusal: WriterLoginUnrostered { login: l } } }
+      }
   }
+}
+
+fn fabric_door_local_roster() -> List<NonEmptyStr> {
+  fabric_storage_door_local_writers()
 }

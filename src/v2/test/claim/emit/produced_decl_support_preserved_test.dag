@@ -1,5 +1,6 @@
 module v2.test.emit.produced_decl_support_preserved
 
+import std.types { List }
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.compilers.target_model {
@@ -21,10 +22,9 @@ import v2.std.compilers.target_model {
   target_model_augment_value_semantics_carriers,
   target_model_type_atom_node
 }
-import v2.std.collection { List, list_at_optional, Absent, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.collection { list_at_optional, Absent, Present }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
@@ -52,7 +52,8 @@ data pdp_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
   param_separator: [],
   type_ref_token_class: ^pdp_type_ident,
   block_close: [],
-  block_evaluation_mode: ValueProducing
+  block_evaluation_mode: ValueProducing,
+  function_type_realizations: []
 }
 
 fn pdp_wired_support() -> ProducedDeclSupport {
@@ -81,7 +82,7 @@ fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
 fn pdp_rendered_scaffold(rows: ProducedDeclRenderRows) -> Outcome<TargetBodiedArrowStatementScaffold> {
   bind_outcome(
     o: table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add),
-    f: fn(decl) { produced_decl_render_from_rows(rows: rows, decl: decl) }
+    f: fn(decl) { produced_decl_render_from_rows(rows: rows, decl: decl, type_binding: fn(t) { produced_decl_support_type_as_itself(type_node: t) }) }
   )
 }
 
@@ -149,4 +150,14 @@ test fn produced_decl_support_survives_augmentation() -> Bool {
     && pdp_after_use_site_ownership(support: pdp_wired_support())
     && !pdp_after_value_semantics(support: ProducedDeclUnwired)
     && !pdp_after_use_site_ownership(support: ProducedDeclUnwired)
+}
+
+// This claim's subject is that produced-declaration support survives, not how a type is spelled, so its
+// type_binding binds an atom as itself -- the renderer's behaviour before type spelling was resolved by
+// the caller (v2.compiler.emit_produced produced_type_binding owns that).
+fn produced_decl_support_type_as_itself(type_node: Node) -> Outcome<Symbol> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } => Accepted { value: id, diagnostics: None }
+    _ => Accepted { value: ^produced_decl_support_non_atom_type, diagnostics: None }
+  }
 }

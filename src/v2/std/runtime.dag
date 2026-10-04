@@ -1,10 +1,11 @@
 module v2.std.runtime
 
+import std.types { List }
 import v2.std.collection {
-  List,
   Map
 }
 import v2.std.optional {
+  Absent,
   Optional,
   Present,
   optional_absent,
@@ -19,7 +20,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.algebra { fold_list, fold_list_node, algebra_empty_conj }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
 import v2.std.node {
@@ -27,11 +27,18 @@ import v2.std.node {
   Behavior,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  symbol_eq,
+  Bind,
+  Branch,
+  Loop,
+  Match,
+  Transform,
+  Value
 }
 
 type RuntimeIdentity {
@@ -122,7 +129,7 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 }
 
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn runtime_value_conj_node(children: List<Edge>) -> Node {
@@ -202,6 +209,41 @@ fn runtime_field_value_node_projection(
       }
     RuntimeValueNodeUnrepresentable => RuntimeValueNodeUnrepresentable
   }
+}
+
+// THE VALUE-SIDE TWIN OF v2.std.node_query declared_field_named, and it lives here because the field
+// list is this module's carrier. A consumer selecting a field -- the evaluator's field projection is the
+// first -- reads it through this one reader rather than destructuring the list itself, so there is one
+// answer to "which value does this aggregate hold for this field".
+type RuntimeFieldSelection
+  = RuntimeFieldFound { value: RuntimeValue }
+  | RuntimeFieldMissing
+
+fn runtime_field_value_matching(
+  field_value: RuntimeFieldValue,
+  name: Symbol
+) -> RuntimeFieldSelection {
+  if symbol_eq(a: field_value.field, b: name) {
+    RuntimeFieldFound { value: field_value.value }
+  } else {
+    RuntimeFieldMissing
+  }
+}
+
+fn runtime_aggregate_field_selection(
+  fields: List<RuntimeFieldValue>,
+  name: Symbol
+) -> RuntimeFieldSelection {
+  fold_list(
+    xs: fields,
+    empty: RuntimeFieldMissing,
+    cons: fn(acc, field_value) {
+      match runtime_field_value_matching(field_value: field_value, name: name) {
+        RuntimeFieldFound { value: v } => RuntimeFieldFound { value: v }
+        RuntimeFieldMissing => acc
+      }
+    }
+  )
 }
 
 fn runtime_fields_list_node(fields: List<RuntimeFieldValue>) -> RuntimeValueNodeProjection {

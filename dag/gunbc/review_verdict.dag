@@ -173,6 +173,7 @@ fn is_actionable_finding(finding: ReviewFinding) -> Bool {
 
 service gunbc.ReviewVerdicts {
   operation Parse {
+    requires none
     input {
       request: ReviewVerdictParseRequest
     }
@@ -183,6 +184,7 @@ service gunbc.ReviewVerdicts {
   }
 
   operation Tally {
+    requires none
     input {
       repo: NonEmptyStr
       pr_number: Int

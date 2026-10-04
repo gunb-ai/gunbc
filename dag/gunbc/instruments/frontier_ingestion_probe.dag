@@ -1,13 +1,11 @@
 module gunbc.tools.frontier_ingestion_probe
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.node { Symbol }
 import std.content_hash { ContentHash, content_hash_atom, content_hash_combine_structural, as_content_hash_structural }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.grammar { ParseTree }
 import v2.std.diagnostic { Diagnostic, Diagnostics, NonEmptyDiagnostics, Accepted, Rejected, None }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens, LexRuleSet, LexArtifact }
@@ -123,7 +121,7 @@ fn frontend_stage_label(s: FrontendStage) -> String {
 //
 // Every inner arm is ENUMERATED rather than closed with a wildcard, and the verbosity is the
 // point. A `_ => false` inner arm is non-fold residue over a closed coproduct — the class
-// v2.lens.non_fold_residue counts and refuses unrostered — and it is that for a reason worth
+// the required floor's typed non-fold-residue check refuses unrostered — and it is that for a reason worth
 // paying six times six lines for: with wildcards, adding a seventh stage leaves this function
 // compiling and quietly answering false for every comparison involving it. Enumerated, the
 // addition fails to typecheck at all thirty-six positions, so the new stage cannot be introduced

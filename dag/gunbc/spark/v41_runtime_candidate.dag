@@ -2,7 +2,7 @@ module gunbc.spark.v41_runtime_candidate
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, TypeParameter }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_atom, serialize_content_hash, sha256_hex_digest }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { hardware_thread_count_value, byte_size_count }
@@ -12,11 +12,11 @@ import extdeps.gpu.types {
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
-  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_d2d649e6_revision,
+  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_recipe_with_flashinfer, vllm_d2d649e6_revision,
 }
 import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
-  flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels,
+  flashinfer_0_7_1rc1, flashinfer_0_7_1rc1_wheels, flashinfer_0_7_1rc1_version,
   FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel,
   FlashInferWheelFilenameFields, flashinfer_wheel_filename_fields,
 }
@@ -128,10 +128,22 @@ type V41IdentityStanding
 // counted.
 data v41_jit_cache_package: NonEmptyStr = "flashinfer-jit-cache" as NonEmptyStr
 
+// FROM 0.7.x THE JIT-CACHE IS A SHIM PLUS ONE PROVIDER PER ARCHITECTURE: the 0.7.1rc1 shim wheel's own
+// METADATA (extdeps.flashinfer.flashinfer flashinfer_0_7_1rc1_wheels) Requires-Dist names these eight at
+// the shim's version, so `flashinfer-jit-cache==<version>` installs all nine and the closure carries all
+// nine. Every one of them is platform-specific, so the build-target gate below covers the family.
 data v41_required_kernel_packages: List<NonEmptyStr> = [
   "flashinfer-python" as NonEmptyStr,
   "flashinfer-cubin" as NonEmptyStr,
   v41_jit_cache_package,
+  "flashinfer-jit-cache-sm80" as NonEmptyStr,
+  "flashinfer-jit-cache-sm89" as NonEmptyStr,
+  "flashinfer-jit-cache-sm90a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm100a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm103a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm110a" as NonEmptyStr,
+  "flashinfer-jit-cache-sm120f" as NonEmptyStr,
+  "flashinfer-jit-cache-sm121a" as NonEmptyStr,
 ]
 
 // THE JIT-CACHE WHEEL IS THE ONE PLATFORM-SPECIFIC MEMBER OF THIS CLOSURE, and its package name plus the
@@ -156,7 +168,7 @@ type V41KernelBuildTarget sole_constructor {
 }
 
 data v41_jit_cache_build_target: V41KernelBuildTarget = V41KernelBuildTarget {
-  version: "0.6.18.post1+cu130" as NonEmptyStr,
+  version: "0.7.1rc1+cu130" as NonEmptyStr,
   python: "cp39" as NonEmptyStr,
   abi: "abi3" as NonEmptyStr,
   platform: "manylinux_2_28_aarch64" as NonEmptyStr,
@@ -169,7 +181,7 @@ fn v41_kernel_field_defect(field: String, actual: String, expected: NonEmptyStr,
 }
 
 fn v41_jit_cache_target_defects(wheels: List<FlashInferWheel>, target: V41KernelBuildTarget) -> List<NonEmptyStr> {
-  flat_map(v41_wheels_named(wheels: wheels, package: v41_jit_cache_package), w =>
+  flat_map(filter(wheels, w => starts_with(s: w.package as String, prefix: v41_jit_cache_package as String)), w =>
     match flashinfer_wheel_filename_fields(filename: w.filename as String) {
       Absent => [join(["the jit-cache wheel ", w.filename as String, " does not parse as a wheel filename, so the build target it installs is unknown"], "") as NonEmptyStr]
       Present { value: f } =>
@@ -514,6 +526,7 @@ fn v41_decl_field_wire(f: DeclField) -> String {
   match f {
     WholeDeclaration => "*"
     NamedField { field_name: n } => n as String
+    TypeParameter { name: t } => concat("<", concat(t as String, ">"))
   }
 }
 
@@ -683,9 +696,11 @@ fn v41_candidate_standing(c: V41CandidateInputs, readback: V41StoreReadback) -> 
     standing: match readback {
       V41StoreReadbackRefused { defects: rd } => match standing {
         V41CandidateRefused { defects: d } => V41CandidateRefused { defects: concat(d, rd) }
-        _ => V41CandidateRefused { defects: rd }
+        V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: _, authorization_obligation: _ } => V41CandidateRefused { defects: rd }
+        V41CandidateUnestablished { obligations: _ } => V41CandidateRefused { defects: rd }
       }
-      _ => standing
+      V41StoreReadbackVerified { host: _, observed_at: _, samples: _ } => standing
+      V41StoreReadbackUnread { obligation: _ } => standing
     },
     derivation: V41DerivationEvidence { row_store_readback: readback },
   }
@@ -740,13 +755,22 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
 
 // UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED ARCH OVERRIDE (12.1).
 // Parallelism on a dedicated builder is upstream's own max_jobs (16), not the Spark-sharing cap of 6.
+// THE KERNEL RELEASE IS THE CANDIDATE'S, NOT THE BASE'S. d2d649e6 pins FlashInfer 0.6.18.post1, whose
+// SM120 sparse-MLA decode exists only at 64-token pages; with the 64-token kernel page the V4.1 indexer
+// needs on SM12x (member sm120_64_token_kernel_pages), a ratio-2 layer's extra pages are 32 tokens, which
+// only 0.7.1rc1 serves (extdeps.flashinfer.flashinfer flashinfer_0_7_1rc1_version). The build argument
+// FLASHINFER_VERSION carries it to the jit-cache install; the requirements member carries it to
+// flashinfer-python and flashinfer-cubin, so the image holds one FlashInfer release, not two.
 fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
-  vllm_recipe_targeting(
-    base: vllm_d2d649e6_aarch64_release_recipe,
-    torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
-    install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
-    max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
-    nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+  vllm_recipe_with_flashinfer(
+    base: vllm_recipe_targeting(
+      base: vllm_d2d649e6_aarch64_release_recipe,
+      torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+      install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
+      max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
+      nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
+    ),
+    flashinfer_version: flashinfer_0_7_1rc1_version,
   )
 }
 
@@ -768,8 +792,8 @@ data v41_candidate_partition: V41EngramResidencyPartition = V41EngramResidencyPa
 data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   runtime: V41RuntimeArtifactInputs {
     recipe: v41_candidate_recipe(),
-    kernel_acquisition: flashinfer_0_6_18_post1,
-    kernel_wheels: flashinfer_0_6_18_post1_wheels,
+    kernel_acquisition: flashinfer_0_7_1rc1,
+    kernel_wheels: flashinfer_0_7_1rc1_wheels,
     patches: v41_storage_backed_patch_population(),
   },
   model_source: V41ModelSourceInputs {
@@ -881,9 +905,105 @@ fn v41_storage_backed_patch_population() -> V41PatchPopulation {
             Present { value: hook_digest } =>
               match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "binding of the file-backed overlay in engram.py: FileBackedParallelEngramEmbedding for every Engram layer when the launch names a row-store manifest" as NonEmptyStr) {
                 Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
-                Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
+                Present { value: hook } => v41_with_sm120_members(engram: [overlay, hook])
               }
           }
+      }
+  }
+}
+
+// THE SM120 MEMBERS. The population is the image's whole patch list, applied in order, and these two
+// follow the Engram pair; neither touches a file the Engram members touch.
+//   1. The SWA cache's page size. vllm/models/deepseek_v4_1/attention.py constructs DeepseekV4SWACache
+//      with the literal block_size=32 (V4 passes the SWA cache's own default, 64). FlashInfer's SM120 DSv4
+//      decode kernel is instantiated for 64-token pages only (flashinfer.mla._sparse_mla_sm120
+//      _DECODE_DSV4_PAGE_BLOCK_SIZE) and every call with 64 or fewer query tokens must take it, with the
+//      SWA cache as its primary pool -- so on this tree every decode step is refused, whatever its topk.
+//      No engine argument reaches that literal. The member lifts it to a class attribute,
+//      swa_block_size, default 32, and DeepseekV4FlashInferSM120Attention sets 64: the other platform
+//      classes keep the page they had.
+//   2. The control. It creates vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest, which takes a
+//      rank's own engine argv, builds the ModelConfig vLLM's serve parser derives from it, and calls
+//      FlashInfer's DSv4 entry point at every shape with 64 or fewer query tokens that rank reaches, every
+//      deciding figure read off the installed tree. Its consumer is the launch's pre-staging gate,
+//      gunbc.spark.v41_group_a_launch v41_sm120_gate, which runs it on each rank's host in the image
+//      over that rank's argv and stops the launch on anything short of SELFTEST PASS. The member applies
+//      alone to the unpatched tree, which is how its RED was taken (fleet-converge 36857198484: refused
+//      unpatched; refused at 1152 without the text-only request; passed with both).
+data v41_sm120_swa_page_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr
+data v41_sm120_decode_selftest_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr
+
+fn v41_with_sm120_members(engram: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_sm120_swa_page_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 SWA page member at dag/gunbc/spark/patches/d2d649e6/sm120_swa_page_block_size.patch" as NonEmptyStr }
+    Present { value: page_digest } =>
+      match v41_engine_patch(path: v41_sm120_swa_page_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: page_digest.hex as String, purpose: "SM120 SWA cache page of 64 tokens: DeepseekV4FlashInferSM120Attention.swa_block_size, the only page FlashInfer's SM120 DSv4 decode kernel takes" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 SWA page member was not a sha256 digest" as NonEmptyStr }
+        Present { value: page } =>
+          match v41_digest_declared_patch(path: v41_sm120_decode_selftest_patch_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 decode-shape self-test member at dag/gunbc/spark/patches/d2d649e6/sm120_decode_shape_selftest.patch" as NonEmptyStr }
+            Present { value: test_digest } =>
+              match v41_engine_patch(path: v41_sm120_decode_selftest_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: test_digest.hex as String, purpose: "SM120 decode-shape self-test: FlashInfer's DSv4 entry point at the TP4 launch's decode and short-prefill shapes" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 self-test member was not a sha256 digest" as NonEmptyStr }
+                Present { value: control } => v41_with_sm120_kernel_page_members(applied: concat(engram, [page, control]))
+              }
+          }
+      }
+  }
+}
+
+// THE TWO MEMBERS THE GB10 INDEXER NEEDS, after the SM120 pair (neither touches a file those touch
+// except flashinfer_sparse.py, whose hunk sits apart from the SWA member's):
+//   3. 64-token kernel pages on SM12x for the V4.1 sparse-MLA, FlashInfer sparse-MLA and indexer
+//      backends -- vllm-project/vllm#57292 adapted to this tree. Without it the cache page is 128 tokens,
+//      a ratio-1 indexer page holds 128 states, and DeepGEMM's SM120 paged-MQA metadata asserts
+//      `block_kv == 32 or block_kv == 64` (fleet-converge run 36921450575, on every rank, in
+//      DeepseekV32IndexerMetadataBuilder.build during CUDA-graph capture). With it a ratio-1 page holds
+//      64 states and a ratio-2 page 32 -- and the ratio-2 layer's 32-token extra page needs:
+//   4. FlashInfer 0.7.1rc1 for flashinfer-python and flashinfer-cubin in requirements/cuda.txt, the
+//      release carrying flashinfer-ai/flashinfer#5197 (runtime SM120 page sizes).
+data v41_sm120_kernel_page_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/sm120_64_token_kernel_pages.patch" as NonEmptyStr
+data v41_flashinfer_requirements_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/flashinfer_0_7_1rc1_requirements.patch" as NonEmptyStr
+
+fn v41_with_sm120_kernel_page_members(applied: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_sm120_kernel_page_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the SM120 kernel-page member at dag/gunbc/spark/patches/d2d649e6/sm120_64_token_kernel_pages.patch" as NonEmptyStr }
+    Present { value: kp_digest } =>
+      match v41_engine_patch(path: v41_sm120_kernel_page_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: kp_digest.hex as String, purpose: "SM12x 64-token kernel pages for the V4.1 sparse-MLA, FlashInfer sparse-MLA and indexer backends (vllm-project/vllm#57292), so a ratio-1 indexer page holds 64 states and DeepGEMM's SM120 paged-MQA admits it" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the SM120 kernel-page member was not a sha256 digest" as NonEmptyStr }
+        Present { value: kernel_pages } =>
+          match v41_digest_declared_patch(path: v41_flashinfer_requirements_patch_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the FlashInfer requirements member at dag/gunbc/spark/patches/d2d649e6/flashinfer_0_7_1rc1_requirements.patch" as NonEmptyStr }
+            Present { value: rq_digest } =>
+              match v41_engine_patch(path: v41_flashinfer_requirements_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: rq_digest.hex as String, purpose: "FlashInfer 0.7.1rc1 for flashinfer-python and flashinfer-cubin (flashinfer-ai/flashinfer#5197: runtime SM120 sparse-MLA page sizes, including the 32-token pages of V4.1 ratio-2 layers)" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the FlashInfer requirements member was not a sha256 digest" as NonEmptyStr }
+                Present { value: requirements } => v41_with_deepgemm_page32_member(applied: concat(applied, [kernel_pages, requirements]))
+              }
+          }
+      }
+  }
+}
+
+//   5. DeepGEMM's SM120 FP8 paged-MQA logits at 32-state pages. With 64-token kernel pages a ratio-2
+//      indexer page holds 32 states, and the image's DeepGEMM (deepseek-ai/DeepGEMM nv_dev 8b1392b, the
+//      d2d649e6 pin) admits only 64 for an FP8 cache on SM12x: fleet-converge run 36945738911 asserted
+//      `(arch_major == 12 and ((is_fp4 and (block_kv == 32 or block_kv == 64)) or (not is_fp4 and
+//      block_kv == 64)))` in fp8_fp4_paged_mqa_logits on every rank, after the metadata call member 3
+//      fixed had passed. vllm-project/DeepGEMM#14 (merged 2026-09-22, 17ca18f73e) relaxes exactly that
+//      host check and the launcher's, keeping the device kernel; this pin's kernel is templated on
+//      BLOCK_KV with FP8_MMA_M = 16, so 32 rows is 2 warps x 4 groups = SPLIT_KV 128. The fork's newer
+//      pin (vllm#59385, 6901431) is diverged from 8b1392b (17 ahead, 95 behind), so the member carries
+//      #14's two host hunks ported to 8b1392b and has deepgemm.cmake apply them after FetchContent --
+//      idempotent, and a tree it cannot apply to stops the build.
+data v41_deepgemm_page32_patch_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/deepgemm_sm120_fp8_page32.patch" as NonEmptyStr
+
+fn v41_with_deepgemm_page32_member(applied: List<V41EnginePatch>) -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_deepgemm_page32_patch_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the DeepGEMM page32 member at dag/gunbc/spark/patches/d2d649e6/deepgemm_sm120_fp8_page32.patch" as NonEmptyStr }
+    Present { value: dg_digest } =>
+      match v41_engine_patch(path: v41_deepgemm_page32_patch_path, applies_to: vllm_d2d649e6_revision, sha256_hex: dg_digest.hex as String, purpose: "DeepGEMM SM120 FP8 paged-MQA logits at 32-state pages (vllm-project/DeepGEMM#14 host changes ported to 8b1392b), applied by deepgemm.cmake after fetch" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the DeepGEMM page32 member was not a sha256 digest" as NonEmptyStr }
+        Present { value: deepgemm } => V41PatchesObserved { patches: concat(applied, [deepgemm]), partition: PartitionByLaunchConfiguration }
       }
   }
 }

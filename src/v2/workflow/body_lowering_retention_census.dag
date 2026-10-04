@@ -1,11 +1,10 @@
 module v2.workflow.body_lowering_retention_census
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
-import std.types { NonEmptyStr }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.types { NonEmptyStr, List }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.algebra { Empty, fold_list, length }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   DeclarationLocus,
   Diagnostic,
@@ -156,6 +155,7 @@ fn occurrence_label(occurrence: NodeOccurrenceIdentity) -> String {
     OccurrenceSynthetic => "synthetic"
     OccurrenceMinted { id: _ } => "minted"
     OccurrenceProjected { id: _, caused_by: _ } => "projected"
+    OccurrencePending { caused_by: _ } => "pending"
   }
 }
 

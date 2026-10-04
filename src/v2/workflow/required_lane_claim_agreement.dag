@@ -111,7 +111,7 @@ fn document_sites_for_lane(doc: ProjectedDocument, job_id: String) -> List<Requi
       excerpt: concat(
         "the projection of ", doc.document,
         " states that `", job_id,
-        "` is not a `needs` of the required aggregate, and `gunbc.witness_floor_workflow` `required_lanes_roster` says it is. ",
+        "` is not a `needs` of the required aggregate, and `gunbc.witness_floor_lanes` `required_lanes_roster` says it is. ",
         "The roster is the authority the emitted workflow is derived from, so the DOCUMENT is what is wrong. ",
         "Correct the sentence at its authority and regenerate; do not widen this check. ",
         "If the false half is one clause of a claim whose conclusion still holds, DELETE the clause rather than softening it -- ",

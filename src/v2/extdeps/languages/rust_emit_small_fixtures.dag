@@ -46,8 +46,8 @@ fn rust_emit_small_translation_claim() -> TranslationClaim {
   }
 }
 
-// serialize_concrete_syntax_tokens_to_source_string reads only lex and
-// binding_spellings. No bundle lookup, host execution or produced declaration
+// serialize_concrete_syntax_tokens_to_source_string reads only lex,
+// binding_spellings and token_class_emit_transforms. No bundle lookup, host execution or produced declaration
 // occurs on this path.
 fn rust_emit_small_serialization_target(
   lex: LexRules,
@@ -75,7 +75,8 @@ fn rust_emit_small_conditional_target() -> TargetModel {
           rust_lex_rule(token_class: ^rust_token_lbrace, text: " { "),
           rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
           rust_lex_rule(token_class: ^rust_token_rbrace, text: " }")
-        ]
+        ],
+        modes: []
       }
     },
     bindings: map_insert(
@@ -95,7 +96,8 @@ fn rust_emit_small_bool_projection_target() -> TargetModel {
         rules: [
           rust_lex_rule(token_class: ^blp_token_true_lower, text: "true"),
           rust_lex_rule(token_class: ^blp_token_true_upper, text: "TRUE")
-        ]
+        ],
+        modes: []
       }
     },
     bindings: empty_map()

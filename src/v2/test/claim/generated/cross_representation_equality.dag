@@ -3,6 +3,14 @@ module v2.test.generated.cross_representation_equality
 import v2.std.node { symbol_intern_lexeme }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_reflection { coproduct_arm_keys_at }
+import v2.std.verification {
+  ClaimAnchorKey,
+  GeneratedAnchorKey,
+  GeneratedClaimAnchor,
+  ManualClaimAnchor,
+  TestClaim,
+  test_claim_anchor
+}
 
 // THE ROOTS THE REFLECTION READ CONSULTS, named so the population is re-derivable.
 data cross_representation_pool_roots: List<String> = ["dag", "src/v2"]
@@ -32,7 +40,8 @@ fn witness_cross_representation_uses_generated_anchor() -> Bool {
     Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } } => true
-        _ => false
+        GeneratedClaimAnchor { generated_anchor: _ } => false
+        ManualClaimAnchor { manual_anchor: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -42,7 +51,8 @@ fn anchor_is_straddle(a: ClaimAnchorKey, modeled: Symbol, native: Symbol) -> Boo
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
       (mc == modeled) && (nr == native)
-    _ => false
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => false
+    ManualClaimAnchor { manual_anchor: _ } => false
   }
 }
 
@@ -77,7 +87,7 @@ fn witness_cross_representation_roster_covers_bool() -> Bool {
   (length(xs: testgen_scheduled_cross_representation_equality_generators()) > 0)
     && roster_covers_genuine_straddle(
       modeled_ref: DeclarationRef {
-        module_path: "v2.std.logic",
+        module_path: "std.types",
         decl_name: "Bool",
         field: WholeDeclaration
       },

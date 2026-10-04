@@ -33,7 +33,27 @@ import std.realization_schedule {
   cost_account_measured,
   cost_account_time_count,
 }
+import v2.std.optional { Absent, Present }
 
+// PEAK AND CURRENT ARE DIFFERENT QUESTIONS AND ONLY ONE OF THEM CAN SEE A RELEASE.
+//
+// VmHWM is monotone: once a phase has touched a page the high-water mark keeps it for the life of
+// the process, so a sequence of phases each reports the same number and none of them reports what
+// it is HOLDING. A phase inventory needs the opposite reading -- what is resident AT the boundary --
+// because the fact under test is whether a phase released what it built. Peak answers `how close
+// did this process come to its budget`; current answers `what does this phase still own`, and an
+// inventory that used peak for both would report every boundary as the maximum and find no phase
+// responsible for anything.
+//
+// ALLOCATOR RESIDENCY IS A THIRD FACT, and it is the one that decides whether a structural census
+// can close. Bytes the allocator has freed but not returned to the kernel are resident to the
+// process and owned by NO semantic population, so a census that counted only live objects would
+// leave that difference as an unexplained heap and invite the wrong repair. Asking the allocator
+// separately is what makes the residual explicit rather than mysterious.
+//
+// AN UNOBSERVABLE AXIS REFUSES (DESIGN section 5, and section 2.7's supply rule applied to
+// measurement): a realization that cannot answer for allocator residency must say so, never report
+// zero. Zero is a reading; absence is not.
 type RealizationMeasureEffect
   = ObserveElapsedAtSubject {
       subject: ContentHash
@@ -43,6 +63,60 @@ type RealizationMeasureEffect
       subject: ContentHash
       work_shape: String
     }
+  | ObserveCurrentResidentAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObserveAllocatorResidencyAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+  | ObserveThreadCpuAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+
+// THE OBSERVATION, TYPED SO ABSENCE CANNOT READ AS A QUANTITY. A residency reading either holds a
+// byte count or names why it could not be taken; there is no arm carrying a number the realization
+// did not observe.
+type ResidencyObservation
+  = ResidencyObserved { bytes: ByteSize }
+  | ResidencyUnobservable { axis: String, reason: String }
+
+fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
+  match o {
+    ResidencyObserved { bytes: b } => Present { value: b }
+    ResidencyUnobservable { axis: _, reason: _ } => none
+  }
+}
+
+// A BOUNDARY IS NAMED BY THE PHASE IT CLOSES, not by an ordinal, because an inventory is read by
+// asking which phase holds what and an ordinal cannot answer that. The five the native route has:
+// the context fold, the resolution context it builds, the engine's own seal, and the two stage
+// demands that are actually admitted for a refusing module.
+type NativeResidencyBoundary
+  = ResidencyAtContextFinish
+  | ResidencyAtResolutionContext
+  | ResidencyAtEngineSealed
+  | ResidencyAtResolveSettled
+  | ResidencyAtInferSettled
+
+fn native_residency_boundary_label(b: NativeResidencyBoundary) -> String {
+  match b {
+    ResidencyAtContextFinish => "context_finish"
+    ResidencyAtResolutionContext => "resolution_context"
+    ResidencyAtEngineSealed => "engine_sealed"
+    ResidencyAtResolveSettled => "resolve_settled"
+    ResidencyAtInferSettled => "infer_settled"
+  }
+}
+
+type NativeResidencySample {
+  boundary: NativeResidencyBoundary
+  current: ResidencyObservation
+  peak: ResidencyObservation
+  allocator: ResidencyObservation
+}
 
 // Space composes as time's DUAL (witness-realization plan P1 / memory-control audit F4): sequential
 // steps RELEASE, so seq peak = max; concurrent steps CO-RESIDE, so par peak = add. The earlier
@@ -58,6 +132,16 @@ type RealizationMeasureEffect
 // reading is neither calendar time nor identity material. The native-selected-witness bundle
 // receipt uses this seam to compare the same selected population through interpreter and native
 // execution.
+
+// ObserveThreadCpuAtSubject realization seam: observed_thread_cpu_nanos(boundary) reads the calling
+// thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId). ELAPSED AND CPU ARE
+// DIFFERENT QUESTIONS, the same way peak and current residency are: elapsed answers `how long did
+// the subject take on this host`, CPU answers `how much work did the subject itself perform`. Only
+// the second is a property of the subject -- an elapsed span also contains every interval the host
+// descheduled the thread -- so a VERDICT over a partition of a thread's own work (the native
+// driver's std.compiler_entry native_driver_cost_account) is judged on CPU, and elapsed stays an
+// observation beside it. A host without the clock REFUSES; substituting the monotonic reading would
+// hand the verdict back to host load.
 
 // HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
 // v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject

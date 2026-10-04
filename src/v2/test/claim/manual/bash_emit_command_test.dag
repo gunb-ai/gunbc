@@ -89,6 +89,7 @@ fn bash_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
 }
 
+// Arrow used as a generic node shape; not a function signature (Program P).
 fn bash_arrow_emitted_red_fixture() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },

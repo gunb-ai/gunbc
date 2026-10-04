@@ -7,7 +7,7 @@ import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableAbsent, CasReadablePresent, CasSlotVersion,
-  CasUnreadableReadRefused, cas_generation_count,
+  CasUnreadableReadRefused, cas_generation_count, CasGeneration, cas_generation_first,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
@@ -22,6 +22,10 @@ import std.durable_exclusive_hold {
   HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
   HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
   durable_hold_acquire_assess, durable_hold_release_assess, durable_hold_owner_equal,
+  DurableHoldHolderReport, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
+  DurableHoldRecoveryAssessment, HoldRecoveryEligible, HoldRecoveryRefused,
+  HoldRecoveryNothingHeld, HoldRecoveryHolderLive, HoldRecoveryHolderUnobservable, HoldRecoverySlotMoved,
+  HoldRecoveryReportForAnotherHolder, durable_hold_recovery_assess,
 }
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
@@ -304,4 +308,62 @@ test fn holder_equality_is_exact() -> Bool {
     && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "demand-7|offer-10"))
     && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "Demand-7|offer-1"))
     && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "demand-7|offer-1 "))
+}
+
+// ── RECOVERY OF A DEAD HOLDER'S HOLD (gunbc#12533 finding 2) ─────────────────────────────────
+// The three controls the brief names, over one slot held by one owner at one generation, differing
+// ONLY in the liveness verdict: a live holder blocks, an observed-dead holder is recovered at the
+// generation both the read and the report name, and an unobservable holder refuses -- never
+// recovered. There is no age input to vary: the assessment takes none.
+// The report's generation is taken from an observation, the only place a CasGeneration comes from.
+fn eh_generation_of(o: DurableHoldObservation) -> CasGeneration {
+  match o {
+    HoldSlotHeld { generation: g, owner: _ } => g
+    HoldSlotFree { generation: g, released_by: _ } => g
+    _ => cas_generation_first()
+  }
+}
+
+fn eh_report(holder: String, generation: Int, dead: Int) -> DurableHoldHolderReport {
+  DurableHoldHolderReport {
+    holder: eh_owner(text: holder),
+    generation: eh_generation_of(o: eh_held_at(owner: holder, generation: generation)),
+    liveness: if dead == 0 { HolderObservedLive { evidence: "process 7 started at tick 90 still runs" } }
+      else if dead == 1 { HolderObservedDead { evidence: "no process 7 on the holder's boot" } }
+      else { HolderLivenessUnobservable { cause: "/proc/7/stat could not be read" } },
+  }
+}
+
+test fn a_live_holder_blocks_an_observed_dead_holder_is_recovered_and_an_unobservable_one_refuses() -> Bool {
+  let held = eh_held_at(owner: "mtcollins1-boot:4242", generation: 3)
+  (match durable_hold_recovery_assess(observed: held, report: eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 0)) {
+    HoldRecoveryRefused { refusal: HoldRecoveryHolderLive { generation: _, holder: _, evidence: _ } } => true
+    _ => false
+  })
+    && (match durable_hold_recovery_assess(observed: held, report: eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)) {
+      HoldRecoveryEligible { generation: g, dead_holder: h, evidence: _ } => cas_generation_count(g: g) == 3 && (h as String) == "mtcollins1-boot:4242"
+      _ => false
+    })
+    && (match durable_hold_recovery_assess(observed: held, report: eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 2)) {
+      HoldRecoveryRefused { refusal: HoldRecoveryHolderUnobservable { generation: _, holder: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+// A DEAD VERDICT RECOVERS ONLY THE HOLD IT WAS TAKEN OF: the same verdict against a slot that moved
+// on, that another owner now holds, or that is already free recovers nothing.
+test fn a_dead_verdict_recovers_only_the_hold_it_was_taken_of() -> Bool {
+  let dead = eh_report(holder: "mtcollins1-boot:4242", generation: 3, dead: 1)
+  (match durable_hold_recovery_assess(observed: eh_held_at(owner: "mtcollins1-boot:4242", generation: 5), report: dead) {
+    HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: _, observed: _ } } => true
+    _ => false
+  })
+    && (match durable_hold_recovery_assess(observed: eh_held_at(owner: "operator-maintenance:reseat", generation: 3), report: dead) {
+      HoldRecoveryRefused { refusal: HoldRecoveryReportForAnotherHolder { holder: _, reported: _ } } => true
+      _ => false
+    })
+    && (match durable_hold_recovery_assess(observed: eh_free_at(generation: 4), report: dead) {
+      HoldRecoveryRefused { refusal: HoldRecoveryNothingHeld } => true
+      _ => false
+    })
 }

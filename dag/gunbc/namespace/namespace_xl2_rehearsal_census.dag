@@ -299,7 +299,7 @@ fn xl2_observe_module(
     context: context,
     refusal_index: refusal_index,
     entry: entry
-  ) {
+  ).outcome {
     NativeCensusModuleFileRefused => acc
     NativeCensusModuleResolved =>
       Xl2Observation { residual: acc.residual, resolved: acc.resolved + 1, unobserved: acc.unobserved }

@@ -10,6 +10,7 @@ import std.primitive_projection {
   ModeledProjection,
   primitive_decl_facts,
   primitive_empty_map,
+  primitive_identity_runtime_name,
   primitive_identity_slug,
   primitive_length,
   primitive_map_get,
@@ -105,7 +106,7 @@ test fn w_divergent_projection_answers_with_its_fidelity() -> Bool {
 
 // THE DISCRIMINATING PAIR FOR THE ABSENCE SPLIT. Both declarations lack a projection row, so a
 // carrier that collapsed absence into one arm answers identically for both and one of these two
-// witnesses reds. `list_at_optional` is carried by NO primitive-bearing surface, so no builtin
+// witnesses reds. `list_nth` is carried by NO primitive-bearing surface, so no builtin
 // co-candidate can exist and the classified answer is correct. `to_upper` IS carried by the
 // census (an algebra template) with no projection row declared, so the honest answer is that
 // nobody has classified it -- top-as-ignorance, which a consumer must not route to its refusing
@@ -114,12 +115,27 @@ test fn w_a_declaration_on_no_surface_answers_classified_no_primitive() -> Bool 
   match primitive_projection_for_declaration(
     declaration: projection_declaration(
       module_path: "v2.std.collection",
-      decl_name: "list_at_optional",
+      decl_name: "list_nth",
     )
   ) {
     DeclarationProjectsNoPrimitive => true
     DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
     DeclarationProjectsPrimitive { identity: _, fidelity: _ } => false
+  }
+}
+
+// `list_at_optional` WAS the no-surface specimen above until it became the total projection of the
+// `get` primitive; it now answers that projection, which is the row's own positive control.
+test fn w_list_at_optional_projects_the_get_primitive() -> Bool {
+  match primitive_projection_for_declaration(
+    declaration: projection_declaration(
+      module_path: "v2.std.collection",
+      decl_name: "list_at_optional",
+    )
+  ) {
+    DeclarationProjectsPrimitive { identity: i, fidelity: _ } => primitive_identity_runtime_name(identity: i) == "get"
+    DeclarationProjectsNoPrimitive => false
+    DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
   }
 }
 

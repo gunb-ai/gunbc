@@ -3,7 +3,6 @@ module test.claim.mtcollins1_census_image
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr }
-import std.string_type { String }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedFile,
   SeededInstallMediaPinnedDates,
@@ -53,9 +52,9 @@ import gunbc.machine_intake_mtcollins1_census_image {
   mtcollins1_census_program_file,
   mtcollins1_census_volume_id,
   mtcollins1_seeded_image_input,
-  CensusPublishHostAdmitted,
-  CensusPublishHostRefused,
-  mtcollins1_census_publish_host_admission,
+  mtcollins1_census_pinned_image,
+  mtcollins1_census_pinned_grub_cmdline,
+  mtcollins1_census_grub_cmdline,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -428,26 +427,25 @@ test fn the_image_name_is_the_stem_and_the_measured_digest() -> Bool {
     && a.image_name != mtcollins1_diskless_image_name
 }
 
-// BUILT WHERE IT IS SERVED: the publish admits srv2 and refuses every other dispatch host before any
-// build or write (side-chat hold 5261870012). Both directions, so the refusal is the host discriminating.
-test fn the_census_publish_admits_only_srv2() -> Bool {
-  match mtcollins1_census_publish_host_admission(expected_host: "srv2") {
-    CensusPublishHostAdmitted => true
-    CensusPublishHostRefused { reason: _ } => false
+// TWO DERIVATIONS, TWO KEYS. The pinned derivation is the one the boot medium row pins (its key is the
+// pre-instrument cmdline -- 8d357a525f078cb4 under builder revision 1, bf916c060d072e72 under the
+// attribute-pinning revision 2); the current one adds the
+// module-identity instrument and nothing else, so its cmdline is the pinned cmdline plus the args and
+// its key differs. The srv2-side regression rebuilds the first before the second is published.
+test fn the_pinned_and_current_derivations_differ_only_by_the_instrument() -> Bool {
+  match mtcollins1_census_pinned_image {
+    Mtcollins1CensusImageRefused { reason: _ } => false
+    Mtcollins1CensusImageDerived { input: pinned } =>
+      match mtcollins1_census_image {
+        Mtcollins1CensusImageRefused { reason: _ } => false
+        Mtcollins1CensusImageDerived { input: current } =>
+          (seeded_install_media_build_key(input: pinned) as String) == "bf916c060d072e72"
+            && (seeded_install_media_build_key(input: current) as String) == "c001ac127d718e72"
+            && (pinned.grub_kernel_cmdline as String) == (mtcollins1_census_pinned_grub_cmdline as String)
+            && (current.grub_kernel_cmdline as String) == (mtcollins1_census_grub_cmdline as String)
+            && starts_with(s: current.grub_kernel_cmdline as String, prefix: concat(pinned.grub_kernel_cmdline as String, " "))
+            && pinned.user_data_body == current.user_data_body
+      }
   }
 }
 
-test fn the_census_publish_refuses_a_dispatch_at_another_host_before_any_write() -> Bool {
-  (match mtcollins1_census_publish_host_admission(expected_host: "srv1") {
-    CensusPublishHostAdmitted => false
-    CensusPublishHostRefused { reason: r } => string_contains(s: r, pattern: "srv1") && string_contains(s: r, pattern: "before any build or write")
-  })
-  && (match mtcollins1_census_publish_host_admission(expected_host: "srv3") {
-    CensusPublishHostAdmitted => false
-    CensusPublishHostRefused { reason: _ } => true
-  })
-  && (match mtcollins1_census_publish_host_admission(expected_host: "") {
-    CensusPublishHostAdmitted => false
-    CensusPublishHostRefused { reason: _ } => true
-  })
-}

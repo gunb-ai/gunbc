@@ -1,4 +1,5 @@
 module extdeps.ebay.browse
+import std.resources { Network }
 
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.measure { MoneyAmountMicro, money_amount_micro_count }
@@ -517,7 +518,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
 fn browse_wrap_condition_ids(r: BrowseFilterRender) -> BrowseFilterRender {
   match r {
     BrowseFilterRendered { param: ids } => BrowseFilterRendered { param: join(["conditionIds:{", ids, "}"], "") }
-    _ => r
+    BrowseFilterEmptyValueSet { field: _ } => r
+    BrowseFilterConditionHasNoId { condition: _ } => r
   }
 }
 
@@ -561,6 +563,7 @@ service ebay.Browse {
   }
 
   operation SearchItemSummaries {
+    requires Network
     input {
       access_token: Secret
       marketplace_id: MarketplaceEnum
@@ -589,6 +592,7 @@ service ebay.Browse {
   }
 
   operation GetItem {
+    requires Network
     input {
       access_token: Secret
       marketplace_id: MarketplaceEnum

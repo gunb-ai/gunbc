@@ -1,5 +1,8 @@
 module gunbc.live_deploy.apply
 
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   RepositoryTransitionAdmission,
@@ -91,7 +94,7 @@ import gunbc.live_deploy.release_locus {
 }
 import gunbc.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
-  microvm_slot_unit_instance_name,
+  microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
 import gunbc.build_cache_instance { runner_slot_instance_name }
@@ -889,7 +892,18 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
   } else if !string_contains(s: vmm.content, pattern: microvm_controller_vmm_name) || !string_contains(s: vmm.content, pattern: microvm_controller_jailer_name) {
     exit_failure(reason: join(["microvm_controller_install: the VMM receipt does not name both binaries: ", vmm.content], ""))
   } else {
-    microvm_slot_unit_load_readback_exit()
+    microvm_readiness_store_substrate_readback_exit()
+  }
+}
+
+// Verify only the directory's write authority. Existing records are preserved and no cell
+// becomes ready here; initial commissioning still owes history and sanitation admission.
+fn microvm_readiness_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: cell_readiness_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: readiness directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: readiness directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_slot_unit_load_readback_exit()
   }
 }
 
@@ -898,7 +912,13 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
 // `show` loads it without starting it. Anything but `loaded` means the unit file the install wrote
 // is not what the manager parses.
 fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
-  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))
+  match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+    ExitSuccess => microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+    refused => refused
+  }
+}
+
+fn microvm_unit_load_readback(unit: NonEmptyStr) -> ProcessExit {
   let shown = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: LoadState))
   if !shown.success {
     exit_failure(reason: join(["microvm_controller_install: LoadState of ", unit as String, " could not be read"], ""))

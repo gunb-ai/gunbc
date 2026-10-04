@@ -1,0 +1,78 @@
+module gunbc.roadmap_allocation_page
+
+import gunbc.roadmap_auth_route_paths { auth_login_route_path }
+import std.types { String, Bool, List }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_class, el_attrs }
+import gunbc.roadmap_page { roadmap_header }
+import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.roadmap_allocation_style { allocation_css }
+
+// These are navigation identities, shared by the route and its rendered links.
+
+data allocation_client_path: String = "/allocation-draft.js"
+
+// A draft is local UI state. No allocation is admitted or submitted by this page.
+fn allocation_size_field(key: String, label: String, value: String, hint: String) -> Fragment {
+  el_class("div", "allocation-field", [
+    el_attrs("label", [attr(name: "for", value: key)], [txt(label)]),
+    el_attrs("input", [attr(name: "id", value: key), attr(name: "name", value: key),
+      attr(name: "type", value: "number"), attr(name: "min", value: "1"),
+      attr(name: "step", value: "1"), attr(name: "required", value: ""),
+      attr(name: "value", value: value), attr(name: "aria-describedby", value: join([key, "-hint"], ""))], []),
+    el_attrs("small", [attr(name: "id", value: join([key, "-hint"], ""))], [txt(hint)]),
+  ])
+}
+
+// THE PAGE OVER ITS ROADMAP STYLESHEET, supplied by the caller as roadmap_page_launch_with_stylesheet
+// takes it for the roadmap page: the serve route passes roadmap_css(), and a claim about the draft
+// form, the notice or the response headers -- none of which reads the stylesheet -- supplies its own.
+fn allocation_page_with_stylesheet(signed_in: Bool, roadmap_stylesheet: String) -> Fragment {
+  el_attrs("html", [attr(name: "lang", value: "en")], [
+    el("head", [
+      el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
+      el_attrs("meta", [attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1")], []),
+      el("title", [txt("Allocations — gunbc")]),
+      el("style", [txt(roadmap_stylesheet), txt(allocation_css())]),
+    ]),
+    el("body", [
+      roadmap_header(page: "allocations"),
+      el_class("main", "allocation-page", [
+        el_class("p", "allocation-eyebrow", [txt("COMPUTE / MICROVM")]),
+        el("h2", [txt("A workspace on the fleet")]),
+        el_class("p", "allocation-intro", [txt("Choose the resources for your microVM. Placement will select an eligible srv host.")]),
+        el_attrs("section", [attr(name: "class", value: "allocation-notice"), attr(name: "aria-label", value: "Availability")],
+          if signed_in { [el("strong", [txt("Allocation requests are not available yet.")]), el("p", [txt("You can prepare a size below. Your draft stays in this page; no resources are reserved.")])] }
+          else { [el("strong", [txt("Sign in to prepare an allocation.")]), el("p", [txt("Allocation requests are not available yet.")]), el_attrs("a", [attr(name: "href", value: auth_login_route_path)], [txt("Sign in with Google")])] }),
+        el_class("div", "allocation-layout", [
+          el_attrs("form", [attr(name: "id", value: "allocation-draft"), attr(name: "aria-label", value: "Allocation draft")], [
+            el_attrs("fieldset", if signed_in { [] } else { [attr(name: "disabled", value: "")] }, [
+              el("legend", [txt("Size your microVM")]),
+              el_class("div", "allocation-fields", [
+                allocation_size_field(key: "allocation-cpu", label: "Virtual CPUs", value: "2", hint: "Requested vCPU count"),
+                allocation_size_field(key: "allocation-memory", label: "Guest memory (GiB)", value: "4", hint: "RAM available inside the VM"),
+                allocation_size_field(key: "allocation-disk", label: "Disk (GiB)", value: "20", hint: "Requested guest disk capacity"),
+                allocation_size_field(key: "allocation-hours", label: "Lifetime (hours)", value: "8", hint: "Requested duration before release"),
+              ]),
+              el_class("p", "allocation-muted", [txt("These are draft values, not available-capacity limits. Supported sizes, images, and access options will appear when requests open.")]),
+              el_attrs("button", [attr(name: "type", value: "button"), attr(name: "id", value: "allocation-review")], [txt("Review size")]),
+            ]),
+          ]),
+          el_attrs("section", [attr(name: "class", value: "allocation-card"), attr(name: "aria-labelledby", value: "allocation-summary-title")], [
+            el_attrs("h3", [attr(name: "id", value: "allocation-summary-title")], [txt("Your request")]),
+            el_attrs("p", [attr(name: "id", value: "allocation-summary"), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt("Review your size to see a draft summary.")]),
+            el("dl", [el("dt", [txt("Placement")]), el("dd", [txt("Any eligible srv host")]), el("dt", [txt("Availability")]), el("dd", [txt("Not checked")])]),
+            el_attrs("button", [attr(name: "type", value: "button"), attr(name: "disabled", value: ""), attr(name: "aria-describedby", value: "allocation-submit-reason")], [txt("Request allocation")]),
+            el_attrs("p", [attr(name: "id", value: "allocation-submit-reason"), attr(name: "class", value: "allocation-muted")], [txt("Requests will open when the allocation service is connected.")]),
+          ]),
+        ]),
+        el_class("section", "allocation-card allocation-connection", [
+          el("h3", [txt("Connection details")]),
+          el("p", [txt("No allocation requested from this page.")]),
+          el_class("p", "allocation-muted", [txt("Once a request is accepted, this page will show its host, convergence status, and connection address when ready.")]),
+        ]),
+      ]),
+      el_attrs("script", [attr(name: "src", value: allocation_client_path), attr(name: "defer", value: "")], []),
+    ]),
+  ])
+}

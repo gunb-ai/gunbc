@@ -9,6 +9,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
   FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused
 }
+import v2.std.optional { Absent, Present }
 
 // Compiler policy over the existing file transport. A failed listing is never an empty
 // directory. Only the host's NotADirectory observation admits a candidate as a file; every
@@ -32,7 +33,8 @@ fn source_root_candidate_is_file(root: Bool, error_kind: String) -> Bool {
   if root { false } else {
     match admit_filesystem_failure_kind(observed: error_kind) {
       FilesystemFailureKindAdmitted { kind: FilesystemNotDirectory } => true
-      _ => false
+      FilesystemFailureKindAdmitted { kind: _ } => false
+      FilesystemFailureKindUnrecognized { observed: _ } => false
     }
   }
 }

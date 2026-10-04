@@ -1,8 +1,12 @@
 # Approve — iOS approval app
 
-Hand-authored SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_wire` (the byte contract) and `gunbc.auth.approval_device_redemption` (the server's admission) with
-`extdeps.apple.{secure_enclave, app_attest, apns}`. Recorded as seed-retained Swift in
-`gunbc.approve_ios_app` (`approve_ios_hand_authored_swift_frontier`). The app invents no wire fact:
+SwiftUI (iOS 17+) realizing `gunbc.auth.approval_device_wire` (the byte contract) and `gunbc.auth.approval_device_redemption` (the server's admission) with
+`extdeps.apple.{secure_enclave, app_attest, apns}`. `Protocol.swift`, `Wire.swift` and
+`ProtocolVectorTests.swift` are GENERATED: emitted through the Swift grammar rows (`v2.extdeps.languages.swift.rows`) from Swift syntax
+trees (`gunbc.approve_ios_swift_protocol`, `gunbc.approve_ios_swift_wire`,
+`gunbc.approve_ios_swift_protocol_vector_tests`) and drift-gated, so edit the tree, never the file; the rest
+is still hand-authored. Both standings are recorded in `gunbc.approve_ios_app`
+(`approve_ios_transcribed_swift_frontier`, `approve_ios_hand_authored_swift_frontier`). The app invents no wire fact:
 every constant, field order and route is a transcription of the `.dag`, and the two byte builders are
 held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors.json`, which the
 `.dag` witness emits and `ApproveTests` reads.
@@ -12,15 +16,15 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 | file | what it is |
 |---|---|
 | `project.yml` | XcodeGen spec, GENERATED from `gunbc.approve_ios_project` (drift-gated; never hand-edit); no `.xcodeproj` is committed |
-| `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APPROVE_SERVER_HOST` (srv1 tailnet host), `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT` |
-| `Approve/Protocol.swift` | `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
-| `Approve/Wire.swift` | mirror of the modeled HTTP wire: emitter, strict readers, routes, headers; `URLSession` over the tailnet |
+| `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT`. The server host is not here: `project.yml` carries it, projected from `gunbc.auth.approval_broker_endpoint` |
+| `Approve/Protocol.swift` | GENERATED (`gunbc.approve_ios_swift_protocol`). `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
+| `Approve/Wire.swift` | GENERATED (`gunbc.approve_ios_swift_wire`). Mirror of the modeled HTTP wire: emitter, strict readers, routes, headers; `URLSession` over the tailnet |
 | `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation), App Attest, and the one keychain item shape |
 | `Approve/EnrolmentState.swift` | the durable enrolment state machine: Unenrolled → Prepared → SubmissionUnknown → Enrolled → KeyInvalidated / Revoked, persisted before every remote call |
 | `Approve/AppState.swift` | transitions, APNs token forwarding, authenticated reads, redemption |
 | `Approve/ApproveApp.swift` | entry point, APNs token delivery, push wakes the list |
 | `Approve/Views.swift` | Enrol, Inbox, Detail |
-| `ApproveTests/ProtocolVectorTests.swift` | byte builders and envelopes vs the emitted vectors; absence of the fixture FAILS |
+| `ApproveTests/ProtocolVectorTests.swift` | GENERATED (`gunbc.approve_ios_swift_protocol_vector_tests`; its surface-name set is built from the fixture's `surface_vectors`). Byte builders and envelopes vs the emitted vectors; absence of the fixture FAILS |
 | `Approve/Assets.xcassets/AppIcon.appiconset/` | the generated 1024 PNG (script projection of the mark.svg geometry) |
 
 ## What the operator builds on the MacBook
@@ -29,7 +33,7 @@ This repository's containers have no Xcode; nothing here has been compiled. Expe
 fixes on first build.
 
 1. `brew install xcodegen`
-2. Fill `Config/Team.xcconfig` (team id, `APPROVE_SERVER_HOST`). Keep the team id out of commits.
+2. Fill `Config/Team.xcconfig` (team id). Keep the team id out of commits.
 3. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
 4. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
    entitlements file declares `aps-environment` and `com.apple.developer.devicecheck.appattest-environment`).

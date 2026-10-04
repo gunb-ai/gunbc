@@ -1,5 +1,8 @@
 module gunbc.fabric_storage_client
 
+import gunbc.fabric_storage_state_auth_io { fabric_state_signed_request }
+import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+
 import std.types { String, NonEmptyStr, Int, List }
 import std.nat { Nat }
 import extdeps.http.client
@@ -20,20 +23,24 @@ import gunbc.fabric_storage_wire {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
-import product.placement_supply { HostIdentity, host_identity_eq }
 
-// THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of two
-// handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch that
-// selects a realization is itself realization):
+// THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of
+// three handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch
+// that selects a realization is itself realization):
 //
-//   FabricStorageLocalFiles   the caller IS the placed host; the file store runs in process.
-//   FabricStorageServed       every other host; one bounded HTTPS POST to the placed host's endpoint,
-//                        answered in the one wire form.
+//   FabricStorageDoorSocket   the caller IS the placed host; one bounded POST to the door's unix
+//                             socket, where the kernel attests the caller to the door.
+//   FabricStorageServed       every other host; one bounded HTTPS POST to the placed host's endpoint
+//                             (tailscale serve, which proxies to the same socket).
+//   FabricStorageLocalFiles   the file store in process, over a root the caller names. NO PLACEMENT
+//                             DERIVES IT: it is the realization the door itself runs, and the one a
+//                             claim or instrument uses over its own temp root. Since 2026-09-27 the
+//                             placed host's writers reach the placed store only through the door
+//                             (operator ruling relayed by proud-deer-538), so every write to it passes
+//                             one admission (gunbc.fabric_storage_serve).
 //
-// There is no third binding and no fallback between them: a served call that cannot reach the
-// endpoint answers FabricStoreUnreachable and the caller refuses -- it never reads a local copy,
-// because no host but the placement holds one.
+// There is no fallback between them: a call that cannot reach its door answers
+// FabricStoreUnreachable and the caller refuses -- it never reads a local copy.
 //
 // UNREACHABLE IS DECIDED HERE, FROM THE TRANSPORT, BEFORE ANY REPLY EXISTS. curl's exit status is
 // classified by extdeps.tools.curl; any nonzero status is the store not being reached. A reply with
@@ -42,22 +49,12 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 // arm. Only a 200 body is decoded, and decoding refuses anything that is not fabric_storage/1.
 type FabricStorageBinding
   = FabricStorageLocalFiles { root: FabricStorageFileRoot }
+  | FabricStorageDoorSocket { socket: NonEmptyStr, route_prefix: NonEmptyStr }
   | FabricStorageServed { endpoint: NonEmptyStr }
   | FabricStorageBindingUnplaced
   | FabricStorageBindingRefused { detail: NonEmptyStr }
 
-fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
-  match placement {
-    FabricStorageUnplaced => FabricStorageBindingUnplaced
-    FabricStoragePlaced { host: h, store_root: r, endpoint: e } =>
-      if host_identity_eq(a: h, b: executor) {
-        match fabric_storage_placed_file_root(store_root: r) {
-          FabricStoragePlacedRootReady { root } => FabricStorageLocalFiles { root: root }
-          FabricStoragePlacedRootRefused { detail } => FabricStorageBindingRefused { detail: detail }
-        }
-      } else { FabricStorageServed { endpoint: e } }
-  }
-}
+
 
 data fabric_storage_unplaced_detail: NonEmptyStr = "the fabric DB is unplaced" as NonEmptyStr
 
@@ -92,9 +89,31 @@ fn served_reply_from_status(stdout: String) -> ServedReply {
   }
 }
 
-fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+fn served_post_raw(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
   let r = http.Client.PostStdinWithin(
     url: join([endpoint as String, "/", operation], "") as NonEmptyStr,
+    request_body: request,
+    connect_seconds: http_client_max_time_flag(max_time: fabric_storage_connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: fabric_storage_request_bound),
+  )
+  served_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr)
+}
+
+// The socket carries the same protocol at the same route; the authority in the URL is only what
+// HTTP requires to be present, and the door routes on the path alone.
+fn door_post(socket: NonEmptyStr, route_prefix: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  if (route_prefix as String).ends_with(suffix: fabric_storage_state_suffix) {
+    match fabric_state_signed_request(operation: operation, request: request) {
+      Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
+      Present { value: envelope } => door_post_raw(socket: socket, route_prefix: route_prefix, operation: "authenticated", request: envelope)
+    }
+  } else { door_post_raw(socket: socket, route_prefix: route_prefix, operation: operation, request: request) }
+}
+
+fn door_post_raw(socket: NonEmptyStr, route_prefix: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  let r = http.Client.PostStdinWithinUnixSocket(
+    socket: socket,
+    url: join(["http://localhost", route_prefix as String, "/", operation], "") as NonEmptyStr,
     request_body: request,
     connect_seconds: http_client_max_time_flag(max_time: fabric_storage_connect_bound),
     max_seconds: http_client_max_time_flag(max_time: fabric_storage_request_bound),
@@ -116,6 +135,11 @@ fn fabric_storage_head(binding: FabricStorageBinding, name: NonEmptyStr) -> Fabr
     FabricStorageBindingUnplaced => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_head(root: r, name: name)
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "head", request: name as String) {
+        ServedFault { fault: f } => FabricHeadReadRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_head(text: b)
+      }
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "head", request: name as String) {
         ServedFault { fault: f } => FabricHeadReadRefused { fault: f }
@@ -129,6 +153,11 @@ fn fabric_storage_put(binding: FabricStorageBinding, object: FabricObject) -> Fa
     FabricStorageBindingUnplaced => FabricPutRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricPutRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_put(root: r, object: object)
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "put", request: fabric_object_preimage(object: object) as String) {
+        ServedFault { fault: f } => FabricPutRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_put(text: b)
+      }
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "put", request: fabric_object_preimage(object: object) as String) {
         ServedFault { fault: f } => FabricPutRefused { fault: f }
@@ -142,6 +171,11 @@ fn fabric_storage_advance(binding: FabricStorageBinding, name: NonEmptyStr, expe
     FabricStorageBindingUnplaced => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_advance(root: r, name: name, expected: expected, target: target)
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
+        ServedFault { fault: f } => FabricHeadAdvanceRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_advance(text: b)
+      }
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
         ServedFault { fault: f } => FabricHeadAdvanceRefused { fault: f }
@@ -155,6 +189,11 @@ fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, boun
     FabricStorageBindingUnplaced => FabricClosureRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricClosureRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_closure(root: r, name: name, bound: bound)
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
+        ServedFault { fault: f } => FabricClosureRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_closure(text: b)
+      }
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
         ServedFault { fault: f } => FabricClosureRefused { fault: f }
@@ -173,10 +212,28 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
     FabricStorageBindingUnplaced => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: _ } => FabricIdentityUnproxied
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "identity", request: "") {
+        ServedFault { fault: f } => FabricIdentityReadRefused { fault: f }
+        ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
+      }
     FabricStorageServed { endpoint: e } =>
       match served_post(endpoint: e, operation: "identity", request: "") {
         ServedFault { fault: f } => FabricIdentityReadRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
       }
   }
+}
+
+// All state clients reach the one authenticated service, including the placed host's controller.
+// A file binding is reserved for injected local fixtures, never production state placement.
+
+
+fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  if (endpoint as String).ends_with(suffix: fabric_storage_state_suffix) {
+    match fabric_state_signed_request(operation: operation, request: request) {
+      Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
+      Present { value: envelope } => served_post_raw(endpoint: endpoint, operation: "authenticated", request: envelope)
+    }
+  } else { served_post_raw(endpoint: endpoint, operation: operation, request: request) }
 }

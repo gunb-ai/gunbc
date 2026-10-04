@@ -1,7 +1,8 @@
 module test.claim.harness_guidance
 
 import std.types { Bool, String, Int, List }
-import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, TestWithTheProcess, CapabilityWithheld, BuildOrTestOutsideTheProcess,
+import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, TestProcessIs, CompileProcessIs, IterateNarrowThenAccept, CapabilityWithheld, BuildOrTestOutsideTheProcess,
+  IterationSelectsByPattern, RunRebuildsOnTreeChange, AcceptanceIsTheContractValidation,
   HarnessGroundedPremise, HarnessPremise, HarnessConclusion,
   ActingAs, CodingWorkerInWorktree,
   ToolCanWriteBy, HeredocWrite,
@@ -9,9 +10,16 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   RoundsRemaining,
   ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
   grounded, harness_conclusions, harness_guidance_prose,
+  harness_guidance_segments, harness_guidance_prose_from_segments, harness_conclusion_nodes,
+  HarnessConclusionNode, harness_conclusion_key,
   harness_worker_guidance, harness_probe_guidance,
 }
+import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput, prompt_segment_required }
 import gunbc.harness.harness_tool { RunCommandTool, harness_tool_wire_name }
+import gunbc.roadmap.roadmap_submission {
+  submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
+}
+import gunbc.harness.harness_guidance { submission_declaration_skeleton }
 import std.measure { token_count_value, second_count }
 import gunbc.harness.harness_wire { harness_engine_context_window, harness_context_budget_for }
 import gunbc.harness.harness_reasoning_wire {
@@ -22,7 +30,7 @@ import gunbc.harness.harness_turn {
   harness_stop_reason_truncated, harness_wire_block_json,
   harness_split_inline_reasoning, harness_thinking_format_cause,
 }
-import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock }
+import gunbc.harness.harness_wire { HarnessWireBlock, WireTextBlock, WireThinkingBlock, WireToolUseBlock }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum,
@@ -284,21 +292,46 @@ test fn a_second_closer_is_speech_not_an_invalid_format() -> Bool {
   let b = harness_split_inline_reasoning(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>the file mentions </think> in a test" }])
   list_length(items: b) == 2
     && (match b.last() { Present { value: WireTextBlock { text: t } } => t == "the file mentions </think> in a test"  _ => false })
-    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: ReasoningMaximum) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "plan</think>a </think> b" }], mode: ReasoningMaximum, stop: EndTurn) == ""
 }
 
-// THE ENCODER'S SECOND INVALID SHAPE: thinking requested, no closer, no thinking block.
-test fn a_missing_closer_under_thinking_is_an_invalid_format() -> Bool {
-  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum)
+// THE INVALID SHAPE, NARROWED TO WHAT THE INVARIANT ACTUALLY NAMES: thinking requested, the
+// completion stopped at the TOKEN CEILING, and no closer and no thinking block arrived -- the chain
+// of thought is truncated and must not be transcribed as speech.
+test fn a_ceiling_stopped_completion_with_no_closer_is_an_invalid_format() -> Bool {
+  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum, stop: MaxTokens)
     .contains("no end-of-thinking closer")
 }
 
-// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, and a
-// well-formed inline completion under Think Max is well-formed too. A cause that fired on either
-// would refuse every ordinary round.
-test fn a_closerless_text_is_valid_under_non_think_and_a_split_one_under_think_max() -> Bool {
-  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningOff) == ""
-    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "r</think>391" }], mode: ReasoningMaximum) == ""
+// THE PRODUCTION SHAPE THAT FALSIFIED THE OLD PREDICATE, planted verbatim from the observed
+// completion (dispatch probe 2026-09-20, attempt-state shell-typed-invocation-a19c151825c6f6eff):
+// GLM-5.3-Flash at reasoning_effort max answered with finish_reason `tool_calls`, reasoning null
+// and zero reasoning tokens. A COMPLETED round whose model went straight to its tool calls is
+// well-formed -- complete is not truncated -- and the turn must execute the calls, not fail.
+test fn a_completed_tool_round_with_no_reasoning_is_well_formed() -> Bool {
+  harness_thinking_format_cause(unit: Glm53FlashOnVllm, blocks: [
+    WireToolUseBlock { id: "chatcmpl-tool-9aca2e33e6090815", name: "run_command", input: json_object([]) },
+    WireToolUseBlock { id: "chatcmpl-tool-80011b8c2bf62a54", name: "run_command", input: json_object([]) },
+  ], mode: ReasoningMaximum, stop: ToolUse) == ""
+}
+
+// THE DISCRIMINATING RED FOR THE FIX: the SAME tool-call block list, but stopped at the ceiling --
+// the truncated shape the invariant exists to refuse. The cause must still fire, and a closerless
+// text stopped at the ceiling must fire with it.
+test fn a_ceiling_stopped_round_with_no_thinking_block_is_refused() -> Bool {
+  harness_thinking_format_cause(unit: Glm53FlashOnVllm, blocks: [
+    WireToolUseBlock { id: "a", name: "run_command", input: json_object([]) },
+  ], mode: ReasoningMaximum, stop: MaxTokens).contains("truncated")
+}
+
+// THE DISCRIMINATING CONTROL: the same closer-less text under NON-THINK is well-formed, a
+// well-formed inline completion under Think Max is well-formed too, and a closer-less text that
+// COMPLETED under Think Max is a model that simply did not reason this round -- not a truncation.
+// A cause that fired on any of these would refuse every ordinary round.
+test fn a_closerless_text_is_valid_under_non_think_and_completed_stops() -> Bool {
+  harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningOff, stop: EndTurn) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "r</think>391" }], mode: ReasoningMaximum, stop: EndTurn) == ""
+    && harness_thinking_format_cause(unit: DeepseekV4FlashOnVllm, blocks: [WireTextBlock { text: "391" }], mode: ReasoningMaximum, stop: EndTurn) == ""
 }
 
 
@@ -319,21 +352,152 @@ test fn the_worker_is_told_its_own_worktree_path() -> Bool {
     && prose.contains("paths outside it, including the tree that holds the gunbc binary, are not part of this task")
 }
 
-// ENTAILMENT + PROJECTION. A test-process premise beside an acceptance term derives the one acceptance
-// command, verbatim, and the withheld capability names the routes that are not it. RED against a
-// roster that mentions cargo as a way to check work, and against a process premise with no
-// acceptance term deriving the imperative on its own.
-test fn the_worker_is_told_the_one_test_command_and_nothing_else() -> Bool {
+// ENTAILMENT + PROJECTION. The test process beside its three scoping premises (the pattern selects
+// modules, a changed tree rebuilds, acceptance is the node's contract validation) and the acceptance
+// term derives the scoped-iteration conclusion, verbatim: iterate narrow, batch edits, run the
+// contract check last. The withheld capability names the routes that are not the process, and its
+// text no longer claims the verifier shares the worker's build (it does not: the verifier runs its
+// own compiler on the committed head).
+test fn the_worker_iterates_narrow_and_accepts_with_the_contract_check() -> Bool {
   let rows = harness_worker_guidance_at(worktree: "/x/attempts/n-a1", test_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...", test_receipt_path: "/x/attempts/n-a1/.gunbc-test-receipt.json", compile_command: "/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>", compile_receipt_path: "/x/attempts/n-a1/.gunbc-compile-receipt.json")
   let prose = harness_guidance_prose(rows: rows)
   let conclusions = harness_conclusions(rows: rows)
   prose.contains("The canonical test process is one command: `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...`.")
-    && prose.contains("So the acceptance command is `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...` and nothing else")
+    && prose.contains("So iterate with `/opt/gunbc/bin/gunbc run --entry test_run.dag --arg pattern=//dag/test/claim/<package>/...` using the narrowest pattern")
+    && prose.contains("never //dag/test/claim/...")
+    && prose.contains("batch your edits before each run because every run after an edit rebuilds")
+    && prose.contains("Run the acceptance check named in your brief last")
+    && !prose.contains("and nothing else")
+    && !prose.contains("shared with the verifier")
     && prose.contains("You may not build or test any other way: no cargo, no gunbc compile, no claim_batch by hand")
     && prose.contains("/x/attempts/n-a1/.gunbc-test-receipt.json")
     && prose.contains("To typecheck a change before testing it, run `/opt/gunbc/bin/gunbc run --entry test_run.dag --function compile_entry_cli --arg entry=<entry>`")
     && prose.contains("zero blocking diagnostics; advisories are not the bar")
     && prose.contains("/x/attempts/n-a1/.gunbc-compile-receipt.json")
-    && any(conclusions, c => match c { TestWithTheProcess { command } => command.contains("test_run.dag")  _ => false })
-    && !any(harness_conclusions(rows: [is_worker(), at(premise: TestProcessIs { command: "x", receipt_path: "r" })]), c => match c { TestWithTheProcess { command: _ } => true  _ => false })
+    && any(conclusions, c => match c { IterateNarrowThenAccept { iterate } => iterate.contains("test_run.dag")  _ => false })
+}
+
+// THE DISCRIMINATING RED for the scoped conclusion: it is derived only from the premises that make
+// it true. With the test process and the acceptance term present, withdrawing any one scoping
+// premise derives no iteration imperative, and so does withdrawing the acceptance term -- the
+// imperative cannot outlive a fact it rests on. The positive arm re-adds all three.
+test fn the_scoped_iteration_conclusion_needs_every_scoping_premise() -> Bool {
+  let base = [
+    is_worker(),
+    at(premise: TestProcessIs { command: "x", receipt_path: "r" }),
+    at(premise: CompletionRequires { term: AcceptanceCheckPasses }),
+  ]
+  let pattern = at(premise: IterationSelectsByPattern { grain: "//pkg:name" })
+  let rebuild = at(premise: RunRebuildsOnTreeChange)
+  let accept_is = at(premise: AcceptanceIsTheContractValidation)
+  derives_scoped_iteration(rows: concat(base, [pattern, rebuild, accept_is]))
+    && !derives_scoped_iteration(rows: concat(base, [pattern, accept_is]))
+    && !derives_scoped_iteration(rows: concat(base, [pattern, rebuild]))
+    && !derives_scoped_iteration(rows: concat(base, [rebuild, accept_is]))
+    && !derives_scoped_iteration(rows: [is_worker(), at(premise: TestProcessIs { command: "x", receipt_path: "r" }), pattern, rebuild, accept_is])
+}
+
+fn derives_scoped_iteration(rows: List<HarnessGroundedPremise>) -> Bool {
+  any(harness_conclusions(rows: rows), c => match c { IterateNarrowThenAccept { iterate: _ } => true  _ => false })
+}
+
+// DRIFT CONTROL, keyed to the decoder and not to the sentence. The completion term must project the
+// decoder's contract: the schema member's exact VALUE (so a schema version bump in
+// gunbc.roadmap.roadmap_submission follows into the prompt), every exact key name the decoder reads,
+// and the consequence of omitting it. The old text taught "known limitations" as prose and never
+// named the schema member; this control is red on that text.
+test fn the_submission_term_projects_the_decoders_contract() -> Bool {
+  let prose = harness_guidance_prose(rows: harness_worker_guidance())
+  prose.contains(submission_schema as String)
+    && prose.contains("\"schema\": \"")
+    && prose.contains("\"readiness\"")
+    && prose.contains("\"explanation\"")
+    && prose.contains("\"limitations\"")
+    && !prose.contains("known_limitations")
+    && prose.contains("does not decode")
+}
+
+// THE SKELETON IS READ BACK THROUGH THE REAL DECODER. The contains-checks above can be satisfied by
+// a text that merely mentions the keys; this half decodes the guided skeleton itself, so the
+// prompt's copy-verbatim shape is proven to be a declaration the belt accepts, with the ready
+// vocabulary spelled the decoder's way.
+test fn the_guided_skeleton_decodes_as_a_ready_submission() -> Bool {
+  match submission_decode(text: submission_declaration_skeleton()) {
+    SubmissionNotDecodable { reason: _ } => false
+    SubmissionDecoded { submission } =>
+      match submission.readiness {
+        SubmissionReady => true
+        _ => false
+      }
+  }
+}
+
+// RED CONTROL, planted verbatim from production. This is the artifact shape workers actually wrote
+// on the attempts that yielded (no schema member, a "known_limitations" key): it must NOT decode,
+// and the control fails if the decoder ever starts accepting it silently -- that acceptance would
+// be a schema change, which belongs in submission_schema with the prompt following it.
+test fn the_production_shape_without_the_schema_member_is_not_a_declaration() -> Bool {
+  match submission_decode(text: "{\"readiness\": \"ready\", \"explanation\": \"did the work\", \"known_limitations\": [\"no soak\"]}") {
+    SubmissionNotDecodable { reason: _ } => true
+    SubmissionDecoded { submission: _ } => false
+  }
+}
+
+// THE GUIDANCE POPULATION IS THE SEGMENT POPULATION: the prose projection and the modeled segments
+// cannot fork, every premise segment names its grounding declaration at the caller's revision, and
+// every conclusion segment names its grounds so a retracted premise moves the digest.
+test fn the_segments_and_the_prose_are_one_population() -> Bool {
+  let rows = harness_worker_guidance_at(
+    worktree: "/wt",
+    test_command: "test-cmd",
+    test_receipt_path: "/wt/.receipts/test",
+    compile_command: "compile-cmd",
+    compile_receipt_path: "/wt/.receipts/compile",
+  )
+  let segments = harness_guidance_segments(rows: rows, source_revision: "rev-fixture")
+  harness_guidance_prose_from_segments(segments: segments) == harness_guidance_prose(rows: rows)
+    && count(segments) > count(rows)
+    && (match segments.first() {
+      Present { value: s } =>
+        (match s.source {
+          AuthorityInput { declaration: _, revision, required } => revision == "rev-fixture" && required
+          _ => false
+        })
+          && prompt_segment_required(segment: s)
+          && s.content_digest != ""
+      Absent => false
+    })
+    && (match segments.last() {
+      Present { value: s } =>
+        match s.source {
+          DerivedConclusionInput { conclusion_key, grounds, required } =>
+            conclusion_key != "" && required && count(grounds) > 0 && count(grounds) <= count(rows)
+          _ => false
+        }
+      Absent => false
+    })
+}
+
+test fn a_moved_revision_moves_the_segment_inputs() -> Bool {
+  let rows = harness_probe_guidance()
+  let a = harness_guidance_segments(rows: rows, source_revision: "rev-a")
+  let b = harness_guidance_segments(rows: rows, source_revision: "rev-b")
+  match a.first() {
+    Absent => false
+    Present { value: sa } =>
+      match b.first() {
+        Absent => false
+        Present { value: sb } =>
+          sa.content == sb.content
+            && sa.content_digest == sb.content_digest
+            && (match sa.source {
+              AuthorityInput { declaration: _, revision, required: _ } => revision == "rev-a"
+              _ => false
+            })
+            && (match sb.source {
+              AuthorityInput { declaration: _, revision, required: _ } => revision == "rev-b"
+              _ => false
+            })
+      }
+  }
 }

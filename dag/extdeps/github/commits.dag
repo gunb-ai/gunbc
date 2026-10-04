@@ -8,6 +8,7 @@ import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 // The GitHub REST commits API area. Modeled here rather than folded into an existing github module
 // for the reason DESIGN's external-upstream decomposition gives: these are two distinct documented
@@ -109,6 +110,7 @@ service github.Commits {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -134,6 +136,7 @@ service github.Commits {
   }
 
   operation Compare {
+    requires Network
     input {
       auth_token: Secret
       owner: String

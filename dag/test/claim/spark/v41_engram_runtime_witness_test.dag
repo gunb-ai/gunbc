@@ -441,8 +441,11 @@ test fn staging_verifies_readback_and_refuses_a_wrong_rank_identity() -> Bool {
 test fn the_live_storage_backed_patches_are_digestfile_of_committed_bytes() -> Bool {
   match v41_storage_backed_patch_population() {
     V41PatchesObserved { patches: ps, partition: _ } =>
-      length(ps) == 2
+      length(ps) == 7
         && all(ps, p => (p.path as String).contains("d2d649e6"))
+        && !all(ps, p => !(p.path as String).contains("sm120_64_token_kernel_pages"))
+        && !all(ps, p => !(p.path as String).contains("flashinfer_0_7_1rc1_requirements"))
+        && !all(ps, p => !(p.path as String).contains("deepgemm_sm120_fp8_page32"))
     V41PatchesAbsentByObservation => false
     V41PatchesUnestablished { obligation: _ } => false
   }

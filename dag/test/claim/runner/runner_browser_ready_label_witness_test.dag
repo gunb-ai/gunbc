@@ -1,0 +1,85 @@
+module test.claim.runner.runner_browser_ready_label_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.nat { Nat }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv3 }
+import gunbc.runner_registration_labels {
+  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
+  gunbc_browser_ready_label,
+}
+import gunbc.runner_browser_toolchain {
+  BrowserReadyLabelsPlan, BrowserReadyLabelsPlanned, BrowserReadyLabelsUnrenderable,
+  browser_ready_labels_grant_plan, browser_ready_labels_revoke_plan, browser_ready_labels_outcome_holds,
+  BrowserReadyLabelsGranted, BrowserReadyLabelsRevoked, BrowserReadyLabelsFailed,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE gunbc-browser-ready LABEL IS GRANTED BY A READY BROWSER-TOOLCHAIN CONVERGE AND NOTHING ELSE.
+// Each claim supplies its subject at one interface: the plan text, the conformance relation, the
+// converge verdict. The wet write is the converge's own and is not re-run here.
+
+fn plan_script(p: BrowserReadyLabelsPlan) -> String {
+  match p {
+    BrowserReadyLabelsPlanned { script: s } => s
+    BrowserReadyLabelsUnrenderable { cause: _ } => ""
+  }
+}
+
+// GRANT writes the template drop-in carrying the label and reloads; REVOKE removes the same path.
+// Discriminating: a grant without the label, or a revoke that rewrote rather than removed, reds.
+test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
+  let grant = plan_script(p: browser_ready_labels_grant_plan(host: operator_host_srv3))
+  let revoke = plan_script(p: browser_ready_labels_revoke_plan())
+  string_contains(s: grant, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
+    && string_contains(s: grant, pattern: "gunbc-browser-ready")
+    && string_contains(s: grant, pattern: "srv3")
+    && string_contains(s: grant, pattern: "daemon-reload")
+    && string_contains(s: revoke, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
+    && string_contains(s: revoke, pattern: "'rm' '-f'")
+    && !string_contains(s: revoke, pattern: "gunbc-browser-ready")
+}
+
+// THE CONVERGE VERDICT: only a grant on a ready toolchain leaves the host floor-ready; a revoke is
+// the right label action and still a failed converge.
+test fn only_a_ready_grant_holds() -> Bool {
+  browser_ready_labels_outcome_holds(o: BrowserReadyLabelsGranted, ready: true)
+    && !browser_ready_labels_outcome_holds(o: BrowserReadyLabelsGranted, ready: false)
+    && browser_ready_labels_outcome_holds(o: BrowserReadyLabelsRevoked, ready: false)
+    && !browser_ready_labels_outcome_holds(o: BrowserReadyLabelsRevoked, ready: true)
+    && !browser_ready_labels_outcome_holds(o: BrowserReadyLabelsFailed { cause: "x" }, ready: true)
+}
+
+fn srv3_slot(index: Nat) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: index }
+}
+
+fn conforms(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
+  match runner_slot_labels_conform(slot: slot, observed: observed) {
+    RegistrationLabelsConform => true
+    RegistrationLabelsDiverge => false
+    RegistrationLabelsUnjudged { host: _, cause: _ } => false
+  }
+}
+
+fn host_set(host: HostIdentity) -> List<String> {
+  match runner_registration_labels(host: host) {
+    RegistrationLabelsResolved { labels: ls } => ls
+    RegistrationLabelsRefused { host: _, cause: _ } => []
+  }
+}
+
+// A SLOT CONFORMS WITH OR WITHOUT THE GRANTED LABEL, AND WITH NOTHING ELSE. Before its host's
+// converge a runner carries the host set and is healthy; after, the host set plus the label. A
+// stray extra label, or a missing host label, is a divergence.
+test fn a_slot_conforms_with_or_without_the_granted_label_and_nothing_else() -> Bool {
+  let base = host_set(host: operator_host_srv3)
+  conforms(slot: srv3_slot(index: 2), observed: base)
+    && conforms(slot: srv3_slot(index: 2), observed: concat(base, [gunbc_browser_ready_label]))
+    && !conforms(slot: srv3_slot(index: 2), observed: concat(base, ["gunbc-something-else"]))
+    && !conforms(slot: srv3_slot(index: 2), observed: [gunbc_browser_ready_label])
+}

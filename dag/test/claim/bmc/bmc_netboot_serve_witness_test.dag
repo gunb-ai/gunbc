@@ -1,23 +1,169 @@
 module test.claim.bmc_netboot_serve
 
 import std.logic { Bool }
-import std.types { list_length, NonEmptyStr }
+import std.types { list_length, NonEmptyStr, Int, String, List }
+import std.algebra { list_append }
 import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
-import extdeps.exec.command { shell_command_render, scp_command }
+import extdeps.exec.command {
+  command_over_transport,
+  CommandOverTransportBuilt,
+  CommandOverTransportRefused,
+  scp_command,
+}
+import extdeps.tools.mkdir { mkdir_parents_command_at }
 import gunbc.bmc_netboot_serve {
-  BmcNetbootServePlan,
   srv4_bmc_netboot_serve_plan,
+  bmc_transport,
+  bmc_path_resolved_mkdir_applet,
   bmc_netboot_grub_cfg_text,
   bmc_netboot_http_boot_entry,
-  bmc_netboot_nocloud_user_data,
-  bmc_netboot_staging_manifest,
-  bmc_netboot_serve_command_local,
-  bmc_netboot_serve_command_text,
-  BmcNetbootServeCommandTextBuilt,
-  BmcNetbootServeCommandTextRefused,
-  InlineText,
-  LocalArtifact,
-  FetchFromUri,
+  bmc_netboot_user_seed_verdict,
+  bmc_netboot_staged_path,
+  bmc_netboot_artifact,
+  BmcNetbootPreparedOp,
+  BmcNetbootPreparedMakeDir,
+  BmcNetbootPreparedPutArtifact,
+  BmcNetbootPreparedPutText,
+  BmcNetbootPreparedLaunchServe,
+  BmcNetbootStaging,
+  BmcNetbootStagingReady,
+  BmcNetbootStagingRefused,
+  BmcNetbootOpCommand,
+  BmcNetbootOpRunsOnBmc,
+  BmcNetbootOpTransfersFile,
+  BmcNetbootOpStagesFile,
+  bmc_netboot_provision_staging,
+  bmc_netboot_prepared_realization,
+}
+import gunbc.os_install_emit {
+  AutoinstallUserDataRendered
+  AutoinstallUserDataRefused
+}
+
+// THE FIXTURE + TOOL-REALIZATION SIDE of the witness split. The domain gates over the typed
+// staging and its refusals live in dag/test/claim/shell/bmc_netboot_typed_staging_witness_test.dag;
+// THIS module owns the fixture and the realization boundary: which arm each prepared op lowers
+// to, and what the lowered argv carries. Every assertion here reads ARGV FIELDS -- the program
+// against the builder's own minted identity, the argument count, word membership -- and NONE of
+// them call shell_command_render or search a rendered string: rendering is narration, and
+// searching it for meaning is the scraped-shell anti-pattern this migration deletes. The
+// grub.cfg / user-data assertions below render CONFIGURATION TEXT (a grub.cfg and a cloud-init
+// seed ARE text upstream); that is an emitted artifact, not a shell invocation, and stays.
+
+fn staging_ready_ops(staging: BmcNetbootStaging) -> List<BmcNetbootPreparedOp> {
+  match staging {
+    BmcNetbootStagingReady { operations: os } => os
+    BmcNetbootStagingRefused { reason: _ } => []
+  }
+}
+
+// The realization boundary, applied per prepared op. Order is preserved: the realized list is
+// the staged list in the same order.
+fn realized_all(ops: List<BmcNetbootPreparedOp>) -> List<BmcNetbootOpCommand> {
+  fold(ops, init: [], f: (acc, op) =>
+    list_append(left: acc, right: [bmc_netboot_prepared_realization(op: op)]))
+}
+
+fn is_on_bmc(cmd: BmcNetbootOpCommand) -> Bool {
+  match cmd {
+    BmcNetbootOpRunsOnBmc { command: _ } => true
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => false
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => false
+  }
+}
+
+fn is_transfer(cmd: BmcNetbootOpCommand) -> Bool {
+  match cmd {
+    BmcNetbootOpRunsOnBmc { command: _ } => false
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => true
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => false
+  }
+}
+
+fn is_stage(cmd: BmcNetbootOpCommand) -> Bool {
+  match cmd {
+    BmcNetbootOpRunsOnBmc { command: _ } => false
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => false
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => true
+  }
+}
+
+// THE UNION DOES NOT PROJECT: a realized command is one variant or another, and its fields are
+// read by matching, once, here -- so no assertion below pattern-matches and no assertion indexes
+// into an argv position.
+fn argv_program(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpRunsOnBmc { command: c } => c.program.invocation as String
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => ""
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => ""
+  }
+}
+
+fn argv_arguments(cmd: BmcNetbootOpCommand) -> List<String> {
+  match cmd {
+    BmcNetbootOpRunsOnBmc { command: c } => c.arguments
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => []
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => []
+  }
+}
+
+fn transfer_local(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpTransfersFile { local_path: l, remote_path: _ } => l as String
+    BmcNetbootOpRunsOnBmc { command: _ } => ""
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => ""
+  }
+}
+
+fn transfer_remote(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: r } => r as String
+    BmcNetbootOpRunsOnBmc { command: _ } => ""
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: _ } => ""
+  }
+}
+
+fn stage_local(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpStagesFile { local_path: l, content: _, remote_path: _ } => l as String
+    BmcNetbootOpRunsOnBmc { command: _ } => ""
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => ""
+  }
+}
+
+fn stage_content(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpStagesFile { local_path: _, content: t, remote_path: _ } => t
+    BmcNetbootOpRunsOnBmc { command: _ } => ""
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => ""
+  }
+}
+
+fn stage_remote(cmd: BmcNetbootOpCommand) -> String {
+  match cmd {
+    BmcNetbootOpStagesFile { local_path: _, content: _, remote_path: r } => r as String
+    BmcNetbootOpRunsOnBmc { command: _ } => ""
+    BmcNetbootOpTransfersFile { local_path: _, remote_path: _ } => ""
+  }
+}
+
+type OnBmcWalk {
+  pos: Int
+  first_program: String
+  last_program: String
+}
+
+// The two on-BMC acts are found by a fold that walks the realized list once -- the first is the
+// provision's opening act, the last its closing one. No indexing.
+fn on_bmc_first_and_last(cmds: List<BmcNetbootOpCommand>) -> OnBmcWalk {
+  fold(cmds, init: OnBmcWalk { pos: 0, first_program: "", last_program: "" }, f: (acc, cmd) => {
+    let program = argv_program(cmd: cmd)
+    OnBmcWalk {
+      pos: acc.pos + 1,
+      first_program: if is_on_bmc(cmd: cmd) && acc.first_program == "" { program } else { acc.first_program },
+      last_program: if is_on_bmc(cmd: cmd) { program } else { acc.last_program },
+    }
+  })
 }
 
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
@@ -34,66 +180,161 @@ test fn srv4_http_boot_entry_targets_bmc() -> Bool {
 }
 
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
-  let ud = bmc_netboot_nocloud_user_data(plan: srv4_bmc_netboot_serve_plan)
-  string_contains(s: ud, pattern: "hostname: srv4")
-    && string_contains(s: ud, pattern: "allow-pw: false")
-    && string_contains(s: ud, pattern: "fleet-automation@gunbc")
-}
-
-fn bmc_netboot_serve_command_text_unwrap(plan: BmcNetbootServePlan) -> String {
-  match bmc_netboot_serve_command_text(plan: plan) {
-    BmcNetbootServeCommandTextRefused { cause: _ } => "REFUSED -- test fixture expected PosixShellInterpreted, got a refusal"
-    BmcNetbootServeCommandTextBuilt { text: t } => t
+  match bmc_netboot_user_seed_verdict(plan: srv4_bmc_netboot_serve_plan) {
+    AutoinstallUserDataRendered { content: ud } =>
+      string_contains(s: ud, pattern: "hostname: srv4")
+        && string_contains(s: ud, pattern: "allow-pw: false")
+        && string_contains(s: ud, pattern: "fleet-automation@gunbc")
+    AutoinstallUserDataRefused { reason: _ } => false
   }
 }
 
-// The inner busybox command is now ONE RFC 4254 command string carried as ssh's final
-// argument (extdeps.exec.command command_over_transport_composition_note), not a suffix
-// of separately-quoted argv members after the target -- so the old wrong-in-kind shape
-// ('root@...' '/tmp/netboot/busybox' 'httpd' ...) must NOT appear, and the escaped-quote
-// marker from re-quoting the already-quoted inner string for the LOCAL shell must.
-test fn serve_command_one_shape_two_transports() -> Bool {
-  let local = shell_command_render(command: bmc_netboot_serve_command_local(plan: srv4_bmc_netboot_serve_plan))
-  let over_bmc = bmc_netboot_serve_command_text_unwrap(plan: srv4_bmc_netboot_serve_plan)
-  string_contains(s: local, pattern: "'/tmp/netboot/busybox' 'httpd' '-p' '8080' '-h' '/tmp/netboot'")
-    && string_contains(s: over_bmc, pattern: "'sshpass' '-e' 'ssh'")
-    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195'")
-    && string_contains(s: over_bmc, pattern: "'\\''") == true
-    && string_contains(s: over_bmc, pattern: "'root@192.168.1.195' '/tmp/netboot/busybox' 'httpd'") == false
+// THE PROVISION REALIZES AS TWO ON-BMC COMMANDS, FOUR TRANSFERS, AND THREE STAGED TEXT PUTS --
+// nine acts, the staged list in the same order, and the on-BMC pair at the two ends: the mkdir
+// opens the provision, the serve launch closes it.
+test fn staged_provision_realizes_two_on_bmc_four_transfers_three_staged_puts() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let realized = realized_all(ops: staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)))
+  let walk = on_bmc_first_and_last(cmds: realized)
+  list_length(items: realized) == 9
+    && count(filter(realized, cmd => is_on_bmc(cmd: cmd))) == 2
+    && count(filter(realized, cmd => is_transfer(cmd: cmd))) == 4
+    && count(filter(realized, cmd => is_stage(cmd: cmd))) == 3
+    && walk.first_program == "mkdir"
+    && walk.last_program == (bmc_netboot_staged_path(plan: plan, name: "busybox") as String)
 }
 
-test fn srv4_scp_put_uses_shared_ssh_posture_not_a_fork() -> Bool {
-  let scp = shell_command_render(command: scp_command(
+// THE MKDIR ACTS ON THE BMC WITH THE DERIVED DIRECTORY, AT ARGV GRAIN: the path-resolved applet
+// spelling the module declares, the -p ensure form, and the directory staging derives from the
+// plan's own serve root.
+test fn the_bmc_mkdir_acts_with_the_derived_directory() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let realized = realized_all(ops: staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)))
+  let mkdirs = filter(realized, cmd => is_on_bmc(cmd: cmd) && argv_program(cmd: cmd) == "mkdir")
+  list_length(items: mkdirs) == 1
+    && all(mkdirs, cmd =>
+      list_length(items: argv_arguments(cmd: cmd)) == 2
+        && any(argv_arguments(cmd: cmd), w => w == "-p")
+        && any(argv_arguments(cmd: cmd), w => w == (bmc_netboot_staged_path(plan: plan, name: "nocloud") as String)))
+}
+
+// THE BMC TRANSPORT COMPOSES ONE RFC 4254 STRING: the same builder the realization lowers to,
+// over the same derived path, through the plan's Dropbear-named SshExec transport, becomes
+// sshpass -e ssh <host-key override posture> <target> <ONE folded command string> -- eight
+// words total, the shared host-key posture carried exactly as the scp push carries it, and the
+// inner program folded INTO the final word, never as a separate `mkdir` word. (The fold is
+// extdeps.exec.command command_over_transport's SshExec arm, cited to IEEE 1003.1-2017 section
+// 2.2.2; the interpretation is the deployment's own determined fact, openbmc_dropbear_interpretation.)
+test fn the_bmc_transport_composes_one_rfc4254_string_for_the_mkdir() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let inner = mkdir_parents_command_at(
+    mkdir_binary: bmc_path_resolved_mkdir_applet,
+    path: bmc_netboot_staged_path(plan: plan, name: "nocloud") as String,
+  )
+  match command_over_transport(command: inner, transport: bmc_transport(plan: plan)) {
+    CommandOverTransportRefused { cause: _ } => false
+    CommandOverTransportBuilt { command: over } =>
+      (over.program.invocation as String) == "sshpass"
+        && list_length(items: over.arguments) == 8
+        && any(over.arguments, w => w == "-e")
+        && any(over.arguments, w => w == "ssh")
+        && any(over.arguments, w => w == "-o")
+        && any(over.arguments, w => w == "StrictHostKeyChecking=no")
+        && any(over.arguments, w => w == "UserKnownHostsFile=/dev/null")
+        && any(over.arguments, w => w == "root@192.168.1.195")
+        && count(filter(over.arguments, w => string_contains(s: w, pattern: "mkdir"))) == 1
+        && count(filter(over.arguments, w => w == "mkdir")) == 0
+  }
+}
+
+test fn the_scp_transfer_carries_the_shared_ssh_posture() -> Bool {
+  let cmd = scp_command(
     local_path: "/tmp/netboot/grub.cfg" as NonEmptyStr,
     remote_target: "root@192.168.1.195:/tmp/netboot/grub.cfg" as NonEmptyStr,
-  ))
-  string_contains(s: scp, pattern: "'sshpass' '-e' 'scp' '-o' 'StrictHostKeyChecking=no' '-o' 'UserKnownHostsFile=/dev/null' '/tmp/netboot/grub.cfg' 'root@192.168.1.195:/tmp/netboot/grub.cfg'")
+  )
+  (cmd.program.invocation as String) == "sshpass"
+    && list_length(items: cmd.arguments) == 8
+    && any(cmd.arguments, w => w == "-e")
+    && any(cmd.arguments, w => w == "scp")
+    && any(cmd.arguments, w => w == "-o")
+    && any(cmd.arguments, w => w == "StrictHostKeyChecking=no")
+    && any(cmd.arguments, w => w == "UserKnownHostsFile=/dev/null")
+    && any(cmd.arguments, w => w == "/tmp/netboot/grub.cfg")
+    && any(cmd.arguments, w => w == "root@192.168.1.195:/tmp/netboot/grub.cfg")
+    && count(filter(cmd.arguments, w => w == "ssh")) == 0
 }
 
-test fn srv4_scp_put_never_carries_a_second_forked_posture() -> Bool {
-  let scp = shell_command_render(command: scp_command(
-    local_path: "/tmp/a" as NonEmptyStr,
-    remote_target: "root@192.168.1.195:/tmp/b" as NonEmptyStr,
-  ))
-  !string_contains(s: scp, pattern: "'ssh' '-o' 'StrictHostKeyChecking=no'")
-    && !string_contains(s: scp, pattern: "StrictHostKeyChecking=yes")
+// THE ARM FIELDS ARE THE EXECUTOR'S INPUTS, PAIRED BY DERIVATION: an artifact put transfers THE
+// artifact to THE staged path; a text put stages at the local name derived from its own remote
+// path, carrying the text it will write.
+test fn the_artifact_put_transfers_the_artifact_to_its_staged_path() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let staged = staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan))
+  let artifact_puts = filter(staged, op => match op.disposition {
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => true
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => false
+    BmcNetbootPreparedMakeDir { remote_path: _ } => false
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+  })
+  let realized = fold(artifact_puts, init: [], f: (acc, op) =>
+    list_append(left: acc, right: [bmc_netboot_prepared_realization(op: op)]))
+  let busybox_transfers = filter(realized, cmd =>
+    transfer_remote(cmd: cmd) == (bmc_netboot_staged_path(plan: plan, name: "busybox") as String))
+  list_length(items: artifact_puts) == 4
+    && list_length(items: busybox_transfers) == 1
+    && all(busybox_transfers, cmd =>
+      is_transfer(cmd: cmd)
+        && transfer_local(cmd: cmd) == (bmc_netboot_artifact(name: "busybox") as String))
 }
 
-test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {
-  let m = bmc_netboot_staging_manifest(plan: srv4_bmc_netboot_serve_plan)
-  let grub_ok = fold(m, init: false, f: (acc, file) =>
-    acc || (string_contains(s: file.remote_path as String, pattern: "/grub.cfg")
-      && match file.content {
-        InlineText { text: t } => string_contains(s: t, pattern: "ds=nocloud-net")
-        LocalArtifact { path: _ } => false
-        FetchFromUri { source: _ } => false
-      }))
-  let seed_ok = fold(m, init: false, f: (acc, file) =>
-    acc || (string_contains(s: file.remote_path as String, pattern: "nocloud/user-data")
-      && match file.content {
-        InlineText { text: t } => string_contains(s: t, pattern: "fleet-automation@gunbc")
-        LocalArtifact { path: _ } => false
-        FetchFromUri { source: _ } => false
-      }))
-  grub_ok && seed_ok && list_length(items: m) == 7
+test fn the_staged_text_put_pairs_its_local_file_with_its_remote_path() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let staged = staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan))
+  let text_puts = filter(staged, op => match op.disposition {
+    BmcNetbootPreparedPutText { remote_path: _, text: _ } => true
+    BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
+    BmcNetbootPreparedMakeDir { remote_path: _ } => false
+    BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+  })
+  let realized = fold(text_puts, init: [], f: (acc, op) =>
+    list_append(left: acc, right: [bmc_netboot_prepared_realization(op: op)]))
+  let grub_puts = filter(realized, cmd => string_contains(s: stage_remote(cmd: cmd), pattern: "grub.cfg"))
+  list_length(items: text_puts) == 3
+    && list_length(items: grub_puts) == 1
+    && all(grub_puts, cmd =>
+      is_stage(cmd: cmd)
+        && stage_local(cmd: cmd) == "/tmp/gunbc-bmc-grub.cfg"
+        && stage_remote(cmd: cmd) == (bmc_netboot_staged_path(plan: plan, name: "grub.cfg") as String)
+        && string_contains(s: stage_content(cmd: cmd), pattern: "ds=nocloud-net"))
+}
+
+// THE STAGED PUTS CARRY THE RENDERED PAYLOADS, READ FROM THE PREPARED OPS (validated, still
+// semantic) -- so a value the staging would refuse never reaches these assertions. This is the
+// old manifest witness, re-pointed at the staged value it now drives.
+test fn staged_puts_carry_the_rendered_grub_and_seed() -> Bool {
+  let plan = srv4_bmc_netboot_serve_plan
+  let puts = filter(staging_ready_ops(staging: bmc_netboot_provision_staging(plan: plan)), op =>
+    match op.disposition {
+      BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => true
+      BmcNetbootPreparedPutText { remote_path: _, text: _ } => true
+      BmcNetbootPreparedMakeDir { remote_path: _ } => false
+      BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+    })
+  let grub_ok = fold(puts, init: false, f: (acc, op) =>
+    acc || match op.disposition {
+      BmcNetbootPreparedPutText { remote_path: r, text: t } =>
+        string_contains(s: r as String, pattern: "/grub.cfg") && string_contains(s: t, pattern: "ds=nocloud-net")
+      BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
+      BmcNetbootPreparedMakeDir { remote_path: _ } => false
+      BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+    })
+  let seed_ok = fold(puts, init: false, f: (acc, op) =>
+    acc || match op.disposition {
+      BmcNetbootPreparedPutText { remote_path: r, text: t } =>
+        string_contains(s: r as String, pattern: "nocloud/user-data") && string_contains(s: t, pattern: "fleet-automation@gunbc")
+      BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
+      BmcNetbootPreparedMakeDir { remote_path: _ } => false
+      BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
+    })
+  grub_ok && seed_ok && list_length(items: puts) == 7
 }

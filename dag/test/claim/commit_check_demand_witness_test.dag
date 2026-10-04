@@ -361,10 +361,18 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
             && left.first().declarations.count() == 2
             && nth_declaration_name(rows: left, row: 0, declaration: 0) == "beta_holds"
             && nth_declaration_name(rows: left, row: 0, declaration: 1) == "alpha_holds"
-            && declaration_ref_lists_eq(
-              left: left.first().declarations,
-              right: right.first().declarations
-            )
+            && match left.first() {
+              Present { value: left_row } =>
+                match right.first() {
+                  Present { value: right_row } =>
+                    declaration_ref_lists_eq(
+                      left: left_row.declarations,
+                      right: right_row.declarations
+                    )
+                  Absent => false
+                }
+              Absent => false
+            }
         DemandMissing { check: _, cause: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
         DemandIncomplete { check: _, cause: _ } => false
@@ -389,8 +397,14 @@ test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
       rows.count() == 2
         && rows.first().declarations.count() == 0
         && rows.skip(n: 1).first().declarations.count() == 0
-        && commit_check_kind_eq(a: rows.first().check, b: gate)
-        && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
+        && match rows.first() {
+          Present { value: gate_row } => commit_check_kind_eq(a: gate_row.check, b: gate)
+          Absent => false
+        }
+        && match rows.skip(n: 1).first() {
+          Present { value: fmt_row } => commit_check_kind_eq(a: fmt_row.check, b: fmt)
+          Absent => false
+        }
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
@@ -641,15 +655,17 @@ test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Boo
   demand_rows_match_roster(roster: roster, rows: [gate_row, fmt_row])
     && !demand_rows_match_roster(roster: roster, rows: [gate_row])
     && !demand_rows_match_roster(roster: roster, rows: [gate_row, gate_row])
-    && !declaration_ref_lists_eq(left: complete, right: [complete.first()])
-    && !declaration_ref_lists_eq(
-      left: complete,
-      right: [complete.first(), complete.first()]
-    )
-    && !declaration_ref_lists_eq(
-      left: [complete.first(), complete.first(), complete.skip(n: 1).first()],
-      right: [complete.first(), complete.skip(n: 1).first(), complete.skip(n: 1).first()]
-    )
+    && match complete.first() {
+      Present { value: a } =>
+        match complete.skip(n: 1).first() {
+          Present { value: b } =>
+            !declaration_ref_lists_eq(left: complete, right: [a])
+              && !declaration_ref_lists_eq(left: complete, right: [a, a])
+              && !declaration_ref_lists_eq(left: [a, a, b], right: [a, b, b])
+          Absent => false
+        }
+      Absent => false
+    }
 }
 
 test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {

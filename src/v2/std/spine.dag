@@ -1,11 +1,10 @@
 module v2.std.spine
 
+import std.types { List }
 import v2.std.node { Node, Edge, NodeFold, fold_node, node_subtree_nodes }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length, reduce_or }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.materialize {
   materialize_node_count,
   materialize_distinct_computation_count,

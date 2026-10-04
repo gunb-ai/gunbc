@@ -9,7 +9,8 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // This file is the authority for the DECLARATION (rungs, reason, trigger). The POPULATION's authority
 // is the policy roster `v2.workflow.floor_eval_step_cost_drop`, which the floor decides with; the
 // population below and the seed runner's membership set are both projections of it, not second
-// lists. eval_steps stay measured and recorded on every run for all four.
+// lists. eval_steps stay measured and recorded on every run for every identity on the list (two
+// since the 2026-10-02 split amendment).
 //
 // WHY THIS IS NOT COST-DEBT: no identity is withheld from execution, which is the distinction the
 // landing-side chat drew when it refused cost-debt for gunbc#10994's tripwire. The new-witness
@@ -24,8 +25,28 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_rows }
 // dominate, this trigger is wrong and the row is amended before it retires (fierce-lark-661's
 // amendment clause). An unrun falsifier affects WHEN the drop retires, not whether landing it hides
 // a wrong answer -- the four still execute and a semantic red still blocks.
+//
+// AMENDED 2026-10-02 (gentle-lynx-533, PR #12995). The population shrank from four identities to
+// two: the two conjunction claims were split, DESIGN section 3, conjunction of independent cases --
+//   witness_missing_carrier_prevents_silent_empty_authority_projection
+//     -> witness_unreadable_carrier_refuses_with_a_located_detail
+//        + witness_valid_carrier_projects_a_nonempty_document
+//   witness_dispatch_never_presents_empty_frontier_on_authority_refusal
+//     -> witness_dispatch_refusal_arm_hides_the_brief_template
+//        + witness_dispatch_projected_arm_presents_the_dispatch_schema
+// Four halves left, and every one executed on that pull request's required floor: run 37005532151
+// planned-and-passed them as changed witnesses and enrolment-margin admitted them (their eval_steps
+// are in that run's required_floor_claim_cost.tsv, not transcribed here). New identities are billed
+// by the gate this drop lowers, so the halves needed no roster row. The two identities still
+// rostered -- test.claim.roadmap_authority.witness_projected_dependency_edges_include_active_edges
+// and test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt
+// -- are unchanged claims, so no floor run on that pull request bills them, and clause (ii) for
+// them still awaits the live required_floor_claim_cost.tsv reading named above as this row's
+// instrument. THE RESHAPE LANDED WITHOUT RETIRING THE ROW: the list shrank from four to two and
+// the row stays until its trigger completes on the survivors. The falsifier's controlled reading,
+// when it runs, targets the halves.
 
-// SINGLE AUTHORITY FOR THE POPULATION, AND IT IS THE POLICY ROSTER, NOT THIS FILE. The four
+// SINGLE AUTHORITY FOR THE POPULATION, AND IT IS THE POLICY ROSTER, NOT THIS FILE. The
 // identities and their typed measurements (`EvalStepCount`, not quoted digits) live in
 // `v2.workflow.floor_eval_step_cost_drop`, which `v2.workflow.required_floor`
 // `claim_eval_step_standing_for_identity` decides with and the seed runner mirrors. This row's
@@ -47,7 +68,7 @@ data roadmap_live_projection_new_witness_eval_step_cost_population: List<String>
 data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "roadmap_live_projection_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over four live-roadmap projection identities: they still execute, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the live-roadmap projection identities rostered in v2.workflow.floor_eval_step_cost_drop -- the list is the single authority for the count, and it held two after the 2026-10-02 split amendment: they still execute, eval_steps stay observed and recorded, a semantic red still blocks; only the cost-gate rung is lowered",
 
   declared: "2026-09-14",
 
@@ -60,6 +81,6 @@ data roadmap_live_projection_new_witness_eval_step_cost: RungDrop = RungDrop {
           replacement: "the loaded roadmap history consumed as a prepared effect input (adhoc-5ecec982-c23), so a required-floor claim no longer re-pays the live roadmap projection per claim",
     },
     population: roadmap_live_projection_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) loaded roadmap history consumed as a prepared effect input (dashboard work item adhoc-5ecec982-c23; gentle-ram-506's lane) so no per-claim projection is paid; WHAT adhoc-5ecec982-c23 MUST BE SUFFICIENT FOR: a required-floor claim does not re-pay the live roadmap projection per claim because that history is already a prepared effect input. (ii) AND each of the four identities measured under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the four under budget without the prepared-input capability does not retire the row; landing the capability without those four under that derived budget on the acceptance path does not retire it either. THE BUDGET IS NAMED, NOT PINNED, AND IS NOT RAISED TO RETIRE THIS ROW: clause (ii) is read against claim_ceiling_eval_step_budget at NewWitnessTier, never against a transcribed figure. A literal would go stale the moment the rate is re-pinned -- and a fail-closed re-pin TIGHTENS the live budget, so a pinned number could be satisfied while the identities are still over the gate this drop lowered. That is the same reason the budget witnesses assert the products rather than the numbers",
+    restoration_trigger: "THE CAPABILITY, BOTH CLAUSES, NOT EITHER: (i) loaded roadmap history consumed as a prepared effect input (dashboard work item adhoc-5ecec982-c23; gentle-ram-506's lane) so no per-claim projection is paid; WHAT adhoc-5ecec982-c23 MUST BE SUFFICIENT FOR: a required-floor claim does not re-pay the live roadmap projection per claim because that history is already a prepared effect input. (ii) AND each identity on the population list measured under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives on the acceptance path, still executing, still recording eval_steps, still blocking on a semantic red. Measuring the listed identities under budget without the prepared-input capability does not retire the row; landing the capability without the listed identities under that derived budget on the acceptance path does not retire it either. THE BUDGET IS NAMED, NOT PINNED, AND IS NOT RAISED TO RETIRE THIS ROW: clause (ii) is read against claim_ceiling_eval_step_budget at NewWitnessTier, never against a transcribed figure. A literal would go stale the moment the rate is re-pinned -- and a fail-closed re-pin TIGHTENS the live budget, so a pinned number could be satisfied while the identities are still over the gate this drop lowered. That is the same reason the budget witnesses assert the products rather than the numbers",
   }
 }

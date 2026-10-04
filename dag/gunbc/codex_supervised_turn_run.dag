@@ -219,10 +219,11 @@ fn run_codex_supervised_turn(
                 evidence_root: evidence_root,
               )
             }
-            _ =>
-              CodexSupervisedTurnRefused {
-                reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr,
-              }
+            PureRead => CodexSupervisedTurnRefused { reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr }
+            CreateIfAbsent { content_key: _ } => CodexSupervisedTurnRefused { reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr }
+            ReplaceIfStale { content_key: _ } => CodexSupervisedTurnRefused { reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr }
+            UpsertScope { scope_key: _ } => CodexSupervisedTurnRefused { reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr }
+            DestructiveOnce { approval_id: _, idempotency_key: _ } => CodexSupervisedTurnRefused { reason: "supervised turn requires HeldSessionLease execution policy" as NonEmptyStr }
           }
         }
       }

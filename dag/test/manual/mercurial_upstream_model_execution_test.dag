@@ -142,16 +142,36 @@ fn mercurial_live_projection_decodes(
           ) {
             Absent => false
             Present { value: files } =>
-              let c0 = changesets.first()
-              let c1 = changesets.skip(n: 1).first()
-              let c2 = changesets.skip(n: 2).first()
-              let m0 = manifests.first()
-              let m1 = manifests.skip(n: 1).first()
-              let m2 = manifests.skip(n: 2).first()
-              let f0 = files.first()
-              let fl = files.skip(n: 1).first()
-              let fbin = files.skip(n: 2).first()
-              let f2 = files.skip(n: 3).first()
+              match changesets.first() {
+                Absent => false
+                Present { value: c0 } =>
+              match changesets.skip(n: 1).first() {
+                Absent => false
+                Present { value: c1 } =>
+              match changesets.skip(n: 2).first() {
+                Absent => false
+                Present { value: c2 } =>
+              match manifests.first() {
+                Absent => false
+                Present { value: m0 } =>
+              match manifests.skip(n: 1).first() {
+                Absent => false
+                Present { value: m1 } =>
+              match manifests.skip(n: 2).first() {
+                Absent => false
+                Present { value: m2 } =>
+              match files.first() {
+                Absent => false
+                Present { value: f0 } =>
+              match files.skip(n: 1).first() {
+                Absent => false
+                Present { value: fl } =>
+              match files.skip(n: 2).first() {
+                Absent => false
+                Present { value: fbin } =>
+              match files.skip(n: 3).first() {
+                Absent => false
+                Present { value: f2 } =>
               let projection = MercurialCompleteProjection {
                 contents: MercurialRepositoryProjectionContents {
                   requirements: MercurialRepositoryRequirements {
@@ -329,6 +349,16 @@ fn mercurial_live_projection_decodes(
                     && count(manifests) == 3
                     && count(files) == 4
                 _ => false
+              }
+              }
+              }
+              }
+              }
+              }
+              }
+              }
+              }
+              }
               }
           }
       }

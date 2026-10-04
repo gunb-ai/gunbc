@@ -1,14 +1,14 @@
 module v2.compiler.use_site_verdict
 
+import std.types { List }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.node {
   Absent,
   Ambiguous,
   Atom,
   Edge,
   Found,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -49,7 +49,7 @@ fn use_site_verdict_to_node(verdict: UseSiteVerdict) -> Node {
       node_synthetic(
         kind: TypeNode { connective: Atom { identity: use_site_verdict_move_field_tag } },
         children: [
-          Edge { label: Named { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
+          Edge { label: Authored { name: use_site_verdict_field_edge }, target: use_site_verdict_atom(tag: f) }
         ]
       )
     Borrow => use_site_verdict_atom(tag: use_site_verdict_borrow_tag)
@@ -101,7 +101,7 @@ fn attach_use_site_verdict(node: Node, verdict: UseSiteVerdict) -> Node {
     n: node,
     children: list_snoc_item(
       xs: node.children,
-      item: Edge { label: Named { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
+      item: Edge { label: Authored { name: use_site_verdict_edge }, target: use_site_verdict_to_node(verdict: verdict) }
     )
   )
 }

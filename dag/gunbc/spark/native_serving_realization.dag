@@ -7,9 +7,9 @@ import v2.std.algebra { zip_map }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.systemd.unit_file {
-  ServiceUnitFile, Installable,
-  Description, After, Requires,
-  ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
+  ServiceUnitFile, Installable, NotInstallable, SystemdInstallSection, SystemdUnitDirective, SystemdServiceDirective,
+  Description, After, Requires, StartLimitIntervalSec, StartLimitBurst,
+  ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, ExecStopPost, Restart, RestartSec, TimeoutStartSec, RuntimeMaxSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
   WantedBy,
   serialize_systemd_unit_file,
 }
@@ -17,13 +17,17 @@ import extdeps.docker.cli {
   DockerCreateSpec, DockerForegroundRunArgv, DockerForegroundRunRefused,
   docker_run_foreground_argv,
 }
-import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, glm_native_concurrent_profile }
+import gunbc.spark.serving_arm { ArmIntent, ArmNormalServing, ArmBoundedExperiment, glm_native_concurrent_profile }
+import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime, engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { Second, second, second_count }
+import extdeps.vllm.engine_args { vllm_argv_nat, vllm_max_num_seqs_flag, VllmArgvNat, VllmArgvNatUnread }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, glm_native_master_port,
 }
 import gunbc.spark.glm_group_b_launch { glm_group_b_launch_plan }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Cons, Empty }
 
 // ── THE NATIVE FOUR-RANK ARM AS A DECLARED UNIT SET ────────────────────────────────────────────
 //
@@ -63,10 +67,16 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // container lifecycle and one engine line and nothing else.
 //
 // THE INTENT IS THE BOUNDED EXPERIMENT, FOR THE SAME REASON THE DIRECT-DOCKER HANDLER'S IS. The
-// profile these units carry has no execution receipt at 8567 basis points and sixteen sequences, and
-// gunbc.spark.serving_arm_launch intent_refusal refuses a normal-serving plan that asserts one. A
-// unit set rendered under a different intent than the transaction that relaunches the same arm would
-// be two answers to whether this subject is measured, so both handlers declare the same thing.
+// profile these units carry (gunbc.spark.group_b_serving_capacity's restoration derivation) has no
+// execution receipt and no proved memory fit, so gunbc.spark.serving_arm_launch refuses a
+// normal-serving plan for it. A unit set rendered under a different intent than the transaction
+// that relaunches the same arm would be two answers to whether this subject is measured, so both
+// handlers declare the same thing.
+//
+// AND THE ONE INTENT DECIDES BOTH HALVES: which plan is admitted AND which systemd object renders.
+// The units below are planned and rendered under this single value, so an experiment-admitted plan
+// renders one-shot (arm_host_unit_file_for) and cannot install as a Restart=always service -- the
+// lifetime contract the crash-looping arm actually ran under from 2026-09-18.
 data glm_native_render_intent: ArmIntent = ArmBoundedExperiment
 
 data glm_native_head_unit_name: NonEmptyStr = "gunbc-glm-native-head.service" as NonEmptyStr
@@ -120,7 +130,11 @@ fn arm_unit_log_path_for(units: ArmUnitIdentity, launch: ArmNodeLaunch) -> NonEm
 // apply touches and the hosts a participation reading ranks are one list by construction rather
 // than three constructions that happen to agree.
 fn glm_native_launch_lines() -> List<ArmNodeLaunch> {
-  match glm_group_b_launch_plan(intent: glm_native_render_intent) {
+  glm_native_launch_lines_for(intent: glm_native_render_intent)
+}
+
+fn glm_native_launch_lines_for(intent: ArmIntent) -> List<ArmNodeLaunch> {
+  match glm_group_b_launch_plan(intent: intent) {
     ArmLaunchRefused { cause: _ } => []
     ArmLaunchPlanned { lines: ls, master: _ } => ls
   }
@@ -187,11 +201,134 @@ fn glm_native_unit_refusal_cause(spec: DockerCreateSpec) -> NonEmptyStr {
 // places the launch plan already differs them -- the node rank in the engine argv and the rail
 // address the container publishes as VLLM_HOST_IP -- plus the two this module owns: the unit's name
 // and its log path.
+//
+// INTENT DECIDES REALIZATION, and the two intents render two DIFFERENT systemd objects. A normal
+// serving unit is a service: Restart=always, enrolled via [Install]/WantedBy so the multi-user
+// target pulls it up. A bounded experiment is a one-shot: Restart=no, a start-rate limit of one
+// attempt per ten minutes, a finite RuntimeMaxSec on every rank (so the bound stops all the ranks
+// together), ExecStopPost cleanup, and NO [Install] section at all, so nothing enrolls it and a
+// failed experiment cannot become an indefinitely restarting service by accident of packaging.
+// The Group B crash loop from 2026-09-18 is what a bounded experiment looks like when it renders
+// with Restart=always; the split below is the realization half of the intent wall
+// (gunbc.spark.serving_arm_launch plan_arm_launch_under_memory_fit carries the memory half).
 fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
-  arm_host_unit_file(launch: launch, units: glm_native_arm_units, served_alias: glm_native_concurrent_profile.served_alias)
+  glm_native_host_unit_file_for(intent: glm_native_render_intent, launch: launch)
 }
 
+fn glm_native_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch) -> GlmNativeUnitRender {
+  arm_host_unit_file_for(intent: intent, launch: launch, units: glm_native_arm_units, served_alias: glm_native_concurrent_profile.served_alias)
+}
+
+// THE PERSISTENT RENDER, KEPT FOR THE CALLER WHOSE OWN INTENT DECIDES LIFETIME ELSEWHERE: the V4.1
+// arm on Group A (gunbc.spark.v41_group_a_launch) renders its units through this, unchanged.
 fn arm_host_unit_file(launch: ArmNodeLaunch, units: ArmUnitIdentity, served_alias: NonEmptyStr) -> GlmNativeUnitRender {
+  arm_host_unit_file_for(intent: ArmNormalServing, launch: launch, units: units, served_alias: served_alias)
+}
+
+fn arm_unit_directives(intent: ArmIntent, units: ArmUnitIdentity, launch: ArmNodeLaunch, served_alias: NonEmptyStr) -> List<SystemdUnitDirective> {
+  match intent {
+    ArmNormalServing => [
+      Description { text: join([units.description as String, ", rank ", to_string(launch.node.node_rank), " (", served_alias as String, ")"], "") as NonEmptyStr },
+      After { target: "docker.service network-online.target" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+    ]
+    ArmBoundedExperiment => [
+      Description { text: join([units.description as String, " BOUNDED EXPERIMENT, rank ", to_string(launch.node.node_rank), " (", served_alias as String, "): one attempt, no enrollment, no restart"], "") as NonEmptyStr },
+      After { target: "docker.service network-online.target" as NonEmptyStr },
+      Requires { target: "docker.service" as NonEmptyStr },
+      StartLimitIntervalSec { duration: "600" as NonEmptyStr },
+      StartLimitBurst { count: "1" as NonEmptyStr },
+    ]
+  }
+}
+
+// THE EXPERIMENT'S RUNTIME IS ADMITTED, NOT UNBOUNDED. TimeoutStartSec stays zero because startup
+// is a multi-minute weight load; RuntimeMaxSec bounds the whole run at the figure the experiment
+// plan admits (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime), and EVERY rank
+// unit carries the same value. ExecStopPost removes the container after any stop -- including a
+// runtime expiry -- so a timed-out experiment leaves no engine holding pool bytes.
+// THE BOUND IS RE-DERIVED FROM THE LAUNCH ITSELF -- its container environment's ready timeout and its
+// argv's --max-num-seqs -- through the same function the experiment plan admits with, so every rank
+// unit carries that arm's own figure. An underivable bound REFUSES the unit render with its cause
+// (review 74098): a unit with an invented lifetime would die early and read as an engine crash.
+type ArmExperimentRuntime
+  = ArmExperimentRuntimeBound { bound: Second }
+  | ArmExperimentRuntimeUnderivable { cause: NonEmptyStr }
+
+fn arm_launch_experiment_runtime(launch: ArmNodeLaunch) -> ArmExperimentRuntime {
+  match engine_ready_timeout_for(env: launch.container.env) {
+    EngineReadyTimeoutUnreadable { cause: c } => ArmExperimentRuntimeUnderivable { cause: c }
+    EngineReadyTimeoutResolved { timeout: ready } =>
+      match vllm_argv_nat(argv: launch.engine_argv, flag: vllm_max_num_seqs_flag) {
+        VllmArgvNatUnread { cause: c } => ArmExperimentRuntimeUnderivable { cause: c }
+        VllmArgvNat { value: seqs } => ArmExperimentRuntimeBound { bound: arm_memory_experiment_runtime(ready_timeout: ready, max_num_seqs: seqs) }
+      }
+  }
+}
+
+// A NORMAL-SERVING UNIT CARRIES NO RUNTIME BOUND, so it never needs one derived: only a bounded
+// experiment asks, and only it can be refused for want of one.
+// A UNIT'S LIFETIME IS ONE OF THREE FACTS, AND "NO BOUND" IS ONE OF THEM, NOT A ZERO. A normal-serving unit
+// is persistent -- it has no runtime bound to carry, and spelling that as a 0-second bound would be a
+// fabricated value systemd reads as unbounded (RuntimeMaxSec=0) if it were ever rendered (review 74213).
+type ArmUnitLifetime
+  = ArmUnitPersistent
+  | ArmUnitBounded { bound: Second }
+
+type ArmUnitLifetimeStanding
+  = ArmUnitLifetimeDerived { lifetime: ArmUnitLifetime }
+  | ArmUnitLifetimeUnderivable { cause: NonEmptyStr }
+
+fn arm_unit_lifetime_for(intent: ArmIntent, launch: ArmNodeLaunch) -> ArmUnitLifetimeStanding {
+  match intent {
+    ArmNormalServing => ArmUnitLifetimeDerived { lifetime: ArmUnitPersistent }
+    ArmBoundedExperiment =>
+      match arm_launch_experiment_runtime(launch: launch) {
+        ArmExperimentRuntimeBound { bound: b } => ArmUnitLifetimeDerived { lifetime: ArmUnitBounded { bound: b } }
+        ArmExperimentRuntimeUnderivable { cause: c } => ArmUnitLifetimeUnderivable { cause: c }
+      }
+  }
+}
+
+fn arm_service_directives(lifetime: ArmUnitLifetime, launch: ArmNodeLaunch, run_line: NonEmptyStr, log_path: NonEmptyStr) -> List<SystemdServiceDirective> {
+  match lifetime {
+    ArmUnitPersistent => [
+      ServiceType { mode: SimpleMode },
+      ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
+      ExecStart { command: run_line },
+      ExecStop { command: join(["/usr/bin/docker stop ", launch.container.name as String], "") as NonEmptyStr },
+      Restart { policy: "always" as NonEmptyStr },
+      RestartSec { duration: "30" as NonEmptyStr },
+      TimeoutStartSec { duration: "0" as NonEmptyStr },
+      ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
+      ServiceStandardError { stream: OutputAppendFile { path: log_path } },
+    ]
+    ArmUnitBounded { bound: experiment_runtime } => [
+      ServiceType { mode: SimpleMode },
+      ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
+      ExecStart { command: run_line },
+      ExecStop { command: join(["/usr/bin/docker stop ", launch.container.name as String], "") as NonEmptyStr },
+      ExecStopPost { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
+      Restart { policy: "no" as NonEmptyStr },
+      TimeoutStartSec { duration: "0" as NonEmptyStr },
+      RuntimeMaxSec { duration: to_string(second_count(s: experiment_runtime)) as NonEmptyStr },
+      ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
+      ServiceStandardError { stream: OutputAppendFile { path: log_path } },
+    ]
+  }
+}
+
+// THE EXPERIMENT IS NOT ENROLLED, which is the property that keeps a bounded experiment from
+// becoming a service: NotInstallable renders no [Install] section at all, so no target pulls it
+// up, and starting it is an explicit act that the start-rate limit then bounds.
+fn arm_install_section(intent: ArmIntent) -> SystemdInstallSection {
+  match intent {
+    ArmNormalServing => Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] }
+    ArmBoundedExperiment => NotInstallable
+  }
+}
+
+fn arm_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch, units: ArmUnitIdentity, served_alias: NonEmptyStr) -> GlmNativeUnitRender {
   let unit_name = arm_unit_name_for(units: units, launch: launch)
   let log_path = arm_unit_log_path_for(units: units, launch: launch)
   match glm_native_unit_exec_words(spec: launch.container) {
@@ -200,27 +337,20 @@ fn arm_host_unit_file(launch: ArmNodeLaunch, units: ArmUnitIdentity, served_alia
       match glm_native_exec_line(words: words) {
         Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the container line is not a plain argv: a rendered word carries whitespace or a quote, which this render does not model" as NonEmptyStr }
         Present { value: run_line } =>
-          GlmNativeUnitRendered {
-            unit_name: unit_name,
-            text: serialize_systemd_unit_file(file: ServiceUnitFile {
-              unit: [
-                Description { text: join([units.description as String, ", rank ", to_string(launch.node.node_rank), " (", served_alias as String, ")"], "") as NonEmptyStr },
-                After { target: "docker.service network-online.target" as NonEmptyStr },
-                Requires { target: "docker.service" as NonEmptyStr },
-              ],
-              service: [
-                ServiceType { mode: SimpleMode },
-                ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
-                ExecStart { command: run_line },
-                ExecStop { command: join(["/usr/bin/docker stop ", launch.container.name as String], "") as NonEmptyStr },
-                Restart { policy: "always" as NonEmptyStr },
-                RestartSec { duration: "30" as NonEmptyStr },
-                TimeoutStartSec { duration: "0" as NonEmptyStr },
-                ServiceStandardOutput { stream: OutputAppendFile { path: log_path } },
-                ServiceStandardError { stream: OutputAppendFile { path: log_path } },
-              ],
-              install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
-            }),
+          match arm_unit_lifetime_for(intent: intent, launch: launch) {
+            ArmUnitLifetimeUnderivable { cause: c } => GlmNativeUnitRenderRefused {
+              unit_name: unit_name,
+              cause: join(["the bounded experiment's runtime bound cannot be derived from this launch: ", c as String], "") as NonEmptyStr,
+            }
+            ArmUnitLifetimeDerived { lifetime: lifetime } =>
+              GlmNativeUnitRendered {
+                unit_name: unit_name,
+                text: serialize_systemd_unit_file(file: ServiceUnitFile {
+                  unit: arm_unit_directives(intent: intent, units: units, launch: launch, served_alias: served_alias),
+                  service: arm_service_directives(lifetime: lifetime, launch: launch, run_line: run_line, log_path: log_path),
+                  install: arm_install_section(intent: intent),
+                }),
+              }
           }
       }
   }
@@ -237,18 +367,35 @@ fn glm_native_head_unit_render() -> GlmNativeUnitRender {
 }
 
 fn glm_native_plan_refusal() -> NonEmptyStr {
-  match glm_group_b_launch_plan(intent: glm_native_render_intent) {
+  glm_native_plan_refusal_for(intent: glm_native_render_intent)
+}
+
+fn glm_native_plan_refusal_for(intent: ArmIntent) -> NonEmptyStr {
+  match glm_group_b_launch_plan(intent: intent) {
     ArmLaunchRefused { cause: c } => c
     ArmLaunchPlanned { lines: _, master: _ } => "the arm plan resolved but carries no ranks" as NonEmptyStr
   }
 }
 
-// EVERY RANK'S UNIT, RENDERED FOR ITS OWN HOST.
-fn glm_native_all_unit_renders() -> List<GlmNativeUnitRender> {
-  match glm_native_launch_lines() {
-    Empty => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: glm_native_plan_refusal() }]
-    Cons { head: _, tail: _ } => map(glm_native_launch_lines(), l => glm_native_host_unit_file(launch: l))
+// EVERY RANK'S UNIT, RENDERED FOR ITS OWN HOST, planned and rendered under ONE intent.
+fn glm_native_all_unit_renders_for(intent: ArmIntent) -> List<GlmNativeUnitRender> {
+  match glm_native_launch_lines_for(intent: intent) {
+    Empty => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: glm_native_plan_refusal_for(intent: intent) }]
+    Cons { head: _, tail: _ } => map(glm_native_launch_lines_for(intent: intent), l => glm_native_host_unit_file_for(intent: intent, launch: l))
   }
+}
+
+fn glm_native_all_unit_renders() -> List<GlmNativeUnitRender> {
+  glm_native_all_unit_renders_for(intent: glm_native_render_intent)
+}
+
+// THE EXPERIMENT RENDERS THE SAME ROSTER UNDER THE EXPERIMENT INTENT, one-shot and unenrolled.
+// This is the unit set a bounded relaunch installs (gunbc.spark.native_experiment_apply): identical
+// engine line, different lifetime contract from a normal-serving render, so the receipt the run
+// mints cannot be produced by a service that restarted itself into a different configuration than
+// the one the experiment measured.
+fn glm_native_experiment_all_unit_renders() -> List<GlmNativeUnitRender> {
+  glm_native_all_unit_renders_for(intent: ArmBoundedExperiment)
 }
 
 // THE WET RENDER THE CONVERGENCE RUNS. The unit texts are pure; this entry writes each to a
@@ -270,6 +417,30 @@ fn glm_native_units_render_wet() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: join(["glm_native_units_render_wet: ", join(writes, "; ")], ""))
+  }
+}
+
+// THE WET RENDER FOR THE EXPERIMENT ROSTER, the twin of glm_native_units_render_wet with the
+// bounded-experiment intent: the actuation that installs an experiment's units writes THESE texts,
+// and a text carrying Restart=always or an [Install] section would mean the experiment had the
+// service's lifetime contract after all.
+fn glm_native_experiment_units_render_wet() -> ProcessExit {
+  let renders = glm_native_experiment_all_unit_renders()
+  let hosts = glm_native_ranked_hosts()
+  let writes = zip_map(a: renders, b: hosts, f: fn(r, h) {
+    match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
+        join(["REFUSED ", c as String], "")
+      GlmNativeUnitRendered { unit_name: name, text: text } => {
+        let w = Filesystem.Write(path: join(["/tmp/experiment.", name as String, ".", h as String], ""), content: text)
+        if w.success { "ok" } else { join(["WRITE-FAILED ", w.error], "") }
+      }
+    }
+  })
+  if all(writes, w => w == "ok") && count(renders) == count(hosts) && count(hosts) > 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["glm_native_experiment_units_render_wet: ", join(writes, "; ")], ""))
   }
 }
 

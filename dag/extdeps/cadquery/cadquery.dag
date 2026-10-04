@@ -1,5 +1,7 @@
 module extdeps.cadquery.cadquery
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { Bool, String, NonEmptyStr, List }
 import std.measure { Micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -38,7 +40,7 @@ data cadquery_ocp_distribution: OcpDistribution = OcpWithoutVtk
 
 // PATH-resolved, for the reason extdeps.exec.command program_spelling_is_an_observation_claim
 // records: an absolute path is a claim about a filesystem this repository has not observed.
-data python_program: NonEmptyStr = "python3"
+fn python_program() -> ProgramIdentity = uncataloged_program(invocation: "python3")
 
 // RUN ONE EMITTED PROGRAM. The script path is the caller's -- this module has no authority to
 // enumerate the programs a consumer might run, exactly as extdeps.tools.make refuses to enumerate
@@ -46,7 +48,7 @@ data python_program: NonEmptyStr = "python3"
 // INTERPRETER and not by a shell, so a path carrying a space or a metacharacter cannot become two
 // operands or a second command.
 fn cadquery_run_program_command(script_path: String) -> ArgvCommand {
-  argv_command(program: python_program, arguments: [script_path])
+  argv_command(program: python_program(), arguments: [script_path])
 }
 
 // THE EXPORT KNOBS ARE UPSTREAM'S, AND THEY ARE CARRIED AS UPSTREAM SPELLS THEM.

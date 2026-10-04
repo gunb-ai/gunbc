@@ -1,9 +1,10 @@
 module extdeps.tools.stat
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { Bool, NonEmptyStr, List, Unit, Int }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -20,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.tools.stat",
-      decl_name: "stat_binary_path",
+      decl_name: "stat_program",
       field: WholeDeclaration
     }
   },
@@ -33,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // utility spells the same request -f with different conversion characters. This module therefore
 // describes the GNU tool; a host that ships the BSD one needs its own authority, not a widened
 // format string here.
-data stat_binary_path: NonEmptyStr = "/usr/bin/stat"
+fn stat_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/stat")
 
 // TWO PROBES, ONE TOKEN EACH, rather than one probe printing "uid:gid". The pair form would need a
 // separator parser -- a second place where the ":" grammar lives, beside the one in
@@ -41,18 +42,18 @@ data stat_binary_path: NonEmptyStr = "/usr/bin/stat"
 // One token per probe reuses the single-id decoder unchanged, which is the same shape the `id -u` /
 // `id -g` pair already uses.
 fn stat_owner_user_argv(path: String) -> List<String> {
-  [stat_binary_path as String, "-c", "%u", path]
+  [stat_program().invocation as String, "-c", "%u", path]
 }
 
 fn stat_owner_group_argv(path: String) -> List<String> {
-  [stat_binary_path as String, "-c", "%g", path]
+  [stat_program().invocation as String, "-c", "%g", path]
 }
 
 // %a is the access-mode bits in octal without an invented policy interpretation. Ownership and
 // mode stay as separate token reads because either half can refuse independently and a joined
 // "uid:gid:mode" wire would mint a second delimiter grammar beside the typed consumers.
 fn stat_mode_argv(path: String) -> List<String> {
-  [stat_binary_path as String, "-c", "%a", "--", path]
+  [stat_program().invocation as String, "-c", "%a", "--", path]
 }
 
 // %U IS THE OWNER'S NAME, %u IS THE OWNER'S NUMERIC UID, and the pair above answers the numeric
@@ -68,7 +69,7 @@ fn stat_mode_argv(path: String) -> List<String> {
 // consumer (gunbc.command_runner's ownership receipt probe) gains "--" and can lose no meaning: the
 // guard only changes how a leading-dash operand is read, and that reading was wrong before.
 fn stat_owner_user_name_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%U", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%U", "--", path])
 }
 
 // %F IS THE HUMAN-READABLE FILE TYPE ("socket", "directory", "regular file") and %i is the inode
@@ -82,11 +83,11 @@ fn stat_owner_user_name_command(path: String) -> ArgvCommand {
 data stat_regular_file_type: String = "regular file"
 
 fn stat_file_type_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%F", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%F", "--", path])
 }
 
 fn stat_inode_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%i", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%i", "--", path])
 }
 
 // -L FOLLOWS THE FINAL LINK, so on a /proc/<pid>/exe or /proc/<pid>/fd/<n> magic link %i is the
@@ -95,32 +96,32 @@ fn stat_inode_command(path: String) -> ArgvCommand {
 // Every `anon_inode:[...]` target shares the anon_inode filesystem's one inode, which identifies
 // nothing; that is the caller's to skip, not this read's to hide.
 fn stat_dereferenced_inode_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-L", "-c", "%i", "--", path])
+  argv_command(program: stat_program(), arguments: ["-L", "-c", "%i", "--", path])
 }
 
 // %u AND %a AND %s AS COMMANDS, for a caller that reads back a file it just staged: numeric owner,
 // octal mode, size in bytes. One token each, for the reason the argv pair above states.
 fn stat_owner_uid_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%u", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%u", "--", path])
 }
 
 fn stat_mode_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%a", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%a", "--", path])
 }
 
 // THE THREE FILE TIMES, as whole seconds since the epoch (stat(1) %Y, %Z, %W): last data
 // modification, last status change, and birth. %W prints 0 when the filesystem or kernel does not
 // report a birth time, which is "unknown", never the epoch -- a consumer must refuse on it.
 fn stat_mtime_epoch_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%Y", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%Y", "--", path])
 }
 
 fn stat_ctime_epoch_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%Z", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%Z", "--", path])
 }
 
 fn stat_birth_epoch_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%W", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%W", "--", path])
 }
 
 // A PATH'S IDENTITY IN ONE READ: inode, status-change time, birth time and file type
@@ -131,11 +132,11 @@ fn stat_birth_epoch_command(path: String) -> ArgvCommand {
 // (touch sets mtime and atime only), so a change of inode or ctime between two reads is a change of
 // the file. The type is last because its words contain spaces.
 fn stat_identity_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%i %Z %W %F", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%i %Z %W %F", "--", path])
 }
 
 fn stat_size_bytes_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%s", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%s", "--", path])
 }
 
 // %b IS THE NUMBER OF BLOCKS ALLOCATED and %B the size of each in bytes, so their product is the
@@ -143,7 +144,7 @@ fn stat_size_bytes_command(path: String) -> ArgvCommand {
 // apparent size %s reports. That is the reading a workspace image's usage wants, and it is the
 // one %s cannot give.
 fn stat_allocated_blocks_command(path: String) -> ArgvCommand {
-  argv_command(program: stat_binary_path, arguments: ["-c", "%b %B", "--", path])
+  argv_command(program: stat_program(), arguments: ["-c", "%b %B", "--", path])
 }
 
 // THE TYPED OBSERVATION, BESIDE THE ARGV BUILDER THAT ALREADY SPELLS IT. `stat_file_type_command`
@@ -166,6 +167,7 @@ fn stat_allocated_blocks_command(path: String) -> ArgvCommand {
 // -L. The default is relied on here deliberately and is part of the cited GNU authority.
 service stat.File {
   operation FileType {
+    requires none
     input { path: String }
     output {
       file_type: String from "stdout"

@@ -1,8 +1,10 @@
 module v2.test.claim.reference_derived_graph_fixture
 
+import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.normalized_tree { no_resource_declarations }
 import v2.compiler.normalize { record_declaration_capture }
 import v2.compiler.parse { parse_module }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
@@ -15,7 +17,6 @@ import v2.lens.module_graph {
 }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic {
   Accepted,
@@ -126,7 +127,8 @@ fn parse_one(w: DagSourceReadWitness) -> Outcome<LocatedModuleRoot> {
             value: LocatedModuleRoot {
               path: w.artifact.file_path,
               root: artifact.tree,
-              record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: artifact.tree))
+              record_declarations: record_declaration_capture(nodes: node_subtree_nodes(root: artifact.tree)),
+              resource_declarations: no_resource_declarations()
             }
           )
         }

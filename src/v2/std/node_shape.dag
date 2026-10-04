@@ -1,9 +1,9 @@
 module v2.std.node_shape
 
+import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.node {
   Atom,
   Behavior,
@@ -12,7 +12,7 @@ import v2.std.node {
   Edge,
   EdgeLabel,
   EdgeShape,
-  Named,
+  Authored,
   Node,
   NodeKind,
   NodeShape,
@@ -27,7 +27,7 @@ fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
 }
 
 fn named_edge_shape(name: Symbol, target: NodeShape) -> EdgeShape {
-  edge_shape(label: Named { name: name }, target: target)
+  edge_shape(label: Authored { name: name }, target: target)
 }
 
 fn positional_edge_shape(target: NodeShape) -> EdgeShape {

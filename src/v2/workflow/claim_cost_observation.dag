@@ -1,7 +1,7 @@
 module v2.workflow.claim_cost_observation
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.text { String }
 // THE CLOCK QUANTITIES ARE `Millisecond`, NOT `Int`, AND THIS AUTHORITY MAY NOT BE THE WEAKER
@@ -16,6 +16,7 @@ import v2.std.text { String }
 // `v2.workflow.floor_changed_witness` and `v2.workflow.dag_acceptance` already import this same
 // authority from a v2 workflow module, so this is the existing route rather than a new seam.
 import std.measure { Millisecond }
+import std.algebra { Cons, Empty }
 
 // ONE COST FACT, TWO KINDS OF READING, AND THE KINDS DO NOT SHARE A FIELD NAME.
 //

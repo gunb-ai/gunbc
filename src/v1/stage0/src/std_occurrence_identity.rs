@@ -13,8 +13,7 @@ pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, SourceSpan};
+pub use crate::std_types::{Bool, List, Map, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -347,15 +346,9 @@ pub enum NodeOccurrenceIdentity {
         id: OccurrenceId,
         caused_by: Rc<ScopedOccurrenceRef>,
     },
-}
-impl NodeOccurrenceIdentity {
-    pub fn id(&self) -> OccurrenceId {
-        match self {
-            NodeOccurrenceIdentity::OccurrenceSynthetic => panic!("no id on unit variant"),
-            NodeOccurrenceIdentity::OccurrenceMinted { id: __val, .. } => __val.clone(),
-            NodeOccurrenceIdentity::OccurrenceProjected { id: __val, .. } => __val.clone(),
-        }
-    }
+    OccurrencePending {
+        caused_by: OccurrenceId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -424,6 +417,67 @@ pub fn node_occurrence_identity_projected(
         id: id.clone(),
         caused_by: caused_by.clone(),
     })
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScopedOccurrenceAllocator {
+    pub alloc: OccurrenceIdAllocator,
+    pub scope: Rc<Fnv1a64Structural>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ProjectedOccurrenceAllocation {
+    pub identity: Rc<NodeOccurrenceIdentity>,
+    pub allocator: Rc<ScopedOccurrenceAllocator>,
+}
+
+pub fn scoped_occurrence_allocator(
+    alloc: OccurrenceIdAllocator,
+    scope: Rc<Fnv1a64Structural>,
+) -> Rc<ScopedOccurrenceAllocator> {
+    Rc::new(ScopedOccurrenceAllocator {
+        alloc: alloc.clone(),
+        scope: scope.clone(),
+    })
+}
+
+pub fn alloc_projected_occurrence(
+    allocator: Rc<ScopedOccurrenceAllocator>,
+    source: OccurrenceId,
+) -> Rc<ProjectedOccurrenceAllocation> {
+    {
+        let minted = alloc_occurrence_id(allocator.alloc.clone());
+        Rc::new(ProjectedOccurrenceAllocation {
+            identity: Rc::new(NodeOccurrenceIdentity::OccurrenceProjected {
+                id: minted.id.clone(),
+                caused_by: Rc::new(ScopedOccurrenceRef {
+                    scope: allocator.scope.clone(),
+                    occurrence: source.clone(),
+                }),
+            }),
+            allocator: Rc::new(ScopedOccurrenceAllocator {
+                alloc: minted.alloc.clone(),
+                scope: allocator.scope.clone(),
+            }),
+        })
+    }
+}
+
+pub fn occurrence_identity_in_image_of(
+    identity: Rc<NodeOccurrenceIdentity>,
+    source: OccurrenceId,
+) -> bool {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceSynthetic => false,
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+            (id.value.clone() == source.value.clone())
+        }
+        NodeOccurrenceIdentity::OccurrencePending {
+            caused_by: caused_by,
+            ..
+        } => (caused_by.value.clone() == source.value.clone()),
+        NodeOccurrenceIdentity::OccurrenceProjected { .. } => false,
+    }
 }
 
 pub fn occurrence_containment_matches_occurrence(

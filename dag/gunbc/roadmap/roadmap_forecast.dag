@@ -247,7 +247,10 @@ fn observation_for_link(
       nodes: bundled_links |> map(candidate => candidate.node),
     } }
   }
-  let receipt = first(matching_receipts)
+  let receipt = match first(matching_receipts) {
+    Absent => return CycleTimeHistoryRefused { refusal: HistoryAcceptanceMissing { node: link.node } }
+    Present { value } => value
+  }
   CycleTimeObserved {
     observation: CycleTimeObservation {
       node: link.node,
@@ -340,16 +343,23 @@ type CalibrationResult
   = Calibrated { interval: CycleTimeInterval }
   | CalibrationRefusedNoSample { cell: NodeSizing }
 
-fn int_at(sorted: List<Int>, index: Int) -> Int {
+fn int_at(sorted: List<Int>, index: Int) -> Int? {
   first(sorted |> skip(n: index))
 }
 
-fn median_int(sorted: List<Int>) -> Int {
+fn median_int(sorted: List<Int>) -> Int? {
   let n = count(sorted)
   if (n % 2) == 1 {
     int_at(sorted: sorted, index: n / 2)
   } else {
-    (int_at(sorted: sorted, index: (n / 2) - 1) + int_at(sorted: sorted, index: n / 2)) / 2
+    match int_at(sorted: sorted, index: (n / 2) - 1) {
+      Absent => none
+      Present { value: lower } =>
+        match int_at(sorted: sorted, index: n / 2) {
+          Absent => none
+          Present { value: upper } => Present { value: (lower + upper) / 2 }
+        }
+    }
   }
 }
 
@@ -365,13 +375,17 @@ fn calibrate_cell(cell: NodeSizing, observations: List<CycleTimeObservation>) ->
       match first(reverse(samples)) {
         Absent => CalibrationRefusedNoSample { cell: cell }
         Present { value: longest } =>
-          Calibrated {
-            interval: CycleTimeInterval {
-              minimum: millisecond(count: shortest),
-              median: millisecond(count: median_int(sorted: samples)),
-              maximum: millisecond(count: longest),
-              sample_count: count(samples),
-            }
+          match median_int(sorted: samples) {
+            Absent => CalibrationRefusedNoSample { cell: cell }
+            Present { value: median } =>
+              Calibrated {
+                interval: CycleTimeInterval {
+                  minimum: millisecond(count: shortest),
+                  median: millisecond(count: median),
+                  maximum: millisecond(count: longest),
+                  sample_count: count(samples),
+                }
+              }
           }
       }
   }

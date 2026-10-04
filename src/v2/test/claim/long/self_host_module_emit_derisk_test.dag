@@ -1,5 +1,7 @@
 module v2.test.long.self_host_module_emit_derisk
 
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
@@ -22,7 +24,6 @@ import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -56,7 +57,7 @@ fn derisk_module_admission() -> Admission {
   }
 }
 
-fn derisk_assemble_for(src: String) -> Outcome<Node> {
+fn derisk_assemble_for(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: derisk_ingest_for(src: src),
     admission: derisk_module_admission(),

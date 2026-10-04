@@ -1,5 +1,7 @@
 module extdeps.tools.uname
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -25,11 +27,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data uname_program: NonEmptyStr = "uname"
+fn uname_program() -> ProgramIdentity = uncataloged_program(invocation: "uname")
 
 // `-r` PRINTS THE RELEASE, which is the spelling extdeps.linux.kernel LinuxKernelRelease is branded
 // on. It is the reading that says WHICH kernel a standing was established against, so a standing
 // read on one kernel is not silently carried onto another.
 fn uname_release_command() -> ArgvCommand {
-  argv_command(program: uname_program, arguments: ["-r"])
+  argv_command(program: uname_program(), arguments: ["-r"])
 }

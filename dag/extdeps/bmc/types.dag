@@ -177,12 +177,13 @@ fn bmc_redfish_surface_for(
 ) -> BmcRedfishSurfaceDerivation {
   let matches = bmc_redfish_surface_matches(catalog: catalog, firmware: firmware)
   let count = list_length(matches)
-  if count == 0 {
-    SurfaceShapeUncatalogued { firmware: firmware }
-  } else if count == 1 {
-    SurfaceShapeKnown { shape: matches.first().shape }
-  } else {
+  if count > 1 {
     SurfaceShapeAmbiguous { firmware: firmware, matches: count }
+  } else {
+    match matches.first() {
+      Present { value: row } => SurfaceShapeKnown { shape: row.shape }
+      Absent => SurfaceShapeUncatalogued { firmware: firmware }
+    }
   }
 }
 

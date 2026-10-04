@@ -1,33 +1,49 @@
 module v2.test.execution.infer_product_introduction
 
+import std.types { List }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.infer { DerivedGrounding, GroundingNotDerived, InferredTree }
+import v2.compiler.infer {
+  DerivedGrounding,
+  GroundingNotDerived,
+  InferredTree,
+  infer_language_inhabitants_kind_index,
+  infer_node_declared_in_language_inhabitants
+}
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_specimen_inferred
 }
 import std.kind { TypeDenotationKind, kind_node }
 import v2.extdeps.languages.dag {
+  dag_fixture_emitted_add_fn,
   dag_int_inhabitant_node
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
+import v2.std.type_binder { node_inferred_subtree_nodes }
 import v2.std.node {
-  node_inferred_subtree_nodes,
+  StructuralLabel,
+  label_sort_key,
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
+  Positional,
   TypeNode,
-  node_subtree_nodes
+  arrow_signature_order_edge,
+  node_subtree_nodes,
+  symbol_lexeme
 }
-import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+import std.algebra { list_snoc_item }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.node_query { BinderParts, binder_node_parts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,9 +51,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // infer_gather_product_row_on_entries): a non-roster Conj or Arrow whose every child carries
 // DerivedGrounding derives, its evidence the same shape re-formed over the children's grounding
 // evidence. The specimen is the direct-rust-door fixture's ingest -- the corpus's smallest
-// real-ingest dag module. The census pins that the witness actually saw the population: four
-// Conj nodes, all derived (the grammar-projection root included -- it cascaded once the atom
-// rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
+// real-ingest dag module. The census pins that the witness actually saw the population: each
+// Conj named in product_introduction_expected_conjs, all derived (the grammar-projection root
+// included -- it cascaded once the atom rules grounded its children), and one bodied Arrow, derived. The evidence control pins the
 // composed evidence's SHAPE on the parameter conj: a Conj whose named children target each `Int`
 // type atom's derived grounding -- its KIND, std.kind TypeDenotationKind -- never the source node
 // (the self-evidence wall). Until 2026-09-26 that child grounding was the dag roster's Int
@@ -90,7 +106,7 @@ fn product_introduction_census_step(
   }
 }
 
-// THE CENSUS COUNTS THE PRODUCTS INFER IS ASKED TO DERIVE (v2.std.node node_inferred_subtree_nodes):
+// THE CENSUS COUNTS THE PRODUCTS INFER IS ASKED TO DERIVE (v2.std.type_binder node_inferred_subtree_nodes):
 // the declared-order edge's label list is not one.
 fn product_introduction_census(inferred: InferredTree) -> ProductIntroductionCensus {
   fold_list(
@@ -115,9 +131,9 @@ fn params_conj_children_match(children: List<Edge>) -> Bool {
           match list_at_optional(xs: children, index: 2) {
             Absent =>
               match first.label {
-                Named { name: a } =>
+                Authored { name: a } =>
                   match second.label {
-                    Named { name: b } => (a == ^x) && (b == ^y)
+                    Authored { name: b } => (a == ^x) && (b == ^y)
                     _ => false
                   }
                 _ => false
@@ -135,6 +151,28 @@ fn is_params_conj(n: Node) -> Bool {
   }
 }
 
+// A PARAMETER'S EVIDENCE IS A BINDER NODE OVER ITS TYPE'S EVIDENCE (XL-2 PR2b-3, #12923): a domain
+// member's target is a binder node, and infer derives a binder node over the type's derived evidence
+// with no default (v2.compiler.infer infer_binder_node_facts_from_entries), so the composed evidence of
+// a params Conj carries binder nodes. Each child is read through the one binder reader
+// (v2.std.node_query binder_node_parts), and its type must be the type-denotation kind.
+fn binder_evidence_is_type_kind(evidence: Node) -> Bool {
+  match binder_node_parts(n: evidence) {
+    Present { value: parts } => (parts.type_node == kind_node(kind: TypeDenotationKind)) && binder_evidence_has_no_default(parts: parts)
+    Absent => false
+  }
+}
+
+// Canonical binder evidence carries NO default: infer derives a binder node over the type's evidence
+// alone (v2.compiler.infer infer_binder_node_facts_from_entries), so a default in the evidence is a
+// defect the old exact-equality check would have caught, and this check keeps catching it.
+fn binder_evidence_has_no_default(parts: BinderParts) -> Bool {
+  match parts.default {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
 fn evidence_children_target_type_kind(children: List<Edge>) -> Bool {
   match list_at_optional(xs: children, index: 0) {
     Absent => false
@@ -144,8 +182,8 @@ fn evidence_children_target_type_kind(children: List<Edge>) -> Bool {
         Present { value: second } =>
           match list_at_optional(xs: children, index: 2) {
             Absent =>
-              (first.target == kind_node(kind: TypeDenotationKind))
-                && (second.target == kind_node(kind: TypeDenotationKind))
+              binder_evidence_is_type_kind(evidence: first.target)
+                && binder_evidence_is_type_kind(evidence: second.target)
             Present { value: _ } => false
           }
       }
@@ -183,12 +221,84 @@ fn params_conj_evidence_seen(inferred: InferredTree) -> Bool {
   )
 }
 
+// THE CENSUS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5). Each Conj infer is asked to derive is
+// named by its children -- each child edge's label and the last atom its subtree carries (a parameter
+// reference's path ends at the parameter it names) -- and the
+// claim names every one it expects, in walk order, and requires each to be derived. RE-STATED
+// 2026-10-01: it read `conjs == 4` and went red at gunbc#12766 (bisected), which made each named-fn
+// parameter reference a path-keyed reference carrier, a Conj under ^<parameter-reference>, so the body
+// `x + y` now carries two products the count did not name. A count copied from the tree would have
+// absorbed them; the names say which products appeared. gunbc#12923 (a binder's target is a binder
+// node, XL-2 PR2b-3) then added one `<binder-type>` product per parameter, named here the same way.
+data product_introduction_expected_conjs: List<String> = [
+  "[grammar_production_identity_node_projection=dag_surface_module][grammar_production_captured_node_projection=y]",
+  "[add_probe=y]",
+  "[grammar_production_identity_node_projection=namespace_graft_module_body][add=y]",
+  "[x=dag_binding_type_int][y=dag_binding_type_int]",
+  "[<binder-type>=dag_binding_type_int]",
+  "[<binder-type>=dag_binding_type_int]",
+  "[<parameter-reference>=x]",
+  "[<parameter-reference>=y]",
+]
+
+fn product_introduction_last_atom(n: Node) -> String {
+  fold_list(
+    xs: node_subtree_nodes(root: n),
+    empty: "",
+    cons: fn(acc, m) { product_introduction_last_atom_step(acc: acc, m: m) }
+  )
+}
+
+fn product_introduction_last_atom_step(acc: String, m: Node) -> String {
+  match m.kind {
+    TypeNode { connective: Atom { identity: id } } => symbol_lexeme(sym: id)
+    _ => acc
+  }
+}
+
+fn product_introduction_edge_name(e: Edge) -> String {
+  match e.label {
+    Authored { name: l } => symbol_lexeme(sym: l) + "=" + product_introduction_last_atom(n: e.target)
+    StructuralLabel { label: _ } => symbol_lexeme(sym: label_sort_key(label: e.label)) + "=" + product_introduction_last_atom(n: e.target)
+    Positional => "#=" + product_introduction_last_atom(n: e.target)
+  }
+}
+
+fn product_introduction_conj_name(n: Node) -> String {
+  fold(n.children, init: "", f: fn(acc, e) { acc + "[" + product_introduction_edge_name(e: e) + "]" })
+}
+
+fn product_introduction_flagged_name(inferred: InferredTree, n: Node) -> String {
+  if product_introduction_node_derived(inferred: inferred, n: n) {
+    product_introduction_conj_name(n: n)
+  } else {
+    "!" + product_introduction_conj_name(n: n)
+  }
+}
+
+// Every Conj infer is asked to derive, by name, with its derived flag: "name" when derived, "!name" when not.
+fn product_introduction_conj_names(inferred: InferredTree) -> List<String> {
+  fold_list(
+    xs: node_inferred_subtree_nodes(root: inferred.root),
+    empty: [],
+    cons: fn(acc, n) { product_introduction_conj_names_step(inferred: inferred, acc: acc, n: n) }
+  )
+}
+
+fn product_introduction_conj_names_step(inferred: InferredTree, acc: List<String>, n: Node) -> List<String> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      list_snoc_item(xs: acc, item: product_introduction_flagged_name(inferred: inferred, n: n))
+    _ => acc
+  }
+}
+
 test fn product_introduction_derives_fully_evidenced_products_holds() -> Bool {
   match direct_rust_door_specimen_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       let census = product_introduction_census(inferred: inferred)
-      (census.conjs == 4) && (census.conjs_derived == 4)
+      (product_introduction_conj_names(inferred: inferred) == product_introduction_expected_conjs)
         && (census.arrows == 1) && (census.arrows_derived == 1)
   }
 }
@@ -207,7 +317,7 @@ test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bo
     children: [],
     occurrence_id: OccurrenceSynthetic
   }
-  match infer_and_discharge(tree: childless) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: childless)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match inferred.facts.lookup(childless) {
@@ -222,7 +332,7 @@ test fn product_introduction_leaves_childless_conj_on_the_frontier_holds() -> Bo
 }
 
 fn product_introduction_hand_tree_grounding(tree: Node, n: Node) -> Int {
-  match infer_and_discharge(tree: tree) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Rejected { diagnostics: _ } => 2
     Accepted { value: inferred, diagnostics: _ } =>
       match inferred.facts.lookup(n) {
@@ -246,12 +356,66 @@ test fn product_introduction_leaves_partially_evidenced_conj_on_the_frontier_hol
   let partial = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^derived_field }, target: derived_child },
-      Edge { label: Named { name: ^frontier_field }, target: frontier_child }
+      Edge { label: Authored { name: ^derived_field }, target: derived_child },
+      Edge { label: Authored { name: ^frontier_field }, target: frontier_child }
     ],
     occurrence_id: OccurrenceSynthetic
   }
   (product_introduction_hand_tree_grounding(tree: partial, n: derived_child) == 0)
     && (product_introduction_hand_tree_grounding(tree: partial, n: frontier_child) == 1)
     && (product_introduction_hand_tree_grounding(tree: partial, n: partial) == 1)
+}
+
+// ROSTER MEMBERSHIP IS OVER THE ROSTER'S VALUES, NOT ITS LABEL METADATA (std.kind roster_member_nodes).
+// gunbc#12625 rebuilt the dag roster's add fn through anonymous_signature_arrow, whose declared-order
+// edge lists the domain's binder labels as a FreeMonoid ending in a synthetic childless Conj; the
+// roster index walked that edge, so every bare childless Conj became a TypeDenotationKind member and
+// derived a grounding by lookup (the red above, and four more rows of gunbc#12860). The order edge is
+// classified by v2.std.node arrow_signature_order_edge, the predicate infer's gather fold asks.
+fn ipi_is_roster_member(n: Node) -> Bool {
+  match infer_node_declared_in_language_inhabitants(kinds: infer_language_inhabitants_kind_index(), n: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ipi_order_target_step(acc: Optional<Node>, e: Edge) -> Optional<Node> {
+  if arrow_signature_order_edge(parent: dag_fixture_emitted_add_fn, edge: e) { optional_present(value: e.target) } else { acc }
+}
+
+fn ipi_add_fn_order_target() -> Optional<Node> {
+  fold_list(
+    xs: dag_fixture_emitted_add_fn.children,
+    empty: Absent,
+    cons: fn(acc, e) { ipi_order_target_step(acc: acc, e: e) }
+  )
+}
+
+// RED: a bare synthetic childless Conj is not a member of any closed-ingest-set roster.
+test fn a_bare_childless_conj_is_not_a_roster_member_holds() -> Bool {
+  ipi_is_roster_member(n: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }) == false
+}
+
+// RED: the add fn's declared-order label list is metadata, not a member.
+test fn the_declared_order_label_list_is_not_a_roster_member_holds() -> Bool {
+  match ipi_add_fn_order_target() {
+    Absent => false
+    Present { value: order } => ipi_is_roster_member(n: order) == false
+  }
+}
+
+// CONTROL: a genuine roster member still derives its kind -- the add fn Arrow itself.
+test fn the_roster_add_fn_is_still_a_roster_member_holds() -> Bool {
+  ipi_is_roster_member(n: dag_fixture_emitted_add_fn)
+}
+
+// CONTROL: a payload edge into the roster is still walked -- the add fn's domain, reached only
+// through the Arrow's value edge, is a member.
+test fn the_add_fn_domain_through_a_payload_edge_is_a_roster_member_holds() -> Bool {
+  match list_at_optional(xs: dag_fixture_emitted_add_fn.children, index: 0) {
+    Absent => false
+    Present { value: domain_edge } =>
+      (arrow_signature_order_edge(parent: dag_fixture_emitted_add_fn, edge: domain_edge) == false)
+        && ipi_is_roster_member(n: domain_edge.target)
+  }
 }

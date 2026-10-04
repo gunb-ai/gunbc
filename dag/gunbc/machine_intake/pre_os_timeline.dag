@@ -44,7 +44,9 @@ fn pre_os_read_observation(envelope: ObservationEnvelope, format: PreOsSourceFor
           ObservationEstablished { observed: text }
         } else { ObservationRefused { cause: "artifact byte count differs from recorded stream range" } }
     }
-    _ => ObservationRefused { cause: "replay artifact reader requires a cryptographic SHA-256 artifact reference" }
+    Fnv1a64(_) => ObservationRefused { cause: "replay artifact reader requires a cryptographic SHA-256 artifact reference" }
+    Sha1Hash(_) => ObservationRefused { cause: "replay artifact reader requires a cryptographic SHA-256 artifact reference" }
+    Sha512Hash(_) => ObservationRefused { cause: "replay artifact reader requires a cryptographic SHA-256 artifact reference" }
   }
   PreOsReplayObservation { envelope: envelope, format: format, payload: payload }
 }
@@ -256,7 +258,8 @@ fn pre_os_machine_timeline(machine: NonEmptyStr, observations: List<PreOsReplayO
     } }
     let previous: ObservationAttempt<PreOsSelCursor, PreOsRefusal> = match map_lookup(m: acc.cursors, key: o.envelope.binding) {
       Present { value: Present { value: c } } => ObservationEstablished { observed: c }
-      _ => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
+      Present { value: Absent } => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
+      Absent => ObservationRefused { cause: pre_os_text_refusal(text: "no source cursor") }
     }
     let sel: ObservationAttempt<PreOsSelIngestion, PreOsRefusal> = match o.format {
       PreOsConsoleText => ObservationRefused { cause: pre_os_text_refusal(text: "console source is not a SEL snapshot") }

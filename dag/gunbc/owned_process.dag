@@ -1,0 +1,174 @@
+module gunbc.owned_process
+
+import std.types { Bool, Int, List, NonEmptyStr, Unit }
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.proc_pid_stat { ProcPidStatStartTime, StartTimeObserved, proc_pid_stat_start_time }
+import gunbc.machine_intake_sol_hold
+
+// A BACKGROUND PROCESS THIS RUN STARTED, OWNED BY (pid, start time). The launch publishes
+// "<pid> <starttime>" (proc(5) field 22 at spawn, written to a temporary name and renamed) beside the
+// process's own log, kills the child it started if that record cannot be published, and appends the
+// child's exit status and instant to the log when it ends. Standing is read from the record against
+// /proc/<pid>/stat: a pid the kernel has handed to another process fails the start-time join, so it
+// reads Foreign, never Running. Release is gunbc.machine_intake_sol_hold's owned release (TERM, then
+// KILL, each only while (pid, start time) still match), and release is OBSERVED afterwards, never
+// assumed from the signal.
+//
+// This is the lifecycle the SOL collector hold already runs, lifted out so the KVM observer and the
+// loopback BMC transport hold their processes the same way; gunbc.machine_intake_mtcollins1_boot_run
+// reads the SOL collector's record through owned_process_record too, so the record format has one parser.
+data owned_process_launch_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.owned_process",
+    decl_name: "owned_process_launch_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data owned_process_launch_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.owned_process LaunchOwned -- a bash -c background launch that publishes (pid, starttime) and records the exit. RETIRED BY THE CAPABILITY: a typed process-hold realization SUFFICIENT TO start a process detached from the evaluation, publish its (pid, start time) identity atomically, stop exactly the child it started when publication fails, and record its exit status and instant -- the same capability gunbc.machine_intake_sol_hold ActivateHeld waits on. Admission: operator escalation msg_4bbcf810, default-approved on recommendation A, 2026-09-30")
+
+data owned_process_exit_prefix: String = "gunbc-owned: exited status="
+
+data owned_process_unpublished_line: String = "gunbc-owned: pid not published; child stopped (observed gone)"
+
+data owned_process_unpublished_survived_line: String = "gunbc-owned: pid not published; child SURVIVED KILL (cleanup unresolved)"
+
+data owned_process_unpublished_unobservable_line: String = "gunbc-owned: pid not published; child state UNOBSERVABLE after KILL (cleanup unresolved)"
+
+// WHEN THE RECORD CANNOT BE PUBLISHED the launch still owns the child it started (it is that child's
+// parent and has not reaped it), so it drives it to an OBSERVED end: TERM, up to two seconds, KILL, up
+// to one more second, each step observing the child as running, gone (no /proc/<pid>, or a zombie) or
+// UNOBSERVABLE (/proc/<pid> exists but its stat cannot be read). Only an observed gone ends a wait or
+// skips KILL, and only an observed gone is written as stopped; a child still running, or whose state
+// cannot be observed, after KILL is written as an unresolved cleanup, never as stopped.
+data owned_process_launch_script: String = "pf=\"$1\"; lg=\"$2\"; ep=\"$3\"; ug=\"$4\"; us=\"$5\"; uu=\"$6\"; shift 6; ( \"$@\" >> \"$lg\" 2>&1 < /dev/null & p=$!; obs() \{ if [ ! -e /proc/$p ]; then o=gone; return; fi; s=$(cat /proc/$p/stat 2>/dev/null) || \{ if [ -e /proc/$p ]; then o=unobservable; else o=gone; fi; return; \}; s=$\{s##*) \}; case \"$s\" in Z*) o=gone;; *) o=running;; esac; \}; st=$(cat /proc/$p/stat 2>/dev/null) && st=$\{st##*) \} && set -f && set -- $st && printf \"%s %s\\n\" \"$p\" \"$\{20\}\" > \"$pf.tmp\" && mv -T \"$pf.tmp\" \"$pf\" || \{ rm -f \"$pf.tmp\"; kill \"$p\" 2>/dev/null; for i in 1 2 3 4 5 6 7 8 9 10; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; if [ \"$o\" != gone ]; then kill -9 \"$p\" 2>/dev/null; for i in 1 2 3 4 5; do obs; [ \"$o\" = gone ] && break; sleep 0.2; done; fi; case \"$o\" in gone) printf \"%s\\n\" \"$ug\" >> \"$lg\";; running) printf \"%s\\n\" \"$us\" >> \"$lg\";; *) printf \"%s\\n\" \"$uu\" >> \"$lg\";; esac; \}; wait \"$p\"; echo \"$ep$? at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" >> \"$lg\" ) > /dev/null 2>&1 &"
+
+service gunbc.owned_process.launch {
+  operation LaunchOwned {
+    requires opaque
+    input { pid_path: NonEmptyStr, log_path: NonEmptyStr, command: List<String> }
+    output { stdout: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["bash", "-c", owned_process_launch_script, "owned-launch", "{pid_path}", "{log_path}", owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line, command]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "owned launch failed"
+    }
+  }
+}
+
+type OwnedProcessRecord
+  = OwnedRecorded { pid: String, start_time: String }
+  | OwnedUnrecorded { detail: String }
+
+fn owned_process_record(content: String) -> OwnedProcessRecord {
+  let words: List<String> = filter(split(s: trim(s: content), delimiter: " "), w => w != "")
+  match words.first() {
+    Absent => OwnedUnrecorded { detail: "the pid record is empty" }
+    Present { value: pid } =>
+      match words.skip(n: 1).first() {
+        Absent => OwnedUnrecorded { detail: "the pid record carries no start time" }
+        Present { value: start } =>
+          match words.skip(n: 2).first() {
+            Absent => OwnedRecorded { pid: pid, start_time: start }
+            Present { value: _ } => OwnedUnrecorded { detail: "the pid record carries more than (pid, start time)" }
+          }
+      }
+  }
+}
+
+// Each observation is kept as itself: a stat that does not exist is Gone; one that cannot be read
+// (permission, I/O) is Unreadable; one that reads but cannot be parsed is Unparseable. Neither of the
+// last two is ever read as Gone.
+type OwnedProcessStanding
+  = OwnedRunning { pid: String, start_time: String }
+  | OwnedGone { pid: String }
+  | OwnedForeign { pid: String, observed_start: String }
+  | OwnedUnreadable { pid: String, detail: String }
+  | OwnedUnparseable { pid: String, detail: String }
+  | OwnedNotRecorded { detail: String }
+
+fn owned_process_standing_of(record_read_ok: Bool, record: String, stat_read_ok: Bool, stat_not_found: Bool, stat_error: String, stat: String) -> OwnedProcessStanding {
+  if !record_read_ok { OwnedNotRecorded { detail: "the pid record is unreadable" } } else {
+    match owned_process_record(content: record) {
+      OwnedUnrecorded { detail: d } => OwnedNotRecorded { detail: d }
+      OwnedRecorded { pid: p, start_time: s } =>
+        if !stat_read_ok {
+          if stat_not_found { OwnedGone { pid: p } } else { OwnedUnreadable { pid: p, detail: stat_error } }
+        } else {
+          match proc_pid_stat_start_time(content: stat) {
+            StartTimeObserved { ticks_since_boot: t } =>
+              if to_string(t) == s { OwnedRunning { pid: p, start_time: s } } else { OwnedForeign { pid: p, observed_start: to_string(t) } }
+            _ => OwnedUnparseable { pid: p, detail: "the stat has no parseable start time" }
+          }
+        }
+    }
+  }
+}
+
+fn owned_process_standing(pid_path: String) -> OwnedProcessStanding {
+  let rec = Filesystem.Read(path: pid_path)
+  if !rec.success { return OwnedNotRecorded { detail: concat("the pid record is unreadable: ", rec.error) } }
+  match owned_process_record(content: rec.content) {
+    OwnedUnrecorded { detail: d } => OwnedNotRecorded { detail: d }
+    OwnedRecorded { pid: p, start_time: _ } => {
+      let stat = Filesystem.Read(path: concat("/proc/", concat(p, "/stat")))
+      owned_process_standing_of(record_read_ok: true, record: rec.content, stat_read_ok: stat.success, stat_not_found: stat.error_kind == "not_found", stat_error: stat.error, stat: if stat.success { stat.content } else { "" })
+    }
+  }
+}
+
+// RELEASE, OBSERVED. Only an owned, running process is signalled; a gone, foreign or unrecorded one is
+// reported as such and left alone. The standing is read again after the release, so a process that
+// survived it is ReleaseFailed, not a success.
+type OwnedRelease
+  = OwnedReleased { pid: String }
+  | OwnedAlreadyGone { pid: String }
+  | OwnedReleaseNotOwned { standing: OwnedProcessStanding }
+  | OwnedReleaseFailed { pid: String, detail: String }
+  | OwnedReleaseUnresolved { pid: String, standing: OwnedProcessStanding }
+
+fn owned_process_release(pid_path: String) -> OwnedRelease {
+  match owned_process_standing(pid_path: pid_path) {
+    OwnedGone { pid: p } => OwnedAlreadyGone { pid: p }
+    OwnedRunning { pid: p, start_time: _ } => {
+      let released = gunbc.machine_intake.sol_hold.ReleaseHeld(pid_path: pid_path as NonEmptyStr)
+      match owned_process_standing(pid_path: pid_path) {
+        OwnedRunning { pid: _, start_time: _ } => OwnedReleaseFailed { pid: p, detail: if released.success { "still running after the release returned" } else { "survived KILL" } }
+        OwnedGone { pid: _ } => OwnedReleased { pid: p }
+        OwnedForeign { pid: _, observed_start: _ } => OwnedReleased { pid: p }
+        other => OwnedReleaseUnresolved { pid: p, standing: other }
+      }
+    }
+    other => OwnedReleaseNotOwned { standing: other }
+  }
+}
+
+fn owned_process_standing_text(s: OwnedProcessStanding) -> String {
+  match s {
+    OwnedRunning { pid: p, start_time: t } => concat("running pid ", concat(p, concat(" start ", t)))
+    OwnedGone { pid: p } => concat("pid ", concat(p, " is gone"))
+    OwnedForeign { pid: p, observed_start: t } => concat("pid ", concat(p, concat(" now names another process (start ", concat(t, ")"))))
+    OwnedUnreadable { pid: p, detail: d } => concat("pid ", concat(p, concat(" UNREADABLE: ", d)))
+    OwnedUnparseable { pid: p, detail: d } => concat("pid ", concat(p, concat(" UNPARSEABLE: ", d)))
+    OwnedNotRecorded { detail: d } => concat("no owned pid recorded: ", d)
+  }
+}
+
+fn owned_release_text(r: OwnedRelease) -> String {
+  match r {
+    OwnedReleased { pid: p } => concat("released pid ", concat(p, "; observed gone"))
+    OwnedAlreadyGone { pid: p } => concat("pid ", concat(p, " had already exited"))
+    OwnedReleaseNotOwned { standing: s } => concat("not released: ", owned_process_standing_text(s: s))
+    OwnedReleaseFailed { pid: p, detail: d } => concat("RELEASE FAILED for pid ", concat(p, concat(": ", d)))
+    OwnedReleaseUnresolved { pid: p, standing: st } => concat("RELEASE UNRESOLVED for pid ", concat(p, concat(": ", owned_process_standing_text(s: st))))
+  }
+}

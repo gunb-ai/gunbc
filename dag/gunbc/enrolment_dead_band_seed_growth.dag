@@ -15,6 +15,19 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // arms), run_required_floor (decodes the authority and passes membership), and the unit test
 // the unit test a_string_roster_append_does_not_declare_enrolment_expensiveness (its three calls gain the
 // fourth argument).
+// THE RUNNER-ENVELOPE ARM (gunbc#12533's margin straddle; ruling of eager-owl-205, 2026-09-30) adds
+// the declaration floor_enrolment_dead_band_envelope_floor_ms below, and modifies EnrolmentMarginStanding
+// (the DeadBandWithinRunnerEnvelope arm, and DeadBandStale's envelope_floor_ms field, with their
+// blocks / unpaired_pairing_hole / cause / name / detail arms), enrolment_margin_standing_for (the
+// dead_band_envelope_floor_ms parameter and the arm between the envelope floor and the margin),
+// run_required_floor (reads the floor out of the model beside the margin), and the unit tests whose
+// calls gain that argument.
+// THE LINE-ENVELOPE ARM (gunbc#12800's line straddle; ruling of eager-owl-205, 2026-10-01) adds the
+// declaration floor_enrolment_roster_envelope_floor_ms below, and modifies EnrolmentMarginStanding (the
+// RosterGroundWithinRunnerEnvelope arm, and RosterGroundStale's envelope_floor_ms field, with their
+// blocks / unpaired_pairing_hole / cause / name / detail arms), enrolment_margin_standing_for (the
+// roster_envelope_floor_ms parameter and the arm between that floor and the line), run_required_floor
+// (reads the floor out of the model beside the line), and the unit tests whose calls gain that argument.
 //
 // WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
 // v1_seed_standing admits a change when it serves the v2 self-host program. The required floor is the
@@ -33,6 +46,8 @@ data enrolment_dead_band_seed_growth_justification: SeedGrowthJustification = Se
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_enrolment_dead_band_observed_identities", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "the_dead_band_ground_holds_only_an_exact_reading_inside_margin_and_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_enrolment_dead_band_envelope_floor_ms", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_enrolment_roster_envelope_floor_ms", field: WholeDeclaration },
   ],
   reason: "The required floor's host must render v2.workflow.floor_enrolment_margin's dead-band ground so a newly enrolled witness honestly costing between the enrolment margin and the per-subject line has a standing, observed only and self-staling, for exactly the identities v2.workflow.floor_enrolment_dead_band names (gunbc#11989). The decoder reads that authority from the model; the unit test is the seed-side RED for both self-staling arms.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

@@ -84,12 +84,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -391,46 +391,6 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     }
 }
 
-/// The floor receipt's leg label, read from the memo primed by
-/// `prime_witness_execution_legs`. The label is a pure function of the entry path, derived
-/// from the `.dag` classification authority — there is no census carrier to read and none
-/// to keep in sync (§2/§3).
-///
-/// Fail-closed (§5): an unprimed entry refuses. It does not quietly derive on the spot,
-/// because doing so off the floor's own index costs a second whole-corpus index — measured
-/// at ~6GB of extra demand, which pushed the floor into swap and inflated batch 3 by 44%.
-/// A miss is a wiring bug in the caller, and it says so rather than paying that silently.
-pub fn witness_execution_leg_label(entry: &str) -> String {
-    let rel = repo_relative_dag_path(entry);
-    match witness_execution_leg_cached(&rel) {
-        Some(hit) => hit,
-        None => panic!(
-            "witness execution leg: entry {rel:?} was not primed (refuse — call \
-             prime_witness_execution_legs with the floor's index before running rows)"
-        ),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache() -> &'static std::sync::RwLock<HashMap<String, String>> {
-    WITNESS_EXECUTION_LEG_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
-}
-
-pub(crate) fn witness_execution_leg_cached(rel: &str) -> Option<String> {
-    match witness_execution_leg_cache().read() {
-        Ok(map) => map.get(rel).cloned(),
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache_put(rel: &str, leg: &str) {
-    match witness_execution_leg_cache().write() {
-        Ok(mut map) => {
-            map.insert(rel.to_string(), leg.to_string());
-        }
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
-    }
-}
-
 pub(crate) fn witness_cost_nanosecond_value(
     ctx: &v1_interpreter::InterpContext,
     nanos: u128,
@@ -533,7 +493,7 @@ pub(crate) fn witness_cost_clock_nanos(
     })?;
     let Value::Variant {
         variant_name,
-        fields,
+        ref fields,
         ..
     } = measured
     else {
@@ -551,7 +511,7 @@ pub(crate) fn witness_cost_clock_nanos(
             ctx.resolve(variant_name)
         ));
     }
-    let value = ctx.field(&fields, "value").cloned().ok_or_else(|| {
+    let value = ctx.field(fields, "value").cloned().ok_or_else(|| {
         "[witness-row-cost] REFUSED: MeasuredValue lacks its Nanosecond".to_string()
     })?;
     witness_cost_nanosecond_count(ctx, value, basis_constructor).map(Some)

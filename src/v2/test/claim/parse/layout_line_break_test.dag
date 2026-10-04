@@ -1,0 +1,313 @@
+module v2.test.parse.layout_line_break
+
+import v2.compiler.parse { ParseArtifact, parse_module, parse_module_prepared, parse_token_stream_digest, parse_token_stream_layout_digest }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.algebra { length }
+import std.types { List }
+import v2.std.collection { list_at_optional }
+import v2.std.compilers.lexing {
+  LineBreakAnswer,
+  LineBreakInGap,
+  LineBreakUnknownWithoutSource,
+  NoLineBreakInGap,
+  Token,
+  TokenStream,
+  token_stream_all,
+  token_stream_layout,
+  token_stream_line_break_before,
+  token_stream_new
+}
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  diagnostics_fatal
+}
+import v2.std.grammar {
+  AfterLineBreak,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  RefuseOnMatch,
+  Repeat,
+  Sequence,
+  Choice,
+  StampClass,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, content_hash }
+import v2.std.optional { Absent, Present }
+import v2.std.parse_refusal_reason {
+  FnExpressionBodyMissingAfterEq,
+  LayoutUnknownWithoutSource,
+  ParseRefusalReason,
+  parse_refusal_reason_symbol
+}
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// LAYOUT IS DERIVED FROM THE SOURCE THE STREAM CARRIES, AND IT IS READ ONLY WHERE A PRODUCTION ASKS.
+// `x - 1` and `x` newline `- 1` lex to the same tokens at the same octets (a space and a line feed are
+// each one octet), so the token stream alone cannot tell them apart; the source can. These claims hold
+// the carrier (v2.std.compilers.lexing TokenStream.layout, token_stream_line_break_before) and the two
+// grammar arms that read it (v2.std.grammar AfterLineBreak, RefuseOnMatch) to that, over hand grammars.
+
+data same_line_text: String = "x - 1"
+
+data next_line_text: String = "x\n- 1"
+
+fn lexed(text: String, file: Symbol) -> Outcome<TokenStream> {
+  tokenize(text: text, file: file, rules: dag_lex())
+}
+
+// The gap before the second token (`-`): from the end of `x` to the start of `-`.
+fn gap_before_second(stream: TokenStream) -> LineBreakAnswer {
+  match list_at_optional(xs: token_stream_all(stream: stream), index: 0) {
+    Absent => NoLineBreakInGap
+    Present { value: _ } =>
+      match list_at_optional(xs: token_stream_all(stream: stream), index: 1) {
+        Absent => NoLineBreakInGap
+        Present { value: second } =>
+          token_stream_line_break_before(layout: token_stream_layout(stream: stream), token_start: second.start)
+      }
+  }
+}
+
+fn token_at_same(a: List<Token>, b: List<Token>, index: Int) -> Bool {
+  match list_at_optional(xs: a, index: index) {
+    Absent => false
+    Present { value: ta } =>
+      match list_at_optional(xs: b, index: index) {
+        Absent => false
+        Present { value: tb } => token_same(a: ta, b: tb)
+      }
+  }
+}
+
+fn tokens_agree(a: List<Token>, b: List<Token>) -> Bool {
+  (length(xs: a) == 3) && (length(xs: b) == 3)
+    && token_at_same(a: a, b: b, index: 0)
+    && token_at_same(a: a, b: b, index: 1)
+    && token_at_same(a: a, b: b, index: 2)
+}
+
+fn token_same(a: Token, b: Token) -> Bool {
+  (a.class == b.class) && (a.start == b.start) && (a.end == b.end)
+}
+
+// THE LEXING CONTROL: same tokens, different layout, and the derivation tells them apart.
+test fn same_tokens_different_layout_is_told_apart_by_the_source_holds() -> Bool {
+  match lexed(text: same_line_text, file: ^layout_same) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: same, diagnostics: _ } =>
+      match lexed(text: next_line_text, file: ^layout_same) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: next, diagnostics: _ } =>
+          tokens_agree(a: token_stream_all(stream: same), b: token_stream_all(stream: next))
+            && match gap_before_second(stream: same) {
+              NoLineBreakInGap => true
+              LineBreakInGap => false
+              LineBreakUnknownWithoutSource => false
+            }
+            && match gap_before_second(stream: next) {
+              LineBreakInGap => true
+              NoLineBreakInGap => false
+              LineBreakUnknownWithoutSource => false
+            }
+      }
+  }
+}
+
+// THE FAIL-CLOSED ARM OF THE DERIVATION: tokens alone (no source) answer Unknown, never one line.
+test fn a_stream_without_source_answers_unknown_holds() -> Bool {
+  match lexed(text: next_line_text, file: ^layout_unknown) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: next, diagnostics: _ } =>
+      match gap_before_second(stream: token_stream_new(all: token_stream_all(stream: next))) {
+        LineBreakUnknownWithoutSource => true
+        LineBreakInGap => false
+        NoLineBreakInGap => false
+      }
+  }
+}
+
+// THE IDENTITY CONTROL: carrying the source changes nothing the grammar did not ask about. This module
+// reaches no layout-conditioned production (it has no `-` after an operand, where the dag grammar asks
+// one), so the same tokens parse to the same tree (content hash) with the source attached and absent.
+data identity_module_text: String = "module probe.layout_identity\n\ndata d: Int = x + 1\n"
+
+// Against the prepared dag grammar the floor warms once (v2.compiler.program_assembly
+// dag_prepared_grammar), so the claim pays two parses and no grammar preparation.
+fn identity_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue)
+  }
+}
+
+test fn carrying_the_source_changes_no_parse_tree_holds() -> Bool {
+  match lexed(text: identity_module_text, file: ^layout_identity) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: with_source, diagnostics: _ } =>
+      match identity_parse(stream: with_source) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: a, diagnostics: _ } =>
+          match identity_parse(stream: token_stream_new(all: token_stream_all(stream: with_source))) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: b, diagnostics: _ } => content_hash(n: a.tree) == content_hash(n: b.tree)
+          }
+      }
+  }
+}
+
+// A hand grammar in the dag token classes: start = operand (continuation)*, operand = ident, and a
+// continuation either REFUSES (a `-` that follows a line break) or is `-` operand. The refusal arm is
+// tried first, so a same-line `-` falls through to subtraction and a next-line `-` refuses at itself.
+// The reason is borrowed from the closed vocabulary only to exercise the mechanism.
+fn lb_terminal(class: Symbol) -> GrammarExpr {
+  Terminal { token_class: class, stamp: StampClass }
+}
+
+fn lb_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^lb_start,
+    productions: [
+      GrammarProduction {
+        name: ^lb_start,
+        expression: Sequence {
+          left: lb_terminal(class: ^dag_token_ident),
+          right: Repeat {
+            element: Choice {
+              left: RefuseOnMatch {
+                element: AfterLineBreak { element: lb_terminal(class: ^dag_token_minus) },
+                reason: FnExpressionBodyMissingAfterEq
+              },
+              right: Sequence { left: lb_terminal(class: ^dag_token_minus), right: lb_terminal(class: ^dag_token_int_literal) }
+            }
+          }
+        },
+        emitted: grammar_atom(identity: ^lb_start)
+      }
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn lb_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
+  parse_module(tokens: stream, grammar: ModeledGrammar { root: lb_root() })
+}
+
+fn fatal_is(parsed: Outcome<ParseArtifact>, reason: ParseRefusalReason, file: Symbol, start: Int, end: Int) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      (fatal.reason == parse_refusal_reason_symbol(reason: reason))
+        && match fatal.at {
+          SourcePortLocus { anchor: _, file: f, extent: extent } =>
+            (f == file)
+              && match extent {
+                ByteRange { start: s, end: e } => (s == start) && (e == end)
+                WholeFile => false
+              }
+          Textual { file: _, extent: _ } => false
+          NodeLocus { anchor: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
+  }
+}
+
+// Same line: the refusal arm's layout question answers no, and `- 1` is the continuation.
+test fn a_same_line_minus_continues_holds() -> Bool {
+  match lexed(text: same_line_text, file: ^lb_same) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match lb_parse(stream: stream) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// Next line: the `-` (bytes 2..3) matches after a line break, and the parse REFUSES there. No
+// alternative succeeds around it, although `- 1` as subtraction would have parsed.
+test fn a_next_line_minus_refuses_at_the_minus_holds() -> Bool {
+  match lexed(text: next_line_text, file: ^lb_next) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      fatal_is(parsed: lb_parse(stream: stream), reason: FnExpressionBodyMissingAfterEq, file: ^lb_next, start: 2, end: 3)
+  }
+}
+
+// No source: the layout question has no answer, and the parse refuses with LayoutUnknownWithoutSource
+// at the `-` instead of treating the tokens as one line (which would have accepted).
+test fn a_layout_question_without_source_refuses_holds() -> Bool {
+  match lexed(text: same_line_text, file: ^lb_unknown) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      fatal_is(
+        parsed: lb_parse(stream: token_stream_new(all: token_stream_all(stream: stream))),
+        reason: LayoutUnknownWithoutSource,
+        file: ^lb_unknown,
+        start: 2,
+        end: 3
+      )
+  }
+}
+
+// THE MEMO CANNOT SERVE ONE LAYOUT'S ANSWER TO THE OTHER. `x - 1` and `x` newline `- 1` lex to the
+// same tokens at the same octets, so a stream digest over tokens alone would key them together and a
+// warm memo entry could replay a same-line acceptance for a next-line refusal. The layout (its line-break-preceded starts) is part of
+// the stream's digest (v2.compiler.parse parse_token_stream_layout_digest): same tokens, different
+// digest; and the token-only digest, which is what a sourceless stream keys by, is unchanged.
+test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool {
+  match lexed(text: same_line_text, file: ^layout_digest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: same, diagnostics: _ } =>
+      match lexed(text: next_line_text, file: ^layout_digest) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: next, diagnostics: _ } =>
+          (parse_token_stream_digest(all_tokens: token_stream_all(stream: same)) == parse_token_stream_digest(all_tokens: token_stream_all(stream: next)))
+            && (parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: same), layout: token_stream_layout(stream: same))
+              != parse_token_stream_layout_digest(all_tokens: token_stream_all(stream: next), layout: token_stream_layout(stream: next)))
+      }
+  }
+}
+
+// A LINE FEED INSIDE A TOKEN IS NOT LAYOUT. The layout walk counts a line feed only at or after the
+// previous token's end, so a multi-line string literal between two tokens on one line leaves the next
+// token's gap line-break-free; only the gap after the string is asked about.
+data string_line_feed_text: String = "x \"a\nb\" - 1"
+
+test fn a_line_feed_inside_a_token_is_not_layout_holds() -> Bool {
+  match lexed(text: string_line_feed_text, file: ^layout_string) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match list_at_optional(xs: token_stream_all(stream: stream), index: 2) {
+        Absent => false
+        Present { value: minus } =>
+          match token_stream_line_break_before(layout: token_stream_layout(stream: stream), token_start: minus.start) {
+            NoLineBreakInGap => true
+            LineBreakInGap => false
+            LineBreakUnknownWithoutSource => false
+          }
+      }
+  }
+}

@@ -1,12 +1,16 @@
 module v2.workflow.floor_changed_witness
 
+import v2.std.algebra { list_reverse }
+import std.types { List }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   required_floor_disposition_name,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
-  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane,
+  DeclinedChangedWitnessOutsideDiscovery, module_name_is_or_is_contained_by,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
+import gunbc.ci_layer_roots { non_executing_witness_module_prefixes }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
   Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
@@ -17,8 +21,6 @@ import v2.workflow.floor_terminal_ledger {
 import v2.workflow.wet_evidence {
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
 }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import std.measure { ClockBasis, CpuClock, Millisecond, Nanosecond }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeasurement, observation_duration_of }
 
@@ -313,6 +315,8 @@ fn changed_witness_execution_standing(
         DeclinedOutsideRequiredGate => Declined { disposition: d }
         DeclinedOutsideGateClosure => Declined { disposition: d }
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
+        DeclinedNoCiWetLane { pattern: _ } => Declined { disposition: d }
+        DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
       }
   }
@@ -332,8 +336,34 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedWithoutTerminalVerdict => true
     HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
       !hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
-    Declined { disposition: _ } => true
+    Declined { disposition: d } => changed_witness_decline_blocks(disposition: d)
     MissingDisposition => true
+  }
+}
+
+// WHICH DECLINES BLOCK A CHANGED WITNESS: every one, except the declared BinWitnessWet decline,
+// whose loss is `gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci` and which the PR
+// discharges with a real bin_wet receipt. Exhaustive, so a new disposition states its polarity.
+//
+// A SELECTION OUTSIDE DISCOVERY BLOCKS UNLESS ITS HOME IS DECLARED NON-EXECUTING, and the grant is
+// membership in `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` under the named-module
+// subtree rule, never the absence of a match elsewhere: an empty or unrostered home blocks. This is
+// the seed's `identity_home_is_declared_non_executing`, and the exemption goes away with the roster row.
+fn changed_witness_decline_blocks(disposition: RequiredFloorDisposition) -> Bool {
+  match disposition {
+    DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: m } =>
+      !fold(non_executing_witness_module_prefixes, init: false, f: fn(acc, prefix) {
+        acc || ((prefix != "") && module_name_is_or_is_contained_by(module_path: m, name: prefix))
+      })
+    Planned => true
+    PlannedAsChangedWitness => true
+    DeclinedLongModule { matched_prefix: _ } => true
+    DeclinedFixtureMember { matched_prefix: _ } => true
+    DeclinedOutsideRequiredGate => true
+    DeclinedOutsideGateClosure => true
+    DeclinedDiscoveryExcluded { matched_substring: _ } => true
+    DeclinedCostDebt => true
   }
 }
 
@@ -394,7 +424,7 @@ fn changed_witness_blocking_cause(standing: ChangedWitnessExecutionStanding) -> 
 // input order. Zero changed identities is the positive control — an empty list in, an empty list
 // out, and the required context stays green with zero projection lines.
 fn changed_witness_blockers(rows: List<ChangedWitnessRow>) -> List<ChangedWitnessBlocker> {
-  reverse(fold(rows, init: [], f: fn(acc, row) {
+  list_reverse(xs: fold(rows, init: [], f: fn(acc, row) {
     if changed_witness_standing_blocks(standing: row.standing) {
       concat(
         [ChangedWitnessBlocker { identity: row.identity, cause: changed_witness_blocking_cause(standing: row.standing) }],

@@ -53,6 +53,39 @@ test fn import_shadowed_by_local_definition_must_refuse() -> Bool {
   )
 }
 
+fn import_shadow_type_fixture_source() -> String {
+  "module ish.typeprobe\n\nimport std.types { String, NonEmptyStr }\n\ntype NonEmptyStr = | IshLocal\n\nfn ish_type_use() -> NonEmptyStr {\n  IshLocal\n}\n"
+}
+
+// THE TYPE-NAME ROW OF THE SAME WALL. The row above covers a FUNCTION name. A TYPE imported by name
+// and then declared locally is the same discarded import: the local declaration binds every bare
+// use while the import line says otherwise. Measured 2026-09-29 on a supplied two-module fixture
+// (quiet-hawk-702): the compiler refuses, located at the import, and names the local definition as
+// the binding. This row keeps that refusal enrolled on the required floor.
+test fn import_shadowed_by_local_type_definition_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    import_shadow_type_fixture_source(),
+    "src/ish_typeprobe.rs",
+    [],
+    []
+  )
+}
+
+fn import_shadow_type_control_fixture_source() -> String {
+  "module ish.typecontrol\n\nimport std.types { String, NonEmptyStr }\n\ntype IshTypeHolder = | IshLocal\n\nfn ish_type_use() -> IshTypeHolder {\n  IshLocal\n}\n"
+}
+
+// The type row's positive control: the same fixture with the local type renamed away from the
+// import compiles, so the row above refuses for the collision and not for a harness accident.
+test fn import_of_a_type_with_no_local_collision_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    import_shadow_type_control_fixture_source(),
+    "src/ish_typecontrol.rs",
+    [],
+    []
+  )
+}
+
 fn import_shadow_variant_fixture_source() -> String {
   "module ish.variant\n\nimport std.types { String, Bool }\n\ntype IshVariantHolder\n  = Bool { value: String }\n  | IshOther { value: String }\n\nfn ish_variant_use(value: String) -> IshVariantHolder {\n  IshOther { value: value }\n}\n"
 }

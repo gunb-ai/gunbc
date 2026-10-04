@@ -11,7 +11,7 @@ module test.claim.scm_load_standing_witness
 // everything onto one standing would satisfy any single-arm assertion and is caught only here.
 
 import std.types { Bool, Int, List }
-import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Authored, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   SemanticNodeTarget, node_target_locator,
@@ -67,7 +67,7 @@ fn ls_child() -> Node {
 fn ls_parent() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only_child }, target: ls_child() }],
+    children: [Edge { label: Authored { name: ^only_child }, target: ls_child() }],
   )
 }
 
@@ -366,7 +366,7 @@ fn ls_requirement_over_a_file() -> LsOccupied {
         kind: TypeNode { connective: Conj },
         children: [
           StoredEdge {
-            label: Named { name: ^ls_only_child },
+            label: Authored { name: ^ls_only_child },
             target: SemanticNodeTarget { locator: file.locator },
           },
         ],

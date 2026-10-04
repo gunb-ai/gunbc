@@ -133,8 +133,15 @@ fn placeability_standing_open_item(outcome: HostImagePlaceability) -> NonEmptySt
   match outcome {
     PlaceabilityRefused { cause: HostShellAndBootImageAccessRefused } =>
       "item 2 closed as access-refused; that is not an answer about the host image"
-    _ => "item 2 standing is no longer the typed access refusal"
+    PlaceabilityRefused { cause: BinaryAbsentFromHostImage } => placeability_no_longer_access_refused()
+    PlaceabilityRefused { cause: ExecutedFromCheckoutOrNetworkMount } => placeability_no_longer_access_refused()
+    PlaceabilityRefused { cause: ExecFormatErrorIsBuildProvenance } => placeability_no_longer_access_refused()
+    ExecutedAtBoot { exit_status: _ } => placeability_no_longer_access_refused()
   }
+}
+
+fn placeability_no_longer_access_refused() -> NonEmptyStr {
+  "item 2 standing is no longer the typed access refusal"
 }
 
 // ── still open ─────────────────────────────────────────────────────────────────────────────────

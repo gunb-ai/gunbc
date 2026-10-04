@@ -1,11 +1,19 @@
 # Typed-module materialization across runs
 
-> **Status:** IMPLEMENTED, UNMEASURED (2026-09-20). The declarations live in
-> `gunbc.floor_materialization` (rows `floor_typecheck_store_persist_*`) and the realization in
-> `v1_compiler.shared_typecheck_store` (`PersistentTypedStore`). This file carries only what
-> neither of those can: the operating procedure for the measurement, the four operational choices
-> and their reasons, and the deletion trigger. Nothing here restates a declaration — a number or a
-> verdict quoted here would be a second authority for it.
+> **Status:** DELETED (2026-10-03), after measurement. The measurement this file was written to
+> run was taken on BuildBuddy (a 65 GB runner, one `claim_batch --claim-run` process over 5 entries,
+> re-derived by arming `GUNBC_TYPED_STORE_PERSIST` against the same invocation unarmed): armed, the
+> cold run exceeded a 720 s cap against ~150 s unarmed without evaluating an entry, and wrote
+> ~7.3 GB in TWO entries; a second armed run also exceeded the cap and wrote nothing new. So each
+> entry was a multi-gigabyte snapshot rather than one module, the store was a large net loss, and
+> nothing bounded its root or cleaned it. The realization (`PersistentTypedStore`), its arming
+> switch, its `cli_run` call sites and the `gunbc.floor_materialization` provider row were deleted
+> in one change; the cross-process demands that row discharged are still declared there and now
+> refuse with no provider. Sections 1-4 below describe the deleted design and are kept only as the
+> record the open compiler-identity roadmap node still cites; nothing below is current behaviour.
+> The replacement is a `TypecheckModuleRequest` store realized through
+> `extdeps.realization.materialization_store_local`, encoded per module, bounded by a byte ceiling
+> with oldest-generation eviction, under a scoped root that cleans itself.
 > **Authority it answers to:** `DESIGN.md`; the ladder's admission rules in
 > `std.materialization_ladder`; the retention vocabulary in `std.cache_interface`.
 > **Framing:** relief during the v1 → v2 migration. Not a parallelism project.

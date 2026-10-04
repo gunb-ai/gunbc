@@ -1,6 +1,6 @@
 module gunbc.fleet_lifecycle_observation
 
-import std.types { NonEmptyStr, String, List, Int, Bool }
+import std.types { NonEmptyStr, String, List, Int, Bool, brand }
 import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
 import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address }

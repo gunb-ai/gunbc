@@ -1,5 +1,7 @@
 module v2.test.claim.normalize.census_mode
 
+import v2.std.algebra { list_map }
+
 import v2.compiler.normalize { normalize, normalize_census }
 import v2.compiler.normalized_tree {
   CensusTree,
@@ -27,16 +29,16 @@ import v2.std.node_query { find_arrow_body_child }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, Authored }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }
 
 // CENSUS MODE'S CONTROLS (gen-two door, PR-b). A module outside the compiled closure is normalized to
 // census grade -- every declaration, no fn body -- so a body the lowering cannot yet read cannot
 // refuse a module nobody compiles, while a closure member's reference into it still answers with the
-// identity whole-root ingest gives. The refusing body is an else-less `if`, which the full fold
-// refuses with body_lowering_reason_else_less_if_unlowered; the TWIN differs only in that body, so
+// identity whole-root ingest gives. The refusing body is an else-less `if` whose arm falls through
+// (no return, so it is not a guard), which the full fold refuses with
+// body_lowering_reason_else_less_if_unlowered; the TWIN differs only in that body, so
 // whole-root ingest runs over the twin and census mode over the refusing original.
 //
 // COST SHAPE (DESIGN section 3, a witness discriminates at one interface). Each claim parses ONE
@@ -60,7 +62,7 @@ data census_variant: String = "module c.v\ntype Shape = Circle | Square\n"
 data census_fn_only_refusing: String = "module c
 fn g() -> Int {
   if true {
-    return 1
+    1
   }
   2
 }
@@ -102,7 +104,7 @@ fn member_answer(index: SymbolIndex, provider_root: Node, spelling: String) -> O
     index: index,
     roster: module_roster_from_roots(roots: Cons { head: provider_root, tail: Empty }),
     site: ReferenceSite {
-      position: census_member_qn,
+      position: list_map(xs: census_member_qn, f: fn(segment) { Authored { name: segment } }),
       spelling: qualified_name_from_dotted_string(dotted: spelling)
     }
   ) {
@@ -230,7 +232,7 @@ test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
     index: empty_symbol_index(),
     roster: Empty,
     site: ReferenceSite {
-      position: census_member_qn,
+      position: list_map(xs: census_member_qn, f: fn(segment) { Authored { name: segment } }),
       spelling: qualified_name_from_dotted_string(dotted: "Point")
     }
   ) {
@@ -278,11 +280,10 @@ fn census_fn_only_refusing_stream() -> TokenStream {
     Token { class: ^dag_token_kw_if, lexeme: "if", file: ^census_mode_probe, start: 27, end: 29 },
     Token { class: ^dag_token_kw_true, lexeme: "true", file: ^census_mode_probe, start: 30, end: 34 },
     Token { class: ^dag_token_lbrace, lexeme: "{", file: ^census_mode_probe, start: 35, end: 36 },
-    Token { class: ^dag_token_kw_return, lexeme: "return", file: ^census_mode_probe, start: 41, end: 47 },
-    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 48, end: 49 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 52, end: 53 },
-    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 56, end: 57 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 58, end: 59 }
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^census_mode_probe, start: 41, end: 42 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 45, end: 46 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^census_mode_probe, start: 49, end: 50 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^census_mode_probe, start: 51, end: 52 }
   ])
 }
 

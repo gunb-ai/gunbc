@@ -50,7 +50,9 @@ fn parse_memo_frame_replay_run_modeled(
     nullable_set: base.nullable_set,
     first_rows: base.first_rows,
     productions_by_name: base.productions_by_name,
-    prepared_exprs: base.prepared_exprs
+    prepared_exprs: base.prepared_exprs,
+    layout: base.layout,
+    refusal: base.refusal
   }
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => optional_absent()
@@ -109,6 +111,7 @@ fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<O
               }
             OccurrenceSynthetic => acc
             OccurrenceProjected { id: _, caused_by: _ } => acc
+            OccurrencePending { caused_by: _ } => acc
           }
       }
     }
@@ -479,7 +482,9 @@ fn linear_run(forced: Optional<Materialization>) -> Optional<ParseFullRun> {
         nullable_set: base.nullable_set,
         first_rows: base.first_rows,
         productions_by_name: base.productions_by_name,
-        prepared_exprs: base.prepared_exprs
+        prepared_exprs: base.prepared_exprs,
+        layout: base.layout,
+        refusal: base.refusal
       }
       match grammar_lookup_production(root: root, name: root.start) {
         Violates { diagnostic: _ } => optional_absent()

@@ -1,0 +1,162 @@
+module v2.test.claim.body_lowering.wildcard_pattern_form
+
+import v2.compiler.body_lowering_fold { body_lower_match_arms_optional, body_lower_unwrap_captured }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Authored, Node, Symbol, CoreEdgeLabel, MatchArmPatternEdge, edge_is_core }
+import v2.std.node_query { construct_tag_optional, is_wildcard_pattern, pattern_wildcard_name }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid, list_append }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A WILDCARD PATTERN LOWERS TO ITS OWN FORM, NOT TO AN ATOM SPELLED `_`.
+//
+// THE SUBJECT IS ONE PRODUCER BOUNDARY: v2.compiler.body_lowering_fold body_lower_match_arms_optional
+// over a match's parse capture, its input supplied by tokenize and parse (no normalize, no resolve).
+// The resolve route that consumes the form keeps its own witness,
+// v2.test.claim.namespace_xl0.wildcard_arm_resolve, which runs the real front end end to end.
+//
+// FOUR ARMS, IN AN ORDER THAT PAIRS EACH OBSERVATION TO ONE ARM: a nullary constructor, a constructor
+// whose field pattern is `_`, a named binder, and a bare `_`. On main the two `_` positions lowered to
+// an atom spelled `_` -- a name to every reader that did not special-case the spelling
+// (gunbc.recurring_failure_mode a_wildcard_match_arm_resolves_as_an_unbound_name) -- so the two
+// wildcard claims are red there. The constructor and binder controls hold on both sides: the mint
+// changes the wildcard and nothing else, so a mint that rewrote every bare atom reds them.
+
+data wpf_source: String = "module m\n\ntype WpfT = WpfA | WpfB { r: Int } | WpfC | WpfD\n\nfn wpf_probe(t: WpfT, wpf_w: Int) -> Int {\n  match t {\n    WpfA => wpf_w\n    WpfB { r: _ } => wpf_w\n    wpf_bound => wpf_w\n    _ => wpf_w\n  }\n}\n"
+
+fn wpf_parsed() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: wpf_source, file: ^wpf_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
+      }
+  }
+}
+
+fn wpf_emitted(root: Node, production: Symbol) -> FreeMonoid<Node> {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { Cons { head: root, tail: Empty } } else { Empty }
+    Absent => Empty
+  }
+  fold(root.children, init: own, f: fn(acc, e) { list_append(left: acc, right: wpf_emitted(root: e.target, production: production)) })
+}
+
+fn wpf_core_child(n: Node, marker: CoreEdgeLabel) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
+    }
+  })
+}
+
+fn wpf_named_child(n: Node, name: Symbol) -> Optional<Node> {
+  fold(n.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: l } => if l == name { optional_present(value: e.target) } else { acc }
+          _ => acc
+        }
+    }
+  })
+}
+
+// The lowered pattern of every arm of the fixture's match, in source order; Empty when the match
+// is not found or the producer does not lower it.
+fn wpf_patterns() -> FreeMonoid<Node> {
+  match wpf_parsed() {
+    Absent => Empty
+    Present { value: tree } =>
+      match wpf_emitted(root: tree, production: ^dag_surface_match_expr) {
+        Empty => Empty
+        Cons { head: shell, tail: _ } =>
+          match body_lower_unwrap_captured(shell: shell) {
+            Absent => Empty
+            Present { value: captured } =>
+              match body_lower_match_arms_optional(captured: captured) {
+                Accepted { value: Present { value: arms }, diagnostics: _ } =>
+                  fold(arms, init: Empty, f: fn(acc, arm) {
+                    match wpf_core_child(n: arm, marker: MatchArmPatternEdge) {
+                      Present { value: p } => list_append(left: acc, right: Cons { head: p, tail: Empty })
+                      Absent => acc
+                    }
+                  })
+                _ => Empty
+              }
+          }
+      }
+  }
+}
+
+fn wpf_pattern_at(index: Int) -> Optional<Node> {
+  let seek = fold(wpf_patterns(), init: WpfSeek { at: 0, found: optional_absent() }, f: fn(acc, p) {
+    WpfSeek {
+      at: acc.at + 1,
+      found: if acc.at == index { optional_present(value: p) } else { acc.found }
+    }
+  })
+  seek.found
+}
+
+type WpfSeek { at: Int, found: Optional<Node> }
+
+fn wpf_atom_is(n: Node, spelling: Symbol) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => id == spelling
+    Absent => false
+  }
+}
+
+test fn the_arm_list_lowers_all_four_arms() -> Bool {
+  length(wpf_patterns()) == 4
+}
+
+test fn a_bare_wildcard_arm_lowers_to_the_wildcard_form() -> Bool {
+  match wpf_pattern_at(index: 3) {
+    Present { value: p } => is_wildcard_pattern(pattern: p) && !wpf_atom_is(n: p, spelling: pattern_wildcard_name())
+    Absent => false
+  }
+}
+
+test fn a_wildcard_constructor_field_lowers_to_the_wildcard_form() -> Bool {
+  match wpf_pattern_at(index: 1) {
+    Present { value: p } =>
+      match construct_tag_optional(n: p) {
+        Present { value: _ } =>
+          match wpf_named_child(n: p, name: ^r) {
+            Present { value: t } => is_wildcard_pattern(pattern: t)
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn a_nullary_constructor_arm_stays_its_named_atom() -> Bool {
+  match wpf_pattern_at(index: 0) {
+    Present { value: p } => wpf_atom_is(n: p, spelling: ^WpfA) && !is_wildcard_pattern(pattern: p)
+    Absent => false
+  }
+}
+
+test fn a_binder_arm_stays_its_named_atom() -> Bool {
+  match wpf_pattern_at(index: 2) {
+    Present { value: p } => wpf_atom_is(n: p, spelling: ^wpf_bound) && !is_wildcard_pattern(pattern: p)
+    Absent => false
+  }
+}

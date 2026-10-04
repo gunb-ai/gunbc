@@ -1,8 +1,11 @@
 module v2.test.manual.python_grammar_claim
 
 import v2.compiler.parse {
+  grammar_choice_ambiguity_count,
   grammar_validate_for_parse,
+  parse_module_prepared,
   parse_production_tree,
+  prepare_grammar,
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.python {
@@ -12,8 +15,7 @@ import v2.extdeps.languages.python {
 }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
+import v2.std.grammar { ModeledGrammar, ParseTree }
 
 test fn python_grammar_validates_fixture() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^python_grammar_claim_test_grammar_contract)
@@ -49,4 +51,53 @@ fn python_grammar_parse_fixture() -> Outcome<ParseTree> {
           )
       }
   }
+}
+
+// ROUTE CONTROL for the suite production on real python source: a two-statement body
+// (assignment, return) lexes with python_lex and parses through python_production_fn_def, so the
+// suite's repetition is executed past its first statement. Two statements is the least input
+// that reaches the repetition; a longer body adds parse cost without adding a route.
+data python_multi_statement_suite_text: String = "def f(x):\n    y = x\n    return y"
+
+// The discriminating red: a suite is one or more statements, so a def whose body is empty refuses.
+data python_empty_suite_text: String = "def f(x):\n    "
+
+// Through the prepared door: prepare_grammar validates AND analyzes the grammar once, and the
+// module parse starts at the grammar's start production, python_production_fn_def. (Validating
+// with grammar_validate_for_parse and then calling parse_production_tree computes the FIRST
+// analysis twice, which is what put this control over its floor budget.)
+fn python_fn_def_parse(text: String) -> Outcome<ParseTree> {
+  match prepare_grammar(grammar: ModeledGrammar { root: python_grammar_root() }) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: text, file: ^python_parse_fixture_file, rules: python_lex()) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+      }
+  }
+}
+
+test fn python_multi_statement_suite_parses() -> Bool {
+  match python_fn_def_parse(text: python_multi_statement_suite_text) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn python_empty_suite_refuses() -> Bool {
+  match python_fn_def_parse(text: python_empty_suite_text) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// The family's discriminating control: the suite was python's one choice-overlap row
+// (count 1 as `stmt suite | stmt`); restructured, the roster is empty. The parse controls above
+// hold on both shapes because the language did not change -- this claim is what goes red.
+test fn python_grammar_has_no_choice_overlap() -> Bool {
+  grammar_choice_ambiguity_count(root: python_grammar_root()) == 0
 }

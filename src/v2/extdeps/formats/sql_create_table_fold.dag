@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql_create_table_fold
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
@@ -25,7 +26,6 @@ import v2.extdeps.formats.sql_target {
 import v2.std.algebra { fold_list }
 import std.algebra { list_append }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -49,6 +49,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  diagnostics_fatal,
   Diagnostic,
   ExternalContractUnknown,
   Rejected,
@@ -56,10 +57,9 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.node_query { find_named_child }
-import v2.std.grammar {
+import v2.std.grammar { derive_grammar_relation_row_for_lhs,
   FormalGrammarSymbol,
   FormalProduction,
-  derive_grammar_relation_row_node,
   formal_production_for_lhs_exact,
   formal_productions_catalog_to_node,
   grammar_formal_nonterminal_occurrence,
@@ -73,7 +73,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -528,19 +528,7 @@ fn sql_fold_column_list_uses_recursive_list_production_witness(
 
 fn sql_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
   let productions = sql_fold_formal_productions()
-  match formal_production_for_lhs_exact(
-    productions: productions,
-    lhs: lhs,
-    child: emitted
-  ) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn sql_fold_translation_rules_node_for_emitted(
@@ -592,47 +580,13 @@ fn sql_fold_lex_rules() -> LexRuleSet {
       sql_lex_rule(token_class: ^sql_token_primary_key, text: ", PRIMARY KEY ("),
       sql_lex_rule(token_class: ^sql_token_pk_rparen, text: ")"),
       sql_lex_rule(token_class: ^sql_fold_stmt_kind_tag, text: sql_fold_stmt_kind_sentinel)
-    ]
+    ],
+    modes: []
   }
 }
 
 fn sql_fold_lex() -> LexRules {
   ModeledLexRules { root: sql_fold_lex_rules() }
-}
-
-fn sql_fold_serialize_source_witness(
-  emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
-) -> Witness<Node> {
-  match sql_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
-    Holds { value: row } =>
-      match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
-        Accepted { value: tokens_root, diagnostics: _ } =>
-          Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                dag_named_edge(
-                  name: ^serialize_source_field_source_text,
-                  target: sql_atom(id: source_literal)
-                ),
-                dag_named_edge(
-                  name: ^serialize_source_field_source_grammar,
-                  target: sql_atom(id: production_binding)
-                ),
-                dag_named_edge(
-                  name: ^grammar_relation_field_tokens,
-                  target: tokens_root
-                )
-              ],
-              occurrence_id: OccurrenceSynthetic
-            }
-          }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
-      }
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
 }
 
 fn sql_fold_target_model_for_emitted_witness(
@@ -642,32 +596,22 @@ fn sql_fold_target_model_for_emitted_witness(
   production_binding: Symbol,
   rule_name: Symbol
 ) -> Witness<TargetModel> {
-  match sql_fold_serialize_source_witness(
+  match sql_fold_translation_rules_node_for_emitted(
     emitted: emitted,
-    source_literal: source_literal,
-    production_binding: production_binding
+    lhs: production_binding,
+    rule_name: rule_name
   ) {
-    Holds { value: serialize_source } =>
-      match sql_fold_translation_rules_node_for_emitted(
-        emitted: emitted,
-        lhs: production_binding,
-        rule_name: rule_name
-      ) {
-        Holds { value: rules } =>
-          Holds {
-            value: target_model_make_with_emit_transforms(
-              bundle: sql_target_model_bundle(
-                rules: rules,
-                serialize_source: serialize_source
-              ),
-              lex: sql_fold_lex(),
-              binding_spellings: empty_map(),
-              token_class_emit_transforms: sql_fold_emit_transforms(),
-              authority_source_text: source_text,
-              runtime_row: target_emit_host_runtime_row_unconfigured
-            )
-          }
-        Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: rules } =>
+      Holds {
+        value: target_model_make_with_emit_transforms(
+          bundle: sql_target_model_bundle(
+            rules: rules),
+          lex: sql_fold_lex(),
+          binding_spellings: empty_map(),
+          token_class_emit_transforms: sql_fold_emit_transforms(),
+          authority_source_text: source_text,
+          runtime_row: target_emit_host_runtime_row_unconfigured
+        )
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
@@ -699,7 +643,7 @@ fn sql_fold_target_model_for_operation_witness(op: SqlSchemaOperation) -> Witnes
               )
             Some { diagnostics: nd } => Violates { diagnostic: nd.head }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => Violates { diagnostic: diagnostics_fatal(d: nd) }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }

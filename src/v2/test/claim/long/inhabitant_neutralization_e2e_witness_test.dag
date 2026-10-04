@@ -1,5 +1,6 @@
 module v2.test.long.inhabitant_neutralization_e2e_witness
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.emit { emit }
 import v2.compiler.ingest { cross_language_compile, parse_tree_to_target_model_bridge }
@@ -13,7 +14,6 @@ import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 import v2.std.inhabitant_neutralization { neutralize_core_for_target }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 
@@ -114,7 +114,7 @@ test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
     target: go_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer_and_discharge(tree: neutralized) {
+      match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: neutralized)) {
         Accepted { value: inferred, diagnostics: _ } =>
           match translate(tree: inferred, target: go_target_model()) {
             Rejected { diagnostics: _ } => true
@@ -132,7 +132,7 @@ test fn inhabitant_neutralization_python_to_go_emit_rejects() -> Bool {
     target: go_target_model()
   ) {
     Accepted { value: neutralized, diagnostics: _ } =>
-      match infer_and_discharge(tree: neutralized) {
+      match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: neutralized)) {
         Accepted { value: inferred, diagnostics: _ } =>
           match emit(tree: inferred, target: go_target_model()) {
             Rejected { diagnostics: _ } => true

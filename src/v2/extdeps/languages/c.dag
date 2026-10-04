@@ -1,6 +1,7 @@
 module v2.extdeps.languages.c
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -24,11 +25,10 @@ import std.graph {
   GraphEdge,
   graph_has_multi_node_scc
 }
-import std.types { Int, NonEmptyStr, String }
+import std.types { Int, NonEmptyStr, String, List }
 import v2.std.algebra { any, length }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   empty_map,
@@ -61,6 +61,7 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.target_model {
+  target_bind_let_separator_present,
   IntLiteralUnwired,
   InfixToken,
   canonical_operation_op_add,
@@ -141,13 +142,12 @@ import v2.std.compilers.compilation_unit {
   resolve_member_interfaces,
   type_definition_row_identity
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -452,7 +452,8 @@ fn c_type_atoms_by_value_in_node(node: Node) -> List<Symbol> {
               }
             })
         })
-    _ => []
+    TypeNode { connective: _ } => []
+    ComputationNode { behavior: _ } => []
   }
 }
 
@@ -904,7 +905,7 @@ fn c_atom(id: Symbol) -> Node {
 }
 
 fn c_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -939,45 +940,11 @@ fn c_int_inhabitant_node() -> Node {
 }
 
 fn c_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: c_int_inhabitant_node() },
-      Edge { label: Positional, target: c_int_inhabitant_node() },
-      Edge { label: Positional, target: c_int_inhabitant_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [c_int_inhabitant_node(), c_int_inhabitant_node()], codomain: c_int_inhabitant_node(), source: c_int_inhabitant_node())
 }
 
 fn c_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
   concrete_syntax_token_to_node(token: token)
-}
-
-fn c_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: [
-      c_named_edge(name: ^serialize_source_field_source_text, target: c_atom(id: ^c_source_literal)),
-      c_named_edge(name: ^serialize_source_field_source_grammar, target: c_atom(id: ^c_production_fn_add))
-    ],
-    right: [
-      c_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: c_concrete_tokens(),
-          token_to_node: c_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn c_serialize_source_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: c_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-  }
 }
 
 fn c_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1130,7 +1097,7 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
     let_form: TargetBindLetShape {
       let_token: ^c_token_unwired_let,
       assign_token: ^c_token_unwired_assign,
-      in_token: ^c_token_semicolon
+      in_token: target_bind_let_separator_present(token: ^c_token_semicolon)
     },
     loop_form: TargetLoopShape { loop_token: ^c_token_unwired_loop },
     record_construct_form: TargetRecordConstructShape {
@@ -1178,7 +1145,6 @@ fn c_target_model_node() -> Node {
       c_named_edge(name: ^target_model_edge_selection_policy, target: c_selection_policy_node()),
       c_named_edge(name: ^target_model_edge_declared_inhabitants, target: c_add_declared_inhabitants_root()),
       c_named_edge(name: ^target_model_edge_translation_rules, target: c_translation_rules_node()),
-      c_named_edge(name: ^target_model_edge_serialize_source, target: c_serialize_source_node()),
       c_named_edge(
         name: ^target_model_edge_semantic_decl_emission,
         target: c_semantic_decl_emission_bundle_node()
@@ -1248,7 +1214,7 @@ fn c_lex_rules() -> List<LexRule> {
 }
 
 fn c_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules() } }
+  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules(), modes: [] } }
 }
 
 fn c_emit_host_runtime_primitive_type_node() -> Node {
@@ -1392,7 +1358,8 @@ data c_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRow
   block_evaluation_mode: StatementSequenced {
     return_token: ^c_token_kw_return,
     statement_terminator: ^c_token_semicolon
-  }
+  },
+  function_type_realizations: []
 }
 
 fn c_produced_decl_support() -> ProducedDeclSupport {

@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.generic_formal_unjudged_against_a_sibling_bound_argument
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_formal_unjudged_against_a_sibling_bound_argument: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_formal_unjudged_against_a_sibling_bound_argument" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a direct call to a generic function whose type parameter is already FIXED by one argument admits a later argument of a different concrete type at a formal declared as that same parameter. Measured on main 7af52ea7e2 (entry compile of a scratch probe): `pair<U>(a: U, b: U)` called as `pair(a: Item { .. }, b: other())` with `other() -> Other` is admitted, and so is `list_snoc_item(xs: xs, item: other())` with `xs: List<Item>`. Each such argument raises only the advisory DeclaredTypeInhabitanceUndecided with reason UndecidableGenericFormal. The same argument at a CONCRETE formal (`take(b: Item)`) refuses DeclaredTypeNotInhabited in the same run, so refusal is reachable at the position and the admission is a gap, not a limit.",
+
+    "HOW IT WAS FOUND: as the incompatible-applications control requested on #12931. A fold seeded with an applied `List<A>` whose step pushes a `B` is admitted. That is NOT a fold defect: the fold's step return is judged against the accumulator (a step returning `[b]` refuses at the list element). The admission is the step's inner call, `list_snoc_item(xs: acc, item: b)`, i.e. this class.",
+
+    "DISTINGUISHING FACTS. (1) The parameter is bound by a SIBLING argument at the same call; the judged argument's formal still reads as the raw type parameter, because v1.compiler.infer direct_call_argument_inhabitance_diags hands the obligation the substitution basis whenever the formal carries an unbound variable, and declared_type_inhabitance answers UndecidableGenericFormal for any generic formal. (2) NOT a spelling collision: the probe's parameter is spelled U and involves no List, and it is admitted identically. (3) NOT silent: every occurrence is a typed, located, counted advisory inside the declared drop gunbc.rung_drop.direct_call_unbound_carried_generic_compat, whose population is exactly this diagnostic, reason and position.",
+
+    "RUNG FOUND AT: mitigatable, under that declared drop -- counted, never refused. The drop's restoration trigger as first written named only synthesized constructor signatures and higher-order callback formals, so it would have been satisfied while this class stayed admitted; it is widened in the same change to the capability this class needs. CEILING: structurally guaranteed (the binding is decidable from the sibling argument's established type). NEXT-RUNG TRIGGER, named as the capability: the call's bound generics substituted into each formal before compatibility, keyed by the TypeParameter declaration rather than its spelling -- derived-node identity step 2 (gunbc.recurring_failure_mode generic_identity_decided_by_spelling). It cannot climb by name: that row measured a spelling-keyed substitution rewriting a kept binding into List's own element child and refusing the compiler's own sources. SUFFICIENT FOR: both probe calls in test.claim.generic_sibling_bound_argument_witness_test to refuse DeclaredTypeNotInhabited.",
+  ],
+
+  evidence: [],
+}

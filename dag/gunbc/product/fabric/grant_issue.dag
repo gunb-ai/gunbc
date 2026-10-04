@@ -34,6 +34,7 @@ import extdeps.accounting.encumbrance {
   EncumbranceLedger, EncumbranceRefusal,
   LedgerAdvanced, EncumbranceRefused, reserve_encumbrance,
 }
+import std.algebra { Cons, Empty }
 
 // THE ONE PRODUCER OF AN ExecutionGrant. Before this module every production reference to
 // ExecutionGrant took one as a parameter or filtered a list of them, and the only three

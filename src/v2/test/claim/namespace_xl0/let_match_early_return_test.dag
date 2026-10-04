@@ -1,0 +1,437 @@
+module v2.test.claim.namespace_xl0.let_match_early_return
+
+import v2.compiler.compile {
+  NativeCensusModuleFileRefused,
+  NativeCensusModuleOutcome,
+  NativeCensusModuleResolveRefused,
+  NativeCensusModuleResolved,
+  NativeTestContext,
+  native_census_module_resolution,
+  native_census_modules,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A LET WHOSE VALUE IS A MATCH WITH RETURNING ARMS, HEADING A TAIL SPINE, LOWERS TO THAT MATCH WITH
+// THE REST OF THE SPINE UNDER ITS ONE BINDING ARM (v2.compiler.body_lowering_fold
+// body_lower_let_match_exit_join, admitted by body_lower_exit_walk_let_match).
+//
+// THE SUBJECT is the native route (native_test_context_from_ingest, then
+// native_census_module_resolution), as v2.test.claim.namespace_xl0.return_tail_position drives it.
+// THE RED ON MAIN is `ctl`, `nested_ctl` and `lambda_ctl`: each refused
+// return_not_in_tail_position, the form extdeps.uri_path parse_segment_tokens uses. The `_und`
+// discriminators prove the rest, the exiting arm and the binding arm are each READ (an undeclared
+// atom there refuses unbound at it, so none is dropped). `multi` (two binding arms) refuses
+// multi_binding_arm_early_return_needs_join_point rather than copying the rest per arm; `nontail`
+// (the let-match inside a let-bound if) and `bind_return` (a return inside the binding arm's value)
+// keep refusing return_not_in_tail_position. `lambda_ctl` is the lambda boundary: a fn value owns its
+// own exits, so its let-match lowers inside it and exits only it.
+data lme_ctl_source: String = "module v2.test.lme_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  x\n}\n"
+data lme_rest_und_source: String = "module v2.test.lme_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  lme_undeclared_rest\n}\n"
+data lme_exit_und_source: String = "module v2.test.lme_exit_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return lme_undeclared_exit\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  x\n}\n"
+data lme_bind_und_source: String = "module v2.test.lme_bind_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => return v\n    LmeB => return k\n    LmeC { w: _ } => lme_undeclared_bind\n    LmeD => return k\n  }\n  x\n}\n"
+data lme_nested_ctl_source: String = "module v2.test.lme_nested_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, t: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  let y = match t {\n    LmeA { v: v } => v\n    LmeB => return x\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  y\n}\n"
+data lme_multi_source: String = "module v2.test.lme_multi\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return k\n    LmeC { w: w } => w\n    LmeD => return k\n  }\n  x\n}\n"
+data lme_nontail_source: String = "module v2.test.lme_nontail\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(c: Bool, s: LmeS, k: Int) -> Int {\n  let y = if c {\n    let x = match s {\n      LmeA { v: v } => v\n      LmeB => return k\n      LmeC { w: w } => return w\n      LmeD => return k\n    }\n    x\n  } else { k }\n  y\n}\n"
+data lme_bind_return_source: String = "module v2.test.lme_bind_return\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(c: Bool, s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => if c { return k } else { v }\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  x\n}\n"
+data lme_lambda_ctl_source: String = "module v2.test.lme_lambda_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let g = fn(t) {\n    let x = match t {\n      LmeA { v: v } => v\n      LmeB => return k\n      LmeC { w: w } => return w\n      LmeD => return k\n    }\n    x\n  }\n  k\n}\n"
+
+data lme_reach_source: String = "module v2.test.lme_reach\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v + 1\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  x\n}\n"
+
+data lme_leak_source: String = "module v2.test.lme_leak\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: lme_arm_binder } => lme_arm_binder\n    LmeB => return k\n    LmeC { w: w } => return w\n    LmeD => return k\n  }\n  lme_arm_binder\n}\n"
+
+data lme_ctor_arm_source: String = "module v2.test.lme_ctor_arm\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS) -> LmeS {\n  let x = match s {\n    LmeB => LmeB\n    LmeA { v: _ } => return s\n    LmeC { w: _ } => return s\n    LmeD => return s\n  }\n  x\n}\n"
+
+data lme_hides_source: String = "module v2.test.lme_hides\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, v: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return v\n    LmeC { w: w } => return w\n    LmeD => return v\n  }\n  x\n}\n"
+
+data lme_some_none_source: String = "module v2.test.lme_some_none\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\ntype LmeO = LmeSome { value: LmeS } | LmeNone\n\nfn lme_probe(o: LmeO) -> Int {\n  let x = match o {\n    LmeSome { value: LmeB } => 1\n    LmeSome { value: _ } => return 2\n    LmeNone => return 3\n  }\n  x\n}\n"
+
+data lme_literal_source: String = "module v2.test.lme_literal\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(n: Int) -> Int {\n  let x = match n {\n    0 => 1\n    _ => return n\n  }\n  x\n}\n"
+
+// THE N7 SPECIMEN: extdeps.uri_path parse_segment_tokens and its result types, verbatim -- two
+// guards and four let-matches with returning arms. This ingest carries no v2.std, so the module
+// refuses at RESOLVE (first at the unbound `List` of its result type, measured); the claim is that
+// BODY LOWERING admits it -- not a file refusal -- which on main it was not
+// (return_not_in_tail_position). The full extdeps.uri_path is the N7 lane's own measurement.
+data lme_uri_source: String = "module v2.test.lme_uri\n\nimport v2.std.text { String }\nimport v2.std.collection { List }\n\ntype UrlPathToken\n  = LiteralToken { text: String }\n  | ParamToken   { name: String }\n\ntype PathSegmentTokensResult\n  = ParsedSegmentTokens { tokens: List<UrlPathToken> }\n  | MalformedPathSegment { segment: String, reason: String }\n\ntype PathTemplateParseResult\n  = ParsedPathTemplate { template: PathTemplate }\n  | MalformedPathTemplate { raw: String, segment: String, reason: String }\n\nfn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {\n  if !(seg |> contains(\"{\")) {\n    if seg |> contains(\"}\") {\n      MalformedPathSegment { segment: seg, reason: \"stray closing brace\" }\n    } else {\n      ParsedSegmentTokens { tokens: [LiteralToken { text: seg }] }\n    }\n  } else {\n    let before_and_rest = seg |> split(delimiter: \"{\")\n    if count(before_and_rest) != 2 {\n      return MalformedPathSegment { segment: seg, reason: \"multiple opening braces in one segment\" }\n    }\n\n    let prefix = match before_and_rest |> first {\n      Present { value: p } => p\n      Absent => return MalformedPathSegment { segment: seg, reason: \"internal: missing prefix after opening-brace split\" }\n    }\n    let after_open = match before_and_rest |> skip(1) |> first {\n      Present { value: r } => r\n      Absent => return MalformedPathSegment { segment: seg, reason: \"internal: missing tail after opening-brace split\" }\n    }\n    let name_and_suffix = after_open |> split(delimiter: \"}\")\n    if prefix |> contains(\"}\") || count(name_and_suffix) != 2 {\n      return MalformedPathSegment { segment: seg, reason: \"missing closing brace or extra closing brace\" }\n    }\n    let param_name = match name_and_suffix |> first {\n      Present { value: p } => p\n      Absent => return MalformedPathSegment { segment: seg, reason: \"internal: missing parameter name after closing-brace split\" }\n    }\n    let suffix = match name_and_suffix |> skip(1) |> first {\n      Present { value: s } => s\n      Absent => return MalformedPathSegment { segment: seg, reason: \"internal: missing suffix after closing-brace split\" }\n    }\n    let prefix_tokens = if prefix != \"\" {\n      [LiteralToken { text: prefix }]\n    } else { [] }\n    let param_tokens = if param_name != \"\" {\n      [ParamToken { name: param_name }]\n    } else { [] }\n    let suffix_tokens = if suffix != \"\" {\n      [LiteralToken { text: suffix }]\n    } else { [] }\n    if param_name == \"\" || suffix |> contains(\"{\") || suffix |> contains(\"}\") {\n      MalformedPathSegment { segment: seg, reason: \"invalid parameter segment structure\" }\n    } else {\n      ParsedSegmentTokens { tokens: concat(prefix_tokens, param_tokens, suffix_tokens) }\n    }\n  }\n}\n"
+
+fn lme_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+data lme_ingest: SourceRootIngest = Cons {
+    head: lme_read(source: lme_literal_source, id: ^lme_literal_artifact, unit: ^lme_literal_cu, path: "src/v2/test/fixture/namespace_xl0/lme_literal.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_some_none_source, id: ^lme_some_none_artifact, unit: ^lme_some_none_cu, path: "src/v2/test/fixture/namespace_xl0/lme_some_none.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_hides_source, id: ^lme_hides_artifact, unit: ^lme_hides_cu, path: "src/v2/test/fixture/namespace_xl0/lme_hides.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_ctor_arm_source, id: ^lme_ctor_arm_artifact, unit: ^lme_ctor_arm_cu, path: "src/v2/test/fixture/namespace_xl0/lme_ctor_arm.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_leak_source, id: ^lme_leak_artifact, unit: ^lme_leak_cu, path: "src/v2/test/fixture/namespace_xl0/lme_leak.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_reach_source, id: ^lme_reach_artifact, unit: ^lme_reach_cu, path: "src/v2/test/fixture/namespace_xl0/lme_reach.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_uri_source, id: ^lme_uri_artifact, unit: ^lme_uri_cu, path: "src/v2/test/fixture/namespace_xl0/lme_uri.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_ctl_source, id: ^lme_ctl_artifact, unit: ^lme_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/lme_ctl.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_rest_und_source, id: ^lme_rest_und_artifact, unit: ^lme_rest_und_cu, path: "src/v2/test/fixture/namespace_xl0/lme_rest_und.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_exit_und_source, id: ^lme_exit_und_artifact, unit: ^lme_exit_und_cu, path: "src/v2/test/fixture/namespace_xl0/lme_exit_und.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_bind_und_source, id: ^lme_bind_und_artifact, unit: ^lme_bind_und_cu, path: "src/v2/test/fixture/namespace_xl0/lme_bind_und.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_nested_ctl_source, id: ^lme_nested_ctl_artifact, unit: ^lme_nested_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/lme_nested_ctl.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_multi_source, id: ^lme_multi_artifact, unit: ^lme_multi_cu, path: "src/v2/test/fixture/namespace_xl0/lme_multi.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_nontail_source, id: ^lme_nontail_artifact, unit: ^lme_nontail_cu, path: "src/v2/test/fixture/namespace_xl0/lme_nontail.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_bind_return_source, id: ^lme_bind_return_artifact, unit: ^lme_bind_return_cu, path: "src/v2/test/fixture/namespace_xl0/lme_bind_return.dag"),
+    tail: Cons {
+    head: lme_read(source: lme_lambda_ctl_source, id: ^lme_lambda_ctl_artifact, unit: ^lme_lambda_ctl_cu, path: "src/v2/test/fixture/namespace_xl0/lme_lambda_ctl.dag"),
+    tail: Empty } } } } } } } } } } } } } } } }
+
+// ONE FRONT END FOR EVERY CLAIM: a verdict per module, with no resolution context or Node in it.
+type LmeVerdict
+  = LmeResolved
+  | LmeRefused { reason: Symbol, at_atom: Optional<Symbol> }
+  | LmeFileRefused { fatal_reason: Optional<Symbol> }
+  | LmeAbsent
+
+type LmeOutcomes
+  = LmeContextRefused
+  | LmeOutcomesDecided {
+      ctl: LmeVerdict
+      rest_und: LmeVerdict
+      exit_und: LmeVerdict
+      bind_und: LmeVerdict
+      nested_ctl: LmeVerdict
+      multi: LmeVerdict
+      nontail: LmeVerdict
+      bind_return: LmeVerdict
+      lambda_ctl: LmeVerdict
+      uri: LmeVerdict
+      reach: LmeVerdict
+      literal: LmeVerdict
+      some_none: LmeVerdict
+      hides: LmeVerdict
+      ctor_arm: LmeVerdict
+      leak: LmeVerdict
+    }
+
+fn lme_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional<Symbol> {
+  fold_list(
+    xs: context.file_refusals,
+    empty: optional_absent(),
+    cons: fn(acc, refusal) {
+      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+    }
+  )
+}
+
+fn lme_verdict_of(context: NativeTestContext, unit: Symbol, outcome: NativeCensusModuleOutcome) -> LmeVerdict {
+  match outcome {
+    NativeCensusModuleResolved => LmeResolved
+    NativeCensusModuleFileRefused =>
+      LmeFileRefused { fatal_reason: lme_file_refusal_reason(context: context, unit: unit) }
+    NativeCensusModuleResolveRefused { first: d, rest: _, observation: _ } =>
+      LmeRefused {
+        reason: d.head.reason,
+        at_atom: match d.head.at {
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          _ => optional_absent()
+        }
+      }
+  }
+}
+
+fn lme_verdict_in(context: NativeTestContext, module_name: String, unit: Symbol) -> LmeVerdict {
+  fold_list(
+    xs: native_census_modules(ingest: lme_ingest),
+    empty: LmeAbsent,
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        lme_verdict_of(
+          context: context,
+          unit: unit,
+          outcome: native_census_module_resolution(
+            context: context,
+            refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
+            entry: entry
+          ).outcome
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn lme_outcomes() -> LmeOutcomes {
+  match native_test_context_from_ingest(ingest: lme_ingest) {
+    Rejected { diagnostics: _ } => LmeContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      LmeOutcomesDecided {
+        ctl: lme_verdict_in(context: context, module_name: "v2.test.lme_ctl", unit: ^lme_ctl_cu),
+        rest_und: lme_verdict_in(context: context, module_name: "v2.test.lme_rest_und", unit: ^lme_rest_und_cu),
+        exit_und: lme_verdict_in(context: context, module_name: "v2.test.lme_exit_und", unit: ^lme_exit_und_cu),
+        bind_und: lme_verdict_in(context: context, module_name: "v2.test.lme_bind_und", unit: ^lme_bind_und_cu),
+        nested_ctl: lme_verdict_in(context: context, module_name: "v2.test.lme_nested_ctl", unit: ^lme_nested_ctl_cu),
+        multi: lme_verdict_in(context: context, module_name: "v2.test.lme_multi", unit: ^lme_multi_cu),
+        nontail: lme_verdict_in(context: context, module_name: "v2.test.lme_nontail", unit: ^lme_nontail_cu),
+        bind_return: lme_verdict_in(context: context, module_name: "v2.test.lme_bind_return", unit: ^lme_bind_return_cu),
+        lambda_ctl: lme_verdict_in(context: context, module_name: "v2.test.lme_lambda_ctl", unit: ^lme_lambda_ctl_cu),
+        uri: lme_verdict_in(context: context, module_name: "v2.test.lme_uri", unit: ^lme_uri_cu),
+        reach: lme_verdict_in(context: context, module_name: "v2.test.lme_reach", unit: ^lme_reach_cu),
+        leak: lme_verdict_in(context: context, module_name: "v2.test.lme_leak", unit: ^lme_leak_cu),
+        ctor_arm: lme_verdict_in(context: context, module_name: "v2.test.lme_ctor_arm", unit: ^lme_ctor_arm_cu),
+        hides: lme_verdict_in(context: context, module_name: "v2.test.lme_hides", unit: ^lme_hides_cu),
+        some_none: lme_verdict_in(context: context, module_name: "v2.test.lme_some_none", unit: ^lme_some_none_cu),
+        literal: lme_verdict_in(context: context, module_name: "v2.test.lme_literal", unit: ^lme_literal_cu)
+      }
+  }
+}
+
+fn lme_is_resolved(v: LmeVerdict) -> Bool {
+  match v {
+    LmeResolved => true
+    _ => false
+  }
+}
+
+fn lme_refuses_as(v: LmeVerdict, reason: Symbol) -> Bool {
+  match v {
+    LmeFileRefused { fatal_reason: Present { value: r } } => r == reason
+    _ => false
+  }
+}
+
+fn lme_unbound_at(v: LmeVerdict, atom: Symbol) -> Bool {
+  match v {
+    LmeRefused { reason: r, at_atom: Present { value: id } } => (r == ^resolve_reason_unbound_symbol) && (id == atom)
+    _ => false
+  }
+}
+
+test fn a_let_match_with_one_binding_arm_and_returning_arms_is_accepted() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: v, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+test fn the_rest_after_a_let_match_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: v, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_unbound_at(v: v, atom: ^lme_undeclared_rest)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_returning_arm_operand_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: v, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_unbound_at(v: v, atom: ^lme_undeclared_exit)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_binder_free_binding_arm_value_is_read_and_refuses_unbound_at_its_atom() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: v, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_unbound_at(v: v, atom: ^lme_undeclared_bind)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_let_match_in_the_rest_of_another_is_accepted() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: v, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+test fn two_binding_arms_refuse_as_needing_a_join_point() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: v, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_refuses_as(v: v, reason: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_let_match_outside_a_tail_spine_still_refuses_as_not_in_tail_position() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: v, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_return_inside_the_binding_arm_still_refuses_as_not_in_tail_position() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: v, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_refuses_as(v: v, reason: ^body_lowering_reason_return_not_in_tail_position)
+    LmeContextRefused => false
+  }
+}
+
+test fn a_let_match_in_a_fn_value_exits_only_the_fn_value_and_is_accepted() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: v, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+// (a) THE ARM'S BINDERS END BEFORE THE REST: the rest names `lme_arm_binder`, bound only by the
+// binding arm's pattern, and refuses unbound at it -- under the arm it would have silently bound the
+// arm's binder. (The name is unique to this fixture so the refusal is the plain unbound one, not
+// resolve's declared-in-another-module variant.)
+test fn the_rest_does_not_see_the_binding_arms_binders() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: v, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_unbound_at(v: v, atom: ^lme_arm_binder)
+    LmeContextRefused => false
+  }
+}
+
+// (b) `LmeB => LmeB` beside returning arms: LmeB is a nullary constructor, judged by resolve on the
+// authored pattern; read as a binder it would hide the visible constructor and refuse.
+test fn a_bare_constructor_binding_arm_stays_a_constructor_pattern() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: v, hides: _, some_none: _, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+// (c) The arm binder `v` hides the parameter `v`: refused, judged against the authored arm scope.
+test fn an_arm_binder_hiding_an_outer_parameter_still_refuses() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: v, some_none: _, literal: _ } => match v { LmeRefused { reason: r, at_atom: _ } => r == ^resolve_reason_binder_hides_visible_value
+ _ => false }
+    LmeContextRefused => false
+  }
+}
+
+// (d) `LmeSome { value: LmeB }`: the field sub-pattern names a constructor, not a binder.
+test fn a_nested_constructor_in_a_field_pattern_is_classified_by_resolve() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: v, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+// (e) A literal pattern binds nothing: `0 => 1` beside a returning wildcard arm.
+test fn a_literal_binding_arm_is_accepted() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: v } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+fn lme_body_lowering_admitted(v: LmeVerdict) -> Bool {
+  match v {
+    LmeResolved => true
+    LmeRefused { reason: _, at_atom: _ } => true
+    LmeFileRefused { fatal_reason: _ } => false
+    LmeAbsent => false
+  }
+}
+
+test fn the_uri_path_segment_parser_is_admitted_by_body_lowering() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: v, reach: _, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_body_lowering_admitted(v: v)
+    LmeContextRefused => false
+  }
+}
+
+// A binding arm's value may use its own binders (`LmeA { v: v } => v + 1`): they are in scope for the
+// value, which resolves in the arm's scope (v2.std.node MatchArmScopeExitEdge).
+test fn a_binding_arm_value_may_use_its_binders_and_is_accepted() -> Bool {
+  match lme_outcomes() {
+    LmeOutcomesDecided { ctl: _, rest_und: _, exit_und: _, bind_und: _, nested_ctl: _, multi: _, nontail: _, bind_return: _, lambda_ctl: _, uri: _, reach: v, leak: _, ctor_arm: _, hides: _, some_none: _, literal: _ } => lme_is_resolved(v: v)
+    LmeContextRefused => false
+  }
+}
+
+// THE REST APPEARS ONCE. `lme_shape_source` has one binding arm and three returning arms, and the
+// rest of the spine is a call to `lme_rest_marker`; normalize (tokenize -> parse -> normalize, the
+// producers called directly) must ACCEPT it with the marker atom EXACTLY ONCE in the lowered tree --
+// a lowering that copied the rest into each arm would count four -- and with every returning arm's
+// operand kept (lme_exit_marker three times). On main it refuses as return_not_in_tail_position.
+data lme_shape_source: String = "module v2.test.lme_shape\n\nimport v2.std.integer { Int }\n\ntype LmeS = LmeA { v: Int } | LmeB | LmeC { w: Int } | LmeD\n\nfn lme_probe(s: LmeS, k: Int) -> Int {\n  let x = match s {\n    LmeA { v: v } => v\n    LmeB => return lme_exit_marker\n    LmeC { w: w } => return lme_exit_marker\n    LmeD => return lme_exit_marker\n  }\n  lme_rest_marker(x: x)\n}\n"
+
+type LmeShape {
+  outcome: Symbol
+  rest: Int
+  exits: Int
+}
+
+fn lme_atom_count(nodes: List<Node>, atom: Symbol) -> Int {
+  match nodes {
+    Empty => 0
+    Cons { head: n, tail: rest } =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } =>
+          if id == atom { 1 + lme_atom_count(nodes: rest, atom: atom) } else { lme_atom_count(nodes: rest, atom: atom) }
+        Absent => lme_atom_count(nodes: rest, atom: atom)
+      }
+  }
+}
+
+fn lme_shape_marker(marker: Symbol) -> LmeShape {
+  LmeShape { outcome: marker, rest: 0, exits: 0 }
+}
+
+// ONE PRODUCER for the shape claims, enrolled warm in v2.workflow.floor_pure_producer_share; the
+// stored value is four scalars.
+fn lme_shape() -> LmeShape {
+  let lm = dag_language_model()
+  match tokenize(text: lme_shape_source, file: ^let_match_early_return_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => lme_shape_marker(marker: ^lme_normalize_refused)
+            Accepted { value: normalized, diagnostics: _ } =>
+              let nodes = node_subtree_nodes(root: normalized.root)
+              LmeShape {
+                outcome: ^lme_accepted,
+                rest: lme_atom_count(nodes: nodes, atom: ^lme_rest_marker),
+                exits: lme_atom_count(nodes: nodes, atom: ^lme_exit_marker)
+              }
+          }
+      }
+  }
+}
+
+test fn the_rest_after_a_let_match_appears_exactly_once_in_the_lowered_tree() -> Bool {
+  let shape = lme_shape()
+  (shape.outcome == ^lme_accepted) && (shape.rest == 1)
+}
+
+test fn every_returning_arm_of_a_let_match_keeps_its_operand_in_the_lowered_tree() -> Bool {
+  let shape = lme_shape()
+  (shape.outcome == ^lme_accepted) && (shape.exits == 3)
+}

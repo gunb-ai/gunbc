@@ -157,8 +157,7 @@ fn review_pr(
 // the five nicknames (review 46301). Hazard not visible at this line: a default argument expression
 // is evaluated in the CALLER'S scope, so a caller in a module that does not import gunbc.repository
 // dies at the call site with an undefined variable it never wrote. Safe today only because
-// review_cycle has no in-corpus caller (the one reference is a command string invoking
-// review_codex's function of the same name), so the default is unreachable rather than proven. A
+// review_cycle has no in-corpus caller, so the default is unreachable rather than proven. A
 // caller that appears must import gunbc.repository, or pass owner and repo explicitly (the better
 // habit).
 

@@ -134,7 +134,7 @@ fn section_8() -> List<MarkdownBlock> {
 fn section_9() -> List<MarkdownBlock> {
   [
     h2(text: "9. What self-host is NOT"),
-    p(text: "**Errors-to-zero is necessary, not sufficient.** Two independent gaps: the emitter cannot currently produce `main.rs`; and behavioral equivalence is UNMEASURED. DESIGN section 7 requires the emitted module be behaviorally equivalent to the seed on a discriminating corpus, proven by execution — explicitly NOT a byte-identical fixed point, which would force v2 to reproduce the seed's warts. The behavioral-receipt phases were among the five deleted from the required run on 2026-08-21, so that measurement is not currently taken."),
+    p(text: "**Errors-to-zero is necessary, not sufficient.** Two independent gaps: the emitter cannot currently produce `main.rs`; and whether the emitted modules hold their own contracts is UNMEASURED. DESIGN section 7 requires the emitted module hold its own `.dag` contract on a discriminating corpus, proven by execution, with the seed as a regression oracle rather than a specification — explicitly NOT a byte-identical fixed point and NOT behavioral equivalence to the seed, either of which would force v2 to reproduce the seed's warts. The behavioral-receipt phases were among the five deleted from the required run on 2026-08-21, so that measurement is not currently taken."),
     p(text: "So a rustc-clean corpus permits S6 to be PLANNED. It does not authorize it."),
   ]
 }
@@ -194,6 +194,6 @@ data v2_corpus_self_host_plan: Plan = Plan {
   title: "Plan — v2 self-hosts the entire v2 corpus",
   body: v2_corpus_self_host_body(),
   retirement: PlanRetiresWhen {
-    condition: unbound_dissolution(description: "Delete this plan when the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics, a required CI phase enforces that by execution with a discriminating red, and behavioral equivalence to the seed is re-established — at which point S6 retires the hand-written seed and the plan's subject no longer exists.")
+    condition: unbound_dissolution(description: "Delete this plan when the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics, a required CI phase enforces that by execution with a discriminating red, and every rostered emitted module holds its own contract (gunbc.compiler_frontend_program_interlock SelfHostEmittedContractsHeld) — at which point S6 retires the hand-written seed and the plan's subject no longer exists.")
   },
 }

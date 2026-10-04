@@ -4,7 +4,7 @@ import std.types { String, List, list_length }
 import std.logic { Bool }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset }
 import extdeps.tools.env {
-  env_binary_path,
+  env_absolute_program,
   env_path_resolved_program,
   env_binding_argv,
   env_prefixed_argv,
@@ -57,7 +57,7 @@ test fn bindings_precede_the_command_and_the_binary_leads() -> Bool {
 // splits bin_path from args reconstructs exactly what a transport taking the whole vector gets.
 test fn the_tail_producer_is_the_vector_without_the_binary() -> Bool {
   concat(
-    [env_binary_path as String],
+    [env_absolute_program().invocation as String],
     env_prefixed_args(
       bindings: [EnvUnset { name: "RUSTC_WRAPPER" }, EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
       command_argv: ["cargo", "build"],
@@ -72,7 +72,7 @@ test fn the_tail_producer_is_the_vector_without_the_binary() -> Bool {
 // absolute path names a file. This pins the whole-vector producer to the absolute form, which is
 // the one a caller may use only about a host this repository has observed.
 test fn the_binary_is_absolute_not_a_path_lookup() -> Bool {
-  (env_binary_path as String) == "/usr/bin/env"
+  (env_absolute_program().invocation as String) == "/usr/bin/env"
 }
 
 // THE TWO ROWS ARE BOTH REAL AND MUST NOT COLLAPSE INTO EACH OTHER. This is the assertion that
@@ -81,7 +81,7 @@ test fn the_binary_is_absolute_not_a_path_lookup() -> Bool {
 // as literals rather than derived from the rows, so this is an independent oracle and not the
 // module agreeing with itself.
 test fn the_path_resolved_name_is_a_second_fact_not_the_binary_path() -> Bool {
-  (env_path_resolved_program as String) == "env"
-    && (env_binary_path as String) == "/usr/bin/env"
-    && (env_path_resolved_program as String) != (env_binary_path as String)
+  (env_path_resolved_program().invocation as String) == "env"
+    && (env_absolute_program().invocation as String) == "/usr/bin/env"
+    && (env_path_resolved_program().invocation as String) != (env_absolute_program().invocation as String)
 }

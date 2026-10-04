@@ -1,6 +1,6 @@
 module gunbc.machine_intake_boot_image_fetch
 
-import std.types { Bool, FilePath, NonEmptyStr, String }
+import std.types { Bool, FilePath, List, NonEmptyStr, String }
 import gunbc.machine_intake_boot_image_export_ownership {
   export_ownership_admits_publication,
   export_ownership_refusal_reason,
@@ -15,6 +15,16 @@ import extdeps.tools.sha256sum {
   Sha256FileDigest,
   Sha256FileDigestUnavailable,
   sha256sum_file_digest_via_shell,
+}
+import extdeps.crypto.hash { sha256sum_file_command, sha256_digest }
+import extdeps.tools.gnu_coreutils { ln_hard_command, rm_force_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import std.algebra { trim }
+import std.content_hash { sha256_hex_digest }
+import v2.std.optional { Present }
+import gunbc.host_command_binding {
+  CommandHost, LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  host_command, host_command_outcome_text,
 }
 
 // PLACING A VERIFIED BOOT IMAGE WHERE A CONTROLLER CAN FETCH IT, as a modeled operation. The
@@ -42,6 +52,7 @@ type BootImageFetchOutcome
   | BootImagePublishedDigestMismatch { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
   | BootImagePublicationNotAdmitted { export_dir: NonEmptyStr, reason: String }
   | BootImagePresentWithDifferentDigest { path: NonEmptyStr, expected: NonEmptyStr, observed: NonEmptyStr }
+  | BootImageAdmittedStagingRemains { path: NonEmptyStr, digest: NonEmptyStr, staging: NonEmptyStr, reason: String }
 
 // WHETHER A MEASURED DIGEST AGREES WITH THE PIN. Separated from the effect sequence so the judgment
 // is nameable, and returning the OBSERVED value on disagreement rather than a Bool: a refusal that
@@ -62,6 +73,29 @@ fn boot_image_observed_hex(observed: Sha256FileDigest) -> NonEmptyStr {
     Sha256FileDigestUnavailable { path: _, reason: _ } => "digest-unreadable"
     Sha256FileDigest { digest: d } => d.hex
   }
+}
+
+// THE DIGEST OF A FILE ON A HOST, in the same carrier the local measurement uses. A digest that
+// could not be read -- the command failed, was not sent, or its reply was lost -- is Unavailable with
+// what was observed; reading is side-effect free, so an unconfirmed read is simply unread.
+fn boot_image_digest_on(host: CommandHost, path: NonEmptyStr) -> Sha256FileDigest {
+  let measured = host_command(host: host, command: sha256sum_file_command(path: path as String))
+  match measured {
+    HostCommandDone { stdout: o } =>
+      match first(filter_words(text: o)) {
+        Absent => Sha256FileDigestUnavailable { path: path, reason: "sha256sum printed nothing" }
+        Present { value: hex } =>
+          match sha256_hex_digest(hex: hex) {
+            Absent => Sha256FileDigestUnavailable { path: path, reason: concat("sha256sum printed no digest: ", trim(s: o)) }
+            Present { value: _ } => Sha256FileDigest { digest: sha256_digest(hex: hex as NonEmptyStr) }
+          }
+      }
+    other => Sha256FileDigestUnavailable { path: path, reason: host_command_outcome_text(e: other) }
+  }
+}
+
+fn filter_words(text: String) -> List<String> {
+  flat_map(split(s: trim(s: text), delimiter: " "), w => if w == "" { [] } else { [w] })
 }
 
 // The one composition of an export directory and an image name. Every route that names an image in
@@ -132,7 +166,7 @@ fn fetch_verified_boot_image(
         export_dir: export_dir,
         expected_sha256: expected_sha256,
       )
-    _ => BootImageFetchFailed { url: url }
+    ExitFailure { code: _, reason: _ } => BootImageFetchFailed { url: url }
   }
 }
 
@@ -154,6 +188,7 @@ fn verify_and_publish_boot_image(
     Sha256FileDigest { digest: _ } =>
       if boot_image_digest_agrees(observed: measured, expected: expected_sha256) {
         admit_then_publish_boot_image(
+          host: LocalCommandHost,
           staging_path: staging_path,
           published_path: published_path,
           export_dir: export_dir,
@@ -182,15 +217,17 @@ fn verify_and_publish_boot_image(
 // distinguishable. Checking it first would make every wrong-pin fetch on an unwritable export report
 // an ownership problem, hiding the artifact defect behind an environment one.
 fn admit_then_publish_boot_image(
+  host: CommandHost,
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   export_dir: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
 {
-  let standing = observed_export_ownership_standing(path: export_dir)
+  let standing = observed_export_ownership_standing(host: host, path: export_dir)
   return if export_ownership_admits_publication(standing: standing) {
     publish_verified_boot_image(
+      host: host,
       staging_path: staging_path,
       published_path: published_path,
       digest: digest,
@@ -215,33 +252,58 @@ fn admit_then_publish_boot_image(
 // group-writable by the automation account rather than exclusively held. A disagreement here means
 // the export does not contain what this program published, which is the one state that must never be
 // reported as an admission.
+//
+// EVERY EFFECT RUNS ON `host` (gunbc.host_command_binding): the stock fetch passes this machine, a
+// derived image built on the host that serves it passes that host over fleet SSH.
 fn publish_verified_boot_image(
+  host: CommandHost,
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
 {
-  return if shell.Test.IsFile(path: published_path as FilePath).is_file {
-    reconcile_present_boot_image(staging_path: staging_path, published_path: published_path, digest: digest)
-  } else {
-    link_verified_boot_image(staging_path: staging_path, published_path: published_path, digest: digest)
+  return match host_command(host: host, command: test_regular_file_command(path: published_path as String)) {
+    HostCommandDone { stdout: _ } => reconcile_present_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    HostCommandFailed { exit_code: _, stderr: _ } => link_verified_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    other => BootImageDigestUnreadable { path: published_path, reason: concat("whether the name is taken is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 
 // CREATE-ONLY. A hard link fails when the destination exists, so publication can add a name and can
 // never replace the bytes behind one: an image already served under a name keeps those bytes for as
 // long as the name exists. The staging name is then removed; the published name holds the inode.
+//
+// A LINK WHOSE REPLY WAS LOST IS DECIDED BY THE READ-BACK, not assumed either way: the published path
+// is measured, and it either holds the verified bytes (the link landed) or it does not. The staging
+// file's removal is reported rather than dropped -- a staging file left in the export is residue the
+// receipt names.
 fn link_verified_boot_image(
+  host: CommandHost,
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome {
-  let linked = shell.Link.Hard(source: staging_path as FilePath, destination: published_path as FilePath)
-  return if linked.success {
-    let unstaged = shell.Remove.FileForce(path: staging_path as FilePath)
-    confirm_published_boot_image(published_path: published_path, digest: digest)
-  } else {
-    BootImagePublishFailed { staged: staging_path, destination: published_path }
+  return match host_command(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {
+    HostCommandDone { stdout: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    HostCommandFailed { exit_code: _, stderr: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
+    HostCommandNotDispatched { reason: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
+  }
+}
+
+fn unstage_then_confirm(host: CommandHost, staging_path: NonEmptyStr, published_path: NonEmptyStr, digest: NonEmptyStr) -> BootImageFetchOutcome {
+  match confirm_published_boot_image(host: host, published_path: published_path, digest: digest) {
+    BootImageAdmitted { path: p, digest: d } => admitted_after_unstaging(host: host, staging_path: staging_path, path: p, digest: d)
+    other => other
+  }
+}
+
+// The staging name is removed only once the published name reads back verified, so a failed publish
+// always leaves the verified bytes somewhere to look at.
+fn admitted_after_unstaging(host: CommandHost, staging_path: NonEmptyStr, path: NonEmptyStr, digest: NonEmptyStr) -> BootImageFetchOutcome {
+  match host_command(host: host, command: rm_force_command(path: staging_path as String)) {
+    HostCommandDone { stdout: _ } => BootImageAdmitted { path: path, digest: digest }
+    other => BootImageAdmittedStagingRemains { path: path, digest: digest, staging: staging_path, reason: host_command_outcome_text(e: other) }
   }
 }
 
@@ -249,18 +311,18 @@ fn link_verified_boot_image(
 // confirmed by the same read-back as a fresh publish; if it holds anything else the publish REFUSES
 // and nothing is replaced -- the staged file is left beside it as the evidence of what was verified.
 fn reconcile_present_boot_image(
+  host: CommandHost,
   staging_path: NonEmptyStr,
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome {
-  let present = sha256sum_file_digest_via_shell(path: published_path)
+  let present = boot_image_digest_on(host: host, path: published_path)
   return match present {
     Sha256FileDigestUnavailable { path: p, reason: r } =>
       BootImageDigestUnreadable { path: p, reason: r }
     Sha256FileDigest { digest: _ } =>
       if boot_image_digest_agrees(observed: present, expected: digest) {
-        let unstaged = shell.Remove.FileForce(path: staging_path as FilePath)
-        BootImageAdmitted { path: published_path, digest: digest }
+        admitted_after_unstaging(host: host, staging_path: staging_path, path: published_path, digest: digest)
       } else {
         BootImagePresentWithDifferentDigest {
           path: published_path,
@@ -288,11 +350,12 @@ fn reconcile_present_boot_image(
 // should. NEXT-RUNG TRIGGER: a fixture harness able to interpose on shell.Move.File, at which point
 // the red is authorable and this arm is owed one.
 fn confirm_published_boot_image(
+  host: CommandHost,
   published_path: NonEmptyStr,
   digest: NonEmptyStr,
 ) -> BootImageFetchOutcome
 {
-  let republished = sha256sum_file_digest_via_shell(path: published_path)
+  let republished = boot_image_digest_on(host: host, path: published_path)
   return match republished {
     Sha256FileDigestUnavailable { path: p, reason: r } =>
       BootImageDigestUnreadable { path: p, reason: r }

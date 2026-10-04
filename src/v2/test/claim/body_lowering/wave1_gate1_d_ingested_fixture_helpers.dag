@@ -13,7 +13,6 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_pick_if_arrow_with_body_swapped_arms
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Bind,
   Branch,
@@ -51,7 +50,8 @@ fn wave1_gate1_d_arrow_body_is_transform(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Transform } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -66,7 +66,8 @@ fn wave1_gate1_d_arrow_body_is_branch(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Branch } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -81,7 +82,8 @@ fn wave1_gate1_d_arrow_body_is_bind(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Bind } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -96,7 +98,8 @@ fn wave1_gate1_d_arrow_body_is_loop(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Loop } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -111,7 +114,8 @@ fn wave1_gate1_d_arrow_body_is_match(o: Outcome<Node>) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: Match } => true
-            _ => false
+            TypeNode { connective: _ } => false
+            ComputationNode { behavior: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }

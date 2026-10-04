@@ -8,8 +8,7 @@ import v2.std.algebra { fold_list, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, CoreEdgeLabel, MatchArmBodyEdge, MatchArmPatternEdge, edge_is_core }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
@@ -103,15 +102,11 @@ fn mals_first_atom(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn mals_named_child(n: Node, name: Symbol) -> Optional<Node> {
+fn mals_core_child(n: Node, marker: CoreEdgeLabel) -> Optional<Node> {
   fold(n.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      Absent =>
-        match e.label {
-          Named { name: l } => if l == name { optional_present(value: e.target) } else { acc }
-          _ => acc
-        }
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
     }
   })
 }
@@ -120,10 +115,10 @@ fn mals_named_child(n: Node, name: Symbol) -> Optional<Node> {
 type MalsPair { pattern: Symbol, body: Symbol }
 
 fn mals_pair(arm: Node) -> Optional<MalsPair> {
-  match mals_named_child(n: arm, name: ^match_arm_pattern) {
+  match mals_core_child(n: arm, marker: MatchArmPatternEdge) {
     Absent => optional_absent()
     Present { value: p } =>
-      match mals_named_child(n: arm, name: ^match_arm_body) {
+      match mals_core_child(n: arm, marker: MatchArmBodyEdge) {
         Absent => optional_absent()
         Present { value: b } =>
           match mals_first_atom(n: p) {

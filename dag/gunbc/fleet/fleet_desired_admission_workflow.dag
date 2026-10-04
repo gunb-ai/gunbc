@@ -1,5 +1,6 @@
 module gunbc.fleet_desired_admission_workflow
 
+
 import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -11,12 +12,15 @@ import extdeps.github.actions {
   github_event_path_env,
 }
 import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
   checkout_action,
   admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.repo_self_build { repo_self_build_command }
+import gunbc.fleet_desired_candidate { fleet_desired_candidate_fetch_script }
+import gunbc.fleet_release_bins_key { compiler_pair_release_product, release_bins_canonical_consumer_script_for }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_toolchain_step }
 import gunbc.toolchain_workflow_steps {
@@ -105,15 +109,63 @@ fn fleet_desired_admission_checkout_step() -> Step {
 // advance. It is imported from witness_floor_workflow rather than copied,
 // because it is one fact -- what a self-hosted runner needs before cargo -- with
 // several consumers (DESIGN section 3).
+//
+// THE ADMISSION BINARY IS THE MERGE QUEUE'S CANDIDATE WHEN ONE EXISTS. The queue's floor built
+// claim_executor and gunbc from exactly this revision and uploaded them as the compiler pair candidate
+// (gunbc.compiler_gate_workflow); this job fetches that candidate (gunbc.fleet_desired_candidate),
+// verifies it as the canonical compiler pair for this checkout's tree (gunbc.fleet_release_bins_key
+// release_bins_canonical_consumer_statements: kind, source closure, every member's digest, the
+// executor's own --verify-build-artifacts) and only then runs it. A revision with no candidate -- a
+// push that bypassed the queue, an expired artifact -- builds gunbc as before; a candidate that fails
+// verification REFUSES, it never falls back to building, because a corrupt candidate is a defect to
+// see, not a miss.
+data fleet_desired_candidate_step_id: String = "pair_candidate"
+
+fn fleet_desired_candidate_present_condition() -> String {
+  join(["steps.", fleet_desired_candidate_step_id, ".outputs.standing == 'present'"], "")
+}
+
+fn fleet_desired_candidate_absent_condition() -> String {
+  join(["steps.", fleet_desired_candidate_step_id, ".outputs.standing == 'absent'"], "")
+}
+
+fn fleet_desired_admission_candidate_fetch_step() -> Step {
+  RunStep {
+    name: Present { value: "Fetch the merge queue's compiler pair candidate for this revision" },
+    id: Present { value: fleet_desired_candidate_step_id },
+    run: fleet_desired_candidate_fetch_script(),
+    shell: none,
+    env: Present { value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: 10 }
+  }
+}
+
+fn fleet_desired_admission_candidate_verify_step() -> Step {
+  RunStep {
+    name: Present { value: "Verify the candidate as this tree's canonical compiler pair, then promote it" },
+    id: none,
+    run: release_bins_canonical_consumer_script_for(product: compiler_pair_release_product()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_desired_candidate_present_condition() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: 10 }
+  }
+}
+
 fn fleet_desired_admission_build_step() -> Step {
   RunStep {
-    name: Present { value: "Build the admission binary" },
+    name: Present { value: "Build the admission binary (no candidate for this revision)" },
     id: none,
     run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: none,
+    if_condition: Present { value: fleet_desired_candidate_absent_condition() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -226,6 +278,8 @@ fn fleet_desired_admission_job() -> Job {
       toolchain_home_isolation_step(),
       witness_floor_toolchain_step(),
       toolchain_pin_rustup_default_step(),
+      fleet_desired_admission_candidate_fetch_step(),
+      fleet_desired_admission_candidate_verify_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
       fleet_desired_admission_decide_push_step(),
@@ -438,6 +492,10 @@ fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
     WorkflowActionUsesRefused { refusals: rs } =>
       FleetDesiredGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: rs) }
     WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: fleet_desired_admission_workflow, declared: []) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      FleetDesiredGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
       match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
         WorkflowToolchainHomesAdmitted =>
           match emit_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow)) {
@@ -447,5 +505,6 @@ fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
         WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
           FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
       }
+  }
   }
 }

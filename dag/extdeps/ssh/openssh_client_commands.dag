@@ -1,5 +1,7 @@
 module extdeps.ssh.openssh_client_commands
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -50,21 +52,22 @@ data ssh_add_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data ssh_keygen_program: NonEmptyStr = "ssh-keygen"
-data ssh_keyscan_program: NonEmptyStr = "ssh-keyscan"
-data ssh_add_program: NonEmptyStr = "ssh-add"
+fn openssh_client_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh")
+fn ssh_keygen_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-keygen")
+fn ssh_keyscan_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-keyscan")
+fn ssh_add_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-add")
 
 // -y DERIVES the public key from a private key file and prints it. It reads the private half, which
 // is why the caller supplying the path is asserting it holds one -- this is not a public-key reader.
 fn ssh_keygen_public_key_command(identity_file: String) -> ArgvCommand {
-  argv_command(program: ssh_keygen_program, arguments: ["-y", "-f", identity_file])
+  argv_command(program: ssh_keygen_program(), arguments: ["-y", "-f", identity_file])
 }
 
 // -l prints the FINGERPRINT of the key in the named file, rather than the key. A fingerprint is what
 // a human compares and what a receipt records; the key itself is what gets installed. Two different
 // products, so two different builders.
 fn ssh_keygen_fingerprint_command(key_file: String) -> ArgvCommand {
-  argv_command(program: ssh_keygen_program, arguments: ["-l", "-f", key_file])
+  argv_command(program: ssh_keygen_program(), arguments: ["-l", "-f", key_file])
 }
 
 // -F SEARCHES a known-hosts file for a host and exits nonzero when it is absent, which is what makes
@@ -72,7 +75,7 @@ fn ssh_keygen_fingerprint_command(key_file: String) -> ArgvCommand {
 // the probe is to ask about a SPECIFIC staged fragment, not about whatever known_hosts the invoking
 // user happens to have.
 fn ssh_keygen_known_hosts_find_command(host: String, known_hosts_file: String) -> ArgvCommand {
-  argv_command(program: ssh_keygen_program, arguments: ["-F", host, "-f", known_hosts_file])
+  argv_command(program: ssh_keygen_program(), arguments: ["-F", host, "-f", known_hosts_file])
 }
 
 // THE TIMEOUT IS A PARAMETER AND IS NOT OPTIONAL, because ssh-keyscan's default is to wait, and a
@@ -81,7 +84,7 @@ fn ssh_keygen_known_hosts_find_command(host: String, known_hosts_file: String) -
 // caller pinning a host key must say which key it is pinning.
 fn ssh_keyscan_command(host: String, key_type: String, timeout_seconds: Int) -> ArgvCommand {
   argv_command(
-    program: ssh_keyscan_program,
+    program: ssh_keyscan_program(),
     arguments: ["-T", to_string(timeout_seconds), "-t", key_type, host],
   )
 }
@@ -91,7 +94,7 @@ fn ssh_keyscan_command(host: String, key_type: String, timeout_seconds: Int) -> 
 // argument here: this builder models ssh-add's argv, and how the caller arranges the agent socket is
 // the caller's own realization concern.
 fn ssh_add_list_identities_command() -> ArgvCommand {
-  argv_command(program: ssh_add_program, arguments: ["-l"])
+  argv_command(program: ssh_add_program(), arguments: ["-l"])
 }
 
 // scp, IN THE ANCHORED POSTURE. extdeps.exec.command scp_command predates the fleet trust anchor
@@ -105,7 +108,7 @@ fn ssh_add_list_identities_command() -> ArgvCommand {
 // user's shell, so the same plain-word discipline as the portable-word allowlist applies to it:
 // these builders take it as a NonEmptyStr and a caller that needs metacharacters in a remote path
 // is modeling a different operation.
-data scp_program: NonEmptyStr = "scp"
+fn scp_program() -> ProgramIdentity = uncataloged_program(invocation: "scp")
 
 fn scp_remote_operand(principal: NonEmptyStr, endpoint: NonEmptyStr, remote_path: NonEmptyStr) -> String {
   join([principal as String, "@", endpoint as String, ":", remote_path as String], "")
@@ -113,7 +116,7 @@ fn scp_remote_operand(principal: NonEmptyStr, endpoint: NonEmptyStr, remote_path
 
 fn scp_download_command(trust_words: List<String>, principal: NonEmptyStr, endpoint: NonEmptyStr, remote_path: NonEmptyStr, local_path: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: scp_program,
+    program: scp_program(),
     arguments: concat(trust_words, [
       scp_remote_operand(principal: principal, endpoint: endpoint, remote_path: remote_path),
       local_path as String,
@@ -123,7 +126,7 @@ fn scp_download_command(trust_words: List<String>, principal: NonEmptyStr, endpo
 
 fn scp_upload_command(trust_words: List<String>, principal: NonEmptyStr, endpoint: NonEmptyStr, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> ArgvCommand {
   argv_command(
-    program: scp_program,
+    program: scp_program(),
     arguments: concat(trust_words, [
       local_path as String,
       scp_remote_operand(principal: principal, endpoint: endpoint, remote_path: remote_path),

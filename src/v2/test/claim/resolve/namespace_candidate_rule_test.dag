@@ -34,7 +34,6 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
@@ -69,27 +68,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // establish nothing. Two homes declare `NcrTwin`, and the three consumers differ only in what they
 // BIND -- one home, neither home, both homes -- which is exactly the variable the rule reads.
 
-data ncr_home_a_source: String = "module v2.ncr_home_a\n\nimport v2.std.logic { Bool }\n\ntype NcrTwin = Bool\n"
+data ncr_home_a_source: String = "module v2.ncr_home_a\n\nimport std.types { Bool }\n\ntype NcrTwin = Bool\n"
 
-data ncr_home_b_source: String = "module v2.ncr_home_b\n\nimport v2.std.logic { Bool }\n\ntype NcrTwin = Bool\n"
+data ncr_home_b_source: String = "module v2.ncr_home_b\n\nimport std.types { Bool }\n\ntype NcrTwin = Bool\n"
 
 // THE POSITIVE SUBJECT. `NcrTwin` is declared in two sibling namespaces and this module binds ONE of
 // them, so the reference has exactly one candidate on its chain and resolves -- while a search over
 // the corpus by spelling has two and can only pick or refuse. Containment decides it; the spelling
 // never could.
-data ncr_importer_source: String = "module v2.ncr_importer\n\nimport v2.std.logic { Bool }\nimport v2.ncr_home_a { NcrTwin }\n\nfn ncr_use(p: NcrTwin) -> Bool { p }\n"
+data ncr_importer_source: String = "module v2.ncr_importer\n\nimport std.types { Bool }\nimport v2.ncr_home_a { NcrTwin }\n\nfn ncr_use(p: NcrTwin) -> Bool { p }\n"
 
 // THE GENUINE AMBIGUITY, AND IT IS GENUINE IN THE RULE'S OWN TERMS: two declarations are bound at
 // ONE position by two import rows. This is the case that must still refuse, and it is a different
 // fact from the corpus containing two `NcrTwin`s -- which the module below carries instead.
-data ncr_double_source: String = "module v2.ncr_double\n\nimport v2.std.logic { Bool }\nimport v2.ncr_home_a { NcrTwin }\nimport v2.ncr_home_b { NcrTwin }\n\nfn ncr_two(p: NcrTwin) -> Bool { p }\n"
+data ncr_double_source: String = "module v2.ncr_double\n\nimport std.types { Bool }\nimport v2.ncr_home_a { NcrTwin }\nimport v2.ncr_home_b { NcrTwin }\n\nfn ncr_two(p: NcrTwin) -> Bool { p }\n"
 
 // THE MUTATION CONTROL, AUTHORED AS A MODULE RATHER THAN AS A DIFF. This module names `NcrTwin`
 // without binding it, so the name is nowhere on its chain and the rule refuses it as UNBOUND. Under
 // a reinstated global bare search the same reference is reachable -- the corpus has the spelling --
 // and this arm changes answer. That is the discriminator: it is red exactly when a spelling search
 // is back, and no other edit moves it.
-data ncr_unbound_source: String = "module v2.ncr_unbound\n\nimport v2.std.logic { Bool }\n\nfn ncr_reach(p: NcrTwin) -> Bool { p }\n"
+data ncr_unbound_source: String = "module v2.ncr_unbound\n\nimport std.types { Bool }\n\nfn ncr_reach(p: NcrTwin) -> Bool { p }\n"
 
 // THE WORKLOAD'S OWN REFUSAL, REBUILT AT FIXTURE SCALE. The native lane's run of
 // //v2/test/parse/expression_bodied_fn_decl_parse:all (binary 7cb36d26) refused all seven tests at
@@ -125,7 +124,6 @@ data ncr_disp: NcrDisp = NcrInputsOnly
 // it), and this arm is why it cannot ship that way again.
 data ncr_shadow_source: String = "module v2.ncr_shadow
 
-import v2.std.logic { Bool }
 import v2.ncr_home_a { NcrTwin }
 
 type NcrTwin = Bool
@@ -145,7 +143,7 @@ fn ncr_shadow_use(p: NcrTwin) -> Bool { p }
 // this in one and silently not in the other.
 data ncr_relay_source: String = "module v2.ncr_relay\n\nimport v2.ncr_home_a { NcrTwin }\n"
 
-data ncr_chain_source: String = "module v2.ncr_chain\n\nimport v2.std.logic { Bool }\nimport v2.ncr_relay { NcrTwin }\n\nfn ncr_chain_use(p: NcrTwin) -> Bool { p }\n"
+data ncr_chain_source: String = "module v2.ncr_chain\n\nimport std.types { Bool }\nimport v2.ncr_relay { NcrTwin }\n\nfn ncr_chain_use(p: NcrTwin) -> Bool { p }\n"
 
 // THE SAME CONTESTED POSITION, REACHED BY ITS ABSOLUTE PATH. `v2.ncr_shadow` declares `NcrTwin`
 // and imports it, so its position has two claimants; this module names that position by its whole
@@ -153,14 +151,14 @@ data ncr_chain_source: String = "module v2.ncr_chain\n\nimport v2.std.logic { Bo
 // bare one refused as ambiguous while the qualified one read the storage slot directly and resolved
 // to whichever claimant the fill applied first, with no diagnostic. One rule may not have two
 // answers decided by how the reference was spelled.
-data ncr_qual_source: String = "module v2.ncr_qual\n\nimport v2.std.logic { Bool }\n\nfn ncr_qual_use(p: v2.ncr_shadow.NcrTwin) -> Bool { p }\n"
+data ncr_qual_source: String = "module v2.ncr_qual\n\nimport std.types { Bool }\n\nfn ncr_qual_use(p: v2.ncr_shadow.NcrTwin) -> Bool { p }\n"
 
 // THE MIGRATION POPULATION'S DIAGNOSTIC, at fixture scale. This module names `NcrDisp` and imports
 // it from nowhere -- the shape every module that was quietly relying on the corpus-wide spelling
 // search turns into when that search is deleted. `NcrDisp` is declared EXACTLY ONCE in the ingest,
 // so the refusal can name where it is declared; v2.ncr_unbound is the companion, naming `NcrTwin`,
 // which two modules declare, so there the refusal must say "several" and name no single path.
-data ncr_missing_import_source: String = "module v2.ncr_missing_import\n\nimport v2.std.logic { Bool }\n\nfn ncr_missing(p: NcrDisp) -> Bool { p }\n"
+data ncr_missing_import_source: String = "module v2.ncr_missing_import\n\nimport std.types { Bool }\n\nfn ncr_missing(p: NcrDisp) -> Bool { p }\n"
 
 fn ncr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -318,7 +316,7 @@ fn ncr_outcome_in(
             context: context,
             refusal_index: index,
             entry: entry
-          )
+          ).outcome
         )
       } else {
         acc

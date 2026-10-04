@@ -237,7 +237,11 @@ fn wire_refused_at<T>(prefix: String, at: NonEmptyStr, cause: NonEmptyStr) -> Wi
 fn json_object_keys(v: JsonValue) -> List<String> {
   match v {
     JsonObject { members: ms } => map(ms, m => m.key)
-    _ => []
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
   }
 }
 
@@ -247,7 +251,11 @@ fn wire_object(v: JsonValue, at: NonEmptyStr, allowed: List<String>) -> WireDeco
     JsonObject { members: _ } =>
       if all(json_object_keys(v: v), k => contains(allowed, k)) { WireDecoded { value: v } }
       else { WireRefused { at: at, cause: join(["unknown member: ", join(filter(json_object_keys(v: v), k => !contains(allowed, k)), ", ")], "") as NonEmptyStr } }
-    _ => WireRefused { at: at, cause: "not an object" }
+    JsonNull => WireRefused { at: at, cause: "not an object" }
+    JsonBool { value: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonNumber { lexeme: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonString { value: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonArray { elements: _ } => WireRefused { at: at, cause: "not an object" }
   }
 }
 
@@ -280,7 +288,11 @@ fn wire_kind(v: JsonValue, at: NonEmptyStr) -> WireDecode<NonEmptyStr> {
         WireRefused { at: a, cause: c } => wire_refused_at(prefix: join([at as String, "."], ""), at: a, cause: c)
         WireDecoded { value: k } => WireDecoded { value: k }
       }
-    _ => WireRefused { at: at, cause: "not an object" }
+    JsonNull => WireRefused { at: at, cause: "not an object" }
+    JsonBool { value: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonNumber { lexeme: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonString { value: _ } => WireRefused { at: at, cause: "not an object" }
+    JsonArray { elements: _ } => WireRefused { at: at, cause: "not an object" }
   }
 }
 

@@ -1,5 +1,6 @@
 module v2.test.claim.infer_self_grounding_wall
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.filesystem.filesystem_io
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -48,7 +49,7 @@ import v2.std.node {
   Disj,
   Value,
   Symbol,
-  Named,
+  Authored,
 }
 import v2.std.witness { Holds, Violates }
 import std.types { Bool, NonEmptyStr, String, List }
@@ -125,7 +126,7 @@ fn wall_malformed_bool_with_payload() -> Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
     children: [
       Edge {
-        label: Named { name: ^wall_malformed_bool_payload_field },
+        label: Authored { name: ^wall_malformed_bool_payload_field },
         target: wall_value_node()
       }
     ],
@@ -140,7 +141,7 @@ fn wall_malformed_int_with_extra_payload() -> Node {
     children: list_snoc_item(
       xs: literal.children,
       item: Edge {
-        label: Named { name: ^wall_malformed_int_payload_field },
+        label: Authored { name: ^wall_malformed_int_payload_field },
         target: wall_value_node()
       }
     ),
@@ -185,7 +186,7 @@ fn wall_derived_grounding(node: Node) -> CanonicalGrounding {
 }
 
 fn wall_grounding_for_node_refused(root: Node) -> Bool {
-  match infer_and_discharge(tree: root) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: tree, node: root) {
@@ -196,7 +197,7 @@ fn wall_grounding_for_node_refused(root: Node) -> Bool {
 }
 
 fn wall_resolved_type_refused(root: Node) -> Bool {
-  match infer_and_discharge(tree: root) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match inferred_facts_witness_for_node(tree: tree, node: root) {
@@ -211,7 +212,7 @@ fn wall_resolved_type_refused(root: Node) -> Bool {
 }
 
 fn wall_infer_counts_frontier(root: Node) -> Bool {
-  match infer(tree: root) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
@@ -302,7 +303,7 @@ fn wall_frontier_observation_matches_infer(nes: NonEmptyDiagnostics, o: ProbeObs
 
 test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   let root = wall_value_node()
-  match infer(tree: root) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match d {
@@ -347,7 +348,7 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
 
 test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
   let root = dag_pick_if_body_fixture
-  match infer(tree: root) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       match active_v2_infer_eval_probe_row(probe: v2_frontier_green_probe) {

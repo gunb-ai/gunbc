@@ -115,3 +115,165 @@ test fn a_binding_after_a_null_arm_is_present_and_still_compiles() -> Bool {
       []
     )
 }
+
+// THE REMAINING REQUIRED POSITIONS: record literal field, declared return (trailing expression and
+// early return), data initializer, let annotation. Receipt, review 73175 on gunbc#12677:
+// `AccountTripNativeCauseNumericCode { code: parse_int(..) }` for `code: Int` compiled with no row,
+// because those seams compared the two types through a relation that does not read cardinality.
+// The first RED is that shape exactly, parse_int into an Int field. Each position has one RED
+// asserting EXACTLY ONE blocking DeclaredTypeNotInhabited row over a source with one candidate
+// site, and one control one term away: the same optional value at the same position declared
+// optional, asserting zero such rows and a clean Rust emission.
+
+fn oar_field_parse_int_negative_source() -> String {
+  "module oar.field_parse_int\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> Code {\n  Code { code: parse_int(s: s) }\n}\n"
+}
+
+test fn parse_int_at_a_required_int_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_field_parse_int_negative_source()) == 1
+}
+
+fn oar_field_negative_source() -> String {
+  "module oar.field\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Code {\n  Code { code: maybe_i(x: 1) }\n}\n"
+}
+
+test fn an_optional_at_a_required_record_field_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_field_negative_source()) == 1
+}
+
+fn oar_return_negative_source() -> String {
+  "module oar.ret\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int {\n  maybe_i(x: 1)\n}\n"
+}
+
+test fn an_optional_at_a_required_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_return_negative_source()) == 1
+}
+
+fn oar_early_return_negative_source() -> String {
+  "module oar.early_ret\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(c: Bool) -> Int {\n  if c { return maybe_i(x: 1) }\n  0\n}\n"
+}
+
+test fn an_optional_at_an_early_return_of_a_required_declared_return_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_early_return_negative_source()) == 1
+}
+
+fn oar_data_negative_source() -> String {
+  "module oar.data_init\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\ndata probe: Int = maybe_i(x: 1)\n"
+}
+
+test fn an_optional_at_a_required_data_initializer_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_data_negative_source()) == 1
+}
+
+fn oar_let_negative_source() -> String {
+  "module oar.let_anno\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int {\n  let v: Int = maybe_i(x: 1)\n  v\n}\n"
+}
+
+test fn an_optional_at_a_required_let_annotation_must_refuse() -> Bool {
+  not_inhabited_blocking_count(source: oar_let_negative_source()) == 1
+}
+
+fn oar_field_positive_source() -> String {
+  "module oar.field_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> MaybeCode {\n  MaybeCode { code: parse_int(s: s) }\n}\n"
+}
+
+test fn an_optional_at_an_optional_record_field_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_field_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_field_positive_source(),
+      "src/oar_field_ok.rs",
+      [],
+      []
+    )
+}
+
+fn oar_return_positive_source() -> String {
+  "module oar.ret_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int? {\n  maybe_i(x: 1)\n}\n"
+}
+
+test fn an_optional_at_an_optional_declared_return_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_return_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_return_positive_source(),
+      "src/oar_ret_ok.rs",
+      [],
+      []
+    )
+}
+
+fn oar_data_positive_source() -> String {
+  "module oar.data_init_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\ndata probe: Int? = maybe_i(x: 1)\n"
+}
+
+test fn an_optional_at_an_optional_data_initializer_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_data_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_data_positive_source(),
+      "src/oar_data_init_ok.rs",
+      [],
+      []
+    )
+}
+
+fn oar_let_positive_source() -> String {
+  "module oar.let_anno_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe() -> Int? {\n  let v: Int? = maybe_i(x: 1)\n  v\n}\n"
+}
+
+test fn an_optional_at_an_optional_let_annotation_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_let_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_let_positive_source(),
+      "src/oar_let_anno_ok.rs",
+      [],
+      []
+    )
+}
+
+fn oar_field_matched_positive_source() -> String {
+  "module oar.field_matched_ok\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\ntype MaybeCode { code: Int? }\n\nfn maybe_i(x: Int) -> Int? {\n  if x > 0 { Present { value: x } } else { none }\n}\n\nfn probe(s: String) -> Code {\n  match parse_int(s: s) {\n    Present { value: n } => Code { code: n }\n    Absent => Code { code: 0 }\n  }\n}\n"
+}
+
+test fn matching_the_optional_before_the_required_field_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_field_matched_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_field_matched_positive_source(),
+      "src/oar_field_matched_ok.rs",
+      [],
+      []
+    )
+}
+
+// A COPRODUCT THAT DECLARES ITS OWN `Absent` ARM IS NOT AN OPTIONAL. The bare arm is typed as the
+// kernel Optional coproduct, so the produced side is optional BY NAME ONLY; refusing it at the
+// declared coproduct was a fabricated refusal, measured at sixteen record-field and declared-return
+// sites and at six direct-call arguments that already stood refused on main
+// (std.upsert_decision ObservationVerdict, gunbc.host.host_converge ConvergeVerdict). One source
+// holds the arm at all three positions.
+fn oar_own_absent_positive_source() -> String {
+  "module oar.own_absent_ok\n\nimport std.types { Int, String }\n\ntype Verdict\n  = Converged\n  | Absent\n\ntype Receipt { verdict: Verdict }\n\nfn take_v(v: Verdict) -> Int {\n  match v {\n    Converged => 1\n    Absent => 0\n  }\n}\n\nfn probe(c: Bool) -> Verdict {\n  let r = Receipt { verdict: Absent }\n  if c { r.verdict } else if take_v(v: Absent) == 0 { Absent } else { Converged }\n}\n"
+}
+
+test fn a_coproducts_own_absent_arm_at_its_declared_positions_still_compiles() -> Bool {
+  not_inhabited_blocking_count(source: oar_own_absent_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_own_absent_positive_source(),
+      "src/oar_own_absent_ok.rs",
+      [],
+      []
+    )
+}
+
+// THE DECLARED RESIDUAL, ENROLLED AS WHAT IT IS. An index access types as optional and realizes in
+// Rust as the bare element, so its optionality is not established across the two acceptance paths
+// and these positions raise no cardinality obligation for it (v1.compiler.infer
+// expr_value_is_index_access; the seed's own tokenizer returns `chars[pos]` at a declared Int).
+// This claim pins the admission so the residual is an executed fact rather than a sentence: it
+// goes red the day the index model and its realization are reconciled and the wall reaches index
+// values, and on that day it flips to a refusal count, it does not retire.
+fn oar_index_residual_source() -> String {
+  "module oar.index_residual\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  xs[0]\n}\n\nfn probe_field(xs: List<Int>) -> Code {\n  Code { code: xs[0] }\n}\n"
+}
+
+test fn an_index_access_at_a_required_position_is_the_declared_residual() -> Bool {
+  not_inhabited_blocking_count(source: oar_index_residual_source()) == 0
+}

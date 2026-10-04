@@ -5,12 +5,13 @@ import std.types { Int, List, NonEmptyStr, String, WorkflowRunId }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure {
   ByteSize, byte_size, byte_size_count, EvalStepCount, eval_step_count, eval_step_count_value,
-  eval_steps_per_millisecond_count, hardware_thread_count, hardware_thread_count_value,
+  eval_steps_per_millisecond_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
   Millisecond, millisecond, second, MoneyPerSecond, money_amount_micro,
+  ObservationInstant, SharedMonotonic, WallClock, nanosecond,
 }
 import std.decl_ref { decl_ref }
 import extdeps.currency.currency { Usd }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity, Shape, HardRequirements }
 import product.fabric.envelope { cpu_memory_envelope }
@@ -30,7 +31,7 @@ import gunbc.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, 
 import gunbc.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
 }
-import gunbc.fabric_witness_run { floor_execution_requirements }
+import gunbc.floor_demand { floor_execution_requirements }
 import gunbc.fleet_host_budget {
   FleetHostPlan, FleetHostPlanDerived, FleetHostPlanUnsound, HeadroomSet, fleet_host_plan_for, oomd_actuation_floor,
   HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed,
@@ -42,7 +43,7 @@ import v2.workflow.floor_eval_step_calibration {
   floor_eval_step_calibration, calibration_rate, calibration_specimen_eval_steps, calibration_specimen_identity,
 }
 import gunbc.runner_throughput_qualification {
-  FloorWorkloadPin, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
+  FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
   workspace_bytes_locus,
   PhaseWall, RateSpecimenRead, CgroupMemoryReading, CgroupMemoryRead, CgroupMemoryUnreadable, EffectiveSlotProperties,
   ObservedRunnerQualificationRun, observed_run,
@@ -57,8 +58,14 @@ import gunbc.runner_throughput_qualification {
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
-  qualification_run_producer_frontier, leg_is_bound,
-  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings,
+  qualification_run_producer_frontier, leg_is_wired, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
+  AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings, ConcurrentCohortAtWidth,
+  RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
+}
+import std.nat { Nat, nat_range_inclusive }
+import std.observation { OccurrenceId }
+import product.capacity.cohort_observation {
+  CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
 }
 import gunbc.runner_throughput_selection {
   RunnerQualificationInputs, select_runner_qualification, slot_quota_threads, selected_host_allocation,
@@ -71,8 +78,8 @@ import gunbc.runner_throughput_qualification_route {
   route_bmc_writes_are_gated, route_bmc_write_count, route_control_plane_write_count,
   route_effectful_stage_count, route_is_executable,
   route_registers_one_slot, route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
-  mtcollins1_qualification_workspace_backing,
-  CalibrationSpecimenWitnessLine, FloorCgroupRows, qualification_instrument_wire, qualification_instrument_producer,
+  mtcollins1_qualification_workspace_backing, mtcollins1_route_legs,
+  CalibrationSpecimenWitnessLine, FloorCgroupRows, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
 
@@ -155,8 +162,8 @@ fn expected_width() -> Int {
 
 fn owned_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "gunbc.fleet_intent_network", decl_name: "operator_host_mtcollins1"),
-    service: decl_ref(module_path: "gunbc.fabric_witness_run", decl_name: "floor_execution_requirements"),
+    provider: decl_ref(module_path: "gunbc.fleet_host_identity", decl_name: "operator_host_mtcollins1"),
+    service: decl_ref(module_path: "gunbc.floor_demand", decl_name: "floor_execution_requirements"),
     region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
   }
 }
@@ -164,6 +171,10 @@ fn owned_route() -> ProviderRoute {
 // THE SELECTED OFFER IS AN INPUT. Nothing here derives it from a measurement; it is what the fleet
 // selected to be assessed, and the assessment is bound to its identity.
 fn selected_offer(key: String) -> SupplierOffer<HostIdentity> {
+  selected_offer_stating(key: key, architecture: Present { value: Aarch64 })
+}
+
+fn selected_offer_stating(key: String, architecture: Architecture?) -> SupplierOffer<HostIdentity> {
   SupplierOffer {
     id: FabricIdentity { principal: "mtcollins1", key: key },
     executor: "mtcollins1",
@@ -172,7 +183,7 @@ fn selected_offer(key: String) -> SupplierOffer<HostIdentity> {
       hard: HardRequirements { threads: hardware_thread_count(count: 160) },
       envelope: cpu_memory_envelope(
         min_threads: hardware_thread_count(count: 160),
-        architecture: Present { value: Aarch64 },
+        architecture: architecture,
         min_bytes: gunbc_runner_slot_desired().memory_max,
       ),
     },
@@ -197,13 +208,25 @@ fn control_plane_sanction() -> ExecutorSanction {
 
 // THE SELECTION IS MADE BY THE FLEET'S SELECTION FOLD from the fleet's own authorities -- the live
 // slot shape, the plan fold, the conservation verdict -- never assembled by hand here.
+// THE SELECTED RUNTIME, and the observed run below reads the same row, so a join failure on either
+// runtime axis is the variation a claim introduced and never a spelling drift between two literals.
+data fixture_runtime: SelectedRunnerRuntime = SelectedRunnerRuntime {
+  image_digest: "sha256:fixture-image" as NonEmptyStr,
+  runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" as NonEmptyStr,
+}
+
 fn inputs_with(sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
+  inputs_offered(offer: selected_offer(key: "offer-mtcollins1-qual-1"), sampling: sampling, ceilings: ceilings, plan: plan, allocation: allocation)
+}
+
+fn inputs_offered(offer: SupplierOffer<HostIdentity>, sampling: SamplingPolicy, ceilings: PhaseCeilings, plan: FleetHostPlan, allocation: HostAllocationVerdict) -> RunnerQualificationInputs<HostIdentity> {
   select_runner_qualification(
-    offer: selected_offer(key: "offer-mtcollins1-qual-1"),
+    offer: offer,
     host: "mtcollins1",
     executor_sanction: control_plane_sanction(),
     requirements: floor_execution_requirements(),
     workload: pin(),
+    runtime: fixture_runtime,
     plan: plan,
     allocation: allocation,
     slot: gunbc_runner_slot_desired(),
@@ -288,8 +311,8 @@ fn run_with(
     program: "gunbc.claim_executor --required-ci" as NonEmptyStr,
     revision: pin_revision,
     specimen: specimen,
-    image_digest: "sha256:fixture-image" as NonEmptyStr,
-    runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt" as NonEmptyStr,
+    image_digest: fixture_runtime.image_digest,
+    runtime_closure: fixture_runtime.runtime_closure,
     slot_unit: slot_unit(),
     incarnation: "1" as NonEmptyStr,
     effective: effective,
@@ -340,6 +363,7 @@ fn fact_is(a: AssessedFact, b: AssessedFact) -> Bool {
     InterpreterRateAgainstPin => match b { InterpreterRateAgainstPin => true _ => false }
     SlotMemoryEnvelope => match b { SlotMemoryEnvelope => true _ => false }
     PhaseWallsAgainstSuppliedCeilings => match b { PhaseWallsAgainstSuppliedCeilings => true _ => false }
+    ConcurrentCohortAtWidth => match b { ConcurrentCohortAtWidth => true _ => false }
   }
 }
 
@@ -347,13 +371,65 @@ fn has_fact_once(facts: List<AssessedFact>, want: AssessedFact) -> Bool {
   (facts |> filter(f => fact_is(a: f, b: want))).length() == 1
 }
 
-fn covers_rate_and_memory_only(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 2 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+fn covers_rate_memory_and_cohort(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin) && has_fact_once(facts: facts, want: SlotMemoryEnvelope)
+    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
 }
 
-fn covers_rate_memory_and_walls(facts: List<AssessedFact>) -> Bool {
-  facts.length() == 3 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
+fn covers_rate_memory_walls_and_cohort(facts: List<AssessedFact>) -> Bool {
+  facts.length() == 4 && has_fact_once(facts: facts, want: InterpreterRateAgainstPin)
     && has_fact_once(facts: facts, want: SlotMemoryEnvelope) && has_fact_once(facts: facts, want: PhaseWallsAgainstSuppliedCeilings)
+    && has_fact_once(facts: facts, want: ConcurrentCohortAtWidth)
+}
+
+// ── the concurrent cohort ─────────────────────────────────────────────────────────────────────
+//
+// A DELIVERING ASSESSMENT NEEDS A SEALED COHORT AT THE DERIVED WIDTH, so the delivering claims below
+// run through assess_at_width: the claim's own runs PLUS one good run per seat, and a cohort of exactly
+// expected_width() seats, all active over [20, 40], each seat one of those assessed runs. The seats are
+// good runs, so the throughput and memory aggregates the claims read are the good run's either way.
+// Claims about a refusal on some other axis run through assess_unobserved, where the missing cohort is
+// one more refusal beside the one the claim reads.
+fn t(n: Nat) -> ObservationInstant { ObservationInstant { domain: SharedMonotonic { origin: "mtcollins1-boot" as NonEmptyStr }, basis: WallClock, since_origin: nanosecond(count: n) } }
+
+fn seat_ids(n: Int) -> List<WorkflowRunId> {
+  map(nat_range_inclusive(lo: 1, hi: n), i => concat("cohort-seat-", i as String) as WorkflowRunId)
+}
+
+fn seat_reading(id: WorkflowRunId, settlement: SeatSettlement) -> CohortSeatReading<WorkflowRunId> {
+  CohortSeatReading {
+    seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr },
+    ready_at: t(n: 5), started_at: t(n: 20), ended_at: t(n: 40), settlement: settlement,
+  }
+}
+
+fn cohort_of(seats: List<CohortSeatReading<WorkflowRunId>>) -> RunnerCohortEvidence {
+  CohortObserved {
+    seal: seal_cohort(
+      reading: CohortReading {
+        roster: map(seats, s => s.seat), barrier_released_at: t(n: 10), host_window_from: t(n: 0), host_window_to: t(n: 100),
+        host_source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: "host" as NonEmptyStr }, seats: seats,
+      },
+      seat_key: run_key,
+    ),
+  }
+}
+
+fn cohort_runs(ids: List<WorkflowRunId>) -> List<ObservedRunnerQualificationRun> {
+  map(ids, id => good_run(id: id))
+}
+
+fn assess_at_width(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  let ids = seat_ids(n: expected_width())
+  assess_runner_throughput(selection: selection, runs: concat(runs, cohort_runs(ids: ids)), cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }))))
+}
+
+fn assess_unobserved(selection: SelectedRunnerQualification<HostIdentity>, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_runner_throughput(selection: selection, runs: runs, cohort: NoCohortObserved)
+}
+
+fn concurrency_is(a: RunnerThroughputAssessment<HostIdentity>, want: String) -> Bool {
+  !assessment_holds(a: a) && string_contains(s: assessment_wire(a: a) as String, pattern: want)
 }
 
 fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
@@ -363,7 +439,7 @@ fn sampling_refused(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
 // ── the positive control ──────────────────────────────────────────────────────────────────────
 
 test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
-  let a = assess_runner_throughput(selection: selection(), runs: [good_run(id: run_a)])
+  let a = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
   assessment_holds(a: a)
     && (match a.throughput {
       ThroughputMeetsPin { measured: m, pinned: p } =>
@@ -375,7 +451,7 @@ test fn a_joining_run_meeting_every_axis_makes_the_offer_deliver() -> Bool {
       SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } => n == expected_width() && n >= 1
       SlotWidthUnderivable { cause: _ } => false
     })
-    && covers_rate_and_memory_only(facts: a.assessed_facts)
+    && covers_rate_memory_and_cohort(facts: a.assessed_facts)
 }
 
 // ── the subject join REDs (operator hold, item 2) ─────────────────────────────────────────────
@@ -386,10 +462,53 @@ test fn a_run_from_another_host_is_refused_on_the_host_axis() -> Bool {
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "host"
     && (match a.phase_roster { PhaseRosterNotAssessed { because: _ } => true _ => false })
     && a.assessed_facts.length() == 0
+}
+
+// THE GOOD RUN WITH ONLY ITS RUNTIME AND HOST FACTS REPLACED, so each claim below varies exactly one.
+fn good_run_in(image_digest: NonEmptyStr, runtime_closure: NonEmptyStr, host_threads: HardwareThreadCount, host_architecture: Architecture) -> ObservedRunnerQualificationRun {
+  let g = good_run(id: run_a)
+  observed_run(
+    run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, host: g.host,
+    program: g.program, revision: g.revision, specimen: g.specimen,
+    image_digest: image_digest, runtime_closure: runtime_closure,
+    slot_unit: g.slot_unit, incarnation: g.incarnation, effective: g.effective,
+    host_threads: host_threads, host_architecture: host_architecture, workspace: g.workspace,
+    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps,
+    rate_specimen: g.rate_specimen, memory: g.memory,
+  )
+}
+
+fn refused_on(selection: SelectedRunnerQualification<HostIdentity>, run: ObservedRunnerQualificationRun, axis: String) -> Bool {
+  let a = assess_unobserved(selection: selection, runs: [run])
+  !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == axis && a.assessed_facts.length() == 0
+}
+
+// THE RUNTIME AND HOST FACTS WERE OBSERVED AND NEVER JOINED; NOW EACH ONE REFUSES ALONE. Every run
+// below is the good run with one fact changed, and the good run itself still joins, so a claim that
+// passes here is about that axis and nothing else.
+test fn a_run_in_another_image_or_toolchain_is_refused_on_its_runtime_axis() -> Bool {
+  let t = hardware_thread_count(count: 160)
+  assessment_holds(a: assess_at_width(selection: selection(), runs: [good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64)]))
+    && refused_on(selection: selection(), run: good_run_in(image_digest: "sha256:another-image" as NonEmptyStr, runtime_closure: fixture_runtime.runtime_closure, host_threads: t, host_architecture: Aarch64), axis: "image digest")
+    && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: "gunbc.toolchain.rust-1.92.0" as NonEmptyStr, host_threads: t, host_architecture: Aarch64), axis: "runtime closure")
+}
+
+test fn a_run_on_another_host_shape_is_refused_on_its_host_axis() -> Bool {
+  refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 80), host_architecture: Aarch64), axis: "host threads")
+    && refused_on(selection: selection(), run: good_run_in(image_digest: fixture_runtime.image_digest, runtime_closure: fixture_runtime.runtime_closure, host_threads: hardware_thread_count(count: 160), host_architecture: X86_64), axis: "host architecture")
+}
+
+// AN OFFER THAT STATES NO ARCHITECTURE ADMITS NONE: the good run, unchanged, refuses on the axis.
+test fn an_offer_stating_no_architecture_refuses_the_architecture_join() -> Bool {
+  let s = inputs_offered(
+    offer: selected_offer_stating(key: "offer-mtcollins1-qual-1", architecture: Absent),
+    sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves,
+  ).selection
+  refused_on(selection: s, run: good_run(id: run_a), axis: "host architecture")
 }
 
 // THE SAME STEP COUNT ON A DIFFERENT SPECIMEN IS A DIFFERENT PROGRAM: the identity is joined, not
@@ -400,7 +519,7 @@ test fn a_run_of_another_specimen_with_the_same_step_count_is_refused_on_the_spe
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "specimen"
 }
 
@@ -411,7 +530,7 @@ test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Boo
     workspace: OnSubjectChargedToSlot, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "effective MemoryHigh"
 }
 
@@ -427,8 +546,8 @@ test fn a_cgroup_bound_that_is_unreadable_or_another_number_is_refused_on_the_bo
     memory: resolved_bound(bytes: byte_size(count: byte_size_count(b: slot_high()) - 1)),
     phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a1 = assess_runner_throughput(selection: selection(), runs: [unreadable])
-  let a2 = assess_runner_throughput(selection: selection(), runs: [other])
+  let a1 = assess_unobserved(selection: selection(), runs: [unreadable])
+  let a2 = assess_unobserved(selection: selection(), runs: [other])
   first_join_axis(refusals: a1.refusals) == "cgroup bound" && first_join_axis(refusals: a2.refusals) == "cgroup bound"
 }
 
@@ -438,7 +557,7 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
     workspace: OnSubjectUncharged, cpu: millisecond(count: 50),
     memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)),
   )
-  let a = assess_runner_throughput(selection: selection(), runs: [r])
+  let a = assess_unobserved(selection: selection(), runs: [r])
   !assessment_holds(a: a) && first_join_axis(refusals: a.refusals) == "workspace locus"
     && (match workspace_bytes_locus(backing: PeerScratchExport { peer: "srv2" }) { OffSubject { peer: p } => (p as String) == "srv2" _ => false })
 }
@@ -450,7 +569,7 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
 test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_run() -> Bool {
   let slow_clean = varied_run(id: run_a, cpu: millisecond(count: 70), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
   let fast_pinned = varied_run(id: run_b, cpu: millisecond(count: 40), memory: resolved_bound_with_peak(bytes: slot_high(), peak: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_runner_throughput(selection: selection(), runs: [slow_clean, fast_pinned])
+  let a = assess_unobserved(selection: selection(), runs: [slow_clean, fast_pinned])
   !assessment_holds(a: a)
     && (match a.memory { PeakExceedsSlotHigh { peak: p, high: h } => byte_size_count(b: p) == byte_size_count(b: h) _ => false })
     && (match a.throughput {
@@ -461,8 +580,8 @@ test fn a_faster_run_that_pinned_the_high_line_is_not_hidden_by_a_slower_clean_r
 
 test fn the_sampling_policy_refuses_a_sample_of_the_wrong_size() -> Bool {
   let one = selection_with(sampling: ExactlyOneReconciledRun, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationConserves)
-  let two = assess_runner_throughput(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
-  let zero = assess_runner_throughput(selection: selection(), runs: [])
+  let two = assess_unobserved(selection: one, runs: [good_run(id: run_a), good_run(id: run_b)])
+  let zero = assess_unobserved(selection: selection(), runs: [])
   sampling_refused(a: two) && sampling_refused(a: zero) && !assessment_holds(a: zero)
 }
 
@@ -478,8 +597,8 @@ test fn a_missing_or_duplicated_required_phase_refuses() -> Bool {
     id: run_b, cpu: millisecond(count: 50), memory: resolved_bound(bytes: slot_high()),
     phases: concat(complete_roster(wall: millisecond(count: 1000)), [PhaseWall { phase: ParsePhase, wall: millisecond(count: 5) }]),
   )
-  let am = assess_runner_throughput(selection: selection(), runs: [missing])
-  let ad = assess_runner_throughput(selection: selection(), runs: [duplicated])
+  let am = assess_unobserved(selection: selection(), runs: [missing])
+  let ad = assess_unobserved(selection: selection(), runs: [duplicated])
   (match am.phase_roster { PhaseMissing { phase: p } => required_ci_phase_is(a: p, b: FloorPhase) _ => false })
     && (match ad.phase_roster { PhaseDuplicated { phase: p } => required_ci_phase_is(a: p, b: ParsePhase) _ => false })
     && !assessment_holds(a: am) && !assessment_holds(a: ad)
@@ -497,20 +616,41 @@ test fn phase_walls_are_assessed_only_against_supplied_ceilings() -> Bool {
     ceilings: PhaseCeilingsDeclared { ceilings: [PhaseWall { phase: FloorPhase, wall: millisecond(count: 500) }] },
     plan: sound_plan(), allocation: HostAllocationConserves,
   )
-  let al = assess_runner_throughput(selection: loose, runs: [good_run(id: run_a)])
-  let at = assess_runner_throughput(selection: tight, runs: [good_run(id: run_a)])
-  let an = assess_runner_throughput(selection: selection(), runs: [good_run(id: run_a)])
-  assessment_holds(a: al) && covers_rate_memory_and_walls(facts: al.assessed_facts)
+  let al = assess_at_width(selection: loose, runs: [good_run(id: run_a)])
+  let at = assess_at_width(selection: tight, runs: [good_run(id: run_a)])
+  let an = assess_at_width(selection: selection(), runs: [good_run(id: run_a)])
+  assessment_holds(a: al) && covers_rate_memory_walls_and_cohort(facts: al.assessed_facts)
     && !assessment_holds(a: at)
     && (match at.phase_walls { PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => true _ => false })
     && (match an.phase_walls { PhaseWallsNotAssessed => true _ => false })
+}
+
+// THE WIDTH IS OBSERVED, NOT ONLY DIVIDED. Every run below is the good run; what varies is the cohort.
+// No cohort, a cohort one seat short of the width, a seat that failed, a seat that is not one of the
+// assessed runs, and a cohort whose seats were never all active each refuse delivery by name, while
+// assess_at_width -- the same runs and a full cohort -- delivers (the positive control above).
+test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool {
+  let w = expected_width()
+  let ids = seat_ids(n: w)
+  let runs = cohort_runs(ids: ids)
+  let short = seat_ids(n: w - 1)
+  let failed = map(ids, id => if (id as String) == "cohort-seat-1" { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatFailed { cause: "floor phase refused" as NonEmptyStr } }) } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  let stranger = concat(map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })), [seat_reading(id: "not-an-assessed-run" as WorkflowRunId, settlement: SeatSettledAs { settled: SeatSucceeded })])
+  let apart = map(ids, id => if (id as String) == "cohort-seat-1" { CohortSeatReading { seat: id, source: OccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: id as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
+  w >= 2
+    && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: failed)), want: "cohort seat cohort-seat-1 failed: floor phase refused")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: not-an-assessed-run")
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
+    && assessment_holds(a: assess_runner_throughput(selection: selection(), runs: runs, cohort: cohort_of(seats: map(ids, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))))
 }
 
 // ── throughput and width REDs ─────────────────────────────────────────────────────────────────
 
 test fn throughput_below_the_pinned_rate_does_not_deliver_and_carries_the_number() -> Bool {
   let slow = varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))
-  let a = assess_runner_throughput(selection: selection(), runs: [slow])
+  let a = assess_unobserved(selection: selection(), runs: [slow])
   let expected = eval_step_count_value(s: specimen_steps()) / 110
   !assessment_holds(a: a)
     && expected < pinned_rate()
@@ -526,7 +666,7 @@ test fn a_refused_or_oversubscribed_selected_allocation_derives_no_width() -> Bo
   let oversubscribed = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: sound_plan(), allocation: HostAllocationOversubscribed)
   let unsound = selection_with(sampling: ConservativePerAxis { minimum_runs: 1 }, ceilings: NoPhaseCeilings, plan: FleetHostPlanUnsound { reason: "oomd enforcement unverified" }, allocation: HostAllocationConserves)
   ([oversubscribed, unsound] |> all(sel => {
-    let a = assess_runner_throughput(selection: sel, runs: [good_run(id: run_a)])
+    let a = assess_unobserved(selection: sel, runs: [good_run(id: run_a)])
     !assessment_holds(a: a) && (match a.slot_width { SlotWidthUnderivable { cause: _ } => true _ => false })
   }))
     && (match selected_host_allocation(plan: sound_plan(), allocation: HostAllocationConserves) {
@@ -560,8 +700,8 @@ test fn the_selected_sanction_not_the_assessment_decides_the_class() -> Bool {
 // deliver with RunnerThroughputDidNotHold, and refuses a claim riding another offer.
 test fn the_fabric_delivery_claim_holds_refuses_and_catches_another_offer() -> Bool {
   let s = selection()
-  let good = assess_runner_throughput(selection: s, runs: [good_run(id: run_a)])
-  let slow = assess_runner_throughput(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
+  let good = assess_at_width(selection: s, runs: [good_run(id: run_a)])
+  let slow = assess_unobserved(selection: s, runs: [varied_run(id: run_a, cpu: millisecond(count: 110), memory: resolved_bound(bytes: slot_high()), phases: complete_roster(wall: millisecond(count: 1000)))])
   let holds = match claimed_delivery_check(claim: OfferClaimsRunnerDelivery { offer: s.offer.id, assessment: good }) {
     ClaimedDeliveryHolds => true
     _ => false
@@ -607,10 +747,40 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
     ))
 }
 
-// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: every effectful leg is a declared
-// frontier. This flips to the regression control that the bindings stay when they land.
+// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot and dispatch legs are still
+// declared frontiers. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
-  !route_is_executable(route: route()) && !leg_is_bound(leg: qualification_run_producer_frontier)
+  !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
+}
+
+// THE IMAGE LEG HAS AN IMPLEMENTED AUTHORITY AND IS NOT WIRED; THE BOOT LEG HAS NO AUTHORITY. The
+// claim tells the two apart: wiring the image leg before a production caller builds the runner
+// image, pointing it at another declaration, or binding the boot leg to the census-only boot run,
+// turns this red.
+test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.image, module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput")
+    && !leg_is_wired(leg: mtcollins1_route_legs.image)
+    && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
+}
+
+// REGISTRATION AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by declaration
+// identity, so pointing either leg at some other declaration, or promoting either to LegWired while
+// nothing on the route calls it, turns this red -- and the route stays unexecutable.
+fn leg_names(leg: RouteLegStanding, module_path: String, decl_name: String) -> Bool {
+  match leg {
+    LegAuthorityImplemented { authority: a, wiring_owed: _ } => (a.module_path as String) == module_path && (a.decl_name as String) == decl_name
+    _ => false
+  }
+}
+
+test fn the_registration_and_deregistration_legs_are_implemented_not_wired_and_the_route_is_not_executable() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.registration, module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint")
+    && leg_names(leg: mtcollins1_route_legs.deregistration, module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered")
+    && !leg_is_wired(leg: mtcollins1_route_legs.registration)
+    && !leg_is_wired(leg: mtcollins1_route_legs.deregistration)
+    && !leg_is_wired(leg: mtcollins1_route_legs.boot)
+    && !leg_is_wired(leg: mtcollins1_route_legs.dispatch)
+    && !route_is_executable(route: route())
 }
 
 test fn the_route_registers_one_slot_deregisters_it_and_dispatches_to_the_attempt() -> Bool {
@@ -638,6 +808,28 @@ test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool 
           })
     }
   )
+}
+
+// THE COHORT IS OWED BY THE ROUTE, NOT ONLY ASSESSED: the collect stage lists the concurrent-cohort seat
+// windows and cites product.capacity.cohort_observation seal_cohort as their producer, and the one
+// collect-stage frontier stays unbound until the stage that seals a real cohort lands.
+test fn the_collect_stage_owes_a_sealed_concurrent_cohort() -> Bool {
+  !leg_is_wired(leg: qualification_run_producer_frontier)
+    && (route() |> any(s =>
+      match s {
+        CollectInstruments { instruments: is } =>
+          is |> any(i =>
+            match i {
+              ConcurrentCohortSeatWindows => {
+                let p = qualification_instrument_producer(i: i)
+                (p.module_path as String) == "product.capacity.cohort_observation" && (p.decl_name as String) == "seal_cohort"
+              }
+              _ => false
+            }
+          )
+        _ => false
+      }
+    ))
 }
 
 test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {

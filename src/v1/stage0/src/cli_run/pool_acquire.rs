@@ -7,6 +7,10 @@
 //! was tokenized 12,121 times: measured `distinct_file_spellings=3031`, of which 3,030 were
 //! tokenized exactly 4x.
 //!
+//! The closure front end (`entry_resolve::via_index_parse_one_source` and the parse-cache miss
+//! arm) is a fifth reader of the same bytes under the same spelling, so it asks here too rather
+//! than re-lexing every closure file the pool census already lexed.
+//!
 //! That multiplicity is the whole content of this module. Lexing a file is a PURE FUNCTION of its
 //! bytes and the file spelling those bytes are reported under -- there is one right answer, so
 //! there is one authority for it, and the walks ask rather than each recompute (DESIGN §2:
@@ -94,10 +98,35 @@ struct Acquired {
     content: Rc<String>,
     artifact: Rc<V1LexArtifact>,
     newline_index: Rc<NewlineIndex>,
+    /// The heads reading of these bytes, parsed in a FILE-LOCAL space (empty intern table,
+    /// occurrence ordinals from zero), filled on first demand. See `heads_reading_for`.
+    heads: RefCell<Option<Rc<HeadsReading>>>,
 }
 
 thread_local! {
     static POOL: RefCell<HashMap<(String, usize, u64), Rc<Acquired>>> = RefCell::new(HashMap::new());
+}
+
+thread_local! {
+    /// Everything `attribute` has recorded on this thread, so a caller timing a span that forces
+    /// acquisitions can report itself NET of them instead of counting the same work twice.
+    static ATTRIBUTED: std::cell::Cell<std::time::Duration> =
+        const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// The lexing, the newline index and the heads parse are demanded by whichever walk reaches a file
+/// first, so they are recorded HERE, at the producer, as their own `[pre-entry]` rows. Timed at the first demander
+/// instead, they were reported under that demander's name: the module path index is built inside
+/// the import-edge facts, so `graph_facts_import_edges` carried the whole pool's acquisition and
+/// heads parse while its own work is a line scan.
+fn attribute(row: &'static str, elapsed: std::time::Duration) {
+    super::pre_entry_phase::record(row, super::pre_entry_phase::PhaseScale::Tree, elapsed);
+    ATTRIBUTED.with(|a| a.set(a.get() + elapsed));
+}
+
+/// Total time `attribute` has recorded on this thread; difference two readings around a span.
+pub(crate) fn attributed() -> std::time::Duration {
+    ATTRIBUTED.with(|a| a.get())
 }
 
 fn acquire(file: &str, content: &str) -> Rc<Acquired> {
@@ -110,16 +139,21 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
             return hit;
         }
     }
+    let lex_started = std::time::Instant::now();
     let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
         content.to_string(),
         file.to_string(),
         crate::extdeps_languages_dag_syntax::dag_parse_environment(),
     );
+    attribute("pool_source_tokenize", lex_started.elapsed());
+    let newline_started = std::time::Instant::now();
     let newline_index = build_newline_index(file.to_string(), content.to_string());
+    attribute("pool_source_newline_index", newline_started.elapsed());
     let acquired = Rc::new(Acquired {
         content: Rc::new(content.to_string()),
         artifact,
         newline_index,
+        heads: RefCell::new(None),
     });
     POOL.with(|p| p.borrow_mut().insert(key, acquired.clone()));
     acquired
@@ -138,4 +172,83 @@ pub fn artifact_for(file: &str, content: &str) -> Rc<V1LexArtifact> {
 /// The newline index `build_newline_index(file, content)` would produce, computed once.
 pub fn newline_index_for(file: &str, content: &str) -> Rc<NewlineIndex> {
     acquire(file, content).newline_index.clone()
+}
+
+/// WHAT THE HEADS READING RETAINS: exactly the fields its consumers read, and nothing else. Its
+/// consumers are `module_path_index::parse_module_binding` (the module name and span, and the
+/// refusal) and the pool census's `census_heads::project_heads_reading` (the module node, the
+/// refusal, and the file-local intern strings and occurrence-allocator end it relabels into the
+/// pool's space). The parse's occurrence transport, its full intern index and its allocator are
+/// not read by either, so they are not retained: holding the whole parse result for every pool
+/// file for the life of the process was the +16% peak-RSS regression the #12656 bisect measured.
+pub struct HeadsReading {
+    /// RETAINED FOR THE PROCESS, and that is the obligated lifetime rather than a leak. Every
+    /// `MultiEntryIndex` whose pool contains this file projects this node (`pool_parse`), and a
+    /// run builds its indexes on demand, one per module-name set its phases ask for (measured on
+    /// #12765's floor: the shared index, a v1 attribution index and the `namespace_baseline`
+    /// [dag] closure, besides the duplicate that PR removed). When the first census projects the
+    /// node, nothing at this layer can know whether a later phase will build another index whose
+    /// pool contains the file: that set is decided by the run's phase routing, and consulting it
+    /// from the acquisition layer would invert the layers. Releasing after the first projection
+    /// would force a re-parse for the next index, which is ruled out. The frontier and its
+    /// dissolution are rostered in `gunbc.resolver_cost_frontier`.
+    pub module: Option<Rc<crate::v1_std_core::Node>>,
+    pub error: Option<Rc<crate::v1_std_core::ErrorNode>>,
+    /// The file-local intern strings, in local-id order (local id `k` is `local_strings[k]`).
+    pub local_strings: Rc<RtVec<String>>,
+    /// The file-local occurrence allocator's next id after the parse.
+    pub local_next: i64,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Heads parses per (spelling, bytes) acquisition key: the control that the heads reading is
+    /// parsed at most once per key.
+    pub(crate) static HEADS_PARSES: RefCell<HashMap<(String, usize, u64), usize>> =
+        RefCell::new(HashMap::new());
+}
+
+/// THE ONE HEADS READING of a file, computed once per (spelling, bytes).
+///
+/// It is parsed in a FILE-LOCAL space: an empty intern table and occurrence ordinals from zero.
+/// That makes it a pure function of its key, which is what lets two consumers share it:
+/// `module_path_index::parse_module_binding` reads it as-is, since it projects only the module
+/// name, its span and the refusal, none of which carry an id. The pool census reads it through
+/// `census_heads::project_heads_reading`, which maps it into the pool's threaded intern table
+/// and occurrence space. That projection is total, so the census needs no second parse.
+pub fn heads_reading_for(file: &str, content: &str) -> Rc<HeadsReading> {
+    let acquired = acquire(file, content);
+    if let Some(hit) = acquired.heads.borrow().clone() {
+        return hit;
+    }
+    #[cfg(test)]
+    {
+        let (len, hash) = content_fingerprint(content);
+        HEADS_PARSES.with(|p| {
+            *p.borrow_mut()
+                .entry((file.to_string(), len, hash))
+                .or_default() += 1
+        });
+    }
+    let mut indices = im::HashMap::new();
+    indices.insert(file.to_string(), acquired.newline_index.clone());
+    let heads_started = std::time::Instant::now();
+    let parsed = crate::v1_compiler_parse::parse_heads_with_table(
+        acquired.artifact.tokens.clone(),
+        Rc::new(indices),
+        crate::v1_std_core::empty_intern_table(),
+    );
+    attribute("pool_heads_parse", heads_started.elapsed());
+    let reading = Rc::new(HeadsReading {
+        module: parsed.result.module.clone(),
+        error: parsed.result.error.clone(),
+        local_strings: parsed.intern_table.strings.clone(),
+        local_next: parsed
+            .intern_table
+            .authored_token_ordinals
+            .allocator
+            .next_id,
+    });
+    *acquired.heads.borrow_mut() = Some(reading.clone());
+    reading
 }

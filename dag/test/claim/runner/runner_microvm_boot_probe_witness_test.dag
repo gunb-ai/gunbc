@@ -118,7 +118,7 @@ test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
 // InstanceStart nobody sends, so the step would report a hang rather than a boot.
 test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
   let c = firecracker_run_config_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program as String == "/fc/firecracker"
+  c.program.invocation as String == "/fc/firecracker"
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
 }
@@ -159,7 +159,7 @@ test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -
 // hatch DESIGN section 5 refuses. The red is a builder that drops --kill-after.
 test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program as String == "timeout"
+  c.program.invocation as String == "timeout"
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })

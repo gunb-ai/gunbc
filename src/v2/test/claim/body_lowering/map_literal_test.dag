@@ -1,0 +1,307 @@
+module v2.test.claim.body_lowering.map_literal
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string }
+import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
+import v2.std.algebra { length }
+import v2.std.text { String }
+import std.types { List }
+import v2.std.collection { list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A MAP LITERAL ELABORATES FROM ITS AUTHORED Map<K, V>, OR REFUSES LOCATED.
+//
+// The subject is the map arm of v2.compiler.resolve's one elaboration writer
+// (docs/plans/map-literal-introduction-design.md): lowering writes a headless string-keyed brace
+// with one MapLiteralEntriesEdge edge, and resolve elaborates it to the one introduction
+// v2.std.map_introduction lower_map_introduction builds, or refuses. The oracle is CONTENT EQUALITY
+// WITH THE HEADED SPELLING, `map_from_entries(entries: [MapIntroductionEntry { .. }, ..])`, resolved
+// through the ordinary call route.
+//
+// THE SOURCES ARE SUPPLIED AND THE ROUTE IS REAL (tokenize, parse, normalize with body lowering,
+// resolve, and infer for control 7). The providers stand in for std.types and std.algebra with
+// exactly the declarations the arm matches by identity -- the Map head, its carrier, the entry
+// record and the introduction -- because a fixture ingest carries only the modules it is given. The
+// real std.types is the inhabitance claim, and it is the native-route census on the PR, not this
+// module.
+data ml_types_source: String = "module std.types\n\nimport std.algebra { FinitelySupportedFunction }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n"
+
+data ml_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n\ntype FinitelySupportedFunction<K, V> {\n  size: Int\n}\n\ntype MapIntroductionEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n"
+
+// K = String is the KERNEL text binding (ruling, neat-boar-16 via gentle-koi-724): an unimported
+// String, not a declaration. It does not bind on the v2 route yet, so every claim below that
+// elaborates under Map<String, V> is an EXPECTED-RED row in gunbc.explicit_witness_admission, owned by
+// the deep-bee-18 lane; the name-key and call-argument controls use K = Int and hold today.
+data ml_headed_source: String = "module v2.test.ml_headed\n\nimport std.types { Map }\nimport std.algebra { MapIntroductionEntry, map_from_entries }\n\ndata ml_x: Map<String, Bool> = map_from_entries(entries: [MapIntroductionEntry { key: \"a\", value: true }, MapIntroductionEntry { key: \"b\", value: false }])\n"
+
+data ml_headless_source: String = "module v2.test.ml_headless\n\nimport std.types { Map }\n\ndata ml_x: Map<String, Bool> = { \"a\": true, \"b\": false }\n"
+
+// Distinct under the key law although they differ only in case.
+data ml_distinct_source: String = "module v2.test.ml_distinct\n\nimport std.types { Map }\n\ndata ml_d: Map<String, Bool> = { \"a\": true, \"A\": false }\n"
+
+data ml_duplicate_source: String = "module v2.test.ml_duplicate\n\nimport std.types { Map }\n\ndata ml_dup: Map<String, Bool> = { \"a\": true, \"b\": true, \"a\": false }\n"
+
+// The same key spelled two ways: the escape `\n` and a raw line feed. Equal by decoded text, so a
+// duplicate; a spelling comparison would admit both and let the second silently win.
+data ml_escape_duplicate_source: String = "module v2.test.ml_escape_duplicate\n\nimport std.types { Map }\n\ndata ml_esc: Map<String, Bool> = { \"a\\nb\": true, \"a\nb\": false }\n"
+
+data ml_key_kind_source: String = "module v2.test.ml_key_kind\n\nimport std.types { Map }\n\ndata ml_k: Map<Int, Bool> = { \"k\": true }\n"
+
+data ml_name_key_source: String = "module v2.test.ml_name_key\n\nimport std.types { Map }\n\ndata ml_n: Map<Int, Bool> = { k: true }\n"
+
+data ml_call_argument_source: String = "module v2.test.ml_call_argument\n\nimport std.types { Map }\n\nfn ml_take(m: Map<Int, Bool>) -> Bool { true }\n\nfn ml_call() -> Bool { ml_take(m: { \"a\": true }) }\n"
+
+// The discriminating specimen for the infer gap: a generic record and its introduction declared in
+// the data declaration's OWN module, so no cross-module declaration is read. It refuses exactly as
+// the map introduction does, which places the gap in grounding a generic record construct.
+data ml_samemod_source: String = "module v2.test.ml_samemod\n\nimport std.types { Map }\nimport std.algebra { FreeMonoid, FinitelySupportedFunction }\n\ntype LocalEntry<K, V> {\n  key: K\n  value: V\n}\n\nfn local_from_entries<K, V>(entries: FreeMonoid<LocalEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  FinitelySupportedFunction { size: 0 }\n}\n\ndata ml_x: Map<String, Int> = local_from_entries(entries: [LocalEntry { key: \"a\", value: 1 }])\n"
+
+data ml_value_mismatch_source: String = "module v2.test.ml_value_mismatch\n\nimport std.types { Map }\n\ndata ml_bad: Map<String, Bool> = { \"a\": 3 }\n"
+
+// An Int key where K = String: never a map entry, so never admitted.
+data ml_int_key_source: String = "module v2.test.ml_int_key\n\nimport std.types { Map }\n\ndata ml_i: Map<String, Bool> = { 1: true }\n"
+
+data ml_int_key_ingest: SourceRootIngest = [
+  ml_read(source: ml_types_source, id: ^ml_ik_types_read, unit: ^ml_ik_types_cu, path: "src/v2/test/fixture/map_literal/ik_types.dag"),
+  ml_read(source: ml_algebra_source, id: ^ml_ik_algebra_read, unit: ^ml_ik_algebra_cu, path: "src/v2/test/fixture/map_literal/ik_algebra.dag"),
+  ml_read(source: ml_int_key_source, id: ^ml_int_key_read, unit: ^ml_int_key_cu, path: "src/v2/test/fixture/map_literal/int_key.dag")
+]
+
+// Lowering's refusal is its own ingest: a module that fails body lowering fails the whole ingest.
+data ml_mixed_source: String = "module v2.test.ml_mixed\n\nimport std.types { Map }\n\ndata ml_m: Map<String, Bool> = { \"a\": true, b: false }\n"
+
+fn ml_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data ml_ingest: SourceRootIngest = [
+  ml_read(source: ml_types_source, id: ^ml_types_read, unit: ^ml_types_cu, path: "src/v2/test/fixture/map_literal/types.dag"),
+  ml_read(source: ml_algebra_source, id: ^ml_algebra_read, unit: ^ml_algebra_cu, path: "src/v2/test/fixture/map_literal/algebra.dag"),
+  ml_read(source: ml_headed_source, id: ^ml_headed_read, unit: ^ml_headed_cu, path: "src/v2/test/fixture/map_literal/headed.dag"),
+  ml_read(source: ml_headless_source, id: ^ml_headless_read, unit: ^ml_headless_cu, path: "src/v2/test/fixture/map_literal/headless.dag"),
+  ml_read(source: ml_distinct_source, id: ^ml_distinct_read, unit: ^ml_distinct_cu, path: "src/v2/test/fixture/map_literal/distinct.dag"),
+  ml_read(source: ml_duplicate_source, id: ^ml_duplicate_read, unit: ^ml_duplicate_cu, path: "src/v2/test/fixture/map_literal/duplicate.dag"),
+  ml_read(source: ml_escape_duplicate_source, id: ^ml_escape_duplicate_read, unit: ^ml_escape_duplicate_cu, path: "src/v2/test/fixture/map_literal/escape_duplicate.dag"),
+  ml_read(source: ml_key_kind_source, id: ^ml_key_kind_read, unit: ^ml_key_kind_cu, path: "src/v2/test/fixture/map_literal/key_kind.dag"),
+  ml_read(source: ml_name_key_source, id: ^ml_name_key_read, unit: ^ml_name_key_cu, path: "src/v2/test/fixture/map_literal/name_key.dag"),
+  ml_read(source: ml_call_argument_source, id: ^ml_call_argument_read, unit: ^ml_call_argument_cu, path: "src/v2/test/fixture/map_literal/call_argument.dag"),
+  ml_read(source: ml_samemod_source, id: ^ml_samemod_read, unit: ^ml_samemod_cu, path: "src/v2/test/fixture/map_literal/samemod.dag"),
+  ml_read(source: ml_value_mismatch_source, id: ^ml_value_mismatch_read, unit: ^ml_value_mismatch_cu, path: "src/v2/test/fixture/map_literal/value_mismatch.dag")
+]
+
+data ml_mixed_ingest: SourceRootIngest = [
+  ml_read(source: ml_mixed_source, id: ^ml_mixed_read, unit: ^ml_mixed_cu, path: "src/v2/test/fixture/map_literal/mixed.dag")
+]
+
+// THE FRONT END RUNS ONCE, NOT ONCE PER CLAIM. The fixture ingest and each subject's resolve are
+// nullary pure producers, served across witnesses from v2.workflow.floor_pure_producer_share
+// floor_cross_claim_pure_producers_warm (the rows beside #12740's anonymous_record producers); every
+// claim below only inspects a produced value (DESIGN section 3: a witness discriminates at one
+// interface, and the front end is not its subject).
+fn ml_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model())
+}
+
+fn ml_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match ml_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn ml_resolved_headed() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_headed") }
+fn ml_resolved_headless() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_headless") }
+fn ml_resolved_duplicate() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_duplicate") }
+fn ml_resolved_escape_duplicate() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_escape_duplicate") }
+fn ml_resolved_distinct() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_distinct") }
+fn ml_resolved_key_kind() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_key_kind") }
+fn ml_resolved_name_key() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_name_key") }
+fn ml_resolved_call_argument() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_call_argument") }
+fn ml_resolved_value_mismatch() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_value_mismatch") }
+fn ml_resolved_samemod() -> Outcome<ResolvedTree> { ml_resolve_subject(subject: "v2.test.ml_samemod") }
+
+fn ml_infer_verdict_headless() -> Bool { ml_infers(o: ml_resolved_headless()) }
+fn ml_infer_verdict_value_mismatch() -> Bool { ml_infers(o: ml_resolved_value_mismatch()) }
+fn ml_infer_verdict_samemod() -> Bool { ml_infers(o: ml_resolved_samemod()) }
+
+fn ml_int_key_verdict_refused() -> Bool {
+  match module_roots_from_source_root_ingest(ingest: ml_int_key_ingest, lm: dag_language_model()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: roots, diagnostics: _ } =>
+      match resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.ml_int_key") }, imports: Empty }
+      ).resolved {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+fn ml_mixed_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: ml_mixed_ingest, lm: dag_language_model())
+}
+
+// Every node under the root that is a call headed by the introduction, in tree order.
+fn ml_introductions(root: Node) -> List<Node> {
+  fold(node_subtree_nodes(root: root), init: Empty, f: fn(acc, n) {
+    match list_at_optional(xs: node_positional_child_targets(node: n), index: 0) {
+      Present { value: head } =>
+        match declaration_reference_path_optional(node: head) {
+          Present { value: path } => if path == map_introduction_head_path() { list_snoc_item(xs: acc, item: n) } else { acc }
+          Absent => acc
+        }
+      Absent => acc
+    }
+  })
+}
+
+fn ml_introduction_hashes(o: Outcome<ResolvedTree>) -> List<Hash> {
+  match o {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: t, diagnostics: _ } =>
+      fold(ml_introductions(root: t.root), init: Empty, f: fn(acc, n) { list_snoc_item(xs: acc, item: content_hash(n: n)) })
+  }
+}
+
+fn ml_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+fn ml_accepts(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Control 1: the headless literal elaborates to exactly the introduction the headed call spells --
+// one of it, equal by content.
+test fn ml_headless_literal_equals_the_headed_introduction_holds() -> Bool {
+  let headed = ml_introduction_hashes(o: ml_resolved_headed())
+  (length(xs: headed) == 1) && (headed == ml_introduction_hashes(o: ml_resolved_headless()))
+}
+
+// Control 2: a repeated key refuses at resolve, never last-wins.
+test fn ml_a_duplicate_key_refuses_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
+}
+
+// Control 2b: the key law compares DECODED text, so an escape and the scalar it stands for collide.
+test fn ml_an_escaped_and_a_raw_key_are_one_key_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_escape_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
+}
+
+// Control 3: distinct keys are accepted and elaborate.
+test fn ml_distinct_keys_are_accepted_holds() -> Bool {
+  length(xs: ml_introduction_hashes(o: ml_resolved_distinct())) == 1
+}
+
+// The key law itself, as a value: the FIRST repeat, with both occurrences. The mutation this
+// discriminates is a law that always answers Distinct -- the fold's last-wins absorbing the repeat --
+// under which this and control 2 go red together.
+test fn ml_the_key_law_names_both_occurrences_holds() -> Bool {
+  match map_introduction_duplicate_key(keys: ["a", "b", "a", "b"]) {
+    MapIntroductionKeyRepeated { first_index: f, second_index: s } => (f == 0) && (s == 2)
+    MapIntroductionKeysDistinct => false
+  }
+    && match map_introduction_duplicate_key(keys: ["a", "b"]) {
+      MapIntroductionKeysDistinct => true
+      MapIntroductionKeyRepeated { first_index: _, second_index: _ } => false
+    }
+}
+
+// Control 5: K is not the type a string literal denotes, so the key refuses where it is written.
+test fn ml_a_key_of_the_wrong_kind_refuses_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_key_kind(), reason: ^resolve_anonymous_map_key_kind_mismatch)
+}
+
+test fn ml_a_name_keyed_brace_under_a_map_refuses_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_name_key(), reason: ^resolve_anonymous_map_name_key)
+}
+
+// Control 8: the expectation does not leak into a call argument.
+test fn ml_a_call_argument_has_no_expected_type_holds() -> Bool {
+  ml_refuses_with(o: ml_resolved_call_argument(), reason: ^resolve_anonymous_map_no_expected_type)
+}
+
+// Control 7: resolve's choice is not proof. The Int value elaborates (resolve accepts it) and
+// infer then refuses it against V = Bool.
+test fn ml_infer_refuses_an_elaborated_value_mismatch_holds() -> Bool {
+  ml_accepts(o: ml_resolved_value_mismatch()) && (ml_infer_verdict_value_mismatch() == false)
+}
+
+// Control 7's positive half: a well-typed elaborated map infers. Measured with #12760 merged: this
+// is red for the HEADED spelling too (map_from_entries(entries: [MapIntroductionEntry { .. }]) under
+// Map<String, Bool> does not infer), so the gap is infer's, not the arm's; its row says so.
+test fn ml_an_elaborated_map_infers_holds() -> Bool {
+  ml_infer_verdict_headless()
+}
+
+// The same-module specimen infers (see ml_samemod_source).
+test fn ml_a_same_module_generic_entry_construct_infers_holds() -> Bool {
+  ml_infer_verdict_samemod()
+}
+
+fn ml_infers(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: t, diagnostics: _ } =>
+      match infer(tree: t) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// An Int key under Map<String, V> is refused somewhere on the route -- at lowering or at resolve --
+// and never elaborates. Were String collapsed onto Int, this is the claim that would go red.
+test fn ml_an_int_key_under_a_string_map_refuses_holds() -> Bool {
+  ml_int_key_verdict_refused()
+}
+
+// Lowering refuses a brace no key-kind choice could type, at the first item of the minority kind.
+test fn ml_a_mixed_key_brace_refuses_at_lowering_holds() -> Bool {
+  match ml_mixed_normalized() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^body_lowering_reason_brace_key_kind_mismatch
+  }
+}

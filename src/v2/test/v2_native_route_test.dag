@@ -1,5 +1,6 @@
 module v2.test.v2_native_route
 
+import std.types { List }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
@@ -67,14 +68,12 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import v2.std.collection { List }
 import std.algebra { Cons }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
 
@@ -130,7 +129,7 @@ fn refused_row(
 }
 
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal, chain: [] }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
@@ -946,20 +945,22 @@ test fn an_unknown_fatal_cause_beside_the_owned_ones_still_refuses_unowned() -> 
   ))
 }
 
-test fn an_unattributed_head_advisory_is_refused() -> Bool {
-  native_route_admission_refused_with(
-    admission: native_route_admission_with(live_pair: LivePairRequired, receipt: receipt_over(
-      universe: [test_identity(module: "v2.test.alpha", declaration: "passes")],
-      module_source_index: [],
-      population: [passed_row(module: "v2.test.alpha", declaration: "passes")],
-      file_refusals: [file_refusal_row(
-        path: ^some_path,
-        head: ^some_unowned_advisory,
-        fatal: ^parse_g0_tokens_remain
-      )]
-    )),
-    cause_name: "unattributed_head_advisories_present"
+// THE PREPARE-STAGE INFER CAUSE OF THE RUN AT main 55e78f40e9a IS OWNED. That run refused its own
+// admission on unattributed_exclusions_present with exactly six exclusions, every one a PREPARE
+// refusal whose fatal cause was infer_match_scrutinee_not_bool (all in
+// v2.test.claim.determinism_contract_test). Supplied member rows in that shape: the owned cause
+// lands on the compiler-frontier count, and the paired unowned row beside it still lands on the
+// unattributed count, so the new row did not turn the census into a catch-all.
+test fn the_infer_match_scrutinee_cause_is_owned_and_an_unowned_one_still_counts() -> Bool {
+  let census = native_route_census(
+    rows: [
+      refused_row(module: "v2.test.a", declaration: "one", stage: NativeTestStagePrepare, reason: ^infer_match_scrutinee_not_bool),
+      refused_row(module: "v2.test.b", declaration: "two", stage: NativeTestStagePrepare, reason: ^some_unowned_cause)
+    ],
+    expected_red: [],
+    route_gap: []
   )
+  census.excluded_compiler_frontier == 1 && census.excluded_unattributed == 1
 }
 
 // ── admission: context refusals are bound to their observation ─────────────────────────────
@@ -1387,7 +1388,7 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
 
 test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
   match native_lane_declared_module_name(
-    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport std.types { Bool }\nmodule not.the.header\n"
   ) {
     Present { value: declared } => declared == "v2.test.subject"
     Absent => false
@@ -1756,12 +1757,14 @@ fn pinned() -> NativeRouteLivePairStanding {
 }
 
 // Enrolled and holding: both controls refuse at the pinned stage with the pinned reason, and the
-// otherwise-green receipt is admitted. The production standing (the data row) is exercised by the
-// same receipt through `native_route_admission`, so a data row pinned to anything else reds here.
+// otherwise-green receipt is admitted under a supplied enrollment. The production standing (the
+// data row) is exercised by the same receipt through `native_route_admission`: since gunbc#12048
+// flipped it to LivePairRequired, the pinned refusals must NOT be admitted there, so a data row
+// set back to an enrollment reds here.
 test fn an_enrolled_live_pair_holds_only_at_its_pinned_refusal() -> Bool {
   let r = receipt_with_controls(false_control: pinned_chain(), true_control: pinned_chain())
   native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: pinned()))
-  && native_route_admitted(admission: native_route_admission(receipt: r))
+  && !native_route_admitted(admission: native_route_admission(receipt: r))
   && !native_route_admitted(admission: native_route_admission_with(receipt: r, live_pair: LivePairRequired))
 }
 

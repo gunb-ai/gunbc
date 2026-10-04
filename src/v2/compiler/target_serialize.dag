@@ -1,11 +1,13 @@
 module v2.compiler.target_serialize
 
+import std.types { List }
 import std.occurrence_identity {
   OccurrenceSynthetic
 }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
-  dag_value_expression_projection
+  dag_value_expression_projection,
+  dag_surface_edge_label,
 }
 import extdeps.communication.medium {
   Medium
@@ -27,7 +29,9 @@ import v2.std.compilers.target_model {
   target_value_expr_arrow_has_value_expression_body,
   target_value_expr_diagnostic,
   target_value_expression_projection_from_target,
-  target_value_expression_tokens_from_target
+  target_value_expression_tokens_from_target,
+  TypeExprKindAuthority,
+  TypeExprKindNotEmitted
 }
 import v2.compiler.wrap_decision {
   wrap_decision_gate
@@ -48,26 +52,28 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  diagnostics_fatal_reason
 }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
-  node_subtree_count,
-  well_formed
+  node_subtree_count
 }
 import v2.std.type_binder {
   type_param_names
 }
 import v2.std.node_query {
   find_named_child,
-  node_positional_child_targets
+  node_positional_child_targets,
+  find_labeled_child,
 }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
@@ -95,14 +101,16 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   type_expression_projection_from_target,
   lex_rules_literal,
-  bound_tokens_source_text,
+  bound_tokens_source_text_with_transforms,
   TargetText,
   text_atom,
   target_text_seq,
   target_text_empty,
   target_text_is_empty,
   render_target_text,
-  token_text_from_model,
+  token_text_from_decoded,
+  LexLiteralIndex,
+  lex_literal_index,
   target_text_nested,
   concrete_syntax_token_from_node,
   target_binding_spelling_lookup,
@@ -130,7 +138,6 @@ import v2.std.compilers.target_model {
   target_import_to_concrete_tokens
 }
 import v2.std.collection {
-  List,
   list_at_optional,
   map_get
 }
@@ -150,11 +157,7 @@ import v2.std.algebra {
   TailFound,
   fold_list,
   is_empty,
-  list_tail,
-  zip_eq
-}
-import v2.std.logic {
-  Bool
+  list_tail
 }
 import v2.std.text {
   String
@@ -201,7 +204,7 @@ fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<In
   )
 }
 type TokenSequenceItemKind
-  = TokenSequenceConcreteToken
+  = TokenSequenceConcreteToken { token: ConcreteSyntaxToken }
   | TokenSequenceNonterminal
   | TokenSequenceNestedBlock { unit: Symbol, tokens: List<Node> }
 
@@ -232,22 +235,24 @@ fn target_bundle_child_lookup_step(
     BundleChildDuplicate => acc
     BundleChildMissing =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildFound { value: e.target }
           } else {
             acc
           }
+        StructuralLabel { label: _ } => BundleChildInvalidEdge
         Positional => BundleChildInvalidEdge
       }
     BundleChildFound { value: _ } =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildDuplicate
           } else {
             acc
           }
+        StructuralLabel { label: _ } => BundleChildInvalidEdge
         Positional => BundleChildInvalidEdge
       }
   }
@@ -344,7 +349,7 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
     Accepted { value: row, diagnostics: d } =>
       Accepted { value: row, diagnostics: d }
     Rejected { diagnostics: r } =>
-      if r.head.reason == ^grammar_relation_row_backward_selection_ambiguous {
+      if diagnostics_fatal_reason(d: r) == ^grammar_relation_row_backward_selection_ambiguous {
         Rejected { diagnostics: r }
       } else {
         outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: emitted))
@@ -368,7 +373,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
           match acc {
             Accepted { value: _, diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -379,11 +384,12 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                       )
                     Rejected { diagnostics: _ } => acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
             Rejected { diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -392,6 +398,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                       Accepted { value: e.target, diagnostics: d }
                     Rejected { diagnostics: _ } => acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
           }
@@ -444,22 +451,24 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
             BundleChildDuplicate => acc
             BundleChildMissing =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildFound { value: e.target }
                   } else {
                     acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
             BundleChildFound { value: _ } =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildDuplicate
                   } else {
                     acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
           }
@@ -535,8 +544,8 @@ fn token_sequence_item_kind_flat(item: Node) -> Outcome<TokenSequenceItemKind> {
 
                   bind_outcome(
                     o: concrete_syntax_token_from_node(token: item),
-                    f: fn(_) {
-                      Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
+                    f: fn(decoded) {
+                      Accepted { value: TokenSequenceConcreteToken { token: decoded }, diagnostics: None }
                     }
                   )
                 Absent =>
@@ -560,31 +569,14 @@ fn token_sequence_item_kind_flat(item: Node) -> Outcome<TokenSequenceItemKind> {
   )
 }
 
-fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> {
-  fold(
-    serialize_source.children,
-    init: optional_absent(),
-    f: fn(acc, e) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          match e.label {
-            Named { name: n } =>
-              if n == ^grammar_relation_field_tokens { optional_present(value: e.target) } else { acc }
-            Positional => acc
-          }
-      }
-    }
-  )
-}
 
 // The fold-list's items in order, walked with an accumulator so the walk is a tail call: a long
 // token list (a nested block of a large program) is not a stack as deep as the list.
-fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<Node>> {
-  serialize_source_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
+fn grammar_tokens_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<Node>> {
+  grammar_tokens_fold_list_targets_into(remaining: remaining, node: node, acc: Empty)
 }
 
-fn serialize_source_fold_list_targets_into(remaining: Int, node: Node, acc: List<Node>) -> Outcome<List<Node>> {
+fn grammar_tokens_fold_list_targets_into(remaining: Int, node: Node, acc: List<Node>) -> Outcome<List<Node>> {
   if remaining <= 0 {
     outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   } else {
@@ -599,7 +591,7 @@ fn serialize_source_fold_list_targets_into(remaining: Int, node: Node, acc: List
               match conj_named_child(parent: node, edge_name: ^fold_list_node_tail) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: tail, diagnostics: _ } =>
-                  serialize_source_fold_list_targets_into(remaining: remaining - 1, node: tail, acc: list_snoc_item(xs: acc, item: head))
+                  grammar_tokens_fold_list_targets_into(remaining: remaining - 1, node: tail, acc: list_snoc_item(xs: acc, item: head))
               }
           }
         }
@@ -608,17 +600,6 @@ fn serialize_source_fold_list_targets_into(remaining: Int, node: Node, acc: List
   }
 }
 
-fn serialize_source_token_targets(serialize_source: Node) -> Outcome<List<Node>> {
-  match serialize_source_tokens_fold_child(serialize_source: serialize_source) {
-    Present { value: tokens_fold } =>
-      serialize_source_fold_list_targets(
-        remaining: node_subtree_count(n: tokens_fold),
-        node: tokens_fold
-      )
-    Absent =>
-      conj_positional_targets(parent: serialize_source)
-  }
-}
 
 fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
   bind_outcome(
@@ -629,7 +610,7 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     f: fn(maybe_head) {
       match maybe_head {
         Present { value: _ } =>
-          serialize_source_fold_list_targets(
+          grammar_tokens_fold_list_targets(
             remaining: node_subtree_count(n: tokens_node),
             node: tokens_node
           )
@@ -639,71 +620,15 @@ fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
     }
   )
 }
-fn grammar_serialize_source_matches_row(
-  serialize_source: Node,
-  row: Node
-) -> Outcome<Node> {
-  if well_formed(n: serialize_source) {
-    bind_outcome(
-      o: grammar_relation_row_tokens_root(row: row),
-      f: fn(tokens_root) {
-        bind_outcome(
-          o: serialize_source_token_targets(serialize_source: serialize_source),
-          f: fn(source_targets) {
-            bind_outcome(
-              o: grammar_tokens_node_targets(tokens_node: tokens_root),
-              f: fn(row_targets) {
-                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
-                  Accepted { value: serialize_source, diagnostics: None }
-                } else {
-                  outcome_rejected(
-                    translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
-                  )
-                }
-              }
-            )
-          }
-        )
-      }
-    )
-  } else {
-    outcome_rejected(
-      translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
-    )
-  }
-}
-fn grammar_inverse_source_validated(
-  target: TargetModel,
-  emitted: Node
-) -> Outcome<Node> {
-  bind_outcome(
-    o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
-    f: fn(rules) {
-      bind_outcome(
-        o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-        f: fn(row) {
-          bind_outcome(
-            o: target_bundle_child(target: target, edge_name: ^target_model_edge_serialize_source),
-            f: fn(serialize_source) {
-              grammar_serialize_source_matches_row(
-                serialize_source: serialize_source,
-                row: row
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
 fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
 ) -> Outcome<TargetText> {
-  bound_tokens_source_text(
+  bound_tokens_source_text_with_transforms(
     tokens: tokens,
     lex: target.lex,
-    binding_spellings: target.binding_spellings
+    binding_spellings: target.binding_spellings,
+    transforms: target.token_class_emit_transforms
   )
 }
 
@@ -855,6 +780,18 @@ fn target_serialize_relation_row_from_model_bounded(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
+  target_serialize_relation_row_with_lex_bounded(remaining, target, lex_literal_index(rules: target.lex), emitted)
+}
+
+// ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
+// same for every row of one serialization, so it is built once at the entry and carried down: a
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+fn target_serialize_relation_row_with_lex_bounded(
+  remaining: Int,
+  target: TargetModel,
+  lex: LexLiteralIndex,
+  emitted: Node
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -874,7 +811,7 @@ fn target_serialize_relation_row_from_model_bounded(
                 bind_outcome(
                   o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
-                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens)
+                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens)
                   }
                 )
               }
@@ -886,10 +823,32 @@ fn target_serialize_relation_row_from_model_bounded(
   }
 }
 
+// SERIALIZE A ROW THE CALLER ALREADY DERIVED. A target that derives its program's row
+// (v2.std.grammar derive_grammar_relation_row_for_lhs) holds the row the serializer would otherwise
+// re-select by reverse-parsing the same program against the same productions -- a third resolution of
+// one program for one demand (DESIGN §2). This entry reads the given row's tokens directly.
+fn target_serialize_derived_row_bounded(remaining: Int, target: TargetModel, row: Node) -> Outcome<TargetText> {
+  if remaining <= 0 {
+    outcome_rejected(translate_serialize_recursion_limit_exhausted_diagnostic(emitted: row))
+  } else {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        bind_outcome(
+          o: grammar_tokens_node_targets(tokens_node: tokens_root),
+          f: fn(tokens) {
+            serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens)
+          }
+        )
+      }
+    )
+  }
+}
+
 // THE ROW'S TOKEN ITEMS IN ORDER, as one TargetText. A nested block renders its own items through
 // this same fold and is wrapped whole in one nest, spelled by the target (binding_spellings), so a
 // block's contents are indented exactly once and can never be left open.
-fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, tokens: List<Node>) -> Outcome<TargetText> {
+fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, lex: LexLiteralIndex, tokens: List<Node>) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
     empty: Accepted { value: target_text_empty, diagnostics: None },
@@ -897,7 +856,7 @@ fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, to
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_item_to_source_bounded(remaining, token_node, target) {
+          match token_item_to_source_bounded(remaining, token_node, target, lex) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
                 value: target_text_seq(acc: partial, next: source),
@@ -914,13 +873,14 @@ fn serialize_relation_row_tokens_bounded(remaining: Int, target: TargetModel, to
 fn serialize_relation_row_nested_bounded(
   remaining: Int,
   target: TargetModel,
+  lex: LexLiteralIndex,
   unit: Symbol,
   tokens: List<Node>
 ) -> Outcome<TargetText> {
   match map_get(target.binding_spellings, unit) {
     Accepted { value: Present { value: unit_spelling }, diagnostics: _ } =>
       bind_outcome(
-        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, tokens: tokens),
+        o: serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens),
         f: fn(body) { outcome_accepted(value: target_text_nested(unit: unit_spelling, body: body)) }
       )
     Accepted { value: Absent, diagnostics: _ } =>
@@ -954,18 +914,19 @@ fn node_atom_identity(node: Node) -> Outcome<Symbol> {
 fn token_item_to_source_bounded(
   remaining: Int,
   item: Node,
-  target: TargetModel
+  target: TargetModel,
+  lex: LexLiteralIndex
 ) -> Outcome<TargetText> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
     f: fn(item_kind) {
       match item_kind {
-        TokenSequenceConcreteToken =>
-          token_text_from_model(target: target, token: item)
+        TokenSequenceConcreteToken { token: decoded } =>
+          token_text_from_decoded(target: target, lex: lex, decoded: decoded)
         TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
-          serialize_relation_row_nested_bounded(remaining - 1, target, unit, inner)
+          serialize_relation_row_nested_bounded(remaining - 1, target, lex, unit, inner)
         TokenSequenceNonterminal =>
-          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
+          target_serialize_relation_row_with_lex_bounded(remaining - 1, target, lex, item)
       }
     }
   )
@@ -1019,12 +980,7 @@ fn target_serialize_source_from_model_bounded(
           }
         )
       TypeExprKindNotEmitted =>
-        bind_outcome(
-          o: grammar_inverse_source_validated(target: target, emitted: emitted),
-          f: fn(_) {
-            target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
-          }
-        )
+        target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
       TypeExprKindAuthorityInvalid =>
         outcome_rejected(
           translate_type_expr_kind_authority_invalid_diagnostic(node: emitted)
@@ -1047,6 +1003,46 @@ fn target_serialize_source_from_model(
       )
     }
   )
+}
+
+// THE ROW A PRODUCER ALREADY SELECTED IS SERIALIZED, NOT SELECTED AGAIN. A fold that derives the
+// relation row for its emitted node from the production catalog (v2.extdeps.languages.bash_command_fold
+// bash_fold_relation_row_witness) and then builds its target model FROM that row holds the row the
+// generic entry above would re-select from the same rules. This entry keeps what the generic path
+// owes a caller -- the same recursion budget, the same refusal when it is exhausted, and nonterminal
+// items selected through the generic path -- and drops only that second selection of a row the
+// caller established. The caller supplies the rules' subtree count
+// (translate_serialize_measure's rules budget) because it built the rules node and can count it
+// without walking a constant catalog once per leaf.
+fn target_serialize_source_from_selected_row(
+  target: TargetModel,
+  emitted: Node,
+  row: Node,
+  rules_budget: Int
+) -> Outcome<Medium<String>> {
+  let measure = node_subtree_count(n: emitted) + rules_budget + 1
+  if measure - 1 <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        bind_outcome(
+          o: grammar_tokens_node_targets(tokens_node: tokens_root),
+          f: fn(tokens) {
+            bind_outcome(
+              o: serialize_relation_row_tokens_bounded(remaining: measure - 1, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens),
+              f: fn(text) {
+                target_source_medium(text: render_target_text(t: text), target: target)
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
@@ -1208,13 +1204,15 @@ fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<Targe
 
 fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
   match edge.label {
-    Named { name: label } =>
+    Authored { name: label } =>
       bind_outcome(
         o: target_binding_spelling_lookup(target: target, binding: label),
         f: fn(spelling) {
           outcome_accepted(text_atom(lexeme: spelling))
         }
       )
+    StructuralLabel { label: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
     Positional =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
   }
@@ -2000,7 +1998,7 @@ fn translate_apply_use_site_ownership_to_type_shell(
 fn translate_outcome_is_signature_realization_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
-  diagnostics.head.reason == ^target_function_signature_realization_lookup_miss
+  diagnostics_fatal_reason(d: diagnostics) == ^target_function_signature_realization_lookup_miss
 }
 
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
@@ -2146,7 +2144,7 @@ fn serialize_type_expr_boundary_bounded(
 }
 
 fn is_dag_import_carrier(emitted: Node) -> Bool {
-  match find_named_child(root: emitted, name: ^dag_surface_import_decl) {
+  match find_labeled_child(root: emitted, label: dag_surface_edge_label(edge: ^dag_surface_import_decl)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

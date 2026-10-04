@@ -2,7 +2,7 @@ module gunbc.superseded_run_starvation_census
 
 import std.types { Bool, Int, String, Timestamp, NonEmptyStr }
 import std.measure { Second, second, seconds_per_day }
-import std.algebra { trim }
+import std.algebra { Cons, Empty, trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs {
   github.WorkflowRuns,
@@ -426,7 +426,11 @@ fn group_hold_after_jobs_seconds(last_job_completed_at: Timestamp?, dead_updated
           timestamp_diff_seconds(end: dead_updated_at, start: completed_at)
         Absent => DurationInsufficientData
       }
-    _ => DurationInsufficientData
+    Queued => DurationInsufficientData
+    InProgress => DurationInsufficientData
+    Waiting => DurationInsufficientData
+    Requested => DurationInsufficientData
+    Pending => DurationInsufficientData
   }
 }
 

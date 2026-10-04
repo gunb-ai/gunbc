@@ -27,7 +27,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -96,15 +95,19 @@ fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
 fn fn_body_seam_tree_has_transform(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
-    _ =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          fn_body_seam_tree_has_transform(root: e.target)
-        }
-      })
+    ComputationNode { behavior: _ } => fn_body_seam_tree_has_transform_children(root: root)
+    TypeNode { connective: _ } => fn_body_seam_tree_has_transform_children(root: root)
   }
+}
+
+fn fn_body_seam_tree_has_transform_children(root: Node) -> Bool {
+  fold(root.children, init: false, f: fn(found, e) {
+    if found {
+      true
+    } else {
+      fn_body_seam_tree_has_transform(root: e.target)
+    }
+  })
 }
 
 fn wave1_gate1_a1_fn_body_seam_shell_lowers_identity_holds() -> Bool {
@@ -159,7 +162,8 @@ fn wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds() ->
             Accepted { value: body, diagnostics: _ } =>
               match body.kind {
                 ComputationNode { behavior: Transform } => true
-                _ => false
+                TypeNode { connective: _ } => false
+                ComputationNode { behavior: _ } => false
               }
             Rejected { diagnostics: _ } => false
           }

@@ -1,7 +1,7 @@
 module v2.compiler.self_host.closure_emission
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
   JsonValue,
@@ -13,12 +13,12 @@ import extdeps.languages.json.emit {
 }
 
 import v2.compiler.name_resolve {
-  ResolutionContext,
-  resolve_walk_with_admission_context_policy,
+  resolution_context_of_validated,
+  resolve_walk_in_context,
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalize { normalize_census, normalize_scoped }
 import v2.compiler.normalized_tree {
   CensusTree,
   NormalizedTree,
@@ -27,7 +27,7 @@ import v2.compiler.normalized_tree {
 }
 import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
-import v2.compiler.program_partition { emit_for_target }
+import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure {
   ReferenceClosureMember,
   ReferenceClosureNeighboursRead,
@@ -37,7 +37,7 @@ import v2.compiler.reference_closure {
   reference_closure_neighbours,
   reference_derived_closure
 }
-import v2.compiler.resolve { ResolveWalkAccepted, ResolveWalkRefused }
+import v2.compiler.resolve { ResolvedTree, resolved_tree_outcome }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -68,8 +68,7 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -120,9 +119,16 @@ type ClosureIngestFile {
   source_root: SourceRootRef
 }
 
+// `alloc` is the ingest's allocator mark after the last file it parsed. Every member is normalized
+// from it (closure_member_for_fold), so no projected occurrence a member's lowering allocates can
+// reuse an authored id of ANY file in the ingest -- the ingest merges its span indexes, and a reused
+// id would resolve to another file's location. Members are normalized independently, so their
+// projected ids may repeat across members; each member states their cause in its own tree's scope,
+// and a projected id carries no span to collide on.
 type ClosureIngest {
   files: FreeMonoid<ClosureIngestFile>
   index: SourceRootIndex
+  alloc: OccurrenceIdAllocator
 }
 
 // ONE FILE THE CENSUS COULD NOT READ, carried whole: its path and its located chain. The census
@@ -224,7 +230,8 @@ fn closure_ingest_step(
                     census: census,
                     source_root: read.source_root
                   }),
-                  index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root)
+                  index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root),
+                  alloc: artifact.alloc
                 })
               }
             }
@@ -255,7 +262,7 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus 
         state: fold_list(
           xs: ingest,
           empty: ClosureIngestState {
-            ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
+            ingest: ClosureIngest { files: Empty, index: source_root_index_empty(), alloc: occurrence_id_allocator_initial() },
             refusals: Empty,
             alloc: occurrence_id_allocator_initial(),
             spans: span_index_empty()
@@ -326,22 +333,35 @@ fn closure_resolve_member(
   symbol_index: SymbolIndex,
   index: SourceRootIndex,
   active_roots: FreeMonoid<SourceRootRef>
-) -> Outcome<Node> {
+) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
     f: fn(validated) {
-      match resolve_walk_with_admission_context_policy(
-        context: outcome_accepted(value: ResolutionContext { lm: lm, roots: validated, symbol_index: symbol_index }),
-        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty },
-        index: index,
-        active_roots: active_roots,
-        policy: default_name_resolution_policy()
-      ) {
-        ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
-        ResolveWalkAccepted { value: resolved, diagnostics: _ } => outcome_accepted(value: resolved)
-      }
+      resolved_tree_outcome(w: resolve_walk_in_context(
+        context: outcome_accepted(value: resolution_context_of_validated(
+          lm: lm,
+          roots: validated,
+          symbol_index: symbol_index,
+          index: index,
+          active_roots: active_roots,
+          policy: default_name_resolution_policy()
+        )),
+        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [])
     }
   )
+}
+
+// A MEMBER NORMALIZED FROM THE INGEST'S FINAL ALLOCATOR (see ClosureIngest `alloc`), its projected
+// occurrences scoped by the member tree's own structural digest.
+fn closure_member_normalized(file: ClosureIngestFile, ingested: ClosureIngest) -> Outcome<NormalizedTree> {
+  match normalize_scoped(
+    parse_tree: file.parse_tree,
+    allocator: scoped_occurrence_allocator(alloc: ingested.alloc, scope: content_hash(n: file.parse_tree))
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
+  }
 }
 
 fn closure_member_for_fold(
@@ -359,7 +379,7 @@ fn closure_member_for_fold(
     ),
     f: fn(file) {
       bind_outcome(
-        o: normalize(parse_tree: file.parse_tree),
+        o: closure_member_normalized(file: file, ingested: ingested),
         f: fn(tree) {
           bind_outcome(
             o: closure_resolve_member(
@@ -372,7 +392,7 @@ fn closure_member_for_fold(
             ),
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
-                resolved: resolved,
+                resolved: resolved.root,
                 import_targets: fold_list(xs: tree.import_bindings, empty: Empty, cons: fn(acc, row) {
                   list_snoc_item(xs: acc, item: row.target)
                 }),
@@ -430,7 +450,7 @@ fn closure_member_emission(
     ),
     f: fn(resolved) {
       match reference_closure_neighbours(
-        member: ReferenceClosureMember { resolved: resolved, import_targets: visit.member.import_targets, payload: true },
+        member: ReferenceClosureMember { resolved: resolved.root, import_targets: visit.member.import_targets, payload: true },
         roster: roster
       ) {
         ReferenceClosureTargetOwnerless { target: _, at: at } =>
@@ -440,18 +460,19 @@ fn closure_member_emission(
             bind_outcome(
               o: infer_and_discharge(tree: resolved),
               f: fn(inferred) {
-                emit_for_target(
+                emit_for_target_with_declarations(
                   program: inferred,
                   segment: program_segment_whole_program(),
                   target: target,
-                  boundary: partition_boundary_fail_closed()
+                  boundary: partition_boundary_fail_closed(),
+                  kinds: visit.member.payload.type_declaration_kinds
                 )
               }
             )
           } else {
             outcome_rejected(d: closure_emission_diagnostic(
               reason: ^closure_emission_member_reaches_outside_closure,
-              at: resolved
+              at: resolved.root
             ))
           }
       }

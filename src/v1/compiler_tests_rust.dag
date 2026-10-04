@@ -558,6 +558,52 @@ fn ct_nested_refinement_cast_fixture_closure_discrimination_test() -> String {
     "    }\n\n")
 }
 
+fn ct_native_bool_variant_fixture_closure_discrimination_test() -> String {
+  concat(
+    "    /// THE ARMS OF A NATIVELY REALIZED COPRODUCT, JUDGED BY RUSTC, AND THE IDENTITY CONTROL BESIDE IT.\n",
+    "    ///\n",
+    "    /// The subject is `v1.compiler.emit_rust` `rust_native_variant_spelling`: an arm of a\n",
+    "    /// coproduct that realizes natively (std.types Bool over Rust `bool`) is spelled as the\n",
+    "    /// carrier value its declaration-keyed row names, in value, pattern and nested-pattern\n",
+    "    /// position. The first pair's control is that fixture and must COMPILE; before the rows it\n",
+    "    /// emitted `Bool::True` against a `bool` and rustc refused it. The second pair's control is a\n",
+    "    /// module-local coproduct whose arms are spelled True/False, which has no row and must keep its own enum -- the\n",
+    "    /// evidence that the rows are keyed on identity rather than on the spelling. Both reds are\n",
+    "    /// the route's own adjudicated red.\n",
+    "    ///\n",
+    "    /// #[ignore] AND WHY, on the same terms as the pairs beside it: each pair spawns cargo and\n",
+    "    /// compiles two emitted crates. It is RUNNABLE ON DEMAND -- `cargo test --release -p\n",
+    "    /// v1-compiler --lib native_bool_variant_fixture_closure_discrimination -- --ignored`. No CI\n",
+    "    /// path invokes it (gunbc.rung_drop rust_unit_tests_off_the_merge_path); the emitted-bytes\n",
+    "    /// half that does run on the floor is test.claim.native_variant_realization_witness_test.\n",
+    "    #[test]\n",
+    "    #[ignore]\n",
+    "    fn native_bool_variant_fixture_closure_discrimination() {\n",
+    "        let probe_root = crate::cli_run::local_emit_compile_probe_root().unwrap();\n",
+    "        for (label, pair) in [\n",
+    "            (\"native-bool-variant\", crate::cli_run::run_native_bool_variant_discrimination(&probe_root)),\n",
+    "            (\"local-true-false-coproduct\", crate::cli_run::run_local_true_false_coproduct_discrimination(&probe_root)),\n",
+    "        ] {\n",
+    "            for line in crate::cli_run::fixture_discrimination_report(&pair) {\n",
+    "                eprintln!(\"{} {}\", label, line);\n",
+    "            }\n",
+    "            assert!(\n",
+    "                crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
+    "                \"{}: the red arm never reached a rustc verdict: {}\",\n",
+    "                label,\n",
+    "                crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "            );\n",
+    "            assert!(\n",
+    "                crate::cli_run::fixture_discrimination_passed(&pair),\n",
+    "                \"{}: the control must COMPILE and the route red must still be refused by rustc in its own module; control={} red={}\",\n",
+    "                label,\n",
+    "                crate::cli_run::fixture_closure_summary(&pair.green),\n",
+    "                crate::cli_run::fixture_closure_summary(&pair.red)\n",
+    "            );\n",
+    "        }\n",
+    "    }\n\n")
+}
+
 fn ct_phantom_marker_identity_fixture_closure_discrimination_test() -> String {
   concat(
     "    /// THE PHANTOM-MARKER POSITION PAIR, JUDGED BY RUSTC, THROUGH THE FIXTURE-CLOSURE ROUTE.\n",
@@ -774,19 +820,13 @@ fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
     "    /// `v1.compiler.emit_rust` `emit_shell_return`.\n",
     "    ///\n",
     "    /// `gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`: the\n",
-    "    /// projection wraps a shell operation's value in `Ok(..)` only when the declared output carries\n",
-    "    /// MORE THAN ONE field, while the same declaration signs the method `Result<.., Box<dyn Error>>`.\n",
-    "    /// A single-field output answers its channel bare, so the emitted body violates its own emitted\n",
-    "    /// type -- rustc E0308 over a source gunbc accepts with zero blocking diagnostics.\n",
+    "    /// projection used to wrap a shell operation's value in `Ok(..)` only when the declared output\n",
+    "    /// carried MORE THAN ONE field, while the same declaration signs the method\n",
+    "    /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.\n",
     "    ///\n",
-    "    /// THE RED ARM IS A KNOWN HOLE, NOT A WALL WORKING, and may not be cited as coverage of\n",
-    "    /// anything. It is that row's specimen committed as a runnable file. When the class climbs this\n",
-    "    /// arm flips to compiling and is KEPT as the regression control on the direction it established\n",
-    "    /// (DESIGN 4b(4)); the expectation below changes then, not the fixtures.\n",
-    "    ///\n",
-    "    /// BOTH ARMS ARE THIS PAIR'S OWN, unlike the three emitter-arm pairs beside it, and they differ\n",
-    "    /// in ONE authored thing: how many fields the output block declares. Borrowing the route's red\n",
-    "    /// would measure nothing about the arity, which is the whole subject.\n",
+    "    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the\n",
+    "    /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the\n",
+    "    /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.\n",
     "    ///\n",
     "    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and\n",
     "    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on\n",
@@ -803,16 +843,11 @@ fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
     "            eprintln!(\"shell-projection-arity {}\", line);\n",
     "        }\n",
     "        assert!(\n",
-    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
-    "            \"the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}\",\n",
-    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
-    "        );\n",
-    "        assert!(\n",
-    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
-    "            \"the two-field control must COMPILE and the one-field arm must still be refused by rustc in its own emitted module with the claimed E0308; a green red arm means the class climbed and this pair's expectation is what changes. control={} red={} attribution={:?} diagnostic={:?}\",\n",
+    "            crate::cli_run::fixture_closure_compiled(&pair.green)\n",
+    "                && crate::cli_run::fixture_closure_compiled(&pair.red),\n",
+    "            \"the return convention is derived once for every arity, so the two-field control AND the one-field arm must both COMPILE; a refused arm means the arity fork returned. control={} one-field={} diagnostic={:?}\",\n",
     "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
     "            crate::cli_run::fixture_closure_summary(&pair.red),\n",
-    "            crate::cli_run::fixture_closure_attributed_line(&pair.red),\n",
     "            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)\n",
     "        );\n",
     "    }\n\n")
@@ -939,6 +974,44 @@ fn ct_function_value_adapter_fixture_closure_discrimination_test() -> String {
     "            crate::cli_run::fixture_closure_summary(&pair.red),\n",
     "            crate::cli_run::fixture_closure_attributed_line(&pair.red)\n",
     "        );\n",
+    "    }\n\n")
+}
+
+fn ct_generic_optional_over_a_type_application_keeps_the_optional_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn generic_optional_over_a_type_application_keeps_the_optional() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let semiring = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"probe_semiring.dag\".to_string(),\n",
+    "                    content: \"module probe.semiring\\ntype Ring<M> { m: M }\\ntype Mag { v: Int }\\ntype NatLike = Ring<Mag>\\n\".to_string(),\n",
+    "                });\n",
+    "                let holder = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"probe_holder.dag\".to_string(),\n",
+    "                    content: \"module probe.holder\\nimport probe.semiring { NatLike }\\ntype Opt<L> { last: L? }\\ntype Req<L> { v: L }\\nfn opt_ok(h: Opt<NatLike>) -> Bool {\\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\\n}\\nfn opt_int(h: Opt<Int>) -> Bool {\\n  match h { Opt { last: l } => match l { Present { value: _ } => true, Absent => false } }\\n}\\nfn req_bad(h: Req<NatLike>) -> Bool {\\n  match h { Req { v: l } => match l { Present { value: _ } => true, Absent => false } }\\n}\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![semiring, holder]), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "                let variant_not_found: Vec<std::rc::Rc<crate::std_types::SourceSpan>> = result.diagnostics.iter()\n",
+    "                    .filter(|e| matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::VariantNotFound { .. }))\n",
+    "                    .map(|e| crate::v1_std_core::diagnostic_to_span(e.diagnostic.clone()))\n",
+    "                    .collect();\n",
+    "                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "                assert_eq!(\n",
+    "                    variant_not_found.len(), 2,\n",
+    "                    \"exactly the two arms of req_bad (a NON-optional field) must refuse; opt_ok binds l at NatLike? and opt_int at Int?, so Present/Absent are its variants. Four refusals means substitution dropped the slot's ? for the type-application argument; diagnostics: {:?}\",\n",
+    "                    rendered\n",
+    "                );\n",
+    "                assert!(\n",
+    "                    variant_not_found.iter().all(|s| s.file == \"probe_holder.dag\"),\n",
+    "                    \"a refused variant is located at the pattern that names it, never at the declaration of the scrutinee's type argument (probe_semiring.dag); spans: {:?}\",\n",
+    "                    variant_not_found.iter().map(|s| (s.file.clone(), s.start)).collect::<Vec<_>>()\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"generic_optional_over_a_type_application_keeps_the_optional panicked\");\n",
     "    }\n\n")
 }
 
@@ -1412,6 +1485,7 @@ fn ct_resource_item_is_not_a_type_item_test() -> String {
     "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
     "            properties: std::rc::Rc::new(props),\n",
     "            module_item_kind: kind, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "            declaration: None,\n",
     "            ..(*shaped_type_node(name, Vec::new())).clone()\n",
     "        })\n",
     "    }\n\n",
@@ -1618,6 +1692,79 @@ fn ct_kernel_identity_single_authority_test() -> String {
     "\n")
 }
 
+// Cause 1b of the type-reference identity census: a declaration field's reference carries resolve's
+// binding. The Rust it renders says what each row discriminates.
+fn ct_declaration_field_reference_identity_test() -> String {
+  concat(
+    "    // CAUSE 1b: A DECLARATION FIELD'S TYPE REFERENCE CARRIES THE DECLARATION RESOLVE BOUND IT TO.\n",
+    "    // v1.compiler.infer_resolve resolve_item_types resolved each field's authored reference and kept\n",
+    "    // only its properties, so the typed tree's field reference named no declaration.\n",
+    "    // field_inferred_with_declaration records resolve's binding on Node.declaration. The rows run\n",
+    "    // the REAL route, parse through resolve through infer, via the census entry. Each row reads two\n",
+    "    // columns: decl_identity (the production reading, which must stay UNCHANGED while\n",
+    "    // Node.declaration is in shadow) and recorded_declaration (the shadow slot resolve wrote).\n",
+    "    // THE RED is the first row: without the writer recorded_declaration reads none. The control keeps\n",
+    "    // a kernel spelling identified by the kernel, so a repair that bound kernel fields to a mint\n",
+    "    // (measured once, through the inferred slot: every String/Int field turned Unidentified) fails it.\n",
+    "    #[test]\n",
+    "    fn declaration_field_reference_names_its_declaration() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let sources = vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/a.dag\".to_string(), content: \"module fid.a\\n\\ntype Leaf {\\n  count: Int\\n}\\n\\ntype Tree {\\n  kids: List<Tree>\\n}\\n\\nfn tree_size(t: Tree) -> Int {\\n  1\\n}\\n\\ntype Box<T> {\\n  held: T\\n}\\n\\nfn rebox<T>(b: Box<T>) -> Box<T> {\\n  b\\n}\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/field_identity/b.dag\".to_string(), content: \"module fid.b\\n\\nimport fid.a { Leaf }\\n\\ntype Holder {\\n  leaf: Leaf\\n}\\n\".to_string() }),\n",
+    "        ];\n",
+    "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources.into()));\n",
+    "        assert!(!receipt.starts_with(\"REFUSED\"), \"the census must compile the fixture: \{receipt}\");\n",
+    "        let identity_at = |enclosing: &str, position: &str, authored: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == authored)\n",
+    "                .map(|c| format!(\"\{}|\{}\", c[8], c[12])).collect()\n",
+    "        };\n",
+    "        let decl_identity = |enclosing: &str, authored: &str| identity_at(enclosing, \"declaration_field\", authored);\n",
+    "        // (1) THE RED: a field naming another module's record.\n",
+    "        assert_eq!(decl_identity(\"Holder\", \"Leaf\"), vec![\"Unidentified:SpanDeclaresNothing/resolved:none|Declaration:fid.a::Leaf\".to_string()], \"\{receipt}\");\n",
+    "        // (2) The control: a kernel spelling is identified by the kernel, not bound to a mint.\n",
+    "        assert_eq!(decl_identity(\"Leaf\", \"Int\"), vec![\"Kernel:Int|none\".to_string()], \"\{receipt}\");\n",
+    "        // (3) CAUSE 1a, THE RED: a signature reference to a RECURSIVE type. Resolve leaves it in place\n",
+    "        // rather than expanding it (is_recursive_type_for), and now records its identity there. Only the\n",
+    "        // shadow column is asserted: the production reading of this position is not this row's subject.\n",
+    "        let tree = identity_at(\"tree_size\", \"fn_signature_param\", \"Tree\");\n",
+    "        assert!(tree.len() == 1 && tree[0].ends_with(\"|Declaration:fid.a::Tree\"), \"\{receipt}\");\n",
+    "        // (4) CAUSE 3, THE RED: a reference to a type parameter names its BINDER, (owner, TypeParameter).\n",
+    "        // The two binders are spelled T, and the owner is the nearest header binding the name, so Box's\n",
+    "        // field T and rebox's T inside Box<T> are DIFFERENT identities. Keying by spelling would make them one.\n",
+    "        let box_t = identity_at(\"Box\", \"declaration_field\", \"T\");\n",
+    "        let rebox_t = identity_at(\"rebox\", \"fn_signature_param/type_arg\", \"T\");\n",
+    "        assert!(box_t.len() == 1 && box_t[0].ends_with(\"|Declaration:fid.a::Box::<T>\"), \"\{receipt}\");\n",
+    "        assert!(rebox_t.len() == 1 && rebox_t[0].ends_with(\"|Declaration:fid.a::rebox::<T>\"), \"\{receipt}\");\n",
+    "    }\n\n"
+  )
+}
+
+// Cause 3's refusal: one header may bind a type-parameter name once, because a binder's identity is
+// (owner, name). The Rust it renders says what the row discriminates.
+fn ct_duplicate_type_parameter_refuses_test() -> String {
+  concat(
+    "    // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal\n",
+    "    // predates this row. Its message once blamed a value parameter and called a type a fn, so the\n",
+    "    // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header\n",
+    "    // binds two distinct names and must not produce that diagnostic.\n",
+    "    #[test]\n",
+    "    fn duplicate_type_parameter_in_one_header_refuses() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let messages = |content: &str| -> Vec<String> {\n",
+    "            let sources = vec![std::rc::Rc::new(SourceFile { path: \"fixtures/dup_binder/a.dag\".to_string(), content: content.to_string() })];\n",
+    "            let result = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(sources.into()));\n",
+    "            result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect()\n",
+    "        };\n",
+    "        let red = messages(\"module dup.a\\n\\ntype Pair<T, T> {\\n  left: T\\n}\\n\");\n",
+    "        assert!(red.iter().any(|m| m.contains(\"the name 'T' is bound twice in the header of 'Pair'\")), \"\{red:?}\");\n",
+    "        let control = messages(\"module dup.b\\n\\ntype Pair<T, U> {\\n  left: T\\n  right: U\\n}\\n\");\n",
+    "        assert!(!control.iter().any(|m| m.contains(\"is bound twice in the header\")), \"\{control:?}\");\n",
+    "    }\n\n"
+  )
+}
+
 // CARRIER-KEY-1 split witness; the Rust it renders says what each row discriminates.
 fn ct_type_reference_identity_split_test() -> String {
   concat(
@@ -1734,7 +1881,10 @@ fn ct_coercion_tests() -> String {
     "    // =========================================================================\n\n",
     test_fns |> join(separator: "\n"),
     ct_rust_btree_set_ord_eligibility_test(),
+    ct_unresolved_variant_pattern_refuses_test(),
     ct_diagnostics_carrier_grounding_test(),
+    ct_std_nat_realization_agreement_test(),
+    ct_std_nat_operators_refuse_overflow_test(),
     ct_render_rust_applied_type_qualified_base_test(),
     ct_measure_unit_variant_exact_one_test(),
     ct_renderer_hop_identity_keying_test(),
@@ -1742,6 +1892,8 @@ fn ct_coercion_tests() -> String {
     ct_witness_carrier_declines_non_witness_expected_type_test(),
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
+    ct_declaration_field_reference_identity_test(),
+    ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }
 
@@ -2048,6 +2200,7 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "                has_non_tail_self_call: false,\n",
     "                match_pattern: None,\n",
     "                module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "                declaration: None,\n",
     "                expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),\n",
     "            })\n",
     "        }\n",
@@ -2081,9 +2234,9 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "            \"the grounded numeric declaration must realize as the host numeric\"\n",
     "        );\n",
     "        assert_eq!(\n",
-    "            base(\"Nat\", \"src/v2/std/nat.dag\"),\n",
+    "            base(\"Nat\", \"dag/test/claim/user_declared_peano.dag\"),\n",
     "            \"Nat\",\n",
-    "            \"the Peano declaration of the same spelling must NOT realize as a machine integer\"\n",
+    "            \"a user-declared type of the same spelling must NOT realize as a machine integer\"\n",
     "        );\n",
     "        // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply\n",
     "        // stopped consulting identity and echoed the authored name, which is half of each pair.\n",
@@ -2104,6 +2257,60 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "        );\n",
     "    }\n",
     "\n")
+}
+
+// ONE PROGRAM OVER std.nat Nat, THE EMITTED HALF (operator ruling A, 2026-09-30, condition 3). The
+// functions called here are std.nat's own, as the seed EMITTER rendered them into the stage0 mirror
+// this test binary links: the eliminator's constructor match under a tail call, the divisor match
+// and successor rebuild in division, and the difference crossing back into the naturals. The
+// INTERPRETED half is test.claim.std_nat_realization_agreement_witness_test, which evaluates the
+// same functions on the same arguments under the seed interpreter. Both halves hold the same
+// expected values, which are arithmetic facts about small naturals rather than a reading of either
+// route, so a route that realized a constructor, a match or the eliminator differently fails its own
+// half.
+fn ct_std_nat_realization_agreement_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn std_nat_emitted_realization_agrees_with_the_interpreted_witness() {\n",
+    "        use crate::std_nat::\{NatDivision, NatSubtraction\};\n",
+    "        let three: i64 = 3;\n",
+    "        let seventeen = crate::std_nat::nat_add(crate::std_nat::nat_mul(three, 5), 2);\n",
+    "        assert_eq!(seventeen, 17, \"numerals and arithmetic are the integers they denote\");\n",
+    "        assert_eq!(crate::std_nat::nat_cata(three, 10i64, |acc: i64| acc + 7), 31, \"the eliminator applies its step once per successor\");\n",
+    "        assert_eq!(crate::std_nat::nat_cata(0, 10i64, |acc: i64| acc + 7), 10, \"the eliminator over zero is its zero case\");\n",
+    "        assert!(three != 0);\n",
+    "        assert!(matches!(&*crate::std_nat::nat_sub(seventeen, three), NatSubtraction::NatDifference \{ value \} if *value == 14));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_sub(three, seventeen), NatSubtraction::NatSubtrahendExceedsMinuend));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 5), NatDivision::NatQuotientRemainder \{ quotient, remainder \} if *quotient == 3 && *remainder == 2));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 0), NatDivision::NatDivisionByZero));\n",
+    "        let by_succ = crate::std_nat::nat_div_rem_by_succ(seventeen, 4);\n",
+    "        assert_eq!((by_succ.quotient, by_succ.remainder), (3, 2), \"division by a successor has no zero arm and divides\");\n",
+    "    }\n\n")
+}
+
+// THE EMITTED NAT OPERATORS REFUSE OVERFLOW, AS THE INTERPRETER DOES. std.nat Nat is declared
+// inductively and grounded to the kernel integer, so its type reference has no checkpoint of its
+// own; v1.compiler.emit_rust expr_realizes_as_refusing_int must still route its operators through
+// the refusing helpers. The subject is the seed's own emitted std.realization_schedule
+// runnable_batch_clamp_ms, whose `second_count(overhead) * 1000` is a Nat product of a call result --
+// the operand shape the de-fork first emitted as the wrapping infix token. The discriminator is the
+// refusal TEXT, not the panic: this crate builds with overflow-checks on, so a raw `*` also panics,
+// with rustc's text; the emitted crate's release profile wraps instead. Positive control: an
+// in-range clamp is the integer it denotes.
+fn ct_std_nat_operators_refuse_overflow_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() \{\n",
+    "        let clamp = |overhead_s: i64| std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp \{\n",
+    "            overhead: crate::std_measure::second(overhead_s),\n",
+    "            per_unit: crate::std_measure::millisecond(5),\n",
+    "            authority: crate::std_decl_ref::decl_ref(\"ct\".to_string(), \"clamp\".to_string()),\n",
+    "        });\n",
+    "        assert_eq!(crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3), 2015, \"an in-range clamp is the integer it denotes\");\n",
+    "        let refusal = std::panic::catch_unwind(|| crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)).expect_err(\"a Nat product past i64 must refuse\");\n",
+    "        let text = refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
+    "        assert!(text.starts_with(\"integer overflow:\"), \"the Nat product must refuse through v1_rt, got \{text:?}\");\n",
+    "    }\n\n")
 }
 
 fn ct_diagnostics_carrier_grounding_test() -> String {
@@ -2254,6 +2461,36 @@ fn ct_rendered_leaf_occurrence_identity_pipeline_test() -> String {
     "    }\n\n")
 }
 
+// Discriminating red for gunbc.recurring_failure_mode
+// unresolved_variant_pattern_renders_as_a_catch_all_binding: a nullary variant pattern whose parent
+// enum does not resolve must refuse at all three pattern producers, never render as a bare
+// identifier (which Rust binds as a catch-all variable). The positive control is the same pattern
+// with its parent stamped; the optional control is the Absent-parent residue that lowers to None;
+// the fielded control is an unresolved parent whose render is braced, which is not the hazard.
+fn ct_unresolved_variant_pattern_refuses_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn unresolved_variant_pattern_refuses_instead_of_binding_bare() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();\n",
+    "        let no_fields = std::rc::Rc::new(im::Vector::new());\n",
+    "        let no_path = std::rc::Rc::new(im::Vector::new());\n",
+    "        let no_shared = std::rc::Rc::new(im::OrdSet::new());\n",
+    "        let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Add\".to_string(), None, no_fields.clone(), no_path.clone(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert!(unresolved.starts_with(\"compile_error!(\") && unresolved.contains(\"`Add`\"), \"unresolved parent must refuse, got {}\", unresolved);\n",
+    "        let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(\"Add\".to_string(), None, no_fields.clone(), no_path.clone(), crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert!(unresolved_rc.starts_with(\"compile_error!(\"), \"rc-aware producer must refuse, got {}\", unresolved_rc);\n",
+    "        let unresolved_shape = crate::v1_compiler_emit_rust::variant_pattern_shape_for(\"Add\".to_string(), None, String::new(), empty_emit.clone());\n",
+    "        assert!(unresolved_shape.starts_with(\"compile_error!(\"), \"shape producer must refuse, got {}\", unresolved_shape);\n",
+    "        let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Add\".to_string(), Some(\"BinOp\".to_string()), no_fields.clone(), no_path.clone(), no_shared.clone(), String::new(), source_indices.clone(), empty_emit.clone());\n",
+    "        assert_eq!(resolved, \"BinOp::Add\");\n",
+    "        let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(\"Absent\".to_string(), None, no_fields, no_path, no_shared, String::new(), source_indices, empty_emit);\n",
+    "        assert_eq!(optional, \"std::option::Option::None\");\n",
+    "        let fielded_emit = std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo { fielded_variants: std::rc::Rc::new(im::OrdSet::unit(\"Named\".to_string())), ..(*crate::v1_compiler_infer_emit_info::empty_emit_graph_info()).clone() });\n",
+    "        assert_eq!(crate::v1_compiler_emit_rust::variant_pattern_shape_for(\"Named\".to_string(), None, String::new(), fielded_emit), \"Named { .. }\", \"a braced render is a struct pattern, never a binding, and is not refused\");\n",
+    "    }\n\n")
+}
+
 fn ct_rust_btree_set_ord_eligibility_test() -> String {
   concat(
     "    fn shaped_type_node(name: &str, children: Vec<std::rc::Rc<crate::v1_std_core::Node>>) -> std::rc::Rc<crate::v1_std_core::Node> {\n",
@@ -2278,6 +2515,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "            has_non_tail_self_call: false,\n",
     "            match_pattern: None,\n",
     "            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,\n",
+    "            declaration: None,\n",
     "            expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),\n",
     "        })\n",
     "    }\n\n",
@@ -3821,6 +4059,102 @@ fn ct_call_deficit_red_witness_test() -> String {
     "    }\n\n")
 }
 
+fn ct_effect_summary_refusals_carry_their_call_site_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn effect_summary_refusals_carry_their_call_site() {\n",
+    "        // An effect-summary refusal names a caller and a callee; it used to name no PLACE. Every\n",
+    "        // cause raised over a callee edge now carries the span of the call it was derived from, and\n",
+    "        // this control holds both halves: the cause-to-diagnostic mapping renders each such cause\n",
+    "        // AT its call site, and the producer derives that site from the authored call expression.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                use crate::v1_compiler_infer_service::EffectIncompleteness;\n",
+    "                let site = std::rc::Rc::new(crate::std_types::SourceSpan {\n",
+    "                    file: \"located/caller.dag\".to_string(),\n",
+    "                    start: 41,\n",
+    "                    end: 58,\n",
+    "                });\n",
+    "                let id = |m: &str, d: &str| {\n",
+    "                    std::rc::Rc::new(crate::v1_std_core::DeclaredCallableIdentity {\n",
+    "                        owner_module_path: m.to_string(),\n",
+    "                        decl_name: d.to_string(),\n",
+    "                    })\n",
+    "                };\n",
+    "                // 1. THE MAPPING. One cause per call-site arm, all at one known site.\n",
+    "                let causes = std::rc::Rc::new(im::vector![\n",
+    "                    std::rc::Rc::new(EffectIncompleteness::UnresolvedCalleeEdge {\n",
+    "                        item_identity: id(\"located.caller\", \"f\"),\n",
+    "                        spelling: \"g\".to_string(),\n",
+    "                        call_site: site.clone(),\n",
+    "                    }),\n",
+    "                    std::rc::Rc::new(EffectIncompleteness::ResolvedCalleeRegistryRowAbsent {\n",
+    "                        caller: id(\"located.caller\", \"f\"),\n",
+    "                        callee: id(\"located.callee\", \"g\"),\n",
+    "                        call_site: site.clone(),\n",
+    "                    }),\n",
+    "                    std::rc::Rc::new(EffectIncompleteness::FunctionValueEffectsUnresolved {\n",
+    "                        caller: id(\"located.caller\", \"f\"),\n",
+    "                        call_site: site.clone(),\n",
+    "                    }),\n",
+    "                    std::rc::Rc::new(EffectIncompleteness::LocalBindingEffectsUnresolved {\n",
+    "                        caller: id(\"located.caller\", \"f\"),\n",
+    "                        name: \"g\".to_string(),\n",
+    "                        call_site: site.clone(),\n",
+    "                    }),\n",
+    "                ]);\n",
+    "                let rendered = crate::v1_compiler_infer::effect_incompleteness_diagnostics(causes);\n",
+    "                assert_eq!(rendered.len(), 4, \"one diagnostic per cause\");\n",
+    "                for d in rendered.iter() {\n",
+    "                    let span = crate::v1_std_core::diagnostic_to_span(d.diagnostic.clone());\n",
+    "                    assert_eq!(\n",
+    "                        *span, *site,\n",
+    "                        \"an effect-summary refusal over a callee edge must render at its call site, got {:?} for {:?}\",\n",
+    "                        span, d.diagnostic\n",
+    "                    );\n",
+    "                }\n",
+    "                // 2. THE PRODUCER. A call through a function value is the one call-site cause a\n",
+    "                // single hermetic source can raise; its span must name the authored file and\n",
+    "                // cover the call expression, not the null span.\n",
+    "                let content = \"module located_fv\\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\\n\";\n",
+    "                let compiled = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(im::vector![std::rc::Rc::new(\n",
+    "                        crate::v1_compiler_compile::SourceFile {\n",
+    "                            path: \"located_fv.dag\".to_string(),\n",
+    "                            content: content.to_string(),\n",
+    "                        }\n",
+    "                    )]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let at_function_value: Vec<_> = compiled.diagnostics.iter()\n",
+    "                    .filter(|d| matches!(\n",
+    "                        *d.diagnostic,\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }\n",
+    "                    ))\n",
+    "                    .collect();\n",
+    "                assert_eq!(\n",
+    "                    at_function_value.len(), 1,\n",
+    "                    \"the function-value call must raise exactly one effect-summary advisory, got: {:?}\",\n",
+    "                    compiled.diagnostics\n",
+    "                );\n",
+    "                let span = crate::v1_std_core::diagnostic_to_span(at_function_value[0].diagnostic.clone());\n",
+    "                assert_eq!(span.file, \"located_fv.dag\", \"the advisory must name the authored file, got {:?}\", span);\n",
+    "                let call_start = content.find(\"agree(1, 2)\").expect(\"fixture carries the call\") as i64;\n",
+    "                let call_end = call_start + \"agree(1, 2)\".len() as i64;\n",
+    "                assert!(\n",
+    "                    span.start <= call_start && call_start < span.end && span.end <= call_end + 1 && span.start >= call_start - 1,\n",
+    "                    \"the advisory must sit on the call expression [{}, {}), got {:?}\",\n",
+    "                    call_start, call_end, span\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"effect_summary_refusals_carry_their_call_site panicked\");\n",
+    "    }\n",
+    "\n")
+}
+
 fn ct_function_value_named_application_controls_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -3856,8 +4190,18 @@ fn ct_function_value_named_application_controls_witness_test() -> String {
     "                    \"hof_positional.dag\",\n",
     "                    \"module hof_positional\\nfn cmp(left: Int, right: Int) -> Bool { left < right }\\nfn host(agree: fn(Int, Int) -> Bool) -> Bool { agree(1, 2) }\\nfn witness() -> Bool { host(cmp) }\\n\",\n",
     "                );\n",
+    "                // ADMIT here is \"no diagnostic but the advisory every function-value call owes\":\n",
+    "                // since #10688 a call through a function value reports its effect summary as a\n",
+    "                // lower bound (EffectSummaryIncompleteAtFunctionValue, SeverityNonError). Any\n",
+    "                // other diagnostic, of any severity, is still a red.\n",
+    "                let only_function_value_advisory = |ds: &im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>| {\n",
+    "                    ds.iter().all(|d| matches!(\n",
+    "                        *d.diagnostic,\n",
+    "                        crate::v1_std_core::CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. }\n",
+    "                    ) && !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))\n",
+    "                };\n",
     "                assert!(\n",
-    "                    hof_positional.diagnostics.is_empty(),\n",
+    "                    only_function_value_advisory(&hof_positional.diagnostics),\n",
     "                    \"positional function-value application must ADMIT, got: {:?}\",\n",
     "                    hof_positional.diagnostics\n",
     "                );\n",
@@ -3898,7 +4242,7 @@ fn ct_function_value_named_application_controls_witness_test() -> String {
     "                    \"module semantic_swap\\nfn cmp(left: Int, right: Int) -> Bool { left < right }\\nfn host(agree: fn(Int, Int) -> Bool, a: Int, b: Int) -> Bool { agree(a, b) }\\nfn correct_order() -> Bool { host(cmp, 1, 2) }\\nfn swapped_order() -> Bool { host(cmp, 2, 1) }\\n\",\n",
     "                );\n",
     "                assert!(\n",
-    "                    semantic.diagnostics.is_empty(),\n",
+    "                    only_function_value_advisory(&semantic.diagnostics),\n",
     "                    \"swapped positional controls must compile clean for semantic RED, got: {:?}\",\n",
     "                    semantic.diagnostics\n",
     "                );\n",
@@ -4101,7 +4445,7 @@ fn ct_method_existence_wall_witness_test() -> String {
     "                // that only proves the refusal stopped is indistinguishable from\n",
     "                // deleting the wall.\n",
     "                let peel_src = |call: &str| {\n",
-    "                    format!(\"module peel\\ntype Tight = String where non_empty\\nfn f(s: Tight) -> Int {{ s |> {} }}\\n\", call)\n",
+    "                    format!(\"module peel\\ntype Tight = String where string_non_empty\\nfn f(s: Tight) -> Int {{ s |> {} }}\\n\", call)\n",
     "                };\n",
     "                let peel_green = compile_one(\"peel_green.dag\", peel_src(\"count\"));\n",
     "                assert!(\n",
@@ -5093,12 +5437,14 @@ fn compiler_tests_source() -> String {
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
+    ct_generic_optional_over_a_type_application_keeps_the_optional_test(),
     ct_pub_use_crate_lines_two_emission_byte_identity_test(),
     ct_overlapping_use_line_dedupe_permutation_test(),
     ct_fixture_closure_rustc_discrimination_test(),
     ct_evaluation_budget_consequence_falsifier_test(),
     ct_function_value_adapter_fixture_closure_discrimination_test(),
     ct_nested_refinement_cast_fixture_closure_discrimination_test(),
+    ct_native_bool_variant_fixture_closure_discrimination_test(),
     ct_phantom_marker_identity_fixture_closure_discrimination_test(),
     ct_empty_map_turbofish_fixture_closure_discrimination_test(),
     ct_argv_word_list_splice_fixture_closure_discrimination_test(),
@@ -5109,6 +5455,7 @@ fn compiler_tests_source() -> String {
     ct_call_deficit_red_witness_test(),
     ct_call_shape_duplicate_wall_witness_test(),
     ct_function_value_named_application_controls_witness_test(),
+    ct_effect_summary_refusals_carry_their_call_site_test(),
     ct_function_value_field_method_known_hole_probe_test(),
     ct_shell_service_output_projection_test(),
     ct_shell_service_unmodeled_output_key_refusal_test(),

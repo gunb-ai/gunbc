@@ -1,0 +1,357 @@
+module test.claim.machine_intake.mtcollins1_kvm_still_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { second, millisecond, millisecond_count }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { any }
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.megarac {
+  megarac_screen_capture_standing_at_0_32, KvmClientCanvasJpeg, LastBsodJpeg, TriggeredFramebufferRecording, ServerSideOnDemandStill,
+  ScreenCaptureClientSideOnly, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
+}
+import gunbc.runner_browser_toolchain { BrowserToolchainUnresolved }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmJournalEvent, KvmJournalStill, KvmJournalAcquisitionFailed, KvmJournalConnectionLost, KvmJournalUnparsed,
+  KvmNotConnected, KvmCanvasUnreadable, KvmConnectionChangedDuringAcquisition, KvmSeatBusy,
+  KvmObserverStanding, KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverPending,
+  KvmObserverSubject, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
+  KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission_of,
+  KvmObserverStopped, KvmObserverProcessNotRunning, KvmObserverJournalUnread, kvm_live_standing,
+  KvmStillGap, KvmGapOverCadence, KvmClockStepBack, KvmFinalGapUnclosed,
+  KvmStillHashed, KvmStillUnhashed, KvmInstant,
+  KvmJournalText, KvmJournalAbsent, KvmJournalUnread, kvm_journal_events_of,
+  kvm_journal_event, kvm_journal_events, kvm_journal_line, KvmJournalRender, KvmJournalRendered, KvmJournalRenderRefused,
+  KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
+  KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
+  KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
+  mtcollins1_kvm_observer_start, mtcollins1_bmc_firmware, mtcollins1_kvm_observer_dir, kvm_observer_trigger,
+  KvmJournalWord, kvm_journal_event_words, kvm_journal_cause_words, mtcollins1_kvm_observer_script,
+}
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix }
+import gunbc.owned_process {
+  OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedUnreadable, OwnedUnparseable, OwnedForeign, owned_process_standing_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data a_digest_hex: NonEmptyStr = "4fc53fea3fe49bc3ed3b967511654223578d59d963546117ab524df11b419bcd"
+
+// JOURNAL LINES AS THE OBSERVER WROTE THEM on the executed protocol run of 2026-09-28 06:41Z (remote
+// runner, headless Chromium, playwright 1.62.1, the table-driven loopback transport): the normal run
+// and the model-scheduled drop. Copied verbatim so the parser is held to the real spelling.
+data journal_ok: String = join([
+  "1790577669914 2026-09-28T06:41:09.914Z connection-requested url=\"ws://127.0.0.1:45865/kvm?token=csrf-1\"",
+  "1790577669915 2026-09-28T06:41:09.915Z connection-open gen=1 url=\"ws://127.0.0.1:45865/kvm?token=csrf-1\"",
+  "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" session=7 attempt=wet gen=1",
+  "1790577676453 2026-09-28T06:41:16.453Z still seq=1 reason=trigger:1002-sol-channel-lost gen=1 started_ms=1790577676447 file=still-1.jpg bytes=3611",
+  "1790577679461 2026-09-28T06:41:19.461Z stop-requested by=stop-file",
+  "1790577679466 2026-09-28T06:41:19.466Z connection-lost gen=1",
+  "1790577679466 2026-09-28T06:41:19.466Z session-release result=released",
+  "1790577679502 2026-09-28T06:41:19.502Z browser-close result=closed",
+  "1790577679502 2026-09-28T06:41:19.502Z stopped session=released browser=closed",
+  "",
+], "\n")
+
+data journal_drop: String = join([
+  "1790577691953 2026-09-28T06:41:31.953Z connection-open gen=1 url=\"ws://127.0.0.1:38247/kvm?token=csrf-1\"",
+  "1790577691967 2026-09-28T06:41:31.967Z established host=\"127.0.0.1:38247\" session=7 attempt=wet gen=1",
+  "1790577696558 2026-09-28T06:41:36.558Z connection-lost gen=1",
+  "1790577698732 2026-09-28T06:41:38.732Z acquisition-failed seq=1 reason=trigger:1002-sol-channel-lost gen=1 cause=not-connected",
+  "",
+], "\n")
+
+fn ok_subject() -> KvmObserverSubject { KvmObserverSubject { host: "127.0.0.1:45865", attempt: "wet" } }
+
+fn drop_subject() -> KvmObserverSubject { KvmObserverSubject { host: "127.0.0.1:38247", attempt: "wet" } }
+
+fn started(standing: KvmObserverStanding) -> KvmObserverStart {
+  KvmObserverStarted { dir: "artifacts/mtcollins1-boot-kvm-wet", subject: ok_subject(), standing: standing, checked_at: "t" }
+}
+
+fn instant(iso: String) -> KvmInstant {
+  KvmInstant { since_epoch: millisecond(count: 1), iso: iso }
+}
+
+// THE UPSTREAM FACT THE ROUTE STANDS ON: 0.32 serves no on-demand still; the viewer canvas is the one
+// route that yields a still at any moment.
+test fn firmware_0_32_serves_no_on_demand_still_and_the_viewer_is_client_side() -> Bool {
+  let absent = match megarac_screen_capture_standing_at_0_32(route: ServerSideOnDemandStill) { ScreenCaptureAbsent => true  _ => false }
+  let client = match megarac_screen_capture_standing_at_0_32(route: KvmClientCanvasJpeg) { ScreenCaptureClientSideOnly => true  _ => false }
+  let bsod = match megarac_screen_capture_standing_at_0_32(route: LastBsodJpeg) { ScreenCaptureEventRetainedOnly => true  _ => false }
+  let rec = match megarac_screen_capture_standing_at_0_32(route: TriggeredFramebufferRecording) { ScreenCaptureEventRetainedOnly => true  _ => false }
+  absent && client && bsod && rec
+}
+
+// ESTABLISHED ONLY FOR THE EXPECTED SUBJECT, and every still carries its capture instant and the
+// connection generation it was taken under.
+test fn established_is_bound_to_the_expected_host_and_attempt() -> Bool {
+  let events = kvm_journal_events(text: journal_ok)
+  let bound = match kvm_observer_standing(events: kvm_journal_events(text: "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" session=7 attempt=wet gen=1\n"), subject: ok_subject()) {
+    KvmObserverEstablished { at: a, host: h, session: s, attempt: t } => (millisecond_count(m: a.since_epoch) as Int) == 1790577669931 && h == "127.0.0.1:45865" && s == "7" && t == "wet"
+    _ => false
+  }
+  let stills = count(filter(events, e => match e { KvmJournalStill { at: a, seq: _, reason: r, file: f, gen: g } => (millisecond_count(m: a.since_epoch) as Int) > 0 && g == "1" && f == "still-1.jpg" && string_contains(s: r, pattern: "sol-channel-lost")  _ => false }))
+  bound && stills == 1
+}
+
+// A MISMATCHED OR INCOMPLETE ESTABLISHED LINE IS NEVER ESTABLISHED: another host, another attempt,
+// or a missing session each read Mismatch.
+test fn a_mismatched_or_incomplete_established_line_is_not_established() -> Bool {
+  let line = "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" session=7 attempt=wet gen=1\n"
+  let other_host = match kvm_observer_standing(events: kvm_journal_events(text: line), subject: KvmObserverSubject { host: "192.168.1.228", attempt: "wet" }) { KvmObserverMismatch { at: _, detail: d } => string_contains(s: d, pattern: "expected 192.168.1.228")  _ => false }
+  let other_attempt = match kvm_observer_standing(events: kvm_journal_events(text: line), subject: KvmObserverSubject { host: "127.0.0.1:45865", attempt: "36335369059" }) { KvmObserverMismatch { at: _, detail: _ } => true  _ => false }
+  let no_session = match kvm_observer_standing(events: kvm_journal_events(text: "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" attempt=wet gen=1\n"), subject: ok_subject()) { KvmObserverMismatch { at: _, detail: d } => string_contains(s: d, pattern: "missing")  _ => false }
+  other_host && other_attempt && no_session
+}
+
+// THE STANDING FOLLOWS THE CONNECTION: a loss after establishment is Lost, and the still asked after
+// it is not-connected; both are boundary events the watch reports.
+test fn a_loss_after_establishment_is_lost_and_reported() -> Bool {
+  let events = kvm_journal_events(text: journal_drop)
+  let lost = match kvm_observer_standing(events: events, subject: drop_subject()) { KvmObserverLost { at: a, established_at: e } => a.iso == "2026-09-28T06:41:36.558Z" && e.iso == "2026-09-28T06:41:31.967Z"  _ => false }
+  let not_connected = count(filter(events, e => match e { KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c, gen: _ } => match c { KvmNotConnected => true  _ => false }  _ => false })) == 1
+  lost && not_connected && count(kvm_boundary_events(events: events)) == 2
+}
+
+// A STILL WHOSE CONNECTION CHANGED DURING ACQUISITION IS A FAILED ACQUISITION, and an unexportable
+// canvas is its own cause with the browser's words.
+test fn acquisition_failures_keep_their_cause() -> Bool {
+  let changed = match kvm_journal_event(line: "1790577698732 2026-09-28T06:41:38.732Z acquisition-failed seq=2 reason=periodic gen=1 started_ms=1790577698700 cause=connection-changed-during-acquisition") {
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c, gen: g } => g == "1" && match c { KvmConnectionChangedDuringAcquisition => true  _ => false }
+    _ => false
+  }
+  let tainted = match kvm_journal_event(line: "1790577710007 2026-09-28T06:41:50.007Z acquisition-failed seq=1 reason=periodic gen=1 started_ms=1790577710003 cause=canvas-unreadable detail=\"SecurityError: Tainted canvases may not be exported.\"") {
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c, gen: _ } => match c { KvmCanvasUnreadable { detail: d } => string_contains(s: d, pattern: "Tainted canvases")  _ => false }
+    _ => false
+  }
+  changed && tainted
+}
+
+// THE HANDOFF IS ADMITTED ONLY OVER AN ESTABLISHED OBSERVER, through the selector the actuation
+// calls: not started, pending, a busy seat, a mismatch and a loss each refuse with their standing.
+test fn the_handoff_is_admitted_only_over_an_established_observer() -> Bool {
+  let at = instant(iso: "t1")
+  let admitted = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverEstablished { at: at, host: "127.0.0.1:45865", session: "7", attempt: "wet" }) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
+  let not_started = match kvm_handoff_admission_of(start: KvmObserverNotStarted { reason: "the runner browser toolchain is not ready" }, standing: KvmObserverPending) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "toolchain is not ready")  _ => false }
+  let pending = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverPending) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "NOT ESTABLISHED")  _ => false }
+  let seat = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverRefused { at: at, refusal: KvmSeatBusy { viewer_count: "1" } }) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "viewer_count=1")  _ => false }
+  let mismatch = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverMismatch { at: at, detail: "established for attempt 1, expected 2" }) { KvmHandoffRefused { cause: _ } => true  _ => false }
+  let lost = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: KvmObserverLost { at: at, established_at: at }) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "LOST")  _ => false }
+  admitted && not_started && pending && seat && mismatch && lost
+}
+
+// LIVE, NOT HISTORICAL (hold on gunbc#12492): an established journal counts only over a running owned
+// process. Quiet but live stays established; a writer that died without a line, one whose process is
+// unreadable, a stop, and an unread journal each have their own standing, and none of them admits the
+// handoff.
+test fn establishment_is_live_only_over_a_running_owned_process() -> Bool {
+  let text = "1790577669931 2026-09-28T06:41:09.931Z established host=\"127.0.0.1:45865\" session=7 attempt=wet gen=1\n"
+  let running = OwnedRunning { pid: "4242", start_time: "100" }
+  let quiet_live = match kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: running) { KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } => true  _ => false }
+  let died = kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: OwnedGone { pid: "4242" })
+  let died_ok = match died { KvmObserverProcessNotRunning { process: p } => match p { OwnedGone { pid: _ } => true  _ => false }  _ => false }
+  let unreadable = match kvm_live_standing(journal: KvmJournalText { text: text }, subject: ok_subject(), process: OwnedUnreadable { pid: "4242", detail: "EACCES" }) { KvmObserverProcessNotRunning { process: _ } => true  _ => false }
+  let stopped = match kvm_live_standing(journal: KvmJournalText { text: concat(text, "1790577679461 2026-09-28T06:41:19.461Z stopped session=released browser=closed\n") }, subject: ok_subject(), process: running) { KvmObserverStopped { at: _ } => true  _ => false }
+  let unread = match kvm_live_standing(journal: KvmJournalUnread { cause: "EISDIR" }, subject: ok_subject(), process: running) { KvmObserverJournalUnread { cause: c } => c == "EISDIR"  _ => false }
+  let refuses = match kvm_handoff_admission_of(start: started(standing: KvmObserverPending), standing: died) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "NOT RUNNING")  _ => false }
+  quiet_live && died_ok && unreadable && stopped && unread && refuses
+}
+
+// THE OWNED PROCESS'S READBACK KEEPS EACH OBSERVATION AS ITSELF: a missing stat is Gone, an unreadable
+// one is Unreadable, an unparseable one is Unparseable, a different start time is Foreign.
+test fn owned_process_observations_are_kept_distinct() -> Bool {
+  let rec = "4242 100\n"
+  let stat_100 = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 100 12345 67 18446744073709551615\n"
+  let stat_200 = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 200 12345 67 18446744073709551615\n"
+  let run = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: stat_100) { OwnedRunning { pid: _, start_time: _ } => true  _ => false }
+  let gone = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: false, stat_not_found: true, stat_error: "not found", stat: "") { OwnedGone { pid: _ } => true  _ => false }
+  let unread = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: false, stat_not_found: false, stat_error: "EACCES", stat: "") { OwnedUnreadable { pid: _, detail: d } => d == "EACCES"  _ => false }
+  let garbled = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: "garbage") { OwnedUnparseable { pid: _, detail: _ } => true  _ => false }
+  let foreign = match owned_process_standing_of(record_read_ok: true, record: rec, stat_read_ok: true, stat_not_found: false, stat_error: "", stat: stat_200) { OwnedForeign { pid: _, observed_start: o } => o == "200"  _ => false }
+  run && gone && unread && garbled && foreign
+}
+
+// GAPS ARE RETAINED: an interval over two cadences, a clock that stepped back, and a final gap left
+// unclosed when the last mark is not a stop request.
+test fn gaps_step_backs_and_unclosed_ends_are_retained() -> Bool {
+  let text = join([
+    "1000000 t0 established host=h session=1 attempt=a gen=1",
+    "1060000 t1 still seq=1 reason=periodic gen=1 file=still-1.jpg",
+    "1300000 t2 still seq=2 reason=periodic gen=1 file=still-2.jpg",
+    "1200000 t3 still seq=3 reason=periodic gen=1 file=still-3.jpg",
+    "",
+  ], "\n")
+  let gaps = kvm_still_gaps(events: kvm_journal_events(text: text), cadence: second(count: 60), observed_until: "t9")
+  let over = count(filter(gaps, g => match g { KvmGapOverCadence { from: f, to: t, length: l } => f.iso == "t1" && t.iso == "t2" && (millisecond_count(m: l) as Int) == 240000  _ => false }))
+  let back = count(filter(gaps, g => match g { KvmClockStepBack { from: f, to: t } => f.iso == "t2" && t.iso == "t3"  _ => false }))
+  let unclosed = count(filter(gaps, g => match g { KvmFinalGapUnclosed { from: f, observed_until: u } => f.iso == "t3" && u == "t9"  _ => false }))
+  let closed = kvm_still_gaps(events: kvm_journal_events(text: journal_ok), cadence: second(count: 60), observed_until: "t9")
+  over == 1 && back == 1 && unclosed == 1 && count(filter(closed, g => match g { KvmFinalGapUnclosed { from: _, observed_until: _ } => true  _ => false })) == 0
+}
+
+// AN UNREAD JOURNAL IS NOT A QUIET ONE: only read text yields events; absent and unread yield none
+// and are carried as themselves.
+test fn only_a_read_journal_yields_events() -> Bool {
+  count(kvm_journal_events_of(read: KvmJournalText { text: journal_ok })) == 9
+    && count(kvm_journal_events_of(read: KvmJournalUnread { cause: "EISDIR" })) == 0
+    && count(kvm_journal_events_of(read: KvmJournalAbsent)) == 0
+    && match kvm_journal_event(line: "not a journal line") { KvmJournalUnparsed { line: l } => l == "not a journal line"  _ => false }
+}
+
+// HASH-BOUND: a still is retained only with the digest our own sha256sum read took.
+test fn a_still_is_retained_only_when_hash_bound() -> Bool {
+  let at = instant(iso: "t")
+  let bound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigest { digest: sha256_digest(hex: a_digest_hex) })
+  let unbound = kvm_retained_still(dir: "artifacts/mtcollins1-boot-kvm-1", at: at, seq: "1", reason: "periodic", file: "still-1.jpg", digest: Sha256FileDigestUnavailable { path: "x", reason: "sha256sum could not digest the input" })
+  let ok = match bound { KvmStillHashed { at: _, seq: _, reason: _, path: p, digest: d } => d.hex == a_digest_hex && p == "artifacts/mtcollins1-boot-kvm-1/still-1.jpg"  _ => false }
+  let refused = match unbound { KvmStillUnhashed { at: _, seq: _, reason: _, path: _, why: _ } => true  _ => false }
+  ok && refused
+}
+
+// THE REAL START, EXECUTED, WITH NOTHING TO DRIVE: an uncatalogued firmware, an unbound credential and
+// an unresolved toolchain each refuse before any process starts, and a trigger on an observer that
+// never started is refused.
+test fn the_start_refuses_without_driving_when_a_precondition_is_missing() -> Bool {
+  let other = mtcollins1_kvm_observer_start(firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "9.99"), bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
+  let nocred = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
+  let notool = mtcollins1_kvm_observer_start(firmware: mtcollins1_bmc_firmware, bmc_host: "192.0.2.1", username: "u", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "host not in the floor pool" }, attempt: "1")
+  let a = match other { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "not catalogued")  _ => false }
+  let b = match nocred { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no BMC credential")  _ => false }
+  let c = match notool { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "unresolved: host not in the floor pool")  _ => false }
+  a && b && c && !kvm_observer_trigger(start: nocred, order: 1, reason: "power-on-verified")
+}
+
+// RETAINED WITH THE BUNDLE: the observer's directory sits under the boot's upload prefix.
+test fn the_observer_directory_is_retained_with_the_boot_artifacts() -> Bool {
+  starts_with(s: mtcollins1_kvm_observer_dir(attempt: "36335369059"), prefix: mtcollins1_boot_retained_artifact_prefix)
+}
+
+// ONE VOCABULARY, READ BOTH WAYS. Every event word the module declares reaches the observer script as
+// an EV constant and parses back to its own journal variant, never to Unparsed; every cause word reaches
+// it as a CA constant. A word added to the script but not to the rows is not written (the script only
+// has EV/CA), and a row whose word the parser does not read turns this red. The control: a word the rows
+// do not declare stays Unparsed.
+fn kvm_word_line(w: String) -> String { concat("1790000000000 2026-09-30T00:00:00.000Z ", concat(w, " detail=x")) }
+
+test fn the_journal_vocabulary_is_declared_once_and_read_back_by_the_parser() -> Bool {
+  let script = mtcollins1_kvm_observer_script
+  let events_rendered = !any(kvm_journal_event_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
+  let causes_rendered = !any(kvm_journal_cause_words, w => !(string_contains(s: script, pattern: concat(w.id, concat(":'", concat(w.word, "'"))))))
+  let parsed = !any(kvm_journal_event_words, w => !(match kvm_journal_event(line: kvm_word_line(w: w.word)) { KvmJournalUnparsed { line: _ } => false  _ => true }))
+  let control = match kvm_journal_event(line: kvm_word_line(w: "undeclared-word")) { KvmJournalUnparsed { line: _ } => true  _ => false }
+  events_rendered && causes_rendered && parsed && control && string_contains(s: script, pattern: "const EV=\{") && !string_contains(s: script, pattern: "j('")
+}
+
+// ── THE JOURNAL, WRITTEN: kvm_journal_line is kvm_journal_event read the other way ─────────────────
+fn kvm_at(ms: Nat) -> KvmInstant {
+  KvmInstant { since_epoch: millisecond(count: ms), iso: "2026-09-30T10:00:00.000Z" }
+}
+
+// One event of every arm, and every refusal and acquisition cause, with the field values in the form
+// the parser returns them (a JSON-quoted host and detail stay quoted).
+fn kvm_event_sample() -> List<KvmJournalEvent> {
+  [
+    KvmJournalEstablished { at: kvm_at(ms: 1790000000001), host: "\"bmc.example\"", session: "7", attempt: "4242", gen: "1" },
+    KvmJournalConnectionRequested { at: kvm_at(ms: 1790000000002) },
+    KvmJournalConnectionRefused { at: kvm_at(ms: 1790000000003) },
+    KvmJournalConnectionOpen { at: kvm_at(ms: 1790000000004), gen: "1" },
+    KvmJournalConnectionLost { at: kvm_at(ms: 1790000000005), gen: "1" },
+    KvmJournalConnectionError { at: kvm_at(ms: 1790000000006), gen: "1", detail: "\"socket hang up\"" },
+    KvmJournalStill { at: kvm_at(ms: 1790000000007), seq: "3", reason: "periodic", file: "still-3.jpg", gen: "1" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000008), seq: "4", reason: "periodic", cause: KvmNotConnected, gen: "1" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000009), seq: "5", reason: "periodic", cause: KvmConnectionChangedDuringAcquisition, gen: "2" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000010), seq: "6", reason: "periodic", cause: KvmCanvasUnreadable { detail: "\"SecurityError: tainted\"" }, gen: "2" },
+    KvmJournalAcquisitionFailed { at: kvm_at(ms: 1790000000011), seq: "7", reason: "periodic", cause: KvmAcquisitionOther { cause: "timeout", detail: "\"x\"" }, gen: "2" },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000012), refusal: KvmSeatBusy { viewer_count: "1" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000013), refusal: KvmLoginRefused { detail: "http 401" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000014), refusal: KvmNoKvmService },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000015), refusal: KvmNoFrame { detail: "\"no frame in 30000ms\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000016), refusal: KvmToolchainUnavailable { detail: "\"no chromium\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000017), refusal: KvmCredentialUnreadable { detail: "\"ENOENT\"" } },
+    KvmJournalRefused { at: kvm_at(ms: 1790000000018), refusal: KvmRefusedOther { cause: "unforeseen", detail: "\"y\"" } },
+    KvmJournalFailed { at: kvm_at(ms: 1790000000019), detail: "\"crash\"" },
+    KvmJournalStopRequested { at: kvm_at(ms: 1790000000020), by: "boot" },
+    KvmJournalSessionRelease { at: kvm_at(ms: 1790000000021), result: "released" },
+    KvmJournalBrowserClose { at: kvm_at(ms: 1790000000022), result: "closed" },
+    KvmJournalStopped { at: kvm_at(ms: 1790000000023), session: "released", browser: "closed" },
+    KvmJournalTriggerScanFailed { at: kvm_at(ms: 1790000000024), detail: "\"EACCES\"" },
+    KvmJournalNavigated { at: kvm_at(ms: 1790000000025), seq: "2", phase: "held", url: "\"https://192.168.1.30/#login\"" },
+    KvmJournalPageConsole { at: kvm_at(ms: 1790000000026), phase: "viewer", level: "error", detail: "\"WebSocket connection to wss://192.168.1.30/kvm failed\"" },
+    KvmJournalPageError { at: kvm_at(ms: 1790000000027), phase: "viewer", detail: "\"TypeError: Cannot read properties of null (reading 'garc')\"" },
+  ]
+}
+
+// ROUND TRIP: every rendered line parses back to EXACTLY the event it was rendered from (structural
+// equality, every field). Comparing re-rendered text instead would be symmetric in a renderer that drops
+// a field -- both renderings drop it -- and was measured to stay green when gen was dropped.
+fn rendered(r: KvmJournalRender) -> String {
+  match r { KvmJournalRendered { line: l } => l  KvmJournalRenderRefused { event_word: _, would_write: _ } => "" }
+}
+
+fn refused(r: KvmJournalRender) -> Bool {
+  match r { KvmJournalRendered { line: _ } => false  KvmJournalRenderRefused { event_word: _, would_write: _ } => true }
+}
+
+test fn every_rendered_journal_line_parses_back_to_its_event() -> Bool {
+  all(kvm_event_sample(), e => !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e)
+}
+
+// FIDELITY TO THE OBSERVER: lines as the observer script writes them re-render byte for byte where the
+// script writes only keys the parser reads, and differ only by the unread keys where it writes more.
+test fn a_written_line_renders_as_the_observer_writes_it() -> Bool {
+  let established = "1790577698700 2026-09-28T06:41:38.700Z established host=\"192.168.1.30\" session=12 attempt=4242 gen=1"
+  let lost = "1790577710007 2026-09-28T06:41:50.007Z connection-lost gen=1"
+  let refused = "1790577710008 2026-09-28T06:41:50.008Z refused cause=seat-busy viewer_count=1"
+  let still = "1790577710009 2026-09-28T06:41:50.009Z still seq=3 reason=periodic gen=1 started_ms=1790577710000 file=still-3.jpg bytes=4096"
+  rendered(r: kvm_journal_line(event: kvm_journal_event(line: established))) == established
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: lost))) == lost
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: refused))) == refused
+    && rendered(r: kvm_journal_line(event: kvm_journal_event(line: still))) == "1790577710009 2026-09-28T06:41:50.009Z still seq=3 reason=periodic gen=1 file=still-3.jpg"
+}
+
+// A NAVIGATION AS THE OBSERVER WRITES IT (framenavigated on the main frame): seq, phase, then the URL
+// JSON-quoted and last, since a URL is the free-text key the parser reads to the end of the line. A
+// hash route and a query survive the round trip whole, so the journal records exactly where the page
+// went rather than a prefix of it.
+test fn a_navigation_line_reads_back_its_phase_and_whole_url() -> Bool {
+  let line = "1790577698650 2026-09-28T06:41:38.650Z navigated seq=2 phase=held url=\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
+  match kvm_journal_event(line: line) {
+    KvmJournalNavigated { at: _, seq: n, phase: p, url: u } =>
+      n == "2" && p == "held" && u == "\"https://192.168.1.30/viewer.html?next=%2Fkvm#login\""
+        && rendered(r: kvm_journal_line(event: kvm_journal_event(line: line))) == line
+    _ => false
+  }
+}
+
+// THE RED: a line that is not a journal line (no epoch-milliseconds word) is Unparsed and renders as
+// the line it carried, never as a fabricated event.
+test fn a_malformed_journal_line_is_unparsed_and_renders_verbatim() -> Bool {
+  let bad = "2026-09-30T10:00:00.000Z established host=x session=1 attempt=a gen=1"
+  match kvm_journal_event(line: bad) {
+    KvmJournalUnparsed { line: l } => l == bad && rendered(r: kvm_journal_line(event: kvm_journal_event(line: bad))) == bad
+    _ => false
+  }
+}
+
+// THE RENDERER REFUSES AN EVENT NO LINE CAN CARRY (review 73156): each of these is constructible from
+// the event's String fields, and each would otherwise be written as a plausible line that parses back
+// as a DIFFERENT event. Refused, never written.
+test fn an_event_no_line_can_carry_is_refused_not_written() -> Bool {
+  refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000100), refusal: KvmLoginRefused { detail: "denied" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000101), refusal: KvmNoFrame { detail: "" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalRefused { at: kvm_at(ms: 1790000000102), refusal: KvmRefusedOther { cause: "seat-busy", detail: "\"x\"" } }))
+    && refused(r: kvm_journal_line(event: KvmJournalEstablished { at: kvm_at(ms: 1790000000103), host: "two words", session: "7", attempt: "4242", gen: "1" }))
+    && refused(r: kvm_journal_line(event: KvmJournalStill { at: kvm_at(ms: 1790000000104), seq: "3", reason: "periodic gen=9", file: "still-3.jpg", gen: "1" }))
+}
+
+// NOT OVER-BROAD: free text is carried where the grammar can carry it. A detail is always the last
+// field, so one holding " gen=" still parses back to its own event -- it renders, it is not refused.
+test fn free_text_the_grammar_can_carry_is_rendered() -> Bool {
+  let e = KvmJournalConnectionError { at: kvm_at(ms: 1790000000105), gen: "1", detail: "a gen=9 b" }
+  !refused(r: kvm_journal_line(event: e)) && kvm_journal_event(line: rendered(r: kvm_journal_line(event: e))) == e
+}

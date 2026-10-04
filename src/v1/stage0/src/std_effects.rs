@@ -4,6 +4,7 @@
 use self::CompositionVerdict::*;
 use self::CreateCause::*;
 use self::DeriveOpEffectResult::*;
+use self::EffectClaim::*;
 use self::EffectShape::*;
 use self::IdempotencyEvidence::*;
 use self::KeySource::*;
@@ -363,6 +364,15 @@ pub fn derive_op_effect(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum EffectClaim {
+    ReadonlyClaim,
+    IdempotentClaim,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModifierAgreement {
@@ -515,3 +525,8 @@ pub struct WorkflowEffectConcern {
     pub create_op: String,
     pub reason: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReadonlyClaim;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct IdempotentClaim;

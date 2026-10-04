@@ -1,5 +1,6 @@
 module v2.lens.module_impact_query
 
+import std.types { List }
 import v2.std.algebra {
   any,
   contains,
@@ -7,7 +8,7 @@ import v2.std.algebra {
   list_reverse
 }
 import std.algebra { Cons, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.text { String, string_eq }
 import v2.lens.common.construction_justification {
@@ -478,7 +479,11 @@ fn impact_admission_pool_independence_trigger(
         ReferenceDerivedClosureUnavailable { capability, trigger } =>
           match capability {
             UnrelatedLoadedFileExcluded => optional_present(value: trigger)
-            _ => acc
+            SameFileEarlierNeighbourVisible => acc
+            SiblingDecisionBranchExcluded => acc
+            LaterDeclarationExcluded => acc
+            DistinctSameSpelledDeclarationsPreserved => acc
+            RepeatedMentionsCollapseDependency => acc
           }
         ReferenceDerivedClosureEstablished { receipt: _ } => acc
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => acc
@@ -497,7 +502,11 @@ fn impact_admission_pool_independence_established(
         ReferenceDerivedClosureEstablished { receipt } =>
           match receipt.capability {
             UnrelatedLoadedFileExcluded => true
-            _ => false
+            SameFileEarlierNeighbourVisible => false
+            SiblingDecisionBranchExcluded => false
+            LaterDeclarationExcluded => false
+            DistinctSameSpelledDeclarationsPreserved => false
+            RepeatedMentionsCollapseDependency => false
           }
         ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false

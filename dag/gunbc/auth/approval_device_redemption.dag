@@ -1,7 +1,11 @@
 module gunbc.auth.approval_device_redemption
 
 import std.decl_ref { decl_ref }
-import std.types { NonEmptyStr, String, Timestamp, Int, List }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+import std.types { NonEmptyStr, String, Timestamp, Int, List, FilePath }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey, SignatureVerification, SignatureVerified }
@@ -350,7 +354,12 @@ fn device_signature_joins(signature: SignatureVerification, enrollment: Verified
   match signature {
     SignatureVerified { verified: v } =>
       v.message == signed_bytes && v.key.point_b64url == enrollment.decision_key.point_b64url && v.key.suite == enrollment.decision_key.suite
-    _ => false
+    SignatureInvalid { suite: _ } => false
+    SignatureMalformed { declared: _, expected: _ } => false
+    VerifyingKeyMalformed { declared: _, expected: _ } => false
+    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
+    VerifyingKeyUndecodable { point_b64url: _ } => false
+    SignatureUndecodable { b64url: _ } => false
   }
 }
 
@@ -499,6 +508,26 @@ fn redeem_device_over_store(
 // this module: the only bytes it trusts are this store's own, written only by commit_enrolment from
 // an EnrolmentAdmitted value, under a root no other principal can write.
 data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approval-devices"
+
+// THE STORE DIRECTORY IS CONVERGED BY THE BROKER INSTALL, and until this row nothing in the model
+// created it. The first issued enrolment code (srv1, 2026-09-29) needed proud-deer-538 to create it by
+// hand as briansrls:briansrls 0700. That hand step is closed by this row: the broker's dark install
+// ensures it (gunbc.live_deploy.emit approval_broker_dark_install_release_steps). The owner is the
+// operator's account, because the verbs that read and write it (approval_device_routes, the
+// enrolment code issue) run as that account and nothing else needs it, so the derived mode is
+// owner-only. Ownership is Ensured, not Owned: the directory holds enrolled devices, which must
+// survive a retract of the deployment that created it.
+fn approval_device_store_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-device-store" as NonEmptyStr,
+    path: approval_device_store_root as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
 
 type DeviceStoreWrite
   = DeviceStoreWritten
@@ -718,7 +747,7 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
 // THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
 // could name, so the verb that runs this cannot enrol a device for anyone else.
 fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite admit_callers: [
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_and_deliver_enrolment_code_until"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_and_deliver_enrolment_code_until"),
 ] {
   let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
   device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: IssuedCodeRecord), payload: enrolment_code_json(c: challenge) as NonEmptyStr)
@@ -744,7 +773,10 @@ fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_
         Absent => DeviceStoreRefused { detail: "enrolment id names no code slot" }
         Present { value: code } => device_store_write(root: root, key: code, expected: enrolment_record_kind_expectation(k: RevokedRecord), payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
       }
-    _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentCodeUnspent { challenge: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentRevoked { enrollment: _, revoked_at: _, reason: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentCodeUnknown => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
+    EnrolmentSlotUnreadable { detail: _ } => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
 
@@ -767,7 +799,7 @@ data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dis
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under approval_decision_key_access_policy, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login. Its project.yml and Info.plist are derived (gunbc.approve_ios_project) and its vectors are derived (gunbc.auth.approval_device_redemption_fixtures); its Swift is hand-authored realization (gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier), and its build is executed by no required lane (gunbc.approve_ios_app approve_ios_build_unexecuted_frontier)",
+  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under approval_decision_key_access_policy, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login. Its project.yml and Info.plist are derived (gunbc.approve_ios_project) and its vectors are derived (gunbc.auth.approval_device_redemption_fixtures); its protocol, wire and vector-test Swift is printed from transcribed syntax trees (gunbc.approve_ios_app approve_ios_transcribed_swift_frontier) and the rest is hand-authored realization (gunbc.approve_ios_app approve_ios_hand_authored_swift_frontier), and its build is executed by no required lane (gunbc.approve_ios_app approve_ios_build_unexecuted_frontier)",
 )
 
 data approval_target_frontier: DissolutionCondition = unbound_dissolution(

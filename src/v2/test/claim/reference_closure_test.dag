@@ -1,12 +1,13 @@
 module v2.test.claim.reference_closure
 
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
@@ -19,7 +20,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -41,21 +41,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared module nothing reaches (rc_outside) must stay out, which is the discriminating half: a
 // fold that answered the roster would pass every membership row and fail this one.
 
-data rc_entry_source: String = "module v2.test.rc_entry\n\nimport v2.std.logic { Bool }\nimport v2.test.rc_imported { rc_imported_fn }\n\nfn rc_entry_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_dotted_fn(p: p) }\n\ndata rc_entry_literal: Int = 606060\n"
+data rc_entry_source: String = "module v2.test.rc_entry\n\nimport std.types { Bool }\nimport v2.test.rc_imported { rc_imported_fn }\n\nfn rc_entry_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_dotted_fn(p: p) }\n\ndata rc_entry_literal: Int = 606060\n"
 
-data rc_imported_source: String = "module v2.test.rc_imported\n\nimport v2.std.logic { Bool }\n\nfn rc_imported_fn(p: Bool) -> Bool { p }\n"
+data rc_imported_source: String = "module v2.test.rc_imported\n\nimport std.types { Bool }\n\nfn rc_imported_fn(p: Bool) -> Bool { p }\n"
 
-data rc_dotted_source: String = "module v2.test.rc_dotted\n\nimport v2.std.logic { Bool }\n\nfn rc_dotted_fn(p: Bool) -> Bool { v2.test.rc_transitive.rc_transitive_fn(p: p) }\n"
+data rc_dotted_source: String = "module v2.test.rc_dotted\n\nimport std.types { Bool }\n\nfn rc_dotted_fn(p: Bool) -> Bool { v2.test.rc_transitive.rc_transitive_fn(p: p) }\n"
 
-data rc_transitive_source: String = "module v2.test.rc_transitive\n\nimport v2.std.logic { Bool }\n\nfn rc_transitive_fn(p: Bool) -> Bool { p }\n"
+data rc_transitive_source: String = "module v2.test.rc_transitive\n\nimport std.types { Bool }\n\nfn rc_transitive_fn(p: Bool) -> Bool { p }\n"
 
-data rc_outside_source: String = "module v2.test.rc_outside\n\nimport v2.std.logic { Bool }\n\nfn rc_outside_fn(p: Bool) -> Bool { p }\n"
+data rc_outside_source: String = "module v2.test.rc_outside\n\nimport std.types { Bool }\n\nfn rc_outside_fn(p: Bool) -> Bool { p }\n"
 
 data rc_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
 // A member whose body names a declaration no module declares. The fold must refuse with the
 // resolver's own cause and must not drop the member or widen to the roster.
-data rc_broken_entry_source: String = "module v2.test.rc_broken_entry\n\nimport v2.std.logic { Bool }\n\nfn rc_broken_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_no_such_fn(p: p) }\n"
+data rc_broken_entry_source: String = "module v2.test.rc_broken_entry\n\nimport std.types { Bool }\n\nfn rc_broken_fn(p: Bool) -> Bool { v2.test.rc_dotted.rc_no_such_fn(p: p) }\n"
 
 fn rc_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -89,36 +89,33 @@ fn rc_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
   module_roots_from_source_root_ingest(ingest: rc_ingest, lm: dag_language_model())
 }
 
-fn rc_resolve_subject(subject: String) -> Outcome<Node> {
+fn rc_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match rc_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
-        },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+        }
+      ).resolved
   }
 }
 
-fn rc_resolved_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_entry") }
+fn rc_resolved_entry() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_entry") }
 
-fn rc_resolved_imported() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_imported") }
+fn rc_resolved_imported() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_imported") }
 
-fn rc_resolved_dotted() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
+fn rc_resolved_dotted() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_dotted") }
 
-fn rc_resolved_transitive() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
+fn rc_resolved_transitive() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_transitive") }
 
-fn rc_resolved_logic() -> Outcome<Node> { rc_resolve_subject(subject: "v2.std.logic") }
+fn rc_resolved_logic() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.std.logic") }
 
-fn rc_resolved_broken_entry() -> Outcome<Node> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
+fn rc_resolved_broken_entry() -> Outcome<ResolvedTree> { rc_resolve_subject(subject: "v2.test.rc_broken_entry") }
 
-fn rc_resolved_of(dotted: String) -> Outcome<Node> {
+fn rc_resolved_of(dotted: String) -> Outcome<ResolvedTree> {
   if dotted == "v2.test.rc_entry" { rc_resolved_entry() }
   else if dotted == "v2.test.rc_imported" { rc_resolved_imported() }
   else if dotted == "v2.test.rc_dotted" { rc_resolved_dotted() }
@@ -164,7 +161,7 @@ fn rc_closure_of(entry: String) -> Outcome<FreeMonoid<QualifiedName>> {
             o: rc_resolved_of(dotted: qualified_name_to_dotted_string(qn: member_module)),
             f: fn(resolved) {
               outcome_accepted(value: ReferenceClosureMember {
-                resolved: resolved,
+                resolved: resolved.root,
                 import_targets: rc_import_targets(roots: roots, member_module: member_module),
                 payload: true
               })

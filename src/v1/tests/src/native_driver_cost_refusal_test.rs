@@ -40,6 +40,9 @@ fn planted_over_attribution_is_over_attributed_not_clamped() {
             NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -69,6 +72,9 @@ fn reconciled_parent_passes() {
             NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(0),
             NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(0),
+            NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(0),
         }),
         native_driver_cost_remainder_tolerance_nanos(),
     );
@@ -210,4 +216,162 @@ fn the_preparation_span_closes_before_any_declaration_is_evaluated() {
         "the accepted arm closes preparation at {accepted_close}, after evaluation opens at \
          {eval_start}: the prepared module's evaluation is inside its preparation span"
     );
+}
+
+// THE CLOCK THE PARTITION IS JUDGED ON, DISCRIMINATED BY EXECUTION. The law claims the rows
+// partition the driver's OWN work, so the two controls below vary exactly the two things a wall
+// clock confused: work nobody instrumented (must refuse) and time the host took away (must not).
+// Both run the real thread-CPU read (`v1_interpreter::thread_cpu_nanos_checked`, the seed's
+// realization of std.realization_measurement ObserveThreadCpuAtSubject) into the real fold.
+
+fn thread_cpu() -> u128 {
+    v1_compiler::v1_interpreter::thread_cpu_nanos_checked()
+        .expect("CLOCK_THREAD_CPUTIME_ID must be readable on a host that judges the partition")
+}
+
+/// Spin until this thread has spent `nanos` of its own CPU. Bounded by CPU, not by iterations,
+/// so the injected work is the same quantity on a quiet and a contended host.
+fn burn_thread_cpu(nanos: u128) {
+    let started = thread_cpu();
+    let mut x: u64 = 1;
+    while thread_cpu() - started < nanos {
+        x = std::hint::black_box(x.wrapping_mul(6364136223846793005).wrapping_add(1));
+    }
+}
+
+fn account_one_row(parent: u128, row: u128) -> NativeDriverCostAccounting {
+    let row = row as i64;
+    (*native_driver_cost_account(
+        nanosecond(parent as i64),
+        native_driver_exclusive_rows(move |k| match k {
+            NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(row),
+            _ => nanosecond(0),
+        }),
+        native_driver_cost_remainder_tolerance_nanos(),
+    ))
+    .clone()
+}
+
+const TOLERANCE_NANOS: u128 = 50_000_000;
+const INJECTED_NANOS: u128 = 300_000_000;
+
+#[test]
+fn a_host_stall_outside_every_row_reconciles_on_thread_cpu() {
+    let parent_started = thread_cpu();
+    let wall_started = std::time::Instant::now();
+    let row_started = thread_cpu();
+    burn_thread_cpu(20_000_000);
+    let row = thread_cpu() - row_started;
+    // The stall: the thread is off-CPU for longer than the tolerance, as under host contention.
+    std::thread::sleep(std::time::Duration::from_nanos(INJECTED_NANOS as u64));
+    let parent = thread_cpu() - parent_started;
+    let wall = wall_started.elapsed().as_nanos();
+    // The stall is real: judged on the wall, this same run would have refused.
+    assert!(
+        wall.saturating_sub(row) > TOLERANCE_NANOS,
+        "control is vacuous unless the stall exceeds the tolerance on the wall: wall={wall} row={row}"
+    );
+    match account_one_row(parent, row) {
+        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}
+        other => panic!(
+            "a stall is not driver work and must not refuse on thread CPU: parent={parent} row={row} -> {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn uninstrumented_driver_work_refuses_on_thread_cpu() {
+    let parent_started = thread_cpu();
+    let row_started = thread_cpu();
+    burn_thread_cpu(20_000_000);
+    let row = thread_cpu() - row_started;
+    // Real work outside every row: the residual the tolerance exists to catch.
+    burn_thread_cpu(INJECTED_NANOS);
+    let parent = thread_cpu() - parent_started;
+    match account_one_row(parent, row) {
+        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance {
+            residual, ..
+        } => {
+            assert!(nanosecond_count_of(&residual) >= INJECTED_NANOS);
+        }
+        other => {
+            panic!("uninstrumented CPU work must refuse: parent={parent} row={row} -> {other:?}")
+        }
+    }
+}
+
+fn nanosecond_count_of(n: &v1_compiler::std_measure::Nanosecond) -> u128 {
+    v1_compiler::std_measure::nanosecond_count(n.clone()) as u128
+}
+
+/// The emitted driver judges on that clock: the parent and every row are CPU spans, and the one
+/// wall read is printed as an observation and never reaches the fold.
+#[test]
+fn the_emitted_driver_judges_the_partition_on_thread_cpu_and_only_observes_the_wall() {
+    let main_rs = driver_main();
+    let start = main_rs
+        .find("fn run_adjudication(")
+        .expect("adjudication fn");
+    let body = &main_rs[start..];
+    let body = &body[..body.find("\n}\n").expect("adjudication fn end")];
+    assert!(body.contains("let driver_start = cpu_mark();"));
+    assert!(body.contains("let parent_span_nanos = cpu_span_nanos(driver_start);"));
+    assert!(body.contains("nanosecond(native_cost_i64(parent_span_nanos))"));
+    assert_eq!(
+        body.matches("Instant::now()").count(),
+        1,
+        "exactly one wall read in adjudication -- the observation around the run"
+    );
+    assert!(
+        !body.contains("parent_wall_nanos)),"),
+        "the wall must not enter the fold"
+    );
+    assert!(body.contains("\"basis\": \"native_driver_thread_cpu\""));
+    assert!(main_rs.contains("observed_thread_cpu_nanos(String::new())"));
+}
+
+/// The scheduling row is the engine CALL's measured span minus the demand time the engine
+/// attributed, and the driver's collection after the call is its own row. The bookkeeping-only
+/// realization -- summing the engine's internal spans -- is what left the work between them timed by
+/// no row, so its spelling is refused here; and an over-attribution inside the call refuses rather
+/// than clamping scheduling to zero.
+#[test]
+fn scheduling_is_the_engine_call_span_and_collection_is_its_own_row() {
+    let main_rs = driver_main();
+    let call = main_rs
+        .find("let schedule_started = cpu_mark();")
+        .expect("the engine call is spanned");
+    let run = main_rs
+        .find("let run = native_demand_schedule_universe(")
+        .expect("engine call");
+    let close = main_rs
+        .find("let schedule_span_nanos = cpu_span_nanos(schedule_started);")
+        .expect("engine call span closes");
+    assert!(call < run && run < close, "the span must bracket the call");
+    assert!(
+        main_rs.contains("let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;")
+    );
+    // Every engine-attributed demand row leaves the call span, the occurrence census included:
+    // leaving one out would count its windows in scheduling AND in its own row.
+    assert!(main_rs.contains(
+        "let attributed_in_call = engine_prepare_nanos + engine_eval_nanos + occurrence_census_nanos;"
+    ));
+    assert!(
+        !main_rs.contains("let demand_scheduling_nanos = native_demand_scheduling_nanos("),
+        "the bookkeeping-only sum must not be the scheduling row"
+    );
+    assert!(main_rs.contains("REFUSED: native driver cost OverAttributed inside the engine call"));
+    let collect = main_rs
+        .find("let collection_started = cpu_mark();")
+        .expect("collection span");
+    let push = main_rs
+        .find("population.push(row.clone());")
+        .expect("population collection");
+    let collect_close = main_rs
+        .find("let driver_collection_nanos = cpu_span_nanos(collection_started);")
+        .expect("collection span closes");
+    assert!(close < collect && collect < push && push < collect_close);
+    assert!(main_rs.contains(
+        "NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(native_cost_i64(driver_collection_nanos))"
+    ));
 }

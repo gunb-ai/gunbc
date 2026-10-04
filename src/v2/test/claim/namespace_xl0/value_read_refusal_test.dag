@@ -9,7 +9,6 @@ import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
@@ -29,28 +28,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // NAVIGATION refusal -- match_arm_navigation_refused, if_navigation_refused -- located at the whole
 // arm, which is how an unlowered fn literal inside an arm body read as a malformed arm.
 //
-// THE UNLOWERABLE VALUE IS A FUNCTION VALUE WHOSE BODY IS ITSELF A FUNCTION VALUE. This file first
-// used a plain fn literal; gunbc#12210 gave fn literals and lambda arguments a lowered form, so those
-// specimens Accepted and every row redded, as this header predicted. Re-pointed in gunbc#12210 to the
-// next genuinely unlowerable shape: a function value whose body is a function value (`fn(y) { fn(z)
-// { y } }`, `l => m => leaf(l)`), which v2.compiler.body_lowering_fold body_lower_reify_arrow_body
-// refuses as body_lowering_reason_arrow_body_is_function_value_unmodeled. No authorable source shape
-// still reaches body_lowering_reason_value_unlowered on this base (probed: tuple, range, `?`, index,
-// tuple field, unit, `|y| y`, record update refuse earlier, and negation, block and tuple-parameter
-// lambda lower), so the claims assert the specimen's own cause. Each claim still asserts the
-// substance: the refusal is the VALUE's own cause, not the enclosing form's navigation, and its locus
-// holds none of the enclosing form's own tokens (`match`, `=>`, `if`, `let`). The locus is the
-// LOWERED inner function value (body_lower_reify_arrow_body refuses after lowering it), so it carries
-// no fn-literal production and the claims no longer ask for one; the reason is what tells the value's
-// refusal from match_arm_navigation_refused and if_navigation_refused. When gunbc#12283 (FunctionValueBody) lowers a function-valued body, these specimens stop
-// refusing and every row here reds again, naming the specimen to re-point at the next unlowerable shape.
+// THE SPECIMENS ARE NOW POSITIVE ROUTE CONTROLS; NO AUTHORED SOURCE REACHES value_unlowered. This file
+// first used a plain fn literal, then (gunbc#12210) a function value whose body is a function value
+// (`fn(y) { fn(z) { y } }`, `l => m => leaf(l)`). gunbc#12283 gave that shape a lowered form
+// (v2.std.node ArrowBodyForm FunctionValueBody), and a probe of seventeen candidate values in let
+// position through this file's real route (fierce-gull-556, on #12283's head) found NONE that reaches a
+// value-owned refusal: each either lowers (function values, `"a" + 1`, `VrrRecord {}`, `!!v`) or is
+// refused before body lowering (tuples, ranges, `?`, tuple fields, unit, `|y| y`, record update,
+// `where`, a bare `as`), and `v[0]` parses as a following statement. So a source-driven refusal at the
+// value is unauthorable on this route (DESIGN section 4b), and re-pointing to another specimen would
+// be a decoration. The same specimens are kept, and each claim now asserts their ROUTE: a
+// function-valued value in every value position -- match-arm body, if arm, if condition, let value,
+// field initializer, a fold's lambda argument, a block arm -- lowers whole and the module Accepts,
+// which is the capability the old refusal was standing in for. The refusal wall at the value keeps
+// its one interface in v2.test.claim.namespace_xl0.value_read_direct, which supplies the reader an
+// unlowerable node directly.
 //
 // WHAT IS NOT CLAIMED HERE, AND WHY. The brief asked for a control that an arm missing `=>` still
 // refuses as match_arm_navigation_refused. That source does not reach lowering: the parser refuses
 // it (parse_grammar_choice_overlap_residue), so no source text can drive the navigation arm from
 // this route, and a control that cannot go red on this route would be a decoration (DESIGN section
 // 4b). The navigation refusal survives only for a parse tree whose arm has no pattern or no `=>`.
-data vrr_header: String = "module mq.vrr\n\nimport v2.std.logic { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
+data vrr_header: String = "module mq.vrr\n\nimport std.types { Bool }\n\ntype VrrRecord { f: Bool }\n\n"
 
 data vrr_arm_body_source: String = vrr_header + "fn p(v: Bool) -> Bool {\n  match v {\n    true => fn(y) { fn(z) { y } }\n    false => v\n  }\n}\n"
 
@@ -171,60 +170,47 @@ fn vrr_outcomes() -> VrrOutcomes {
   }
 }
 
-// The refusal is the value's: its fatal cause is the specimen's own
-// (arrow_body_is_function_value_unmodeled), and its locus holds none of the enclosing form's tokens
-// (`match`, `=>`, `if`, `let`).
-fn vrr_refused_at_the_value(o: VrrObserved) -> Bool {
+// The specimen lowers whole: the front end Accepts the module, so the value in its position was read
+// by the value reader and lowered, never carried, relabelled or narrowed to an inner subtree.
+fn vrr_lowered_whole(o: VrrObserved) -> Bool {
   match o {
-    VrrAccepted => false
-    VrrRefusedAt { reason: r, locus_holds_fn_literal: _, locus_holds_arrow_lambda: _, locus_holds_enclosing_token: e } =>
-      (r == ^body_lowering_reason_arrow_body_is_function_value_unmodeled) && !e
-  }
-}
-
-// The refusal is the lambda argument's own: its fatal cause is arrow_body_is_function_value_unmodeled, and
-// the call it sits in (a fold, an `all`) is refused rather than Accepted around it.
-fn vrr_refused_at_the_lambda(o: VrrObserved) -> Bool {
-  match o {
-    VrrAccepted => false
-    VrrRefusedAt { reason: r, locus_holds_fn_literal: _, locus_holds_arrow_lambda: _, locus_holds_enclosing_token: _ } =>
-      r == ^body_lowering_reason_arrow_body_is_function_value_unmodeled
+    VrrAccepted => true
+    VrrRefusedAt { reason: _, locus_holds_fn_literal: _, locus_holds_arrow_lambda: _, locus_holds_enclosing_token: _ } => false
   }
 }
 
 // THE RELABEL, ASKED DIRECTLY: an unlowerable arm body is the arm body's refusal, not the arm's.
-test fn an_unlowerable_match_arm_body_refuses_at_the_body_not_as_navigation_holds() -> Bool {
-  vrr_refused_at_the_value(o: vrr_outcomes().arm_body)
+test fn a_function_valued_match_arm_body_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().arm_body)
 }
 
-test fn an_unlowerable_if_arm_refuses_at_the_arm_value_not_as_navigation_holds() -> Bool {
-  vrr_refused_at_the_value(o: vrr_outcomes().if_arm)
+test fn a_function_valued_if_arm_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().if_arm)
 }
 
-test fn an_unlowerable_if_condition_refuses_at_the_condition_holds() -> Bool {
-  vrr_refused_at_the_value(o: vrr_outcomes().if_condition)
+test fn a_function_valued_if_condition_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().if_condition)
 }
 
-test fn an_unlowerable_let_value_refuses_at_the_value_holds() -> Bool {
-  vrr_refused_at_the_value(o: vrr_outcomes().let_value)
+test fn a_function_valued_let_value_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().let_value)
 }
 
 // THE CARRY'S FORMER POSITION: this specimen Accepted under the value_carried_unlowered advisory and
 // refused later, at resolve, at the wrong atom.
-test fn an_unlowerable_field_initializer_refuses_at_the_value_instead_of_being_carried_holds() -> Bool {
-  vrr_refused_at_the_value(o: vrr_outcomes().field_initializer)
+test fn a_function_valued_field_initializer_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().field_initializer)
 }
 
-// A FOLD REFUSAL INSIDE A VALUE IS THE VALUE'S REFUSAL, NOT A CUE TO GO LOOKING FOR A SMALLER VALUE.
-// body_lower_value_lowered used to hand a value whose bottom-up fold refused to the top-down walker,
-// and the walker answered with the first lowerable SUBTREE -- here the `let y = leaf(e); y` body of
-// the `f:` literal -- so `folded` was bound to that body, the fold call and its lambda argument were
-// gone, and the module Accepted. The full-corpus census on the PR that deleted the value carry found
-// nine files Accepted this way (dag/extdeps/linux/proc_mountinfo.dag among them). The refusal is the
-// lambda argument's own (arrow_body_is_function_value_unmodeled since gunbc#12210), located at the lambda; the specimen's `f:` body carries
-// a `let` because a body the walker can lower is what the swallow latched onto.
-test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner_subtree_holds() -> Bool {
-  vrr_refused_at_the_lambda(o: vrr_outcomes().swallowed_fold_refusal)
+// THE FOLD SPECIMEN LOWERS WHOLE. It was written for the swallow: body_lower_value_lowered once handed a
+// value whose bottom-up fold refused to the top-down walker, which bound `folded` to the first
+// lowerable SUBTREE (the `let y = leaf(e); y` body of the `f:` literal), so the fold call and its
+// lambda argument were gone and the module Accepted (nine corpus files, dag/extdeps/linux/
+// proc_mountinfo.dag among them). The curried lambda argument `l => m => leaf(l)` now has a lowered
+// form (v2.std.node ArrowBodyForm FunctionValueBody), so the claim asserts the whole value lowers --
+// fold call, curried argument and `f:` literal together -- and the module Accepts.
+test fn a_curried_fold_argument_inside_a_let_value_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().swallowed_fold_refusal)
 }
 
 // A BLOCK ARM WHOSE CONTENT REFUSES KEEPS ITS CONTENT'S REFUSAL. The arm position is read twice --
@@ -233,6 +219,6 @@ test fn a_fold_refusal_inside_a_let_value_propagates_instead_of_binding_an_inner
 // was reported as match_arm_navigation_refused at a locus holding no source at all
 // (dag/extdeps/vllm/engram_layout.dag vllm_engram_is_prime). The retry is now owed only to a shape
 // miss, and the arm's own refusal stands, located at the lambda.
-test fn a_block_arm_whose_content_refuses_keeps_the_content_refusal_not_navigation_holds() -> Bool {
-  vrr_refused_at_the_lambda(o: vrr_outcomes().block_arm_lambda)
+test fn a_curried_lambda_inside_a_block_arm_lowers_whole_holds() -> Bool {
+  vrr_lowered_whole(o: vrr_outcomes().block_arm_lambda)
 }

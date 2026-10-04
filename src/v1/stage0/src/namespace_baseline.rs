@@ -205,6 +205,75 @@ pub(crate) enum InterfaceChangeGround {
         module_path: String,
         declaration: String,
     },
+    /// A where-refined alias whose interface text differs ONLY in its refinement predicates
+    /// (`ModuleDeclarationRecord::where_refinements`: the predicate serialization differs, the
+    /// interface with the predicates left out is byte-equal). What changed is which VALUES
+    /// inhabit the alias, so what it can strand is a site that ADMITS a value into it. Every
+    /// direct reader is planned. It propagates only through INPUT positions
+    /// (`input_interface_references`): a declaration that mentions the alias in a constructor
+    /// field, a parameter, an alias target or a returned function's parameter admits values into it
+    /// without naming it, while a plain return type or a read of `b.f` supplies nothing. A LOOSENED predicate strands no
+    /// admission, but it is planned exactly the same way: loosening is not decided here, and
+    /// planning it is the sound direction.
+    RefinementPredicatesChanged,
+    /// The declaration's own interface is unchanged, but an INPUT position of it is typed
+    /// through a declaration whose admitted values changed (`RefinementPredicatesChanged`, or
+    /// this ground again). Its readers are planned, since supplying a value to it may now be
+    /// refused, and it propagates onward through input positions only.
+    AdmittedThroughInput {
+        module_path: String,
+        declaration: String,
+    },
+}
+
+/// WHICH INTERFACE OCCURRENCES A CHANGE PROPAGATES THROUGH, and the ground it hands on. The one
+/// rule both selectors apply. A refinement-only change travels input positions alone; every
+/// other propagating change travels every interface occurrence, as before.
+fn propagation_rule(
+    change: &DeclarationInterfaceChange,
+) -> (
+    fn(&ModuleDeclarationRecord) -> &BTreeSet<(String, String)>,
+    bool,
+) {
+    match change.ground {
+        InterfaceChangeGround::RefinementPredicatesChanged
+        | InterfaceChangeGround::AdmittedThroughInput { .. } => {
+            (|r| &r.input_interface_references, true)
+        }
+        _ => (|r| &r.interface_references, false),
+    }
+}
+
+/// WHETHER A DECLARATION HAS ALREADY BEEN REACHED BY A RULE AT LEAST AS WIDE. `seen` records
+/// the rule each entry was reached by (`true` = input positions only). A wide entry covers both
+/// rules; a narrow one covers only the narrow rule, so a signature change that reaches a
+/// declaration a refinement change reached first is still propagated through every mention --
+/// otherwise the order of the frontier would decide how much of the plan exists (review 71782).
+fn already_propagated(
+    seen: &BTreeSet<(String, String, bool)>,
+    module_path: &str,
+    declaration: &str,
+    through_input: bool,
+) -> bool {
+    let key = |narrow: bool| (module_path.to_string(), declaration.to_string(), narrow);
+    seen.contains(&key(false)) || (through_input && seen.contains(&key(true)))
+}
+
+fn propagated_ground(
+    change: &DeclarationInterfaceChange,
+    through_input: bool,
+) -> InterfaceChangeGround {
+    if through_input {
+        InterfaceChangeGround::AdmittedThroughInput {
+            module_path: change.module_path.clone(),
+            declaration: change.declaration.clone(),
+        }
+    } else {
+        InterfaceChangeGround::PropagatedThrough {
+            module_path: change.module_path.clone(),
+            declaration: change.declaration.clone(),
+        }
+    }
 }
 
 /// One declaration whose interface differs between the base and head indexes.
@@ -294,7 +363,20 @@ fn direct_interface_changes(
             }
         }
         if base_text != head_text {
-            out.push(change(InterfaceChangeGround::SignatureChanged));
+            let refinement_only = match (
+                base_record.where_refinements.get(declaration),
+                head_record.where_refinements.get(declaration),
+            ) {
+                (Some((base_where, base_rest)), Some((head_where, head_rest))) => {
+                    base_rest == head_rest && base_where != head_where
+                }
+                _ => false,
+            };
+            out.push(change(if refinement_only {
+                InterfaceChangeGround::RefinementPredicatesChanged
+            } else {
+                InterfaceChangeGround::SignatureChanged
+            }));
             continue;
         }
         // THE FOUR ROSTER TRANSITIONS, decided on presence first and difference second:
@@ -452,6 +534,13 @@ pub(crate) fn interface_changed_consumers(
     let interface_readers = records_by_read_leaf(&head_records, |r| {
         Box::new(r.interface_references.iter().map(|(_, spelling)| spelling))
     });
+    let input_readers = records_by_read_leaf(&head_records, |r| {
+        Box::new(
+            r.input_interface_references
+                .iter()
+                .map(|(_, spelling)| spelling),
+        )
+    });
     let any_readers = records_by_read_leaf(&head_records, |r| {
         Box::new(
             r.referenced
@@ -471,10 +560,16 @@ pub(crate) fn interface_changed_consumers(
         ));
     }
     // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
-    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
-    let mut seen: BTreeSet<(String, String)> = changes
+    // (module, declaration, rule) triple not yet in `seen`, and the triples are finite.
+    let mut seen: BTreeSet<(String, String, bool)> = changes
         .iter()
-        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .map(|c| {
+            (
+                c.module_path.clone(),
+                c.declaration.clone(),
+                propagation_rule(c).1,
+            )
+        })
         .collect();
     let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
     while !frontier.is_empty() {
@@ -493,9 +588,16 @@ pub(crate) fn interface_changed_consumers(
                 continue;
             }
             let universe = change_universe(base, head, change);
-            for record in records_reading(&head_records, &interface_readers, &universe) {
-                for (in_declaration, spelling) in &record.interface_references {
-                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+            let (reads, through_input) = propagation_rule(change);
+            let readers = if through_input {
+                &input_readers
+            } else {
+                &interface_readers
+            };
+            for record in records_reading(&head_records, readers, &universe) {
+                for (in_declaration, spelling) in reads(record) {
+                    if already_propagated(&seen, &record.module_path, in_declaration, through_input)
+                    {
                         continue;
                     }
                     // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
@@ -508,14 +610,15 @@ pub(crate) fn interface_changed_consumers(
                     {
                         continue;
                     }
-                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    seen.insert((
+                        record.module_path.clone(),
+                        in_declaration.clone(),
+                        through_input,
+                    ));
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
-                        ground: InterfaceChangeGround::PropagatedThrough {
-                            module_path: change.module_path.clone(),
-                            declaration: change.declaration.clone(),
-                        },
+                        ground: propagated_ground(change, through_input),
                     });
                 }
             }
@@ -632,10 +735,16 @@ pub(crate) fn interface_changed_consumers_by_scan(
         ));
     }
     // PROPAGATION, a fixpoint over head interfaces. Bounded: each round adds at least one
-    // (module, declaration) pair not yet in `seen`, and the pairs are finite.
-    let mut seen: BTreeSet<(String, String)> = changes
+    // (module, declaration, rule) triple not yet in `seen`, and the triples are finite.
+    let mut seen: BTreeSet<(String, String, bool)> = changes
         .iter()
-        .map(|c| (c.module_path.clone(), c.declaration.clone()))
+        .map(|c| {
+            (
+                c.module_path.clone(),
+                c.declaration.clone(),
+                propagation_rule(c).1,
+            )
+        })
         .collect();
     let mut frontier: Vec<DeclarationInterfaceChange> = changes.clone();
     while !frontier.is_empty() {
@@ -654,9 +763,11 @@ pub(crate) fn interface_changed_consumers_by_scan(
                 continue;
             }
             let universe = change_universe(base, head, change);
+            let (reads, through_input) = propagation_rule(change);
             for record in index_records(head) {
-                for (in_declaration, spelling) in &record.interface_references {
-                    if seen.contains(&(record.module_path.clone(), in_declaration.clone())) {
+                for (in_declaration, spelling) in reads(record) {
+                    if already_propagated(&seen, &record.module_path, in_declaration, through_input)
+                    {
                         continue;
                     }
                     // A FLAT-CHANNEL interface read propagates too. `interface_references` are the
@@ -669,14 +780,15 @@ pub(crate) fn interface_changed_consumers_by_scan(
                     {
                         continue;
                     }
-                    seen.insert((record.module_path.clone(), in_declaration.clone()));
+                    seen.insert((
+                        record.module_path.clone(),
+                        in_declaration.clone(),
+                        through_input,
+                    ));
                     next.push(DeclarationInterfaceChange {
                         module_path: record.module_path.clone(),
                         declaration: in_declaration.clone(),
-                        ground: InterfaceChangeGround::PropagatedThrough {
-                            module_path: change.module_path.clone(),
-                            declaration: change.declaration.clone(),
-                        },
+                        ground: propagated_ground(change, through_input),
                     });
                 }
             }
@@ -1223,7 +1335,9 @@ pub(crate) fn reconstruct_base_index(
     // "same grammar?" in a few `rev-parse` calls, so the ordinary pull request -- which changes no
     // grammar -- pays nothing, and only a real grammar change pays to materialize and evaluate the
     // base corpus.
-    let agreement = match environment_agreement(&workspace, &base, &head) {
+    // ONE LIVE-TREE INDEX FOR BOTH CLOSURES BELOW, built on first demand and carried to both.
+    let live = LiveDagIndex::new();
+    let agreement = match environment_agreement(&workspace, &base, &head, &live) {
         Ok(a) => a,
         // A REFUSAL HERE IS NOT A LICENCE TO USE THE HEAD'S. Not knowing which grammar the base
         // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
@@ -1240,7 +1354,7 @@ pub(crate) fn reconstruct_base_index(
     // THE KERNEL HALF. `declaring_candidates` consults this binary's own `kernel_type_set`, a head
     // fact, so one map serves exactly when the base declares the same kernel NAMES. That is decided
     // at the grain of the name set, not the declaring file's bytes; distinct sets refuse.
-    match kernel_set_serves_both(&workspace, &base, &head) {
+    match kernel_set_serves_both(&workspace, &base, &head, &live) {
         Ok(true) => {}
         Ok(false) => {
             return Ok(BaselineReconstruction::NotEvaluated {
@@ -1788,12 +1902,12 @@ fn evaluate_owned_item_in(
     let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
     let entry_display = entry.display().to_string();
     let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry_display).map_err(
-            |e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        super::resolve_entry_with_index(&index, &entry_display).map_err(|e| {
+            EnvironmentLoadRefusal::ClosureNotEvaluable {
                 revision: revision.to_string(),
                 cause: e,
-            },
-        )?;
+            }
+        })?;
     // HERMETIC, NOT WET. A static declaration has no business acquiring permission to perform host
     // effects while it is being decoded; `Wet` here would let a corpus under examination act during
     // examination.
@@ -1884,21 +1998,54 @@ fn revision_scratch_root(purpose: &str) -> std::path::PathBuf {
 /// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
 /// The resolved graph's own span files ARE the closure.
 pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    closure_paths_of(ENVIRONMENT_MODULE_PATH)
+    closure_paths_of(ENVIRONMENT_MODULE_PATH, &LiveDagIndex::new())
+}
+
+/// The live `dag` tree's index, built on FIRST DEMAND and carried by its owner to every closure it
+/// answers. The parse-environment closure and the kernel-types closure are two demands on one name
+/// set; building a fresh index per demand parsed every live-tree file once per closure, which
+/// `MultiEntryIndexBuiltTwiceForOneNameSet` refuses. Carried, not placed in the thread's shared
+/// slot: that slot holds the floor's own `dag` + `src/v2` index, and a `dag`-only demand there
+/// evicts it (`SharedIndexRebuiltAfterEviction`).
+pub struct LiveDagIndex {
+    cell: std::cell::OnceCell<super::MultiEntryIndex>,
+}
+
+impl LiveDagIndex {
+    pub fn new() -> Self {
+        LiveDagIndex {
+            cell: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn get(&self) -> &super::MultiEntryIndex {
+        self.cell.get_or_init(|| {
+            let dag_root = super::workspace_root().join(DAG_SOURCE_ROOT);
+            super::build_multi_entry_index(&[dag_root.display().to_string()])
+        })
+    }
+}
+
+impl Default for LiveDagIndex {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
-fn closure_paths_of(entry_rel: &str) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+fn closure_paths_of(
+    entry_rel: &str,
+    live: &LiveDagIndex,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
     let root = super::workspace_root();
     let entry = root.join(entry_rel);
-    let dag_root = root.join(DAG_SOURCE_ROOT);
-    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
     let (graph, _indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
-            .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        super::resolve_entry_with_index(live.get(), &entry.display().to_string()).map_err(|e| {
+            EnvironmentLoadRefusal::ClosureNotEvaluable {
                 revision: "live-tree".to_string(),
                 cause: e,
-            })?;
+            }
+        })?;
     let mut paths = BTreeSet::new();
     for module in graph.modules.iter() {
         for item in module.items.iter() {
@@ -1943,8 +2090,9 @@ pub fn environment_agreement(
     repo: &std::path::Path,
     base: &str,
     head: &str,
+    live: &LiveDagIndex,
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
-    let closure = environment_closure_paths()?;
+    let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
     let mut differing = Vec::new();
     for path in &closure {
         if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
@@ -1983,6 +2131,7 @@ pub fn kernel_set_serves_both(
     repo: &std::path::Path,
     base: &str,
     head: &str,
+    live: &LiveDagIndex,
 ) -> Result<bool, EnvironmentLoadRefusal> {
     let base_blob =
         blob_id_at(repo, base, KERNEL_TYPES_PATH).map_err(|e| as_kernel_set_refusal(base, e))?;
@@ -2004,7 +2153,7 @@ pub fn kernel_set_serves_both(
         .keys()
         .cloned()
         .collect();
-    Ok(kernel_names_at(repo, base)? == head_names)
+    Ok(kernel_names_at(repo, base, live)? == head_names)
 }
 
 /// The kernel names `std.types` declares at `revision`, read from that revision's own tree.
@@ -2014,8 +2163,9 @@ pub fn kernel_set_serves_both(
 pub fn kernel_names_at(
     repo: &std::path::Path,
     revision: &str,
+    live: &LiveDagIndex,
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let closure = closure_paths_of(KERNEL_TYPES_PATH)?;
+    let closure = closure_paths_of(KERNEL_TYPES_PATH, live)?;
     let dest = revision_scratch_root("kernel-set");
     let outcome = materialize_revision_paths(
         repo,

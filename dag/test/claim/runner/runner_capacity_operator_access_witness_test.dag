@@ -2,7 +2,7 @@ module test.claim.runner_capacity_operator_access_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.host_effect { LocalShell, SshShell }
 import gunbc.runner_capacity_operator_access {
   runner_capacity_host_in_band_admission_requirement,
@@ -104,7 +104,10 @@ test fn witness_recover_host_execution_target_is_hosted_ssh() -> Bool {
   ) {
     RunnerCapacityExecuteHostedRemote { host: h, transport: t, reason: r } =>
       (h as String) == (operator_host_srv3 as String)
-        && t == SshShell
+        && match t {
+          SshShell { ssh_host: _ } => true
+          _ => false
+        }
         && string_contains(s: r, pattern: "GitHub-hosted")
     RunnerCapacityExecuteInBand { host_label: _, transport: _ } => false
   }

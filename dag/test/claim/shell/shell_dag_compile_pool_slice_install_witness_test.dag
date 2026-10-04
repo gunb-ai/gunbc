@@ -1,0 +1,115 @@
+module test.claim.shell.shell_dag_compile_pool_slice_install_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.host_effect_realize { compile_pool_slice_install_staging, CompilePoolInstallReady, CompilePoolInstallRefused }
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.host_disk_reclaim_units { reclaim_service_unit_file }
+import std.materialization_ladder { string_list_contains }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ACCEPTANCE ORACLE FOR shell-dag-compile-pool-slice-install, AUTHORED RED BY DESIGN AND NOW
+// GREEN: the node landed (shell-to-dag, PR #12989 following #12973/#12787). The oracle's bar was
+// that gunbc.host_effect_realize stops assembling install/staging shell text -- the body opened
+// with `set -euo pipefail`, an authored mktemp assignment and an authored trap line, the two lines
+// the module's own annotation declared unmodelled, so the rendered install surface carried a shell
+// control word before any field was even adversarial. The body is deleted; the install is a typed
+// staging fold over run_argv_over_host_effect_transport (unit bytes cross as STDIN DATA to dd, a
+// sudo install -m moves them into /etc/systemd/system, sudo systemctl daemon-reload and start
+// follow, the staged sibling is discarded -- an argv list per operation, no script anywhere), so
+// the oracle reads compile_pool_slice_install_staging and asserts the SAME properties over the
+// typed fold, at the same names the roadmap contract binds. The transition red -> green happened
+// in the diff that deleted the body; the expected-red listing whose claim was that these arms
+// fail does not outlive its red and is withdrawn in that same motion (DESIGN 4b(4): a probe that
+// greens when its wall lands flips to a permanent regression control -- these four stay enrolled,
+// green, at the contract's names).
+//
+// The unit-file fixture is reclaim_service_unit_file, an existing authored SystemdUnitFile,
+// supplied rather than derived so the claim stays at this one boundary.
+
+data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
+
+// The words that would make a surface a PROGRAM rather than a command. The adversarial slice-unit
+// name carries `;` INSIDE the name -- that separator is data there, and the boundary-intact
+// assertion below pins it as such -- so the programming-word check for the adversarial arm excludes
+// it and pins the other four shapes instead.
+data shell_programming_words: List<String> = ["set -e", "||", "&&", "2>/dev/null"]
+
+fn install_operation_text(command: ArgvCommand) -> String {
+  join(argv_words(command: command), " ")
+}
+
+// The fold's whole operation surface: one line per operation, exactly the text the transport will
+// spell, no word doubled.
+fn install_surface_of(slice_unit: String) -> String {
+  match compile_pool_slice_install_staging(slice_unit: slice_unit as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } =>
+      join(
+        [
+          install_operation_text(command: w),
+          install_operation_text(command: i),
+          install_operation_text(command: r),
+          install_operation_text(command: s),
+          install_operation_text(command: d),
+        ],
+        "\n",
+      )
+    CompilePoolInstallRefused { reason: _ } => "staging refused"
+  }
+}
+
+// GREEN: the benign fold's surface is five argv lines and carries no shell programming word -- no
+// `set -e` preamble, no `||`/`&&` chaining, no `2>/dev/null` redirect, and no `;` anywhere, which
+// the shell body could not say even of its own preamble. This is the arm that was red by design:
+// the body it replaced opened with `set -euo pipefail`.
+test fn benign_install_body_renders_no_shell_control_word() -> Bool {
+  !any(shell_control_words, w => string_contains(s: install_surface_of(slice_unit: "gunbc-compile-pool.slice"), pattern: w))
+}
+
+// GREEN: an adversarial slice-unit name carrying a command separator crosses the fold as DATA, one
+// unbroken argv word -- the boundary the shell body could never keep (its text interpolation would
+// have made the separator a command separator on the host). The surface must contain the name
+// UNBROKEN in the op that installs it and the op that starts it, must never contain the name's
+// halves as separate words, and must carry no programming word beyond the separator that is part
+// of the name itself.
+test fn adversarial_slice_unit_name_renders_no_shell_control_word() -> Bool {
+  let surface = install_surface_of(slice_unit: "gunbc-compile-pool.slice; reboot")
+  string_contains(s: surface, pattern: "install -m 0644 /etc/systemd/system/gunbc-compile-pool.slice; reboot")
+    && string_contains(s: surface, pattern: "systemctl start gunbc-compile-pool.slice; reboot")
+    && !string_contains(s: surface, pattern: "slice reboot")
+    && !any(shell_programming_words, w => string_contains(s: surface, pattern: w))
+}
+
+// GREEN: the fold installs THE DECLARED UNIT -- the install names the destination path for the
+// declared slice unit, the start names the unit itself, and the bytes that cross the write leg are
+// the unit file's own serialization, whose [Unit] section the authored fixture carries (the fold's
+// stdin payload IS serialize_systemd_unit_file over the supplied file -- structural in
+// compile_pool_slice_install_step; this pins the serializer's output at the same fixture, so what
+// is installed did not change across the rebind).
+test fn install_body_installs_the_declared_unit() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: _, install: i, daemon_reload: _, start: s, discard_stage: _ } =>
+      string_list_contains(xs: argv_words(command: i), wanted: "/etc/systemd/system/gunbc-compile-pool.slice")
+        && string_list_contains(xs: argv_words(command: s), wanted: "gunbc-compile-pool.slice")
+        && string_contains(s: serialize_systemd_unit_file(file: reclaim_service_unit_file()), pattern: "[Unit]")
+    CompilePoolInstallRefused { reason: _ } => false
+  }
+}
+
+// GREEN: the fold starts the slice and never restarts it -- restarting a slice kills every process
+// in it, which is the opposite of converging it. None of the five operations' argvs names
+// `restart`, and the start names the unit. The typed realization preserves start-not-restart.
+test fn install_body_starts_never_restarts() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } =>
+      string_list_contains(xs: argv_words(command: s), wanted: "start")
+        && !string_list_contains(xs: argv_words(command: w), wanted: "restart")
+        && !string_list_contains(xs: argv_words(command: i), wanted: "restart")
+        && !string_list_contains(xs: argv_words(command: r), wanted: "restart")
+        && !string_list_contains(xs: argv_words(command: s), wanted: "restart")
+        && !string_list_contains(xs: argv_words(command: d), wanted: "restart")
+    CompilePoolInstallRefused { reason: _ } => false
+  }
+}

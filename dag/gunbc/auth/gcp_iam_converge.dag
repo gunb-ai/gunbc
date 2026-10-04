@@ -26,8 +26,8 @@ import gunbc.auth.heal_publisher_provision {
   rest_ok, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
-import gunbc.auth.mtcollins1_boot_federation_provision { mtcollins1_boot_dedicated_federation }
-import gunbc.auth.mtcollins1_boot_federation { pinned_version_accessor_grant_for }
+import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
+import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
@@ -208,13 +208,15 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
 // gunbc-private's publisher is a target so that it is created and granted under one operator
 // approval, never by a supplied token (operator 2026-09-27). Its resource-local bindings for
 // iam-converge -- the provider role on its pool, the account-policy role on its account -- are the
-// bootstrap's, like every other target's.
-data gcp_iam_converge_targets: List<DedicatedFederation> = [
-  heal_publisher_dedicated_federation(),
-  private_heal_publisher_dedicated_federation(),
-  mtcollins1_boot_dedicated_federation(),
-  namecheap_dedicated_federation(),
-]
+// bootstrap's, like every other target's. Every provisioned managed-host boot federation is a target
+// (gunbc.auth.managed_host_boot_federation provisioned_boot_federations), in managed-host order.
+data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
+  concat(
+    [heal_publisher_dedicated_federation(), private_heal_publisher_dedicated_federation()],
+    map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
+  ),
+  [namecheap_dedicated_federation()],
+)
 
 fn service_account_resource(email: ServiceAccountEmail) -> String {
   join(["projects/", fleet_secrets_project_id as String, "/serviceAccounts/", email as String], "")
@@ -513,14 +515,16 @@ type GcpIamEstatePlan
 fn plan_refusals(p: GcpIamPlan) -> List<String> {
   match p {
     GcpIamRefused { target: t, reasons: rs } => map(rs, r => join([t, ": ", r], ""))
-    _ => []
+    GcpIamNoop { target: _ } => []
+    GcpIamApply { diff: _ } => []
   }
 }
 
 fn plan_diffs(p: GcpIamPlan) -> List<GcpIamDiff> {
   match p {
     GcpIamApply { diff: d } => [d]
-    _ => []
+    GcpIamNoop { target: _ } => []
+    GcpIamRefused { target: _, reasons: _ } => []
   }
 }
 
@@ -822,7 +826,7 @@ fn execute_policy_add(s: PolicySubject, approved_etag: String, cells: List<GcpIa
 
 fn create_refusal(subject: String, o: RestOutcome) -> String {
   if rest_ok(o: o) { "" }
-  else if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  _ => false } { join([subject, " appeared after consent; nothing further applied"], "") }
+  else if match o { RestOk => false  RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
   else { join([subject, ": ", rest_refusal_text(o: o)], "") }
 }
 
@@ -840,7 +844,7 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
 }
 
 fn is_create(e: GcpIamEffect) -> Bool {
-  match e { AddPolicyCells { subject: _, observed_etag: _, cells: _ } => false  _ => true }
+  match e { AddPolicyCells { subject: _, observed_etag: _, cells: _ } => false  CreatePool { pool_id: _, display_name: _ } => true  CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => true  CreateServiceAccount { account_id: _, display_name: _ } => true }
 }
 
 fn first_refusal(xs: List<GcpIamEffect>, run: fn(GcpIamEffect) -> String) -> String {

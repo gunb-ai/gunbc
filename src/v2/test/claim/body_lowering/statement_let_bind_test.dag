@@ -11,8 +11,9 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.reference_conservation { ReferenceConservationSubject }
 import v2.std.type_binder { type_annotation_optional }
 import v2.extdeps.languages.dag { dag_int_literal_magnitude_node_optional, dag_node_is_int_literal_atom }
-import v2.std.node { Bind, ComputationNode, Named, Node, Positional, node_subtree_nodes }
+import v2.std.node { Bind, ComputationNode, Authored, Node, Positional, node_subtree_nodes, StructuralLabel }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.diagnostic { ByteRange, DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -89,22 +90,44 @@ test fn single_statement_body_unchanged_holds() -> Bool {
   }
 }
 
-test fn let_in_form_unchanged_holds() -> Bool {
-  match conserved_normalize(subject: let_in_form_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+// THE `in` FORM REFUSES AT THE PARSE, BY NAME, AT THE `in`. `let x = e in body` was dropped
+// (statement `let` only; v2.extdeps.languages.dag dag_grammar_let_in_refusal_expr), so this source
+// is refused as parse_let_in_expression_dropped located at the `in` (bytes 39..41), never as tokens
+// left over and never lowered.
+test fn let_in_form_refuses_at_the_in_holds() -> Bool {
+  match let_in_form_subject().parsed {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "parse_let_in_expression_dropped" && let_in_locus_starts_at(at: ds.head.at, start: 39)
   }
 }
 
-// THE `in` FORM'S VALUE IS THE LITERAL, NOT ITS TOKEN CLASS. `let x = 1 in x` binds its value through
+fn let_in_locus_starts_at(at: Locus, start: Int) -> Bool {
+  match at {
+    SourcePortLocus { anchor: _, file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
+    Textual { file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
+    NodeLocus { anchor: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
+  }
+}
+
+fn let_in_extent_starts_at(extent: Extent, start: Int) -> Bool {
+  match extent {
+    ByteRange { start: s, end: _ } => s == start
+    WholeFile => false
+  }
+}
+
+// A STATEMENT LET'S VALUE IS THE LITERAL, NOT ITS TOKEN CLASS. `let x = 1` binds its value through
 // the first-atom fallback as the int-literal atom -- identity dag_token_int_literal, its magnitude
 // carried as a child edge (v2.extdeps.languages.dag dag_int_literal_magnitude_node_optional). A
 // keyword guard that asked "is this atom a lexer token" refused it (gunbc#12248, fixed to ask "is
 // it a keyword"); a reader that kept the class atom but dropped its magnitude would erase the `1`.
 // This row asserts both halves on the real normalize route: the Bind's value is an int-literal atom
 // and it carries a magnitude.
-fn let_in_bind_values_with_magnitude() -> List<Bool> {
-  match let_in_form_subject().normalized {
+fn let_bind_values_with_magnitude() -> List<Bool> {
+  match let_then_reference_subject().normalized {
     Rejected { diagnostics: _ } => []
     Accepted { value: t, diagnostics: _ } =>
       fold(node_subtree_nodes(root: t.root), init: [], f: fn(acc, n) {
@@ -125,26 +148,27 @@ fn let_in_bind_values_with_magnitude() -> List<Bool> {
 }
 
 fn positional_target_at(n: Node, index: Int) -> Optional<Node> {
-  fold(n.children, init: LetInPositionalScan { at: 0, found: optional_absent() }, f: fn(acc, e) {
+  fold(n.children, init: LetPositionalScan { at: 0, found: optional_absent() }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional =>
         if acc.at == index {
-          LetInPositionalScan { at: acc.at + 1, found: optional_present(value: e.target) }
+          LetPositionalScan { at: acc.at + 1, found: optional_present(value: e.target) }
         } else {
-          LetInPositionalScan { at: acc.at + 1, found: acc.found }
+          LetPositionalScan { at: acc.at + 1, found: acc.found }
         }
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   }).found
 }
 
-type LetInPositionalScan {
+type LetPositionalScan {
   at: Int
   found: Optional<Node>
 }
 
-test fn let_in_form_binds_the_literal_value_holds() -> Bool {
-  let_in_bind_values_with_magnitude() == [true]
+test fn statement_let_binds_the_literal_value_holds() -> Bool {
+  let_bind_values_with_magnitude() == [true]
 }
 
 // A TYPED STATEMENT LET LOWERS WITH ITS ANNOTATION CARRIED. `let x: Int = 1` lowers to a Bind with

@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List, Secret }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
+import std.resources { Network }
 
 // ORG-LEVEL GITHUB ACTIONS SETTINGS - the upstream surface, cited. These are the org
 // settings that decide whether a repository's workflows can reach the org's self-hosted
@@ -59,6 +60,7 @@ type OrgRunnerGroup {
 // reads through it; a CLI copy of the same GET was a second authority whose page contract differed.
 service github.CliOrgRunnerGroups {
   operation ListRunnerGroupRepositoriesJson {
+    requires Network
     input {
       org: NonEmptyStr
       runner_group_id: Int
@@ -75,6 +77,7 @@ service github.CliOrgRunnerGroups {
   }
 
   operation CreateRunnerGroupJson {
+    requires Network
     input {
       org: NonEmptyStr
       name: NonEmptyStr
@@ -135,6 +138,7 @@ service github.OrgRunnerGroupsRest {
   }
 
   operation ListOrganizationRunnerGroups {
+    requires Network
     input {
       installation_token: Secret
       org: NonEmptyStr

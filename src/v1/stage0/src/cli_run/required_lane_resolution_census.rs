@@ -99,7 +99,14 @@ pub fn entry_closure_module_identities(
     source_roots: &[String],
     entry_path: &str,
 ) -> ModuleIdentityPopulation {
-    let index = process_shared_index(source_roots);
+    let index = match entry_resolve::try_index_for_run_or_owned_pool(source_roots) {
+        Ok(index) => index,
+        Err(cause) => {
+            return ModuleIdentityPopulation::Refused {
+                cause: format!("entry closure of {entry_path}: source-discovery: {cause}"),
+            }
+        }
+    };
     let sources = match load_sources_for_entry_with_pool(&index, entry_path) {
         Ok(sources) => sources,
         Err(cause) => {

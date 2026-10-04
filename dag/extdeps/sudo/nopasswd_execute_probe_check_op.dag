@@ -1,7 +1,6 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
 import std.types { NonEmptyStr, Bool, Int, List, Unit }
-import std.string_type { String }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdExecuteProbeShape,
   SudoNopasswdGrantListProbeShape,
@@ -9,7 +8,12 @@ import extdeps.sudo.nopasswd_execute_probe {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { any, length }
-import extdeps.posix.shell_command_language { posix_single_quote }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_lits,
+  bash_build_pipe,
+  bash_build_with_redir
+}
+import v2.std.node { Node }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -62,12 +66,15 @@ fn sudo_nopasswd_grant_list_admits_probe(
 // grants it, gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_shell) renders its
 // condition from these, never spells its own.
 //
-// Execute: the argv of sudo_nopasswd_execute_probe_argv, each word single-quoted; exit zero only
-// when sudo ran the command without a password.
-fn sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape) -> String {
-  concat(
-    join(map(sudo_nopasswd_execute_probe_argv(probe: probe), w => posix_single_quote(spelling: w)), " "),
-    " >/dev/null 2>&1"
+// Both are v2.extdeps.languages.bash_build statement nodes, so the words are grammar-quoted by the
+// one bash serializer (v2.workflow.bash_emit) rather than spelled here.
+//
+// Execute: the argv of sudo_nopasswd_execute_probe_argv; exit zero only when sudo ran the command
+// without a password.
+fn sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeShape) -> Node {
+  bash_build_with_redir(
+    inner: bash_build_command_from_lits(lits: sudo_nopasswd_execute_probe_argv(probe: probe)),
+    redir: ^bash_production_fold_redir_stdout_and_stderr_null
   )
 }
 
@@ -80,19 +87,29 @@ fn sudo_nopasswd_execute_probe_shell_condition(probe: SudoNopasswdExecuteProbeSh
 // binary not yet installed would read as a grant miss (the reason this probe kind exists).
 data sudo_nopasswd_grant_list_tag: String = "NOPASSWD:"
 
-fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> String {
+fn sudo_nopasswd_grant_list_shell_condition(probe: SudoNopasswdGrantListProbeShape) -> Node {
   let tag = sudo_nopasswd_grant_list_tag
-  join([
-    join(map(sudo_nopasswd_grant_list_argv(), w => posix_single_quote(spelling: w)), " "),
-    " 2>/dev/null | grep -v -- ", posix_single_quote(spelling: concat(concat(tag, ".*"), tag)),
-    " | sed -n ", posix_single_quote(spelling: concat(concat("s/^.*", tag), "//p")),
-    " | sed ", posix_single_quote(spelling: "s/^[[:space:]]*//;s/[[:space:]]*$//"),
-    " | grep -Fqx -- ", posix_single_quote(spelling: probe as String),
-  ], "")
+  bash_build_pipe(
+    left: bash_build_with_redir(
+      inner: bash_build_command_from_lits(lits: sudo_nopasswd_grant_list_argv()),
+      redir: ^bash_production_fold_redir_stderr_null
+    ),
+    right: bash_build_pipe(
+      left: bash_build_command_from_lits(lits: ["grep", "-v", "--", concat(concat(tag, ".*"), tag)]),
+      right: bash_build_pipe(
+        left: bash_build_command_from_lits(lits: ["sed", "-n", concat(concat("s/^.*", tag), "//p")]),
+        right: bash_build_pipe(
+          left: bash_build_command_from_lits(lits: ["sed", "s/^[[:space:]]*//;s/[[:space:]]*$//"]),
+          right: bash_build_command_from_lits(lits: ["grep", "-Fqx", "--", probe as String])
+        )
+      )
+    )
+  )
 }
 
 service sudo.NopasswdExecuteProbe {
   operation Check {
+    requires opaque
     input { probe: SudoNopasswdExecuteProbeShape }
     output { success: Bool from "exit_success" }
     readonly
@@ -112,6 +129,7 @@ service sudo.NopasswdExecuteProbe {
 
 service sudo.NopasswdGrantList {
   operation Read {
+    requires none
     input {}
     output {
       exit_code: Int from "exit_code"

@@ -281,8 +281,8 @@ test fn the_install_fetches_then_verifies_then_extracts_and_never_passes_the_dig
   let root = firecracker_install_root(executor_home: "/home/x")
   let fetch = firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
   let install = firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: "/home/x/s")
-  map(fetch, c => c.program as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
-    && map(install, c => c.program as String) == ["tar", "cp"]
+  map(fetch, c => c.program.invocation as String) == ["/usr/bin/mkdir", "/usr/bin/mkdir", "curl"]
+    && map(install, c => c.program.invocation as String) == ["tar", "cp"]
     && !any(concat(fetch, install), c => any(c.arguments, a => string_contains(s: a, pattern: firecracker_release_aarch64_tarball_sha256 as String)))
     && firecracker_installed_binary(root: root, rel: firecracker_release_aarch64) == "/home/x/.local/share/gunbc-firecracker/v1.16.1-aarch64/firecracker"
     && starts_with(s: root, prefix: "/home/x/")

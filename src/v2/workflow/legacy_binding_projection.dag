@@ -24,6 +24,7 @@ import v2.workflow.legacy_binding_delta {
   InsertionEntryDerived,
   NotAnInsertion,
   InsertionCauseLost,
+  InsertionOccurrenceUnallocated,
   insertion_provenance_entry
 }
 
@@ -170,6 +171,7 @@ type ProjectionEmission
   | ProjectionDecisionForked { occurrences: List<Int> }
   | ProjectionDecisionForeign { occurrences: List<Int> }
   | ProjectionInsertionCauseLost { sites: List<CauseLostSite> }
+  | ProjectionInsertionUnallocated { causes: List<Int> }
   | ProjectionCandidateNotInsertion { occurrences: List<Int> }
   | ProjectionTargetRepeated { occurrences: List<Int> }
   | ProjectionDroppedOccurrence { occurrences: List<Int> }
@@ -251,12 +253,26 @@ fn declared_insertion_cause_lost_sites(
     }]
     InsertionEntryDerived { entry: _ } => []
     NotAnInsertion { target: _ } => []
+    InsertionOccurrenceUnallocated { target_scope: _, caused_by: _ } => []
   })
 }
 
 fn derivation_not_insertion_occurrence(derivation: InsertionProvenanceDerivation) -> List<Int> {
   match derivation {
     NotAnInsertion { target: t } => [t.occurrence.value]
+    InsertionEntryDerived { entry: _ } => []
+    InsertionCauseLost { target_scope: _ } => []
+    InsertionOccurrenceUnallocated { target_scope: _, caused_by: _ } => []
+  }
+}
+
+// A declared insertion still OccurrencePending was built by a lowering whose image was closed and
+// never allocated: it has a cause and no id, so no provenance row can name it. That is a different
+// defect from a lost cause and is refused under its own name.
+fn derivation_unallocated_cause(derivation: InsertionProvenanceDerivation) -> List<Int> {
+  match derivation {
+    InsertionOccurrenceUnallocated { target_scope: _, caused_by: c } => [c.value]
+    NotAnInsertion { target: _ } => []
     InsertionEntryDerived { entry: _ } => []
     InsertionCauseLost { target_scope: _ } => []
   }
@@ -267,6 +283,7 @@ fn derivation_entries(derivation: InsertionProvenanceDerivation) -> List<Project
     InsertionEntryDerived { entry: e } => [e]
     NotAnInsertion { target: _ } => []
     InsertionCauseLost { target_scope: _ } => []
+    InsertionOccurrenceUnallocated { target_scope: _, caused_by: _ } => []
   }
 }
 
@@ -373,6 +390,7 @@ fn emit_projection_provenance<O>(
     insertions: insertions,
     projected_identity: projected_identity
   )
+  let unallocated = unique_ints(ids: derivations |> flat_map(d => derivation_unallocated_cause(derivation: d)))
   let not_insertions = unique_ints(ids: derivations |> flat_map(d => derivation_not_insertion_occurrence(derivation: d)))
   let carried_entries = decisions |> flat_map(d => match d {
     CarriedForward { base: b, projected: p } => [ProjectedFromSource {
@@ -389,6 +407,7 @@ fn emit_projection_provenance<O>(
   else if (forked |> count) > 0 { ProjectionDecisionForked { occurrences: forked } }
   else if (foreign |> count) > 0 { ProjectionDecisionForeign { occurrences: foreign } }
   else if (cause_lost_sites |> count) > 0 { ProjectionInsertionCauseLost { sites: cause_lost_sites } }
+  else if (unallocated |> count) > 0 { ProjectionInsertionUnallocated { causes: unallocated } }
   else if (not_insertions |> count) > 0 { ProjectionCandidateNotInsertion { occurrences: not_insertions } }
   else if (repeated_targets |> count) > 0 { ProjectionTargetRepeated { occurrences: repeated_targets } }
   else if (dropped |> count) > 0 { ProjectionDroppedOccurrence { occurrences: dropped } }

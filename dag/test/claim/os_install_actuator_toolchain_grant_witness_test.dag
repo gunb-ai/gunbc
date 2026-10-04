@@ -11,19 +11,19 @@ test fn srv3_actuator_toolchain_grant_declares_four_tools() -> Bool {
 test fn srv3_actuator_toolchain_grant_is_fail_closed_on_websocat() -> Bool {
   actuator_toolchain_requirement_includes_tool(
     requirement: srv3_os_install_actuator_toolchain_grant,
-    tool_name: websocat_cli_tool.name,
+    tool_name: websocat_cli_tool.program.invocation,
   )
     && actuator_toolchain_requirement_includes_tool(
       requirement: srv3_os_install_actuator_toolchain_grant,
-      tool_name: nbdkit_cli_tool.name,
+      tool_name: nbdkit_cli_tool.program.invocation,
     )
     && actuator_toolchain_requirement_includes_tool(
       requirement: srv3_os_install_actuator_toolchain_grant,
-      tool_name: socat_cli_tool.name,
+      tool_name: socat_cli_tool.program.invocation,
     )
     && actuator_toolchain_requirement_includes_tool(
       requirement: srv3_os_install_actuator_toolchain_grant,
-      tool_name: curl_cli_tool.name,
+      tool_name: curl_cli_tool.program.invocation,
     )
 }
 

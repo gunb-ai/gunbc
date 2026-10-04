@@ -1,5 +1,7 @@
 module extdeps.ntfy.serve
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
@@ -33,7 +35,7 @@ data ntfy_version_line_prefix: String = "ntfy version "
 
 // The root command's version flag, as the v2.28.0 binary answers it: one line `ntfy version X`.
 fn ntfy_version_command(binary: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: binary, arguments: ["--version"])
+  argv_command(program: uncataloged_program(invocation: binary), arguments: ["--version"])
 }
 
 data ntfy_serve_verb: NonEmptyStr = "serve"

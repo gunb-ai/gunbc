@@ -23,6 +23,7 @@ module gunbc.durable_exclusive_hold_file_store
 // pins the specimens byte-for-byte.
 
 import std.types { NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
@@ -38,6 +39,8 @@ import std.durable_exclusive_hold {
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
   HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
+  DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
+  durable_hold_recovery_assess,
 }
 import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
@@ -320,6 +323,47 @@ fn file_hold_release_commit(plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome
         CasCommitted { committed: c } => FileHoldReleased { slot_key: plan.slot_key, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldReleaseLost { slot_key: plan.slot_key }
         CasStoreRefused { cause: c } => FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: c }
+      }
+  }
+}
+
+// RECOVERING A DEAD HOLDER'S HOLD FREES IT THROUGH THE SAME PLAN AND COMMIT AS A RELEASE: the write
+// is identical -- held at N becomes free at N+1 -- and only the eligibility differs (the holder was
+// observed dead rather than presenting itself). So the plan is minted here from THIS live read, bound
+// to the report's holder and generation, and committed by file_hold_release_commit, which still tells
+// a slot that moved after this read (Lost) from a store fault. The released_by carries the dead holder
+// and the evidence, so the freed slot says why it was freed.
+//
+// The report is a verdict about the world that only the observing consumer can take, so this mint
+// admits its callers by name: a caller that could hand it an authored HolderObservedDead would be the
+// forged-release path the release plan's sole_constructor exists to close.
+type FileHoldRecoveryAssessment
+  = FileHoldRecoveryPlanned { plan: FileHoldReleasePlan, dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | FileHoldRecoveryNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldRecoveryRefusal }
+
+fn file_hold_recovery_assess(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  report: DurableHoldHolderReport,
+  released_by: DurableHoldReleaseRef,
+) -> FileHoldRecoveryAssessment
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+  ]
+{
+  match durable_hold_recovery_assess(observed: observe_file_hold(root: root, key: slot_key), report: report) {
+    HoldRecoveryRefused { refusal: r } => FileHoldRecoveryNotEligible { slot_key: slot_key, refusal: r }
+    HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
+      FileHoldRecoveryPlanned {
+        plan: FileHoldReleasePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: h,
+          generation: g,
+          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+        },
+        dead_holder: h,
+        evidence: e,
       }
   }
 }

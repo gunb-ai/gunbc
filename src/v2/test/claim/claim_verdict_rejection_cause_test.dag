@@ -7,20 +7,21 @@ import v2.compiler.eval {
   run_test_claim_structural_equals_verdict
 }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, Outcome, Rejected, outcome_rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   ComputationNode,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   Value,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.verdict { SemanticMismatch, Verdict }
 
@@ -33,6 +34,7 @@ fn claim_verdict_cause_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
 }
 
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P), with a Disj body.
 fn claim_verdict_cause_ill_formed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
@@ -41,7 +43,7 @@ fn claim_verdict_cause_ill_formed() -> Node {
       Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
       Edge { label: Positional, target: claim_verdict_cause_atom(identity: ^claim_verdict_cause_return) },
       Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: node_synthetic(kind: TypeNode { connective: Disj }, children: [])
       }
     ]

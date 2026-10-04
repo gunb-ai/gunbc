@@ -8,7 +8,7 @@ fn fidelity_quotient_bundle(edges: List<Edge>) -> Node {
 
 fn fidelity_quotient_edge() -> Edge {
   Edge {
-    label: Named { name: ^target_model_edge_fidelity_quotient },
+    label: Authored { name: ^target_model_edge_fidelity_quotient },
     target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])
   }
 }

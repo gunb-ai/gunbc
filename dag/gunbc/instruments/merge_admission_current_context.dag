@@ -106,7 +106,10 @@ fn main() -> ProcessExit {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
   }
-  let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
+  let fetch_parts = match git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef) {
+    Present { value: value } => value
+    Absent => return exit_failure(reason: "merge_admission_current_context: current merge target ref names no remote")
+  }
   let fetched = git.Core.FetchNoTags(
     remote: fetch_parts.remote,
     ref: fetch_parts.ref_name,

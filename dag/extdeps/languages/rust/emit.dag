@@ -255,7 +255,15 @@ fn rust_refusing_int_operator_helper(op: BinOp) -> String? {
     Mul => Present { value: "v1_rt::int_mul" }
     Div => Present { value: "v1_rt::int_div" }
     Mod => Present { value: "v1_rt::int_rem" }
-    _ => none
+    Eq => none
+    Ne => none
+    Lt => none
+    Gt => none
+    Le => none
+    Ge => none
+    And => none
+    Or => none
+    NullCoalesce => none
   }
 }
 
@@ -281,6 +289,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false, wraps_result: false },
   { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false, wraps_result: false },
   { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true,  wraps_result: false },
+  { name: "get",                bridge_name: "list_get_optional", passes_by_ref: true, wraps_result: false },
   { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false, wraps_result: false },
   { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false, wraps_result: false },
   { name: "empty_set",          bridge_name: "rc_empty_set",     passes_by_ref: false, wraps_result: false },
@@ -321,6 +330,8 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
   { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
   { name: "trace_mark",         bridge_name: "trace_mark",       passes_by_ref: false, wraps_result: false },
+  { name: "observed_monotonic_nanos", bridge_name: "observed_monotonic_nanos", passes_by_ref: false, wraps_result: false },
+  { name: "observed_thread_cpu_nanos", bridge_name: "observed_thread_cpu_nanos", passes_by_ref: false, wraps_result: false },
 
   { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
   { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },
@@ -563,15 +574,6 @@ fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> 
     pair_completion_op_rows()
       |> map(row => rust_pair_completion_impl_render(row: row, carrier_param_needs_clone: carrier_param_needs_clone))
       |> join(separator: "")
-  )
-}
-
-fn rust_supplemental_impls_bool_coproduct() -> String {
-  concat(
-    "\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n",
-    "impl From<Bool> for bool {\n",
-    "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
-    "}\n"
   )
 }
 

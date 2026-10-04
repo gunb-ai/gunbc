@@ -1,10 +1,12 @@
 module v2.test.floor_changed_witness
 
+import std.types { List }
 import v2.workflow.wet_evidence {
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused, WetTerminalMissing,
   WetEvidenceBinding, CoResidentPreparedSubject,
 }
 
+import v2.std.optional { Present, Absent }
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
   HermeticRouteGapWetEvidence, HermeticRouteGapWetUnavailable, HermeticRouteGapWetAdmitted,
@@ -19,6 +21,7 @@ import v2.workflow.floor_changed_witness {
   ChangedWitnessRow,
   changed_witness_execution_standing,
   changed_witness_standing_blocks,
+  changed_witness_decline_blocks,
   ChangedWitnessBlocker,
   changed_witness_blocking_cause,
   changed_witness_blockers,
@@ -26,7 +29,7 @@ import v2.workflow.floor_changed_witness {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
-  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   DeclinedCostDebt,
   required_floor_disposition_with_changed_selection,
   ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
@@ -46,8 +49,6 @@ import v2.workflow.floor_terminal_ledger {
   PassedOverBudget, BudgetRefusedBeforeVerdict,
 }
 import v2.std.algebra { Cons, Empty, any }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.nat { Nat }
 import std.measure { CpuClock, WallClock, millisecond, millisecond_count, nanosecond, nanosecond_count }
@@ -183,6 +184,7 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
   match required_floor_disposition_with_changed_selection(
     ordinary: DeclinedOutsideGateClosure {},
     selected_as_changed_witness: true,
+    declared_wet_pattern: Absent {},
   ) {
     PlannedAsChangedWitness => true
     Planned => false
@@ -192,6 +194,8 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
     DeclinedCostDebt => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
   }
 }
 
@@ -199,6 +203,7 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
   match required_floor_disposition_with_changed_selection(
     ordinary: DeclinedOutsideGateClosure {},
     selected_as_changed_witness: false,
+    declared_wet_pattern: Absent {},
   ) {
     DeclinedOutsideGateClosure => true
     Planned => false
@@ -208,6 +213,8 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
     DeclinedCostDebt => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
   }
 }
 
@@ -965,4 +972,46 @@ test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
       cost: over_line_observation()
     )
   ) == "planned-and-passed"
+}
+
+// THE MODELED DECIDER CLASSIFIES A DECLARED BinWitnessWet SELECTION AS DeclinedNoCiWetLane, the
+// arm the seed's required_floor_runner already decides (gunbc#12794); before this the .dag type had
+// no such arm, so the modeled census could not say what the floor did.
+test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
+  match required_floor_disposition_with_changed_selection(
+    ordinary: Planned {},
+    selected_as_changed_witness: true,
+    declared_wet_pattern: Present { value: "bootstrap_test.dag" },
+  ) {
+    DeclinedNoCiWetLane { pattern: p } => p == "bootstrap_test.dag"
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
+    Planned => false
+    PlannedAsChangedWitness => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedCostDebt => false
+  }
+}
+
+// THE NO-CI-WET-LANE DECLINE DOES NOT BLOCK: the declared loss is the rung drop. Every other decline
+// of a changed witness still blocks, except a selection outside discovery whose home is declared
+// non-executing (the claim below).
+test fn the_no_ci_wet_lane_decline_does_not_block_and_other_declines_do() -> Bool {
+  !changed_witness_decline_blocks(disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" })
+    && changed_witness_decline_blocks(disposition: DeclinedDiscoveryExcluded { matched_substring: "x" })
+    && changed_witness_decline_blocks(disposition: DeclinedOutsideGateClosure {})
+}
+
+// A SELECTION OUTSIDE DISCOVERY BLOCKS UNLESS ITS HOME IS DECLARED NON-EXECUTING. `v1` is the row
+// `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` carries, so a v1 home does not block.
+// The named-module subtree rule keeps `v1x` from riding on it, and a home with no roster row blocks.
+test fn a_selection_outside_discovery_blocks_unless_its_home_is_declared_non_executing() -> Bool {
+  !changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1.tests.claim.beta_witness" })
+    && !changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1" })
+    && changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1x.tests.claim.w" })
+    && changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "test.claim.gamma_witness" })
+    && changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "" })
 }

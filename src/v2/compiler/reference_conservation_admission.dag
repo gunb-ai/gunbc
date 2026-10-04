@@ -35,7 +35,6 @@ import v2.std.diagnostic {
   UserInputBoundary
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_init, qualified_name_to_dotted_string }
@@ -70,10 +69,7 @@ import extdeps.communication.medium { Lossless, Medium }
 // that consumes it (gunbc#12221 changed both shapes that were pinned there without a row here: the
 // if-arm argument is now conserved, and a block's later statement now REFUSES located, so both are
 // restated in that module -- as a conserved control and as a refused-not-accepted control).
-type KnownDropShape
-  = NamedArgumentLabel
-  | WhereRefinementPredicate
-  | StatementLetBinder
+type KnownDropShape = | StatementLetBinder
 
 // EACH SHAPE IS A DECLARED, BOUNDED DROP, NOT A STANDING ALLOWANCE. The match is exhaustive, so a
 // shape cannot enter without naming, as declaration references, the lowering authority whose repair
@@ -95,14 +91,6 @@ data known_drop_shape_pin_coverage: CitationIndexCoverage = OutsideDeclIndexTest
 
 fn known_drop_shape_restoration_trigger(shape: KnownDropShape) -> DropRestorationTrigger {
   match shape {
-    NamedArgumentLabel => DropRestorationTrigger {
-      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_call_arg_value", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_named_argument_label_is_reported_dropped_holds", field: WholeDeclaration }
-    }
-    WhereRefinementPredicate => DropRestorationTrigger {
-      retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_where_predicate_atom", field: WholeDeclaration },
-      pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "the_where_refinement_predicate_is_reported_dropped_holds", field: WholeDeclaration }
-    }
     StatementLetBinder => DropRestorationTrigger {
       retired_by: DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_stmt_spine", field: WholeDeclaration },
       pinned_by: DeclarationRef { module_path: "v2.test.claim.namespace_xl0.reference_conservation", decl_name: "a_statement_let_binder_is_reported_dropped_holds", field: WholeDeclaration }
@@ -170,49 +158,20 @@ fn context_contains(context: FreeMonoid<Symbol>, production: Symbol) -> Bool {
   fold_list(xs: context, empty: false, cons: fn(acc, p) { acc || p == production })
 }
 
-fn context_innermost(context: FreeMonoid<Symbol>) -> Optional<Symbol> {
-  fold_list(xs: context, empty: Absent, cons: fn(_acc, p) { Present { value: p } })
-}
-
-fn shape_of_innermost(context: FreeMonoid<Symbol>) -> Optional<KnownDropShape> {
-  match context_innermost(context: context) {
-    Present { value: p } =>
-      match p == ^dag_surface_arg {
-        true => optional_present(value: NamedArgumentLabel)
-        false => optional_absent()
-      }
-    Absent => optional_absent()
-  }
-}
 
 fn dropped_reference_shape(row: DroppedReference) -> Optional<KnownDropShape> {
   let c = row.atom.context
-  match context_contains(context: c, production: ^dag_surface_where_refinement_clause) {
-    true => optional_present(value: WhereRefinementPredicate)
-    false =>
-      match context_contains(context: c, production: ^dag_surface_let_expr) {
-        true => optional_present(value: StatementLetBinder)
-        false => shape_of_innermost(context: c)
-      }
+  match context_contains(context: c, production: ^dag_surface_let_expr) {
+    true => optional_present(value: StatementLetBinder)
+    false => optional_absent()
   }
 }
 
 fn known_drop_shape_eq(a: KnownDropShape, b: KnownDropShape) -> Bool {
   match a {
-    NamedArgumentLabel =>
-      match b {
-        NamedArgumentLabel => true
-        _ => false
-      }
-    WhereRefinementPredicate =>
-      match b {
-        WhereRefinementPredicate => true
-        _ => false
-      }
     StatementLetBinder =>
       match b {
         StatementLetBinder => true
-        _ => false
       }
   }
 }

@@ -6,16 +6,17 @@ import gunbc.live_deploy.member_identity {
   ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, DirectoryRoot,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_listen_port, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import v2.std.collection { Present, Absent }
 import gunbc.live_deploy.spec {
+  DeploymentArtifactStep,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name, gunbc_repository_convergence_slice_unit_path,
   gunbc_approval_broker_unit_path, deployment_owns_the_host_approval_broker,
@@ -23,6 +24,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   ensured_subject_identity,
   deployment_fabric_storage_steps,
+  deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   EnsuredManagedHostDirectory,
@@ -60,11 +62,10 @@ import gunbc.live_deploy.spec {
   gunbc_service_user,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
+import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
-  srv1_attempt_state_directory,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -74,6 +75,7 @@ import gunbc.roadmap_dashboard_instance {
 }
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
+  tailscale_serve_route_member_path,
   ScopedRemovalUnobserved,
   tailscale_scoped_removal_capability,
   TailscaleServeEndpoint,
@@ -84,7 +86,8 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
@@ -111,6 +114,7 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { approval_broker_serve_binary_is_per_release_poison }
 import gunbc.live_deploy.emit {
+  emit_artifact_upsert,
   approval_broker_tree_copy_steps,
   ensure_managed_directory_command,
   managed_directory_entry_repair_commands,
@@ -132,6 +136,8 @@ import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
+  apply_intent_from_effects,
+  deploy_apply_frame_steps,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -148,7 +154,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -156,7 +162,7 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   derived_runner_memory_cap_members,
   cap_converge_decision,
-  CapConvergeDecision,
+  CapConvergeDecision, CapConvergeWithheld,
   CapConvergeAuthorized,
   SurplusSlotsObserved,
   runner_slot_service_units_for_host,
@@ -344,37 +350,87 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
-test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
-  let sh = witness_apply_script()
-  !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: sh, pattern: "whoami")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
-    && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
-    && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
-    && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
+// THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
+// node built by gunbc.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
+// fleet's visudo row; this is that same node with the same argv, rendered by the same serializer, so
+// the needle is the producer's own words rather than a hand spelling of them. The hand spelling
+// `sudo -n /usr/sbin/visudo -cf` went stale twice without the step changing meaning: #12602 spelled
+// sudo by its absolute path (extdeps.sudo sudo_program), and #12525 moved the install onto the bash
+// builder, which quotes every literal word. The stage path is a variable word the claim does not name.
+fn witness_sudoers_stage_visudo_check_text() -> String {
+  shell_command_text_of_node(stmt: deploy_sudoers_elevated(command: [ci_runner_sudo_binary_path(b: SudoVisudo) as String, "-cf"], tail: []))
 }
 
-// THE TWO HALVES THIS CLAIM JOINS ARE NOW READ AT THEIR OWN PRODUCERS.
-//
-// The acknowledgement is a line in the retract fold's comment block; the sudoers install is a step in
-// the preamble. Rendering the whole retract program to find both cost 86,034 eval steps against a
-// per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
-// this claim names.
-//
-// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
-// rather than merely cost less: `live_deploy_retract_intent` concatenates
-// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
-// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
-// own remaining steps are artifact teardowns, which carry neither.
+// THE APPLY CLAIM IS RE-ROOTED AT ONE INTERFACE EACH (DESIGN §3, a witness discriminates at one
+// interface). It used to read the whole rendered apply script for five absence facts and two
+// presence facts about ONE step -- the sudoers install in the preamble -- so it paid the full apply
+// render (~271k eval steps against 72,300) for facts about a few hundred bytes of it. Now:
+//   - the preamble text is SUPPLIED as a value (witness_apply_preamble_text, the same producer the
+//     apply fold calls) to two sub-claims, one per absence/presence fact family;
+//   - ONE inhabitance claim builds the real apply pipeline through apply_intent_from_effects and
+//     asserts the ROUTE: the steps immediately after the frame ARE the preamble, so a fact proved of
+//     the preamble is a fact of the apply script and deleting the preamble from the fold reds it.
+// The two old probe negatives (`visudo -V`, `-l /usr/bin/tailscale`) are deleted rather than
+// re-spelled: under the quoting serializer neither spelling can occur, and since #12168 those probes
+// are emitted on purpose AFTER the drop-in lands (gunbc.ci_deploy_sudoers
+// deploy_sudoers_post_install_roster_probe_stmts); their ORDER is owned by
+// test.claim.deploy_mutation_gate_witness.
+test fn witness_apply_preamble_has_no_embedded_preflight() -> Bool {
+  let pre = witness_apply_preamble_text()
+  !string_contains(s: pre, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: pre, pattern: "whoami")
+    && !string_contains(s: pre, pattern: "deploy-access-preflight: PASS")
+}
+
+test fn witness_apply_preamble_installs_only_the_deploy_sudoers() -> Bool {
+  let pre = witness_apply_preamble_text()
+  string_contains(s: pre, pattern: witness_sudoers_stage_visudo_check_text())
+    && string_contains(s: pre, pattern: "/etc/sudoers.d/gunbc-deploy")
+    && !string_contains(s: pre, pattern: "gunbc-deploy-privileged")
+}
+
+// THE ROUTE. This is the one claim that runs the real apply assembly, apply_intent_from_effects,
+// and it asserts that the steps immediately after the frame (gunbc.live_deploy.emit
+// deploy_apply_frame_steps, whose length is the offset) ARE deploy_apply_preamble_steps. Deleting the preamble from
+// the fold, or moving it, reds it. Its supplied inputs are the ones the route does not read: the
+// srv1 spec with its member steps emptied, the empty host's effects over it
+// (apply_empty_host_effects), and a withheld cap decision. The
+// member flat_map is what made the full render cost ~271k floor steps, and the preamble never
+// reads it. The member population's own emission is claimed through
+// test.claim.live_deploy.apply_emission_projection.
+test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
+  let real = deployment_spec_srv1()
+  let spec = DeploymentSpec {
+    target: real.target,
+    steps: [],
+    service: real.service,
+    approval_broker: real.approval_broker,
+    names: real.names,
+    instance_id: real.instance_id,
+  }
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access: a } =>
+      let pre = deploy_apply_preamble_steps(access: a, spec: spec)
+      let p = apply_intent_from_effects(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: deploy_witness_full_install_plan(spec: spec),
+        cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
+      )
+      pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
+    DeployAccessJobPrincipalRefused { refusal: _ } => false
+  }
+}
+
+// THE RETRACT FRAME ACKNOWLEDGES THE SHARED SUDOERS INSTALL. `live_deploy_retract_intent`
+// concatenates `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so the facts
+// about that preamble are owned once, by witness_apply_preamble_has_no_embedded_preflight and
+// witness_apply_preamble_installs_only_the_deploy_sudoers; this claim keeps only the retract
+// frame's own comment.
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
-  let preamble = witness_apply_preamble_text()
   string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
-    && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
@@ -813,19 +869,38 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 }
 
 
+// THE TWIN MIRRORS PRODUCTION AS AN IDENTITY JOIN ON ARTIFACT KIND, NOT A COUNT. The host-singleton
+// members -- the fabric storage placement's two and, since #12747, the approval broker's front door --
+// are named by the functions that decide them and subtracted from production by path; every other
+// production member must have a twin member of the same kind and vice versa, and the twin must own
+// no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
+// #12747 added a second host-scoped member, though nothing about the twin was wrong.
+fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
+  concat(
+    deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
+    deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+  ) |> map(s => s.path as String)
+}
+
 test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
   let live = deployment_spec_srv1()
   let twin = srv1_twin_spec()
   let live_paths = spec_owned_paths(spec: live)
   let twin_paths = spec_owned_paths(spec: twin)
+  let singletons = live_host_singleton_paths(live: live)
+  let live_instance_scoped = filter(deployment_owned_steps_retract_order(spec: live), l => !any(singletons, h => h == (l.path as String)))
+  let twin_steps = deployment_owned_steps_retract_order(spec: twin)
   deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
-    && count(live_paths) > 0
-    && count(twin_paths) + count(deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names)) == count(live_paths)
+    && count(live_instance_scoped) > 0
+    && all(singletons, h => any(live_paths, l => l == h))
+    && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
+    && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
+    && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
@@ -965,10 +1040,26 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms CPU safety deadline then standing and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."
 
+// PRODUCTION'S DASHBOARD MAPPING STAYS ON THE ROOT MOUNT. This used to read the whole assembled apply
+// and forbid any --set-path in it. Since the approval cutover's stage 4 the same deployment also owns
+// the broker's /approve and /approvals mounts (gunbc.live_deploy.spec ApprovalBrokerFrontDoor), which
+// are scoped by design, so "no --set-path anywhere" stopped being the fact -- and subtracting the
+// broker's commands from the full apply cost 98,345 eval steps against the 72,300 budget (floor run
+// 36683351599). The claim is therefore stated at the interface it is about: the dashboard's own
+// TailscaleServeMapping member emits its root enable and scopes no path. The broker's two mounts are
+// pinned byte-for-byte by test.claim.approval_broker_front_door_member_witness.
 test fn production_apply_serves_its_own_endpoint_and_scopes_no_path() -> Bool {
-  let live_apply = apply_emitted_steps_text(spec: deployment_spec_srv1(), plan: deploy_witness_full_install_plan(spec: deployment_spec_srv1()))
-  string_contains(s: live_apply, pattern: tailscale_enable_command(endpoint: deployment_spec_srv1().names.tailscale_serve_endpoint))
-    && !string_contains(s: live_apply, pattern: "--set-path")
+  let spec = deployment_spec_srv1()
+  let own = pipeline_steps_text(steps: emit_artifact_upsert(
+    art: DeploymentArtifactStep {
+      kind: TailscaleServeMapping,
+      path: tailscale_serve_route_member_path(endpoint: spec.names.tailscale_serve_endpoint),
+    },
+    spec: spec,
+    revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+  ))
+  string_contains(s: own, pattern: tailscale_enable_command(endpoint: spec.names.tailscale_serve_endpoint))
+    && !string_contains(s: own, pattern: "--set-path")
 }
 
 test fn twin_apply_serves_its_own_endpoint_and_not_productions() -> Bool {
@@ -1303,11 +1394,12 @@ test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
   srv1_ensures_directory(path: files.objects as String) && srv1_ensures_directory(path: files.heads as String)
 }
 
-// THE AREAS ARE WRITABLE BY THE CLAIM PRINCIPAL, READ OFF THE ENSURE THE SRV1 SPEC ACTUALLY LOWERS.
-// Owner the service principal, group the CI job principal's, 2770 with setgid: fleet-converge run
-// 36139624393's host-effect claim refused `object publication refused: permission_denied` against
-// the briansrls:briansrls 0755 areas the previous ensure created. Red if either area goes back to a
-// single-owner ensure, or its admission refuses.
+// THE AREAS ARE THE SERVICE'S ALONE AND THE DOOR IS THE CI PRINCIPAL'S WAY IN, READ OFF THE ENSURE THE
+// SRV1 SPEC ACTUALLY LOWERS. The store areas are briansrls:briansrls 0700: no other account writes
+// the files (gunbc.fabric_storage_placement fabric_storage_directory). The door directory is owned
+// by the service with group ghrunner and group traverse only (2710), so the CI job reaches the
+// socket and nothing else. Red if an area admits the CI principal again, or the door stops admitting
+// it, or either admission refuses.
 fn srv1_fabric_area_ensure(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1319,19 +1411,19 @@ fn srv1_fabric_area_ensure(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_areas_are_ensured_writable_by_the_claim_principal() -> Bool {
+test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_principal() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  string_contains(s: objects, pattern: "2770") && string_contains(s: objects, pattern: "briansrls") && string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "2770") && string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
+  string_contains(s: objects, pattern: "0700") && string_contains(s: objects, pattern: "briansrls") && !string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
+    && string_contains(s: heads, pattern: "0700") && !string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
+    && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
 }
 
-// THE SAME ENSURE REPAIRS THE AREAS' EXISTING ENTRIES, read off the command the srv1 spec lowers:
-// the CI job principal publishes from `umask 077` steps, so every entry it wrote before the store
-// declared its entry mode is 0600 and the service principal cannot read it (srv1 2026-09-26). The
-// ensure adds the derived read bits to the entries the applying principal owns, unprivileged. Red
-// if the areas stop managing their entries, or the derivation refuses.
+// THE ENSURE NO LONGER REPAIRS THE AREAS' ENTRIES, read off the command the srv1 spec lowers: the
+// service is the only writer and publishes at the declared mode itself. Red if a repair reappears,
+// which would mean some other principal is again expected to write the store's files.
 fn srv1_fabric_area_repair(path: String) -> String {
   fold(deployment_spec_srv1().steps, init: "", f: (acc, st) => match st {
     Dependency { step: dep } => match dep.subject {
@@ -1343,21 +1435,18 @@ fn srv1_fabric_area_repair(path: String) -> String {
   })
 }
 
-test fn the_fabric_storage_area_ensure_repairs_the_ci_principals_entries() -> Bool {
+test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -> Bool {
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
-  let objects = srv1_fabric_area_repair(path: files.objects as String)
-  let heads = srv1_fabric_area_repair(path: files.heads as String)
-  string_contains(s: objects, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: objects, pattern: "REFUSED")
-    && string_contains(s: heads, pattern: "'-user' 'ghrunner' '-exec' '/bin/chmod' 'u+r,g+r,o+r' '{}' '+'") && !string_contains(s: heads, pattern: "REFUSED")
+  srv1_fabric_area_repair(path: files.objects as String) == "" && srv1_fabric_area_repair(path: files.heads as String) == ""
 }
 
-// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0444, the other-read being
-// the service principal's only route to an entry the CI principal created. The per-rule cases, and
+// THE PLACEMENT'S DERIVED ENTRY MODE, from the real store directories: 0400, since the service
+// principal is the store's only writer and reader once every writer goes through the door. The per-rule cases, and
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
-test fn the_placed_fabric_store_derives_entry_mode_0444() -> Bool {
+test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
   match fabric_storage_entry_mode() {
-    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0444"
+    FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
 }
@@ -1743,17 +1832,20 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
     && !string_contains(s: script, pattern: "%s\\n' (cd ")
 }
 
-// THE FABRIC DB ENDPOINT IS LOOPBACK-BOUND AND ROUTED ONLY BY TAILSCALE: its unit runs the fabric DB
-// handler on 127.0.0.1 (never 0.0.0.0, which would put the backend's unauthenticated identity header
-// on the network), and its route is tailscale serve's 10000 listener at the root mount, proxying to
-// exactly that port.
-test fn the_fabric_storage_unit_binds_loopback_and_its_route_is_the_only_way_in() -> Bool {
+// THE FABRIC DB ENDPOINT IS ITS DOOR SOCKET AND IS ROUTED BY TAILSCALE: its unit runs the fabric DB
+// handler on the placement's unix socket and binds no TCP listener (never 0.0.0.0, and no loopback
+// port any local account could reach with a forged identity header), and its route is tailscale
+// serve's 10000 listener at the root mount, proxying to exactly that socket.
+test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
   let route = deployment_fabric_storage_serve_endpoint()
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--host 127.0.0.1 --port ", to_string(fabric_storage_listen_port)], ""))
-    && !unit.contains("0.0.0.0")
+    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && !unit.contains("--host")
+    && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == to_string(fabric_storage_listen_port)
+    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
+
+

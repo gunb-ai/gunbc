@@ -1,0 +1,520 @@
+module gunbc.fleet_wireless_link
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.iw {
+  IwPowerSave, IwPowerSaveOn, IwPowerSaveOff, iw_power_save_word,
+  IwPowerSaveRead, IwPowerSaveReadValue, IwPowerSaveUnreadable,
+  iw_power_save_of_getter, iw_power_save_get_argv, iw_power_save_set_argv,
+  IwLinkRead, IwLinkConnected, IwLinkNotConnected, IwLinkUnreadable,
+  iw_link_argv, iw_link_of_stdout,
+}
+import extdeps.networkmanager.nmcli {
+  NmWirelessPowersave, NmPowersaveDisable, NmPowersaveEnable, nm_wireless_powersave_nick,
+  NmPowersaveRead, NmPowersaveReadValue, NmPowersaveUnreadable,
+  nm_wireless_powersave_property, nm_wireless_powersave_of_getter,
+  nmcli_connection_property_get_argv, nmcli_wireless_powersave_modify_argv,
+  NmRetryBudget, NmRetryGlobalDefault, NmRetryIndefinitely, NmRetryCount, nm_retry_budget_numeric,
+  NmRetryBudgetRead, NmRetryBudgetReadValue, NmRetryBudgetUnreadable,
+  nm_connection_auth_retries_property, nm_connection_autoconnect_retries_property,
+  nm_retry_budget_of_getter, nmcli_retry_budget_modify_argv,
+  NmActiveConnection, NmActiveConnectionRead, NmActiveConnectionOn, NmNoActiveConnection, NmActiveConnectionUnreadable,
+  nmcli_active_connections_argv, nm_active_connection_on,
+  NmDeviceStateRead, NmDeviceActivated, NmDeviceDisconnected, NmDeviceOtherState, NmDeviceStateUnreadable,
+  nmcli_device_state_get_argv, nm_device_state_of_getter,
+}
+import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journalctl_unit_current_boot_argv }
+import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.fleet_host_identity {
+  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+}
+
+// ── DESIRED ──────────────────────────────────────────────────────────────────────────────────
+//
+// WIRELESS LINK STATE IS A PER-HOST DESIRED FACT, and the shape is generic over the device: an
+// interface, the NetworkManager connection profile that owns it, and the power-save intent. The
+// first rostered population is the DGX Spark fleet, which reaches the LAN only over Wi-Fi; a later
+// wireless device is one more row with its own interface and connection.
+//
+// THE INTENT IS ONE FACT WITH TWO REALIZATIONS: the kernel's runtime setting (iw) and the profile's
+// persisted setting (nmcli). Both are derived from the intent so the two can never be authored to
+// disagree; the runtime alone is lost on reconnect, the profile alone waits for the next
+// activation, and only both together hold.
+type WirelessPowerSaveIntent = PowerSaveDisabled | PowerSaveEnabled
+
+fn wireless_runtime_power_save_of(intent: WirelessPowerSaveIntent) -> IwPowerSave {
+  match intent {
+    PowerSaveDisabled => IwPowerSaveOff
+    PowerSaveEnabled => IwPowerSaveOn
+  }
+}
+
+fn wireless_persisted_power_save_of(intent: WirelessPowerSaveIntent) -> NmWirelessPowersave {
+  match intent {
+    PowerSaveDisabled => NmPowersaveDisable
+    PowerSaveEnabled => NmPowersaveEnable
+  }
+}
+
+type WirelessLinkDesired {
+  host: HostIdentity
+  interface: NonEmptyStr
+  connection: NonEmptyStr
+  power_save: WirelessPowerSaveIntent
+  auth_retries: NmRetryBudget
+  autoconnect_retries: NmRetryBudget
+}
+
+// WHY A FAILED HANDSHAKE MUST RETRY RATHER THAN ASK. On 2026-10-03 router band steering roamed the
+// Sparks; on srv8 and Group B spark-3336 a 4-way handshake failed, NetworkManager logged
+// "no secrets: No agents were available" and left wlP9s9 DISCONNECTED until a human intervened
+// (read on the hosts by valiant-crab-775). nm-settings-nmcli(5) connection.auth-retries says why:
+// the default is 3 attempts, and "Connections using a pre-shared key to authenticate will only
+// prompt for a new key during the last authentication attempt" -- on a headless host there is no
+// agent to answer that prompt, so the last attempt fails the connection with no-secrets. "Zero means
+// to try indefinitely": with 0 there is no last attempt, so a transient handshake failure is retried
+// instead of escalated to an absent agent. The PSK itself is unchanged and stays in the profile.
+// (The operator also disabled the router's band steering, SON, on 2026-10-03; that is router state,
+// not host state, and this row does not depend on it.)
+data spark_wireless_auth_retries: NmRetryBudget = NmRetryIndefinitely
+
+// AND WHY A FAILED ACTIVATION MUST KEEP TRYING. nm-settings-nmcli(5) connection.autoconnect-retries:
+// the default is 4 autoactivation attempts "before giving up", after which autoconnect is blocked
+// until a timeout; "Zero means forever". A Spark's Wi-Fi is its only route to the executor, so a
+// blocked autoconnect is a host nobody can reach to unblock it; 0 keeps it trying. (spark-2196 read
+// -1, the default, 2026-10-04.)
+data spark_wireless_autoconnect_retries: NmRetryBudget = NmRetryIndefinitely
+
+// Measured on srv5..srv11 2026-10-01: the Spark's MediaTek MT7925 radio (driver mt7925e) enumerates
+// as wlP9s9, and the LAN association is the NetworkManager profile Verizon_39TTYV.
+data dgx_spark_wireless_interface: NonEmptyStr = "wlP9s9" as NonEmptyStr
+data spark_lan_wireless_connection: NonEmptyStr = "Verizon_39TTYV" as NonEmptyStr
+
+// WHY POWER SAVE IS DISABLED: with it on, pings from srv2 lost 0-47% with RTTs to about 5 s; with it
+// off, 0% loss at 3-6 ms average (measured 2026-10-01 on all seven).
+fn spark_wireless_link_desired(host: HostIdentity) -> WirelessLinkDesired {
+  WirelessLinkDesired {
+    host: host,
+    interface: dgx_spark_wireless_interface,
+    connection: spark_lan_wireless_connection,
+    power_save: PowerSaveDisabled,
+    auth_retries: spark_wireless_auth_retries,
+    autoconnect_retries: spark_wireless_autoconnect_retries,
+  }
+}
+
+// srv12 (spark-2196) WAS LEFT OUT because its radio had not been measured -- and that omission is the
+// whole of the 2026-10 power-save "regression": no converge ever ran there, the profile never carried
+// 802-11-wireless.powersave, and Ubuntu's /etc/NetworkManager/conf.d/default-wifi-powersave-on.conf
+// (wifi.powersave = 3) enabled it. Latency 165 ms avg vs 11 ms after a hand fix. Read on spark-2196
+// 2026-10-04 ~03:20Z by valiant-crab-775: wlP9s9, active profile Verizon_39TTYV (netplan-generated,
+// /run/NetworkManager/system-connections/netplan-NM-a653b65d-...; an nmcli modify is written back to
+// /etc/netplan/90-NM-a653b65d-....yaml, so it persists). The radio is now measured, so it has a row,
+// and wireless_link_uncovered_spark_hosts keeps the next omission from being silent.
+data wireless_link_desired_rows: List<WirelessLinkDesired> = map(
+  [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12],
+  h => spark_wireless_link_desired(host: h),
+)
+
+fn wireless_link_desired_for(host: HostIdentity) -> WirelessLinkDesired? {
+  first(filter(wireless_link_desired_rows, d => host_identity_eq(a: d.host, b: host)))
+}
+
+// COVERAGE, AS AN IDENTITY JOIN (DESIGN §5). Every Spark reaches the LAN only over Wi-Fi, so every
+// procured Spark identity (gunbc.spark.dgx_procurement dgx_spark_procurement_intent
+// reserved_identities -- an independently authored roster, not this list) owes a wireless row. A
+// Spark with no row is a host the converge cannot reach and nothing reports: exactly how srv12
+// kept NetworkManager's power-save default for a month.
+fn wireless_link_uncovered_spark_hosts() -> List<HostIdentity> {
+  filter(dgx_spark_procurement_intent.reserved_identities, h => match wireless_link_desired_for(host: h) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+// ── OBSERVED ─────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY READ HAS AN UNREADABLE ARM, and a leg that did not run or exited non-zero lands there:
+// an unreadable setting is not an absent one, and must never decide as though it were.
+type KernelDisconnectCount
+  = DisconnectCountRead { count: Int }
+  | DisconnectCountUnreadable { cause: String }
+
+type JournalLineCount
+  = JournalLineCountRead { count: Int }
+  | JournalLineCountUnreadable { cause: String }
+
+type WirelessLinkObservation {
+  runtime: IwPowerSaveRead
+  persisted: NmPowersaveRead
+  active: NmActiveConnectionRead
+  auth_retries: NmRetryBudgetRead
+  autoconnect_retries: NmRetryBudgetRead
+  link: IwLinkRead
+  device: NmDeviceStateRead
+  disconnects: KernelDisconnectCount
+  no_secrets_failures: JournalLineCount
+}
+
+// THE STANDING THE OBSERVE REPORTS BY NAME. Disconnected-with-no-secrets is the state that needed a
+// human on 2026-10-03, so it is its own arm rather than one more "not connected".
+type WirelessLinkStanding
+  = LinkActivated
+  | LinkDisconnectedNoSecrets { failures: Int }
+  | LinkDisconnected
+  | LinkInOtherState { code: Int }
+  | LinkStandingUnreadable { cause: String }
+
+fn wireless_link_standing(o: WirelessLinkObservation) -> WirelessLinkStanding {
+  match o.device {
+    NmDeviceStateUnreadable { text: t } => LinkStandingUnreadable { cause: t }
+    NmDeviceActivated => LinkActivated
+    NmDeviceOtherState { code: c } => LinkInOtherState { code: c }
+    NmDeviceDisconnected =>
+      match o.no_secrets_failures {
+        JournalLineCountUnreadable { cause: why } => LinkStandingUnreadable { cause: join(["device disconnected; NetworkManager journal unreadable: ", why], "") }
+        JournalLineCountRead { count: n } => if n > 0 { LinkDisconnectedNoSecrets { failures: n } } else { LinkDisconnected }
+      }
+  }
+}
+
+data networkmanager_unit: NonEmptyStr = "NetworkManager" as NonEmptyStr
+
+// NetworkManager logs the failure as "... no secrets: No agents were available for this request."
+// (the text read on srv8 and spark-3336 2026-10-03); counted over the current boot.
+fn networkmanager_no_secrets_line_count(journal: String) -> Int {
+  length(filter(split(s: journal, delimiter: "\n"), l => string_contains(s: l, pattern: "no secrets: No agents were available")))
+}
+
+fn argv_run_failure(run: ArgvRun) -> String? {
+  match run {
+    ArgvLegDidNotRun { cause: c } => Present { value: join(["leg did not run: ", c], "") }
+    ArgvRan { exit_code: code, stdout: _, stderr: err } =>
+      if code != 0 { Present { value: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } } else { none }
+  }
+}
+
+fn argv_run_stdout(run: ArgvRun) -> String {
+  match run {
+    ArgvLegDidNotRun { cause: _ } => ""
+    ArgvRan { exit_code: _, stdout: o, stderr: _ } => o
+  }
+}
+
+// The mac80211 station path logs "<interface>: disconnect from AP <bssid> ..." on every loss of
+// association, so the count of those lines in the current boot's kernel ring is the link's
+// disconnect count since boot (pattern as read on the Spark fleet 2026-10-01).
+fn kernel_disconnect_line_count(interface: NonEmptyStr, kernel_log: String) -> Int {
+  let pattern = join([interface as String, ": disconnect"], "")
+  length(filter(split(s: kernel_log, delimiter: "\n"), l => string_contains(s: l, pattern: pattern)))
+}
+
+// THE PROFILE THAT GOVERNS THE LINK IS READ FROM THE DEVICE. Every persisted setting is read from the
+// profile active on the interface, by UUID, never from the desired profile's name: a different
+// profile can be the one governing the live link while the named one is correct (review of
+// gunbc#13199). When no profile, or a profile other than the desired one, is active, the persisted
+// reads do not run and say why, and the decision refuses.
+fn governing_profile(desired: WirelessLinkDesired, active: NmActiveConnectionRead) -> NmActiveConnection? {
+  match active {
+    NmActiveConnectionOn { connection: c } => if c.name == (desired.connection as String) { Present { value: c } } else { none }
+    NmNoActiveConnection => none
+    NmActiveConnectionUnreadable { text: _ } => none
+  }
+}
+
+fn active_connection_text(r: NmActiveConnectionRead) -> String {
+  match r {
+    NmActiveConnectionOn { connection: c } => join([c.name, " (", c.uuid as String, ")"], "")
+    NmNoActiveConnection => "none"
+    NmActiveConnectionUnreadable { text: t } => join(["unreadable(", t, ")"], "")
+  }
+}
+
+fn persisted_property_run(profile: NmActiveConnection?, active: NmActiveConnectionRead, property: NonEmptyStr, run: fn(List<String>) -> ArgvRun) -> ArgvRun {
+  match profile {
+    Present { value: c } => run(nmcli_connection_property_get_argv(connection: c.uuid, property: property))
+    Absent => ArgvLegDidNotRun { cause: join(["no governing profile to read: active on the interface is ", active_connection_text(r: active)], "") }
+  }
+}
+
+fn observe_wireless_link(desired: WirelessLinkDesired, run: fn(List<String>) -> ArgvRun) -> WirelessLinkObservation {
+  let active_run = run(nmcli_active_connections_argv())
+  let active = match argv_run_failure(run: active_run) {
+    Present { value: why } => NmActiveConnectionUnreadable { text: why }
+    Absent => nm_active_connection_on(interface: desired.interface, stdout: argv_run_stdout(run: active_run))
+  }
+  let profile = governing_profile(desired: desired, active: active)
+  let runtime_run = run(iw_power_save_get_argv(interface: desired.interface))
+  let persisted_run = persisted_property_run(profile: profile, active: active, property: nm_wireless_powersave_property, run: run)
+  let auth_run = persisted_property_run(profile: profile, active: active, property: nm_connection_auth_retries_property, run: run)
+  let autoconnect_run = persisted_property_run(profile: profile, active: active, property: nm_connection_autoconnect_retries_property, run: run)
+  let link_run = run(iw_link_argv(interface: desired.interface))
+  let kernel_run = run(journalctl_kernel_current_boot_argv())
+  let device_run = run(nmcli_device_state_get_argv(interface: desired.interface))
+  let nm_journal_run = run(journalctl_unit_current_boot_argv(unit: networkmanager_unit))
+  WirelessLinkObservation {
+    active: active,
+    auth_retries: match argv_run_failure(run: auth_run) {
+      Present { value: why } => NmRetryBudgetUnreadable { text: why }
+      Absent => nm_retry_budget_of_getter(stdout: argv_run_stdout(run: auth_run))
+    },
+    autoconnect_retries: match argv_run_failure(run: autoconnect_run) {
+      Present { value: why } => NmRetryBudgetUnreadable { text: why }
+      Absent => nm_retry_budget_of_getter(stdout: argv_run_stdout(run: autoconnect_run))
+    },
+    device: match argv_run_failure(run: device_run) {
+      Present { value: why } => NmDeviceStateUnreadable { text: why }
+      Absent => nm_device_state_of_getter(stdout: argv_run_stdout(run: device_run))
+    },
+    no_secrets_failures: match argv_run_failure(run: nm_journal_run) {
+      Present { value: why } => JournalLineCountUnreadable { cause: why }
+      Absent => JournalLineCountRead { count: networkmanager_no_secrets_line_count(journal: argv_run_stdout(run: nm_journal_run)) }
+    },
+    runtime: match argv_run_failure(run: runtime_run) {
+      Present { value: why } => IwPowerSaveUnreadable { text: why }
+      Absent => iw_power_save_of_getter(stdout: argv_run_stdout(run: runtime_run))
+    },
+    persisted: match argv_run_failure(run: persisted_run) {
+      Present { value: why } => NmPowersaveUnreadable { text: why }
+      Absent => nm_wireless_powersave_of_getter(stdout: argv_run_stdout(run: persisted_run))
+    },
+    link: match argv_run_failure(run: link_run) {
+      Present { value: why } => IwLinkUnreadable { text: why }
+      Absent => iw_link_of_stdout(stdout: argv_run_stdout(run: link_run))
+    },
+    disconnects: match argv_run_failure(run: kernel_run) {
+      Present { value: why } => DisconnectCountUnreadable { cause: why }
+      Absent => DisconnectCountRead { count: kernel_disconnect_line_count(interface: desired.interface, kernel_log: argv_run_stdout(run: kernel_run)) }
+    },
+  }
+}
+
+// ── DECISION ─────────────────────────────────────────────────────────────────────────────────
+//
+// The plan names the governing profile it changes and only the realizations that drifted; a Noop
+// is every read equal to the intent. Link, device and disconnect readings are reported, not decided
+// on: power save is set on the radio whether or not it is associated, and a count is evidence.
+type WirelessLinkPlan {
+  profile: NonEmptyStr
+  runtime: IwPowerSave?
+  persisted: NmWirelessPowersave?
+  auth_retries: NmRetryBudget?
+  autoconnect_retries: NmRetryBudget?
+}
+
+fn retry_budget_step(observed: NmRetryBudget, want: NmRetryBudget) -> NmRetryBudget? {
+  if nm_retry_budget_numeric(v: observed) == nm_retry_budget_numeric(v: want) { none } else { Present { value: want } }
+}
+
+fn wireless_link_decide(desired: WirelessLinkDesired, observed: WirelessLinkObservation) -> UpsertDecision<WirelessLinkPlan> {
+  let want_runtime = wireless_runtime_power_save_of(intent: desired.power_save)
+  let want_persisted = wireless_persisted_power_save_of(intent: desired.power_save)
+  match observed.active {
+    NmActiveConnectionUnreadable { text: t } => Refuse { reason: join(["the active profile on ", desired.interface as String, " is unreadable: ", t], "") as NonEmptyStr }
+    NmNoActiveConnection => Refuse { reason: join(["no profile is active on ", desired.interface as String, ", so the profile governing the link is unobservable"], "") as NonEmptyStr }
+    NmActiveConnectionOn { connection: c } =>
+      if c.name != (desired.connection as String) {
+        Refuse { reason: join(["profile ", c.name, " (", c.uuid as String, ") governs ", desired.interface as String, ", not the desired ", desired.connection as String], "") as NonEmptyStr }
+      } else {
+        match observed.runtime {
+          IwPowerSaveUnreadable { text: t } => Refuse { reason: join(["runtime power save unreadable: ", t], "") as NonEmptyStr }
+          IwPowerSaveReadValue { value: rt } =>
+            match observed.persisted {
+              NmPowersaveUnreadable { text: t } => Refuse { reason: join(["persisted ", nm_wireless_powersave_property as String, " unreadable: ", t], "") as NonEmptyStr }
+              NmPowersaveReadValue { value: ps } =>
+                match observed.auth_retries {
+                  NmRetryBudgetUnreadable { text: t } => Refuse { reason: join(["persisted ", nm_connection_auth_retries_property as String, " unreadable: ", t], "") as NonEmptyStr }
+                  NmRetryBudgetReadValue { value: ar } =>
+                    match observed.autoconnect_retries {
+                      NmRetryBudgetUnreadable { text: t } => Refuse { reason: join(["persisted ", nm_connection_autoconnect_retries_property as String, " unreadable: ", t], "") as NonEmptyStr }
+                      NmRetryBudgetReadValue { value: acr } => {
+                        let plan = WirelessLinkPlan {
+                          profile: c.uuid,
+                          runtime: if rt == want_runtime { none } else { Present { value: want_runtime } },
+                          persisted: if ps == want_persisted { none } else { Present { value: want_persisted } },
+                          auth_retries: retry_budget_step(observed: ar, want: desired.auth_retries),
+                          autoconnect_retries: retry_budget_step(observed: acr, want: desired.autoconnect_retries),
+                        }
+                        if wireless_link_plan_is_empty(plan: plan) { Noop } else { Apply { plan: plan } }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn wireless_link_plan_is_empty(plan: WirelessLinkPlan) -> Bool {
+  let no_runtime = match plan.runtime { Present { value: _ } => false Absent => true }
+  let no_persisted = match plan.persisted { Present { value: _ } => false Absent => true }
+  let no_auth = match plan.auth_retries { Present { value: _ } => false Absent => true }
+  let no_autoconnect = match plan.autoconnect_retries { Present { value: _ } => false Absent => true }
+  no_runtime && no_persisted && no_auth && no_autoconnect
+}
+
+// ── CONVERGE ─────────────────────────────────────────────────────────────────────────────────
+type WirelessLinkConvergeOutcome
+  = WirelessLinkAlreadyConverged { observed: WirelessLinkObservation }
+  | WirelessLinkApplied { before: WirelessLinkObservation, plan: WirelessLinkPlan, after: WirelessLinkObservation }
+  | WirelessLinkRefused { stage: NonEmptyStr, cause: String }
+
+// Persisted first, then runtime: if the runtime set fails the profile already holds the intent and
+// the next activation carries it; the reverse order could leave a runtime-only fix that a reconnect
+// silently undoes while the receipt reported a set.
+fn retry_budget_apply(plan: WirelessLinkPlan, property: NonEmptyStr, value: NmRetryBudget?, run: fn(List<String>) -> ArgvRun) -> String? {
+  match value {
+    Absent => none
+    Present { value: v } => match argv_run_failure(run: run(nmcli_retry_budget_modify_argv(connection: plan.profile, property: property, value: v))) {
+      Present { value: why } => Present { value: join(["nmcli connection modify ", property as String, ": ", why], "") }
+      Absent => none
+    }
+  }
+}
+
+// Every change lands on the governing profile by UUID (plan.profile). Persisted first, then runtime:
+// if the runtime set fails the profile already holds the intent and the next activation carries it;
+// the reverse order could leave a runtime-only fix that a reconnect silently undoes while the receipt
+// reported a set.
+fn apply_wireless_link_plan(desired: WirelessLinkDesired, plan: WirelessLinkPlan, run: fn(List<String>) -> ArgvRun) -> String? {
+  let persisted_failure = match retry_budget_apply(plan: plan, property: nm_connection_auth_retries_property, value: plan.auth_retries, run: run) {
+    Present { value: why } => Present { value: why }
+    Absent => match retry_budget_apply(plan: plan, property: nm_connection_autoconnect_retries_property, value: plan.autoconnect_retries, run: run) {
+      Present { value: why } => Present { value: why }
+      Absent => match plan.persisted {
+        Absent => none
+        Present { value: v } => match argv_run_failure(run: run(nmcli_wireless_powersave_modify_argv(connection: plan.profile, value: v))) {
+          Present { value: why } => Present { value: join(["nmcli connection modify ", nm_wireless_powersave_property as String, ": ", why], "") }
+          Absent => none
+        }
+      }
+    }
+  }
+  match persisted_failure {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      match plan.runtime {
+        Absent => none
+        Present { value: v } =>
+          match argv_run_failure(run: run(iw_power_save_set_argv(interface: desired.interface, value: v))) {
+            Present { value: why } => Present { value: join(["iw set power_save: ", why], "") }
+            Absent => none
+          }
+      }
+  }
+}
+
+// THE READBACK IS A SECOND OBSERVATION DECIDED BY THE SAME FOLD: an apply converged only when the
+// decision over what the host reports afterwards is Noop. A set that exited 0 is not convergence.
+fn wireless_link_converge(desired: WirelessLinkDesired, run: fn(List<String>) -> ArgvRun) -> WirelessLinkConvergeOutcome {
+  let before = observe_wireless_link(desired: desired, run: run)
+  match wireless_link_decide(desired: desired, observed: before) {
+    Refuse { reason: why } => WirelessLinkRefused { stage: "observe" as NonEmptyStr, cause: why as String }
+    Noop => WirelessLinkAlreadyConverged { observed: before }
+    Apply { plan: plan } =>
+      match apply_wireless_link_plan(desired: desired, plan: plan, run: run) {
+        Present { value: why } => WirelessLinkRefused { stage: "apply" as NonEmptyStr, cause: why }
+        Absent => {
+          let after = observe_wireless_link(desired: desired, run: run)
+          match wireless_link_decide(desired: desired, observed: after) {
+            Noop => WirelessLinkApplied { before: before, plan: plan, after: after }
+            Refuse { reason: why } => WirelessLinkRefused { stage: "readback" as NonEmptyStr, cause: why as String }
+            Apply { plan: _ } => WirelessLinkRefused { stage: "readback" as NonEmptyStr, cause: "the host still reports drift after the apply exited 0" }
+          }
+        }
+      }
+  }
+}
+
+fn wireless_link_converged(o: WirelessLinkConvergeOutcome) -> Bool {
+  match o {
+    WirelessLinkAlreadyConverged { observed: _ } => true
+    WirelessLinkApplied { before: _, plan: _, after: _ } => true
+    WirelessLinkRefused { stage: _, cause: _ } => false
+  }
+}
+
+// ── RECEIPT ──────────────────────────────────────────────────────────────────────────────────
+fn iw_power_save_read_text(r: IwPowerSaveRead) -> String {
+  match r {
+    IwPowerSaveReadValue { value: v } => iw_power_save_word(v: v)
+    IwPowerSaveUnreadable { text: t } => join(["unreadable(", t, ")"], "")
+  }
+}
+
+fn nm_powersave_read_text(r: NmPowersaveRead) -> String {
+  match r {
+    NmPowersaveReadValue { value: v } => nm_wireless_powersave_nick(v: v)
+    NmPowersaveUnreadable { text: t } => join(["unreadable(", t, ")"], "")
+  }
+}
+
+fn iw_link_read_text(r: IwLinkRead) -> String {
+  match r {
+    IwLinkConnected { bssid: b, freq_mhz: f, signal_dbm: s } =>
+      join(["bssid=", b as String, " freq_mhz=", to_string(f), " signal_dbm=", to_string(s)], "")
+    IwLinkNotConnected => "not-connected"
+    IwLinkUnreadable { text: t } => join(["unreadable(", t, ")"], "")
+  }
+}
+
+fn disconnect_count_text(c: KernelDisconnectCount) -> String {
+  match c {
+    DisconnectCountRead { count: n } => to_string(n)
+    DisconnectCountUnreadable { cause: why } => join(["unreadable(", why, ")"], "")
+  }
+}
+
+fn nm_retry_budget_read_text(r: NmRetryBudgetRead) -> String {
+  match r {
+    NmRetryBudgetReadValue { value: v } => to_string(nm_retry_budget_numeric(v: v))
+    NmRetryBudgetUnreadable { text: t } => join(["unreadable(", t, ")"], "")
+  }
+}
+
+fn wireless_link_standing_text(s: WirelessLinkStanding) -> String {
+  match s {
+    LinkActivated => "activated"
+    LinkDisconnectedNoSecrets { failures: n } => join(["DISCONNECTED-NO-SECRETS(no_secrets_failures_this_boot=", to_string(n), ")"], "")
+    LinkDisconnected => "disconnected"
+    LinkInOtherState { code: c } => join(["nm-device-state(", to_string(c), ")"], "")
+    LinkStandingUnreadable { cause: c } => join(["unreadable(", c, ")"], "")
+  }
+}
+
+fn wireless_link_observation_line(label: String, o: WirelessLinkObservation) -> String {
+  join([
+    label, " standing=", wireless_link_standing_text(s: wireless_link_standing(o: o)),
+    " power_save_runtime=", iw_power_save_read_text(r: o.runtime),
+    " power_save_persisted=", nm_powersave_read_text(r: o.persisted),
+    " active_profile=", active_connection_text(r: o.active),
+    " auth_retries=", nm_retry_budget_read_text(r: o.auth_retries),
+    " autoconnect_retries=", nm_retry_budget_read_text(r: o.autoconnect_retries),
+    " link=", iw_link_read_text(r: o.link),
+    " kernel_disconnects_since_boot=", disconnect_count_text(c: o.disconnects), "\n",
+  ], "")
+}
+
+fn wireless_link_receipt_body(desired: WirelessLinkDesired, outcome: WirelessLinkConvergeOutcome) -> String {
+  let head = join([
+    "wireless link converge host=", desired.host as String,
+    " interface=", desired.interface as String,
+    " connection=", desired.connection as String,
+    " power_save_runtime_desired=", iw_power_save_word(v: wireless_runtime_power_save_of(intent: desired.power_save)),
+    " power_save_persisted_desired=", nm_wireless_powersave_nick(v: wireless_persisted_power_save_of(intent: desired.power_save)),
+    " auth_retries_desired=", to_string(nm_retry_budget_numeric(v: desired.auth_retries)),
+    " autoconnect_retries_desired=", to_string(nm_retry_budget_numeric(v: desired.autoconnect_retries)), "\n",
+  ], "")
+  match outcome {
+    WirelessLinkAlreadyConverged { observed: o } => join([head, "decision=noop\n", wireless_link_observation_line(label: "observed", o: o)], "")
+    WirelessLinkApplied { before: b, plan: _, after: a } =>
+      join([head, "decision=apply readback=converged\n", wireless_link_observation_line(label: "before", o: b), wireless_link_observation_line(label: "after", o: a)], "")
+    WirelessLinkRefused { stage: s, cause: c } => join([head, "decision=refuse stage=", s as String, " cause=", c, "\n"], "")
+  }
+}

@@ -1,5 +1,6 @@
 module v2.lens.complexity_accumulator_copy.corpus_census
 
+import std.types { List }
 import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusFileNotEstablished,
   CorpusFileRow,
@@ -40,6 +41,8 @@ import v2.lens.cost {
   cost_lens
 }
 import v2.std.node {
+  StructuralLabel,
+  label_sort_key,
   Arrow,
   Atom,
   Bind,
@@ -50,7 +53,7 @@ import v2.std.node {
   Disj,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Transform,
   TypeNode,
   Value
@@ -58,7 +61,6 @@ import v2.std.node {
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.witness { Holds, Violates }
-import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.lens.common.source_analysis_standing {
   LanguageGrammarRejected,
@@ -76,7 +78,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   GateSuspectObserved,
   file_gate_disposition
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -403,8 +404,9 @@ fn ingested_root_child_labels(path: String) -> String {
     SourceTreeEstablished { root: r } =>
       fold(r.children, init: "", f: fn(acc, e) {
         match e.label {
-          Named { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
-          _ => join([acc, "|P"], "")
+          Authored { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
+          StructuralLabel { label: _ } => join([acc, "|S:", symbol_lexeme(label_sort_key(label: e.label))], "")
+          Positional => join([acc, "|P"], "")
         }
       })
   }

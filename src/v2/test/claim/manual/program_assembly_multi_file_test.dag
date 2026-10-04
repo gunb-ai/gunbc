@@ -1,7 +1,14 @@
 module v2.test.manual.program_assembly_multi_file
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.compiler.normalized_tree { NormalizedTree, admit_unmarked_normalized_roots }
+import v2.compiler.normalized_tree {
+  NormalizedTree,
+  admit_normalized_tree,
+  admit_unmarked_normalized_roots,
+  no_type_declaration_kinds, no_type_declaration_modifiers
+}
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.namespace_alias { AliasBindingRow }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -17,7 +24,8 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
-  dag_named_edge
+  dag_named_edge,
+  dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
@@ -35,7 +43,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -68,16 +76,14 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
@@ -93,16 +99,14 @@ fn pa_subject_with_import_use() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
       Edge {
-        label: Named { name: ^pa_import_use_sym },
+        label: Authored { name: ^pa_import_use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
@@ -114,23 +118,51 @@ fn pa_subject_with_import_use() -> Node {
   }
 }
 
+// THE SUBJECT'S IMPORT ARRIVES AS THE ALIAS BINDING ROW NORMALIZE CAPTURES, not as an Admission import
+// the resolver used to satisfy by a global spelling search. gunbc#12048 made an import a binding on
+// the reference's own chain (v2.std.namespace_alias AliasBindingRow, carried on NormalizedTree because
+// the graft dissolves the import decl) and deleted the global bare search as a resolution route, so a
+// hand-built root with no binding rows leaves `pa_imported_decl` unbound -- this claim was silently red
+// from that change (bisected on BuildBuddy) until the fixture supplied the row.
+fn pa_subject_import_bindings() -> FreeMonoid<AliasBindingRow> {
+  Cons {
+    head: AliasBindingRow {
+      binding: ^pa_imported_decl,
+      target: Cons { head: ^pa_imported_seg, tail: Cons { head: ^pa_imported_decl, tail: Empty } }
+    },
+    tail: Empty
+  }
+}
+
 fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
-  admit_unmarked_normalized_roots(
-    roots: Cons {
-    head: pa_graft_module_root(root: pa_subject_with_import_use()),
-    tail: Cons {
-      head: pa_graft_module_root(
-        root: pa_module_root(
-          seg: ^pa_imported_seg,
-          export_sym: ^pa_imported_decl,
-          export_atom: ^dag_c3_surface_sugar_service
-        )
-      ),
-      tail: Empty
-    }
-  },
+  match admit_normalized_tree(
+    root: pa_graft_module_root(root: pa_subject_with_import_use()),
+    test_markers: test_marker_channel_empty(),
+    import_bindings: pa_subject_import_bindings(),
+    type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
     diagnostics: None
-  )
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: subject, diagnostics: _ } =>
+      match admit_unmarked_normalized_roots(
+        roots: Cons {
+          head: pa_graft_module_root(
+            root: pa_module_root(
+              seg: ^pa_imported_seg,
+              export_sym: ^pa_imported_decl,
+              export_atom: ^dag_token_ident
+            )
+          ),
+          tail: Empty
+        },
+        diagnostics: None
+      ) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: imported, diagnostics: _ } =>
+          Accepted { value: Cons { head: subject, tail: imported }, diagnostics: None }
+      }
+  }
 }
 
 fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -140,7 +172,7 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
       root: pa_module_root(
         seg: ^pa_subject_seg,
         export_sym: ^pa_imported_decl,
-        export_atom: ^dag_c3_surface_sugar_service
+        export_atom: ^dag_token_ident
       )
     ),
     tail: Cons {
@@ -148,7 +180,7 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
         root: pa_module_root(
           seg: ^pa_subject_seg,
           export_sym: ^pa_other_export,
-          export_atom: ^dag_c3_surface_sugar_type
+          export_atom: ^dag_token_colon
         )
       ),
       tail: Empty

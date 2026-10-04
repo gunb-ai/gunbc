@@ -286,27 +286,51 @@ fn member_identity_eq(a: MemberIdentity, b: MemberIdentity) -> Bool {
   match a {
     TreeIdentity { tree: ta } => match b {
       TreeIdentity { tree: tb } => (ta.revision as String) == (tb.revision as String) && ta.tracked_projection_clean && tb.tracked_projection_clean
-      _ => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     ExecutableIdentity { digest: da } => match b {
       ExecutableIdentity { digest: db } => digest_eq(a: da, b: db)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     UnitFileAt { file: fa } => match b {
       UnitFileAt { file: fb } => (fa.unit as String) == (fb.unit as String) && content_hash_eq_structural(left: fa.document, right: fb.document)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     UnitManagerAt { standing: sa } => match b {
       UnitManagerAt { standing: sb } => manager_standing_eq(a: sa, b: sb)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      ProcessAt { process: _ } => false
+      RootAt { root: _ } => false
     }
     ProcessAt { process: pa } => match b {
       ProcessAt { process: pb } => process_identity_eq(a: pa, b: pb)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      RootAt { root: _ } => false
     }
     RootAt { root: ra } => match b {
       RootAt { root: rb } => (ra.path as String) == (rb.path as String) && (ra.owner as String) == (rb.owner as String)
-      _ => false
+      TreeIdentity { tree: _ } => false
+      ExecutableIdentity { digest: _ } => false
+      UnitFileAt { file: _ } => false
+      UnitManagerAt { standing: _ } => false
+      ProcessAt { process: _ } => false
     }
   }
 }
@@ -336,19 +360,30 @@ fn decide_member(member: ConvergedMember, desired: MemberIdentity, observed: Obs
 }
 
 fn decision_is_converged(d: MemberDecision) -> Bool {
-  match d { AlreadyConverged { member: _ } => true  _ => false }
+  match d {
+    AlreadyConverged { member: _ } => true
+    Create { member: _, to: _ } => false
+    Replace { member: _, from: _, to: _ } => false
+    MemberRefused { member: _, cause: _ } => false
+  }
 }
 
 fn decision_changes(d: MemberDecision) -> Bool {
   match d {
     Create { member: _, to: _ } => true
     Replace { member: _, from: _, to: _ } => true
-    _ => false
+    AlreadyConverged { member: _ } => false
+    MemberRefused { member: _, cause: _ } => false
   }
 }
 
 fn decision_is_refused(d: MemberDecision) -> Bool {
-  match d { MemberRefused { member: _, cause: _ } => true  _ => false }
+  match d {
+    MemberRefused { member: _, cause: _ } => true
+    AlreadyConverged { member: _ } => false
+    Create { member: _, to: _ } => false
+    Replace { member: _, from: _, to: _ } => false
+  }
 }
 
 fn decision_member(d: MemberDecision) -> ConvergedMember {
@@ -517,7 +552,8 @@ fn member_mutation_for(d: MemberDecision, decisions: List<MemberDecision>) -> Me
     DirectoryRoot { path: _ } => match d {
       Create { member: _, to: _ } => CreateRoot
       Replace { member: _, from: _, to: _ } => ReownRoot
-      _ => KeepMember
+      AlreadyConverged { member: _ } => KeepMember
+      MemberRefused { member: _, cause: _ } => KeepMember
     }
   }
 }
@@ -600,7 +636,16 @@ fn plan_mutation_is(plan: ReleaseEffectPlan, member: ConvergedMember, expected: 
 }
 
 fn mutation_is_keep(e: MemberMutation) -> Bool {
-  match e { KeepMember => true  _ => false }
+  match e {
+    KeepMember => true
+    InstallExecutable => false
+    PublishTree => false
+    WriteUnit => false
+    DaemonReload => false
+    RestartService => false
+    CreateRoot => false
+    ReownRoot => false
+  }
 }
 
 fn plan_installs_executable(plan: ReleaseEffectPlan) -> Bool {

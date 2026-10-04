@@ -1,5 +1,22 @@
 module v2.test.name_resolve.test_code_reference_wall
 
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_with_admission, resolve_with_admission_policy }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_record_declarations }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, namespace_graft_module_body_marker_node }
+import v2.std.algebra { fold_list_node }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel, test_marker_channel_count, test_marker_channel_marks }
+import v2.std.diagnostic { Accepted, Outcome }
+import v2.std.live_tree { SubstrateInputsOnly }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode, content_hash, symbol_lexeme }
+import v2.std.resolution_policy { ImportScoped }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WALL AT ONE INTERFACE: name resolution (v2.compiler.name_resolve resolve_with_admission, the
@@ -37,17 +54,28 @@ fn wall_conj(children: List<Edge>) -> Node {
   Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
+// `callee()`: a zero-argument call, built by the constructor normalize itself uses
+// (v2.compiler.body_lowering_fold body_lower_transform_call), so the supplied shape cannot drift from it.
+fn wall_call(callee: Symbol) -> Node {
+  body_lower_transform_call(operator: wall_atom(identity: callee), args: [])
+}
+
 // `name: () -> Bool = body`, in the shape normalize emits for an expression-bodied, zero-parameter fn.
+// A type position carries the SPELLING `Bool` (^Bool): normalize emits the authored spelling and
+// resolve binds it to the kernel row (v2.extdeps.languages.dag dag_kernel_type_binding_optional), so a
+// supplied NORMALIZED root carrying the bound symbol is resolve's output, not normalize's.
 fn wall_member(name: Symbol, body: Node) -> Edge {
+  let signature = declared_signature(params: [], source: body)
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
-        Edge { label: Positional, target: wall_conj(children: []) },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Named { name: ^arrow_body_edge }, target: body }
+        signature.domain,
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        signature.order,
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -56,18 +84,20 @@ fn wall_member(name: Symbol, body: Node) -> Edge {
 
 // `name: (param: Bool) -> Bool = param` -- a parameter that shares a module-level name.
 fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
+  let signature = declared_signature(
+    params: [binder_edge(name: param, type_node: wall_atom(identity: ^Bool))],
+    source: wall_atom(identity: param)
+  )
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node {
       kind: TypeNode { connective: Arrow },
       children: [
-        Edge {
-          label: Positional,
-          target: wall_conj(children: [Edge { label: Named { name: param }, target: wall_atom(identity: ^bool_node_symbol) }])
-        },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Positional, target: wall_atom(identity: ^bool_node_symbol) },
-        Edge { label: Named { name: ^arrow_body_edge }, target: wall_atom(identity: param) }
+        signature.domain,
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        Edge { label: Positional, target: wall_atom(identity: ^Bool) },
+        signature.order,
+        Edge { label: core_edge_label(marker: ArrowBodyEdge), target: wall_atom(identity: param) }
       ],
       occurrence_id: OccurrenceSynthetic
     }
@@ -80,20 +110,20 @@ fn wall_member_returning_its_param(name: Symbol, param: Symbol) -> Edge {
 // gunbc#11694), then the members.
 fn wall_module_body(members: List<Edge>) -> Node {
   wall_conj(children: concat(
-    [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
+    [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: namespace_graft_module_body_marker_node() }],
     members
   ))
 }
 
 fn wall_module_root(leaf_segment: Symbol, members: List<Edge>) -> Node {
   wall_conj(children: [
-    Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
+    Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: wall_atom(identity: ^dag_surface_module) },
     Edge {
-      label: Named { name: ^grammar_production_captured_node_projection },
+      label: Authored { name: ^grammar_production_captured_node_projection },
       target: wall_conj(children: [
         Edge {
-          label: Named { name: ^wall },
-          target: wall_conj(children: [Edge { label: Named { name: leaf_segment }, target: wall_module_body(members: members) }])
+          label: Authored { name: ^wall },
+          target: wall_conj(children: [Edge { label: Authored { name: leaf_segment }, target: wall_module_body(members: members) }])
         }
       ])
     }
@@ -107,7 +137,7 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
 }
 
 // THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
@@ -138,7 +168,8 @@ fn wall_peer_import_bindings() -> FreeMonoid<AliasBindingRow> {
 fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
   admit_normalized_tree(
     import_bindings: wall_peer_import_bindings(),
-    record_declarations: no_record_declarations(),
+    type_declaration_kinds: no_type_declaration_kinds(),
+    type_declaration_modifiers: no_type_declaration_modifiers(),
     root: root,
     test_markers: wall_channel(marked: marked),
     diagnostics: None
@@ -194,7 +225,7 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
   wall_tree(
     root: wall_module_root(leaf_segment: ^peer, members: [
       wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
-      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))
+      wall_member(name: ^peer_leaf, body: wall_call(callee: ^shared_fixture))
     ]),
     marked: [^peer_leaf]
   )
@@ -215,7 +246,7 @@ fn inhabitance_module() -> Outcome<NormalizedTree> {
     root: wall_module_root(leaf_segment: ^peer, members: [
       wall_member(name: ^shared_fixture, body: wall_atom(identity: ^dag_token_kw_true)),
       wall_member_returning_its_param(name: ^helper, param: ^leaf),
-      wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture)),
+      wall_member(name: ^peer_leaf, body: wall_call(callee: ^shared_fixture)),
       wall_member(name: ^qualified_user, body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf]))
     ]),
     marked: [^peer_leaf]
@@ -394,22 +425,11 @@ test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
   ) == "ACCEPTED"
 }
 
-data default_reference_source: String = "module m\nfn f(x: T = g()) -> T = x\n"
-
-// A reference from a parameter DEFAULT cannot be written in v2: the grammar has no default, and the
-// source refuses at parse, before resolution could miss it. If this ever parses, the default has
-// become a place a reference can hide, and it needs its own red.
-test fn a_parameter_default_is_refused_at_parse_holds() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(text: default_reference_source, file: ^wall_default_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: ts, diagnostics: _ } =>
-      match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => true
-        Accepted { value: _, diagnostics: _ } => false
-      }
-  }
-}
+// A REFERENCE FROM A PARAMETER DEFAULT CANNOT REACH RESOLUTION: since gunbc#12876 a default parses
+// and lowering refuses it with one typed reason, which v2.test.claim.parse.default_value
+// a_parameter_default_refuses_at_the_default_holds owns. The row that stood here asserted a parse
+// refusal #12876 made false; it is deleted rather than re-stated, because the re-statement was that
+// control a second time.
 
 // Resolves module wall.<subject_segment> under the IMPORT-SCOPED policy with `wall.peer` imported, so
 // the peer's names bind at the subject's root scope as admitted imports and the wall reads their

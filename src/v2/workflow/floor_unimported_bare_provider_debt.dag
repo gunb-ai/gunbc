@@ -1,13 +1,20 @@
 module v2.workflow.floor_unimported_bare_provider_debt
 
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
-import std.types { GitRef, FilePath }
+import std.types { GitRef, FilePath, List }
 import extdeps.git
 import v2.workflow.floor_unimported_bare_provider_debt_roster {
   UnimportedBareProviderRowView,
+  ActiveDebt,
+  Retired,
+  ImportsFixed,
+  FileDeleted,
+  RelocatedOutOfSourceRoots,
+  NotAReference,
+  BindsWithoutDeclaration,
+  ResolvesInClosure,
   unimported_bare_provider_roster_rows,
 }
 
@@ -79,7 +86,10 @@ fn unimported_bare_provider_roster_coherence(rows: List<UnimportedBareProviderRo
 }
 
 // The edit against the base. Growth and removal are identity-set differences; a transition is a
-// label comparison, admitted only from ActiveDebt or to the same retired label.
+// label comparison, admitted only from ActiveDebt, to the same retired label, or from a retirement to
+// FileDeleted: a file whose pairs were retired can still be deleted later, and the standing check
+// requires FileDeleted of a row whose file is gone (and refuses it while the file exists), so without
+// that one transition no edit could delete such a file.
 fn unimported_bare_provider_roster_edit(
   base: List<UnimportedBareProviderRowView>,
   head: List<UnimportedBareProviderRowView>,
@@ -102,7 +112,7 @@ fn unimported_bare_provider_roster_edit(
       match map_lookup(m: head_labels, key: b.identity) {
         Absent => acc + ["RosterRemovedIdentity " + b.identity + " (was " + b.label + ")"]
         Present { value: now } =>
-          if b.active || now == b.label {
+          if b.active || now == b.label || now == "Retired FileDeleted" {
             acc
           } else {
             acc + ["RosterRetirementChanged " + b.identity + " (" + b.label + " -> " + now + ")"]
@@ -119,31 +129,56 @@ fn unimported_bare_provider_row_standing(
   is_checked: Bool,
   is_carried: Bool,
 ) -> List<String> {
-  if r.active && !exists {
-    ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
-  } else {
-    if r.file_deleted && exists {
-      ["RetiredFileDeletedButPresent " + r.identity]
-    } else {
-      if r.imports_fixed && !exists {
-        ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+  match r.standing {
+    ActiveDebt =>
+      if !exists {
+        ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
       } else {
-        if r.active && is_checked && !is_carried {
-          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
+        if is_checked && !is_carried {
+          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed if the file changed, BindsWithoutDeclaration if the name binds a builtin or kernel method, or ResolvesInClosure if it binds a declaration inside the file's own import closure"]
         } else {
-          if r.imports_fixed && is_checked && is_carried {
-            ["RetiredImportsFixedButCarried " + r.identity]
-          } else {
-            []
-          }
+          []
         }
       }
-    }
+    Retired { cause: FileDeleted } =>
+      if exists { ["RetiredFileDeletedButPresent " + r.identity] } else { [] }
+    Retired { cause: RelocatedOutOfSourceRoots { to: _ } } =>
+      if exists {
+        ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
+      } else {
+        []
+      }
+    Retired { cause: ImportsFixed } =>
+      reader_retirement_standing(cause: "ImportsFixed", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: NotAReference } =>
+      reader_retirement_standing(cause: "NotAReference", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: BindsWithoutDeclaration } =>
+      reader_retirement_standing(cause: "BindsWithoutDeclaration", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: ResolvesInClosure } =>
+      reader_retirement_standing(cause: "ResolvesInClosure", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+  }
+}
+
+// A retirement whose claim is that the file still exists and, re-derived on every run, no longer
+// carries the pair. ImportsFixed (the file changed), NotAReference, BindsWithoutDeclaration and
+// ResolvesInClosure (the reader changed) make the same claim; `cause` is the arm's own spelling.
+fn reader_retirement_standing(
+  cause: String,
+  r: UnimportedBareProviderRowView,
+  exists: Bool,
+  is_checked: Bool,
+  is_carried: Bool,
+) -> List<String> {
+  if !exists {
+    ["Retired" + cause + "ButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+  } else {
+    if is_checked && is_carried { ["Retired" + cause + "ButCarried " + r.identity] } else { [] }
   }
 }
 
 // The roster against the tree. `present_files` are the roster's files that exist; `checked_files`
-// are the files whose pairs the host derived (the route's own files plus every ImportsFixed file),
+// are the files whose pairs the host derived (the route's own files plus every ImportsFixed or
+// NotAReference file),
 // and `carried` the identities those files carry. `route_carried` is the subset carried by the
 // ROUTE's files (touched, or entry): only those can be unrostered. An ImportsFixed file is
 // re-derived to hold its retirement true, not to hold a file nobody touched to the rule -- a new

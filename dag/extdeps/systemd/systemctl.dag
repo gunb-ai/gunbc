@@ -1,15 +1,16 @@
 module extdeps.systemd.systemctl
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
+import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
+import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,6 +26,15 @@ data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
 fn systemctl_binary_path() -> NonEmptyStr {
   systemd_binary_path(name: systemctl_binary_name)
 }
+
+fn systemctl_absolute_program() -> ProgramIdentity = uncataloged_program(invocation: systemctl_binary_path())
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it. The user-manager probe resolves it on PATH too. It is
+// a distinct invocation from the absolute systemd path above, so it is a distinct identity row.
+fn systemctl_path_resolved_program() -> ProgramIdentity = uncataloged_program(invocation: systemctl_binary_name)
 
 data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
 
@@ -53,12 +63,12 @@ fn systemctl_reboot_command() -> NonEmptyStr {
 // the systemd it runs rather than about systemd. A consumer that needs that property must observe
 // the version instead of inferring it from the distribution.
 fn systemctl_version_command() -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: ["--version"])
+  argv_command(program: systemctl_absolute_program(), arguments: ["--version"])
 }
 
 // systemctl_show_properties_argv as a command, for one unit: `Name=value` lines, one per property.
 fn systemctl_show_properties_command(unit: NonEmptyStr, properties: List<SystemdUnitProperty>) -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: [
+  argv_command(program: systemctl_absolute_program(), arguments: [
     "show",
     concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
     unit as String,
@@ -77,7 +87,7 @@ fn systemctl_show_property_value(text: String, key: String) -> String? {
 // systemctl(1) show-environment: the service manager's own environment, `NAME=value` per line,
 // which every unit it starts inherits beneath the unit's Environment= and EnvironmentFile=.
 fn systemctl_show_environment_command() -> ArgvCommand {
-  argv_command(program: systemctl_binary_path(), arguments: ["show-environment"])
+  argv_command(program: systemctl_absolute_program(), arguments: ["show-environment"])
 }
 
 // THE VERSION THRESHOLD IS THE CITED UPSTREAM FACT, MODELED RATHER THAN LEFT IN PROSE. It sat in the
@@ -266,8 +276,26 @@ fn systemctl_show_properties_argv(units: List<NonEmptyStr>, properties: List<Sys
 // Every service unit the manager holds, loaded or not, as plain rows whose first field is the unit
 // name. No pattern: a glob is a shell word the fleet's far-side re-parse refuses, so the caller filters
 // by name in the model instead.
+//
+// THE COMMAND IS THE SPELLING; THE WORDS ARE DERIVED FROM IT. The census that reads this list ran for
+// its whole life as a RENDERED SCRIPT -- argv words serialized to shell text by the caller -- and the
+// serialization is exactly what made it unreachable over the fleet transport, whose wall admits
+// portable remote words and refuses a script BODY before any word is examined (the fleet path's own
+// refusal, quoted in host_effect_realize run_shell_transport). Holding the probe as an ArgvCommand
+// and deriving the word list here means the rendered form and the typed form cannot drift apart:
+// there is one spelling, and argv_words is the only thing that flattens it. The program is the
+// PATH-resolved identity, not the absolute one, for the reason that identity row records: the runner
+// hosts these units live on have not been observed by this repository, and the words the census has
+// always executed begin with the bare name.
+fn systemctl_list_all_service_units_command() -> ArgvCommand {
+  argv_command(
+    program: systemctl_path_resolved_program(),
+    arguments: ["list-units", "--type=service", "--all", "--no-legend", "--plain"],
+  )
+}
+
 fn systemctl_list_all_service_units_argv() -> List<String> {
-  ["systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"]
+  argv_words(command: systemctl_list_all_service_units_command())
 }
 
 // LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
@@ -416,6 +444,7 @@ type UnitFileState
 //
 service systemd.Systemctl {
   operation Enable {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -430,6 +459,7 @@ service systemd.Systemctl {
   }
 
   operation Restart {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -444,6 +474,7 @@ service systemd.Systemctl {
   }
 
   operation DisableNow {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -458,6 +489,7 @@ service systemd.Systemctl {
   }
 
   operation Start {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -472,6 +504,7 @@ service systemd.Systemctl {
   }
 
   operation Stop {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -489,6 +522,7 @@ service systemd.Systemctl {
   }
 
   operation ResetFailedUnit {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -505,6 +539,7 @@ service systemd.Systemctl {
   }
 
   operation KillUnitTerm {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -521,6 +556,7 @@ service systemd.Systemctl {
   }
 
   operation MaskNow {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -538,6 +574,7 @@ service systemd.Systemctl {
   }
 
   operation SetProperty {
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -554,6 +591,7 @@ service systemd.Systemctl {
   }
 
   operation RevertMemoryCaps {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -570,6 +608,7 @@ service systemd.Systemctl {
   }
 
   operation DaemonReload {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"
@@ -583,6 +622,7 @@ service systemd.Systemctl {
   }
 
   operation IsActive {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       state: String from "stdout"
@@ -601,6 +641,7 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -618,6 +659,7 @@ service systemd.Systemctl {
   }
 
   operation ShowUserProperty {
+    requires Network
     input { unit: NonEmptyStr, property: NonEmptyStr }
     output {
       outcome: ShellOutcome
@@ -636,6 +678,7 @@ service systemd.Systemctl {
   }
 
   operation ShowLoadState {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -653,6 +696,7 @@ service systemd.Systemctl {
   }
 
   operation ListUnits {
+    requires Network
     input {
       pattern: NonEmptyStr,
       unit_type: String = "service",
@@ -687,6 +731,7 @@ service systemd.Systemctl {
   }
 
   operation ListUnitsAllLoaded {
+    requires Network
     input {
       pattern: NonEmptyStr,
       unit_type: String = "service",
@@ -719,7 +764,42 @@ service systemd.Systemctl {
     }
   }
 
+  operation ListUnitsUserAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "--user",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "gunbc-attempt-node-1-feedfacefeedface.service loaded active running gunbc attempt\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsUserAllLoaded (user-manager population -- the belt's transient units are user units, invisible to the system manager -- first field only)"
+    }
+  }
+
   operation Status {
+    requires Network
     input { unit: NonEmptyStr }
     output {
       stdout: String from "stdout"
@@ -743,12 +823,6 @@ service systemd.Systemctl {
     }
   }
 }
-
-// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
-// on have not been observed by this repository, and sudo resolves the command through its own
-// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
-// consumer -- the NOPASSWD rules that name it.
-data systemctl_program: NonEmptyStr = "systemctl"
 
 // ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
 // contradiction and is not. That split exists because the user-scope consumer converges the two
@@ -776,15 +850,51 @@ data systemctl_program: NonEmptyStr = "systemctl"
 // `systemd-run --user` needs. `is-system-running` would not serve: it exits non-zero on a `degraded`
 // manager that is perfectly reachable. PATH-resolved, because the invoking host is unobserved.
 fn systemctl_user_manager_probe_command() -> ArgvCommand {
-  argv_command(program: "systemctl" as NonEmptyStr, arguments: ["--user", "show-environment"])
+  argv_command(program: systemctl_path_resolved_program(), arguments: ["--user", "show-environment"])
 }
 
 fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
   argv_command(
-    program: sudo_binary_path,
+    program: sudo_program(),
     arguments: append(
-      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      [sudo_non_interactive_flag as String, systemctl_path_resolved_program().invocation as String, "enable", "--now"],
       items: units,
+    ),
+  )
+}
+
+// DAEMON-RELOAD AND START AS TYPED ARGV, ELEVATED, for the host-effect realizer's staging fold
+// (gunbc.host_effect_realize compile_pool_slice_install_step). The posture is
+// systemctl_enable_now_command's own, restated rather than inherited by accident: the unit lives
+// in the system manager, so an unelevated invocation is not a weaker version of this request but a
+// different one that fails; the elevation comes from extdeps.sudo.elevation -- absolute
+// /usr/bin/sudo and its -n, non-interactive, which FAILS instead of blocking on a tty CI does not
+// have. daemon-reload carries no verb row because it has no second consumer spelling an
+// absolute-path argv beside this one (the row comment above records why enable and start are
+// hoisted); start reads its hoisted verb row. These are the ArgvCommand counterparts of the
+// shell-text builders gunbc.live_deploy.operations carries for its own emit path -- one operation,
+// two carrier grammars, each module owning its own.
+fn systemctl_daemon_reload_command() -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      systemctl_path_resolved_program().invocation as String,
+      "daemon-reload",
+    ],
+  )
+}
+
+fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: append(
+      [
+        sudo_non_interactive_flag as String,
+        systemctl_path_resolved_program().invocation as String,
+        systemctl_start_verb as String,
+      ],
+      items: [unit as String],
     ),
   )
 }

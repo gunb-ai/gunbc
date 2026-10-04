@@ -404,28 +404,36 @@ data scope_rank_view_acceptance: List<AcceptanceRow> = [
 fn scope_rank_slot_is_lowest_rank(s: MaterializedSlot) -> Bool {
   match s.polarity {
     LowestRankWins { seed_expression: _, what_a_flip_would_do: _ } => true
-    _ => false
+    HighestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    RankIndependent { why_the_key_is_module_local: _, what_would_discriminate_it: _ } => false
+    ExactlyOneDeclarerByConstruction { key_shape: _, admission_is_the_question: _ } => false
   }
 }
 
 fn scope_rank_slot_is_highest_rank(s: MaterializedSlot) -> Bool {
   match s.polarity {
     HighestRankWins { seed_expression: _, what_a_flip_would_do: _ } => true
-    _ => false
+    LowestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    RankIndependent { why_the_key_is_module_local: _, what_would_discriminate_it: _ } => false
+    ExactlyOneDeclarerByConstruction { key_shape: _, admission_is_the_question: _ } => false
   }
 }
 
 fn scope_rank_slot_is_rank_independent(s: MaterializedSlot) -> Bool {
   match s.polarity {
     RankIndependent { why_the_key_is_module_local: _, what_would_discriminate_it: _ } => true
-    _ => false
+    LowestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    HighestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    ExactlyOneDeclarerByConstruction { key_shape: _, admission_is_the_question: _ } => false
   }
 }
 
 fn scope_rank_slot_is_single_declarer(s: MaterializedSlot) -> Bool {
   match s.polarity {
     ExactlyOneDeclarerByConstruction { key_shape: _, admission_is_the_question: _ } => true
-    _ => false
+    LowestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    HighestRankWins { seed_expression: _, what_a_flip_would_do: _ } => false
+    RankIndependent { why_the_key_is_module_local: _, what_would_discriminate_it: _ } => false
   }
 }
 
@@ -452,7 +460,10 @@ fn scope_rank_reader_is_enumerating(r: ScopeMapReader) -> Bool {
   match r.demand {
     KindFilteredEnumeration { kind: _, called_per: _ } => true
     WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => true
-    _ => false
+    PointLookup { key_source: _ } => false
+    MembershipTest { key_source: _ } => false
+    ProvenanceTest { what_is_read: _, decides: _ } => false
+    UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => false
   }
 }
 
@@ -467,42 +478,56 @@ fn scope_rank_enumerating_readers() -> List<ScopeMapReader> {
 fn scope_rank_provenance_readers() -> List<ScopeMapReader> {
   scope_rank_view_readers |> filter(r => match r.demand {
     ProvenanceTest { what_is_read: _, decides: _ } => true
-    _ => false
+    PointLookup { key_source: _ } => false
+    MembershipTest { key_source: _ } => false
+    KindFilteredEnumeration { kind: _, called_per: _ } => false
+    WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => false
+    UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => false
   })
 }
 
 fn scope_rank_unconsumed_construction_readers() -> List<ScopeMapReader> {
   scope_rank_view_readers |> filter(r => match r.demand {
     UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => true
-    _ => false
+    PointLookup { key_source: _ } => false
+    MembershipTest { key_source: _ } => false
+    ProvenanceTest { what_is_read: _, decides: _ } => false
+    KindFilteredEnumeration { kind: _, called_per: _ } => false
+    WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => false
   })
 }
 
 fn scope_rank_whole_key_readers() -> List<ScopeMapReader> {
   scope_rank_view_readers |> filter(r => match r.demand {
     WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => true
-    _ => false
+    PointLookup { key_source: _ } => false
+    MembershipTest { key_source: _ } => false
+    ProvenanceTest { what_is_read: _, decides: _ } => false
+    KindFilteredEnumeration { kind: _, called_per: _ } => false
+    UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => false
   })
 }
 
 fn scope_rank_admission_is_structural_after() -> Bool {
   match scope_rank_view_admission.after_cutover {
     AdmittedByRankMembership { how_it_is_constructed: _, what_makes_the_bad_state_unwritable: _ } => true
-    _ => false
+    AdmittedByMaterialization { why_it_holds_today: _ } => false
+    UnadmittedAnswerReachable { how: _ } => false
   }
 }
 
 fn scope_rank_admission_regression_reachable() -> Bool {
   match scope_rank_view_admission.after_cutover {
     UnadmittedAnswerReachable { how: _ } => true
-    _ => false
+    AdmittedByMaterialization { why_it_holds_today: _ } => false
+    AdmittedByRankMembership { how_it_is_constructed: _, what_makes_the_bad_state_unwritable: _ } => false
   }
 }
 
 fn scope_rank_count_is_instrument_read(r: ScopeCountRow) -> Bool {
   match r.reading {
     ReadFromInstrument { instrument_line: _, produced_by: _, revision: _ } => true
-    _ => false
+    TranscribedIntoProse { carrier: _, why_it_misleads: _ } => false
   }
 }
 
@@ -518,7 +543,7 @@ fn scope_rank_acceptance_is_paired(a: AcceptanceRow) -> Bool {
   match a.oracle {
     PairedRunByteIdentity { line_marker: _, moves_if_and_only_if: _ } => true
     PairedRunFieldIdentity { field_compared: _, moves_if_and_only_if: _ } => true
-    _ => false
+    PriorReadingAwaitingBaseline { measured_on: _, why_not_an_oracle: _ } => false
   }
 }
 

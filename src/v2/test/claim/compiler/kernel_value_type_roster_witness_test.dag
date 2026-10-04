@@ -1,0 +1,209 @@
+module v2.test.claim.compiler.kernel_value_type_roster_witness_test
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  resolution_context,
+  resolve_in_context
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.dag {
+  dag_binding_denotation,
+  dag_kernel_type_binding_optional,
+  dag_kernel_type_declaration_binding_optional,
+  dag_kernel_value_type_binding,
+  dag_kernel_value_type_roster,
+  KernelValueType,
+  dag_language_model
+}
+import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type_node }
+import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.integer { integer_int_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { bool_node }
+import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { for_all }
+import std.types { is_kernel_type }
+import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test {
+  rcf_member_accepted_and_decided,
+  rcf_member_arrow,
+  rcf_read,
+  rcf_refuses_with
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE ROSTER ANSWERS THE THREE QUESTIONS ASKED OF A KERNEL TYPE, SO THEY CANNOT DISAGREE.
+//
+// The subject is v2.extdeps.languages.dag dag_kernel_value_type_roster and its three folds: which
+// binding a spelling takes (dag_kernel_type_binding_optional), which binding a declaration takes
+// (dag_kernel_type_declaration_binding_optional), and what a binding denotes (dag_binding_denotation).
+// A kernel type's canonical binding is the atom identity of the value-type node its std authority
+// owns, derived from the row.
+//
+// THE DEFECT THIS CLOSED, measured on the resolve route before the roster: a declared `Bool` was
+// bound to v2.std.logic bool_node's identity while the join denoted a second symbol only hand-built
+// fixtures carried. So a declared Bool reached every declared-type judgment as an atom the join
+// answered Absent for, and `fn f(x: Int) -> Bool { 3 }` was accepted with a counted obligation.
+//
+// THE REDS ARE ON THE REAL ROUTE, from source text through the production front end into infer, on
+// the harness v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness_test declares.
+// The record-field red is that module's rcf_a_bool_declared_field_value_of_the_wrong_type_refuses_holds.
+//
+// A DECLARED BOOL FORMAL IS NOW A RED THIS ROUTE FIRES. A call's callee is a declaration reference, and
+// since gunbc#12506 infer types it by its declaration, so the application's formals are resolved and a
+// Bool formal holding an Int is judged and refused. The control below pinned the earlier state (accepted
+// with a counted UndecidableFormalUnresolved) and was written to go red exactly then; it is rewritten, as
+// its own note required, to assert the refusal.
+data kvr_return_bad_source: String = "module v2.test.kvr_return_bad\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { 3 }\n"
+
+data kvr_return_good_source: String = "module v2.test.kvr_return_good\n\nimport std.types { Bool }\n\nfn kvr_f(x: Int) -> Bool { true }\n"
+
+data kvr_formal_source: String = "module v2.test.kvr_formal\n\nimport std.types { Bool }\n\nfn kvr_p(b: Bool) -> Int { 1 }\n\nfn kvr_g(x: Int) -> Int { kvr_p(b: 3) }\n"
+
+data kvr_ingest: SourceRootIngest = [
+  rcf_read(source: kvr_return_bad_source, id: ^kvr_return_bad_read, unit: ^kvr_return_bad_cu, path: "src/v2/test/fixture/kernel_value_type_roster/return_bad.dag"),
+  rcf_read(source: kvr_return_good_source, id: ^kvr_return_good_read, unit: ^kvr_return_good_cu, path: "src/v2/test/fixture/kernel_value_type_roster/return_good.dag"),
+  rcf_read(source: kvr_formal_source, id: ^kvr_formal_read, unit: ^kvr_formal_cu, path: "src/v2/test/fixture/kernel_value_type_roster/formal.dag")
+]
+
+fn kvr_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: kvr_ingest, lm: dag_language_model())
+}
+
+fn kvr_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
+  match kvr_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission {
+          subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+          imports: Empty
+        }
+      ).resolved
+  }
+}
+
+fn kvr_resolved_return_bad() -> Outcome<ResolvedTree> { kvr_resolve_subject(subject: "v2.test.kvr_return_bad") }
+fn kvr_resolved_return_good() -> Outcome<ResolvedTree> { kvr_resolve_subject(subject: "v2.test.kvr_return_good") }
+fn kvr_resolved_formal() -> Outcome<ResolvedTree> { kvr_resolve_subject(subject: "v2.test.kvr_formal") }
+
+fn kvr_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => Present { value: id }
+    _ => Absent
+  }
+}
+
+fn kvr_binding_denotes(node: Node) -> Bool {
+  match kvr_atom_identity(n: node) {
+    Absent => false
+    Present { value: id } => dag_binding_denotation(sym: id) == Present { value: node }
+  }
+}
+
+// EVERY ROW HAS A BINDING, AND IT DENOTES THAT ROW'S NODE. The claim walks the roster itself, not a
+// list of the nodes it holds today, so a row whose value-type node is not an atom -- which
+// dag_kernel_value_type_binding answers Absent for, and which would then drop out of the canonical
+// bindings and the join without a word -- turns this claim red instead of passing unseen. The four
+// named nodes are asserted beside it so an emptied roster cannot satisfy the walk vacuously.
+fn kvr_row_binds_and_denotes(row: KernelValueType) -> Bool {
+  match dag_kernel_value_type_binding(row: row) {
+    Absent => false
+    Present { value: binding } => dag_binding_denotation(sym: binding) == Present { value: row.value_type }
+  }
+}
+
+test fn kvr_every_kernel_value_type_is_denoted_by_its_own_identity_holds() -> Bool {
+  for_all(xs: dag_kernel_value_type_roster, predicate: fn(row) { kvr_row_binds_and_denotes(row: row) })
+    && kvr_binding_denotes(node: integer_int_type_node())
+    && kvr_binding_denotes(node: bool_node())
+    && kvr_binding_denotes(node: symbol_type_node())
+    && kvr_binding_denotes(node: symbol_kernel_type_node())
+    && kvr_binding_denotes(node: char_kernel_type_node())
+}
+
+// THE RESOLVER'S BINDING IS THE JOIN'S KEY, for a spelling and for each declaration a row lists:
+// what `Bool` binds to is what the join denotes as v2.std.logic bool_node. This is the agreement the
+// two if-chains lacked. The retired declaration path v2.std.logic.Bool binds nothing (the Bool de-fork).
+test fn kvr_a_spelling_and_its_declarations_bind_what_the_join_denotes_holds() -> Bool {
+  (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Bool")) == kvr_atom_identity(n: bool_node()))
+    && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Int")) == kvr_atom_identity(n: integer_int_type_node()))
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.logic.Bool")) == Absent)
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "std.types.Bool")) == kvr_atom_identity(n: bool_node()))
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.integer.Int")) == kvr_atom_identity(n: integer_int_type_node()))
+    && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Symbol")) == kvr_atom_identity(n: symbol_type_node()))
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "v2.std.node.Symbol")) == kvr_atom_identity(n: symbol_type_node()))
+}
+
+// THE SYMBOL AND CHAR FORK, HELD AS IT IS. v2.std.compilers.target_model's kernel atoms for Symbol
+// and Char are roster rows with NO spelling, each naming in `converges_on` the declaration its
+// spelling resolves to. For Char that declaration takes no kernel binding at all. For Symbol it does
+// (gunbc#12549): the spelling and v2.std.node Symbol bind v2.std.node symbol_type_node's identity,
+// which is NOT target_model's atom -- so the fork is now between two kernel atoms for one type, and
+// this claim holds that they stay distinct until the de-fork lane gives Symbol one authority.
+//
+// AND BOTH ARE OUTSIDE THE KERNEL NAME ROSTER. The one roster of kernel names is std.types
+// kernel_type_set; Symbol and Char are not in it, while Int and Bool are. So the claim goes red if a
+// name is added there without its rows here changing, or if an unspelled row here gains a spelling
+// without the de-fork deciding it. It is then rewritten to the converged state.
+fn kvr_unspelled_row_converges_on(node: Node, dotted: String) -> Bool {
+  any(xs: dag_kernel_value_type_roster, predicate: fn(row) {
+    (row.value_type == node)
+      && (row.converges_on == Present { value: qualified_name_from_dotted_string(dotted: dotted) })
+      && (row.spelling == Absent)
+  })
+}
+
+test fn kvr_symbol_and_char_are_a_recorded_fork_that_binds_no_spelling_holds() -> Bool {
+  kvr_unspelled_row_converges_on(node: symbol_kernel_type_node(), dotted: "v2.std.node.Symbol")
+    && kvr_unspelled_row_converges_on(node: char_kernel_type_node(), dotted: "std.types.Char")
+    && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Char")) == Absent)
+    && (dag_kernel_type_declaration_binding_optional(path: qualified_name_from_dotted_string(dotted: "std.types.Char")) == Absent)
+    && (dag_kernel_type_binding_optional(sym: symbol_intern_lexeme(lexeme: "Symbol")) != kvr_atom_identity(n: symbol_kernel_type_node()))
+    && !is_kernel_type(name: "Symbol")
+    && !is_kernel_type(name: "Char")
+    && is_kernel_type(name: "Int")
+    && is_kernel_type(name: "Bool")
+}
+
+// THE DISCRIMINATING RED: a declared Bool return holding an Int refuses, on the real route.
+test fn kvr_a_declared_bool_return_holding_an_int_refuses_holds() -> Bool {
+  rcf_refuses_with(resolved: kvr_resolved_return_bad(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+// THE POSITIVE CONTROL, one term away and decided: `true` at a declared Bool is accepted with no
+// counted obligation.
+test fn kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds() -> Bool {
+  rcf_member_accepted_and_decided(resolved: kvr_resolved_return_good(), member: ^kvr_f)
+}
+
+// THE FORMAL, JUDGED: a named call's Bool formal holding an Int refuses application_argument_does_not_inhabit,
+// because the callee reference is typed by its declaration (gunbc#12506). The subject is the calling fn's
+// member alone, handed the module's own indexes: the callee's declaration beside it is not what the claim is
+// about, and inferring both is more than one claim's budget on the required floor.
+test fn kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds() -> Bool {
+  match kvr_resolved_formal() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match rcf_member_arrow(root: tree.root, name: ^kvr_g) {
+        Absent => false
+        Present { value: arrow } =>
+          match infer(tree: ResolvedTree { root: arrow, symbol_index: tree.symbol_index, resolved_declarations: tree.resolved_declarations, lexical_bindings: tree.lexical_bindings, unavailable_providers: tree.unavailable_providers }) {
+            Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^application_argument_does_not_inhabit
+            Accepted { value: _, diagnostics: _ } => false
+          }
+      }
+  }
+}

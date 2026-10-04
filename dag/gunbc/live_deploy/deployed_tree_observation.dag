@@ -194,7 +194,7 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
 fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
   append(
-    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    append([env_path_resolved_program().invocation as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
     items: ["read-tree", "--no-sparse-checkout", revision_hex],
   )
 }
@@ -203,7 +203,7 @@ fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_p
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
 fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   append(
-    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    append([env_path_resolved_program().invocation as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
     items: ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
   )
 }
@@ -221,7 +221,7 @@ fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<Stri
 // module refuses to trust.
 fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   append(
-    append([env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
+    append([env_path_resolved_program().invocation as String, join(["GIT_INDEX_FILE=", index_path], ""), "git"], items: git_in_trusted_repository_args(repo: repo)),
     items: ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
   )
 }

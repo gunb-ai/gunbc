@@ -1,7 +1,7 @@
 module v2.workflow.floor_cost_debt_admission
 
-import v2.std.collection { List }
-import std.types { NonEmptyStr }
+import v2.std.algebra { list_reverse }
+import std.types { NonEmptyStr, List }
 
 // TYPED ROSTER ADMISSION FOR THE ENROLMENT MARGIN: AN IDENTITY AND A REASON, NEVER A READING.
 //
@@ -103,12 +103,73 @@ data app_attest_interpreted_crypto_typed_admissions: List<FloorCostDebtTypedAdmi
   },
 ]
 
+// THE mtcollins1 BOOT MATRIX'S CASES ABOVE THE PER-SUBJECT LINE (gunbc#12800; the three full-boot
+// cd_error cases joined in gunbc#12874), which straddle it between runners (the third form
+// gunbc#12853 repaired). The interrupted-attempt case runs the real boot entry TWICE -- the killed run
+// up to StartMedia, then the next run over the world it left -- because recovering the dead run's hold
+// is what it asserts; the cd_error cases run it once through a full boot. Each run pays the dry KVM
+// observer and gunbc#12434's SOL polling route faithfully. Each left the dead band when it crossed the
+// line, as that band's self-staling rule requires. Discharged by the capability
+// gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost names.
+data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one",
+    reason: "the real boot entry end to end over the dry realization twice (the killed run, then the next run recovering its hold), measured above the per-subject line by the enrolment-margin lines of PR required floor runs 36765162766 (srv1, 523 ms), 36775473983 (srv3, 582 ms) and 36783312538 (srv3, 543 ms); merge-group run 36793281217 read it at 466 ms on srv4, under the line, which v2.workflow.floor_enrolment_margin now holds as EnrolmentRosterGroundWithinRunnerEnvelope (gunbc#12853) rather than staling the row; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted",
+    reason: "the real boot entry end to end over the dry realization through a stop, a replace and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 249812 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 415 ms and run 36825466924 at c158c04300a read 583 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded",
+    reason: "the real boot entry end to end over the dry realization through an attach and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 239309 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 419 ms and run 36825466924 at c158c04300a read 652 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_is_recorded_and_booted",
+    reason: "the real boot entry end to end over the dry realization through an attach and a full boot (since the Started-row cd_error rule this case boots rather than refusing at the handoff gate), at 254859 eval_steps on both runs: PR required floor run 36820943484 of gunbc#12874 at 74399d07751 read 423 ms and run 36825466924 at c158c04300a read 643 ms, so it sits above the envelope floor on a fast runner and above the per-subject line on a slow one, which a dead-band row cannot ground; owner: the mtcollins1 boot lane, discharged by the matrix running as natively emitted witnesses" as NonEmptyStr,
+  },
+]
+
+// THE REAL-CORPUS IMPORT-CLOSURE ROW (gunbc#12910, 2026-10-01), granted by deep-ferret-305 with
+// jolly-boar-500's retirement condition. test.claim.module_graph.import_closure_live is the real-corpus
+// inhabitance claim for v2.lens.module_graph import_closure_live: the DESIGN section 3 pairing obligation
+// for test.claim.module_graph.demand_closure_agreement_witness, which supplies its pool as a fixture. It
+// replaces reference_closure_equivalence, an operator-ruled B2 wall that measured 14s on the floor.
+data import_closure_real_corpus_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.module_graph.import_closure_live.dag_import_closure_live_witness_bundle_holds",
+    reason: "the real-corpus inhabitance claim for import_closure_live (section 3 pairing obligation for demand_closure_agreement_witness): it walks a real entry's closure over real production modules, so its pool cannot be supplied. Its pool is already narrowed to the closure's own directories, derived from a golden derived from declared import edges; the remaining cost is the exclusive reference_pool_names heads fill over those directories, measured at 843 ms wall by the enrolment-margin lines of PR required floor run 36883586866. Directory-grain scoping below that, without a demand set, is the fail-open shape the compile-cost lane refuses. Retires when the whole-pool heads demand is demand-keyed: gunbc.resolver_cost_frontier, the frontier row on v1.compiler.parse parse_heads_with_table (demand-engine M1), i.e. when the reference pool fill is shared or scoped below the margin." as NonEmptyStr
+  },
+]
+
+// THE APPROVAL-INTENT DIGEST ROWS (gunbc#13004, 2026-10-02), granted by the allocation landing lane
+// (snappy-gull-889 msg_75d78dfe), declared down at gunbc.rung_drop
+// approval_intent_digest_new_witness_eval_step_cost. Each is the ONE real-path inhabitance claim of an approval-request
+// constructor: the request digests its intent with an interpreted SHA-256 and the gate admits
+// exactly that revision. Every sibling claim reads the intent instead (the binding of target, role,
+// member and attempt; the material/policy separation; the run-attempt binding) and stays under the
+// line by construction, so these rows are the real path those siblings lean on (DESIGN section 3
+// pairing obligation). The cost is the primitive's realization, not the claim's shape: the same
+// constructors measured 1.4M-2.6M eval steps when each sibling paid them, in the enrolment-margin
+// lines of PR required floor run 37062802746, and one digest per claim is what remains. Retired by that
+// drop's restoration trigger: SHA-256 executing as natively emitted code on the merge path.
+data approval_intent_digest_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.approved_secret_grants_witness_test.the_real_request_digests_its_intent_and_admits_only_that_revision",
+    reason: "the one inhabitance claim of gunbc.auth.approved_secret_grants secret_grants_approval_request: one interpreted SHA-256 over the real grants intent, then the gate over that revision and a refused other revision; its binding siblings read secret_grants_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision",
+    reason: "the one inhabitance claim of gunbc.fabric_storage_state_provision fabric_state_provision_request: one interpreted SHA-256 over the real material intent, then the gate over that revision and a refused other revision; its siblings read fabric_state_provision_intent and pay no digest; owner: the allocation auth lane, discharged by the restoration trigger of gunbc.rung_drop approval_intent_digest_new_witness_eval_step_cost (SHA-256 executing as natively emitted code on the merge path)" as NonEmptyStr,
+  },
+]
+
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  app_attest_interpreted_crypto_typed_admissions
+  concat(concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions), approval_intent_digest_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
-  reverse(fold(
+  list_reverse(xs: fold(
     floor_cost_debt_typed_admissions(),
     init: [],
     f: fn(acc, row) { concat([row.identity], acc) },

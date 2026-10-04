@@ -2,7 +2,7 @@ module v2.std.compilers.compilation_unit
 
 
 import std.algebra { Empty }
-import std.types { NonEmptyStr, List, Bool, String, Int }
+import std.types { NonEmptyStr, List, Bool, String, Int, brand }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { SingleAuthority }
@@ -17,12 +17,12 @@ import v2.std.optional {
   Present,
   optional_present
 }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted, outcome_rejected }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -212,7 +212,7 @@ fn module_unit_id_outcome(
 ) -> Outcome<Optional<CompilationUnitId>> {
   match map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -347,7 +347,7 @@ fn module_export_declarations_outcome(
         Present { value: nodes } => nodes
         Absent => Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
@@ -361,7 +361,7 @@ fn module_type_definition_rows_outcome(
         Present { value: rows } => rows
         Absent => Empty
       })
-    Rejected { diagnostics: d } => outcome_rejected(d: d.head)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 

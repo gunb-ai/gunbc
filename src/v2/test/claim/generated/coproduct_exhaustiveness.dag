@@ -1,5 +1,6 @@
 module v2.test.generated.coproduct_exhaustiveness
 
+import std.types { List }
 import v2.lens.testgen {
   Generator,
   TestgenConcept,
@@ -9,9 +10,7 @@ import v2.lens.testgen {
 }
 import v2.std.algebra { length }
 import std.algebra { Cons, Empty }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.node_reflection { coproduct_arm_keys }
 import v2.std.verification {
@@ -20,6 +19,7 @@ import v2.std.verification {
   GeneratedAnchorKey,
   GeneratedClaimAnchor,
   GeneratedCoproductExhaustiveness,
+  ManualClaimAnchor,
   TestClaim,
   test_claim_anchor,
   test_claim_input
@@ -57,7 +57,8 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
     Accepted { value: claim, diagnostics: _ } =>
       match test_claim_anchor(c: claim) {
         GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
-        _ => false
+        GeneratedClaimAnchor { generated_anchor: _ } => false
+        ManualClaimAnchor { manual_anchor: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -67,7 +68,8 @@ fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol)
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
       (ct == coproduct_type) && (ov == omitted_variant)
-    _ => false
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } } => false
+    ManualClaimAnchor { manual_anchor: _ } => false
   }
 }
 

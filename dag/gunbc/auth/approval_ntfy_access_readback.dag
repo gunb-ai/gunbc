@@ -312,7 +312,7 @@ fn approval_ntfy_run(read: NtfyRuntimeRead, pid: String, revision: ReleaseRevisi
 fn approval_ntfy_runtime_reading(revision: ReleaseRevisionBinding) -> NtfyRuntimeReading
   uses net: Network
   admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+    decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
   ]
 {
   let unit_before = approval_ntfy_run(read: ReadUnitBefore, pid: "", revision: revision)
@@ -511,7 +511,7 @@ fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
 // ── THE CLASSIFIER: the fixture seam, and nothing but a verdict ────────────────────────────
 // Pure over one reading. It returns AclEstablished or AclRefused and carries no value an effectful
 // function could accept in place of the reads: the only caller that turns AclEstablished into an
-// effect is gunbc.auth.approval_device_routes issue_device_enrolment_code, which took the reading
+// effect is gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, which took the reading
 // itself immediately before it asks. AclEstablished is reached only at the end of the chain: every
 // read held, the listing is the exact ACL, AND the process joins bound it to the running server.
 fn approval_ntfy_channel_verdict(reading: NtfyRuntimeReading) -> ApprovalNtfyAclVerdict {
@@ -950,15 +950,15 @@ fn approval_ntfy_runtime_gap_sentence(g: ActiveNtfyRuntimeGap) -> String {
 
 fn permission_is(p: NtfyPermission, want: NtfyPermission) -> Bool {
   match p {
-    NtfyReadWrite => match want { NtfyReadWrite => true  _ => false }
-    NtfyReadOnly => match want { NtfyReadOnly => true  _ => false }
-    NtfyWriteOnly => match want { NtfyWriteOnly => true  _ => false }
-    NtfyDenyAll => match want { NtfyDenyAll => true  _ => false }
+    NtfyReadWrite => match want { NtfyReadWrite => true  NtfyReadOnly => false  NtfyWriteOnly => false  NtfyDenyAll => false }
+    NtfyReadOnly => match want { NtfyReadWrite => false  NtfyReadOnly => true  NtfyWriteOnly => false  NtfyDenyAll => false }
+    NtfyWriteOnly => match want { NtfyReadWrite => false  NtfyReadOnly => false  NtfyWriteOnly => true  NtfyDenyAll => false }
+    NtfyDenyAll => match want { NtfyReadWrite => false  NtfyReadOnly => false  NtfyWriteOnly => false  NtfyDenyAll => true }
   }
 }
 
 fn role_is_user(r: NtfyRole) -> Bool {
-  match r { NtfyRoleUser => true  _ => false }
+  match r { NtfyRoleAdmin => false  NtfyRoleUser => true  NtfyRoleAnonymous => false }
 }
 
 // A named principal holds EXACTLY one grant, on the topic's literal name, with the wanted permission.
@@ -974,7 +974,7 @@ fn holds_exactly(u: NtfyAccessUser, want: NtfyPermission) -> Bool {
 // RoleAnonymous). A `*` row at another role is not the principal ntfy's authorizer applies to an
 // unauthenticated subscriber, so its no-access shape says nothing about that subscriber.
 fn role_is_anonymous(r: NtfyRole) -> Bool {
-  match r { NtfyRoleAnonymous => true  _ => false }
+  match r { NtfyRoleAdmin => false  NtfyRoleUser => false  NtfyRoleAnonymous => true }
 }
 
 fn has_no_access(a: NtfyUserAccess) -> Bool {

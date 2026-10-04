@@ -39,13 +39,13 @@ import v2.std.compilers.target_model {
   render_target_text,
   target_value_expression_bool_literal,
   target_value_expr_bool_literal_value_from_source_symbol,
+  target_value_expr_diagnostic,
   target_value_expr_is_bool_literal_expression,
-  target_value_expr_project_pick_literal_atom,
+  target_value_expr_project_pick_literal_atom_or,
   target_value_expression_to_concrete_tokens
 }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, TypeNode, Atom }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, outcome_rejected }
+import v2.std.node { Node, TypeNode, Atom, node_synthetic }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -245,9 +245,17 @@ test fn rust_spelling_token_is_not_dag_source_bool_literal() -> Bool {
 }
 
 test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
-  match target_value_expr_project_pick_literal_atom(
+  match target_value_expr_project_pick_literal_atom_or(
     id: ^dag_token_kw_true,
-    source_bool_form: blp_dag_source_bool_form()
+    source_bool_form: blp_dag_source_bool_form(),
+    on_no_literal: fn(sym) {
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_body_scope_binding_invalid,
+          node: node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+        )
+      )
+    }
   ) {
     Accepted { value: expr, diagnostics: _ } =>
       target_value_expr_is_bool_literal_expression(

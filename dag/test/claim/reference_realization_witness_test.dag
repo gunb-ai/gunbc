@@ -136,13 +136,15 @@ test fn w_undeclared_provider_refuses_instead_of_inlining() -> Bool {
     == "refused-undeclared:v2.std.diagnostic::Diagnostics"
 }
 
-// IDENTITY KEYING, AT THE ONE PLACE IT DECIDES SOMETHING. std.nat Nat carries an inline row;
-// v2.std.nat Nat is the Peano coproduct that v1.compiler.coercion numeric_realization_identity_note
-// says must NOT realize natively. Same spelling, opposite answers, and the roster reaches only the
-// declaration it names.
+// IDENTITY KEYING, AT THE ONE PLACE IT DECIDES SOMETHING. std.nat Nat carries an inline row; a
+// second declaration spelled Nat in another module -- a user-declared Peano type, the hazard
+// v1.compiler.coercion numeric_realization_identity_note names -- must NOT realize natively. Same
+// spelling, opposite answers, and the roster reaches only the declaration it names. The second
+// declaration is supplied as an identity rather than read from the corpus: since the Nat de-fork
+// (operator ruling A, 2026-09-30) no corpus module declares a second Nat.
 test fn w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row() -> Bool {
-  policy_tag(module_path: "v2.std.nat", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
-    == "refused-undeclared:v2.std.nat::Nat"
+  policy_tag(module_path: "test.claim.user_declared_peano", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
+    == "refused-undeclared:test.claim.user_declared_peano::Nat"
 }
 
 // THE THIRD GROUND STATE, authored here because no corpus row carries it: a provider examined and

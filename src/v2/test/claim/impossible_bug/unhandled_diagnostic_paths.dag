@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v2.std.node { Edge, Authored, Node, Symbol, TypeNode, Atom, Conj }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -35,8 +35,8 @@ fn safety_subject(op: Symbol, witness: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
-      Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
+      Edge { label: Authored { name: ^operation_field }, target: atom_node(s: op) },
+      Edge { label: Authored { name: ^witness_field }, target: atom_node(s: witness) },
     ],
     occurrence_id: OccurrenceSynthetic
 }

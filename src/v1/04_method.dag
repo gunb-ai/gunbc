@@ -9,7 +9,8 @@ import std.algebra {
   AlgebraFieldTemplate, algebra_templates_for_profile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
-  OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable
+  OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
+  free_monoid_scalar_templates, kernel_algebra_profile
 }
 
 import v1.std.core { Unmarked,
@@ -140,7 +141,7 @@ fn filesystem_read_result_type() -> Node {
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
 }
 
 fn map_of_type_variables() -> Node {
@@ -290,10 +291,18 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // independent (this repository's own call sites and its own emitted runtime text were written to
 // match each other); name declared against a disagreement; name evidenced by a single call site.
 // One word "declared" covering all four would be the rung inflation the ladder names.
+// THE observed_monotonic_nanos ROW DECLARES ITS LABEL, and it did not before. Every call site passes
+// one and the emitted realization in v1.runtime_rust takes one, while the signature read
+// `params: []` -- so the interpreter accepted an argument its own signature did not admit, and no
+// emitted body could have been written against a signature claiming the call takes nothing. The
+// label is never identity material; it exists so pure-call memoization cannot collapse two readings
+// around one subject into a single read, which would make every measured span zero. `trace_mark`
+// beside it already declared its label, which is the shape this row now matches.
 data builtin_function_registry: Map<String, BuiltinSignature> = {
   "count": derived_signature_and_return(names: ["xs"], method: "count"),
   "hmac_sha256_verify_hex": BuiltinSignature { params: [BuiltinParam { name: "key_hex", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "message", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "tag_hex", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "hmac_sha256_hex": BuiltinSignature { params: [BuiltinParam { name: "key_hex", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "message", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: string_type) },
+  "sha256_hex_of_text": BuiltinSignature { params: [BuiltinParam { name: "text", ty: NamedTemplate { name: "String" } }], returns: string_type },
   "string_length": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "code_point": BuiltinSignature { params: [BuiltinParam { name: "c", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "to_int": derived_signature(names: ["s"], method: "to_int", returns: int_type),
@@ -304,6 +313,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "parse_int": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: int_type) },
   "char_at": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pos", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "substring": derived_signature(names: ["s", "start", "end"], method: "substring", returns: string_type),
+  "json_unescape_checked": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: string_type) },
   "from_code_point": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "chars_to_string": BuiltinSignature { params: [BuiltinParam { name: "chars", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "end", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "record_source_chars_index_lookup": BuiltinSignature { params: [], returns: unit_type },
@@ -341,7 +351,8 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "atom_identity_hash": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: hash_type },
   "trace_mark": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: unit_type },
   "observed_peak_resident_bytes": BuiltinSignature { params: [], returns: int_type },
-  "observed_monotonic_nanos": BuiltinSignature { params: [], returns: int_type },
+  "observed_monotonic_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
+  "observed_thread_cpu_nanos": BuiltinSignature { params: [BuiltinParam { name: "label", ty: NamedTemplate { name: "String" } }], returns: int_type },
   "string_contains": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pattern", ty: NamedTemplate { name: "String" } }], returns: bool_type },
   "length": derived_signature_and_return(names: ["xs"], method: "length"),
   "starts_with": derived_signature(names: ["s", "prefix"], method: "starts_with", returns: bool_type),
@@ -375,6 +386,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "compile_dag_importer_resolved_call_edges": BuiltinSignature { params: [BuiltinParam { name: "import_modules", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "target_leaves", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "resolved_call_edge_census_result") },
   "compile_dag_callsite_resolved_call_edges": BuiltinSignature { params: [BuiltinParam { name: "import_modules", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "target_leaves", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "resolved_call_edge_census_result") },
   "builtin_function_registry_keys": BuiltinSignature { params: [], returns: list_of_element(element: string_type) },
+  "compile_dag_operation_requires": BuiltinSignature { params: [BuiltinParam { name: "source", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "service", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "operation", ty: NamedTemplate { name: "String" } }], returns: list_of_element(element: string_type) },
   "compile_dag_primitive_call_edges": BuiltinSignature { params: [BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "entry_prefixes", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "primitive_call_edge_census_result") },
   "source_root_ingest_module_identities": BuiltinSignature { params: [BuiltinParam { name: "source_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "module_identity_population") },
   "required_floor_nominal_subject_module_identities": BuiltinSignature { params: [BuiltinParam { name: "source_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "module_identity_population") },
@@ -396,19 +408,11 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "test_migration_behavior_discovery_holds": BuiltinSignature { params: [], returns: bool_type },
   "inert_carrier_names_live": BuiltinSignature { params: [], returns: list_of_type_variable(id: "inert_carrier_name_elem") },
   "inert_carrier_declared_count": BuiltinSignature { params: [], returns: int_type },
-  "non_fold_residue_count": BuiltinSignature { params: [], returns: int_type },
-  "non_fold_residue_unrostered_count": BuiltinSignature { params: [], returns: int_type },
-  "non_fold_residue_stale_roster_count": BuiltinSignature { params: [], returns: int_type },
-  "non_fold_residue_coproduct_universe_count": BuiltinSignature { params: [], returns: int_type },
   "parse_stage0_cargo_manifest_bins": BuiltinSignature { params: [BuiltinParam { name: "manifest", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "cargo_manifest_bin_parse") },
   "parse_roadmap_acceptance_event_history_jsonl": BuiltinSignature { params: [BuiltinParam { name: "text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_event_history_parse") },
   "project_roadmap_acceptance_event_history_from_authority_text_host": BuiltinSignature { params: [BuiltinParam { name: "authority_text", ty: NamedTemplate { name: "String" } }], returns: type_variable_node(id: "roadmap_acceptance_history_projection") },
   "commit_witness_claim_roster_unresolvable_count": BuiltinSignature { params: [], returns: int_type },
   "commit_witness_claim_pair_resolvable": BuiltinSignature { params: [BuiltinParam { name: "entry", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "function", ty: NamedTemplate { name: "String" } }], returns: bool_type },
-  "non_fold_residue_wildcard_red_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
-  "non_fold_residue_total_fold_green_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
-  "non_fold_residue_roster_red_fixture_holds": BuiltinSignature { params: [], returns: bool_type },
-  "non_fold_residue_synthetic_unrostered_red_holds": BuiltinSignature { params: [], returns: bool_type },
   "complexity_linearity_syntactic_finding_count": BuiltinSignature { params: [], returns: int_type },
   "complexity_linearity_wildcard_facts": BuiltinSignature { params: [], returns: list_of_type_variable(id: "complexity_linearity_wildcard_fact_elem") },
   "complexity_linearity_syntactic_site_fired": BuiltinSignature { params: [BuiltinParam { name: "site", ty: NamedTemplate { name: "String" } }], returns: bool_type },
@@ -422,6 +426,7 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "import_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "import_resolution_fact_elem") },
   "reference_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "import_resolution_fact_elem") },
   "dependency_resolution_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "module_dependency_edge_elem") },
+  "dependency_resolution_facts_at": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "importer_path", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "exclude_substrings", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "module_dependency_edge_elem") },
   "floor_discovery_source_inventory": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: type_variable_node(id: "floor_discovery_source_inventory_result") },
   "module_declaration_facts": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }], returns: list_of_type_variable(id: "module_declaration_fact_elem") },
   "module_declaration_facts_at": BuiltinSignature { params: [BuiltinParam { name: "pool_roots", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "String" } } }, BuiltinParam { name: "module_path", ty: NamedTemplate { name: "String" } }], returns: list_of_type_variable(id: "module_declaration_fact_elem") },
@@ -442,8 +447,84 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "is_emoji_ident": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type }
 }
 
+// WHICH BARE CALL NAMES CAN BIND TO SOMETHING OTHER THAN A DECLARATION. When a call's name has no
+// declared signature in the file's scope, v1.compiler.infer's call inference tries, in order: a
+// structural method of the first argument's kernel profile, the two empty-collection constructors,
+// and the builtin registry. These predicates are the one authority for that name set. The
+// inference arms read them in place of their own literals. The loader's unimported-bare-provider
+// gate reads `bare_call_non_declaration_binding` below, so it no longer reports a primitive call as
+// an unimported read of a same-spelled declaration that the compiler never binds there
+// (gunbc#12951).
+fn is_empty_map_constructor(name: String) -> Bool {
+  name == "empty_map"
+}
+
+fn is_empty_set_constructor(name: String) -> Bool {
+  name == "empty_set"
+}
+
+// The kernel-profile method names, read from the SAME template table the structural method lookup
+// reads (algebra_templates_for_profile over kernel_algebra_profile), so the two cannot drift. Only a
+// name is known before typecheck. Which receiver a method needs is decided by inference.
+fn is_kernel_method_name(name: String) -> Bool {
+  kernel_algebra_profile |> map_values |> any(profile =>
+    algebra_templates_for_profile(profile: profile) |> any(t => t.name == name)
+  )
+}
+
+// What a bare call name can bind WITHOUT a declaration, one arm per binding kind, in the order call
+// inference tries them after a declared signature. The kernel-method arm is reached only by a name
+// that is none of the others, so `KernelMethodOnly` is the set admitted by spelling before the
+// receiver's type is known (`gunbc.rung_drop`
+// `unimported_bare_provider_gate_admits_kernel_method_names_untyped`).
+type NonDeclarationBinding =
+    EmptyCollectionConstructor
+  | BuiltinFunction
+  | KernelMethodOnly
+  | DeclarationOnly
+
+fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding {
+  if is_empty_map_constructor(name: name) || is_empty_set_constructor(name: name) {
+    EmptyCollectionConstructor
+  } else {
+    if builtin_signature(name: name) != none {
+      BuiltinFunction
+    } else {
+      if is_kernel_method_name(name: name) { KernelMethodOnly } else { DeclarationOnly }
+    }
+  }
+}
+
 fn builtin_signature(name: String) -> BuiltinSignature? {
   map_get(builtin_function_registry, name)
+}
+
+// WHICH PARAMETERS OF A BUILTIN ARE HOST TEXT. A builtin's contract is realized over host text
+// wherever its signature names the kernel String, and also at ReceiverSelf when the name is a
+// method of the scalar-string algebra profile (std.algebra free_monoid_scalar_templates:
+// substring is declared there as (Self, Int, Int) -> Self). v1.compiler.infer reads this to refuse
+// a code-point-sequence value handed to such a parameter (gunbc.rung_drop
+// text_boundary_identity_wall): the builtin registry otherwise admits its arguments untyped.
+fn builtin_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Present { value: sig } => sig.params |> map(p => p.name)
+    Absent => []
+  }
+}
+
+fn builtin_host_text_param_names(name: String) -> List<String> {
+  match builtin_signature(name: name) {
+    Absent => []
+    Present { value: sig } =>
+      let scalar_string_method = free_monoid_scalar_templates() |> any(t => t.name == name)
+      sig.params |> filter(p =>
+        match p.ty {
+          NamedTemplate { name: n } => n == "String"
+          ReceiverSelf => scalar_string_method
+          _ => false
+        }
+      ) |> map(p => p.name)
+  }
 }
 
 fn infer_builtin_call_type(name: String) -> Node? {

@@ -1,15 +1,16 @@
 module v2.std.compilers.lexing
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { Empty, list_snoc_item }
+import std.algebra { Empty, list_append, list_snoc_item }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.algebra { fold_list, length, skip }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -18,10 +19,12 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, combine_hash, symbol_identity_digest }
+import std.content_hash { Fnv1a64Structural }
+import v2.std.integer { integer_int_content_digest }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
+import std.unicode.char_class { unicode_char_code_point }
 
 type Lexeme = String
 
@@ -70,6 +73,12 @@ type LexPattern
   | RepeatPattern { element: LexPattern }
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+  | NotFollowedByPattern { element: LexPattern }
+
+// NotFollowedByPattern is the PEG negative syntactic predicate `!e` (Ford, "Parsing Expression
+// Grammars", POPL 2004): it consumes nothing, and succeeds exactly when `element` fails at the same
+// position. It exists for lookahead decisions a regular pattern cannot express, such as "a `{` that is
+// NOT followed by an identifier start is literal text".
 
 // A lexeme reaches exactly one of three destinations, and the third exists because the other two
 // are both wrong for a comment. TriviaRule consumes text and emits nothing, so a comment routed
@@ -85,9 +94,87 @@ type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
   | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
+  | ModeTransitionTokenRule { token_class: Symbol, pattern: LexPattern, transition: LexModeTransition }
+
+// LEXICAL MODES, modeled on ANTLR 4 lexer modes (The Definitive ANTLR 4 Reference, section 12.3:
+// `mode NAME;` groups the rules after it, and a rule's `-> pushMode(NAME)` / `-> popMode` commands
+// move a stack of modes). A rule set's `rules` are the default mode; each LexMode in `modes` names
+// one further mode and lists its rules in full. Modes do not inherit, so a mode that wants the
+// default rules lists them, which a language composes with list_append rather than restating. A
+// ModeTransitionTokenRule emits its token and then moves the stack.
+//
+// A mode is a field of the rule SET, never a kind of rule, so a mode declared inside a mode and a
+// "rule" with no pattern have no constructor (DESIGN section 4b: the invalid state is unwritable,
+// not refused). The one declaration defect left writable is two modes sharing a name, which a list
+// cannot exclude; it is refused before any text is walked (lex_rule_set_mode_refusal).
+//
+// This is what a nested lexical context needs and a regular pattern cannot give: a string that
+// interpolates an expression lexes as a template-head token, then the expression's ORDINARY tokens
+// in a pushed mode, then a template-middle or -tail token that pops back. Brace depth inside that
+// expression is the stack's depth, not a counter scanned out of text. The walk refuses, located,
+// every stack state that has no meaning (01_tokenize): pushing an undeclared mode, popping the
+// default mode, and reaching end of input with a mode still pushed.
+type LexModeTransition
+  = PushLexMode { mode: Symbol }
+  | PopLexMode
+
+type LexMode {
+  mode: Symbol
+  rules: List<LexRule>
+}
+
+type LexModeDeclarationRefusal
+  = LexModeDeclaredTwice { mode: Symbol }
+
+type LexModeCheck {
+  seen: Map<Symbol, Bool>
+  refusal: Optional<LexModeDeclarationRefusal>
+}
+
+// Absent when every mode name is declared once.
+fn lex_rule_set_mode_refusal(rules: LexRuleSet) -> Optional<LexModeDeclarationRefusal> {
+  let checked = fold_list(
+    xs: rules.modes,
+    empty: LexModeCheck { seen: empty_map(), refusal: optional_absent() },
+    cons: fn(acc, mode) {
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          match map_lookup(m: acc.seen, key: mode.mode) {
+            Present { value: _ } => LexModeCheck { seen: acc.seen, refusal: optional_present(value: LexModeDeclaredTwice { mode: mode.mode }) }
+            Absent => LexModeCheck { seen: map_insert(m: acc.seen, key: mode.mode, value: true), refusal: optional_absent() }
+          }
+      }
+    }
+  )
+  checked.refusal
+}
+
+// Every rule the set carries, in every mode: the default mode's rules, then each mode's. A question
+// about the rule set's VOCABULARY -- which token classes it lexes, how a class is spelled -- is asked
+// over this, because a class lexed only inside a mode is still a class the language has.
+fn lex_rule_set_matching_rules(rules: LexRuleSet) -> List<LexRule> {
+  fold_list(
+    xs: rules.modes,
+    empty: rules.rules,
+    cons: fn(acc, mode) { list_append(left: acc, right: mode.rules) }
+  )
+}
+
+// The token class a rule emits, for either kind of token rule. Absent for trivia, annotations and
+// declarations.
+fn lex_rule_token_class_optional(rule: LexRule) -> Optional<Symbol> {
+  match rule {
+    TokenRule { token_class: c, pattern: _ } => optional_present(value: c)
+    ModeTransitionTokenRule { token_class: c, pattern: _, transition: _ } => optional_present(value: c)
+    TriviaRule { pattern: _ } => optional_absent()
+    AnnotationRule { annotation_class: _, pattern: _ } => optional_absent()
+  }
+}
 
 type LexRuleSet {
   rules: List<LexRule>
+  modes: List<LexMode>
 }
 
 type LexRules
@@ -125,7 +212,8 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           }
         )
       }
-    )
+    ),
+    modes: []
   }
 }
 
@@ -149,17 +237,85 @@ type Token {
   end: Int
 }
 
+// THE STREAM CARRIES ITS LAYOUT, RECORDED BY THE LEXER AS IT READS THE SOURCE. A token's
+// `start`/`end` say THAT two tokens have a gap between them, not what the gap holds, and the grammar
+// sometimes needs to know (a `-` that begins a new line after a complete operand is ambiguous
+// between infix and prefix, and the seed refuses it: v1.compiler.parse
+// is_ambiguous_prefix_infix_newline_boundary). The source text stays the ONE authority for that
+// fact: nothing about layout is stored on a Token or as a token of its own. `StreamLayout` is the
+// set of tokens that have a line break in the gap before them, keyed by each token's start to the
+// octet where that gap begins (the end of the token before it) -- ONE representation of the set, whose
+// value is a fact about the gap rather than a placeholder. It is recorded in the tokenizer's own walk
+// (v2.compiler.tokenize lex_walk_step), the one place the source is read, through the two builders
+// below, so there is no second pass over the source and a layout question is a lookup. A line feed
+// counts when it is in a gap -- in trivia or an annotation between tokens -- never inside a token (a
+// multi-line string). `digest` summarizes exactly the recorded entries, folded as each is recorded, so
+// the parse memo key covers layout without a lookup per token. A stream built from tokens alone
+// (fixtures) carries no layout, and a layout question on it answers `LineBreakUnknownWithoutSource`
+// -- never an assumed single line.
+type StreamLayout {
+  line_break_before: Map<Int, Int>
+  digest: Fnv1a64Structural
+}
+
 type TokenStream {
   all: List<Token>
   pos: Int
+  layout: Optional<StreamLayout>
 }
 
 fn token_stream_new(all: List<Token>) -> TokenStream {
-  TokenStream { all: all, pos: 0 }
+  TokenStream { all: all, pos: 0, layout: optional_absent() }
+}
+
+// The tokenizer's constructor: the tokens together with the layout recorded while they were lexed.
+fn token_stream_lexed(all: List<Token>, layout: StreamLayout) -> TokenStream {
+  TokenStream { all: all, pos: 0, layout: optional_present(value: layout) }
 }
 
 fn token_stream_empty() -> TokenStream {
-  TokenStream { all: Empty, pos: 0 }
+  TokenStream { all: Empty, pos: 0, layout: optional_absent() }
+}
+
+fn token_stream_layout(stream: TokenStream) -> Optional<StreamLayout> {
+  stream.layout
+}
+
+type LineBreakAnswer
+  = LineBreakInGap
+  | NoLineBreakInGap
+  | LineBreakUnknownWithoutSource
+
+fn stream_layout_empty() -> StreamLayout {
+  StreamLayout { line_break_before: empty_map(), digest: symbol_identity_digest(sym: ^stream_layout_digest_nil) }
+}
+
+// The token starting at octet `token_start` has a line break in its gap, which began at `gap_start`.
+fn stream_layout_with_break(layout: StreamLayout, token_start: Int, gap_start: Int) -> StreamLayout {
+  StreamLayout {
+    line_break_before: map_insert(m: layout.line_break_before, key: token_start, value: gap_start),
+    digest: combine_hash(a: layout.digest, b: combine_hash(a: integer_int_content_digest(value: token_start), b: integer_int_content_digest(value: gap_start)))
+  }
+}
+
+// Whether a lexeme (trivia or annotation text between tokens) holds a line feed, U+000A.
+fn lexeme_has_line_feed(lexeme: v2.std.text.String) -> Bool {
+  fold_list(xs: lexeme, empty: false, cons: fn(acc, c) { acc || (unicode_char_code_point(c: c) == 10) })
+}
+
+// THE NAMED DERIVATION, READ AT THE POINT OF USE: is there a line break in the source between the
+// token before the one starting at octet `token_start` and that token? A stream without layout
+// cannot answer. `token_start` is always a start of one of the stream's own tokens (the parser asks
+// only about the token it is at), so a start the lexer did not record is a token with no break before it.
+fn token_stream_line_break_before(layout: Optional<StreamLayout>, token_start: Int) -> LineBreakAnswer {
+  match layout {
+    Absent => LineBreakUnknownWithoutSource
+    Present { value: l } =>
+      match map_lookup(m: l.line_break_before, key: token_start) {
+        Absent => NoLineBreakInGap
+        Present { value: _ } => LineBreakInGap
+      }
+  }
 }
 
 fn token_stream_position(stream: TokenStream) -> Int {
@@ -187,7 +343,7 @@ fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
-  TokenStream { all: stream.all, pos: stream.pos + n }
+  TokenStream { all: stream.all, pos: stream.pos + n, layout: stream.layout }
 }
 
 // AnnotationPlacement is NOT declared here. It is the language-agnostic concept and its authority
@@ -228,14 +384,12 @@ fn lex_rule_set_insert_token_classes(
   rules: LexRuleSet
 ) -> Map<Symbol, Bool> {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: m,
     cons: fn(acc, rule) {
-      match rule {
-        TokenRule { token_class: c, pattern: _ } =>
-          map_insert(m: acc, key: c, value: true)
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
+      match lex_rule_token_class_optional(rule: rule) {
+        Present { value: c } => map_insert(m: acc, key: c, value: true)
+        Absent => acc
       }
     }
   )
@@ -246,16 +400,15 @@ fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
 }
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match rule {
-    TokenRule { token_class: c, pattern: _ } => c == token_class
-    TriviaRule { pattern: _ } => false
-    AnnotationRule { annotation_class: _, pattern: _ } => false
+  match lex_rule_token_class_optional(rule: rule) {
+    Present { value: c } => c == token_class
+    Absent => false
   }
 }
 
 fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: false,
     cons: fn(acc, rule) {
       acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
@@ -281,7 +434,8 @@ fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
       optional: fn(element) { false },
       repeat: fn(element) { false },
       one_or_more: fn(element) { false },
-      delimited: fn(open, body, close) { false }
+      delimited: fn(open, body, close) { false },
+      not_followed_by: fn(element) { false }
     }
   )
 }
@@ -289,6 +443,7 @@ fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
 fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: p } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
+    ModeTransitionTokenRule { token_class: c, pattern: p, transition: _ } => (c == token_class) && lex_pattern_is_keyword(pattern: p)
     TriviaRule { pattern: _ } => false
     AnnotationRule { annotation_class: _, pattern: _ } => false
   }
@@ -296,7 +451,7 @@ fn lex_rule_keyword_class_member(rule: LexRule, token_class: Symbol) -> Bool {
 
 fn lex_rule_set_keyword_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
   fold_list(
-    xs: rules.rules,
+    xs: lex_rule_set_matching_rules(rules: rules),
     empty: false,
     cons: fn(acc, rule) { acc || lex_rule_keyword_class_member(rule: rule, token_class: token_class) }
   )
@@ -314,6 +469,7 @@ type LexPatternFold<R> {
   repeat:      fn(R) -> R
   one_or_more: fn(R) -> R
   delimited:   fn(R, R, R) -> R
+  not_followed_by: fn(R) -> R
 }
 
 fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
@@ -350,6 +506,8 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
         fold_lex_pattern(pattern: body, algebra: algebra),
         fold_lex_pattern(pattern: close, algebra: algebra)
       )
+    NotFollowedByPattern { element: element } =>
+      algebra.not_followed_by(fold_lex_pattern(pattern: element, algebra: algebra))
   }
 }
 

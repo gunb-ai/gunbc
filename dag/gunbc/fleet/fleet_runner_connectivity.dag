@@ -15,9 +15,7 @@ import extdeps.github.ci_runner {
 import extdeps.github.effect { GitHubOrganizationRef }
 import gunbc.auth.github_apps { gunbai_ci_declared }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_index_suffix, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_slot_allocation {
   committed_slot_identities,
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
@@ -25,7 +23,7 @@ import gunbc.runner_slot_allocation {
   runner_label_sets_equal,
 }
 import gunbc.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
 import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
@@ -590,15 +588,13 @@ fn registration_verdict_or(
     Present { value: reg } =>
       match reg.status {
         GitHubRunnerOnline =>
-          match runner_registration_labels(host: incarnation.slot.host) {
-            RegistrationLabelsRefused { host: _, cause: c } =>
+          match runner_slot_labels_conform(slot: incarnation.slot, observed: map(reg.labels, l => l as String)) {
+            RegistrationLabelsUnjudged { host: _, cause: c } =>
               SlotConnectivityUnknown { slot: incarnation.slot, reason: c as String }
-            RegistrationLabelsResolved { labels: want } =>
-              if runner_label_sets_equal(a: map(reg.labels, l => l as String), b: want) {
-                SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
-              } else {
-                SlotConnectivityLabelsDiverge { slot: incarnation.slot, registration_id: reg.id }
-              }
+            RegistrationLabelsConform =>
+              SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+            RegistrationLabelsDiverge =>
+              SlotConnectivityLabelsDiverge { slot: incarnation.slot, registration_id: reg.id }
           }
         GitHubRunnerOffline =>
           SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
@@ -812,35 +808,71 @@ fn connectivity_verdicts_for_active_incarnations(
 fn connectivity_verdict_is_healthy(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityHealthy { slot: _, registration_id: _ } => true
-    _ => false
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => false
+    SlotConnectivityOrphaned { slot: _ } => false
+    SlotConnectivityUnknown { slot: _, reason: _ } => false
+    SlotConnectivityUnexpectedRegistration {
+      registration_id: _,
+      registration_name: _,
+      decoded: _,
+    } => false
   }
 }
 
 fn connectivity_verdict_is_detached(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityDetached { slot: _, registration_id: _ } => true
-    _ => false
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => false
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => false
+    SlotConnectivityOrphaned { slot: _ } => false
+    SlotConnectivityUnknown { slot: _, reason: _ } => false
+    SlotConnectivityUnexpectedRegistration {
+      registration_id: _,
+      registration_name: _,
+      decoded: _,
+    } => false
   }
 }
 
 fn connectivity_verdict_labels_diverge(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => true
-    _ => false
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => false
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    SlotConnectivityOrphaned { slot: _ } => false
+    SlotConnectivityUnknown { slot: _, reason: _ } => false
+    SlotConnectivityUnexpectedRegistration { registration_id: _, registration_name: _, decoded: _ } => false
   }
 }
 
 fn connectivity_verdict_is_orphaned(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityOrphaned { slot: _ } => true
-    _ => false
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => false
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => false
+    SlotConnectivityUnknown { slot: _, reason: _ } => false
+    SlotConnectivityUnexpectedRegistration {
+      registration_id: _,
+      registration_name: _,
+      decoded: _,
+    } => false
   }
 }
 
 fn connectivity_verdict_is_unknown(v: RunnerSlotConnectivityVerdict) -> Bool {
   match v {
     SlotConnectivityUnknown { slot: _, reason: _ } => true
-    _ => false
+    SlotConnectivityHealthy { slot: _, registration_id: _ } => false
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } => false
+    SlotConnectivityOrphaned { slot: _ } => false
+    SlotConnectivityUnexpectedRegistration {
+      registration_id: _,
+      registration_name: _,
+      decoded: _,
+    } => false
   }
 }
 

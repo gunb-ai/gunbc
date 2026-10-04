@@ -1,7 +1,10 @@
 module v2.test.manual.infer_ground_add
 
+import std.types { List }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -18,7 +21,7 @@ import v2.compiler.infer {
   InferredTree
 }
 import v2.compiler.resolve { ResolvedTree }
-import v2.std.collection { List, Map, empty_map }
+import v2.std.collection { Map, empty_map }
 import v2.std.diagnostic {
   Accepted,
   AmbiguousIntent,
@@ -39,7 +42,7 @@ import v2.std.node {
   Conj,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -324,33 +327,23 @@ fn infer_descent_witness_receipt_run(
   }
 }
 
-fn fixture_add_resolved_node() -> Node {
-  fixture_add_resolved_tree()
-}
 fn fixture_add_resolved_tree() -> ResolvedTree {
+  claim_resolved_tree_without_declarations(root: fixture_add_resolved_node())
+}
+fn fixture_add_resolved_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^fixture_add_name },
-        target: Node {
-          kind: TypeNode { connective: Arrow },
-          children: [
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
-            },
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
-            },
-            Edge {
-              label: Positional,
-              target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
-            }
+        label: Authored { name: ^fixture_add_name },
+        target: anonymous_signature_arrow(
+          domain_types: [
+            fixture_int_type_node(atom: ^fixture_add_int_atom),
+            fixture_int_type_node(atom: ^fixture_add_int_atom)
           ],
-          occurrence_id: OccurrenceSynthetic
-}
+          codomain: fixture_int_type_node(atom: ^fixture_add_body_int_atom),
+          source: fixture_int_type_node(atom: ^fixture_add_int_atom)
+        )
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -372,8 +365,8 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 data case_infer_add_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
   input_symbol: ^infer_receipt_input_infer_add,
-  input: fixture_add_resolved_tree(),
-  expected_value: fixture_add_resolved_tree()
+  input: fixture_add_resolved_tree().root,
+  expected_value: fixture_add_resolved_tree().root
 }
 
 data subject_infer_add_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_compiles)

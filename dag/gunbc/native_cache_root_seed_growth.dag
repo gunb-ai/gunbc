@@ -1,0 +1,27 @@
+module gunbc.native_cache_root_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust that places the native-cache namespace and serializes its
+// writers (gunbc#12887).
+//
+// PURPOSE (gunbc.v1_maintenance_standing v1_seed_standing). The three emit_host_identity_cast_native
+// witnesses were red on srv1 because, with GUNBC_NATIVE_CACHE_ROOT unset, the seed's cached host
+// transport kept the namespace at its literal /tmp/gunbc_ spelling -- one directory for every user
+// and runner instance on a host, written in place with no owner. The transport that performs those
+// writes IS the seed (`v1_compiler.v1_interpreter` `run_cached_process_spec`); no .dag fold places
+// a host directory or holds a file lock today, so the repair lands where the defect is. It serves
+// the floor lanes the v2 self-host program runs on.
+data native_cache_root_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "native_cache_namespace_rest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "native_cache_user_root", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "native_cache_rebased", field: WholeDeclaration }
+  ],
+  reason: "With GUNBC_NATIVE_CACHE_ROOT unset the native-cache namespace now roots at $XDG_CACHE_HOME or $HOME/.cache (the running user's own directory; per run on CI, where ci_toolchain_home_isolation_steps sets HOME=$RUNNER_TEMP), and with neither set it refuses rather than falling back to /tmp. native_cache_namespace_rest decides membership of the declared /tmp/gunbc_ namespace, native_cache_user_root derives the user root, native_cache_rebased moves only the root and keeps every content-hash component. run_cached_process_spec, which already existed, additionally holds an exclusive flock on the content-keyed realization workspace from materialization to the ready marker, so two same-user runs never write one key at once; the kernel releases it on holder exit, so no stale lock strands the cache. Executed controls: four seed unit tests; with an unwritable dir at the old /tmp path all three witnesses PASS while GUNBC_NATIVE_CACHE_ROOT=/tmp reproduces Permission denied; two concurrent runs on one fresh cache PASS with exactly one cold build; a partial dir without .native_ready is rebuilt; and srv1 (neat-boar-16) confirmed the three PASS beside the real foreign-owned directory.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when the native-cache transport is self-emitted from v2 transport rows that carry BOTH properties as modeled facts: where the namespace roots (a per-user or per-run root with a typed refusal when none exists, never a host-global default) and a process-scoped exclusive writer per content key. A self-emitted transport that roots correctly but writes unserialized would satisfy a trigger naming only the root while two runs still race on one key.",
+  current_boundary: "Reachable only through the cached emit-host transport (emit_host_run_transport_cached and the native-bundle seam). Moves only paths inside the declared /tmp/gunbc_ namespace; a path outside it is never moved. Writes only under the resolved root."
+}

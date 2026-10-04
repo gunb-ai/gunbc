@@ -545,11 +545,20 @@ fn structural_join_refuses(
         ObservationComplete =>
           match parameters {
             ObservationComplete => Absent
-            _ => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationRepeatedExpected { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationMissingExpected { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationForeignObserved { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
+            ObservationRepeatedObserved { keys: _ } => Present { value: ParametersIncomplete { detail: parameters } }
           }
-        _ => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationRepeatedExpected { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationMissingExpected { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationForeignObserved { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
+        ObservationRepeatedObserved { keys: _ } => Present { value: ConstraintsIncomplete { detail: constraints } }
       }
-    _ => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationRepeatedExpected { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationMissingExpected { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationForeignObserved { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
+    ObservationRepeatedObserved { keys: _ } => Present { value: SensitivityCellsIncomplete { detail: sensitivity } }
   }
 }
 

@@ -23,7 +23,6 @@ import v2.std.qualified_name {
   qualified_name_to_dotted_string
 }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.compiler.reference_site_collector {
   ReferenceSiteCollection,
@@ -39,7 +38,8 @@ import v2.compiler.resolution_provenance {
   ResolutionProvenance,
   answer_site,
   module_roster_from_roots,
-  resolve_reference_sites
+  resolve_reference_sites,
+  reference_site_scope_path,
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
 import v2.std.namespace_alias { ModuleBindingSource, module_binding_source_roots }
@@ -135,7 +135,7 @@ fn carrier_provenance(answer: ResolutionProvenance) -> RepairInputDeclarationPro
 fn carrier_from_answer(answer: ResolutionProvenance, site: ReferenceSite) -> RepairInputOriginCandidate {
   SourceDeclarationCarrier {
     identity: SourceDeclarationCarrierIdentity {
-      reference_position: qualified_name_to_dotted_string(qn: site.position),
+      reference_position: qualified_name_to_dotted_string(qn: reference_site_scope_path(site: site)),
       authored_spelling: qualified_name_to_dotted_string(qn: site.spelling),
       provenance: carrier_provenance(answer: answer)
     }

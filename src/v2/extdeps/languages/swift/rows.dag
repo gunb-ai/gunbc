@@ -1,0 +1,898 @@
+module v2.extdeps.languages.swift.rows
+
+import std.types { String, List, Bool, Int }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.optional { Optional, Present, Absent }
+import v2.std.algebra { list_append, length }
+import extdeps.numeric.base16 { int_to_upper_hex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.witness { Holds, Violates }
+import v2.std.grammar {
+  FormalProduction, FormalGrammarSymbol,
+  grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free,
+  grammar_formal_nonterminal_occurrence, grammar_formal_nested_occurrence,
+  derive_grammar_relation_row_for_lhs
+}
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, LiteralPattern, ModeledLexRules, TokenRule }
+import v2.std.compilers.target_model {
+  TargetModel, TokenClassEmitTransform, EmitSpellingConstant, EmitLineBreaks, ProducedDeclUnwired, render_target_text
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded }
+import v2.extdeps.languages.swift.syntax {
+  SwiftComment, SwiftLineComment, SwiftDocLineComment,
+  SwiftType, SwiftTypeIdentifier, SwiftArrayType, SwiftDictionaryType, SwiftOptionalType, SwiftTupleType, SwiftTupleTypeElement,
+  SwiftAttribute, SwiftDeclarationModifier,
+  SwiftStaticModifier, SwiftPrivateModifier, SwiftFileprivateModifier, SwiftFinalModifier, SwiftIndirectModifier,
+  SwiftMutatingModifier, SwiftNonisolatedModifier, SwiftOverrideModifier,
+  SwiftArgument, SwiftStringLiteralDelimiter, SwiftStaticStringDelimiter, SwiftExtendedStringDelimiter,
+  SwiftStringSegment, SwiftStringText, SwiftStringInterpolation, SwiftDictionaryElement,
+  SwiftTryOperator, SwiftTry, SwiftOptionalTry, SwiftForcedTry,
+  SwiftTypeCastingOperator, SwiftIsCast, SwiftAsCast, SwiftConditionalAsCast, SwiftForcedAsCast,
+  SwiftPrefixOperator, SwiftLogicalNotOperator, SwiftNegationOperator,
+  SwiftInfixOperator, SwiftAddOperator, SwiftSubtractOperator, SwiftMultiplyOperator, SwiftEqualOperator, SwiftNotEqualOperator,
+  SwiftLessThanOperator, SwiftGreaterThanOperator, SwiftLessThanOrEqualOperator, SwiftGreaterThanOrEqualOperator,
+  SwiftLogicalAndOperator, SwiftLogicalOrOperator, SwiftNilCoalescingOperator, SwiftClosedRangeOperator, SwiftHalfOpenRangeOperator,
+  SwiftAssignmentOperator, SwiftAddAssignmentOperator,
+  SwiftExpr, SwiftIdentifierExpr, SwiftWildcardExpr, SwiftImplicitMemberExpr, SwiftExplicitMemberExpr, SwiftOptionalChainingExpr,
+  SwiftFunctionCallExpr, SwiftSubscriptExpr, SwiftStringLiteral, SwiftIntegerLiteral, SwiftBooleanLiteral, SwiftNilLiteral,
+  SwiftArrayLiteral, SwiftDictionaryLiteral, SwiftTupleExpr, SwiftParenthesizedExpr, SwiftClosure, SwiftTryExpr, SwiftAwaitExpr,
+  SwiftPrefixExpr, SwiftInfixExpr, SwiftTernaryConditionalExpr, SwiftTypeCastingExpr, SwiftKeyPathExpr,
+  SwiftClosureExpr,
+  SwiftBindingKeyword, SwiftLet, SwiftVar,
+  SwiftPattern, SwiftIdentifierPattern, SwiftWildcardPattern, SwiftTuplePattern, SwiftValueBindingPattern, SwiftEnumCasePattern, SwiftExpressionPattern,
+  SwiftCondition, SwiftExpressionCondition, SwiftOptionalBindingCondition,
+  SwiftElseClause, SwiftNoElse, SwiftElseBlock, SwiftElseIf,
+  SwiftCaseLabel, SwiftCaseItems, SwiftDefaultLabel, SwiftSwitchCase, SwiftCatchClause,
+  SwiftStmt, SwiftExpressionStmt, SwiftDeclarationStmt, SwiftReturnStmt, SwiftThrowStmt, SwiftIfStmt, SwiftGuardStmt,
+  SwiftForInStmt, SwiftSwitchStmt, SwiftDoStmt, SwiftCommentedStmt,
+  SwiftParameter, SwiftEnumCaseElement,
+  SwiftDecl, SwiftImportDecl, SwiftVariableDecl, SwiftComputedPropertyDecl, SwiftFunctionDecl, SwiftInitializerDecl,
+  SwiftStructDecl, SwiftClassDecl, SwiftEnumDecl, SwiftEnumCaseDecl, SwiftExtensionDecl, SwiftCommentedDecl,
+  SwiftSourceFile
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/swiftlang/swift-book/tree/swift-6.2-RELEASE/TSPL.docc/ReferenceManual"
+  }
+}
+
+// SWIFT AS GRAMMAR ROWS, READ IN THE EMIT DIRECTION (DESIGN §4: one grammar, rows authored in
+// extdeps/languages, the fold unchanged). Every production below is a FormalProduction; emission
+// derives a relation row from the lowered program (derive_grammar_relation_row_node) and the generic
+// row serializer (v2.compiler.target_serialize) spells it. There is no Swift printer: layout is three
+// grammar facts -- a fixed token's spelling, the line token (an EmitLineBreaks class), and the nested
+// occurrence of a code block's statements (grammar_formal_nested_occurrence, unit ^swift_indent).
+//
+// Productions sharing a left-hand side are told apart by a leading kind tag (a bound terminal of
+// class ^swift_tok_kind, spelled empty), the precedent of v2.extdeps.languages.bash_command_fold.
+// Identifiers and lexemes (literals, operators, comment lines) are free terminal slots spelled by
+// the emitted atom. The layout choices a canonical Swift text makes -- a blank line between members
+// that have bodies, a guard with one simple statement on one line -- are CHOICES AMONG PRODUCTIONS
+// made by the lowering below (swl_*), not formatting applied afterwards.
+//
+// Ingest reads the same rows forward (v2.std.grammar reads a nested occurrence as a plain one); the
+// Swift lexer that would feed it is the declared frontier v2.extdeps.languages.swift.syntax
+// swift_syntax_ingest_frontier.
+
+// ── Row constructors ───────────────────────────────────────────────────────────────────────────
+fn swr_p(lhs: Symbol, tag: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  grammar_formal_production(lhs: lhs, rhs: list_append(left: [grammar_formal_terminal_bound(identity: ^swift_tok_kind, binding: tag)], right: rhs))
+}
+fn swr_t(c: Symbol) -> FormalGrammarSymbol { grammar_formal_terminal(identity: c) }
+fn swr_i() -> FormalGrammarSymbol { grammar_formal_terminal_free(identity: ^swift_tok_ident) }
+fn swr_l() -> FormalGrammarSymbol { grammar_formal_terminal_free(identity: ^swift_tok_lexeme) }
+fn swr_n(x: Symbol) -> FormalGrammarSymbol { grammar_formal_nonterminal_occurrence(identity: x) }
+fn swr_nb(x: Symbol) -> FormalGrammarSymbol { grammar_formal_nested_occurrence(identity: x, unit: ^swift_indent) }
+fn swr_line() -> FormalGrammarSymbol { grammar_formal_terminal(identity: ^swift_tok_line) }
+
+fn swr_cat(parts: List<List<FormalProduction>>) -> List<FormalProduction> {
+  fold(parts, init: [], f: (acc, part) => list_append(left: acc, right: part))
+}
+
+// A list of `item` separated by `sep` (a fixed token): one | item sep rest.
+fn swr_sep_list(lhs: Symbol, item: Symbol, sep: Symbol) -> List<FormalProduction> {
+  [
+    swr_p(lhs: lhs, tag: ^swr_k_one, rhs: [swr_n(x: item)]),
+    swr_p(lhs: lhs, tag: ^swr_k_cons, rhs: [swr_n(x: item), swr_t(c: sep), swr_n(x: lhs)])
+  ]
+}
+
+// An optional `inner`: none | some.
+fn swr_opt(lhs: Symbol, inner: List<FormalGrammarSymbol>) -> List<FormalProduction> {
+  [swr_p(lhs: lhs, tag: ^swr_k_none, rhs: []), swr_p(lhs: lhs, tag: ^swr_k_some, rhs: inner)]
+}
+
+// A code block: " {" then its statements, nested one level, then "}" on its own line.
+fn swr_block_rhs(body: Symbol) -> List<FormalGrammarSymbol> {
+  [swr_t(c: ^swift_tok_block_open), swr_nb(x: body), swr_line(), swr_t(c: ^swift_tok_rbrace)]
+}
+
+// ── The productions ───────────────────────────────────────────────────────────────────────────
+fn swift_row_productions_structure() -> List<FormalProduction> {
+  swr_cat(parts: [[
+    swr_p(lhs: ^swr_file, tag: ^swr_k_file, rhs: [swr_n(x: ^swr_top)]),
+    swr_p(lhs: ^swr_top, tag: ^swr_k_one, rhs: [swr_n(x: ^swr_decl), swr_line()]),
+    swr_p(lhs: ^swr_top, tag: ^swr_k_cons, rhs: [swr_n(x: ^swr_decl), swr_line(), swr_n(x: ^swr_gap), swr_n(x: ^swr_top)]),
+    swr_p(lhs: ^swr_gap, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_gap, tag: ^swr_k_blank, rhs: [swr_line()]),
+    swr_p(lhs: ^swr_comments, tag: ^swr_k_one, rhs: [swr_l(), swr_line()]),
+    swr_p(lhs: ^swr_comments, tag: ^swr_k_cons, rhs: [swr_l(), swr_line(), swr_n(x: ^swr_comments)]),
+    swr_p(lhs: ^swr_members, tag: ^swr_k_one, rhs: [swr_line(), swr_n(x: ^swr_decl)]),
+    swr_p(lhs: ^swr_members, tag: ^swr_k_cons, rhs: [swr_line(), swr_n(x: ^swr_decl), swr_n(x: ^swr_gap), swr_n(x: ^swr_members)]),
+    swr_p(lhs: ^swr_member_block, tag: ^swr_k_block, rhs: swr_block_rhs(body: ^swr_members)),
+    swr_p(lhs: ^swr_stmts, tag: ^swr_k_one, rhs: [swr_line(), swr_n(x: ^swr_stmt)]),
+    swr_p(lhs: ^swr_stmts, tag: ^swr_k_cons, rhs: [swr_line(), swr_n(x: ^swr_stmt), swr_n(x: ^swr_stmts)]),
+    swr_p(lhs: ^swr_block, tag: ^swr_k_block, rhs: swr_block_rhs(body: ^swr_stmts)),
+    swr_p(lhs: ^swr_attrs, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_attrs, tag: ^swr_k_cons, rhs: [swr_t(c: ^swift_tok_at), swr_i(), swr_n(x: ^swr_attr_args), swr_n(x: ^swr_attrs)]),
+    swr_p(lhs: ^swr_attr_args, tag: ^swr_k_none, rhs: [swr_t(c: ^swift_tok_space)]),
+    swr_p(lhs: ^swr_attr_args, tag: ^swr_k_some, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_args), swr_t(c: ^swift_tok_rparen_space)]),
+    swr_p(lhs: ^swr_mods, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_mods, tag: ^swr_k_cons, rhs: [swr_l(), swr_n(x: ^swr_mods)]),
+    swr_p(lhs: ^swr_bindkw, tag: ^swr_k_let, rhs: [swr_t(c: ^swift_tok_let)]),
+    swr_p(lhs: ^swr_bindkw, tag: ^swr_k_var, rhs: [swr_t(c: ^swift_tok_var)])
+  ],
+    swr_opt(lhs: ^swr_opt_annot, inner: [swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type)]),
+    swr_opt(lhs: ^swr_opt_init, inner: [swr_t(c: ^swift_tok_assign), swr_n(x: ^swr_expr)]),
+  ])
+}
+
+fn swift_row_productions_decls() -> List<FormalProduction> {
+  swr_cat(parts: [[
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_commented, rhs: [swr_n(x: ^swr_comments), swr_n(x: ^swr_decl)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_import, rhs: [swr_n(x: ^swr_attrs), swr_t(c: ^swift_tok_import), swr_i()]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_variable, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_n(x: ^swr_bindkw), swr_n(x: ^swr_pattern), swr_n(x: ^swr_opt_annot), swr_n(x: ^swr_opt_init)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_computed, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_var), swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_func, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_func), swr_i(), swr_n(x: ^swr_params), swr_n(x: ^swr_opt_async), swr_n(x: ^swr_opt_throws), swr_n(x: ^swr_opt_result), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_init, rhs: [swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_init), swr_n(x: ^swr_params), swr_n(x: ^swr_opt_throws), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_struct, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_struct), swr_i(), swr_n(x: ^swr_opt_inherits), swr_n(x: ^swr_member_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_class, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_class), swr_i(), swr_n(x: ^swr_opt_inherits), swr_n(x: ^swr_member_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_enum, rhs: [swr_n(x: ^swr_attrs), swr_n(x: ^swr_mods), swr_t(c: ^swift_tok_enum), swr_i(), swr_n(x: ^swr_opt_inherits), swr_n(x: ^swr_member_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_extension, rhs: [swr_t(c: ^swift_tok_extension), swr_n(x: ^swr_type), swr_n(x: ^swr_opt_inherits), swr_n(x: ^swr_member_block)]),
+    swr_p(lhs: ^swr_decl, tag: ^swr_k_case, rhs: [swr_t(c: ^swift_tok_case), swr_n(x: ^swr_case_elems)]),
+    swr_p(lhs: ^swr_case_elem, tag: ^swr_k_bare, rhs: [swr_i()]),
+    swr_p(lhs: ^swr_case_elem, tag: ^swr_k_payload, rhs: [swr_i(), swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_tt_elems), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_params, tag: ^swr_k_params, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_opt_param_list), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_param, tag: ^swr_k_labeled, rhs: [swr_i(), swr_t(c: ^swift_tok_space), swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type), swr_n(x: ^swr_opt_init)]),
+    swr_p(lhs: ^swr_param, tag: ^swr_k_plain, rhs: [swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type), swr_n(x: ^swr_opt_init)])
+  ],
+    swr_sep_list(lhs: ^swr_case_elems, item: ^swr_case_elem, sep: ^swift_tok_comma),
+    swr_sep_list(lhs: ^swr_param_list, item: ^swr_param, sep: ^swift_tok_comma),
+    swr_opt(lhs: ^swr_opt_param_list, inner: [swr_n(x: ^swr_param_list)]),
+    swr_opt(lhs: ^swr_opt_async, inner: [swr_t(c: ^swift_tok_async)]),
+    swr_opt(lhs: ^swr_opt_throws, inner: [swr_t(c: ^swift_tok_throws)]),
+    swr_opt(lhs: ^swr_opt_result, inner: [swr_t(c: ^swift_tok_arrow), swr_n(x: ^swr_type)]),
+    swr_opt(lhs: ^swr_opt_inherits, inner: [swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_types)]),
+  ])
+}
+
+fn swift_row_productions_types() -> List<FormalProduction> {
+  swr_cat(parts: [[
+    swr_p(lhs: ^swr_type, tag: ^swr_k_named, rhs: [swr_i(), swr_n(x: ^swr_opt_generics)]),
+    swr_p(lhs: ^swr_type, tag: ^swr_k_array, rhs: [swr_t(c: ^swift_tok_lbracket), swr_n(x: ^swr_type), swr_t(c: ^swift_tok_rbracket)]),
+    swr_p(lhs: ^swr_type, tag: ^swr_k_dictionary, rhs: [swr_t(c: ^swift_tok_lbracket), swr_n(x: ^swr_type), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type), swr_t(c: ^swift_tok_rbracket)]),
+    swr_p(lhs: ^swr_type, tag: ^swr_k_optional, rhs: [swr_n(x: ^swr_type), swr_t(c: ^swift_tok_question)]),
+    swr_p(lhs: ^swr_type, tag: ^swr_k_tuple, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_tt_elems), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_tt_elem, tag: ^swr_k_labeled, rhs: [swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_type)]),
+    swr_p(lhs: ^swr_tt_elem, tag: ^swr_k_plain, rhs: [swr_n(x: ^swr_type)])
+  ],
+    swr_sep_list(lhs: ^swr_types, item: ^swr_type, sep: ^swift_tok_comma),
+    swr_sep_list(lhs: ^swr_tt_elems, item: ^swr_tt_elem, sep: ^swift_tok_comma),
+    swr_opt(lhs: ^swr_opt_generics, inner: [swr_t(c: ^swift_tok_langle), swr_n(x: ^swr_types), swr_t(c: ^swift_tok_rangle)]),
+  ])
+}
+
+fn swift_row_productions_statements() -> List<FormalProduction> {
+  swr_cat(parts: [[
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_expr, rhs: [swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_decl, rhs: [swr_n(x: ^swr_decl)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_commented, rhs: [swr_n(x: ^swr_comments), swr_n(x: ^swr_stmt)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_return_none, rhs: [swr_t(c: ^swift_tok_return)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_return, rhs: [swr_t(c: ^swift_tok_return_value), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_throw, rhs: [swr_t(c: ^swift_tok_throw), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_if, rhs: [swr_t(c: ^swift_tok_if), swr_n(x: ^swr_conds), swr_n(x: ^swr_block), swr_n(x: ^swr_else)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_guard_inline, rhs: [swr_t(c: ^swift_tok_guard), swr_n(x: ^swr_conds), swr_t(c: ^swift_tok_else_inline_open), swr_n(x: ^swr_stmt), swr_t(c: ^swift_tok_inline_close)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_guard_block, rhs: [swr_t(c: ^swift_tok_guard), swr_n(x: ^swr_conds), swr_t(c: ^swift_tok_else), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_for, rhs: [swr_t(c: ^swift_tok_for), swr_n(x: ^swr_pattern), swr_t(c: ^swift_tok_in), swr_n(x: ^swr_expr), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_switch, rhs: [swr_t(c: ^swift_tok_switch), swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_block_open), swr_n(x: ^swr_cases), swr_line(), swr_t(c: ^swift_tok_rbrace)]),
+    swr_p(lhs: ^swr_stmt, tag: ^swr_k_do, rhs: [swr_t(c: ^swift_tok_do), swr_n(x: ^swr_block), swr_n(x: ^swr_catches)]),
+    swr_p(lhs: ^swr_else, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_else, tag: ^swr_k_block, rhs: [swr_t(c: ^swift_tok_else), swr_n(x: ^swr_block)]),
+    swr_p(lhs: ^swr_else, tag: ^swr_k_else_if, rhs: [swr_t(c: ^swift_tok_else_if), swr_n(x: ^swr_conds), swr_n(x: ^swr_block), swr_n(x: ^swr_else)]),
+    swr_p(lhs: ^swr_cases, tag: ^swr_k_one, rhs: [swr_line(), swr_n(x: ^swr_case)]),
+    swr_p(lhs: ^swr_cases, tag: ^swr_k_cons, rhs: [swr_line(), swr_n(x: ^swr_case), swr_n(x: ^swr_cases)]),
+    swr_p(lhs: ^swr_case, tag: ^swr_k_inline, rhs: [swr_n(x: ^swr_case_label), swr_t(c: ^swift_tok_space), swr_n(x: ^swr_stmt)]),
+    swr_p(lhs: ^swr_case, tag: ^swr_k_block, rhs: [swr_n(x: ^swr_case_label), swr_nb(x: ^swr_stmts)]),
+    swr_p(lhs: ^swr_case_label, tag: ^swr_k_items, rhs: [swr_t(c: ^swift_tok_case), swr_n(x: ^swr_patterns), swr_t(c: ^swift_tok_case_colon)]),
+    swr_p(lhs: ^swr_case_label, tag: ^swr_k_default, rhs: [swr_t(c: ^swift_tok_default)]),
+    swr_p(lhs: ^swr_catches, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_catches, tag: ^swr_k_cons, rhs: [swr_t(c: ^swift_tok_catch), swr_n(x: ^swr_opt_catch_pattern), swr_n(x: ^swr_block), swr_n(x: ^swr_catches)]),
+    swr_p(lhs: ^swr_cond, tag: ^swr_k_expr, rhs: [swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_cond, tag: ^swr_k_bind, rhs: [swr_n(x: ^swr_bindkw), swr_i(), swr_n(x: ^swr_opt_init)]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_ident, rhs: [swr_i()]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_wildcard, rhs: [swr_t(c: ^swift_tok_underscore)]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_tuple, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_patterns), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_binding, rhs: [swr_n(x: ^swr_bindkw), swr_n(x: ^swr_pattern)]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_case_bare, rhs: [swr_t(c: ^swift_tok_dot), swr_i()]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_case_payload, rhs: [swr_t(c: ^swift_tok_dot), swr_i(), swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_patterns), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_pattern, tag: ^swr_k_expr, rhs: [swr_n(x: ^swr_expr)])
+  ],
+    swr_sep_list(lhs: ^swr_conds, item: ^swr_cond, sep: ^swift_tok_comma),
+    swr_sep_list(lhs: ^swr_patterns, item: ^swr_pattern, sep: ^swift_tok_comma),
+    swr_opt(lhs: ^swr_opt_catch_pattern, inner: [swr_t(c: ^swift_tok_space), swr_n(x: ^swr_pattern)]),
+  ])
+}
+
+fn swift_row_productions_expressions() -> List<FormalProduction> {
+  swr_cat(parts: [[
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_ident, rhs: [swr_i()]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_wildcard, rhs: [swr_t(c: ^swift_tok_underscore)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_implicit_member, rhs: [swr_t(c: ^swift_tok_dot), swr_i()]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_member, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_dot), swr_i()]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_chain, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_question)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_call, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_opt_args), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_call_trailing, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_space), swr_n(x: ^swr_closure)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_call_args_trailing, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_args), swr_t(c: ^swift_tok_rparen), swr_t(c: ^swift_tok_space), swr_n(x: ^swr_closure)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_subscript, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_lbracket), swr_n(x: ^swr_args), swr_t(c: ^swift_tok_rbracket)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_string, rhs: [swr_t(c: ^swift_tok_quote), swr_n(x: ^swr_segments), swr_t(c: ^swift_tok_quote)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_raw_string, rhs: [swr_t(c: ^swift_tok_raw_open), swr_n(x: ^swr_raw_segments), swr_t(c: ^swift_tok_raw_close)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_literal, rhs: [swr_l()]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_true, rhs: [swr_t(c: ^swift_tok_true)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_false, rhs: [swr_t(c: ^swift_tok_false)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_nil, rhs: [swr_t(c: ^swift_tok_nil)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_array, rhs: [swr_t(c: ^swift_tok_lbracket), swr_n(x: ^swr_opt_exprs), swr_t(c: ^swift_tok_rbracket)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_dictionary_empty, rhs: [swr_t(c: ^swift_tok_dictionary_empty)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_dictionary, rhs: [swr_t(c: ^swift_tok_lbracket), swr_n(x: ^swr_dict_elems), swr_t(c: ^swift_tok_rbracket)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_tuple, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_opt_args), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_paren, rhs: [swr_t(c: ^swift_tok_lparen), swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_rparen)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_closure, rhs: [swr_n(x: ^swr_closure)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_prefix_op, rhs: [swr_l(), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_infix, rhs: [swr_n(x: ^swr_expr), swr_l(), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_ternary, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_ternary_then), swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_ternary_else), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_cast, rhs: [swr_n(x: ^swr_expr), swr_l(), swr_n(x: ^swr_type)]),
+    swr_p(lhs: ^swr_expr, tag: ^swr_k_key_path, rhs: [swr_t(c: ^swift_tok_key_path), swr_l()]),
+    swr_p(lhs: ^swr_segments, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_segments, tag: ^swr_k_text, rhs: [swr_l(), swr_n(x: ^swr_segments)]),
+    swr_p(lhs: ^swr_segments, tag: ^swr_k_interpolation, rhs: [swr_t(c: ^swift_tok_interpolation_open), swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_rparen), swr_n(x: ^swr_segments)]),
+    swr_p(lhs: ^swr_raw_segments, tag: ^swr_k_none, rhs: []),
+    swr_p(lhs: ^swr_raw_segments, tag: ^swr_k_text, rhs: [swr_l(), swr_n(x: ^swr_raw_segments)]),
+    swr_p(lhs: ^swr_raw_segments, tag: ^swr_k_interpolation, rhs: [swr_t(c: ^swift_tok_raw_interpolation_open), swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_rparen), swr_n(x: ^swr_raw_segments)]),
+    swr_p(lhs: ^swr_closure, tag: ^swr_k_inline, rhs: [swr_t(c: ^swift_tok_inline_open), swr_n(x: ^swr_stmt), swr_t(c: ^swift_tok_inline_close)]),
+    swr_p(lhs: ^swr_closure, tag: ^swr_k_inline_signature, rhs: [swr_t(c: ^swift_tok_inline_open), swr_n(x: ^swr_idents), swr_t(c: ^swift_tok_in_inline), swr_n(x: ^swr_stmt), swr_t(c: ^swift_tok_inline_close)]),
+    swr_p(lhs: ^swr_closure, tag: ^swr_k_block, rhs: [swr_t(c: ^swift_tok_lbrace), swr_nb(x: ^swr_stmts), swr_line(), swr_t(c: ^swift_tok_rbrace)]),
+    swr_p(lhs: ^swr_closure, tag: ^swr_k_block_signature, rhs: [swr_t(c: ^swift_tok_inline_open), swr_n(x: ^swr_idents), swr_t(c: ^swift_tok_in_block), swr_nb(x: ^swr_stmts), swr_line(), swr_t(c: ^swift_tok_rbrace)]),
+    swr_p(lhs: ^swr_arg, tag: ^swr_k_labeled, rhs: [swr_i(), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_arg, tag: ^swr_k_plain, rhs: [swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_dict_elem, tag: ^swr_k_entry, rhs: [swr_n(x: ^swr_expr), swr_t(c: ^swift_tok_colon), swr_n(x: ^swr_expr)]),
+    swr_p(lhs: ^swr_ident_item, tag: ^swr_k_ident, rhs: [swr_i()])
+  ],
+    swr_sep_list(lhs: ^swr_args, item: ^swr_arg, sep: ^swift_tok_comma),
+    swr_opt(lhs: ^swr_opt_args, inner: [swr_n(x: ^swr_args)]),
+    swr_sep_list(lhs: ^swr_exprs, item: ^swr_expr, sep: ^swift_tok_comma),
+    swr_opt(lhs: ^swr_opt_exprs, inner: [swr_n(x: ^swr_exprs)]),
+    swr_sep_list(lhs: ^swr_dict_elems, item: ^swr_dict_elem, sep: ^swift_tok_comma),
+    swr_sep_list(lhs: ^swr_idents, item: ^swr_ident_item, sep: ^swift_tok_comma),
+  ])
+}
+
+fn swift_row_productions() -> List<FormalProduction> {
+  swr_cat(parts: [
+    swift_row_productions_structure(),
+    swift_row_productions_decls(),
+    swift_row_productions_types(),
+    swift_row_productions_statements(),
+    swift_row_productions_expressions()
+  ])
+}
+
+// ── The target: fixed token spellings, the line token, the indent unit ──────────────────────
+fn swr_lex(c: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: c, pattern: LiteralPattern { text: chars(s: text) } }
+}
+
+fn swift_row_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: [
+    swr_lex(c: ^swift_tok_line, text: ""),
+    swr_lex(c: ^swift_tok_block_open, text: " \{"),
+    swr_lex(c: ^swift_tok_lbrace, text: "\{"),
+    swr_lex(c: ^swift_tok_rbrace, text: "\}"),
+    swr_lex(c: ^swift_tok_inline_open, text: "\{ "),
+    swr_lex(c: ^swift_tok_inline_close, text: " \}"),
+    swr_lex(c: ^swift_tok_else_inline_open, text: " else \{ "),
+    swr_lex(c: ^swift_tok_in_inline, text: " in "),
+    swr_lex(c: ^swift_tok_in_block, text: " in"),
+    swr_lex(c: ^swift_tok_at, text: "@"),
+    swr_lex(c: ^swift_tok_space, text: " "),
+    swr_lex(c: ^swift_tok_lparen, text: "("),
+    swr_lex(c: ^swift_tok_rparen, text: ")"),
+    swr_lex(c: ^swift_tok_rparen_space, text: ") "),
+    swr_lex(c: ^swift_tok_lbracket, text: "["),
+    swr_lex(c: ^swift_tok_rbracket, text: "]"),
+    swr_lex(c: ^swift_tok_langle, text: "<"),
+    swr_lex(c: ^swift_tok_rangle, text: ">"),
+    swr_lex(c: ^swift_tok_dictionary_empty, text: "[:]"),
+    swr_lex(c: ^swift_tok_comma, text: ", "),
+    swr_lex(c: ^swift_tok_colon, text: ": "),
+    swr_lex(c: ^swift_tok_case_colon, text: ":"),
+    swr_lex(c: ^swift_tok_dot, text: "."),
+    swr_lex(c: ^swift_tok_question, text: "?"),
+    swr_lex(c: ^swift_tok_assign, text: " = "),
+    swr_lex(c: ^swift_tok_arrow, text: " -> "),
+    swr_lex(c: ^swift_tok_underscore, text: "_"),
+    swr_lex(c: ^swift_tok_quote, text: "\""),
+    swr_lex(c: ^swift_tok_raw_open, text: "#\""),
+    swr_lex(c: ^swift_tok_raw_close, text: "\"#"),
+    swr_lex(c: ^swift_tok_interpolation_open, text: "\\("),
+    swr_lex(c: ^swift_tok_raw_interpolation_open, text: "\\#("),
+    swr_lex(c: ^swift_tok_key_path, text: "\\."),
+    swr_lex(c: ^swift_tok_ternary_then, text: " ? "),
+    swr_lex(c: ^swift_tok_ternary_else, text: " : "),
+    swr_lex(c: ^swift_tok_true, text: "true"),
+    swr_lex(c: ^swift_tok_false, text: "false"),
+    swr_lex(c: ^swift_tok_nil, text: "nil"),
+    swr_lex(c: ^swift_tok_import, text: "import "),
+    swr_lex(c: ^swift_tok_let, text: "let "),
+    swr_lex(c: ^swift_tok_var, text: "var "),
+    swr_lex(c: ^swift_tok_func, text: "func "),
+    swr_lex(c: ^swift_tok_init, text: "init"),
+    swr_lex(c: ^swift_tok_struct, text: "struct "),
+    swr_lex(c: ^swift_tok_class, text: "class "),
+    swr_lex(c: ^swift_tok_enum, text: "enum "),
+    swr_lex(c: ^swift_tok_extension, text: "extension "),
+    swr_lex(c: ^swift_tok_case, text: "case "),
+    swr_lex(c: ^swift_tok_default, text: "default:"),
+    swr_lex(c: ^swift_tok_async, text: " async"),
+    swr_lex(c: ^swift_tok_throws, text: " throws"),
+    swr_lex(c: ^swift_tok_return, text: "return"),
+    swr_lex(c: ^swift_tok_return_value, text: "return "),
+    swr_lex(c: ^swift_tok_throw, text: "throw "),
+    swr_lex(c: ^swift_tok_if, text: "if "),
+    swr_lex(c: ^swift_tok_else, text: " else"),
+    swr_lex(c: ^swift_tok_else_if, text: " else if "),
+    swr_lex(c: ^swift_tok_guard, text: "guard "),
+    swr_lex(c: ^swift_tok_for, text: "for "),
+    swr_lex(c: ^swift_tok_in, text: " in "),
+    swr_lex(c: ^swift_tok_switch, text: "switch "),
+    swr_lex(c: ^swift_tok_do, text: "do"),
+    swr_lex(c: ^swift_tok_catch, text: " catch")
+  ], modes: [] } }
+}
+
+fn swift_row_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  map_insert(map_insert(empty_map(), ^swift_tok_kind, EmitSpellingConstant { value: "" }), ^swift_tok_line, EmitLineBreaks { before: 0, after: 1 })
+}
+
+fn swift_row_binding_spellings() -> Map<Symbol, String> {
+  map_insert(empty_map(), ^swift_indent, "    ")
+}
+
+fn swift_row_target_model(row: Node) -> TargetModel {
+  TargetModel {
+    bundle: swl_named_conj(name: ^target_model_edge_translation_rules, target: swift_row_rules(row: row)),
+    lex: swift_row_lex(),
+    binding_spellings: swift_row_binding_spellings(),
+    token_class_emit_transforms: swift_row_emit_transforms(),
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
+  }
+}
+
+// The target's rules hold the program's derived row and nothing else. Emission serializes that row
+// directly (v2.compiler.target_serialize target_serialize_derived_row_bounded); a derived row is flat apart
+// from its nested blocks, so the serializer never re-selects a row through a production catalog, and
+// building one per emission would be work nothing reads.
+fn swift_row_rules(row: Node) -> Node {
+  swl_named_conj(name: ^swift_relation_rule_program, target: row)
+}
+
+fn swl_named_conj(name: Symbol, target: Node) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: name }, target: target }], occurrence_id: OccurrenceSynthetic }
+}
+
+// ── Emission ──────────────────────────────────────────────────────────────────────────────────
+type SwiftRowEmission
+  = SwiftRowEmitted { source: String }
+  | SwiftRowEmissionRefused { reason: Symbol }
+
+fn swift_rows_emit_source_file(f: SwiftSourceFile) -> SwiftRowEmission {
+  let program = swl_file(f: f)
+  match derive_grammar_relation_row_for_lhs(productions: swift_row_productions(), lhs: ^swr_file, emitted: program) {
+    Holds { value: row } =>
+      match target_serialize_derived_row_bounded(remaining: 4096, target: swift_row_target_model(row: row), row: row) {
+        Accepted { value: text, diagnostics: _ } => SwiftRowEmitted { source: render_target_text(t: text) }
+        Rejected { diagnostics: d } => SwiftRowEmissionRefused { reason: diagnostics_fatal_reason(d: d) }
+      }
+    Violates { diagnostic: d } => SwiftRowEmissionRefused { reason: d.reason }
+  }
+}
+
+// ── The lowering: SwiftSourceFile -> the emitted tree the rows read ──────────────────────────
+// Each node is [kind tag, slots...] in the order its production's slots appear (free terminals and
+// nonterminals take a slot, fixed terminals do not).
+fn swl_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn swl_node(tag: Symbol, slots: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: map(list_append(left: [swl_atom(s: tag)], right: slots), n => Edge { label: Positional, target: n }),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn swl_ident(s: String) -> Node { swl_atom(s: s) }
+
+// A non-empty list as the one|cons chain its sep_list productions read.
+fn swl_list(items: List<Node>) -> Node {
+  fold(list_reverse_nodes(xs: items), init: SwlListAcc { started: false, node: swl_node(tag: ^swr_k_none, slots: []) }, f: (acc, item) =>
+    if acc.started { SwlListAcc { started: true, node: swl_node(tag: ^swr_k_cons, slots: [item, acc.node]) } }
+    else { SwlListAcc { started: true, node: swl_node(tag: ^swr_k_one, slots: [item]) } }
+  ).node
+}
+
+type SwlListAcc {
+  started: Bool
+  node: Node
+}
+
+fn list_reverse_nodes(xs: List<Node>) -> List<Node> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+fn swl_opt_list(items: List<Node>) -> Node {
+  if length(xs: items) == 0 { swl_node(tag: ^swr_k_none, slots: []) } else { swl_node(tag: ^swr_k_some, slots: [swl_list(items: items)]) }
+}
+
+fn swl_none() -> Node { swl_node(tag: ^swr_k_none, slots: []) }
+fn swl_some(slots: List<Node>) -> Node { swl_node(tag: ^swr_k_some, slots: slots) }
+
+// A list where a blank line may separate neighbours: the cons chain of swr_top and swr_members.
+// Each item carries whether a blank line precedes it; the chain is built from the last item back.
+type SwlGapItem {
+  node: Node
+  blank_before: Bool
+}
+
+type SwlGapAcc {
+  started: Bool
+  node: Node
+  first_blank_before: Bool
+}
+
+fn swl_gapped(items: List<SwlGapItem>) -> Node {
+  fold(list_reverse_gap_items(xs: items), init: SwlGapAcc { started: false, node: swl_none(), first_blank_before: false }, f: (acc, it) =>
+    if acc.started {
+      SwlGapAcc { started: true, first_blank_before: it.blank_before, node: swl_node(tag: ^swr_k_cons, slots: [it.node, swl_node(tag: if acc.first_blank_before { ^swr_k_blank } else { ^swr_k_none }, slots: []), acc.node]) }
+    } else {
+      SwlGapAcc { started: true, first_blank_before: it.blank_before, node: swl_node(tag: ^swr_k_one, slots: [it.node]) }
+    }
+  ).node
+}
+
+fn list_reverse_gap_items(xs: List<SwlGapItem>) -> List<SwlGapItem> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+type SwlGapScan {
+  previous: Optional<SwiftDecl>
+  items: List<SwlGapItem>
+}
+
+// blank(previous, next) decides the line between two neighbouring declarations.
+fn swl_gap_items(ds: List<SwiftDecl>, members: Bool) -> List<SwlGapItem> {
+  fold(ds, init: SwlGapScan { previous: none, items: [] }, f: (acc, d) =>
+    SwlGapScan {
+      previous: Present { value: d },
+      items: list_snoc_gap(xs: acc.items, item: SwlGapItem {
+        node: swl_decl(d: d),
+        blank_before: match acc.previous {
+          Present { value: prev } => if members { swl_decl_has_body(d: prev) || swl_decl_has_body(d: d) } else { !(swl_decl_is_import(d: prev) && swl_decl_is_import(d: d)) }
+          Absent => false
+        }
+      })
+    }
+  ).items
+}
+
+fn list_snoc_gap(xs: List<SwlGapItem>, item: SwlGapItem) -> List<SwlGapItem> {
+  list_append(left: xs, right: [item])
+}
+
+// ── Comments ────────────────────────────────────────────────────────────────────────────────
+fn swl_comment_text(c: SwiftComment) -> String {
+  match c {
+    SwiftLineComment { text: t } => if t == "" { "//" } else { concat("// ", t) }
+    SwiftDocLineComment { text: t } => if t == "" { "///" } else { concat("/// ", t) }
+  }
+}
+
+fn swl_comments(cs: List<SwiftComment>) -> Node {
+  swl_list(items: map(cs, c => swl_atom(s: swl_comment_text(c: c))))
+}
+
+// ── Types ───────────────────────────────────────────────────────────────────────────────────
+fn swl_type(t: SwiftType) -> Node {
+  match t {
+    SwiftTypeIdentifier { name: n, generic_arguments: a } =>
+      swl_node(tag: ^swr_k_named, slots: [swl_ident(s: n), swl_opt_list(items: map(a, x => swl_type(t: x)))])
+    SwiftArrayType { element: e } => swl_node(tag: ^swr_k_array, slots: [swl_type(t: e)])
+    SwiftDictionaryType { key: k, value: v } => swl_node(tag: ^swr_k_dictionary, slots: [swl_type(t: k), swl_type(t: v)])
+    SwiftOptionalType { wrapped: w } => swl_node(tag: ^swr_k_optional, slots: [swl_type(t: w)])
+    SwiftTupleType { elements: es } => swl_node(tag: ^swr_k_tuple, slots: [swl_list(items: map(es, e => swl_tt_elem(e: e)))])
+  }
+}
+
+fn swl_tt_elem(e: SwiftTupleTypeElement) -> Node {
+  match e.name {
+    Present { value: n } => swl_node(tag: ^swr_k_labeled, slots: [swl_ident(s: n), swl_type(t: e.element_type)])
+    Absent => swl_node(tag: ^swr_k_plain, slots: [swl_type(t: e.element_type)])
+  }
+}
+
+fn swl_inherits(i: List<SwiftType>) -> Node {
+  swl_opt_list(items: map(i, x => swl_type(t: x)))
+}
+
+// ── Attributes and modifiers ────────────────────────────────────────────────────────────────
+fn swl_modifier(m: SwiftDeclarationModifier) -> String {
+  match m {
+    SwiftStaticModifier => "static "
+    SwiftPrivateModifier => "private "
+    SwiftFileprivateModifier => "fileprivate "
+    SwiftFinalModifier => "final "
+    SwiftIndirectModifier => "indirect "
+    SwiftMutatingModifier => "mutating "
+    SwiftNonisolatedModifier => "nonisolated "
+    SwiftOverrideModifier => "override "
+  }
+}
+
+fn swl_mods(ms: List<SwiftDeclarationModifier>) -> Node {
+  fold(list_reverse_mods(xs: ms), init: swl_none(), f: (acc, m) => swl_node(tag: ^swr_k_cons, slots: [swl_atom(s: swl_modifier(m: m)), acc]))
+}
+
+fn list_reverse_mods(xs: List<SwiftDeclarationModifier>) -> List<SwiftDeclarationModifier> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+fn swl_attrs(attrs: List<SwiftAttribute>) -> Node {
+  fold(list_reverse_attrs(xs: attrs), init: swl_none(), f: (acc, a) =>
+    swl_node(tag: ^swr_k_cons, slots: [
+      swl_ident(s: a.name),
+      if length(xs: a.arguments) == 0 { swl_none() } else { swl_some(slots: [swl_args(a: a.arguments)]) },
+      acc
+    ]))
+}
+
+fn list_reverse_attrs(xs: List<SwiftAttribute>) -> List<SwiftAttribute> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+// ── String literals: a text segment's lexeme is its escaped spelling ─────────────────────────
+fn swl_escape_scalar(cp: Int) -> String {
+  if cp == 92 { "\\\\" }
+  else if cp == 34 { "\\\"" }
+  else if cp == 10 { "\\n" }
+  else if cp == 9 { "\\t" }
+  else if cp == 13 { "\\r" }
+  else if cp == 0 { "\\0" }
+  else if cp < 32 || cp >= 127 { join(["\\u\{", int_to_upper_hex(n: cp), "\}"], "") }
+  else { from_code_point(cp: cp) }
+}
+
+fn swl_escape_text(s: String) -> String {
+  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, swl_escape_scalar(cp: cp)))
+}
+
+fn swl_segments(d: SwiftStringLiteralDelimiter, segments: List<SwiftStringSegment>) -> Node {
+  fold(list_reverse_segments(xs: segments), init: swl_none(), f: (acc, seg) => match seg {
+    SwiftStringText { text: t } => swl_node(tag: ^swr_k_text, slots: [swl_atom(s: match d { SwiftStaticStringDelimiter => swl_escape_text(s: t)  SwiftExtendedStringDelimiter => t }), acc])
+    SwiftStringInterpolation { expr: e } => swl_node(tag: ^swr_k_interpolation, slots: [swl_expr(e: e), acc])
+  })
+}
+
+fn list_reverse_segments(xs: List<SwiftStringSegment>) -> List<SwiftStringSegment> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+// ── Expressions ─────────────────────────────────────────────────────────────────────────────
+fn swl_infix(o: SwiftInfixOperator) -> String {
+  match o {
+    SwiftAddOperator => " + "
+    SwiftSubtractOperator => " - "
+    SwiftMultiplyOperator => " * "
+    SwiftEqualOperator => " == "
+    SwiftNotEqualOperator => " != "
+    SwiftLessThanOperator => " < "
+    SwiftGreaterThanOperator => " > "
+    SwiftLessThanOrEqualOperator => " <= "
+    SwiftGreaterThanOrEqualOperator => " >= "
+    SwiftLogicalAndOperator => " && "
+    SwiftLogicalOrOperator => " || "
+    SwiftNilCoalescingOperator => " ?? "
+    SwiftClosedRangeOperator => "..."
+    SwiftHalfOpenRangeOperator => "..<"
+    SwiftAssignmentOperator => " = "
+    SwiftAddAssignmentOperator => " += "
+  }
+}
+
+fn swl_cast(o: SwiftTypeCastingOperator) -> String {
+  match o { SwiftIsCast => " is "  SwiftAsCast => " as "  SwiftConditionalAsCast => " as? "  SwiftForcedAsCast => " as! " }
+}
+
+fn swl_try(o: SwiftTryOperator) -> String {
+  match o { SwiftTry => "try "  SwiftOptionalTry => "try? "  SwiftForcedTry => "try! " }
+}
+
+fn swl_arg(a: SwiftArgument) -> Node {
+  match a.label {
+    Present { value: l } => swl_node(tag: ^swr_k_labeled, slots: [swl_ident(s: l), swl_expr(e: a.value)])
+    Absent => swl_node(tag: ^swr_k_plain, slots: [swl_expr(e: a.value)])
+  }
+}
+
+fn swl_args(a: List<SwiftArgument>) -> Node {
+  swl_list(items: map(a, x => swl_arg(a: x)))
+}
+
+fn swl_opt_args(a: List<SwiftArgument>) -> Node {
+  swl_opt_list(items: map(a, x => swl_arg(a: x)))
+}
+
+fn swl_closure_is_inline(c: SwiftClosureExpr) -> Bool {
+  length(xs: c.statements) == 1 && fold(c.statements, init: true, f: (acc, s) => acc && match s { SwiftExpressionStmt { expr: _ } => true  _ => false })
+}
+
+fn swl_closure(c: SwiftClosureExpr) -> Node {
+  let has_sig = length(xs: c.parameters) > 0
+  if swl_closure_is_inline(c: c) {
+    let stmt = fold(c.statements, init: swl_none(), f: (acc, s) => swl_stmt(s: s))
+    if has_sig { swl_node(tag: ^swr_k_inline_signature, slots: [swl_list(items: map(c.parameters, p => swl_node(tag: ^swr_k_ident, slots: [swl_ident(s: p)]))), stmt]) }
+    else { swl_node(tag: ^swr_k_inline, slots: [stmt]) }
+  } else {
+    if has_sig { swl_node(tag: ^swr_k_block_signature, slots: [swl_list(items: map(c.parameters, p => swl_node(tag: ^swr_k_ident, slots: [swl_ident(s: p)]))), swl_stmts(ss: c.statements)]) }
+    else { swl_node(tag: ^swr_k_block, slots: [swl_stmts(ss: c.statements)]) }
+  }
+}
+
+fn swl_expr(e: SwiftExpr) -> Node {
+  match e {
+    SwiftIdentifierExpr { name: n } => swl_node(tag: ^swr_k_ident, slots: [swl_ident(s: n)])
+    SwiftWildcardExpr => swl_node(tag: ^swr_k_wildcard, slots: [])
+    SwiftImplicitMemberExpr { name: n } => swl_node(tag: ^swr_k_implicit_member, slots: [swl_ident(s: n)])
+    SwiftExplicitMemberExpr { base: b, member: m } => swl_node(tag: ^swr_k_member, slots: [swl_expr(e: b), swl_ident(s: m)])
+    SwiftOptionalChainingExpr { base: b } => swl_node(tag: ^swr_k_chain, slots: [swl_expr(e: b)])
+    SwiftFunctionCallExpr { callee: f, arguments: a, trailing_closure: tc } => match tc {
+      Absent => swl_node(tag: ^swr_k_call, slots: [swl_expr(e: f), swl_opt_args(a: a)])
+      Present { value: c } =>
+        if length(xs: a) == 0 { swl_node(tag: ^swr_k_call_trailing, slots: [swl_expr(e: f), swl_closure(c: c)]) }
+        else { swl_node(tag: ^swr_k_call_args_trailing, slots: [swl_expr(e: f), swl_args(a: a), swl_closure(c: c)]) }
+    }
+    SwiftSubscriptExpr { base: b, arguments: a } => swl_node(tag: ^swr_k_subscript, slots: [swl_expr(e: b), swl_args(a: a)])
+    SwiftStringLiteral { delimiter: d, segments: s } => match d {
+      SwiftStaticStringDelimiter => swl_node(tag: ^swr_k_string, slots: [swl_segments(d: d, segments: s)])
+      SwiftExtendedStringDelimiter => swl_node(tag: ^swr_k_raw_string, slots: [swl_segments(d: d, segments: s)])
+    }
+    SwiftIntegerLiteral { value: n } => swl_node(tag: ^swr_k_literal, slots: [swl_atom(s: to_string(n))])
+    SwiftBooleanLiteral { value: b } => swl_node(tag: if b { ^swr_k_true } else { ^swr_k_false }, slots: [])
+    SwiftNilLiteral => swl_node(tag: ^swr_k_nil, slots: [])
+    SwiftArrayLiteral { elements: es } => swl_node(tag: ^swr_k_array, slots: [swl_opt_list(items: map(es, x => swl_expr(e: x)))])
+    SwiftDictionaryLiteral { elements: es } =>
+      if length(xs: es) == 0 { swl_node(tag: ^swr_k_dictionary_empty, slots: []) }
+      else { swl_node(tag: ^swr_k_dictionary, slots: [swl_list(items: map(es, x => swl_node(tag: ^swr_k_entry, slots: [swl_expr(e: x.key), swl_expr(e: x.value)])))]) }
+    SwiftTupleExpr { elements: es } => swl_node(tag: ^swr_k_tuple, slots: [swl_opt_args(a: es)])
+    SwiftParenthesizedExpr { inner: i } => swl_node(tag: ^swr_k_paren, slots: [swl_expr(e: i)])
+    SwiftClosure { closure: c } => swl_node(tag: ^swr_k_closure, slots: [swl_closure(c: c)])
+    SwiftTryExpr { operator: o, operand: x } => swl_node(tag: ^swr_k_prefix_op, slots: [swl_atom(s: swl_try(o: o)), swl_expr(e: x)])
+    SwiftAwaitExpr { operand: x } => swl_node(tag: ^swr_k_prefix_op, slots: [swl_atom(s: "await "), swl_expr(e: x)])
+    SwiftPrefixExpr { operator: o, operand: x } =>
+      swl_node(tag: ^swr_k_prefix_op, slots: [swl_atom(s: match o { SwiftLogicalNotOperator => "!"  SwiftNegationOperator => "-" }), swl_expr(e: x)])
+    SwiftInfixExpr { lhs: l, operator: o, rhs: r } => swl_node(tag: ^swr_k_infix, slots: [swl_expr(e: l), swl_atom(s: swl_infix(o: o)), swl_expr(e: r)])
+    SwiftTernaryConditionalExpr { condition: c, then_value: t, else_value: f } =>
+      swl_node(tag: ^swr_k_ternary, slots: [swl_expr(e: c), swl_expr(e: t), swl_expr(e: f)])
+    SwiftTypeCastingExpr { operand: x, operator: o, target: t } => swl_node(tag: ^swr_k_cast, slots: [swl_expr(e: x), swl_atom(s: swl_cast(o: o)), swl_type(t: t)])
+    SwiftKeyPathExpr { components: cs } => swl_node(tag: ^swr_k_key_path, slots: [swl_atom(s: join(cs, "."))])
+  }
+}
+
+// ── Patterns ────────────────────────────────────────────────────────────────────────────────
+fn swl_bindkw(k: SwiftBindingKeyword) -> Node {
+  match k { SwiftLet => swl_node(tag: ^swr_k_let, slots: [])  SwiftVar => swl_node(tag: ^swr_k_var, slots: []) }
+}
+
+fn swl_pattern(p: SwiftPattern) -> Node {
+  match p {
+    SwiftIdentifierPattern { name: n } => swl_node(tag: ^swr_k_ident, slots: [swl_ident(s: n)])
+    SwiftWildcardPattern => swl_node(tag: ^swr_k_wildcard, slots: [])
+    SwiftTuplePattern { elements: es } => swl_node(tag: ^swr_k_tuple, slots: [swl_list(items: map(es, x => swl_pattern(p: x)))])
+    SwiftValueBindingPattern { keyword: k, pattern: x } => swl_node(tag: ^swr_k_binding, slots: [swl_bindkw(k: k), swl_pattern(p: x)])
+    SwiftEnumCasePattern { case_name: n, associated: a } =>
+      if length(xs: a) == 0 { swl_node(tag: ^swr_k_case_bare, slots: [swl_ident(s: n)]) }
+      else { swl_node(tag: ^swr_k_case_payload, slots: [swl_ident(s: n), swl_list(items: map(a, x => swl_pattern(p: x)))]) }
+    SwiftExpressionPattern { expr: x } => swl_node(tag: ^swr_k_expr, slots: [swl_expr(e: x)])
+  }
+}
+
+// ── Statements ──────────────────────────────────────────────────────────────────────────────
+fn swl_stmt_has_block(s: SwiftStmt) -> Bool {
+  match s {
+    SwiftExpressionStmt { expr: _ } => false
+    SwiftReturnStmt { value: _ } => false
+    SwiftThrowStmt { value: _ } => false
+    SwiftDeclarationStmt { decl: d } => swl_decl_has_body(d: d)
+    _ => true
+  }
+}
+
+fn swl_single_simple(statements: List<SwiftStmt>) -> Bool {
+  length(xs: statements) == 1 && fold(statements, init: true, f: (acc, s) => acc && !swl_stmt_has_block(s: s))
+}
+
+fn swl_stmts(ss: List<SwiftStmt>) -> Node {
+  swl_list(items: map(ss, s => swl_stmt(s: s)))
+}
+
+fn swl_block(ss: List<SwiftStmt>) -> Node {
+  swl_node(tag: ^swr_k_block, slots: [swl_stmts(ss: ss)])
+}
+
+fn swl_cond(c: SwiftCondition) -> Node {
+  match c {
+    SwiftExpressionCondition { expr: e } => swl_node(tag: ^swr_k_expr, slots: [swl_expr(e: e)])
+    SwiftOptionalBindingCondition { keyword: k, name: n, initializer: i } =>
+      swl_node(tag: ^swr_k_bind, slots: [swl_bindkw(k: k), swl_ident(s: n), match i { Present { value: e } => swl_some(slots: [swl_expr(e: e)])  Absent => swl_none() }])
+  }
+}
+
+fn swl_conds(cs: List<SwiftCondition>) -> Node {
+  swl_list(items: map(cs, c => swl_cond(c: c)))
+}
+
+fn swl_else(e: SwiftElseClause) -> Node {
+  match e {
+    SwiftNoElse => swl_none()
+    SwiftElseBlock { statements: s } => swl_node(tag: ^swr_k_block, slots: [swl_block(ss: s)])
+    SwiftElseIf { conditions: c, statements: s, else_clause: rest } => swl_node(tag: ^swr_k_else_if, slots: [swl_conds(cs: c), swl_block(ss: s), swl_else(e: rest)])
+  }
+}
+
+fn swl_case_label(l: SwiftCaseLabel) -> Node {
+  match l {
+    SwiftCaseItems { patterns: ps } => swl_node(tag: ^swr_k_items, slots: [swl_list(items: map(ps, p => swl_pattern(p: p)))])
+    SwiftDefaultLabel => swl_node(tag: ^swr_k_default, slots: [])
+  }
+}
+
+fn swl_case(c: SwiftSwitchCase) -> Node {
+  if swl_single_simple(statements: c.statements) {
+    swl_node(tag: ^swr_k_inline, slots: [swl_case_label(l: c.label), fold(c.statements, init: swl_none(), f: (acc, s) => swl_stmt(s: s))])
+  } else {
+    swl_node(tag: ^swr_k_block, slots: [swl_case_label(l: c.label), swl_stmts(ss: c.statements)])
+  }
+}
+
+fn swl_catches(cs: List<SwiftCatchClause>) -> Node {
+  fold(list_reverse_catches(xs: cs), init: swl_none(), f: (acc, c) =>
+    swl_node(tag: ^swr_k_cons, slots: [
+      match c.pattern { Present { value: p } => swl_some(slots: [swl_pattern(p: p)])  Absent => swl_none() },
+      swl_block(ss: c.statements),
+      acc
+    ]))
+}
+
+fn list_reverse_catches(xs: List<SwiftCatchClause>) -> List<SwiftCatchClause> {
+  fold(xs, init: [], f: (acc, x) => list_append(left: [x], right: acc))
+}
+
+fn swl_stmt(s: SwiftStmt) -> Node {
+  match s {
+    SwiftExpressionStmt { expr: e } => swl_node(tag: ^swr_k_expr, slots: [swl_expr(e: e)])
+    SwiftDeclarationStmt { decl: d } => swl_node(tag: ^swr_k_decl, slots: [swl_decl(d: d)])
+    SwiftReturnStmt { value: v } => match v {
+      Present { value: e } => swl_node(tag: ^swr_k_return, slots: [swl_expr(e: e)])
+      Absent => swl_node(tag: ^swr_k_return_none, slots: [])
+    }
+    SwiftThrowStmt { value: e } => swl_node(tag: ^swr_k_throw, slots: [swl_expr(e: e)])
+    SwiftIfStmt { conditions: c, statements: b, else_clause: e } => swl_node(tag: ^swr_k_if, slots: [swl_conds(cs: c), swl_block(ss: b), swl_else(e: e)])
+    SwiftGuardStmt { conditions: c, else_statements: b } =>
+      if swl_single_simple(statements: b) {
+        swl_node(tag: ^swr_k_guard_inline, slots: [swl_conds(cs: c), fold(b, init: swl_none(), f: (acc, x) => swl_stmt(s: x))])
+      } else {
+        swl_node(tag: ^swr_k_guard_block, slots: [swl_conds(cs: c), swl_block(ss: b)])
+      }
+    SwiftForInStmt { pattern: p, sequence: q, statements: b } => swl_node(tag: ^swr_k_for, slots: [swl_pattern(p: p), swl_expr(e: q), swl_block(ss: b)])
+    SwiftSwitchStmt { subject: x, cases: cs } => swl_node(tag: ^swr_k_switch, slots: [swl_expr(e: x), swl_list(items: map(cs, c => swl_case(c: c)))])
+    SwiftDoStmt { statements: b, catches: cs } => swl_node(tag: ^swr_k_do, slots: [swl_block(ss: b), swl_catches(cs: cs)])
+    SwiftCommentedStmt { comments: cs, stmt: x } => swl_node(tag: ^swr_k_commented, slots: [swl_comments(cs: cs), swl_stmt(s: x)])
+  }
+}
+
+// ── Declarations ────────────────────────────────────────────────────────────────────────────
+fn swl_decl_has_body(d: SwiftDecl) -> Bool {
+  match d {
+    SwiftImportDecl { attributes: _, module_name: _ } => false
+    SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
+    SwiftEnumCaseDecl { elements: _ } => false
+    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_has_body(d: x)
+    _ => true
+  }
+}
+
+fn swl_decl_is_import(d: SwiftDecl) -> Bool {
+  match d {
+    SwiftImportDecl { attributes: _, module_name: _ } => true
+    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_is_import(d: x)
+    _ => false
+  }
+}
+
+fn swl_param(p: SwiftParameter) -> Node {
+  let default = match p.default_value { Present { value: v } => swl_some(slots: [swl_expr(e: v)])  Absent => swl_none() }
+  match p.argument_label {
+    Present { value: l } => swl_node(tag: ^swr_k_labeled, slots: [swl_ident(s: l), swl_ident(s: p.name), swl_type(t: p.parameter_type), default])
+    Absent => swl_node(tag: ^swr_k_plain, slots: [swl_ident(s: p.name), swl_type(t: p.parameter_type), default])
+  }
+}
+
+fn swl_params(ps: List<SwiftParameter>) -> Node {
+  swl_node(tag: ^swr_k_params, slots: [swl_opt_list(items: map(ps, p => swl_param(p: p)))])
+}
+
+fn swl_flag(b: Bool) -> Node {
+  if b { swl_some(slots: []) } else { swl_none() }
+}
+
+// A member list: a blank line between two neighbours when either has a body.
+fn swl_member_block(members: List<SwiftDecl>) -> Node {
+  swl_node(tag: ^swr_k_block, slots: [swl_gapped(items: swl_gap_items(ds: members, members: true))])
+}
+
+fn swl_decl(d: SwiftDecl) -> Node {
+  match d {
+    SwiftImportDecl { attributes: a, module_name: n } => swl_node(tag: ^swr_k_import, slots: [swl_attrs(attrs: a), swl_ident(s: n)])
+    SwiftVariableDecl { attributes: a, modifiers: m, keyword: k, pattern: p, annotation: t, initializer: i } =>
+      swl_node(tag: ^swr_k_variable, slots: [
+        swl_attrs(attrs: a), swl_mods(ms: m), swl_bindkw(k: k), swl_pattern(p: p),
+        match t { Present { value: ty } => swl_some(slots: [swl_type(t: ty)])  Absent => swl_none() },
+        match i { Present { value: e } => swl_some(slots: [swl_expr(e: e)])  Absent => swl_none() }
+      ])
+    SwiftComputedPropertyDecl { attributes: a, modifiers: m, name: n, property_type: t, getter: g } =>
+      swl_node(tag: ^swr_k_computed, slots: [swl_attrs(attrs: a), swl_mods(ms: m), swl_ident(s: n), swl_type(t: t), swl_block(ss: g)])
+    SwiftFunctionDecl { attributes: a, modifiers: m, name: n, parameters: ps, is_async: asy, throws: th, result: r, body: b } =>
+      swl_node(tag: ^swr_k_func, slots: [
+        swl_attrs(attrs: a), swl_mods(ms: m), swl_ident(s: n), swl_params(ps: ps), swl_flag(b: asy), swl_flag(b: th),
+        match r { Present { value: t } => swl_some(slots: [swl_type(t: t)])  Absent => swl_none() },
+        swl_block(ss: b)
+      ])
+    SwiftInitializerDecl { modifiers: m, parameters: ps, throws: th, body: b } =>
+      swl_node(tag: ^swr_k_init, slots: [swl_mods(ms: m), swl_params(ps: ps), swl_flag(b: th), swl_block(ss: b)])
+    SwiftStructDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } =>
+      swl_node(tag: ^swr_k_struct, slots: [swl_attrs(attrs: a), swl_mods(ms: m), swl_ident(s: n), swl_inherits(i: i), swl_member_block(members: ms)])
+    SwiftClassDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } =>
+      swl_node(tag: ^swr_k_class, slots: [swl_attrs(attrs: a), swl_mods(ms: m), swl_ident(s: n), swl_inherits(i: i), swl_member_block(members: ms)])
+    SwiftEnumDecl { attributes: a, modifiers: m, name: n, inherits: i, members: ms } =>
+      swl_node(tag: ^swr_k_enum, slots: [swl_attrs(attrs: a), swl_mods(ms: m), swl_ident(s: n), swl_inherits(i: i), swl_member_block(members: ms)])
+    SwiftEnumCaseDecl { elements: es } =>
+      swl_node(tag: ^swr_k_case, slots: [swl_list(items: map(es, c =>
+        if length(xs: c.associated) == 0 { swl_node(tag: ^swr_k_bare, slots: [swl_ident(s: c.name)]) }
+        else { swl_node(tag: ^swr_k_payload, slots: [swl_ident(s: c.name), swl_list(items: map(c.associated, x => swl_tt_elem(e: x)))]) }))])
+    SwiftExtensionDecl { extended: t, inherits: i, members: ms } =>
+      swl_node(tag: ^swr_k_extension, slots: [swl_type(t: t), swl_inherits(i: i), swl_member_block(members: ms)])
+    SwiftCommentedDecl { comments: cs, decl: x } => swl_node(tag: ^swr_k_commented, slots: [swl_comments(cs: cs), swl_decl(d: x)])
+  }
+}
+
+// ── A source file: a blank line between top-level declarations, except adjacent imports ─────
+fn swl_file(f: SwiftSourceFile) -> Node {
+  swl_node(tag: ^swr_k_file, slots: [swl_gapped(items: swl_gap_items(ds: f.declarations, members: false))])
+}

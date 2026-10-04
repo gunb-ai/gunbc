@@ -1,0 +1,263 @@
+module v2.test.claim.body_lowering.fold_operand_structure
+
+import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lower_try_fold_loop, body_lower_value_read }
+import v2.compiler.fold_lowering { fold_call_head_symbol, fold_family_realization, fold_recurrence_loop }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { ComputationNode, Node, Symbol, Transform }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A FOLD IS ASKED FOR AT ITS OWN NODE, AND ONLY THERE.
+//
+// THE SUBJECT IS ONE DECISION: v2.compiler.body_lowering_fold body_lower_try_fold_loop at a node the
+// parse gave no production identity. body_lower_try_fold_loop_search used to descend through every
+// child of such a node and answer the first fold it found as that node's lowering; the value reader and
+// the body walker then lowered those same children and asked the same question of each again, so every
+// fold was demanded once per enclosing identity-less node plus once at its own. No observed output
+// depended on the hoisted answer (the enclosing operator or call lowers before it is consulted), so the
+// descent was redundant demand and is deleted. The decision claim reads the answer at every identity-less
+// node that encloses a fold and asserts it is Absent; re-adding the descent answers Present there and
+// turns it red. It asserts the route too: such nodes exist in the parse, so it cannot pass on an empty
+// candidate set. The four shape claims are the positive controls: on both the value-reader and the
+// body-walker route the fold is still lowered to its encoding (Bind over a Loop) in its operand slot, under an enclosing node that
+// keeps every operand -- the fold twins of v2.test.claim.body_lowering.enclosing_expression_structure.
+
+data fos_and_fold_source: String = "module m\n\nfn fos(fos_t: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_t && fold(fos_xs, init: fos_t, f: fn(acc, x) { acc })\n}\n"
+
+data fos_call_fold_source: String = "module m\n\nfn fos(fos_s: Bool, fos_xs: List<Bool>) -> Bool {\n  fos_h(a: fold(fos_xs, init: fos_s, f: fn(acc, x) { acc }), b: fos_s)\n}\n\nfn fos_h(a: Bool, b: Bool) -> Bool { a }\n"
+
+fn fos_parsed(source: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source, file: ^fos_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
+      }
+  }
+}
+
+fn fos_emitted_first(root: Node, production: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == production { optional_present(value: root) } else { fos_emitted_first_kids(root: root, production: production) }
+    Absent => fos_emitted_first_kids(root: root, production: production)
+  }
+}
+
+fn fos_emitted_first_kids(root: Node, production: Symbol) -> Optional<Node> {
+  fold(root.children, init: optional_absent(), f: fn(acc, e) {
+    match acc { Present { value: _ } => acc  Absent => fos_emitted_first(root: e.target, production: production) }
+  })
+}
+
+type FosValue
+  = FosNotRead
+  | FosRefused { reason: Symbol }
+  | FosLowered { value: Node }
+
+type FosRoute = FosValueReader | FosBodyWalker
+
+fn fos_route_value(parsed: Optional<Node>, route: FosRoute) -> FosValue {
+  match parsed {
+    Absent => FosNotRead
+    Present { value: tree } =>
+      match fos_emitted_first(root: tree, production: ^dag_surface_fn_body) {
+        Absent => FosNotRead
+        Present { value: body } =>
+          match fos_emitted_first(root: body, production: ^dag_surface_expr) {
+            Absent => FosNotRead
+            Present { value: expr } =>
+              match route {
+                FosValueReader =>
+                  match body_lower_value_read(value: expr) {
+                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+                    Accepted { value: v, diagnostics: _ } => FosLowered { value: v }
+                  }
+                FosBodyWalker =>
+                  match body_lower_body_subtree_lower(captured: expr) {
+                    Rejected { diagnostics: ds } => FosRefused { reason: ds.head.reason }
+                    Accepted { value: Absent, diagnostics: _ } => FosNotRead
+                    Accepted { value: Present { value: v }, diagnostics: _ } => FosLowered { value: v }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn fos_child(n: Node, i: Int) -> Optional<Node> {
+  match n.children.skip(n: i).first() {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+fn fos_is_atom(n: Optional<Node>, spelling: Symbol) -> Bool {
+  match n {
+    Present { value: x } =>
+      match node_atom_identity_optional(node: x) { Present { value: s } => s == spelling  Absent => false }
+    Absent => false
+  }
+}
+
+// The operand slot holds the fold ENCODING, Bind { acc := init, Loop {..} } (fold_lowering
+// fold_recurrence_encoding, #12550), read through its one reader; a bare Loop is not an encoding.
+fn fos_is_loop(n: Optional<Node>) -> Bool {
+  match n {
+    Present { value: x } =>
+      match fold_recurrence_loop(encoding: x) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn fos_is_transform(n: Node, arity: Int) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Transform } => count(n.children) == arity
+    _ => false
+  }
+}
+
+// `fos_t && fold(..)` is Transform(&&, fos_t, Bind{Loop}).
+fn fos_and_over_loop(v: FosValue) -> Bool {
+  match v {
+    FosLowered { value: n } =>
+      fos_is_transform(n: n, arity: 3)
+        && fos_is_atom(n: fos_child(n: n, i: 0), spelling: ^dag_token_and_and)
+        && fos_is_atom(n: fos_child(n: n, i: 1), spelling: ^fos_t)
+        && fos_is_loop(n: fos_child(n: n, i: 2))
+    _ => false
+  }
+}
+
+// `fos_h(a: fold(..), b: fos_s)` is Transform(fos_h, Bind{Loop}, fos_s).
+fn fos_call_over_loop(v: FosValue) -> Bool {
+  match v {
+    FosLowered { value: n } =>
+      fos_is_transform(n: n, arity: 3)
+        && fos_is_atom(n: fos_child(n: n, i: 0), spelling: ^fos_h)
+        && fos_is_loop(n: fos_child(n: n, i: 1))
+        && fos_is_atom(n: fos_child(n: n, i: 2), spelling: ^fos_s)
+    _ => false
+  }
+}
+
+
+fn fos_has_fold_head(node: Node) -> Bool {
+  match fold_call_head_symbol(fold_call: node) {
+    Present { value: head } =>
+      match fold_family_realization(head: head) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn fos_encloses_fold(node: Node) -> Bool {
+  fold(node.children, init: false, f: fn(acc, e) {
+    acc || fos_has_fold_head(node: e.target) || fos_encloses_fold(node: e.target)
+  })
+}
+
+fn fos_is_identity_less_fold_encloser(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: _ } => false
+    Absent => !fos_has_fold_head(node: node) && fos_encloses_fold(node: node)
+  }
+}
+
+fn fos_answers_absent(node: Node) -> Bool {
+  match body_lower_try_fold_loop(node: node) {
+    Accepted { value: Absent, diagnostics: _ } => true
+    _ => false
+  }
+}
+
+type FosTally { enclosers: Int, absent: Int }
+
+fn fos_tally(node: Node, acc: FosTally) -> FosTally {
+  let own = if fos_is_identity_less_fold_encloser(node: node) {
+    FosTally {
+      enclosers: acc.enclosers + 1,
+      absent: if fos_answers_absent(node: node) { acc.absent + 1 } else { acc.absent }
+    }
+  } else {
+    acc
+  }
+  fold(node.children, init: own, f: fn(t, e) { fos_tally(node: e.target, acc: t) })
+}
+
+fn fos_decision_holds(parsed: Optional<Node>) -> Bool {
+  match parsed {
+    Absent => false
+    Present { value: tree } => {
+      let t = fos_tally(node: tree, acc: FosTally { enclosers: 0, absent: 0 })
+      (t.enclosers > 0) && (t.absent == t.enclosers)
+    }
+  }
+}
+
+// ONE PARSE PER SOURCE, EVERY VERDICT READ OFF IT. Each claim below inspects one Bool of this value,
+// and each would otherwise pay its own tokenize, parse and lowering -- the ingest the claims are not
+// about. The producer is rostered in v2.workflow.floor_pure_producer_share
+// floor_cross_claim_pure_producers_warm, like v2.test.claim.fold_lowering flp_outcomes; the value is
+// six Bools, portable for that roster's reason.
+type FosOutcomes {
+  and_reader_over_loop: Bool
+  and_walker_over_loop: Bool
+  call_reader_over_loop: Bool
+  call_walker_over_loop: Bool
+  and_decision_holds: Bool
+  call_decision_holds: Bool
+}
+
+fn fos_outcomes() -> FosOutcomes {
+  let and_parsed = fos_parsed(source: fos_and_fold_source)
+  let call_parsed = fos_parsed(source: fos_call_fold_source)
+  FosOutcomes {
+    and_reader_over_loop: fos_and_over_loop(v: fos_route_value(parsed: and_parsed, route: FosValueReader)),
+    and_walker_over_loop: fos_and_over_loop(v: fos_route_value(parsed: and_parsed, route: FosBodyWalker)),
+    call_reader_over_loop: fos_call_over_loop(v: fos_route_value(parsed: call_parsed, route: FosValueReader)),
+    call_walker_over_loop: fos_call_over_loop(v: fos_route_value(parsed: call_parsed, route: FosBodyWalker)),
+    and_decision_holds: fos_decision_holds(parsed: and_parsed),
+    call_decision_holds: fos_decision_holds(parsed: call_parsed)
+  }
+}
+
+// POSITIVE CONTROLS: `fos_t && fold(..)` is Transform(&&, fos_t, Loop) and `fos_h(a: fold(..), b: fos_s)`
+// is Transform(fos_h, Loop, fos_s), on the value-reader and the body-walker route.
+test fn an_operand_beside_a_fold_lowers_as_the_operator_over_the_loop() -> Bool {
+  fos_outcomes().and_reader_over_loop
+}
+
+test fn the_body_walker_lowers_an_operand_beside_a_fold_as_the_operator_over_the_loop() -> Bool {
+  fos_outcomes().and_walker_over_loop
+}
+
+test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool {
+  fos_outcomes().call_reader_over_loop
+}
+
+test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool {
+  fos_outcomes().call_walker_over_loop
+}
+
+// THE DISCRIMINATING RED: re-adding the descent answers Present at an identity-less encloser.
+test fn no_identity_less_node_answers_an_enclosed_fold_beside_an_operator() -> Bool {
+  fos_outcomes().and_decision_holds
+}
+
+test fn no_identity_less_node_answers_an_enclosed_fold_argument() -> Bool {
+  fos_outcomes().call_decision_holds
+}

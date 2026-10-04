@@ -2,7 +2,7 @@ module gunbc.fleet_posix_accounts
 
 import extdeps.access.posix { PosixUser, PosixLoginName }
 import std.nat { Nat }
-import std.types { Timestamp }
+import std.types { Timestamp, brand }
 import gunbc.fleet_lifecycle_observation { ProcessReceipt }
 import extdeps.ssh { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }

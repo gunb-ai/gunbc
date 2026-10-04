@@ -1,7 +1,13 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness_test
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.std.inhabitance {
+  DeclaredTypeObligation,
+  InhabitanceRefused,
+  Inhabits,
+  declared_type_inhabitance,
+  position_direct_call_argument,
   inhabitance_cardinality_type,
   inhabitance_node_undecidable_reason,
   inhabitance_undecidable_reason_symbol
@@ -20,14 +26,16 @@ import v2.std.diagnostic {
   Some,
   diagnostics_has_reason
 }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
+import std.algebra { list_snoc_item }
+import v2.std.type_binder { type_binder_set_children, type_params_edge }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.node_query { binder_edge }
 import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -41,10 +49,10 @@ fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: parameter },
-        target: declared
-      }
+      binder_edge(
+        name: parameter,
+        type_node: declared
+      )
     ]
   )
 }
@@ -76,8 +84,12 @@ fn inhabitance_call_tree(arg: Node) -> Node {
   )
 }
 
+// THE FORMAL MENTIONS A TYPE VARIABLE THE CALLEE DECLARES. `T` is bound by the Arrow's own type
+// parameter list (v2.std.type_binder type_params_edge), so the relation holds no instance for it and
+// the obligation is counted UndecidableGenericFormal. An Instantiation that mentions no declared type
+// variable is decided structurally instead (inhabitance_ground_instantiation_* below).
 fn inhabitance_generic_formal_tree() -> Node {
-  inhabitance_apply(
+  let arrow = dag_arrow_with_body_node(
     domain: inhabitance_named_conj_domain(
       parameter: ^inhabitance_param_t,
       declared: node_synthetic(
@@ -90,7 +102,34 @@ fn inhabitance_generic_formal_tree() -> Node {
         ]
       )
     ),
-    arg: dag_int_literal_fixture_one()
+    return_type_binding: ^dag_binding_type_int,
+    body: dag_int_literal_fixture_one()
+  )
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: node_synthetic(
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(
+              conj: node_synthetic(
+                kind: TypeNode { connective: Conj },
+                children: type_binder_set_children(binders: [
+                  Edge {
+                    label: Authored { name: ^inhabitance_type_param_t },
+                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
+                  }
+                ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
+              )
+            )
+          )
+        )
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one() }
+    ]
   )
 }
 
@@ -151,7 +190,7 @@ fn inhabitance_formal_unresolved_tree() -> Node {
 
 test fn infer_incompatible_argument_refuses_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true))
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_type_atom_node(identity: ^dag_token_kw_true)))
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
@@ -163,7 +202,7 @@ test fn infer_incompatible_argument_refuses_holds() -> Bool {
 }
 
 test fn infer_compatible_argument_admits_holds() -> Bool {
-  match infer(tree: inhabitance_call_tree(arg: dag_int_literal_fixture_one())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(arg: dag_int_literal_fixture_one()))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -171,9 +210,9 @@ test fn infer_compatible_argument_admits_holds() -> Bool {
 
 test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_call_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_call_tree(
       arg: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -185,7 +224,7 @@ test fn infer_argument_type_not_derived_is_counted_frontier_holds() -> Bool {
 }
 
 test fn infer_generic_formal_is_counted_frontier_holds() -> Bool {
-  match infer(tree: inhabitance_generic_formal_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_generic_formal_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
@@ -199,7 +238,8 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   match inhabitance_node_undecidable_reason(
     n: inhabitance_cardinality_type(
       inner: dag_type_atom_node(identity: ^dag_binding_type_int)
-    )
+    ),
+    type_variables: []
   ) {
     Absent => false
     Present { value: reason } =>
@@ -208,19 +248,24 @@ test fn inhabitance_cardinality_type_is_optional_carrier_holds() -> Bool {
   }
 }
 
-test fn infer_optional_formal_is_refused_for_unproven_cardinality_descent_holds() -> Bool {
-  match infer(tree: inhabitance_optional_formal_tree()) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: nds } =>
+// A formal declared `Int?` owes no descent: the Cardinality type connective is Bounded
+// (v2.std.cardinality connective_multiplicity). The application reaches its ordinary inhabitance
+// judgment and is counted as the OptionalCarrier frontier on the Accepted path, not Rejected for
+// infer_descent_not_derived.
+test fn infer_optional_formal_reaches_optional_carrier_frontier_holds() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_optional_formal_tree())) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
-        d: Some { diagnostics: nds },
-        reason: ^infer_descent_not_derived
+        d: d,
+        reason: ^inhabitance_undecidable_optional_carrier
       )
+        && !diagnostics_has_reason(d: d, reason: ^infer_descent_not_derived)
   }
 }
 
 test fn infer_positional_surplus_refuses_holds() -> Bool {
-  match infer(tree: inhabitance_arity_unmodeled_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_arity_unmodeled_tree())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
@@ -231,7 +276,7 @@ test fn infer_positional_surplus_refuses_holds() -> Bool {
 }
 
 test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
-  match infer(tree: inhabitance_formal_unresolved_tree()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: inhabitance_formal_unresolved_tree())) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(
@@ -250,19 +295,18 @@ test fn infer_atom_operator_is_counted_formal_unresolved_holds() -> Bool {
 // preservation_rule_exact_structural_equality_zip_fold, which reads BOTH sides -- so the seed's
 // repair does not transfer and the cell had to be measured rather than assumed.
 //
-// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): neither direction
-// reaches that fold, and the two directions stop at DIFFERENT earlier boundaries. With the
-// product declared and the collection supplied as the argument, the argument is a type node with
-// no derived value type, so the obligation is counted as UndecidableArgumentTypeNotDerived
-// (alongside infer_grounding_not_derived) before the formal is classified. With the collection
-// declared, `inhabitance_node_undecidable_reason` classifies the Instantiation formal as
-// UndecidableGenericFormal. Either way this path does not silently answer Inhabits the way the
-// seed did -- it counts the obligation as undecidable and the route advances, which is exactly
-// the standing of gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances
-// and not a second class. The next-rung trigger is that row's: an argument whose value type is
-// derived as an APPLIED collection type, and a classifier that distinguishes an applied type whose
-// constructor and arguments are all established from a type variable, which it cannot do today
-// because both are Instantiation.
+// WHAT IS MEASURED (captured diagnostics, not inferred from the classifier): the two directions
+// stop at DIFFERENT boundaries. With the product declared and the collection supplied as the
+// argument, the argument is an Instantiation with no derived value type, so the obligation is
+// counted UndecidableArgumentTypeNotDerived before the relation is asked. With the collection
+// declared, the formal `List<Int>` mentions no declared type variable, so it is decided
+// (inhabitance_node_undecidable_reason reads the declaring Arrow's type parameters since the
+// declared-return producer landed); the product argument derives its formation evidence, and the
+// relation REFUSES it at the formal, application_argument_does_not_inhabit. Neither direction answers
+// Inhabits the way the seed did. The first direction keeps the standing of
+// gunbc.recurring_failure_mode argument_type_obligation_absent_while_the_route_advances; its
+// next-rung trigger is that row's: an argument whose value type is derived as an APPLIED collection
+// type.
 fn inhabitance_collection_type_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Instantiation },
@@ -283,10 +327,10 @@ fn inhabitance_nominal_product_type_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^inhabitance_field_a },
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
-      }
+      binder_edge(
+        name: ^inhabitance_field_a,
+        type_node: dag_type_atom_node(identity: ^dag_binding_type_int)
+      )
     ]
   )
 }
@@ -303,10 +347,10 @@ fn inhabitance_declared_formal_tree(declared: Node, arg: Node) -> Node {
 
 test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_holds() -> Bool {
   match infer(
-    tree: inhabitance_declared_formal_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_nominal_product_type_node(),
       arg: inhabitance_collection_type_node()
-    )
+    ))
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
@@ -317,18 +361,81 @@ test fn inhabitance_collection_produced_at_a_product_formal_is_counted_frontier_
   }
 }
 
-test fn inhabitance_product_produced_at_a_collection_formal_is_counted_frontier_holds() -> Bool {
+test fn inhabitance_product_produced_at_a_collection_formal_refuses_holds() -> Bool {
   match infer(
-    tree: inhabitance_declared_formal_tree(
+    tree: claim_resolved_tree_without_declarations(root: inhabitance_declared_formal_tree(
       declared: inhabitance_collection_type_node(),
       arg: inhabitance_nominal_product_type_node()
-    )
+    ))
   ) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: _, diagnostics: d } =>
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: nds } =>
       diagnostics_has_reason(
-        d: d,
-        reason: ^inhabitance_undecidable_generic_formal
+        d: Some { diagnostics: nds },
+        reason: ^application_argument_does_not_inhabit
       )
   }
+}
+
+// THE ARGUMENT POSITION WIDENS A REFINEMENT TO ITS DECLARED CARRIER, one step, through the same
+// relation a let, a declared return and a record field reach (v2.std.inhabitance
+// declared_type_inhabitance_declared_carrier). The obligation is SUPPLIED: from source a call to a
+// named fn does not reach the judge yet (infer reads no formals off a callee reference), so the
+// argument position is claimed at the relation's interface, and the real route's inhabitance is
+// v2.test.claim.body_let_annotation (5e), which runs the same rule from source at the other three
+// positions. `Pos` stands for a refinement whose declaration states carrier Int, `Pos2` one whose
+// carrier is Pos, `Neg` a sibling refinement of Int. RED BEFORE: the relation had no carrier arm, so
+// a Pos argument at an Int formal refused.
+fn aai_argument_obligation(produced: Symbol, carrier: Optional<Node>, declared: Symbol) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position_direct_call_argument(),
+    parameter_identity: ^inhabitance_param_x,
+    declared: dag_type_atom_node(identity: declared),
+    produced: dag_type_atom_node(identity: produced),
+    produced_declared_carrier: carrier,
+    application: dag_type_atom_node(identity: produced),
+    type_variables: []
+  }
+}
+
+fn aai_inhabits_by_carrier(o: DeclaredTypeObligation) -> Bool {
+  match declared_type_inhabitance(obligation: o) {
+    Inhabits { homomorphism: h } => h.rule == ^homomorphism_rule_refinement_declared_carrier
+    _ => false
+  }
+}
+
+fn aai_refused(o: DeclaredTypeObligation) -> Bool {
+  match declared_type_inhabitance(obligation: o) {
+    InhabitanceRefused { find_witness_reason: _ } => true
+    _ => false
+  }
+}
+
+test fn inhabitance_refinement_argument_widens_to_its_declared_carrier_holds() -> Bool {
+  aai_inhabits_by_carrier(o: aai_argument_obligation(
+    produced: ^aai_pos,
+    carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
+    declared: ^dag_binding_type_int
+  ))
+}
+
+test fn inhabitance_refinement_argument_without_a_carrier_refuses_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(produced: ^aai_pos, carrier: Absent, declared: ^dag_binding_type_int))
+}
+
+test fn inhabitance_refinement_argument_widens_one_step_only_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(
+    produced: ^aai_pos2,
+    carrier: Present { value: dag_type_atom_node(identity: ^aai_pos) },
+    declared: ^dag_binding_type_int
+  ))
+}
+
+test fn inhabitance_sibling_refinement_argument_refuses_holds() -> Bool {
+  aai_refused(o: aai_argument_obligation(
+    produced: ^aai_neg,
+    carrier: Present { value: dag_type_atom_node(identity: ^dag_binding_type_int) },
+    declared: ^aai_pos
+  ))
 }

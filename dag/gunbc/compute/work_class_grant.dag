@@ -9,6 +9,7 @@ import extdeps.systemd.systemd_run {
   MemoryPeakFormatNotGrounded, summary_format_standing_wire,
   SummaryAbsence, summary_absence_wire,
 }
+import std.algebra { Cons, Empty }
 
 // A WORK REQUEST RESERVES AN AMOUNT PER CLASS, AND THE AMOUNT IS A GRANT WITH ITS OBSERVATIONS
 // ATTACHED (operator ruling 2026-09-21: do not raise a global ceiling; size a job's reservation per
@@ -33,10 +34,18 @@ import extdeps.systemd.systemd_run {
 // can differ by an order of magnitude. A grant over that grain is sampled, not derived, which is
 // exactly the residual gunbc.recurring_failure_mode a_sampled_grant_is_discovered_below_worst_case
 // rosters -- and the counted GrantExceeded ending is what reports a class whose grain is too coarse.
+//
+// THE AGENT SESSION IS A CLASS AND NOT AN OPERATION. A dispatched worker session holds memory for its
+// whole lifetime and reserves it from its own pool (gunbc.compute.host_capacity AgentSessionPool), so
+// it is resolved by the same grant rule -- rows, sample floor, ceiling fallback -- without being a
+// WorkOperation: work_class_of never yields it, and gunbc.roadmap_session_placement names it
+// directly. It has no rows today, so it reserves the ceiling, which is the amount the worker unit's
+// MemoryMax already carried.
 type WorkClass
   = WorkClassBuild { profile: CargoProfile }
   | WorkClassCompile
   | WorkClassClaims
+  | WorkClassAgentSession
 
 fn work_class_of(op: WorkOperation) -> WorkClass {
   match op {
@@ -51,6 +60,7 @@ fn work_class_wire(c: WorkClass) -> String {
     WorkClassBuild { profile } => join(["build-", cargo_profile_wire(p: profile)], "")
     WorkClassCompile => "compile"
     WorkClassClaims => "claims"
+    WorkClassAgentSession => "agent-session"
   }
 }
 

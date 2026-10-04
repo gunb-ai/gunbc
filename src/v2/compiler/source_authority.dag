@@ -1,5 +1,6 @@
 module v2.compiler.source_authority
 
+import std.types { List, NonEmptyStr }
 import gunbc.source_root_read { SourceRootFile }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -54,8 +55,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
+import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet, DagTree, V2Tree }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
@@ -72,7 +72,8 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
   content_hash_of_value,
-  serialize_content_hash
+  serialize_content_hash,
+  Fnv1a64
 }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.std.text { String, string_is_empty }
@@ -1298,7 +1299,7 @@ fn semantic_ir_equal_witness(
   original: DagSemanticIr,
   reparsed: DagSemanticIr
 ) -> Witness<SemanticIrEqual> {
-  if source_authority_node_equal(left: original.tree, right: reparsed.tree) {
+  if source_authority_node_equal(left: original.tree.root, right: reparsed.tree.root) {
     Holds { value: SemanticIrEqual { original: original, reparsed: reparsed } }
   } else {
     Violates {
@@ -1422,13 +1423,13 @@ fn source_authority_round_trip_with_model(
           bind_outcome(
             o: target_serialize_source_from_model(
               target: canonical_source_target,
-              emitted: original_ir.tree
+              emitted: original_ir.tree.root
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
                   target: canonical_source_target,
-                  emitted: original_ir.tree
+                  emitted: original_ir.tree.root
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(
@@ -1494,13 +1495,13 @@ fn canonical_dag_source_parse_print_law(
           bind_outcome(
             o: target_serialize_source_from_model(
               target: canonical_source_target,
-              emitted: original_ir.tree
+              emitted: original_ir.tree.root
             ),
             f: fn(canonical_source) {
               bind_outcome(
                 o: target_serialize_source_from_model(
                   target: canonical_source_target,
-                  emitted: original_ir.tree
+                  emitted: original_ir.tree.root
                 ),
                 f: fn(canonical_source_again) {
                   bind_outcome(

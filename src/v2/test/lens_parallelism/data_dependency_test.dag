@@ -13,8 +13,7 @@ import v2.std.dependency {
   DataDependsOn,
   DependencyView
 }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Holds, Witness }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
@@ -27,7 +26,7 @@ data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
 data parallelism_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallelism_root_symbol } },
   children: [
-    Edge { label: Named { name: ^parallelism_edge_symbol }, target: parallelism_child }
+    Edge { label: Authored { name: ^parallelism_edge_symbol }, target: parallelism_child }
   ],
   occurrence_id: OccurrenceSynthetic
 }

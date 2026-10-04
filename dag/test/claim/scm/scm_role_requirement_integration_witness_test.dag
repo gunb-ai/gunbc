@@ -6,7 +6,7 @@ import v2.std.node {
   Node,
   Edge,
   Symbol,
-  Named,
+  Authored,
   TypeNode,
   Conj,
   Atom,
@@ -79,7 +79,7 @@ fn scope_of(edges: List<Edge>) -> Node {
 }
 
 fn integration_witness_bind(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 type Fixture {
@@ -751,7 +751,7 @@ fn integration_witness_role_over_a_file_fixture() -> Fixture {
         store: with_file,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^s }, target: SemanticNodeTarget { locator: file.locator } },
+          StoredEdge { label: Authored { name: ^s }, target: SemanticNodeTarget { locator: file.locator } },
         ],
       ) {
         LocatorCollision { identity: i, existing: _, incoming: _ } =>
@@ -780,7 +780,7 @@ fn integration_witness_role_over_a_node_fixture() -> Fixture {
         store: with_child,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^s }, target: SemanticNodeTarget { locator: child.locator } },
+          StoredEdge { label: Authored { name: ^s }, target: SemanticNodeTarget { locator: child.locator } },
         ],
       ) {
         LocatorCollision { identity: i, existing: _, incoming: _ } =>

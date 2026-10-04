@@ -9,6 +9,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome, RestOk }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -206,6 +207,7 @@ service github.CodeSearch {
   }
 
   operation SearchCode {
+    requires Network
     input {
       auth_token: Secret
       q: String

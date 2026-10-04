@@ -12,7 +12,7 @@ import std.fabric_storage {
   FabricObjectRef, FabricObject, FabricStoredObject, fabric_object_ref_wire, fabric_object_ref_of_wire, fabric_object_preimage, fabric_object_ref_of, fabric_object_ref_eq,
   fabric_objects_decode_stream,
   FabricHeadReading, FabricHeadAbsent, FabricHeadAt, FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
-  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused, FabricWriterRefused, WriterLoginAbsent, WriterLoginUnrostered,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable, FabricHeadNameRefused, FabricWriterRefused, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested,
   FabricPut, FabricObjectStored, FabricPutRefused,
   FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
@@ -68,6 +68,8 @@ fn fault_words(fault: FabricStorageFault) -> List<String> {
     FabricWriterRefused { refusal: r } => match r {
       WriterLoginAbsent => ["writer-absent"]
       WriterLoginUnrostered { login: l } => ["writer-login", l as String]
+      WriterPeerUnrostered { account: a } => ["writer-peer", a as String]
+      WriterPeerUnattested => ["writer-unattested"]
     }
     FabricStoreRefused { cause: c } =>
       match c {
@@ -123,10 +125,26 @@ fn fabric_storage_wire_closure(read: FabricClosureRead) -> String {
 // undecodable -- a skewed or malformed reply can never read as the store deliberately saying the
 // proxy supplied no login. `absent` is the arm a tagged device, a direct connection and a stripped
 // header all produce, and it is written as absent, never as an anonymous login.
-fn fabric_storage_wire_identity(identity: TailnetIdentity) -> String {
-  match identity {
-    TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
-    TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
+//
+// THE DOOR'S PRINCIPAL, not only the proxy's header. The door listens on a unix socket and reads each
+// connection's peer from the kernel: a peer that is the tailscale proxy stands for the login its
+// header names (or for none), and any other peer IS the principal -- `identity local <user>`. A
+// connection whose peer the kernel did not attest (a TCP listener, which attests nothing) is
+// `identity unattested`, never a login.
+type FabricDoorPrincipal
+  = DoorProxied { identity: TailnetIdentity }
+  | DoorLocalPeer { user: NonEmptyStr }
+  | DoorUnattested
+
+fn fabric_storage_wire_identity(principal: FabricDoorPrincipal) -> String {
+  match principal {
+    DoorProxied { identity: i } =>
+      match i {
+        TailnetUser { login: l } => wire_line(words: ["identity", "present", l as String])
+        TailnetIdentityAbsent => wire_line(words: ["identity", "absent"])
+      }
+    DoorLocalPeer { user: u } => wire_line(words: ["identity", "local", u as String])
+    DoorUnattested => wire_line(words: ["identity", "unattested"])
   }
 }
 
@@ -193,6 +211,8 @@ fn decode_fault(ws: List<String>, i: Int, line: String) -> FabricStorageFault {
     "corrupt" => match decode_ref(word: word_at(ws: ws, i: i + 1)) { Present { value: o } => FabricObjectCorrupt { object: o, detail: nonempty_or(text: rest_from(ws: ws, i: i + 2), fallback: "unspecified") }  Absent => undecodable(line: line) }
     "name" => FabricHeadNameRefused { name: nonempty_or(text: detail, fallback: "unnamed") }
     "writer-absent" => if detail == "" { FabricWriterRefused { refusal: WriterLoginAbsent } } else { undecodable(line: line) }
+    "writer-unattested" => if detail == "" { FabricWriterRefused { refusal: WriterPeerUnattested } } else { undecodable(line: line) }
+    "writer-peer" => if length(ws) == i + 2 && word_at(ws: ws, i: i + 1) != "" { FabricWriterRefused { refusal: WriterPeerUnrostered { account: word_at(ws: ws, i: i + 1) as NonEmptyStr } } } else { undecodable(line: line) }
     "writer-login" => if length(ws) == i + 2 && word_at(ws: ws, i: i + 1) != "" { FabricWriterRefused { refusal: WriterLoginUnrostered { login: word_at(ws: ws, i: i + 1) as NonEmptyStr } } } else { undecodable(line: line) }
     "unreachable" => FabricStoreUnreachable { detail: nonempty_or(text: detail, fallback: "unspecified") }
     "undecodable" => FabricReplyUndecodable { detail: nonempty_or(text: detail, fallback: "unspecified") }
@@ -333,6 +353,8 @@ fn fabric_storage_unwire_closure(text: String) -> FabricClosureRead {
 // version answering something else is a skew, never an absent identity.
 type FabricIdentityRead
   = FabricIdentityPresented { identity: TailnetIdentity }
+  | FabricIdentityLocalPeer { user: NonEmptyStr }
+  | FabricIdentityUnattested
   | FabricIdentityUnproxied
   | FabricIdentityReadRefused { fault: FabricStorageFault }
 
@@ -345,6 +367,10 @@ fn fabric_storage_unwire_identity(text: String) -> FabricIdentityRead {
       else {
         match word_at(ws: r.words, i: 1) {
           "absent" => if length(r.words) == 2 { FabricIdentityPresented { identity: TailnetIdentityAbsent } } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          "unattested" => if length(r.words) == 2 { FabricIdentityUnattested } else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
+          "local" =>
+            if length(r.words) == 3 && word_at(ws: r.words, i: 2) != "" { FabricIdentityLocalPeer { user: word_at(ws: r.words, i: 2) as NonEmptyStr } }
+            else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }
           "present" =>
             if length(r.words) == 3 && word_at(ws: r.words, i: 2) != "" { FabricIdentityPresented { identity: TailnetUser { login: word_at(ws: r.words, i: 2) as NonEmptyStr } } }
             else { FabricIdentityReadRefused { fault: undecodable(line: r.line) } }

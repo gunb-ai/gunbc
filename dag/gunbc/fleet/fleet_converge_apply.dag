@@ -24,6 +24,7 @@ import gunbc.host_effect {
   HostEffectEvidence,
 }
 import gunbc.host_effect_realize { host_effect_apply }
+import gunbc.cli_invoke { gunbc_converge_invocation_words, invocation_words_bare, gunbc_bin_name }
 import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
 import std.realization_reconcile {
   Reconciliation,
@@ -100,8 +101,20 @@ fn converge_apply_fleet(transport: HostEffectTransport) -> FleetConvergeApplyRes
   converge_apply(policy: fleet_converge_policy(), transport: transport)
 }
 
+// THE CONVERGE THIN RUN. The argv was hand-spelled here until thin_invocation_argv_carrier_scaffold
+// dissolved: a medium-as-string List<String> authored inline, a second spelling of a gunbc
+// subcommand's shape beside gunbc.cli_invoke's run builders. Now the bind names semantics — the
+// converge thin run for this host — and derives every word from the ONE `gunbc converge` shape
+// authority (gunbc_converge_invocation_words), composing the program word through gunbc_bin_name
+// the same way every emitted step does. A flag reordered at the authority moves this argv with
+// it; nothing here can drift.
 fn fleet_converge_thin_invocation(host: HostIdentity) -> ThinInvocation {
-  ThinInvocation { argv: ["gunbc", "converge", "--host", host as String] }
+  ThinInvocation {
+    argv: concat(
+      [gunbc_bin_name],
+      invocation_words_bare(words: gunbc_converge_invocation_words(host: host as String))
+    )
+  }
 }
 
 fn fleet_converge_apply_result_converged(r: FleetConvergeApplyResult) -> Bool {

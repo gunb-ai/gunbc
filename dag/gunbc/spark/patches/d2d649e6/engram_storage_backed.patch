@@ -94,7 +94,7 @@ index b141b6c..dc7b16b 100644
 +        tokens = indices.shape[0]
 +        if not tokens:
 +            return
-+        local_ids = torch.full((tokens, self.part_n_hash_cols), -1, dtype=torch.int64)
++        local_ids = torch.full((tokens, self.part_n_hash_cols), -1, dtype=torch.int64, device="cpu")
 +        present = max(0, min(self.part_n_hash_cols, self.n_hash_cols - self.head_start))
 +        if present:
 +            local_ids[:, :present] = indices[:, self.head_start:self.head_start + present].to("cpu", torch.int64)

@@ -1,18 +1,21 @@
 module v2.lens.undecidable_verdict_collapse
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.std.witness { Holds, Witness }
 import v2.extdeps.languages.dag {
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
+  DagCanonicalSymbolLiteral,
+  DagCanonicalStringLiteral,
   dag_canonical_literal_from_node,
   parse_production_emitted_identity_optional,
   qualified_name_from_module_node
 }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, list_tail, TailFound, TailAbsent }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -31,7 +34,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node {
   Atom,
@@ -43,10 +45,10 @@ import v2.std.node {
   Symbol,
   TypeNode,
   fold_node_topdown,
-  match_arm_body,
-  match_arm_pattern
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, find_core_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 
 // UNDECIDABLE-VERDICT ROUTING WALL (DESIGN §5 typed-and-located diagnostic; recurring failure mode
@@ -123,6 +125,8 @@ fn body_is_decidable_literal(body: Node) -> Bool {
   match dag_canonical_literal_from_node(node: body) {
     Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => true
     Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
+    Accepted { value: DagCanonicalSymbolLiteral { symbol: _ }, diagnostics: _ } => true
+    Accepted { value: DagCanonicalStringLiteral { value: _ }, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
@@ -190,11 +194,11 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
 }
 
 fn arm_collapse_findings(arm: Node) -> List<Diagnostic> {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => []
     Accepted { value: pat, diagnostics: _ } =>
       if pattern_names_undecidable_verdict(pattern: pat) {
-        match find_named_child(root: arm, name: match_arm_body) {
+        match find_core_child(root: arm, marker: MatchArmBodyEdge) {
           Rejected { diagnostics: _ } => []
           Accepted { value: body, diagnostics: _ } =>
             if body_is_decidable_literal(body: body) {

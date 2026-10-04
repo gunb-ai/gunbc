@@ -22,6 +22,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_authority {
   roadmap_authority_projection,
+  roadmap_acceptance_event_history_load,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected,
   RoadmapAuthorityProjectionRefused,
@@ -119,6 +120,8 @@ fn fixture_node(id: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -478,22 +481,26 @@ test fn witness_dependency_cycle_refuses() -> Bool {
 
 test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   let a = fixture_node(id: "projection-a")
-  let observed: CycleTimeObservation = first(fixture_observations())
-  match schedule_forecast(
-    nodes: [a],
-    sizings: fixture_sizings(ns: [a]),
-    edges: [],
-    observations: fixture_observations(),
-    history_refusals: [],
-    population_exclusions: [],
-    assumptions: assumptions(),
-    anchor: anchor(),
-  ) {
-    ScheduleForecastRefused { refusals: _ } => false
-    ScheduleForecastKnown { forecast } => {
-      let projected: ScheduleForecast = forecast
-      millisecond_count(m: observed.cycle_time) == 10
-        && projected.anchor.observed_at == anchor().observed_at
+  match first(fixture_observations()) {
+    Absent => false
+    Present { value: observed } => {
+      match schedule_forecast(
+        nodes: [a],
+        sizings: fixture_sizings(ns: [a]),
+        edges: [],
+        observations: fixture_observations(),
+        history_refusals: [],
+        population_exclusions: [],
+        assumptions: assumptions(),
+        anchor: anchor(),
+      ) {
+        ScheduleForecastRefused { refusals: _ } => false
+        ScheduleForecastKnown { forecast } => {
+          let projected: ScheduleForecast = forecast
+          millisecond_count(m: observed.cycle_time) == 10
+            && projected.anchor.observed_at == anchor().observed_at
+        }
+      }
     }
   }
 }
@@ -627,7 +634,7 @@ test fn witness_an_extra_unsized_payload_is_not_hidden_by_a_correct_one() -> Boo
 // so the "cheaper" form would pay a fold the floor was giving this claim for free. The instrument
 // that decides this is the floor's own required_floor_claim_cost receipt, not claim_batch.
 test fn witness_live_graph_refuses_every_node_as_unsized_while_the_deriver_is_a_stub() -> Bool {
-  let plan = roadmap_authority_projection()
+  let plan = roadmap_authority_projection(history: roadmap_acceptance_event_history_load())
   let expected = active_node_ids_for_plan(plan: plan)
   count(expected) > 0
     && match roadmap_schedule_forecast_over(plan: plan, assumptions: assumptions(), anchor: anchor()) {

@@ -38,14 +38,14 @@ data ip_show_ipv4_family_flag: NonEmptyStr = "-4"
 
 fn ip_addr_show_command(device: String) -> ArgvCommand {
   argv_command(
-    program: ip_program,
+    program: ip_program(),
     arguments: [ip_show_oneline_flag as String, ip_show_ipv4_family_flag as String, "addr", "show", "dev", device],
   )
 }
 
 fn ip_route_show_command(device: String) -> ArgvCommand {
   argv_command(
-    program: ip_program,
+    program: ip_program(),
     arguments: [ip_show_oneline_flag as String, ip_show_ipv4_family_flag as String, "route", "show", "dev", device],
   )
 }

@@ -4,7 +4,6 @@
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::Bool;
-use crate::std_types::Bool::*;
 pub use crate::v1_compiler_emit_core_support::{is_leaf_type_item, is_type_def_item};
 pub use crate::v1_compiler_emit_python::emit_py_resource_def;
 pub use crate::v1_compiler_infer_env::empty_type_env;
@@ -48,6 +47,7 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -74,6 +74,7 @@ pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
         declaration_marker: DeclarationMarker::Unmarked,
+        declaration: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

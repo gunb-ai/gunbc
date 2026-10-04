@@ -61,7 +61,7 @@ fn planted_oid(hex: String) -> GitObjectId {
 
 data planted_target_generation_sha: String = "1111111111111111111111111111111111111111"
 
-fn planted_diff_window() -> GitDiffWindowObservation {
+fn planted_diff_window() -> GitDiffWindowObservation? {
   Present {
     value: GitDiffWindowObserved {
       window: git_exact_diff_window_for_verification(

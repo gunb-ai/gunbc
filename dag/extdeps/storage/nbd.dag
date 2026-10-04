@@ -1,5 +1,7 @@
 module extdeps.storage.nbd
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.dissolution { DissolutionCondition, dissolution_description, retires_dissolution }
 import std.decl_ref { decl_ref }
 
@@ -60,11 +62,11 @@ fn nbd_server_config_text(export: NbdExport) -> String {
 // This repository has read neither filesystem. An absolute path for either would be a guess whose
 // failure mode is a hard spawn error on hardware nobody is watching, so the spelling stays exactly
 // what the call sites used before this conversion and the not-knowing stays visible.
-data nbd_server_program: NonEmptyStr = "nbd-server"
-data nbd_client_program: NonEmptyStr = "nbd-client"
+fn nbd_server_program() -> ProgramIdentity = uncataloged_program(invocation: "nbd-server")
+fn nbd_client_program() -> ProgramIdentity = uncataloged_program(invocation: "nbd-client")
 
 fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nbd_server_program, arguments: ["-C", config_path as String])
+  argv_command(program: nbd_server_program(), arguments: ["-C", config_path as String])
 }
 
 type NbdClientAttach {
@@ -76,7 +78,7 @@ type NbdClientAttach {
 
 fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
   argv_command(
-    program: nbd_client_program,
+    program: nbd_client_program(),
     arguments: [
       "-N", attach.export_name as String,
       attach.server as String,
@@ -87,5 +89,5 @@ fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {
 }
 
 fn nbd_client_disconnect_command(device: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nbd_client_program, arguments: ["-d", device as String])
+  argv_command(program: nbd_client_program(), arguments: ["-d", device as String])
 }

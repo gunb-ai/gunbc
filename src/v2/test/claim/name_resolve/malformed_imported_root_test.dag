@@ -10,12 +10,13 @@ import v2.compiler.name_resolve {
   admit_import_entry
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_record_declarations}
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
-  dag_named_edge
+  dag_named_edge,
+  dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
@@ -38,12 +39,10 @@ fn malformed_root_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: malformed_qn_node()
       ),
       Edge {
@@ -64,7 +63,7 @@ fn malformed_entry_name() -> QualifiedName {
 }
 
 fn roots_with_malformed_entry() -> Outcome<FreeMonoid<NormalizedTree>> {
-  bind_outcome(o: admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), test_markers: test_marker_channel_empty(), root: malformed_root_node(), diagnostics: None), f: fn(a) {
+  bind_outcome(o: admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: malformed_root_node(), diagnostics: None), f: fn(a) {
     outcome_accepted(value: Cons { head: a, tail: Empty })
   })
 }

@@ -100,19 +100,74 @@ fn review_conclusion_text(c: ReviewConclusion) -> String {
 }
 
 fn premise_withholds_change(p: ReviewPremise) -> Bool {
-  match p { CapabilityWithheld { capability: ChangeTheTree } => true  _ => false }
+  match p {
+    ReviewerOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: c } => match c { ReadTheTree => false  RunTheAcceptanceCommand => false  ChangeTheTree => true  CommitOrPublish => false }
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
 }
 fn premise_holds_acceptance(p: ReviewPremise) -> Bool {
-  match p { CapabilityHeld { capability: RunTheAcceptanceCommand } => true  _ => false }
+  match p {
+    ReviewerOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: _ } => false
+    CapabilityHeld { capability: c } => match c { ReadTheTree => false  RunTheAcceptanceCommand => true  ChangeTheTree => false  CommitOrPublish => false }
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
 }
 fn premise_offers_diff(p: ReviewPremise) -> Bool {
-  match p { EvidenceOffered { source: TheDiffRange } => true  _ => false }
+  match p {
+    ReviewerOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: s } => match s { TheDiffRange => true  TheVerificationReceipt => false  TheAcceptanceCommand => false  TheGoalStatement => false  TheOneCriterion => false }
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
 }
 fn premise_offers_goal(p: ReviewPremise) -> Bool {
-  match p { EvidenceOffered { source: TheGoalStatement } => true  _ => false }
+  match p {
+    ReviewerOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: s } => match s { TheDiffRange => false  TheVerificationReceipt => false  TheAcceptanceCommand => false  TheGoalStatement => true  TheOneCriterion => false }
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
 }
 fn premise_requires_verdict_file(p: ReviewPremise) -> Bool {
-  match p { VerdictFileAt { path: _ } => true  _ => false }
+  match p {
+    ReviewerOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => true
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
 }
 
 fn any_review_premise(rows: List<ReviewGroundedPremise>, f: fn(ReviewPremise) -> Bool) -> Bool {

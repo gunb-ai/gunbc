@@ -12,8 +12,7 @@ import extdeps.vllm.environment {
   VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_assignment_wire,
 }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
-import gunbc.spark.serving_arm { glm53_derived_row, runtime_artifact_wire }
-import gunbc.spark.runtime_architecture_registry_reading { glm53_derived_observed_config_id }
+import gunbc.spark.serving_arm { glm53_derived_kvplan_v2_row, glm53_derived_kvplan_v2_tag, runtime_artifact_wire }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
 import gunbc.spark.glm_group_b_launch {
   glm_group_b_engine_ready_timeout, glm_group_b_sparse_indexer_max_logits,
@@ -23,6 +22,7 @@ import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_launch_lines, glm_native_unit_exec_words, glm_native_all_unit_renders,
 }
+import std.algebra { Cons, Empty }
 
 // ── ONE GROUP-B LAUNCH SPECIFICATION, AND THE PROJECTIONS THAT MAY NOT DRIFT FROM IT ──────────
 //
@@ -151,16 +151,22 @@ test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
 // and nothing in the corpus could have said so.
 //
 // SO THE CLAIM IS AGAINST THE ROW, NOT AGAINST "SOME DIGEST". Re-pointing the plan's runtime at any
-// other row turns this red, as does a pin that stops matching the config id the registry reading took
-// off the answering incarnation. It also pins the FORM: neither image was ever pushed, RepoDigests is
-// empty on both, and only a bare content id resolves on these hosts -- a `repo@sha256:` reference
-// would fail every rank at pull, so the absence of an `@` is asserted rather than assumed.
+// other row turns this red. Since 2026-09-26 that row is glm53_derived_kvplan_v2_row: the derived
+// build plus the v2 KV allocation-plan layer, built PER HOST from one patch, so there is no single
+// content id and the pin is the tag every host resolves locally. The form is still pinned: a
+// `repo@sha256:` reference resolves on none of these hosts (nothing was pushed), so the absence of an
+// `@` is asserted rather than assumed.
+//
+// THE ROW ADMITS BECAUSE A REGISTRY READING EXISTS INSIDE THE TAG
+// (gunbc.spark.runtime_architecture_registry_reading glm53_derived_kvplan_v2_registry_reading,
+// 2026-10-01). Without it the plan refuses (gunbc.spark.serving_arm serving_arm_admits, "no registry
+// reading exists") and no launch line renders, rather than rendering the base image the fleet stopped
+// running -- so removing that reading turns this red.
 test fn w_every_rank_launches_one_image() -> Bool {
   let lines = glm_native_launch_lines()
   count(lines) == 4
     && all(lines, l => (l.image_reference as String) == (l.container.image as String))
-    && all(lines, l => (l.image_reference as String) == (runtime_artifact_wire(a: glm53_derived_row.artifact) as String))
-    && all(lines, l => (l.image_reference as String) == (glm53_derived_observed_config_id as String))
+    && all(lines, l => (l.image_reference as String) == (runtime_artifact_wire(a: glm53_derived_kvplan_v2_row.artifact) as String))
+    && all(lines, l => (l.image_reference as String) == (glm53_derived_kvplan_v2_tag as String))
     && all(lines, l => !string_contains(s: l.image_reference as String, pattern: "@"))
-    && all(lines, l => string_contains(s: l.image_reference as String, pattern: "sha256:"))
 }

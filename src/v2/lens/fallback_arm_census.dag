@@ -1,5 +1,6 @@
 module v2.lens.fallback_arm_census
 
+import std.types { List }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding
@@ -7,8 +8,7 @@ import v2.lens.common.construction_justification {
 import std.disposition { RealizationDispatch }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.algebra { fold_list, list_tail, length, TailFound, TailAbsent }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.logic { Bool }
+import v2.std.collection { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.node {
@@ -17,10 +17,10 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  match_arm_body,
-  match_arm_pattern
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
 }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { node_positional_child_targets, find_core_child }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag {
   dag_match_arm_node,
@@ -123,9 +123,9 @@ fn classify_planted_arm(
   scrutinee_closed_total: Bool,
   interim_declared: Bool
 ) -> FallbackArmClass {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Accepted { value: pat_node, diagnostics: _ } =>
-      match find_named_child(root: arm, name: match_arm_body) {
+      match find_core_child(root: arm, marker: MatchArmBodyEdge) {
         Accepted { value: body_node, diagnostics: _ } =>
           classify_fallback_arm(
             input: FallbackArmClassifyInput {
@@ -317,7 +317,6 @@ data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInv
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/v1_compiler_runtime_rust.rs", disposition: LegitimateConstant { reason: "runtime host glue; no .dag twin yet" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/std_effects.rs", disposition: ParityWitnessed { precedent: "effect_stream mirror" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/memory_governor.rs", disposition: LegitimateConstant { reason: "host memory policy constants" } },
-  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/derived_realization_schedule.rs", disposition: LegitimateConstant { reason: "derived realization schedule bridge" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_batch.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_executor.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/auth_declared_but_unwired_witness.rs", disposition: LegitimateConstant { reason: "witness binary; env-var fallback RED controls" } }

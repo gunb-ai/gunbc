@@ -111,6 +111,7 @@ import gunbc.compiler_frontend_program_status {
   ElseLessIfStatementLowering,
   WildcardMatchArmResolution,
   QualifiedFieldTypeVisibility,
+  UsesClauseCarrier,
   PrerequisiteDelivered,
   PrerequisiteOutstanding,
   xl2_prerequisites,
@@ -697,8 +698,8 @@ fn xl2_label_is(p: Xl2Prerequisite, want: Xl2Prerequisite) -> Bool {
   xl2_prerequisite_label(p: p) == xl2_prerequisite_label(p: want)
 }
 
-test fn xl2_prerequisites_partition_into_eleven_delivered_and_eight_outstanding() -> Bool {
-  count(xl2_prerequisites) == 19
+test fn xl2_prerequisites_partition_into_twenty_two_delivered_and_three_outstanding() -> Bool {
+  count(xl2_prerequisites) == 25
     && xl2_delivered_by(p: PlainCallArgumentReferenceVisibility, pr: 12108, merge_sha: "b0d307c31b")
     && xl2_delivered_by(p: BareFieldTypeVisibility, pr: 11574, merge_sha: "b705d17c45")
     && xl2_delivered_by(p: WholeTreeResolveCensus, pr: 11738, merge_sha: "c6b4e7ed2c")
@@ -709,34 +710,35 @@ test fn xl2_prerequisites_partition_into_eleven_delivered_and_eight_outstanding(
     && xl2_delivered_by(p: CompoundCallArgumentValueLowering, pr: 12173, merge_sha: "bc61f22b53")
     && xl2_delivered_by(p: IfArmCallArgumentReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
     && xl2_delivered_by(p: BlockStatementReferenceVisibility, pr: 12221, merge_sha: "e74e345a93")
-    && xl2_outstanding_tracked_by(p: OptionalAccessorLocatedRefusal, decl_name: "lowering_accessor_collapses_a_sequence_operand")
+    && xl2_delivered_by(p: OptionalAccessorLocatedRefusal, pr: 12780, merge_sha: "de028fb0ec")
     && xl2_outstanding_tracked_by(p: LoweringOccurrenceProjection, decl_name: "lowering_rebuilds_an_authored_atom_without_its_occurrence")
-    && xl2_outstanding_tracked_by(p: ListLiteralElementVisibility, decl_name: "list_literal_elements_dropped_at_v2_body_lowering")
-    && xl2_outstanding_tracked_by(p: LambdaArgumentValueLowering, decl_name: "lambda_has_no_lowered_function_value_form")
-    && xl2_outstanding_tracked_by(p: CaretSymbolOperandLowering, decl_name: "caret_symbol_has_no_lowered_form")
-    && xl2_outstanding_tracked_by(p: AsCastOperandLowering, decl_name: "as_cast_has_no_lowered_form")
-    && xl2_outstanding_tracked_by(p: ElseLessIfStatementLowering, decl_name: "else_less_if_statement_has_no_lowered_form")
+    && xl2_delivered_by(p: ListLiteralElementVisibility, pr: 12208, merge_sha: "575fc486ad")
+    && xl2_delivered_by(p: LambdaArgumentValueLowering, pr: 12210, merge_sha: "c2c064faa0")
+    && xl2_delivered_by(p: CaretSymbolOperandLowering, pr: 12420, merge_sha: "aa3b461215")
+    && xl2_delivered_by(p: AsCastOperandLowering, pr: 12315, merge_sha: "696a77dee7")
+    && xl2_delivered_by(p: ElseLessIfStatementLowering, pr: 12713, merge_sha: "2e95e66d25")
+    && xl2_outstanding_tracked_by(p: ServiceModuleLowering, decl_name: "service_interface_member_has_no_carrier")
     && xl2_delivered_by(p: WildcardMatchArmResolution, pr: 12297, merge_sha: "0579afae7f")
-    && xl2_outstanding_tracked_by(p: QualifiedFieldTypeVisibility, decl_name: "a_qualified_field_type_mention_is_absent_from_the_census_today")
-    && count(xl2_prerequisites_outstanding()) == 8
+    && xl2_delivered_by(p: QualifiedFieldTypeVisibility, pr: 12033, merge_sha: "10e01b1169")
+    && xl2_delivered_by(p: MatchEveryArmLowered, pr: 12383, merge_sha: "8ebd8b671d")
+    && xl2_delivered_by(p: EnclosingExpressionLoweredWhole, pr: 12436, merge_sha: "d28bf20f0e")
+    && xl2_delivered_by(p: DataInitializerMatchScrutineeLowering, pr: 12510, merge_sha: "b768b0f431")
+    && xl2_delivered_by(p: MatchArmStatementBodyLowering, pr: 12510, merge_sha: "b768b0f431")
+    && xl2_outstanding_tracked_by(p: UsesClauseCarrier, decl_name: "uses_clause_has_no_carrier")
+    && count(xl2_prerequisites_outstanding()) == 3
     && all(xl2_prerequisites_outstanding(),
-         p => xl2_label_is(p: p, want: OptionalAccessorLocatedRefusal)
-           || xl2_label_is(p: p, want: LoweringOccurrenceProjection)
-           || xl2_label_is(p: p, want: ListLiteralElementVisibility)
-           || xl2_label_is(p: p, want: LambdaArgumentValueLowering)
-           || xl2_label_is(p: p, want: CaretSymbolOperandLowering)
-           || xl2_label_is(p: p, want: AsCastOperandLowering)
-           || xl2_label_is(p: p, want: ElseLessIfStatementLowering)
-           || xl2_label_is(p: p, want: QualifiedFieldTypeVisibility))
+         p => xl2_label_is(p: p, want: LoweringOccurrenceProjection)
+           || xl2_label_is(p: p, want: ServiceModuleLowering)
+           || xl2_label_is(p: p, want: UsesClauseCarrier))
     && all(xl2_prerequisites,
          p => count(xl2_prerequisites |> filter(q => xl2_prerequisite_label(p: q) == xl2_prerequisite_label(p: p))) == 1)
 }
 
 // THE INVARIANT THE PARTITION MUST NOT MOVE: prerequisites are necessary, not sufficient, so
-// XL-2 stays NotDerivable and the producer literal stays Unavailable with ten of eighteen delivered
-// -- and would stay so with eighteen of eighteen, because the producer is its own deliverable.
+// XL-2 stays NotDerivable and the producer literal stays Unavailable with twenty-two of twenty-five delivered
+// -- and would stay so with twenty-five of twenty-five, because the producer is its own deliverable.
 test fn xl2_stays_not_derivable_with_its_prerequisites_mostly_delivered() -> Bool {
-  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 10
+  count(xl2_prerequisites |> filter(p => xl2_prerequisite_is_delivered(p: p))) == 22
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL2RootDeletionRehearsal))
     && match rehearsal_producer_standing() {
          RehearsalProducerUnavailable { why: _, cause: _ } => true

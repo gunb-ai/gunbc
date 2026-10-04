@@ -1,6 +1,8 @@
 module v2.test.claim.type_param_binder_frame
 
-import v2.std.compilers.body_lowering { declared_signature }
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.std.arrow_signature { declared_signature }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -11,7 +13,6 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.compiler.emit_produced { emit_produced_decl }
 import v2.compiler.infer { infer }
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
@@ -20,7 +21,7 @@ import v2.compiler.translate { translate_type_expression_project }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.communication.medium { Medium }
-import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list }
+import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list, binder_edge }
 import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
@@ -31,20 +32,24 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  TypeParamsEdge,
+  core_edge_label,
 }
 import v2.std.text { String }
 import v2.std.optional { Absent, Present }
 import v2.std.type_binder {
-  GenericOpaqueTypeDecl,
-  GenericTypeAlias,
+  type_binder_set_children,
+  OpaqueTypeDecl,
+  TypeAlias,
   GenericTypeDecl,
   PlainTypeDecl,
   type_alias_wrapper,
@@ -53,7 +58,6 @@ import v2.std.type_binder {
   type_decl_wrapper,
   type_opaque_wrapper,
   type_param_names,
-  type_params_marker
 }
 import v2.compiler.symbol_index_fill { symbol_index_declared }
 
@@ -85,7 +89,7 @@ data tpb_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/type_param_binder_frame_pilot.dag"
 }
 
-fn tpb_assemble(src: String) -> Outcome<Node> {
+fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
@@ -107,14 +111,14 @@ fn tpb_assemble(src: String) -> Outcome<Node> {
 // Each tpb_* specimen below is nullary and pure over an inline source -- Nodes and located
 // diagnostics, no closure -- and is enrolled in v2.workflow.floor_pure_producer_share, so
 // preparation runs the real route once per specimen and the rows read it.
-fn tpb_accepts(o: Outcome<Node>) -> Bool {
+fn tpb_accepts<T>(o: Outcome<T>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn tpb_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+fn tpb_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
@@ -122,11 +126,11 @@ fn tpb_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
 }
 
 // The declared type-parameter names of every Arrow in the resolved tree, in walk order.
-fn tpb_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
+fn tpb_type_param_rosters(o: Outcome<ResolvedTree>) -> List<List<Symbol>> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } =>
             if count(type_param_names(n: m)) == 0 { acc } else { concat(acc, [type_param_names(n: m)]) }
@@ -136,35 +140,35 @@ fn tpb_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
   }
 }
 
-fn tpb_identity() -> Outcome<Node> {
+fn tpb_identity() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n")
 }
 
-fn tpb_colliding() -> Outcome<Node> {
+fn tpb_colliding() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype T = Int\n\nfn f<T>(x: T) -> T { x }\n")
 }
 
-fn tpb_used_outside() -> Outcome<Node> {
+fn tpb_used_outside() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn h(y: T) -> Int { 1 }\n")
 }
 
-fn tpb_same_name_twice() -> Outcome<Node> {
+fn tpb_same_name_twice() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<T>(y: T) -> T { y }\n")
 }
 
-fn tpb_sibling_binder_leak() -> Outcome<Node> {
+fn tpb_sibling_binder_leak() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { x }\n\nfn g<U>(y: T) -> U { y }\n")
 }
 
-fn tpb_two_params() -> Outcome<Node> {
+fn tpb_two_params() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn first<A, B>(a: A, b: B) -> A { a }\n")
 }
 
-fn tpb_undeclared_type_name() -> Outcome<Node> {
+fn tpb_undeclared_type_name() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: V) -> T { x }\n")
 }
 
-fn tpb_non_generic() -> Outcome<Node> {
+fn tpb_non_generic() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int { x }\n")
 }
 
@@ -214,7 +218,7 @@ test fn tpb_non_generic_fn_carries_no_type_params() -> Bool {
   tpb_accepts(o: tpb_non_generic()) && tpb_type_param_rosters(o: tpb_non_generic()) == []
 }
 
-fn tpb_type_param_as_value() -> Outcome<Node> {
+fn tpb_type_param_as_value() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T { T }\n")
 }
 
@@ -245,7 +249,7 @@ test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
 // argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
 // claim that the real producer emits exactly this type-parameter edge shape.
 fn tpb_binder_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: name) }
+  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name) }
 }
 
 fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
@@ -258,19 +262,19 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge {
-        label: Named { name: type_params_marker() },
+        label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
-          children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
+          children: type_binder_set_children(binders: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) }), source: node_synthetic(kind: TypeNode { connective: Conj }, children: []))
         )
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: dag_int_literal_fixture_one() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
     ]
   )
 }
 
 fn tpb_formal(name: Symbol, declared: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: declared) }
+  binder_edge(name: name, type_node: dag_type_atom_node(identity: declared))
 }
 
 fn tpb_apply(arrow: Node, args: List<Node>) -> Node {
@@ -295,10 +299,10 @@ test fn tpb_generic_arrow_is_well_formed() -> Bool {
 // (9) An argument at a type-variable formal instantiates it. RED ON MAIN: judged as the ordinary
 // declared type `T`, the Int argument refused application_argument_does_not_inhabit.
 test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool {
-  match infer(tree: tpb_apply(
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
-  )) {
+  ))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -307,10 +311,10 @@ test fn tpb_argument_at_a_type_variable_instantiates_it() -> Bool {
 // (10) A type variable is ONE type per application: `f<T>(x: T, y: T)` applied to an Int and a
 // Bool refuses at the second argument. Without it, (9) could be green by admitting anything.
 test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool {
-  match infer(tree: tpb_apply(
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^T)]),
     args: [dag_int_literal_fixture_one(), tpb_true()]
-  )) {
+  ))) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
@@ -319,25 +323,44 @@ test fn tpb_second_occurrence_must_inhabit_the_instance() -> Bool {
 
 // (11) Distinct binders do not alias: `f<T, U>(x: T, y: U)` admits an Int and a Bool.
 test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
-  match infer(tree: tpb_apply(
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^T, ^U], formals: [tpb_formal(name: ^x, declared: ^T), tpb_formal(name: ^y, declared: ^U)]),
     args: [dag_int_literal_fixture_one(), tpb_true()]
-  )) {
+  ))) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as the
-// ordinary declared type, and the Int argument refuses.
+// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as an
+// ordinary declared type, never instantiating it. RE-STATED 2026-10-01 against gunbc#12566 (bisected:
+// green at its parent, red at it), which routes every declared position through
+// infer_declared_position_undecidable_reason: a declared atom that denotes no value type and is not
+// one of the callee's type variables is counted UndecidableFormalUnresolved on the Accepted path,
+// "never refused for the spelling and never admitted silently". So `T` no longer refuses the Int as
+// the structural atom `T`; the evidence that it was not taken as a type variable is that it was
+// judged at all -- an instantiated variable carries no undecidable advisory (the twin below).
 test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
-  match infer(tree: tpb_apply(
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
-  )) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+  ))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
+}
+
+// THE TWIN THAT MAKES (12) DISCRIMINATE: the same application with `T` declared as the callee's type
+// parameter instantiates it from the Int argument and carries no undecidable-formal advisory.
+test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  ))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved) == false
   }
 }
 
@@ -355,8 +378,8 @@ fn tpb_with_type_param(decl: Node) -> Node {
         target: node_synthetic(
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
-            label: Named { name: type_params_marker() },
-            target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+            label: core_edge_label(marker: TypeParamsEdge),
+            target: tpb_t_binders()
           }])
         )
       }])
@@ -409,11 +432,11 @@ test fn tpb_emitter_refuses_a_generic_arrow() -> Bool {
 
 // The declared type-parameter names of every non-Arrow node in the resolved tree, in walk order:
 // on a type declaration, the member that carries them.
-fn tpb_member_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
+fn tpb_member_type_param_rosters(o: Outcome<ResolvedTree>) -> List<List<Symbol>> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => acc
           _ => if count(type_param_names(n: m)) == 0 { acc } else { concat(acc, [type_param_names(n: m)]) }
@@ -422,27 +445,27 @@ fn tpb_member_type_param_rosters(o: Outcome<Node>) -> List<List<Symbol>> {
   }
 }
 
-fn tpb_type_decl_coproduct() -> Outcome<Node> {
+fn tpb_type_decl_coproduct() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n")
 }
 
-fn tpb_type_decl_coproduct_colliding() -> Outcome<Node> {
+fn tpb_type_decl_coproduct_colliding() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype T = Int\n\ntype Box<T> = Full { value: T } | Empty\n")
 }
 
-fn tpb_type_decl_record() -> Outcome<Node> {
+fn tpb_type_decl_record() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype R<T> { f: T }\n")
 }
 
-fn tpb_type_decl_record_two() -> Outcome<Node> {
+fn tpb_type_decl_record_two() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Pair<A, B> { left: A, right: B }\n")
 }
 
-fn tpb_type_decl_leak() -> Outcome<Node> {
+fn tpb_type_decl_leak() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T } | Empty\n\ntype S { g: T }\n")
 }
 
-fn tpb_type_decl_non_generic() -> Outcome<Node> {
+fn tpb_type_decl_non_generic() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype B = Full { value: Int } | Empty\n")
 }
 
@@ -492,14 +515,14 @@ fn tpb_box_disj() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
-      Edge { label: Named { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
     ]
   )
 }
 
 fn tpb_t_binders() -> Node {
-  node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
+  node_synthetic(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: [tpb_binder_edge(name: ^T)], source: node_synthetic(kind: TypeNode { connective: Conj }, children: [])))
 }
 
 // The declaration target the real lowering writes (v2.std.type_binder type_decl_wrapper) for a
@@ -513,7 +536,7 @@ fn tpb_box_member(with_params: Bool) -> Node {
 fn tpb_box_member_mixed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(tpb_box_disj().children, [Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() }])
+    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() }])
   )
 }
 
@@ -526,8 +549,15 @@ fn tpb_type_decl_emit_generic() -> Outcome<Node> {
 }
 
 test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
-  tpb_accepts(o: tpb_type_decl_emit_twin())
-    && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
+  let accepted = match tpb_type_decl_emit_twin() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let refused = match tpb_type_decl_emit_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^translate_reason_generic_type_decl_not_rendered
+  }
+  accepted && refused
 }
 
 // A GENERIC DECLARATION'S BINDERS SIT BESIDE ITS MEMBER (v2.std.type_binder type_decl_wrapper), so a
@@ -540,19 +570,19 @@ test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
 
 // The member of the first generic type declaration in the resolved tree: the first non-Arrow node
 // carrying type binders is its wrapper, read through the one typed unwrap.
-fn tpb_generic_member(o: Outcome<Node>) -> List<Node> {
+fn tpb_generic_member(o: Outcome<ResolvedTree>) -> List<Node> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => acc
           _ =>
             if (count(acc) == 0) && (count(type_param_names(n: m)) > 0) {
               match type_decl_view(target: m) {
                 GenericTypeDecl { binders: _, member: member } => [member]
-                GenericTypeAlias { binders: _, aliased: _ } => acc
-                GenericOpaqueTypeDecl { binders: _ } => acc
+                TypeAlias { binders: _, aliased: _ } => acc
+                OpaqueTypeDecl { binders: _ } => acc
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -601,7 +631,8 @@ fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   )
 }
 
@@ -626,44 +657,44 @@ test fn tpb_semantic_decl_emitter_refuses_a_generic_member() -> Bool {
     && tpb_semantic_emit_generic_reason() == ^translate_reason_generic_type_decl_not_rendered
 }
 
-fn tpb_type_decl_generic_alias() -> Outcome<Node> {
+fn tpb_type_decl_generic_alias() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Id<T> = T\n")
 }
 
-fn tpb_type_decl_generic_alias_instantiation() -> Outcome<Node> {
+fn tpb_type_decl_generic_alias_instantiation() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Maybe<A> = Some { v: A } | None\n\ntype Box<T> = Maybe<T>\n")
 }
 
-fn tpb_type_decl_generic_alias_colliding() -> Outcome<Node> {
+fn tpb_type_decl_generic_alias_colliding() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype T = Int\n\ntype Id<T> = T\n")
 }
 
-fn tpb_type_decl_generic_alias_undeclared() -> Outcome<Node> {
+fn tpb_type_decl_generic_alias_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Id<T> = Q\n")
 }
 
-fn tpb_type_decl_generic_opaque() -> Outcome<Node> {
+fn tpb_type_decl_generic_opaque() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype W<bits>\n")
 }
 
-fn tpb_type_decl_generic_single_variant_after_separator() -> Outcome<Node> {
+fn tpb_type_decl_generic_single_variant_after_separator() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype X<T> =\n  | Only\n")
 }
 
-fn tpb_type_decl_plain_single_variant_after_separator() -> Outcome<Node> {
+fn tpb_type_decl_plain_single_variant_after_separator() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype S =\n  | Only\n")
 }
 
-fn tpb_type_decl_plain_single_alias() -> Outcome<Node> {
+fn tpb_type_decl_plain_single_alias() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype S = Int\n")
 }
 
 // Whether the resolved tree holds a Disj with exactly one arm, labelled `label`.
-fn tpb_has_one_arm_disj(o: Outcome<Node>, label: Symbol) -> Bool {
+fn tpb_has_one_arm_disj(o: Outcome<ResolvedTree>, label: Symbol) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: false, f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(acc, m) {
         acc || match m.kind {
           TypeNode { connective: Disj } =>
             (count(m.children) == 1) && (tpb_arm_labels(members: [m]) == [label])
@@ -674,19 +705,19 @@ fn tpb_has_one_arm_disj(o: Outcome<Node>, label: Symbol) -> Bool {
 }
 
 // The v2.std.type_binder view of every generic declaration target in the resolved tree, as a tag.
-fn tpb_generic_view_tags(o: Outcome<Node>) -> List<Symbol> {
+fn tpb_generic_view_tags(o: Outcome<ResolvedTree>) -> List<Symbol> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => acc
           _ =>
             if count(type_param_names(n: m)) > 0 {
               match type_decl_view(target: m) {
                 GenericTypeDecl { binders: _, member: _ } => concat(acc, [^view_generic_member])
-                GenericTypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
-                GenericOpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
+                TypeAlias { binders: _, aliased: _ } => concat(acc, [^view_generic_alias])
+                OpaqueTypeDecl { binders: _ } => concat(acc, [^view_generic_opaque])
                 PlainTypeDecl { member: _ } => acc
               }
             } else {
@@ -697,9 +728,10 @@ fn tpb_generic_view_tags(o: Outcome<Node>) -> List<Symbol> {
   }
 }
 
-// GENERIC ALIASES AND BODYLESS GENERICS (v2.compiler.body_lowering_fold body_lower_generic_eq_type_decl).
+// GENERIC ALIASES AND BODYLESS GENERICS (v2.compiler.body_lowering_fold body_lower_eq_type_decl).
 // RED BEFORE, MEASURED ON THE PRE-CHANGE TREE: (25) (25b) (25c) (27) refused
-// body_lowering_reason_generic_type_decl_member_uncarried -- the refusal nine corpus files took,
+// body_lowering_reason_generic_type_decl_member_uncarried (now body_lowering_reason_type_decl_member_uncarried,
+// since the arm serves plain declarations too) -- the refusal nine corpus files took,
 // v2.std.collection's `type List<T> = std.algebra.FreeMonoid<T>` among them. (26) refused with that same
 // reason, so it discriminates only beside (25). (28) is green before and after: the leading-`|` single
 // variant is a one-variant coproduct in v1, so carrying it as an alias would change its meaning.
@@ -785,15 +817,15 @@ test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() },
-      Edge { label: Named { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() },
+      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
     ]
   )
   !type_binder_labels_conform(root: stray)
     && type_binder_labels_conform(root: type_alias_wrapper(binders: tpb_t_binders(), aliased: dag_type_atom_node(identity: ^T)))
 }
 
-fn tpb_type_decl_nullary_tag() -> Outcome<Node> {
+fn tpb_type_decl_nullary_tag() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\ntype Tag<T> = A | B\n")
 }
 
@@ -816,3 +848,5 @@ test fn tpb_generic_nullary_coproduct_classifies_as_nullary() -> Bool {
   count(tpb_generic_member(o: tpb_type_decl_nullary_tag())) == 1
     && fold(tpb_generic_member(o: tpb_type_decl_nullary_tag()), init: true, f: fn(acc, m) { acc && tpb_member_is_nullary_enum(m: m) })
 }
+
+

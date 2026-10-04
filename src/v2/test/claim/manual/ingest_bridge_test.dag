@@ -1,5 +1,6 @@
 module v2.test.manual.ingest_bridge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -10,7 +11,8 @@ import v2.compiler.ingest {
   parse_tree_to_emitted_node,
   parse_tree_to_target_model_bridge
 }
-import v2.compiler.infer { canonical_grounding_for_node }
+import v2.compiler.infer { algebra_ref_is_grounded, canonical_grounding_for_node }
+import std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.compiler.translate { coerce_grounded_node }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.parse {
@@ -33,7 +35,6 @@ import v2.extdeps.languages.dag {
   dag_fidelity_quotient_node,
   dag_fixture_emitted_add_fn,
   dag_selection_policy_node,
-  dag_serialize_source_node,
   dag_source_text,
   dag_target_model,
   dag_lex
@@ -45,11 +46,10 @@ import v2.std.compilers.target_model {
 }
 import v2.std.coercion { Identity }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason, invariant_port_locus }
-import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -117,9 +117,9 @@ fn ingest_fixture_row_node(emitted: Node, spine_class: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^grammar_relation_field_emitted }, target: emitted },
+      Edge { label: Authored { name: ^grammar_relation_field_emitted }, target: emitted },
       Edge {
-        label: Named { name: ^grammar_relation_field_tokens },
+        label: Authored { name: ^grammar_relation_field_tokens },
         target: grammar_relation_tokens_node(
           tokens: Cons { head: spine_class, tail: Empty },
           token_to_node: grammar_concrete_fixed_token_node
@@ -134,11 +134,10 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
-      Edge { label: Named { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
-      Edge { label: Named { name: ^target_model_edge_translation_rules }, target: rules },
-      Edge { label: Named { name: ^target_model_edge_serialize_source }, target: dag_serialize_source_node() },
-      Edge { label: Named { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
+      Edge { label: Authored { name: ^target_model_edge_selection_policy }, target: dag_selection_policy_node() },
+      Edge { label: Authored { name: ^target_model_edge_declared_inhabitants }, target: dag_declared_inhabitants_root() },
+      Edge { label: Authored { name: ^target_model_edge_translation_rules }, target: rules },
+      Edge { label: Authored { name: ^target_model_edge_fidelity_quotient }, target: dag_fidelity_quotient_node() }
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -160,7 +159,7 @@ fn ingest_fixture_model(emitted: Node, spine_class: Symbol) -> TargetModel {
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Authored { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -171,8 +170,8 @@ fn ingest_fixture_model_ambiguous(emitted: Node, spine_class: Symbol) -> TargetM
   let rules = Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
-      Edge { label: Named { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
+      Edge { label: Authored { name: ^ingest_fixture_rule }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) },
+      Edge { label: Authored { name: ^ingest_fixture_rule_alt }, target: ingest_fixture_row_node(emitted: emitted, spine_class: spine_class) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -230,7 +229,7 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
 
 test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool {
   let source = dag_fixture_emitted_add_fn
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match canonical_grounding_for_node(tree: inferred, node: source) {
@@ -254,7 +253,7 @@ test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> 
 
 test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
   let source = ingest_unstamped_node()
-  match infer_and_discharge(tree: source) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: inferred, diagnostics: _ } =>
       match coerce_grounded_node(
@@ -264,6 +263,46 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
           emitted: dag_fixture_emitted_add_fn,
           spine_class: ^ingest_fixture_tok
         )
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } =>
+          diagnostics_fatal_reason(d: d) == ^infer_grounding_demanded_not_derived
+      }
+  }
+}
+
+// A KIND IS GROUNDED BY ITS DECLARED AUTHORITY (std.kind), so a roster member's derived type -- its
+// kind since gunbc#12290 -- passes v2.compiler.infer algebra_ref_is_grounded; any other bare atom does not.
+test fn a_kind_atom_algebra_is_grounded_holds() -> Bool {
+  algebra_ref_is_grounded(algebra: kind_node(kind: TypeDenotationKind))
+    && algebra_ref_is_grounded(algebra: kind_node(kind: TypeFactKind))
+}
+
+test fn a_non_kind_bare_atom_algebra_is_still_ungrounded_holds() -> Bool {
+  algebra_ref_is_grounded(algebra: Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }) == false
+}
+
+// THE DISCRIMINATING RED BESIDE THE ACCEPTING CONTROL ABOVE: a source that is NOT a roster member --
+// an atom no authority declares -- derives no grounding, so identity coercion still refuses at the
+// demand for one. Admitting a kind as grounded (v2.compiler.infer algebra_ref_is_grounded, after
+// gunbc#12290) must not admit this.
+test fn ingest_identity_coercion_refuses_an_unrostered_atom_source() -> Bool {
+  let source = Node {
+    kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match coerce_grounded_node(
+        source: source,
+        tree: inferred,
+        target: ingest_fixture_model(emitted: dag_fixture_emitted_add_fn, spine_class: ^ingest_fixture_tok)
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: d } =>

@@ -107,7 +107,7 @@ fn run(start_letter: String, end_letter: String, row: Int, cells: List<String>) 
   AppendCellRun { a1: span(start_letter: start_letter, end_letter: end_letter, row: row), cells: cells, columns: [] }
 }
 
-fn append(listing_id: String, sheet_row: Int, runs: List<AppendCellRun>) -> AppendListingRow {
+fn append_listing_row(listing_id: String, sheet_row: Int, runs: List<AppendCellRun>) -> AppendListingRow {
   AppendListingRow { listing_id: listing_id as NonEmptyStr, sheet_row: sheet_row, runs: runs }
 }
 
@@ -120,7 +120,7 @@ fn w_full_plan() -> TabBoundWritePlan {
   bound(
     tab: "Review",
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha"), patch(listing_id: "L2", letter: "B", row: 3, value: "beta")],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [
       run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"]),
       run(start_letter: "E", end_letter: "E", row: 4, cells: ["x"]),
     ])],
@@ -219,7 +219,7 @@ test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool {
   let b = bound(
     tab: "Review",
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma"])])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma"])])],
   )
   sole_refusal_tag(b: b) == "append:L3:A4:C4:width-2-of-3"
 }
@@ -228,7 +228,7 @@ test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
   let b = bound(
     tab: "Review",
     patches: [],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "B", row: 5, cells: ["L3", "gamma"])])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "B", row: 5, cells: ["L3", "gamma"])])],
   )
   sole_refusal_tag(b: b) == "append:L3:A5:B5:off-row-4"
 }
@@ -238,7 +238,7 @@ test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
   let b = bound(
     tab: "Review",
     patches: [],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [AppendCellRun { a1: two_rows, cells: ["L3", "gamma"], columns: [] }])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [AppendCellRun { a1: two_rows, cells: ["L3", "gamma"], columns: [] }])],
   )
   sole_refusal_tag(b: b) == "append:L3:A4:B5:not-one-row"
 }
@@ -273,7 +273,7 @@ test fn an_unencodable_title_is_refused_once_for_the_whole_plan() -> Bool {
   let b = bound(
     tab: "Bob's",
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha"), patch(listing_id: "L2", letter: "B", row: 3, value: "beta")],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
   )
   sole_refusal_tag(b: b) == "tab:Bob's"
 }
@@ -294,7 +294,7 @@ test fn lowering_refuses_an_append_below_row_one() -> Bool {
   let b = bound(
     tab: "Review",
     patches: [],
-    appends: [append(listing_id: "L3", sheet_row: 0, runs: [run(start_letter: "A", end_letter: "C", row: 0, cells: ["L3", "gamma", "Observed"])])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 0, runs: [run(start_letter: "A", end_letter: "C", row: 0, cells: ["L3", "gamma", "Observed"])])],
   )
   sole_refusal_tag(b: b) == "append:L3:A0:C0:row-below-origin"
 }
@@ -303,7 +303,7 @@ test fn a_malformed_patch_refuses_the_whole_plan_beside_a_good_append() -> Bool 
   let b = bound(
     tab: "Review",
     patches: [patch(listing_id: "L1", letter: "B", row: 0, value: "alpha")],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
   )
   match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: b) {
     BatchRequestBuilt { request: _ } => false
@@ -316,7 +316,7 @@ test fn lowering_reports_every_refusal_it_found() -> Bool {
   let b = bound(
     tab: "Review",
     patches: [],
-    appends: [append(listing_id: "L3", sheet_row: 4, runs: [
+    appends: [append_listing_row(listing_id: "L3", sheet_row: 4, runs: [
       run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3"]),
       run(start_letter: "E", end_letter: "E", row: 5, cells: ["x"]),
     ])],

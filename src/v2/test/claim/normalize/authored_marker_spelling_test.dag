@@ -1,0 +1,168 @@
+module v2.test.claim.normalize.authored_marker_spelling
+
+import std.types { List }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import std.algebra { Cons, Empty }
+import v2.extdeps.languages.dag { dag_canonical_symbols, dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, node_subtree_nodes, StructuralLabel }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// AUTHORED TEXT SPELLED LIKE A GRAMMAR MARKER IS NOT A MARKER.
+//
+// THE SUBJECT IS normalize over one module's source (tokenize -> parse -> normalize), the route every
+// real program takes. A lexeme-stamped terminal -- an ordinary identifier -- becomes an Atom whose
+// identity IS its authored text, so it can spell a structural marker's symbol. Two normalize passes
+// recognised markers by BARE atom identity and were fooled
+// (gunbc.recurring_failure_mode authored_lexeme_read_as_a_grammar_marker):
+//   - sugar: v2.compiler.normalize normalize_sugar_key_optional keyed a rule on ANY atom, so
+//     `data x: Int = dag_c3_surface_sugar_fn` was SILENTLY rewritten into an empty Arrow (_operation
+//     likewise; _service into an empty Conj; _type refused sugar_reason_malformed);
+//   - graft: v2.compiler.namespace_graft counted every atom spelled dag_surface_top_level_item to
+//     detect a lost declaration, so an identifier of that spelling in a declaration body refused the
+//     module as namespace_graft_body_dissolved_refused (measured base-vs-head: a declaration NAMED so
+//     never reached the count, so it would discriminate nothing).
+// Both now read the marker through its emission (v2.extdeps.languages.dag
+// parse_production_emitted_identity_optional). Each module below must normalize ACCEPTED with the
+// authored atom still in the tree; a pass that re-keys on bare identity reds the matching row.
+// Real markers still work: the graft's own loss refusal stays pinned by
+// v2.test.claim.namespace_graft.graft_shape namespace_graft_lost_top_level_item_without_unit_refuses_RED.
+data sugar_fn_spelling_source: String = "module chunk\n\ndata x: Int = dag_c3_surface_sugar_fn\n\nfn f() -> Int {\n  1\n}\n"
+
+data sugar_operation_spelling_source: String = "module chunk\n\ndata x: Int = dag_c3_surface_sugar_operation\n\nfn f() -> Int {\n  1\n}\n"
+
+data sugar_service_spelling_source: String = "module chunk\n\ndata x: Int = dag_c3_surface_sugar_service\n\nfn f() -> Int {\n  1\n}\n"
+
+data sugar_type_spelling_source: String = "module chunk\n\ndata x: Int = dag_c3_surface_sugar_type\n\nfn f() -> Int {\n  1\n}\n"
+
+data top_level_item_spelling_source: String = "module chunk\n\ndata x: Int = dag_surface_top_level_item\n\nfn f() -> Int {\n  1\n}\n"
+
+// carries_authored_atom: the authored spelling survives, as an atom (a value) or as a
+// declaration's member name.
+type MarkerSpellingVerdict {
+  outcome: Symbol
+  carries_authored_atom: Bool
+}
+
+fn ams_carries(nodes: List<Node>, identity: Symbol) -> Bool {
+  match nodes {
+    Empty => false
+    Cons { head: n, tail: rest } =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } => (id == identity) || ams_carries(nodes: rest, identity: identity)
+        Absent => ams_carries(nodes: rest, identity: identity)
+      }
+  }
+}
+
+fn ams_edge_named(e: Edge, name: Symbol) -> Bool {
+  match e.label {
+    StructuralLabel { label: _ } => false
+    Authored { name: n } => n == name
+    Positional => false
+  }
+}
+
+fn ams_node_names_member(n: Node, name: Symbol) -> Bool {
+  ams_edges_name(edges: n.children, name: name)
+}
+
+fn ams_edges_name(edges: List<Edge>, name: Symbol) -> Bool {
+  match edges {
+    Empty => false
+    Cons { head: e, tail: rest } => ams_edge_named(e: e, name: name) || ams_edges_name(edges: rest, name: name)
+  }
+}
+
+// After the graft a declaration's NAME is the label of its member edge, not an atom.
+fn ams_names_member(nodes: List<Node>, name: Symbol) -> Bool {
+  match nodes {
+    Empty => false
+    Cons { head: n, tail: rest } => ams_node_names_member(n: n, name: name) || ams_names_member(nodes: rest, name: name)
+  }
+}
+
+fn ams_verdict(src: String, authored: Symbol) -> MarkerSpellingVerdict {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^authored_marker_spelling_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => MarkerSpellingVerdict { outcome: ^ams_tokenize_refused, carries_authored_atom: false }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => MarkerSpellingVerdict { outcome: ^ams_parse_refused, carries_authored_atom: false }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } =>
+              MarkerSpellingVerdict { outcome: diagnostics_fatal_reason(d: d), carries_authored_atom: false }
+            Accepted { value: normalized, diagnostics: _ } =>
+              MarkerSpellingVerdict {
+                outcome: ^ams_accepted,
+                carries_authored_atom: ams_carries(nodes: node_subtree_nodes(root: normalized.root), identity: authored)
+                  || ams_names_member(nodes: node_subtree_nodes(root: normalized.root), name: authored)
+              }
+          }
+      }
+  }
+}
+
+// ONE PRODUCER, EVERY VERDICT: each fixture is a full front-end run, computed once here and read by
+// each claim; enrolled warm in v2.workflow.floor_pure_producer_share.
+type MarkerSpellingVerdicts {
+  sugar_fn: MarkerSpellingVerdict
+  sugar_operation: MarkerSpellingVerdict
+  sugar_service: MarkerSpellingVerdict
+  sugar_type: MarkerSpellingVerdict
+  top_level_item: MarkerSpellingVerdict
+}
+
+fn ams_verdicts() -> MarkerSpellingVerdicts {
+  MarkerSpellingVerdicts {
+    sugar_fn: ams_verdict(src: sugar_fn_spelling_source, authored: ^dag_c3_surface_sugar_fn),
+    sugar_operation: ams_verdict(src: sugar_operation_spelling_source, authored: ^dag_c3_surface_sugar_operation),
+    sugar_service: ams_verdict(src: sugar_service_spelling_source, authored: ^dag_c3_surface_sugar_service),
+    sugar_type: ams_verdict(src: sugar_type_spelling_source, authored: ^dag_c3_surface_sugar_type),
+    top_level_item: ams_verdict(src: top_level_item_spelling_source, authored: ^dag_surface_top_level_item)
+  }
+}
+
+fn stays_authored(v: MarkerSpellingVerdict) -> Bool {
+  (v.outcome == ^ams_accepted) && v.carries_authored_atom
+}
+
+// THE HEADLINE: the silent one. RED before this change: the identifier became an empty Arrow, so
+// the module was ACCEPTED without the atom.
+test fn an_identifier_spelled_like_the_fn_sugar_marker_stays_an_identifier() -> Bool {
+  stays_authored(v: ams_verdicts().sugar_fn)
+}
+
+test fn an_identifier_spelled_like_the_operation_sugar_marker_stays_an_identifier() -> Bool {
+  stays_authored(v: ams_verdicts().sugar_operation)
+}
+
+test fn an_identifier_spelled_like_the_service_sugar_marker_stays_an_identifier() -> Bool {
+  stays_authored(v: ams_verdicts().sugar_service)
+}
+
+test fn an_identifier_spelled_like_the_type_sugar_marker_stays_an_identifier() -> Bool {
+  stays_authored(v: ams_verdicts().sugar_type)
+}
+
+test fn an_identifier_spelled_like_the_top_level_item_marker_is_not_counted_as_one() -> Bool {
+  stays_authored(v: ams_verdicts().top_level_item)
+}
+
+// THE SAME SPELLINGS ARE NOT CANONICAL NAMES EITHER. The language model's prelude used to list the four
+// sugar symbols as canonical, so an identifier spelled that way would pass resolve as a known name
+// instead of refusing as unresolved. The prelude now holds only the lex token classes. RED if the
+// sugar symbols are put back in dag_canonical_symbols; the token class keeps the check from passing
+// vacuously.
+test fn the_sugar_marker_spellings_are_not_canonical_symbols() -> Bool {
+  !dag_canonical_symbols().member(^dag_c3_surface_sugar_fn)
+    && !dag_canonical_symbols().member(^dag_c3_surface_sugar_service)
+    && !dag_canonical_symbols().member(^dag_c3_surface_sugar_type)
+    && !dag_canonical_symbols().member(^dag_c3_surface_sugar_operation)
+    && dag_canonical_symbols().member(^dag_token_ident)
+}

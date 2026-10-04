@@ -4,8 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Edge, Named, Node, TypeNode, node_subtree_nodes }
+import v2.std.node { Conj, Edge, Authored, Node, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   declaration_reference_node,
@@ -73,7 +72,7 @@ test fn declaration_reference_identifier_labelled_wrapper_reads_as_no_reference(
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
-          label: Named { name: ^declaration_reference },
+          label: Authored { name: ^declaration_reference },
           target: qualified_name_spine_node(
             qn: qualified_name_from_dotted_string(dotted: "v2.test.drm_provider.DrmDeclared"),
             occurrence_id: OccurrenceSynthetic

@@ -1,0 +1,61 @@
+module test.claim.install_media_remaster_grub_cmdline_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_with_cmdline }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64_grub_cfg }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_pinned_grub_cmdline, mtcollins1_census_grub_cmdline }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DIFFERENTIAL CONTROL FOR THE grub.cfg INSERTION. The pure fold replaced a GNU sed call whose
+// expression was s|\(linux[[:space:]].*\) ---|\1 CMDLINE ---|g, behind a fixed-string grep probe.
+// Each expected output below is what GNU sed 4.9 WROTE when run with that exact expression over the
+// input beside it (2026-09-28, recorded by hand once and cited by digest): oracle bytes from the real
+// tool, not text derived from the fold.
+//   stock_grub_cfg   /boot/grub/grub.cfg of ubuntu-24.04.3-live-server-arm64.iso (sha256 2ee2163c...),
+//                    sha256 e1280b6cab9d57cf5a1e3b67153164cda0f730f85ebdcda14eda629995ecafe7
+//   sed_pinned       sed over it with the pinned census cmdline,
+//                    sha256 b668b06f6ab19436c00aca5e29f86760f1561413ef0f003b12bd2d3bc685b684
+//   sed_current      sed over it with the current (module-identity) census cmdline,
+//                    sha256 343589819b8844c249b3db2257bd0ec4dc22ffd7f7c93b2a40941b4c6c023c2b
+//   edge_cfg         designed lines: a second " ---" (greedy: the LAST one), a tab after "linux",
+//                    "linuxefi" (no whitespace: not matched), "linux ---" (no room for [[:space:]]
+//                    and " ---": not matched), "linux  ---". sha256 3c53fc9a39347e7c...
+//   sed_edge         sed over it with the pinned cmdline. sha256 1f88cf47ccd43fe6...
+// Both census cmdlines carry ";" and double quotes; they reach the output as data. The vertical-tab
+// and form-feed members of [[:space:]] have no fixture: this corpus has no string escape for them.
+
+// The input is the artifact row's own member, not a second copy of it.
+data stock_grub_cfg: String = noble_numbat_2404_3_live_server_arm64_grub_cfg.content
+
+data sed_pinned: String = "set timeout=30\n\nloadfont unicode\n\nset menu_color_normal=white/black\nset menu_color_highlight=black/light-gray\n\nmenuentry \"Try or Install Ubuntu Server\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/vmlinuz  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 --- console=tty0\n\tinitrd\t/casper/initrd\n\}\nmenuentry \"Ubuntu Server with the HWE kernel\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/hwe-vmlinuz  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 --- console=tty0\n\tinitrd\t/casper/hwe-initrd\n\}\nmenuentry 'Boot from next volume' \{\n\texit 1\n\}\nmenuentry 'UEFI Firmware Settings' \{\n\tfwsetup\n\}\n"
+
+data sed_current: String = "set timeout=30\n\nloadfont unicode\n\nset menu_color_normal=white/black\nset menu_color_highlight=black/light-gray\n\nmenuentry \"Try or Install Ubuntu Server\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/vmlinuz  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 KMOD_LOG=info udev.log_level=debug SYSTEMD_LOG_TARGET=kmsg printk.devkmsg=on --- console=tty0\n\tinitrd\t/casper/initrd\n\}\nmenuentry \"Ubuntu Server with the HWE kernel\" \{\n\tset gfxpayload=keep\n\tlinux\t/casper/hwe-vmlinuz  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 KMOD_LOG=info udev.log_level=debug SYSTEMD_LOG_TARGET=kmsg printk.devkmsg=on --- console=tty0\n\tinitrd\t/casper/hwe-initrd\n\}\nmenuentry 'Boot from next volume' \{\n\texit 1\n\}\nmenuentry 'UEFI Firmware Settings' \{\n\tfwsetup\n\}\n"
+
+data edge_cfg: String = "menuentry \"x\" \{\n  linux /v  --- a --- b\n\tlinux\t/v ---\n  linuxefi /v ---\n  initrd /i ---\nlinux ---\nlinux  ---\n\}\n"
+
+data sed_edge: String = "menuentry \"x\" \{\n  linux /v  --- a autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 --- b\n\tlinux\t/v autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n  linuxefi /v ---\n  initrd /i ---\nlinux ---\nlinux  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n\}\n"
+
+test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_pinned_cmdline() -> Bool {
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
+}
+
+test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_current_cmdline() -> Bool {
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_grub_cmdline) == sed_current
+}
+
+test fn the_fold_equals_gnu_sed_on_the_designed_edge_lines() -> Bool {
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: edge_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_edge
+}
+
+// IDEMPOTENT, as the grep probe made it: a file already carrying the cmdline is returned unchanged.
+test fn a_file_already_carrying_the_cmdline_is_unchanged() -> Bool {
+  install_media_remaster_grub_cfg_with_cmdline(grub_cfg: sed_pinned, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
+}
+
+// DISCRIMINATING: the oracle outputs differ from the input and from each other, so equality above is
+// not satisfiable by an identity fold.
+test fn the_oracle_outputs_are_distinct() -> Bool {
+  sed_pinned != sed_current && sed_pinned != stock_grub_cfg && sed_edge != edge_cfg
+}

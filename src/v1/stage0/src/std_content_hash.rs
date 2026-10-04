@@ -4,7 +4,6 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -117,6 +116,22 @@ pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
 pub fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: i64) -> bool {
     ((v1_rt::string_length(&text) == expected_hex_digits.clone())
         && content_hash_validate_lower_hex_syntax(text.clone()))
+}
+
+pub fn lower_hex_16(value: String) -> bool {
+    content_hash_validate_lower_hex_length(value.clone(), 16)
+}
+
+pub fn lower_hex_40(value: String) -> bool {
+    content_hash_validate_lower_hex_length(value.clone(), 40)
+}
+
+pub fn lower_hex_64(value: String) -> bool {
+    content_hash_validate_lower_hex_length(value.clone(), 64)
+}
+
+pub fn lower_hex_128(value: String) -> bool {
+    content_hash_validate_lower_hex_length(value.clone(), 128)
 }
 
 pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {

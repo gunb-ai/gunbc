@@ -1,14 +1,12 @@
 module v2.compiler.effect_demand
 
 import std.decl_ref { DeclarationRef }
-import std.types { CommitSha }
+import std.types { CommitSha, List }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_identity }
 import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.std.algebra { Cons, Empty, any, fold_list, length, list_reverse }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 

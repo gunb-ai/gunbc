@@ -1,5 +1,7 @@
 module extdeps.docker.cli
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
 import std.measure { Second, second, second_count, ByteSize, byte_size_count }
@@ -25,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // docker 29.2.1 on the Sparks (2026-09-05). The program is spelled absolute because a systemd
 // ExecStart= requires an absolute path and the same argv is what the unit renders.
-data docker_binary_path: NonEmptyStr = "/usr/bin/docker" as NonEmptyStr
+fn docker_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/docker" as NonEmptyStr)
 
 type DockerRestartPolicy = RestartNo | RestartUnlessStopped | RestartAlways | RestartOnFailure
 
@@ -175,7 +177,7 @@ fn docker_run_foreground_argv(spec: DockerCreateSpec) -> DockerForegroundRun {
       argv: concat(
         concat(
           concat(
-            [docker_binary_path as String, "run", "--rm"],
+            [docker_program().invocation as String, "run", "--rm"],
             docker_container_identity_flags(spec: spec),
           ),
           docker_container_resource_flags(spec: spec),
@@ -198,15 +200,15 @@ fn docker_foreground_restart_refusal(p: DockerRestartPolicy) -> NonEmptyStr {
 }
 
 fn docker_create_command(spec: DockerCreateSpec) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: docker_create_arguments(spec: spec))
+  argv_command(program: docker_program(), arguments: docker_create_arguments(spec: spec))
 }
 
 fn docker_start_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["start", name as String])
+  argv_command(program: docker_program(), arguments: ["start", name as String])
 }
 
 fn docker_remove_force_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["rm", "-f", name as String])
+  argv_command(program: docker_program(), arguments: ["rm", "-f", name as String])
 }
 
 // ── STOP, AND WHY THE GRACE PERIOD IS A PARAMETER RATHER THAN THE DAEMON'S DEFAULT ────────────
@@ -221,7 +223,7 @@ fn docker_remove_force_command(name: NonEmptyStr) -> ArgvCommand {
 // Nat: a caller cannot hand it a millisecond figure and get a container killed three hundred times
 // too early.
 fn docker_stop_command(name: NonEmptyStr, grace: Second) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["stop", "-t", to_string(second_count(s: grace)), name as String])
+  argv_command(program: docker_program(), arguments: ["stop", "-t", to_string(second_count(s: grace)), name as String])
 }
 
 // ── RENAME, WHICH IS HOW A CONTAINER IS PRESERVED RATHER THAN DESTROYED ───────────────────────
@@ -233,7 +235,7 @@ fn docker_stop_command(name: NonEmptyStr, grace: Second) -> ArgvCommand {
 // belief that was missing three fields is precisely what put this fleet on TCP for two and a half
 // days. So the incumbent is renamed aside and left on the host.
 fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["rename", name as String, new_name as String])
+  argv_command(program: docker_program(), arguments: ["rename", name as String, new_name as String])
 }
 
 // ── LOGS ──────────────────────────────────────────────────────────────────────────────────────
@@ -254,14 +256,14 @@ fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvComman
 // carry today. SUFFICIENT FOR: reading the startup announcement of a container that has been up for
 // weeks without transferring its steady-state log.
 fn docker_logs_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["logs", name as String])
+  argv_command(program: docker_program(), arguments: ["logs", name as String])
 }
 
 // `docker exec` runs argv inside a running container; env assignments ride `--env`, never the
 // container's baked environment, so the caller decides every value the process sees.
 fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: List<String>) -> ArgvCommand {
   argv_command(
-    program: docker_binary_path,
+    program: docker_program(),
     arguments: concat(
       concat(["exec"], flat_map(env, e => ["--env", join([e.name as String, "=", e.value], "")])),
       concat([name as String], argv),
@@ -270,7 +272,7 @@ fn docker_exec_command(name: NonEmptyStr, env: List<DockerEnvAssignment>, argv: 
 }
 
 fn docker_build_command(tag: NonEmptyStr, context_dir: FilePath) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["build", "--tag", tag as String, context_dir as String])
+  argv_command(program: docker_program(), arguments: ["build", "--tag", tag as String, context_dir as String])
 }
 
 // A BUILD IS NOT ALWAYS A TAG AND A DIRECTORY. docker_build_command above is the whole invocation for
@@ -323,7 +325,7 @@ fn docker_build_spec_arguments(spec: DockerBuildSpec) -> List<String> {
 }
 
 fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: docker_build_spec_arguments(spec: spec))
+  argv_command(program: docker_program(), arguments: docker_build_spec_arguments(spec: spec))
 }
 
 // THE TWO QUESTIONS A CONVERGENT BUILD ASKS ARE ONE QUESTION. Does this exact tag already name an
@@ -337,7 +339,7 @@ fn docker_build_spec_command(spec: DockerBuildSpec) -> ArgvCommand {
 // identity readback is docker_image_inspect_command, a different symbol with a different
 // absence contract (inspect exits non-zero when the object is missing).
 fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["images", "--no-trunc", "--quiet", image as String])
+  argv_command(program: docker_program(), arguments: ["images", "--no-trunc", "--quiet", image as String])
 }
 
 // SAVE AND LOAD ARE THE IMAGE'S BYTE TRANSPORT BETWEEN HOSTS THAT SHARE NO REGISTRY. `docker save
@@ -347,11 +349,11 @@ fn docker_image_digest_command(image: NonEmptyStr) -> ArgvCommand {
 // GLM derived image needed to leave its build host (2026-09-17): the fleet runs no registry, and
 // rebuilding per host re-pays a two-hour compile for a fact one host already holds.
 fn docker_image_save_command(image: NonEmptyStr, output_path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["save", "-o", output_path as String, image as String])
+  argv_command(program: docker_program(), arguments: ["save", "-o", output_path as String, image as String])
 }
 
 fn docker_image_load_command(input_path: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["load", "-i", input_path as String])
+  argv_command(program: docker_program(), arguments: ["load", "-i", input_path as String])
 }
 
 // DIGEST-PINNED IDENTITY. `docker image inspect <ref>` names repo@sha256:... and prints a JSON
@@ -367,7 +369,7 @@ fn docker_image_load_command(input_path: NonEmptyStr) -> ArgvCommand {
 // docker_image_inspect_names_no_such_image, a typed refusal, not empty stdout. Callers that need
 // empty-means-absent stay on docker_image_digest_command.
 fn docker_image_inspect_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["image", "inspect", image as String])
+  argv_command(program: docker_program(), arguments: ["image", "inspect", image as String])
 }
 
 // CONTAINER INSPECT, the container-object sibling of docker_image_inspect_command
@@ -409,11 +411,11 @@ fn docker_ps_filter_wire(f: DockerPsFilter) -> String {
 }
 
 fn docker_ps_running_command(filter: DockerPsFilter) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
+  argv_command(program: docker_program(), arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
 }
 
 fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["container", "inspect", name as String])
+  argv_command(program: docker_program(), arguments: ["container", "inspect", name as String])
 }
 
 fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
@@ -541,7 +543,7 @@ fn docker_image_inspect_size_from_stdout(stdout: String) -> DockerImageInspectSi
 // docker_image_inspect_command states. A document with no such line, two of them, or a value that is
 // not an absolute path is Unreadable -- never the default.
 fn docker_info_command() -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["info"])
+  argv_command(program: docker_program(), arguments: ["info"])
 }
 
 data docker_info_root_dir_label: String = "Docker Root Dir:"
@@ -744,7 +746,7 @@ fn docker_memory_limit_flags(limit: ByteSize?) -> List<String> {
 
 fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List<DockerMount>, labels: List<DockerLabel>, memory_limit: ByteSize?, entrypoint: NonEmptyStr, argv: List<String>) -> ArgvCommand {
   argv_command(
-    program: docker_binary_path,
+    program: docker_program(),
     arguments: concat(
       concat(
         concat(
@@ -762,5 +764,5 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 }
 
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["image", "pull", image as String])
+  argv_command(program: docker_program(), arguments: ["image", "pull", image as String])
 }

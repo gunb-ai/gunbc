@@ -308,7 +308,243 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // which is why that witness was restated and not retuned. Derived by execution from this tree
 // (roadmap_css_derived_digest run 2026-08-27); this digest only pins bytes, never chosen.
 
-data roadmap_css_lift_parity_digest: String = "62e20cacdf06f99f"
+// Re-pinned 2026-09-20 for the project hierarchy view (operator request: projects with progress
+// bars on the daily workspace): the roadmap bytes move intentionally — the .project-progress
+// family lands (count line, the flex-weighted bar with its closed/open segments) and the
+// details.project-tasks / .project-deeper rules for the task disclosure, all tokened and
+// role-routed (the closed segment takes the figure role, progress = derived fact, lit; the open
+// segment the figure halo). Behavioral receipts: the project-hierarchy witnesses in
+// test.claim.roadmap_presentation_witness (derivation, counting, nesting, no-loss) and
+// test.claim.long.roadmap_page_witness (row shape, derived open attribute, depth-cap affordance,
+// live exemplar), plus the register censuses staying green. Derived by execution from this tree
+// (roadmap_css_derived_digest run 2026-09-20); this digest only pins bytes, never chosen.
+
+// Re-pinned 2026-09-21 for the hero activity face + chain collapse (operator requests 2026-09-20/
+// 21): the roadmap bytes move intentionally — the .stage-strip family lands (one segment per
+// workflow obligation, state-keyed paint: complete in the figure role, active on the in-progress
+// band with the round-pulse on .stage-live, pending dimmed, failed and refused on their bands),
+// the .activity-throughput line lands, the summary's semantic classes
+// (.activity-summary.activity-line-done / -error-refusal) land, the round strip's COLOR decls move
+// from the per-kind classes onto the semantic .activity-line-* vocabulary (paint values unchanged,
+// a re-homing to one authority), the project bar gains hero height and the .project-error flag
+// (loud left edge + count, the anomaly idiom), and the .project-chain line lands for collapsed
+// single-child chains. Behavioral receipts: the hero/red-flag/classification witnesses in
+// test.claim.long.roadmap_page_witness and test.claim.roadmap_presentation_witness, plus the
+// register censuses. Derived by execution from this tree (roadmap_css_derived_digest run
+// 2026-09-21); this digest only pins bytes, never chosen.
+
+// Re-pinned 2026-09-22 for the taskbar redesign (owner-endorsed 2026-09-21, "the task IS the
+// bar"): the roadmap bytes move intentionally and wholesale — the node-head three-track grid,
+// node-mid cell, .node-activity container, item-detail disclosure, and the RoadmapRow archetype's
+// grid derivations are DELETED; the .taskbar family lands in their place (the bar with its
+// overlay .taskbar-fill behind .taskbar-face at the new h-taskbar token, the signal/count/subline
+// slots with their :empty-hidden spans, .taskbar-error for the red flag, the .taskbar-inspect
+// disclosure with inspect-stages/inspect-raw, and .inspect-requires links), the stage-segment
+// width contract moves from per-segment inline styles to one `flex: 1` rule (the zero-width
+// defect's fix), and Position/Inset join the CSS property vocabulary for the overlay. Behavioral
+// receipts: the taskbar/parity/honesty witnesses in test.claim.long.roadmap_page_witness and
+// test.claim.roadmap_presentation_witness, the recomposed test.claim.roadmap_row_witness, the
+// register width-contract pin, and the register censuses. Derived by execution from this tree
+// (roadmap_css_derived_digest run 2026-09-22); this digest only pins bytes, never chosen.
+// Re-pinned 2026-09-25 for the Buganizer-semantics ruling (owner 2026-09-25: "scrap the button
+// stuff we have here for now ... just copy buganizer"): the tree/bands view tabs and their forest
+// retire from the served workspace page — the data-view visibility rules and the frontier-bucket
+// band chrome leave the sheet (the kept machinery's rules stay: the /sandbox exhibit and the
+// /roadmap taskbar still render project chains, taskbars, and dispatch controls). Behavioral
+// receipts: witness_default_view_is_the_searchable_issue_table,
+// witness_view_switch_and_filter_contracts (view-switch census half),
+// witness_issue_table_renders_modeled_action_and_census (zero-button rows),
+// witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee (Assign alone),
+// witness_issue_table_assignee_renders_identity_or_placeholder (the capture's "--" cell),
+// the frontier suite's band-vocabulary re-law, the register censuses unchanged. Derived by
+// execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
+// Re-pinned 2026-09-25 for the assignment vertical (owner rulings 2026-09-25 + the issue-page
+// mandate): the issue-table grid moves to the FIXED-TRACK roster (extdeps.google.issue_tracker
+// issue_results_columns: short columns fixed at declared content bounds — 4ch P, 6ch TYPE, 9ch
+// ASSIGNEE from its header, 12ch LAST MODIFIED, 24ch actions — TITLE the
+// dominant minmax(0, 2fr) against STATUS's minmax(0, 1fr), no max-content track survives, so band
+// filtering never re-measures the geometry); the retired ID column's two rules (.issue-cell-id,
+// .issue-id-link) delete with the column; the TITLE link gains .issue-title-link (+ hover) painted
+// from --issue-action; the ASSIGNEE cell becomes the avatar chip (flex-centered, the chip's
+// 24px-token circle + workflow badge + the fail-closed .issue-cell-assignee-missing); and the
+// durable Assign control lands (.issue-assign-form/-input/-suggestions/-suggestion/-name/-email/
+// -kind + .issue-avatar family). Behavioral receipts: w_issue_results_row_tracks_derive_from_the_
+// roster, w_issue_results_tracks_take_no_population_and_never_re_measures, w_title_is_the_primary_
+// column_with_the_dominant_share, witness_issue_table_assignee_renders_the_avatar_chip_or_
+// placeholder, witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee (the form),
+// witness_issue_table_rows_share_the_header_template (7 cells + the title link), the register
+// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// c71edd8bb8d7e8e0); this digest only pins bytes.
+// Re-pinned 2026-09-25 for the header-overlap fix (owner: ASSIGNEE and STATUS headers overlap):
+// the fixed tracks now derive from the WIDER of header spelling or content upper bound (ASSIGNEE
+// 9ch from its header, D VIEWS 8ch), and the header cells (.issue-col) carry the same containment
+// chain as the data cells (min-width 0, nowrap, ellipsis). Derived by execution
+// (roadmap_css_derived_digest on this tree, 262ca57491c99cde); this digest only pins bytes.
+// Re-pinned 2026-09-25 for assignee-cell centering (owner: the chip and the "--" placeholder read
+// off left-aligned): .issue-cell-assignee centers its content horizontally (justify-content
+// center on the existing flex cell — the chip, the bare "--", and the unparseable-email
+// placeholder all center). Derived by execution (roadmap_css_derived_digest on this tree,
+// bcdf59bc15e39d80); this digest only pins bytes.
+// Re-pinned 2026-09-25 for the D VIEWS retirement (owner: it is a view counter in the product,
+// not dependencies; we track no views and blockers live on the detail page): the roster drops the
+// column, the template loses its 8ch track. Derived by execution (roadmap_css_derived_digest on
+// this tree, dc62c7862ac2125d); this digest only pins bytes.
+// Re-pinned 2026-09-26 for the A5 comment surface: the description/comment-stream/composer family
+// lands (.issue-description*, .issue-comments/-comment* rows with the deleted tombstone, reply
+// marker, and :empty-hidden reply, .issue-comment-form/-input) — all tokened and role-routed.
+// Behavioral receipts: witness_issue_comment_stream_renders_description_avatars_numbers_times_and_
+// deep_links, witness_issue_comment_composer_posts_text_plain_with_key_csrf_and_body_last, the
+// register censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// 76969b74002ce2aa); this digest only pins bytes.
+// Re-pinned 2026-09-26 for the page-architecture slice: the header loses its standing/bar-signal
+// chrome (chips only), the tab law becomes Comments-default x Dependencies/Work/History (four
+// display:none rules replace the issue/work pair), and the right metadata rail lands (.issue-body
+// flex pair, .issue-rail surface, .issue-type-chip, .issue-deps-* sections) — all tokened and
+// role-routed. Behavioral receipts: witness_issue_detail_page_renders_header_fields_and_tabs,
+// witness_issue_tab_switch_contracts, witness_issue_history_tab_renders_event_history_newest_first,
+// the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// a39d8e02482582d4); this digest only pins bytes.
+// Re-pinned 2026-09-26 for the publication-handoff slice: the compact automated entry lands in
+// the Comments stream (.issue-publication background) while the rail's status row begins reading
+// the ledger-folded standing — one new rule. Behavioral receipts:
+// witness_issue_publication_handoff_renders_the_compact_automated_entry, the event-log handoff
+// witnesses, the register censuses unchanged. Derived by execution (roadmap_css_derived_digest on
+// this tree, 2fa0e1b23a779551); this digest only pins bytes.
+// Re-pinned 2026-09-26 for the owner-visible defect fixes: the detail page's container gains the
+// surface padding law (.issue-detail padding var(--space-16) var(--space-24) — the left-edge
+// clipping fix) and the rail becomes a 34ch column (the measure_page 960px width had starved the
+// panels); the authored-fields fold lands (.issue-authored* sections, the details/summary pair,
+// .ticket-field-code mono blocks). Behavioral receipts:
+// witness_issue_detail_pads_its_content_and_sized_the_rail,
+// witness_issue_authored_fields_fold_per_the_mandate,
+// witness_issue_current_plan_collapses_once_done, the register censuses unchanged. Derived by
+// execution (roadmap_css_derived_digest on this tree, f90047404631dff2); this digest only pins
+// bytes.
+// Re-pinned 2026-09-27 for the header account area + the rail-fit law, re-derived on the merge
+// with the landed wrap fix (which also gave the input flex:1 + min-width:0 and the submit
+// fit-content width — this slice adds the header account area atop that fix): the account slot,
+// sign-in and session rows, and sign-out button land at the header's right edge. Behavioral
+// receipts: witness_header_account_renders_signin_when_signed_out,
+// witness_header_account_renders_avatar_name_and_signout_when_session,
+// witness_header_account_claims_no_identity_without_a_session,
+// witness_issue_assign_form_fits_the_rail, the register censuses unchanged. Derived by execution
+// (roadmap_css_derived_digest on the merged tree, 18b798669b7c1358); this digest only pins bytes.
+// Re-pinned 2026-09-27 for the header avatar PFP slice (the Google picture rides the session
+// wire as its optional member; the /avatar proxy endpoint remains the tailnet-privacy
+// follow-up): the .issue-avatar chip becomes the image's positioning context and clips it
+// (position: relative; overflow: hidden) and the .issue-avatar img rule paints any image
+// inside a chip (absolute / inset 0 / 100% x 100% / object-fit cover via RawProperty — the
+// projection the assignee avatar slots reuse). Behavioral receipts:
+// witness_header_account_static_body_carries_signin_and_hidden_target (the account menu's
+// trigger/menu markup and the hidden-menu rule pin), witness_header_account_swap_table (the
+// menu toggle statements), the serve witnesses for the admitted login prompt, the register
+// censuses unchanged — plus the 2026-09-28 menu anchor fix (top:100% right:0 below the chip,
+// the top:auto fallback had rendered the menu at its static flex position above the viewport).
+// Derived by execution (roadmap_css_derived_digest on this tree,
+// 0e4185ec41c585f2); this digest only pins bytes.
+// Re-pinned 2026-09-28 for the profile-bound assignee identity slice (owner ask): the assignee
+// chip pairs its circular avatar with the person's real identity — the .issue-assignee-text span
+// (margin-left var(--space-4), font-size var(--text-13), color var(--issue-text)) rides beside
+// the chip on the defined tokens; no undefined vars. Behavioral receipts:
+// witness_assignee_chip_renders_the_profile_identity_when_known,
+// witness_issue_detail_rail_and_comments_render_the_profile_identity,
+// witness_inline_assignment_context_chip_html_carries_the_profile_display, the register censuses
+// unchanged. Derived by execution (roadmap_css_derived_digest on this tree,
+// 13bfe2bf4b369f2f); this digest only pins bytes.
+// 2026-09-30: the .issue-avatar-badge rule is deleted -- the workflow kind no longer renders as
+// clipped text inside the 24px avatar circle (it rides the chip's class and hover title), so the
+// rule has no consumer. Derived by execution (roadmap_css_derived_digest on this tree).
+// 2026-09-30 (step 2): the .issue-rail-link rule -- the rail's relation counts open the
+// Dependencies tab as a text-styled button. Derived by execution (roadmap_css_derived_digest).
+// 2026-09-30 (robot mark): the .issue-avatar-mark rule sizes the Fabric chip's robot mark
+// (gunbc.site.robot_mark) inside the 24px circle. Derived by execution (roadmap_css_derived_digest).
+// 2026-09-30 (rail containment): issue-field-label no longer shrinks under a long value, and
+// issue-field-value takes the remaining width and wraps unbroken tokens instead of running past
+// the rail. Derived by execution (roadmap_css_derived_digest).
+// 2026-09-30 (badge colour): the Fabric chip paints the owner's badge stone (#f4f1ec) under the
+// frontend's ink robot mark, routed through the --fabric-badge-bg/--fabric-badge-ink theme
+// properties (both schemes) from gunbc.site.robot_mark's swatches. Derived by execution.
+// 2026-10-03 (sign-in surface restored over main's stylesheet): the .header-account-signin,
+// .header-account-menu, .header-account-menu-item and .header-account-signout rules return with
+// their consumers. Derived by execution (roadmap_css_derived_digest).
+data roadmap_css_lift_parity_digest: String = "f9ac84802d32bee6"
+// Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
+// grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
+// and every border-bottom drew at a different height); cells add a line-height equal to the
+// row-height token so text centers vertically without flex, and the actions cell centers its
+// buttons. Derived by execution (roadmap_css_derived_digest on this tree); this digest only pins
+// bytes.
+// Re-pinned 2026-09-24 for the status-track fix (owner: overlapping text on the served page): the
+// STATUS column's max-content track sized to unbounded "blocked on <n ids>" text, inflating the
+// shared issue-table grid past the viewport and starving the title track to zero width. TITLE and
+// STATUS are now both flexible minmax(0, 1fr) in the extdeps roster, so the issue-cell containment
+// chain truncates instead of the track growing. Behavioral receipt: the extdeps roster witness
+// w_issue_results_row_tracks_derive_from_the_roster re-pinned to the new template. Derived by
+// execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
+// Re-pinned 2026-09-24 for the full-width ruling (operator: the page takes the full viewport like
+// the issue-tracker model — the centered measure column read as a ~50% lock). The MaxWidth/
+// auto-margin decls are retired from .header-inner, .roadmap, and .daily-workspace; side padding
+// stays. Behavioral receipts: witness_page_containers_full_width (re-lawed from
+// witness_page_containers_centered), witness_prominence_and_frame_rules_present_in_css, and
+// witness_issue_table_long_cells_clip_within_their_tracks (the bounding pin moves from the measure
+// cap to the padding-only container). Derived by execution (roadmap_css_derived_digest on this
+// tree); this digest only pins bytes.
+// Re-pinned 2026-09-24 for the shared-grid fix (owner column-alignment complaint): the issue
+// table becomes ONE grid container — .issue-table carries the roster-derived
+// grid-template-columns (extdeps.google.issue_tracker issue_results_row_tracks) alone; the header
+// and the rows (and the ul/li wrappers) become display: contents, so their cells are direct grid
+// children and every track aligns by construction; the row chrome (padding, border-bottom,
+// min-height, hover background) moves onto .issue-col/.issue-cell/.issue-row-actions, the
+// heading and empty state take grid-column: 1 / -1, and the issue-cell containment chain
+// (min-width 0, overflow hidden, nowrap, ellipsis) is unchanged. Behavioral receipts:
+// witness_issue_table_grid_template_comes_from_the_model (rewired to the single spelling),
+// witness_issue_table_cells_are_direct_grid_children,
+// witness_issue_table_long_cells_clip_within_their_tracks, the extdeps derivation pins
+// unchanged, the token witness unchanged. Derived by execution (roadmap_css_derived_digest on
+// this tree); this digest only pins bytes.
+// Re-pinned 2026-09-24 for the derivation-law slice: the issue table's header and rows become ONE
+// grid derivation — .issue-table-header and .issue-line carry grid-template-columns from the
+// extdeps model's declared column roster (extdeps.google.issue_tracker issue_results_row_tracks),
+// with .issue-cell/.issue-cell-* cell rules; the old per-row flex sizing and the retired
+// .issue-component/.issue-title rules leave the sheet. Behavioral receipts:
+// w_issue_results_roster_is_the_capture, w_issue_results_row_tracks_derive_from_the_roster,
+// witness_issue_table_header_derives_from_the_model_roster,
+// witness_issue_table_rows_share_the_header_template,
+// witness_issue_table_grid_template_comes_from_the_model, the register censuses unchanged.
+// Derived by execution (roadmap_css_derived_digest on this tree); this digest only pins bytes.
+// Re-pinned 2026-09-24 for the tracker-ruling slice: the detail action bar (Assign text idiom
+// beside Start Work), the Work tab's event history, and the not-found document land as
+// .issue-action-bar / .issue-event-* / .issue-not-found rules, all routing the issue vars or the
+// scale. Behavioral receipts: witness_issue_detail_renders_enabled_modeled_action_and_attempt_
+// assignee, witness_issue_work_tab_renders_event_history_newest_first, the register censuses
+// unchanged. Derived by execution (roadmap_css_derived_digest on this tree); this digest only
+// pins bytes.
+// Re-pinned 2026-09-24 for the modeled action surface: the issue-tracker's action button lands
+// as the product's contained-primary idiom (.issue-action family, painted from the --issue-action
+// tokens, both schemes) — the old dispatch button's styling is untouched (the tree view's taskbar
+// keeps it; other lanes' tactile suites pin those bytes). Behavioral receipts:
+// witness_issue_table_renders_modeled_action_and_census, witness_issue_detail_renders_enabled_
+// modeled_action_and_attempt_assignee, witness_issue_tokens_resolve_in_both_themes, the register
+// censuses unchanged. Derived by execution (roadmap_css_derived_digest on this tree); this digest
+// only pins bytes.
+// Re-pinned 2026-09-23 for the issue-surface production-defect fixes: the dark-scheme token
+// mapping lands (the issue vars now resolve under [data-theme="night"] and the
+// prefers-color-scheme fallback in the theme machinery's three-block grammar, from
+// extdeps.google.issue_tracker's dark row — owner defect: dark mode painted the light-only
+// tokens on dark ground). Same token structure, two scheme value sets. Behavioral receipts:
+// witness_issue_tokens_resolve_in_both_themes (every --issue-* var resolves in all three
+// blocks), the register censuses unchanged (the token blocks are :root custom properties, not
+// instance color rules). Derived by execution (roadmap_css_derived_digest on this tree); this
+// digest only pins bytes.
+// Re-pinned 2026-09-23 for the issue detail page slice (owner ruling 2026-09-22: each issue has
+// a detail page and a separate Work tab): the detail surface lands — .issue-detail and its
+// data-tab panel-switching law, the head (id/title/status line), the field panel, the tab
+// chips, and the Work tab's history rows (.issue-work-history, .work-history-row,
+// .work-history-step). All colors route the issue vars or theme roles, all lengths/fonts route
+// the scale — the register censuses hold. Behavioral receipts: witness_issue_detail_page_
+// renders_header_fields_and_tabs, witness_issue_work_tab_renders_history_newest_first,
+// witness_issue_tab_switch_contracts, the register suite unchanged. Derived by execution
+// (roadmap_css_derived_digest on this tree); this digest only pins bytes.
 // Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet
 // info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family
 // lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn

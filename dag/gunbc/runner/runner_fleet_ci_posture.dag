@@ -1,0 +1,116 @@
+module gunbc.runner_fleet_ci_posture
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { as_content_hash_structural, content_hash_atom }
+import std.disposition { ConstructionMechanism, SingleAuthority }
+import product.fabric.provider_route { CompliancePostureRevision, PermittedJurisdictionsEnumerated }
+import product.fabric.provider_admission { DispositionStanding, DispositionNotEngaged }
+import gunbc.spark.dgx_procurement { OperatorAllocation }
+import gunbc.spark.first_party_serving { FirstPartySelfUsePosture, FirstPartyUseProfile, UseProgramStanding }
+
+data runner_fleet_ci_posture_disposition: ConstructionMechanism = SingleAuthority
+
+// THE FLEET CI CELLS' PROVIDER-USE POSTURE: FIRST-PARTY SELF-USE, WITH ONE NAMED COUNTERPARTY.
+//
+// Every broker candidate carries a ProviderUsePermit, and admit_provider_use mints one only under a
+// posture. The Spark first-party posture (gunbc.spark.first_party_serving) was NOT reused as a row:
+// its material stays on site, while a CI job's logs, artifacts and runner control traffic go to
+// GitHub, so one posture name would carry two materially different contracts -- the section 3
+// meaning fork. Its TYPES are reused, because the shape of a first-party self-use statement is the
+// same fact for both subjects.
+//
+// THE GROUNDING IS A DEFAULT APPROVAL, NOT THE OPERATOR'S WORDS, and the row says so. The sentence
+// below was put to the operator through the dashboard escalation msg_657c16a8 with this wording as
+// the recommended option; nobody answered within its window and it closed APPROVED BY DEFAULT on
+// 2026-09-28. Recording it as something the operator said would present a default as a statement.
+// A later operator statement that differs is a NEW revision, never an edit to this row.
+data fleet_ci_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
+  assertion: OperatorAllocation {
+    decided_by: "dashboard escalation default approval (msg_657c16a8; no operator answer within the window, recommended option P confirmed as written)",
+    decided_on: "2026-09-28",
+    basis: "Escalation msg_657c16a8 closed APPROVED BY DEFAULT on 2026-09-28 with the sentence: 'The gunbc CI runner cells on my hosts serve only gunbc's own CI jobs, and it is fine for those jobs' logs, artifacts and runner control traffic to go to GitHub under our GitHub organization's terms.' This is an attributable default approval, not an operator utterance and not a measurement: who a CI cell serves is a fact about our intent, which no probe reads off a running runner.",
+  },
+  serves: "gunbc's own CI jobs only. Every job placed on a fleet CI cell is a workflow run of a gunbc repository under our GitHub organization; no job is run for any party outside gunbc.",
+  data_subject: "gunbc's own source, build outputs and logs. No customer data and no third-party data is processed on these cells. EXACTLY ONE COUNTERPARTY RECEIVES ROUTE MATERIAL, AND IT IS NAMED: the jobs' logs, artifacts and runner control traffic go to GitHub under our GitHub organization's terms (gunbc.runner_fleet_ci_posture fleet_ci_github_org_terms). Everything else stays on the operator's hosts.",
+  hardware_custody: "operator-held. The cells run on the operator's own hosts; no hosting contract stands between us and the hardware.",
+}
+
+// THE ONE COUNTERPARTY'S TERMS. It is the agreement the sanction requires and the jurisdiction the
+// GitHub-bound paths are located at. That second use is a STATED DIVERGENCE: GitHub's processing
+// location and legal jurisdiction are not read here, and this row does not claim them. What the
+// posture permits is the counterparty under our organization's terms, which is what the approved
+// sentence grants; a posture that must name a legal jurisdiction for GitHub is a new revision with
+// a cited source for it.
+data fleet_ci_github_org_terms: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "github-organization-terms",
+  basis: "The agreement governing what reaches GitHub from a fleet CI cell is our GitHub organization's terms with GitHub. The approved posture (gunbc.runner_fleet_ci_posture fleet_ci_use_posture) permits logs, artifacts and runner control traffic to reach GitHub under those terms. GitHub's processing location and legal jurisdiction are NOT established by this row.",
+}
+
+data fleet_ci_customer_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "gunbc-ci-self",
+  basis: "The customer is gunbc: the only jobs placed on a fleet CI cell are gunbc's own CI jobs.",
+}
+
+data fleet_ci_data_handling_profile: FirstPartyUseProfile = FirstPartyUseProfile {
+  label: "own-ci-data-with-github-egress",
+  basis: "gunbc's own source, build outputs and logs, on operator-held hosts, with logs, artifacts and runner control traffic egressing to GitHub under our organization's terms. No customer or third-party data.",
+}
+
+data fleet_ci_prohibited_use_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "prohibited use",
+  engagement: "NOT ENGAGED under first-party CI self-use. No prohibited-use assessment has been performed.",
+  basis: "The cells run gunbc's own CI jobs for gunbc. There is no user or customer whose use could be governed, so the program has no subject; it acquires one the moment fleet_ci_use_posture is superseded by running anyone else's jobs.",
+}
+
+data fleet_ci_sanctions_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "sanctions",
+  engagement: "NOT ENGAGED under first-party CI self-use. This is NOT a sanctions determination and no screening was performed against any list.",
+  basis: "No good or service is supplied to any party outside gunbc: the jobs are gunbc's, run for gunbc. The one party that receives material is GitHub, as our own service provider under our organization's terms, which is us consuming a service rather than supplying one. This row records that the program has no subject here, not that anybody was cleared.",
+}
+
+data fleet_ci_export_not_engaged: UseProgramStanding = UseProgramStanding {
+  program: "export control",
+  engagement: "NOT ENGAGED under first-party CI self-use. This is NOT an export determination, classification or licence finding.",
+  basis: "The material is gunbc's own source, build outputs and logs, sent to our own service provider under our organization's terms. Whether that transfer is an export of anything this program governs is not determined here and no classification is claimed; the program is not engaged because no determination has been sought, and the row says that rather than a clearance.",
+}
+
+fn fleet_ci_prohibited_use_disposition() -> DispositionStanding {
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_prohibited_use_not_engaged") }
+}
+
+fn fleet_ci_sanctions_disposition() -> DispositionStanding {
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_sanctions_not_engaged") }
+}
+
+fn fleet_ci_export_disposition() -> DispositionStanding {
+  DispositionNotEngaged { basis: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_export_not_engaged") }
+}
+
+fn fleet_ci_posture_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture")
+}
+
+fn fleet_ci_github_terms_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")
+}
+
+fn fleet_ci_customer_profile_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_customer_profile")
+}
+
+fn fleet_ci_data_handling_profile_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_data_handling_profile")
+}
+
+// THE POSTURE PERMITS EXACTLY TWO LOCATIONS: the operator's hosts, as the posture's own assertion
+// names them, and GitHub under our organization's terms. A path at any other place refuses.
+data fleet_ci_posture: CompliancePostureRevision = CompliancePostureRevision {
+  authority: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
+  revision: as_content_hash_structural(structural: content_hash_atom(value: "gunbc.fleet-ci.first-party-self-use.2026-09-28" as NonEmptyStr)),
+  permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+    first: decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_use_posture"),
+    further: [decl_ref(module_path: "gunbc.runner_fleet_ci_posture", decl_name: "fleet_ci_github_org_terms")],
+  },
+  jurisdiction_drop_enrollments: [],
+}

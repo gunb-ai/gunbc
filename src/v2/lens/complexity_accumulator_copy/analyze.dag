@@ -79,7 +79,8 @@ fn postfix_expr_capture(node: Node) -> Optional<Node> {
 
 fn edge_skips_identifier_count(e: Edge) -> Bool {
   match e.label {
-    Named { name: nm } => nm == ^grammar_production_identity_node_projection
+    Authored { name: nm } => nm == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -200,17 +201,9 @@ fn call_port_readings(call_capture: Node) -> List<v2.lens.complexity_accumulator
   )
 }
 
-// The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call desugars via v2.compiler.fold_lowering.fold_call_to_loop and the accumulator binder is the ^loop_carrier_edge target's atom identity - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier.
+// The carrier read is a named-edge lookup on the LOWERED seam Loop (FLAG F): the located fold call is read by v2.compiler.fold_lowering.fold_call_step_carrier -- the step's first binder, read off the CALL and never off the encoding's ^loop_carrier_edge, which since the fold-carrier mint names a GENERATED slot (v2.std.anonymous_binder fresh_fold_carrier) and is deliberately never equal to any authored formal -- the two were the same symbol until that mint landed, and this lens wanted the formal, which is what it reads; so a piped fold, whose collection is not in the call, keeps its carrier - the lens never re-navigates the surface fn_literal capture (that read has exactly one authority, the lowering). A call the seam refuses (named step fn, no fn literal) yields Absent and the ^fold_accumulator_unread refusal stands: the binder is a callee-resolution fact (Stage B), not a within-body fact, and the lens never fabricates a carrier.
 fn fold_family_carrier(call_capture: Node) -> Optional<Symbol> {
-  match v2.compiler.fold_lowering.fold_call_to_loop(fold_call: call_capture) {
-    Rejected { diagnostics: _ } => Absent
-    Accepted { value: seam_loop, diagnostics: _ } =>
-      match loop_carrier_binder_target(children: seam_loop.children) {
-        Found { target: binder } => v2.std.grammar.node_atom_identity_optional(node: binder)
-        Ambiguous => Absent
-        Absent => Absent
-      }
-  }
+  v2.compiler.fold_lowering.fold_call_step_carrier(fold_call: call_capture)
 }
 
 fn append_findings(fresh: List<v2.lens.complexity_accumulator_copy.Finding>, acc: List<v2.lens.complexity_accumulator_copy.Finding>) -> List<v2.lens.complexity_accumulator_copy.Finding> {
@@ -441,10 +434,14 @@ fn projection_arg_port_readings(repeat_elem: Node) -> List<v2.lens.complexity_ac
   )
 }
 
+// A lens reading a port, not lowering: an operand the reader cannot read whole (absent, or refused
+// at an operator tail) is read as its raw capture, as before; the refusal is named here rather than
+// collapsed invisibly by a projection.
 fn projection_receiver_port_reading(left: Node) -> v2.lens.complexity_accumulator_copy.PortReading {
-  match v2.compiler.body_lowering_fold.body_lower_operand_ref_optional(node: left) {
-    Present { value: receiver } => lowered_arg_port_reading(arg: receiver)
-    Absent => lowered_arg_port_reading(arg: left)
+  match v2.compiler.body_lowering_fold.body_lower_operand_ref_read(node: left) {
+    v2.compiler.body_lowering_fold.OperandRefLowered { lowered: receiver } => lowered_arg_port_reading(arg: receiver)
+    v2.compiler.body_lowering_fold.OperandRefAbsent => lowered_arg_port_reading(arg: left)
+    v2.compiler.body_lowering_fold.OperandRefRefused { diagnostics: _ } => lowered_arg_port_reading(arg: left)
   }
 }
 
@@ -539,7 +536,8 @@ fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
           Absent => v2.std.grammar.node_atom_identity_optional(node: t)
         }
       })
-    _ => Absent
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
   }
 }
 
@@ -585,7 +583,8 @@ fn lowered_transform_port_readings(node: Node) -> List<v2.lens.complexity_accumu
           }
         }
       ).readings
-    _ => std.algebra.Empty
+    ComputationNode { behavior: _ } => std.algebra.Empty
+    TypeNode { connective: _ } => std.algebra.Empty
   }
 }
 
@@ -604,30 +603,59 @@ fn lowered_loop_carrier_optional(node: Node) -> Optional<Symbol> {
         Ambiguous => Absent
         Absent => Absent
       }
-    _ => Absent
+    ComputationNode { behavior: _ } => Absent
+    TypeNode { connective: _ } => Absent
   }
+}
+
+// Only a Loop's iterated body repeats (v2.std.node loop_edge_role). Its other edges --
+// the domain, evaluated once, and the bound, carrier and realized-declaration atoms -- are analyzed
+// under the ENCLOSING iteration state, so a copy written in a fold's collection expression is not
+// reported as per-iteration work.
+fn analyze_loop_children(
+  n: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  enclosing: Bool,
+  here: List<v2.lens.complexity_accumulator_copy.Finding>
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  fold(n.children, init: here, f: fn(acc, e) {
+    let iterating = match loop_edge_role(e: e) {
+      LoopIteratedBody => true
+      LoopDomainValue => enclosing
+      LoopBoundMeasure => enclosing
+      LoopCarrierBinder => enclosing
+      LoopRealizedDeclaration => enclosing
+      LoopEdgeUnrecognized => enclosing
+    }
+    append_findings(
+      fresh: analyze(node: e.target, carriers: carriers, bindings: bindings, iterating: iterating),
+      acc: acc
+    )
+  })
 }
 
 fn analyze_lowered_loop(
   node: Node,
   carriers: List<Symbol>,
-  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
 ) -> List<v2.lens.complexity_accumulator_copy.Finding> {
   match lowered_loop_carrier_optional(node: node) {
     Present { value: carrier } =>
-      analyze_children(
+      analyze_loop_children(
         n: node,
         carriers: Cons { head: carrier, tail: carriers },
         bindings: bindings,
-        iterating: true,
+        enclosing: iterating,
         here: std.algebra.Empty
       )
     Absent =>
-      analyze_children(
+      analyze_loop_children(
         n: node,
         carriers: carriers,
         bindings: bindings,
-        iterating: true,
+        enclosing: iterating,
         here: Cons {
           head: v2.lens.complexity_accumulator_copy.Unclassifiable { at: node, cause: ^fold_accumulator_unread },
           tail: std.algebra.Empty
@@ -667,7 +695,7 @@ fn analyze_absent_primary_expr(
 ) -> List<v2.lens.complexity_accumulator_copy.Finding> {
   match node.kind {
     ComputationNode { behavior: Loop } =>
-      analyze_lowered_loop(node: node, carriers: carriers, bindings: bindings)
+      analyze_lowered_loop(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
     ComputationNode { behavior: Transform } =>
       match lowered_transform_combiner_optional(node: node) {
         Present { value: combiner } =>
@@ -681,13 +709,25 @@ fn analyze_absent_primary_expr(
         Absent =>
           analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
       }
-    _ =>
-      match let_spine_of(node: node) {
-        Present { value: spine } =>
-          analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
-        Absent =>
-          analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
-      }
+    TypeNode { connective: _ } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Value } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Branch } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Bind } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+    ComputationNode { behavior: Match } => analyze_absent_primary_expr_let_spine(node: node, carriers: carriers, bindings: bindings, iterating: iterating)
+  }
+}
+
+fn analyze_absent_primary_expr_let_spine(
+  node: Node,
+  carriers: List<Symbol>,
+  bindings: List<v2.lens.complexity_accumulator_copy.LetBinding>,
+  iterating: Bool
+) -> List<v2.lens.complexity_accumulator_copy.Finding> {
+  match let_spine_of(node: node) {
+    Present { value: spine } =>
+      analyze_let_spine(spine: spine, carriers: carriers, bindings: bindings, iterating: iterating)
+    Absent =>
+      analyze_children(n: node, carriers: carriers, bindings: bindings, iterating: iterating, here: std.algebra.Empty)
   }
 }
 
@@ -714,7 +754,8 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
     Present { value: cap } =>
       match sequence_left_symbol(cap: cap) {
         Present { value: head } =>
-          if v2.compiler.fold_lowering.fold_family_head(sym: head) {
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
             match fold_family_carrier(call_capture: cap) {
               Present { value: carrier } =>
                 analyze_children(
@@ -736,7 +777,7 @@ fn analyze(node: Node, carriers: List<Symbol>, bindings: List<v2.lens.complexity
                   }
                 )
             }
-          } else {
+            Absent =>
             let here = if iterating {
               match projection_method_call_optional(cap: cap) {
                 Present { value: method } =>
@@ -803,7 +844,8 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
       } else {
         1
       }
-    _ => 0
+    ComputationNode { behavior: _ } => 0
+    TypeNode { connective: _ } => 0
   }
   let surface_here = match primary_expr_capture(node: n) {
     Absent => 0
@@ -811,7 +853,8 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
       match sequence_left_symbol(cap: cap) {
         Absent => 0
         Present { value: head } =>
-          if v2.compiler.fold_lowering.fold_family_head(sym: head) {
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
             if bound_only {
               match fold_family_carrier(call_capture: cap) {
                 Present { value: _ } => 1
@@ -820,7 +863,7 @@ fn count_fold_sites(n: Node, bound_only: Bool) -> Int {
             } else {
               1
             }
-          } else {
+            Absent =>
             0
           }
       }
@@ -838,15 +881,23 @@ fn accumulator_copy_findings(root: Node) -> List<v2.lens.complexity_accumulator_
 fn tree_contains_lowered_loop(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Loop } => true
-    _ =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          tree_contains_lowered_loop(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Value } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Transform } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Branch } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Bind } => tree_contains_lowered_loop_children(root: root)
+    ComputationNode { behavior: Match } => tree_contains_lowered_loop_children(root: root)
   }
+}
+
+fn tree_contains_lowered_loop_children(root: Node) -> Bool {
+  fold(root.children, init: false, f: fn(found, e) {
+    if found {
+      true
+    } else {
+      tree_contains_lowered_loop(root: e.target)
+    }
+  })
 }
 
 fn primary_expr_fold_head_optional(node: Node) -> Optional<Symbol> {
@@ -855,9 +906,10 @@ fn primary_expr_fold_head_optional(node: Node) -> Optional<Symbol> {
     Present { value: cap } =>
       match sequence_left_symbol(cap: cap) {
         Present { value: head } =>
-          if v2.compiler.fold_lowering.fold_family_head(sym: head) {
+          match v2.compiler.fold_lowering.fold_family_authored_step_realization(head: head) {
+            Present { value: _ } =>
             optional_present(value: head)
-          } else {
+            Absent =>
             Absent
           }
         Absent => Absent

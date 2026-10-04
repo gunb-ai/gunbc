@@ -1,5 +1,7 @@
 module v2.extdeps.languages.swift
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -56,7 +58,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection {
-  List,
   Map,
   PointwisePower,
   empty_map,
@@ -92,15 +93,16 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append }
-import v2.std.algebra { approximate_field_type_node, boolean_algebra_type_node, BooleanAlgebra, commutative_semiring_type_node, fold_list, free_monoid_type_node, list_flat_map, list_map, ordered_ring_type_node }
+import v2.std.algebra { BooleanAlgebra, fold_list, list_flat_map, list_map }
+import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
 import v2.std.text { String }
 
 type SwiftIntWidth
@@ -350,7 +352,7 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
   swift_facts_void
 ]
 
-data swift_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn swift_atom(id: Symbol) -> Node {
   Node {
@@ -361,7 +363,7 @@ fn swift_atom(id: Symbol) -> Node {
 }
 
 fn swift_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
@@ -534,15 +536,7 @@ fn swift_selection_policy_node() -> Node {
 }
 
 fn swift_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() },
-      Edge { label: Positional, target: swift_inhabitant_int32_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [swift_inhabitant_int32_node(), swift_inhabitant_int32_node()], codomain: swift_inhabitant_int32_node(), source: swift_inhabitant_int32_node())
 }
 
 fn swift_source_text_authority() -> String {
@@ -552,46 +546,6 @@ fn swift_source_text_authority() -> String {
 fn swift_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn swift_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: swift_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: swift_atom(id: ^swift_source_literal)
-    ),
-    tail: Cons {
-      head: swift_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: swift_atom(id: ^swift_production_fn_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn swift_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: swift_serialize_source_prefix_edges(),
-    right: [
-      swift_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: swift_concrete_tokens(),
-          token_to_node: swift_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn swift_serialize_source_node() -> Node {
-  let _authority = swift_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: swift_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -679,10 +633,6 @@ fn swift_target_model_node() -> Node {
         target: swift_translation_rules_node()
       ),
       swift_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: swift_serialize_source_node()
-      ),
-      swift_named_edge(
         name: ^target_model_edge_semantic_decl_emission,
         target: swift_semantic_decl_emission_bundle_node()
       )
@@ -691,7 +641,10 @@ fn swift_target_model_node() -> Node {
 }
 }
 
+// The kernel Int is realized as Swift's Int32, the width v2.extdeps.languages.rust rust_binding_spellings
+// gives it (`i32`); Swift's own `Int` is platform-width and would be a different realization.
 fn swift_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
   map_insert(
     map_insert(
       map_insert(
@@ -708,6 +661,9 @@ fn swift_binding_spellings() -> Map<Symbol, String> {
     ),
     ^swift_binding_op_plus,
     "+"
+  ),
+  ^dag_binding_type_int,
+  "Int32"
   )
 }
 
@@ -853,7 +809,8 @@ fn swift_lex_rules() -> LexRuleSet {
       swift_lex_rule(token_class: ^swift_token_colon, text: ":"),
       swift_lex_rule(token_class: ^swift_token_dot, text: "."),
       swift_lex_rule(token_class: ^swift_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 

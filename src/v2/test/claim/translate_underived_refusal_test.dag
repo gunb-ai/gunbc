@@ -1,5 +1,6 @@
 module v2.test.claim.translate_underived_refusal
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
@@ -24,7 +25,6 @@ import v2.extdeps.languages.rust {
 import v2.extdeps.languages.rust_test {
   rust_pick_binding_spellings,
   rust_pick_lex,
-  rust_pick_serialize_source_node,
   rust_pick_source_text,
   rust_pick_translation_rules_node
 }
@@ -59,6 +59,8 @@ import v2.std.node {
   Positional,
   TypeNode,
   Value,
+  ArrowEffectClaimsEdge,
+  core_edge,
   content_hash,
   node_rebuild,
 }
@@ -128,7 +130,7 @@ fn translate_underived_value_node() -> Node {
 }
 
 fn translate_underived_value_specimen_facts() -> Optional<InferredFacts> {
-  match infer_and_discharge(tree: translate_underived_value_specimen) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: translate_underived_value_specimen)) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
     Rejected { diagnostics: _ } => optional_absent()
@@ -184,7 +186,7 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
 }
 
 fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<InferredFacts> {
-  match infer_and_discharge(tree: python_emitted_add_fn_node()) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: python_emitted_add_fn_node())) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -247,6 +249,32 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<Inferr
   )
 }
 
+// THE SAME ARROW WITH THE SAME UNDERIVED PAYLOAD, CARRIED ON A CONTRACT EDGE (v2.std.node
+// arrow_effect_claims_label) instead of a Positional child. A contract edge is metadata infer never
+// judges (docs/plans/arrow-contract-edges.md), so the subtree gate does not walk it: the payload's
+// recorded GroundingNotDerived would refuse it if it did. The Positional twin above is the red control
+// -- the two trees differ only in the edge's label, so the accept is the metadata arm and not a lookup
+// miss.
+fn translate_bodied_arrow_contract_payload_tree() -> Outcome<InferredTree> {
+  bind_outcome(
+    o: table_fixture_add_arrow_with_body(),
+    f: fn(arrow) {
+      outcome_accepted(
+        value: InferredTree {
+          root: node_rebuild(
+            n: arrow,
+            children: list_snoc_item(
+              xs: arrow.children,
+              item: core_edge(marker: ArrowEffectClaimsEdge, target: translate_underived_value_specimen)
+            )
+          ),
+          facts: PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+        }
+      )
+    }
+  )
+}
+
 fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node> {
   bind_outcome(
     o: translate_bodied_arrow_shortcut_root(),
@@ -291,10 +319,6 @@ fn translate_underived_grammar_match_bundle() -> Node {
         target: rust_pick_translation_rules_node()
       ),
       rust_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: rust_pick_serialize_source_node()
-      ),
-      rust_named_edge(
         name: ^target_model_edge_selection_policy,
         target: rust_selection_policy_node()
       )
@@ -314,7 +338,7 @@ data translate_underived_grammar_match_target: TargetModel = TargetModel {
 }
 
 fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) -> Bool {
-  match infer_and_discharge(tree: root) {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match translate(tree: tree, target: target) {
@@ -394,6 +418,17 @@ fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant() 
   }
 }
 
+fn translate_accepts_bodied_arrow_contract_payload() -> Bool {
+  match translate_bodied_arrow_contract_payload_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match translate(tree: tree, target: go_target_model()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
   match translate(tree: sg2_mode2_inferred_tree, target: sg2_mode2_target()) {
     Accepted { value: _, diagnostics: _ } => true
@@ -465,6 +500,13 @@ test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> 
 
 test fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant_holds() -> Bool {
   translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant()
+}
+
+// The discriminator for the metadata arm: the Positional payload refuses and the contract payload is
+// accepted, on one Arrow and one facts map.
+test fn translate_gates_a_positional_payload_but_not_a_contract_payload_holds() -> Bool {
+  translate_refuses_bodied_arrow_shortcut_underived_descendant()
+    && translate_accepts_bodied_arrow_contract_payload()
 }
 
 test fn translate_accepts_synthetic_empty_facts_tree_holds() -> Bool {

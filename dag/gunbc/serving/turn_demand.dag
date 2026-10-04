@@ -1,6 +1,6 @@
 module gunbc.serving.turn_demand
 
-import std.types { NonEmptyStr, List, String }
+import std.types { NonEmptyStr, List, String, brand }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import product.fabric.work {
   Work, WorkContract, WorkStep, OpaqueEffects, OfferedService, ServiceInterfaceRef, ArtifactManifestRef,

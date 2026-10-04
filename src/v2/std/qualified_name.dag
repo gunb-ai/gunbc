@@ -1,5 +1,6 @@
 module v2.std.qualified_name
 
+import std.types { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -15,9 +16,6 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { HeadAbsent, HeadFound, fold_list, fold_list_node, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,
@@ -25,9 +23,8 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Named, Node, NodeFold, Positional, Symbol, TypeNode, declaration_reference_marker, fold_node, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -83,7 +80,7 @@ type QnSpineRole
 
 fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
   match label {
-    Named { name: sym } =>
+    Authored { name: sym } =>
       if sym == ^fold_list_node_head {
         QnSpineHead
       } else if sym == ^fold_list_node_tail {
@@ -91,6 +88,7 @@ fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
       } else {
         QnNotSpine
       }
+    StructuralLabel { label: _ } => QnNotSpine
     Positional => QnNotSpine
   }
 }
@@ -98,70 +96,184 @@ fn qn_spine_role(label: EdgeLabel) -> QnSpineRole {
 fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldStatus {
   match acc {
     QnFoldError { diag: d } => QnFoldError { diag: d }
-    _ =>
+    QnFoldInit =>
       match child {
         QnFoldError { diag: d } => QnFoldError { diag: d }
         QnFoldDone { qn: child_qn } =>
           match qn_spine_role(label: edge.label) {
             QnSpineHead =>
-                match edge.target.kind {
-                  TypeNode { connective: Atom { identity: _ } } =>
-                    match child_qn {
-                      Cons { head: sym, tail: child_tail } =>
-                        match list_head(xs: child_tail) {
-                          HeadAbsent =>
-                            match acc {
-                              QnFoldInit => QnFoldHeadSeen { sym: sym }
-                              QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                              _ => QnFoldError { diag: Diagnostic {
-                                reason: ^qualified_name_structure_invalid,
-                                at: node_locus(node: edge.target),
-                                correction: Unavailable { reason: ExternalContractUnknown }
-                              }}
-                            }
-                          HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
-                            reason: ^qualified_name_structure_invalid,
-                            at: node_locus(node: edge.target),
-                            correction: Unavailable { reason: ExternalContractUnknown }
-                          }}
-                        }
-                      _ => QnFoldError { diag: Diagnostic {
-                        reason: ^qualified_name_structure_invalid,
-                        at: node_locus(node: edge.target),
-                        correction: Unavailable { reason: ExternalContractUnknown }
-                      }}
-                    }
-                  _ => QnFoldError { diag: Diagnostic {
-                    reason: ^qualified_name_structure_invalid,
-                    at: node_locus(node: edge.target),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }}
-                }
+              match edge.target.kind {
+                TypeNode { connective: Atom { identity: _ } } =>
+                  match child_qn {
+                    Cons { head: sym, tail: child_tail } =>
+                      match list_head(xs: child_tail) {
+                        HeadAbsent => QnFoldHeadSeen { sym: sym }
+                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                          reason: ^qualified_name_structure_invalid,
+                          at: node_locus(node: edge.target),
+                          correction: Unavailable { reason: ExternalContractUnknown }
+                        }}
+                      }
+                    _ => QnFoldError { diag: Diagnostic {
+                      reason: ^qualified_name_structure_invalid,
+                      at: node_locus(node: edge.target),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    }}
+                  }
+                _ => QnFoldError { diag: Diagnostic {
+                  reason: ^qualified_name_structure_invalid,
+                  at: node_locus(node: edge.target),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }}
+              }
             QnSpineTail =>
-                match edge.target.kind {
-                  TypeNode { connective: Conj } =>
-                    match acc {
-                      QnFoldInit => QnFoldTailSeen { tail: child_qn }
-                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
-                      _ => QnFoldError { diag: Diagnostic {
-                        reason: ^qualified_name_structure_invalid,
-                        at: node_locus(node: edge.target),
-                        correction: Unavailable { reason: ExternalContractUnknown }
-                      }}
-                    }
-                  _ => QnFoldError { diag: Diagnostic {
-                    reason: ^qualified_name_structure_invalid,
-                    at: node_locus(node: edge.target),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }}
-                }
+              match edge.target.kind {
+                TypeNode { connective: Conj } => QnFoldTailSeen { tail: child_qn }
+                _ => QnFoldError { diag: Diagnostic {
+                  reason: ^qualified_name_structure_invalid,
+                  at: node_locus(node: edge.target),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }}
+              }
             QnNotSpine => QnFoldError { diag: Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: edge.target),
               correction: Unavailable { reason: ExternalContractUnknown }
             }}
           }
-        _ => QnFoldError { diag: Diagnostic {
+        QnFoldInit => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldHeadSeen { sym: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldTailSeen { tail: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+      }
+    QnFoldHeadSeen { sym: sym } =>
+      match child {
+        QnFoldError { diag: d } => QnFoldError { diag: d }
+        QnFoldDone { qn: child_qn } =>
+          match qn_spine_role(label: edge.label) {
+            QnSpineHead => QnFoldError { diag: Diagnostic {
+              reason: ^qualified_name_structure_invalid,
+              at: node_locus(node: edge.target),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }}
+            QnSpineTail =>
+              match edge.target.kind {
+                TypeNode { connective: Conj } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
+                _ => QnFoldError { diag: Diagnostic {
+                  reason: ^qualified_name_structure_invalid,
+                  at: node_locus(node: edge.target),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }}
+              }
+            QnNotSpine => QnFoldError { diag: Diagnostic {
+              reason: ^qualified_name_structure_invalid,
+              at: node_locus(node: edge.target),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }}
+          }
+        QnFoldInit => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldHeadSeen { sym: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldTailSeen { tail: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+      }
+    QnFoldTailSeen { tail: tail_qn } =>
+      match child {
+        QnFoldError { diag: d } => QnFoldError { diag: d }
+        QnFoldDone { qn: child_qn } =>
+          match qn_spine_role(label: edge.label) {
+            QnSpineHead =>
+              match edge.target.kind {
+                TypeNode { connective: Atom { identity: _ } } =>
+                  match child_qn {
+                    Cons { head: sym, tail: child_tail } =>
+                      match list_head(xs: child_tail) {
+                        HeadAbsent => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                        HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
+                          reason: ^qualified_name_structure_invalid,
+                          at: node_locus(node: edge.target),
+                          correction: Unavailable { reason: ExternalContractUnknown }
+                        }}
+                      }
+                    _ => QnFoldError { diag: Diagnostic {
+                      reason: ^qualified_name_structure_invalid,
+                      at: node_locus(node: edge.target),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    }}
+                  }
+                _ => QnFoldError { diag: Diagnostic {
+                  reason: ^qualified_name_structure_invalid,
+                  at: node_locus(node: edge.target),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }}
+              }
+            QnSpineTail => QnFoldError { diag: Diagnostic {
+              reason: ^qualified_name_structure_invalid,
+              at: node_locus(node: edge.target),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }}
+            QnNotSpine => QnFoldError { diag: Diagnostic {
+              reason: ^qualified_name_structure_invalid,
+              at: node_locus(node: edge.target),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }}
+          }
+        QnFoldInit => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldHeadSeen { sym: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldTailSeen { tail: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+      }
+    QnFoldDone { qn: _ } =>
+      match child {
+        QnFoldError { diag: d } => QnFoldError { diag: d }
+        QnFoldDone { qn: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldInit => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldHeadSeen { sym: _ } => QnFoldError { diag: Diagnostic {
+          reason: ^qualified_name_structure_invalid,
+          at: node_locus(node: edge.target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }}
+        QnFoldTailSeen { tail: _ } => QnFoldError { diag: Diagnostic {
           reason: ^qualified_name_structure_invalid,
           at: node_locus(node: edge.target),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -254,6 +366,57 @@ fn qualified_name_spine_shape_present(root: Node) -> Bool {
   }
 }
 
+// THE SPINE'S SEGMENTS AS THE NODES THAT CARRY THEM, beside the reader that returns their symbols.
+// qualified_name_from_node answers the NAME -- a FreeMonoid<Symbol> -- which is everything a consumer
+// deciding what a name denotes needs. A consumer REWRITING a spine into another construct needs the
+// segment NODES instead, because each segment was lowered from its own token and carries that token's
+// occurrence (v2.compiler.body_lowering_fold builds the spine from exactly those atoms). Rebuilding a
+// segment from its symbol would mint a synthetic node in its place and move the diagnostic locus of
+// every error about that segment onto the whole chain.
+//
+// IT LIVES HERE BECAUSE THE LABEL SET DOES. This module holds the spine's reader and its inverse
+// together so that no producer spells the spine with labels the reader does not accept; a segment-node
+// walker written anywhere else would be a third surface over fold_list_node's labels, read through
+// qn_spine_role or -- worse -- re-spelled. The shape gate is the same one qualified_name_from_node
+// uses, so the two readers accept exactly the same spines and a consumer cannot get segments for a
+// node the name reader would refuse.
+fn qn_spine_role_node_optional(root: Node, wanted_head: Bool) -> Optional<Node> {
+  fold(root.children, init: optional_absent(), f: fn(acc, edge) {
+    match qn_spine_role(label: edge.label) {
+      QnSpineHead => if wanted_head { optional_present(value: edge.target) } else { acc }
+      QnSpineTail => if wanted_head { acc } else { optional_present(value: edge.target) }
+      QnNotSpine => acc
+    }
+  })
+}
+
+fn qualified_name_spine_segment_nodes(root: Node) -> Optional<List<Node>> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      if count(root.children) == 0 {
+        optional_present(value: Empty)
+      } else if qualified_name_spine_shape_present(root: root) {
+        match qn_spine_role_node_optional(root: root, wanted_head: true) {
+          Absent => optional_absent()
+          Present { value: segment } =>
+            match qn_spine_role_node_optional(root: root, wanted_head: false) {
+              Absent => optional_absent()
+              Present { value: tail } =>
+                match qualified_name_spine_segment_nodes(root: tail) {
+                  Absent => optional_absent()
+                  Present { value: rest } =>
+                    optional_present(value: Cons { head: segment, tail: rest })
+                }
+            }
+        }
+      } else {
+        optional_absent()
+      }
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -316,17 +479,57 @@ fn qualified_name_spine_of_atoms(atoms: FreeMonoid<Node>, occurrence_id: NodeOcc
   node_with_occurrence_id(kind: spine.kind, children: spine.children, occurrence_id: occurrence_id)
 }
 
-// The marker is v2.std.node declaration_reference_marker, beside the node kinds it labels, so
+// The marker is v2.std.node CoreEdgeLabel DeclarationReferenceEdge (ParameterReferenceEdge for a parameter), beside the node kinds it labels, so
 // v2.std.node well_formed can hold an arrow body to it (gunbc#12377).
 // THE ONE PRODUCER OF THE MARKED CARRIER (consumed by v2.compiler.resolve resolved_reference_node).
 // The occurrence stays on the marker node alone, which is the node that stands where the reference
 // stood; the spine under it is synthetic, so one source occurrence is carried by exactly one node.
 fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: DeclarationReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+// THE ONE PRODUCER OF A PARAMETER REFERENCE (consumed by v2.compiler.resolve
+// resolve_frame_bound_reference, which verifies the path against the symbol index first).
+fn parameter_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  resolved_reference_node_of_kind(kind: ParameterReferenceKind, qn: qn, occurrence_id: occurrence_id)
+}
+
+// THE ONE PRODUCER OF A LEXICAL REFERENCE (consumed by v2.compiler.resolve
+// resolve_lexical_reference_keyed, which records the binder that answered it in
+// ResolvedTree.lexical_bindings under this node's occurrence). Its one child is the local's label, a
+// synthetic atom, so the reference's occurrence stays on the marker node alone.
+fn lexical_reference_node(label: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: declaration_reference_marker() },
+        label: core_edge_label(marker: resolved_reference_kind_marker(kind: LexicalReferenceKind)),
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: label } }, children: [])
+      },
+    ],
+    occurrence_id: occurrence_id
+  )
+}
+
+// A LEXICAL REFERENCE READS AS ITS LOCAL'S LABEL OR AS NOTHING, keyed on the marker like its siblings;
+// a declaration or parameter reference answers Absent here.
+fn lexical_reference_label_optional(node: Node) -> Optional<Symbol> {
+  match resolved_reference_spine_optional(node: node, kind: LexicalReferenceKind) {
+    Present { value: label_atom } =>
+      match label_atom.kind {
+        TypeNode { connective: Atom { identity: label } } => optional_present(value: label)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn resolved_reference_node_of_kind(kind: ResolvedReferenceKind, qn: QualifiedName, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: resolved_reference_kind_marker(kind: kind)),
         target: qualified_name_spine_node(qn: qn, occurrence_id: OccurrenceSynthetic)
       },
     ],
@@ -338,30 +541,30 @@ fn declaration_reference_node(qn: QualifiedName, occurrence_id: NodeOccurrenceId
 // spine shape: a bare spine -- an authored dotted mention before resolution, an integer literal,
 // any other cons list -- answers Absent. Under the marker, a spine whose fold refuses is a malformed
 // node, not a reference, and also answers Absent so that the consumer's own arm decides it.
-fn declaration_reference_spine_optional(node: Node) -> Optional<Node> {
-  match node.kind {
-    TypeNode { connective: Conj } =>
-      if count(node.children) == 1 {
-        fold(node.children, init: optional_absent(), f: fn(acc, edge) {
-          match edge.label {
-            Named { name: label } =>
-              if symbol_eq(a: label, b: declaration_reference_marker()) {
-                optional_present(value: edge.target)
-              } else {
-                acc
-              }
-            _ => acc
-          }
-        })
+fn resolved_reference_spine_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<Node> {
+  match resolved_reference_body_kind(target: node) {
+    MarkedReference { kind: found } =>
+      if found == kind {
+        fold(node.children, init: optional_absent(), f: fn(acc, edge) { optional_present(value: edge.target) })
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    NotMarkedReference => optional_absent()
   }
 }
 
 fn declaration_reference_path_optional(node: Node) -> Optional<QualifiedName> {
-  match declaration_reference_spine_optional(node: node) {
+  resolved_reference_path_optional(node: node, kind: DeclarationReferenceKind)
+}
+
+// A PARAMETER REFERENCE READS AS ITS DECLARING PATH <fn path>.<label> OR AS NOTHING, under the same
+// rules as a declaration reference; a declaration reference answers Absent here and vice versa.
+fn parameter_reference_path_optional(node: Node) -> Optional<QualifiedName> {
+  resolved_reference_path_optional(node: node, kind: ParameterReferenceKind)
+}
+
+fn resolved_reference_path_optional(node: Node, kind: ResolvedReferenceKind) -> Optional<QualifiedName> {
+  match resolved_reference_spine_optional(node: node, kind: kind) {
     Present { value: spine } =>
       if qualified_name_spine_shape_present(root: spine) {
         match qualified_name_from_node(root: spine) {

@@ -36,6 +36,7 @@ import gunbc.cli_invoke { NamedArgumentAdmission, NamedArgumentAdmitted, NamedAr
 import gunbc.executor_privileged_operation {
   SystemdDaemonReload,
   executor_privileged_operation_sudoers_line,
+  sudoers_argument_word,
   executor_privileged_operation_elevated_argv,
   executor_privileged_operation_argv,
 }
@@ -86,16 +87,19 @@ test fn the_helper_argv_is_pinned_word_for_word() -> Bool {
 
 test fn the_grant_line_is_pinned() -> Bool {
   (approval_broker_helper_sudoers_line(revision: rev_a()) as String) == join([
-    "briansrls ALL=(gunbc-ntfy) NOPASSWD: ",
+    "briansrls ALL=(gunbc-ntfy) NOPASSWD: /usr/bin/env GUNBC_WORKSPACE_ROOT\\=", snapshot_a_dir, " ",
     snapshot_a_dir, "/gunbc run --source-root ", snapshot_a_dir, "/dag --source-root ", snapshot_a_dir,
     "/src/v2 --entry ", snapshot_a_dir, "/dag/gunbc/auth/approval_ntfy_runtime_observe.dag --function approval_ntfy_runtime_observe",
   ], "")
 }
 
 // ── THE GRANT AUTHORIZES EXACTLY ITS OWN RELEASE'S ARGV ────────────────────────────────────
-// sudo matches the words after its own four (`sudo -n -u <user>`) against the Cmnd.
+// sudo matches the words after its own four (`sudo -n -u <user>`) against the Cmnd, reading the
+// Cmnd's escapes (sudoers(5): `,` `:` `=` `\` are backslash-escaped in arguments). So the argv words
+// are compared in the escaped spelling. The env(1) binding carries a `=`, and without the escape the
+// line would not name this argv.
 fn command_words_after_sudo(argv: List<String>) -> String {
-  join(argv |> skip(n: 4), " ")
+  join(map(argv |> skip(n: 4), w => sudoers_argument_word(w: w)), " ")
 }
 
 fn grant_authorizes(line: NonEmptyStr, argv: List<String>) -> Bool {
@@ -181,9 +185,11 @@ test fn nothing_the_grant_executes_is_in_the_grantee_owned_release() -> Bool {
 
 test fn the_snapshot_readback_covers_every_ancestor_and_refuses_links() -> Bool {
   path_ancestors_inclusive(path: "/opt/gunbc/approval-broker-helpers") == ["/", "/opt", "/opt/gunbc", "/opt/gunbc/approval-broker-helpers"]
-    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_ancestors=$('find' '/' '/opt' '/opt/gunbc' '/opt/gunbc/approval-broker-helpers' '-maxdepth' '0' '(' '!' '-user' 'root' '-o' '-perm' '/022' '-o' '-type' 'l' ')' '-print')\n")
-    && string_contains(s: step_text_at(i: 7), pattern: "_gunbc_helper_snapshot=$('find' ")
-    && ends_with(s: step_text_at(i: 7), suffix: "'test' '-z' \"$_gunbc_helper_ancestors\"\"$_gunbc_helper_snapshot\"")
+    && string_contains(s: step_text_at(i: 8), pattern: "_gunbc_helper_ancestors=$('find' '/' '/opt' '/opt/gunbc' '/opt/gunbc/approval-broker-helpers' '-maxdepth' '0' '(' '!' '-user' 'root' '-o' '-perm' '/022' '-o' '-type' 'l' ')' '-print')\n")
+    && string_contains(s: step_text_at(i: 8), pattern: "_gunbc_helper_snapshot=$('find' ")
+    && ends_with(s: step_text_at(i: 8), suffix: "'test' '-z' \"$_gunbc_helper_ancestors\"\"$_gunbc_helper_snapshot\"")
+    && string_contains(s: step_text_at(i: 7), pattern: "candidate_revision=0123456789abcdef0123456789abcdef01234567")
+    && string_contains(s: step_text_at(i: 7), pattern: "-o root -g root /dev/stdin /opt/gunbc/approval-broker-helpers/0123456789abcdef0123456789abcdef01234567/.gunbc-tree-receipt")
 }
 
 // ── WALL 2: THE DROP-IN'S IDENTITY AND AN ATOMIC REPLACE ──────────────────────────────────
@@ -194,28 +200,29 @@ fn step_text_at(i: Int) -> String {
   }
 }
 
-// Steps 0-7 are the snapshot, 8-15 the grant, and 16 retires the previous snapshot.
-//   8 stage   9 visudo -cf staged   10 install root:root 0440 to the dotted temp name
-//   11 visudo -c -O -P -f temp      12 mv -T temp final   13 visudo -c -O -P -f final
-//   14 privileged read of final into the stage              15 cmp
+// Steps 0-8 are the snapshot (7 writes its tree receipt, 8 reads it back), 9-16 the grant, and 17
+// retires the previous snapshot.
+//   9 stage   10 visudo -cf staged   11 install root:root 0440 to the dotted temp name
+//   12 visudo -c -O -P -f temp      13 mv -T temp final   14 visudo -c -O -P -f final
+//   15 privileged read of final into the stage              16 cmp
 test fn the_grant_replaces_atomically_and_reads_back_identity_and_bytes() -> Bool {
   let temp = approval_broker_helper_sudoers_temp_path as String
   let final_path = approval_broker_helper_sudoers_path as String
-  count(approval_broker_helper_grant_steps(spec: deployment_spec_srv1(), revision: rev_a())) == 17
-    && string_contains(s: step_text_at(i: 8), pattern: "NOPASSWD:")
-    && string_contains(s: step_text_at(i: 9), pattern: "'-cf'")
-    && string_contains(s: step_text_at(i: 10), pattern: "'-o' 'root' '-g' 'root'")
-    && string_contains(s: step_text_at(i: 10), pattern: "'0440'")
-    && string_contains(s: step_text_at(i: 10), pattern: temp)
-    && !string_contains(s: step_text_at(i: 10), pattern: "ghrunner")
-    && string_contains(s: step_text_at(i: 11), pattern: "'-c' '-O' '-P' '-f'")
+  count(approval_broker_helper_grant_steps(spec: deployment_spec_srv1(), revision: rev_a())) == 18
+    && string_contains(s: step_text_at(i: 9), pattern: "NOPASSWD:")
+    && string_contains(s: step_text_at(i: 10), pattern: "'-cf'")
+    && string_contains(s: step_text_at(i: 11), pattern: "'-o' 'root' '-g' 'root'")
+    && string_contains(s: step_text_at(i: 11), pattern: "'0440'")
     && string_contains(s: step_text_at(i: 11), pattern: temp)
-    && string_contains(s: step_text_at(i: 12), pattern: "'/usr/bin/mv' '-T'")
-    && string_contains(s: step_text_at(i: 13), pattern: "'-c' '-O' '-P' '-f'")
-    && ends_with(s: step_text_at(i: 13), suffix: concat(final_path, "'"))
-    && string_contains(s: step_text_at(i: 14), pattern: final_path)
-    && starts_with(s: step_text_at(i: 15), prefix: "'cmp' '-s'")
-    && string_contains(s: step_text_at(i: 16), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567' '-exec' '/usr/bin/sudo' '-n' '/usr/bin/rm' '-rf' '--' '{}' '+'")
+    && !string_contains(s: step_text_at(i: 11), pattern: "ghrunner")
+    && string_contains(s: step_text_at(i: 12), pattern: "'-c' '-O' '-P' '-f'")
+    && string_contains(s: step_text_at(i: 12), pattern: temp)
+    && string_contains(s: step_text_at(i: 13), pattern: "'/usr/bin/mv' '-T'")
+    && string_contains(s: step_text_at(i: 14), pattern: "'-c' '-O' '-P' '-f'")
+    && ends_with(s: step_text_at(i: 14), suffix: concat(final_path, "'"))
+    && string_contains(s: step_text_at(i: 15), pattern: final_path)
+    && starts_with(s: step_text_at(i: 16), prefix: "'cmp' '-s'")
+    && string_contains(s: step_text_at(i: 17), pattern: "'!' '-name' '0123456789abcdef0123456789abcdef01234567' '-exec' '/usr/bin/sudo' '-n' '/usr/bin/rm' '-rf' '--' '{}' '+'")
 }
 
 // INTERRUPTION BEFORE THE RENAME LEAVES THE PREVIOUS POLICY: sudoers(5) skips an #includedir file
@@ -235,8 +242,9 @@ test fn only_the_renamed_file_is_ever_included_by_sudo() -> Bool {
 }
 
 // THE DARK INSTALL CARRIES THIS RELEASE'S GRANT, inspected at the composition the dark install's
-// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the release
-// tree's steps, then exactly the seventeen snapshot and grant steps, ending with retirement of every
+// intent consumes (gunbc.live_deploy.emit approval_broker_dark_install_release_steps): the device
+// store's ensure (the operator's 0700 directory), the release tree's steps, then exactly the eighteen
+// snapshot and grant steps, ending with retirement of every
 // other release's snapshot. The whole orchestrated script is still rendered by the existing dark-install
 // claims in test.claim.live_deploy.emit, which now carry these steps. Rendering it again here cost
 // more than the new-witness budget (110041 and 100982 eval steps against 72300).
@@ -244,8 +252,13 @@ test fn the_dark_install_composes_this_releases_grant() -> Bool {
   let spec = deployment_spec_srv1()
   let steps = approval_broker_dark_install_release_steps(spec: spec, revision: rev_a())
   let tree = count(approval_broker_tree_copy_steps(spec: spec, revision: rev_a()))
-  count(steps) == tree + 17
-    && match steps |> skip(n: tree + 12) |> first {
+  count(steps) == tree + 19
+    && match steps |> first {
+      Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "/var/lib/gunbc/approval-devices")
+        && string_contains(s: pipeline_step_text(st: st), pattern: "0700")
+      Absent => false
+    }
+    && match steps |> skip(n: tree + 14) |> first {
       Present { value: st } => string_contains(s: pipeline_step_text(st: st), pattern: "'/usr/bin/mv' '-T'")
       Absent => false
     }
@@ -279,10 +292,10 @@ data sample_observation: NtfyRuntimeProcessObservation = NtfyRuntimeProcessObser
   start_ticks_before: 991,
   start_ticks_after: 991,
   environment_names: ["LANG", "PATH"],
-  exe_target: "/usr/bin/ntfy",
+  exe_target: "/usr/local/bin/ntfy",
   exe_inode: 131,
   open_fds: [
-    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/user.db (deleted)", target_inode: 77 },
+    NtfyOpenFd { target: "/var/lib/gunbc-ntfy/auth.db (deleted)", target_inode: 77 },
     NtfyOpenFd { target: "socket:[55123]", target_inode: 55123 },
     NtfyOpenFd { target: "/tmp/a=b c", target_inode: 12 },
   ],
@@ -300,7 +313,7 @@ test fn an_observation_round_trips_verbatim() -> Bool {
   round_trips(o: NtfyRuntimeObserved { observation: sample_observation })
     && round_trips(o: NtfyRuntimeObserved { observation: NtfyRuntimeProcessObservation {
       main_pid: 4242, start_ticks_before: 1, start_ticks_after: 1, environment_names: [],
-      exe_target: "/usr/bin/ntfy", exe_inode: 1,
+      exe_target: "/usr/local/bin/ntfy", exe_inode: 1,
       open_fds: [NtfyOpenFd { target: "/tmp/a\nb \"q\"", target_inode: 2 }],
     } })
 }
@@ -316,7 +329,7 @@ fn undecodable(text: String) -> Bool {
   }
 }
 
-data observed_head: String = "{\"outcome\":\"observed\",\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[\"LANG\"],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5}]"
+data observed_head: String = "{\"outcome\":\"observed\",\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[\"LANG\"],\"exe_target\":\"/usr/local/bin/ntfy\",\"exe_inode\":1,\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5}]"
 
 fn observed_with(tail: String) -> String {
   concat(observed_head, concat(tail, "}"))
@@ -339,7 +352,7 @@ test fn the_decoder_refuses_every_malformed_text() -> Bool {
     && undecodable(text: observed_with(tail: ",\"main_pid\":\"7\""))
     && undecodable(text: observed_with(tail: ",\"main_pid\":7,\"surprise\":1"))
     && undecodable(text: concat(
-      "{\"outcome\":\"observed\",\"main_pid\":7,\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[],\"exe_target\":\"/usr/bin/ntfy\",\"exe_inode\":1,",
+      "{\"outcome\":\"observed\",\"main_pid\":7,\"start_ticks_before\":1,\"start_ticks_after\":1,\"environment_names\":[],\"exe_target\":\"/usr/local/bin/ntfy\",\"exe_inode\":1,",
       "\"open_fds\":[{\"target\":\"socket:[5]\",\"target_inode\":5,\"mode\":1}]}",
     ))
     && undecodable(text: "{\"outcome\":\"maybe\"}")

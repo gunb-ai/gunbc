@@ -1,0 +1,46 @@
+module gunbc.rung_drop.d0_store_walls_single_lifecycle
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// OPERATOR-RULED, SINGLE-USE (2026-09-30, relayed by proud-deer-538, option A): take the fabric store
+// walls off DS4.1's critical path for exactly one D0 lifecycle, declared rather than silent.
+//
+// WHAT FALLS. The wet D0 door (gunbc.spark.pair_serving_d0_door pair_serving_d0_wet) refuses while
+// either store wall is unfinished (gunbc.spark.pair_serving_d0 d0_store_write_wall_standing): the
+// served/local writer roster (gunbc.rung_drop.fabric_storage_append_principal_unrefused, retired in
+// source, effective on srv1 once dashboard_deploy applies it) and the per-operation authorization at
+// the store (gunbc.spark.pair_serving_d0 d0_store_operation_wall, being built in gunbc#12537 and its
+// successors). Under this row the door admits ONE lifecycle anyway: FabricGroupA, under the ONE
+// escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id names -- and, by a second
+// operator ruling (2026-10-03, relayed by valiant-crab-775), ONE MORE: the Group A release-to-fleet under
+// gunbc.spark.pair_serving_d0 d0_release_lifecycle_escalation_id, on the same terms -- while a writer
+// could still move the store facts D0 writes without the store verifying D0's authorization.
+//
+// WHAT DOES NOT FALL. Everything else in D0 stands: the operator's approval through the approvals app,
+// the durable claim, the frozen filing (which fixes the escalation's intent and execution revision),
+// the authority event log and the placement saga. A rerun of THIS lifecycle (the same escalation
+// id, the frozen filing's revision) is admitted -- D0's crash recovery needs it; a new consent is
+// refused, group-b is refused, and with this row retired the door refuses exactly as before.
+data d0_store_walls_single_lifecycle: RungDrop = RungDrop {
+  identity: "d0_store_walls_single_lifecycle" as NonEmptyStr,
+
+  subject: "a D0 pair-serving transaction admitted while the fabric store does not refuse a writer without D0 authorization for the operation",
+
+  declared: "2026-09-30",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
+    population: [
+      "exactly one D0 lifecycle: gunbc.spark.pair_serving_d0 pair_serving_d0 for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id, including reruns of that same lifecycle (same escalation id, the frozen filing's execution revision)",
+      "exactly one more D0 lifecycle (operator-ruled 2026-10-03, relayed by valiant-crab-775, dashboard message msg_eb268a0a): the Group A release-to-fleet for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_release_lifecycle_escalation_id, including its reruns, on the same terms; that id moved once (the first release lifecycle froze at a revision that could not reach the broker and is inert), within the operator's standing Group A ruling of 2026-10-03 (gunbc.auth.standing_operator_grant group_a_dev_standing_grant)",
+      "no other escalation id and no other fabric group",
+    ],
+    restoration_trigger: "BOTH store walls live, SUFFICIENT FOR a rostered fleet writer without D0 authorization for the operation to be refused at the store on srv1: gunbc.rung_drop.fabric_storage_append_principal_unrefused retired AND effective on srv1 (the unix-socket door deployed by dashboard_deploy), AND gunbc.spark.pair_serving_d0 d0_store_operation_wall at StoreOperationWallRestored. When both hold, d0_store_write_wall_standing admits every lifecycle through the walls and this row retires; retiring it earlier re-closes the door to this lifecycle too.",
+  },
+}

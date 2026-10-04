@@ -1,0 +1,356 @@
+module test.claim.runner.runner_browser_toolchain_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import extdeps.github.actions { SelfHosted }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.runner_host_deploy { RunnerHostDeploy, fleet_runner_host_deploys }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainLocation, runner_browser_toolchain_location,
+  BrowserToolchainPool, BrowserToolchainPoolDerived, BrowserToolchainPoolUndefined,
+  runner_browser_toolchain_pool, runner_browser_toolchain_pool_of,
+  BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission_in,
+  HostLibraryReadback, HostLibrariesResolved, HostLibrariesMissing, HostLibrariesUnreadable,
+  host_library_readback_of, library_readback_text,
+  VersionMatches, VersionMismatch, VersionUnreadable, exact_version_readback_of,
+  BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
+  runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
+  TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
+  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
+  browser_toolchain_probe_fragment,
+  runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
+}
+import extdeps.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import gunbc.verified_archive_install { ArchiveSha256, StagedArchive }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import extdeps.exec.command { argv_words }
+import extdeps.browser.chromium { chromium_151_0_7922_34, chromium_version_line }
+import extdeps.automation.playwright { PlaywrightHostLibraryPackage, playwright_chromium_install_deps_ubuntu2404_arm64 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ---------------------------------------------------------------------------------------------
+// THE POOL
+// ---------------------------------------------------------------------------------------------
+
+fn floor_labels() -> List<String> {
+  match gunbc_ci_selected_runner_spec() {
+    SelfHosted { labels: ls } => ls
+    _ => []
+  }
+}
+
+fn covers(have: List<String>, want: List<String>) -> Bool {
+  fold(want, init: true, f: (acc, w) => acc && fold(have, init: false, f: (f2, h) => f2 || h == w))
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT (DESIGN 5). Every rostered runner host is in the
+// derived pool EXACTLY WHEN its own registration labels cover the floor job's runs-on labels -- in
+// both directions, over the roster independently enumerated by fleet_runner_host_deploys. A pool
+// that dropped a covering host, or admitted one that does not cover, reds here.
+test fn the_pool_is_exactly_the_rostered_hosts_that_register_the_floor_labels() -> Bool {
+  match runner_browser_toolchain_pool() {
+    BrowserToolchainPoolUndefined { cause: _ } => false
+    BrowserToolchainPoolDerived { hosts: pool } =>
+      list_length(floor_labels()) > 0
+        && fold(fleet_runner_host_deploys, init: true, f: (acc, d) => {
+          let covering = match runner_registration_labels(host: (d.host_label as String) as HostIdentity) {
+            RegistrationLabelsResolved { labels: ls } => covers(have: ls, want: floor_labels())
+            RegistrationLabelsRefused { host: _, cause: _ } => false
+          }
+          let member = fold(pool, init: false, f: (m, p) => m || (p.host_label as String) == (d.host_label as String))
+          acc && (covering == member)
+        })
+        && list_length(pool) > 0
+  }
+}
+
+// A ROSTER ROW WHOSE HOST HAS NO FLEET COMPUTE OFFER HAS NO REGISTRATION LABELS, SO IT IS NOT IN THE
+// POOL -- supplied rather than looked for in the live roster, so the discrimination does not depend
+// on the fleet happening to carry such a host today.
+test fn a_host_that_registers_no_floor_labels_is_not_in_the_pool() -> Bool {
+  match fleet_runner_host_deploys {
+    Empty => false
+    Cons { head: real, tail: _ } => {
+      let stranger = RunnerHostDeploy {
+        host_label: "no-such-runner-host",
+        ssh_target: real.ssh_target,
+        runner_user: real.runner_user,
+        unit_user: real.unit_user,
+        job_user: real.job_user,
+        app: real.app,
+        runner_count: 1,
+      }
+      match runner_browser_toolchain_pool_of(deploys: [real, stranger]) {
+        BrowserToolchainPoolDerived { hosts: hs } =>
+          fold(hs, init: true, f: (acc, h) => acc && (h.host_label as String) != "no-such-runner-host")
+        BrowserToolchainPoolUndefined { cause: _ } => false
+      }
+    }
+  }
+}
+
+test fn a_host_outside_the_pool_is_refused_by_name() -> Bool {
+  match runner_browser_toolchain_host_admission_in(pool: runner_browser_toolchain_pool(), host: "no-such-runner-host") {
+    BrowserToolchainHostRefused { host: h, cause: c } =>
+      (h as String) == "no-such-runner-host" && string_contains(s: c, pattern: "is not in the pool that runs the floor job")
+    BrowserToolchainHostAdmitted { deploy: _, location: _ } => false
+  }
+}
+
+test fn an_undefined_pool_refuses_every_host_rather_than_admitting_none_silently() -> Bool {
+  match runner_browser_toolchain_host_admission_in(pool: BrowserToolchainPoolUndefined { cause: "no fleet target" }, host: "srv1") {
+    BrowserToolchainHostRefused { host: _, cause: c } => c == "no fleet target"
+    BrowserToolchainHostAdmitted { deploy: _, location: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE LOCATION (the consumer seam)
+// ---------------------------------------------------------------------------------------------
+
+// THE LOCATION IS ABSOLUTE UNDER THE JOB USER'S HOME AND NAMED BY THE RECIPE; the retained archives
+// sit beside the tree, never inside it.
+test fn the_location_is_absolute_and_named_by_the_recipe() -> Bool {
+  let loc = runner_browser_toolchain_location(job_user: "ghrunner")
+  let root = concat("/home/ghrunner/.local/share/gunbc-browser-toolchain/", loc.recipe as String)
+  (loc.root as String) == root
+    && (loc.base as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain"
+    && (loc.archives as String) == "/home/ghrunner/.local/share/gunbc-browser-toolchain/archives"
+    && (loc.node_binary as String) == concat(root, "/node/bin/node")
+    && (loc.playwright_module as String) == concat(root, "/node_modules/playwright")
+    && (loc.headless_shell as String) == concat(root, "/ms-playwright/chromium_headless_shell-1234/chrome-linux/headless_shell")
+}
+
+// A DIGEST-ONLY PIN CHANGE NAMES A DIFFERENT TREE (finding 2): the same archives with one archive's
+// pin changed, or the same archives with a different tree pin, yield different recipe identities --
+// so a converge for the new recipe builds beside the old tree rather than into it.
+test fn a_digest_only_pin_change_names_a_different_tree() -> Bool {
+  let base = runner_browser_toolchain_recipe_identity(archives: runner_browser_toolchain_archives, tree_sha256: runner_browser_toolchain_tree_sha256)
+  let repinned = map(runner_browser_toolchain_archives, a =>
+    if (a.file_name as String) == "chromium-1234-linux-arm64.zip" {
+      StagedArchive { file_name: a.file_name, url: a.url, pin: ArchiveSha256 { hex: "0000000000000000000000000000000000000000000000000000000000000000" }, destination_relative: a.destination_relative, extraction: a.extraction }
+    } else { a })
+  let by_archive = runner_browser_toolchain_recipe_identity(archives: repinned, tree_sha256: runner_browser_toolchain_tree_sha256)
+  let by_tree = runner_browser_toolchain_recipe_identity(archives: runner_browser_toolchain_archives, tree_sha256: "1111111111111111111111111111111111111111111111111111111111111111")
+  (base as String) != (by_archive as String)
+    && (base as String) != (by_tree as String)
+    && (base as String) == (runner_browser_toolchain_location(job_user: "ghrunner").recipe as String)
+}
+
+// ADMISSION IS THE CONTENT DIGEST AGAINST THE PIN, AND EVERY OTHER READING REFUSES.
+test fn a_tree_is_admitted_only_when_present_and_its_content_digest_equals_the_pin() -> Bool {
+  (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAdmitted => true  _ => false })
+    && (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestObserved { hex: "bb" }) { TreeContentMismatch { tree: _, expected: e, observed: o } => (e as String) == "aa" && (o as String) == "bb"  _ => false })
+    && (match tree_admission_of(tree: "/t", present: false, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAbsent { tree: _ } => true  _ => false })
+    && (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestUnobservable { reason: "sort failed" }) { TreeUnobservable { tree: _, reason: _ } => true  _ => false })
+}
+
+// THE MANIFEST IS A PROPERTY OF THE TREE'S CONTENT, NOT ITS LOCATION: the tree prefix is removed from
+// sha256sum's lines, so the same content under two roots manifests identically.
+test fn the_tree_manifest_is_relative_to_the_tree() -> Bool {
+  tree_manifest_text_of(tree: "/a/root", sha_lines: "abc  /a/root/node/bin/node", exec_lines: "x node/bin/node", link_lines: "")
+    == tree_manifest_text_of(tree: "/b/other", sha_lines: "abc  /b/other/node/bin/node", exec_lines: "x node/bin/node", link_lines: "")
+}
+
+// ---------------------------------------------------------------------------------------------
+// MISSING HOST LIBRARY REFUSES WITH ITS LOCATION
+// ---------------------------------------------------------------------------------------------
+
+// MEASURED, NOT AUTHORED: an excerpt of `ldd chrome-linux/headless_shell` (revision 1234, arm64) on a
+// Debian 13 container with none of the install-deps set present, 2026-09-28.
+data measured_ldd_missing: String = "\tlinux-vdso.so.1 (0x0000ffff9b4b0000)\n\tlibdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffff9b440000)\n\tlibglib-2.0.so.0 => not found\n\tlibnss3.so => not found\n\tlibpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000ffff9b410000)\n\tlibXrandr.so.2 => not found\n"
+
+data measured_ldd_resolved: String = "\tlinux-vdso.so.1 (0x0000ffff9b4b0000)\n\tlibdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffff9b440000)\n\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff9b260000)\n"
+
+data witness_binary: NonEmptyStr = "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/ms-playwright/chromium_headless_shell-1234/chrome-linux/headless_shell"
+
+test fn a_missing_host_library_refuses_naming_the_binary_the_soname_and_its_package() -> Bool {
+  match host_library_readback_of(binary: witness_binary, ldd_output: measured_ldd_missing) {
+    HostLibrariesMissing { binary: b, missing: ms } => {
+      let text = library_readback_text(l: HostLibrariesMissing { binary: b, missing: ms })
+      (b as String) == (witness_binary as String)
+        && list_length(ms) == 3
+        && string_contains(s: text, pattern: witness_binary as String)
+        && string_contains(s: text, pattern: "libglib-2.0.so.0 (package libglib2.0-0t64)")
+        && string_contains(s: text, pattern: "libnss3.so (package libnss3)")
+        && string_contains(s: text, pattern: "libXrandr.so.2 (package libxrandr2)")
+    }
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL: the same reader over output with no unresolved line is resolved -- without
+// it the red above is satisfied by a reader that always reports missing.
+test fn a_binary_whose_libraries_all_resolve_reads_back_resolved() -> Bool {
+  match host_library_readback_of(binary: witness_binary, ldd_output: measured_ldd_resolved) {
+    HostLibrariesResolved { binary: b } => (b as String) == (witness_binary as String)
+    _ => false
+  }
+}
+
+// UNRECOGNIZED OR EMPTY ldd OUTPUT IS UNREADABLE, NEVER RESOLVED (finding 4): absence of a
+// recognized "not found" line is not a positive reading.
+test fn unrecognized_or_empty_ldd_output_is_unreadable_not_resolved() -> Bool {
+  (match host_library_readback_of(binary: witness_binary, ldd_output: "\tnot a dynamic executable\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: concat(measured_ldd_resolved, "\tldd: exited unexpectedly\n")) { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tgarbage (0x\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff9b26\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0xZZ)\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+    && (match host_library_readback_of(binary: witness_binary, ldd_output: "\tlibglib-2.0.so.0 => not\n") { HostLibrariesUnreadable { binary: _, reason: _ } => true  _ => false })
+}
+
+// EVERY SONAME PLAYWRIGHT'S TABLE MAPS FOR THIS BUILD NAMES A PACKAGE THE CONVERGE INSTALLS, so a
+// library the readback reports missing is always one the converge was supposed to have provided.
+test fn every_install_deps_package_is_a_converge_requirement() -> Bool {
+  fold(playwright_chromium_install_deps_ubuntu2404_arm64, init: true, f: (acc, p) =>
+    acc && fold(runner_browser_toolchain_apt_requirements(), init: false, f: (found, r) =>
+      found || (r.package as String) == ((p as NonEmptyStr) as String)))
+}
+
+// ---------------------------------------------------------------------------------------------
+// VERSION AND LAUNCH READBACK
+// ---------------------------------------------------------------------------------------------
+
+test fn node_version_readback_is_exact() -> Bool {
+  (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v24.21.0\n") { VersionMatches { subject: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v24.21.01\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v24.21.0\nextra line\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "v18.19.1\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "node", expected: "v24.21.0", output: "") { VersionUnreadable { subject: _, reason: _ } => true  _ => false })
+}
+
+// THE WHOLE CHROMIUM LINE, NOT A SUBSTRING (finding 4): a line that merely contains the version
+// is a mismatch.
+test fn chromium_version_readback_is_the_whole_line() -> Bool {
+  let line = chromium_version_line(build: chromium_151_0_7922_34)
+  line == "Chromium 151.0.7922.34"
+    && (match exact_version_readback_of(subject: "chromium", expected: line, output: "Chromium 151.0.7922.34 \n") { VersionMatches { subject: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "chromium", expected: line, output: "Chromium 151.0.7922.345\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+    && (match exact_version_readback_of(subject: "chromium", expected: line, output: "Not Chromium 151.0.7922.34\n") { VersionMismatch { subject: _, expected: _, observed: _ } => true  _ => false })
+}
+
+data witness_resolution: String = "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/index.js"
+
+fn launch_of(title: String, width: String) -> BrowserLaunchReadback {
+  launch_readback_of(output: join([title, width, witness_resolution], "\n"), expected_resolution: witness_resolution)
+}
+
+fn wrong_page(r: BrowserLaunchReadback) -> Bool {
+  match r { BrowserLaunchWrongPage { observed: _ } => true  _ => false }
+}
+
+// ONE COMPLETE RESPONSE, THE DECLARED MEASUREMENT (finding 4): the rendered width must be exactly the
+// probe's declared 137 px; NaN, negative, zero, a different width, a missing line, an extra line and
+// a foreign title are all the wrong page.
+test fn the_launch_readback_requires_the_declared_title_width_and_one_complete_response() -> Bool {
+  (match launch_of(title: "gunbc-browser-toolchain-inhabitance", width: "137") {
+    BrowserLaunchRendered { title: _, rendered_width: w, resolved_module: m } => w == "137" && m == witness_resolution
+    _ => false
+  })
+    && wrong_page(r: launch_of(title: "gunbc-browser-toolchain-inhabitance", width: "NaN"))
+    && wrong_page(r: launch_of(title: "gunbc-browser-toolchain-inhabitance", width: "-1"))
+    && wrong_page(r: launch_of(title: "gunbc-browser-toolchain-inhabitance", width: "0"))
+    && wrong_page(r: launch_of(title: "gunbc-browser-toolchain-inhabitance", width: "136"))
+    && wrong_page(r: launch_of(title: "about:blank", width: "137"))
+    && wrong_page(r: launch_readback_of(output: "gunbc-browser-toolchain-inhabitance\n137", expected_resolution: witness_resolution))
+    && wrong_page(r: launch_readback_of(output: concat(join(["gunbc-browser-toolchain-inhabitance", "137", witness_resolution], "\n"), "\ntrailing"), expected_resolution: witness_resolution))
+    && wrong_page(r: launch_readback_of(output: "{\"title\":\"gunbc-browser-toolchain-inhabitance\",\"width\":\"137", expected_resolution: witness_resolution))
+}
+
+// THE RESOLVED IDENTITY IS EXACTLY THE CONVERGED ENTRY FILE (finding 1): a workspace copy, a
+// look-alike sibling directory, or another file of the right package is the wrong module.
+fn wrong_module(resolved: String) -> Bool {
+  match launch_readback_of(output: join(["gunbc-browser-toolchain-inhabitance", "137", resolved], "\n"), expected_resolution: witness_resolution) {
+    BrowserLaunchWrongModule { resolved: r, expected: e } => r == resolved && e == witness_resolution
+    _ => false
+  }
+}
+
+test fn a_render_through_any_module_but_the_converged_entry_file_is_the_wrong_module() -> Bool {
+  wrong_module(resolved: "/home/ghrunner/work/gunbc/gunbc/node_modules/playwright/index.js")
+    && wrong_module(resolved: "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright-decoy/index.js")
+    && wrong_module(resolved: "/home/ghrunner/.local/share/gunbc-browser-toolchain/x/node_modules/playwright/lib/index.js")
+}
+
+// THE QUERY'S WHOLE OUTCOME DECIDES (side-chat review 5334435195): installed only on exit 0 with ONE
+// decodable Status line saying so; a removed-with-config or unpacked package is not installed; a
+// package dpkg has no information about is unknown; and every other outcome -- another exit, a
+// refusal in other words, no Status line, two Status lines, an undecodable one -- is undecidable,
+// which the apt fold refuses rather than installing on.
+data witness_record_installed: String = "Package: libnss3\nStatus: install ok installed\nPriority: optional\n"
+
+data witness_record_config_remaining: String = "Package: libnss3\nStatus: deinstall ok config-files\nPriority: optional\n"
+
+data witness_record_unpacked: String = "Package: libnss3\nStatus: install ok unpacked\n"
+
+fn undecidable(v: DpkgInstalledState) -> Bool {
+  match v { DpkgQueryUndecidable { reason: _ } => true  _ => false }
+}
+
+test fn a_removed_package_with_config_remaining_is_not_installed() -> Bool {
+  (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_config_remaining, stderr: "") { DpkgPackageNotInstalled { status: st } => st == "Status: deinstall ok config-files"  _ => false })
+    && (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_unpacked, stderr: "") { DpkgPackageNotInstalled { status: _ } => true  _ => false })
+    && (match dpkg_query_status_verdict_of(exit_code: 0, stdout: witness_record_installed, stderr: "") { DpkgPackageInstalled => true  _ => false })
+}
+
+test fn only_a_uniquely_decoded_answer_decides_a_package_state() -> Bool {
+  (match dpkg_query_status_verdict_of(exit_code: 1, stdout: "", stderr: "dpkg-query: package 'libnss3' is not installed and no information is available\n") { DpkgPackageUnknown => true  _ => false })
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 2, stdout: "", stderr: "dpkg-query: error: parsing file '/var/lib/dpkg/status'"))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 1, stdout: "", stderr: "dpkg-query: error: unable to access the dpkg database"))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\n", stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: concat(witness_record_installed, "Status: deinstall ok config-files\n"), stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\nStatus: install ok\n", stderr: ""))
+    && undecidable(v: dpkg_query_status_verdict_of(exit_code: 0, stdout: "Package: libnss3\nStatus: install ok sideways\n", stderr: ""))
+}
+
+test fn the_package_probe_is_a_plain_dpkg_query_status_read() -> Bool {
+  join(dpkg_query_status_argv(package: "libnss3"), " ") == "dpkg-query -s libnss3"
+}
+
+// NODE STARTS UNDER A CLEARED ENVIRONMENT (side-chat review 5334435195): the command is /usr/bin/env -i
+// -C <dir> with exactly PLAYWRIGHT_BROWSERS_PATH, HOME and the declared PATH, then the pinned node -- so NODE_OPTIONS and
+// every other inherited startup input cannot reach it.
+test fn node_runs_under_a_cleared_environment_with_only_the_admitted_inputs() -> Bool {
+  let loc = runner_browser_toolchain_location(job_user: "ghrunner")
+  let words = argv_words(command: runner_browser_toolchain_node_command(location: loc, directory: "/scratch/decoy", script: "0", operands: ["a"]))
+  join(words, " ") == join([
+    "/usr/bin/env -i -C /scratch/decoy",
+    concat("PLAYWRIGHT_BROWSERS_PATH=", loc.browsers_path as String),
+    "HOME=/scratch/decoy",
+    "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+    "PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1",
+    loc.node_binary as String,
+    "-e 0 a",
+  ], " ")
+}
+
+// WHAT COUNTS AS SUPERSEDED (reported, never removed): everything under the base except the current
+// recipe's tree, the retained archives and any staging.* directory.
+test fn only_other_recipe_trees_are_reported_as_superseded() -> Bool {
+  superseded_entries_of(
+    entries: ["e4ad7f3f559ad5a8", "archives", "staging.Ab12Cd34", "staging.retiring-x-old", "playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef", ""],
+    current: "e4ad7f3f559ad5a8",
+  ) == ["playwright-1.62.1-node-v24.21.0-linux-arm64", "0123456789abcdef"]
+}
+
+// THE PROBE PAGE IS EMITTED, NOT WRITTEN (review 72231): the markup tree serializes through
+// extdeps.languages.html to exactly this document -- the title the launch readback demands and one
+// element of the declared 137 px width.
+test fn the_probe_page_is_emitted_by_the_html_serializer() -> Bool {
+  match try_serialize_html_source(node: browser_toolchain_probe_fragment()) {
+    EmitOk { html: h } => h == "<html><head><title>gunbc-browser-toolchain-inhabitance</title></head><body><div id=\"probe\" style=\"width:137px;height:11px\">rendered</div></body></html>"
+    EmitRejected { reason: _ } => false
+  }
+}
+
+// FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
+// chromium` places, plus the runtime its engines floor requires.
+test fn the_toolchain_places_five_pinned_archives() -> Bool {
+  list_length(runner_browser_toolchain_archives) == 5
+}

@@ -1,0 +1,91 @@
+module v2.test.claim.parse.status_class_pattern
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  bind_outcome,
+  diagnostics_fatal
+}
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A RESPONSE STATUS PATTERN IS A CODE, A CLASS OR A NAME (v2.extdeps.languages.dag
+// dag_grammar_status_pattern_expr). The class `5xx` parses; a malformed class (`5yy`) still refuses,
+// located at its own second token, so the new arm admits exactly `xx` and nothing wider.
+fn status_source(pattern: String) -> String {
+  "module probe.status_class\n\nservice probe.Svc {\n  operation Op {\n    response {\n      200 => Int\n      " + pattern + " => Int\n    }\n  }\n}\n"
+}
+
+fn status_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^status_class_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn status_parses(pattern: String) -> Bool {
+  match status_parse(text: status_source(pattern: pattern)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_status_class_parses_holds() -> Bool { status_parses(pattern: "5xx") }
+
+test fn an_exact_status_code_parses_holds() -> Bool { status_parses(pattern: "404") }
+
+test fn a_named_status_parses_holds() -> Bool { status_parses(pattern: "nonzero") }
+
+fn token_start(text: String, lexeme: String) -> Int {
+  match tokenize(text: text, file: ^status_class_probe, rules: dag_lex()) {
+    Rejected { diagnostics: _ } => -1
+    Accepted { value: ts, diagnostics: _ } =>
+      fold(ts.all, init: -1, f: fn(acc, t) { if acc < 0 && t.lexeme == lexeme { t.start } else { acc } })
+  }
+}
+
+fn refusal_start(parsed: Outcome<Node>) -> Int {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => -1
+    Rejected { diagnostics: d } =>
+      match diagnostics_fatal(d: d).at {
+        SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: s, end: _ } } => s
+        SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
+        Textual { file: _, extent: _ } => -1
+        NodeLocus { anchor: _ } => -1
+        InvariantPortLocus { anchor: _, invariant: _ } => -1
+        DeclarationLocus { declaration: _ } => -1
+      }
+  }
+}
+
+test fn a_malformed_status_class_refuses_at_its_suffix_holds() -> Bool {
+  let text = status_source(pattern: "5yy")
+  let at = token_start(text: text, lexeme: "yy")
+  at > 0 && refusal_start(parsed: status_parse(text: text)) == at
+}

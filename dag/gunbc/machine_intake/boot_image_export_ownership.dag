@@ -1,13 +1,11 @@
 module gunbc.machine_intake_boot_image_export_ownership
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.tools.gnu_coreutils { ls_long_directory_command, ls_long_directory_numeric_command }
+import gunbc.host_command_binding { CommandHost, LocalCommandHost, HostCommandDone, host_command, host_command_outcome_text }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.tools.coreutils_stat {
-  PathOwnershipObservation,
-  PathOwnershipObserved,
-  PathOwnershipUnobservable,
-  coreutils_stat_path_ownership,
-}
 import extdeps.access.posix {
   FileOwnership,
   LoginShellObserved,
@@ -282,24 +280,54 @@ fn srv2_account_key_for_name(name: NonEmptyStr) -> FleetPosixAccountKey? {
 // observation narrow this repository keeps finding: "I could not see who owns this" and "nobody
 // problematic owns this" are different states, and collapsing them would make an unreachable or
 // deleted export the most permissive input this function accepts.
-fn observed_export_ownership_standing(path: NonEmptyStr) -> ExportOwnershipStanding {
-  match coreutils_stat_path_ownership(path: path) {
-    PathOwnershipUnobservable { path: p, reason: r } =>
-      ExportOwnershipUnobservable { path: p, reason: r }
-    PathOwnershipObserved { path: _, ownership: own, owner_name: owner, group_name: _ } =>
-      export_ownership_standing(
-        observed_uid: own.uid,
-        observed_name: owner,
-        observed_key: srv2_account_key_for_name(name: owner),
-        requirement: boot_image_export_ownership_requirement,
-      )
+// OBSERVED ON THE HOST THAT SERVES THE EXPORT (gunbc.host_command_binding): this machine for the
+// stock fetch, the serving host over fleet SSH for an image built there. `ls -ldn` gives the numeric
+// uid and `ls -ld` the owner name, in the THIRD field of one long-format line about the path itself
+// -- portable argv, which a `stat -c %u:...` format is not under the fleet transport's allowlist.
+fn ls_long_third_field(text: String) -> String? {
+  let words = flat_map(split(s: trim(s: text), delimiter: " "), w => if w == "" { [] } else { [w] })
+  match first(words.skip(n: 2)) {
+    Absent => none
+    Present { value: w } => Present { value: w }
+  }
+}
+
+fn observed_export_ownership_standing(host: CommandHost, path: NonEmptyStr) -> ExportOwnershipStanding {
+  match host_command(host: host, command: ls_long_directory_numeric_command(path: path as String)) {
+    HostCommandDone { stdout: numeric } =>
+      match host_command(host: host, command: ls_long_directory_command(path: path as String)) {
+        HostCommandDone { stdout: named } =>
+          match ls_long_third_field(text: numeric) {
+            Absent => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn printed no owner uid: ", trim(s: numeric)) }
+            Present { value: uid_text } =>
+              match parse_int(s: uid_text) {
+                Absent => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn owner field is not a uid: ", uid_text) }
+                Present { value: uid } =>
+                  match ls_long_third_field(text: named) {
+                    Absent => ExportOwnershipUnobservable { path: path, reason: concat("ls -ld printed no owner name: ", trim(s: named)) }
+                    Present { value: owner } =>
+                      export_ownership_standing(
+                        observed_uid: uid,
+                        observed_name: owner as NonEmptyStr,
+                        observed_key: srv2_account_key_for_name(name: owner as NonEmptyStr),
+                        requirement: boot_image_export_ownership_requirement,
+                      )
+                  }
+              }
+          }
+        other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ld: ", host_command_outcome_text(e: other)) }
+      }
+    other => ExportOwnershipUnobservable { path: path, reason: concat("ls -ldn: ", host_command_outcome_text(e: other)) }
   }
 }
 
 fn export_ownership_admits_publication(standing: ExportOwnershipStanding) -> Bool {
   match standing {
     ExportOwnershipSatisfied => true
-    _ => false
+    ExportOwnershipIsRoot => false
+    ExportOwnershipWrongPrincipal { observed: _, required: _ } => false
+    ExportOwnershipUnrecognizedAccount { observed: _ } => false
+    ExportOwnershipUnobservable { path: _, reason: _ } => false
   }
 }
 
@@ -322,7 +350,7 @@ fn export_ownership_refusal_reason(path: NonEmptyStr, standing: ExportOwnershipS
 // THE OBSERVED STANDING, RENDERED, so the causal path can be executed on a real host rather than
 // only reasoned about. This reports; it does not gate. The gate is at the write boundary.
 fn boot_image_export_ownership_observed_probe(path: String) -> ProcessExit {
-  let standing = observed_export_ownership_standing(path: path as NonEmptyStr)
+  let standing = observed_export_ownership_standing(host: LocalCommandHost, path: path as NonEmptyStr)
   return if export_ownership_admits_publication(standing: standing) {
     ExitSuccess
   } else {

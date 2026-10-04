@@ -1,0 +1,56 @@
+module test.claim.optional_field_read_admission_gap_witness_test
+
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count,
+}
+
+// A FIELD READ THROUGH AN OPTIONAL IS ADMITTED WHERE AN OPTIONAL ARGUMENT IS REFUSED. Class row:
+// gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared, which judges
+// the direct-call argument, the declared list element and the undeclared list-literal member, but
+// not a field projection. So `levels().first().id` compiles with no blocking diagnostic, although
+// `.first()` produces Level? and Absent has no `id` field. Found in review 72657 on gunbc#12572 at
+// test.claim.machine_shape_catalog_integration_witness `memory.first().id`.
+//
+// THIS IS AN EVIDENCE FIXTURE AT THE GAP, NOT A WALL. The two claims are a discriminating pair
+// over one source shape, which differs only in the position that consumes `.first()`:
+// - the field-read claim asserts the measured admission: zero blocking rows;
+// - the call-argument claim asserts the neighbouring wall still refuses it.
+// So the pair shows the asymmetry rather than a blanket compile outcome.
+// dissolve-on: the field-projection position routes through optional_produced_at_required_declared.
+// The admission claim then goes red and flips, per DESIGN 4b(4), to assert >= 1 blocking
+// DeclaredTypeNotInhabited as a permanent regression control. It is not deleted.
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn not_inhabited_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn ofr_field_read_source() -> String {
+  "module ofr.field_read\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  levels().first().id == \"l1\"\n}\n"
+}
+
+test fn a_field_read_through_first_is_admitted_today() -> Bool {
+  blocking_count(source: ofr_field_read_source()) == 0
+}
+
+fn ofr_call_arg_source() -> String {
+  "module ofr.call_arg\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn level_id(l: Level) -> String {\n  l.id\n}\n\nfn probe() -> Bool {\n  level_id(l: levels().first()) == \"l1\"\n}\n"
+}
+
+test fn the_same_first_at_a_call_argument_is_refused() -> Bool {
+  not_inhabited_blocking_count(source: ofr_call_arg_source()) >= 1
+}

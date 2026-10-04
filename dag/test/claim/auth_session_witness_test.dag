@@ -1,0 +1,568 @@
+module test.claim.auth_session_witness_test
+
+import extdeps.http.server { set_cookie_value }
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jwt {
+  NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain, OidcIdTokenVerdict,
+  OidcIdTokenSignature, OidcIdTokenSignatureVerified, JsonWebKeyRef,
+  OidcIdTokenVerdictPolicy, verify_oidc_id_token,
+  OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
+}
+import gunbc.principal_projection { principal_ref_label }
+import extdeps.uri { Uri, Https }
+import gunbc.auth.session_store {
+  SessionStoreLayout, session_cookie_standing_of, session_cookie_standing_of_store_result,
+  SessionStoreFound, SessionStoreUnknown, SessionStoreUnread, SessionStoreEntryMalformed,
+  authenticated_session_json, authenticated_session_of_json,
+  SessionFileDecoded, SessionFileMalformed,
+}
+import gunbc.auth.session {
+  AuthenticatedSession, SessionMint, SessionMinted, SessionRefused,
+  SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch,
+  AuthMethodGoogleOidc,
+  CsrfAdmitted, CsrfRefused, CsrfTokenAbsent, CsrfTokenMismatch,
+  mint_authenticated_session, csrf_decision, session_not_expired,
+  session_cookie_secure, session_cookie_http_only, session_cookie_same_site_lax, session_cookie_path,
+  session_cookie_id_of_header, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
+  session_cookie_set_cookie, session_cookie_clear,
+  SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
+  SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
+  SessionClientTrackerWeb, SessionClientApprovalsWeb,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS for the session authority (lane A3): a session is minted only from a verified
+// Google verdict bound to a live login transaction, the session carries the verdict-sealed
+// principal (no caller seats a session on any other principal), the CSRF proof is separate from
+// the cookie facts, and the cookie attributes are the ruling's spelled set.
+
+fn witness_claims(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: nonce, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: Present { value: true },
+      name: Present { value: "A Person" },
+      picture: none,
+    },
+  }
+}
+
+// THE PICTURE-CARRYING CLAIMS, the avatar-lane control: the same verified identity with the
+// profile picture claim aboard (the shape Google's ID token carries under the profile scope).
+fn witness_claims_with_picture(nonce: NonEmptyStr?) -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: nonce, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: Present { value: true },
+      name: Present { value: "A Person" },
+      picture: Present { value: Uri { scheme: Https, locator: "lh3.googleusercontent.com/a/photo-sub-123" as NonEmptyStr } },
+    },
+  }
+}
+
+fn witness_verdict(nonce: NonEmptyStr?) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims(nonce: nonce),
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+// THE PICTURE-CARRYING VERDICT, the avatar lane's positive control: the same policy fold over
+// the picture-carrying claims — the picture is a standard-claims fact the verdict never gates
+// on, so the verified arm carries it through unchanged.
+fn witness_verdict_with_picture(nonce: NonEmptyStr?) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: witness_claims_with_picture(nonce: nonce),
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+// A REFUSED VERDICT, produced by the real fold: the hd claim is missing, so the verdict refuses
+// without any hand-built refusal value.
+fn witness_refused_verdict() -> OidcIdTokenVerdict {
+  verify_oidc_id_token(
+    claims: OidcIdTokenClaims {
+      issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+      audience: JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } },
+      expires_at: NumericDateWholeSeconds { seconds: 2000 },
+      issued_at: NumericDateWholeSeconds { seconds: 1000 },
+      auth_time: none, nonce: Present { value: "nonce-abc" as NonEmptyStr }, acr: none, amr: none, azp: none, session_id: none,
+      hosted_domain: none,
+      standard: OidcStandardClaims {
+        email: Present { value: "person@gunb.ai" },
+        email_verified: Present { value: true },
+        name: Present { value: "A Person" },
+        picture: none,
+      },
+    },
+    signature: OidcIdTokenSignatureVerified {
+      key: JsonWebKeyRef {
+        issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+        key_id: "witness-key" as NonEmptyStr,
+      },
+    },
+    policy: OidcIdTokenVerdictPolicy {
+      expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+      admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+      expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+      expected_nonce: none,
+      observed_at: NumericDateWholeSeconds { seconds: 1500 },
+    },
+  )
+}
+
+fn witness_transaction(nonce: NonEmptyStr, expires_at: String) -> OidcLoginTransaction {
+  OidcLoginTransaction {
+    state: "state-1" as NonEmptyStr,
+    nonce: nonce,
+    created_at: "2026-09-25T00:00:00Z",
+    expires_at: expires_at,
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-xyz" as NonEmptyStr },
+    return_path: RelativeReturnPath { path: "/" as NonEmptyStr },
+  }
+}
+
+// THE ADMITTED WRAPPER (the session mint's roster names this decl).
+fn witness_mint_session(
+  verdict: OidcIdTokenVerdict,
+  transaction: OidcLoginTransaction,
+  session_id: NonEmptyStr,
+  csrf_token_value: NonEmptyStr,
+  observed_at: String,
+) -> SessionMint {
+  mint_authenticated_session(
+    verdict: verdict,
+    transaction: transaction,
+    client: SessionClientTrackerWeb,
+    session_id: session_id,
+    authenticated_at: "2026-09-25T00:00:00Z",
+    expires_at: "2026-09-25T12:00:00Z",
+    csrf_token_value: csrf_token_value,
+    observed_at: observed_at,
+  )
+}
+
+// THE POSITIVE CONTROL: a verified verdict bound to a live transaction mints a session on the
+// verdict-sealed principal, with the Google OIDC method, the client, and the CSRF token aboard.
+test fn a_verified_login_mints_a_session_on_the_verdict_principal() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      (s.session_id as String) == "session-1"
+        && (s.principal.subject as String) == "sub-123"
+        && (s.principal.authority as String) == "google-oidc"
+        && match s.auth_method {
+          AuthMethodGoogleOidc => true
+        }
+        && match s.client {
+          SessionClientTrackerWeb => true
+          SessionClientApprovalsWeb => false
+        }
+        && (s.csrf.token as String) == "csrf-1"
+  }
+}
+
+// A REFUSED VERDICT MINTS NO SESSION.
+test fn a_refused_verdict_mints_no_session() -> Bool {
+  match witness_mint_session(
+    verdict: witness_refused_verdict(),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionVerdictRefused { cause: _ } } => true
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE PROFILE PROJECTION RIDES THE MINT FROM THE VERIFIED CLAIMS: a token carrying a picture
+// seats a session whose profile projects it; a token without one seats a session whose profile
+// projects none — and the principal is byte-identical either way, because the picture is a
+// MUTABLE PROJECTION, never an identity input (the session mint reads it from the verified
+// claims inside the seal; there is no picture parameter anywhere).
+test fn the_minted_session_carries_the_picture_from_the_verified_claims() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict_with_picture(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      (s.principal.subject as String) == "sub-123"
+        && match s.profile.picture {
+          Present { value: u } => (u.locator as String) == "lh3.googleusercontent.com/a/photo-sub-123"
+          Absent => false
+        }
+    SessionRefused { cause: _ } => false
+  }
+    && match witness_mint_session(
+      verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+      transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+      session_id: "session-1" as NonEmptyStr,
+      csrf_token_value: "csrf-1" as NonEmptyStr,
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionMinted { session: s } =>
+        (s.principal.subject as String) == "sub-123"
+          && match s.profile.picture {
+            Absent => true
+            Present { value: _ } => false
+          }
+      SessionRefused { cause: _ } => false
+    }
+}
+
+// THE TRANSACTION ARMS: an expired transaction refuses before any session exists; a nonce the
+// token did not answer refuses with both sides named.
+test fn an_expired_transaction_refuses_before_any_session_exists() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:01:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionTransactionExpired { transaction: _, observed_at: _ } } => true
+    SessionRefused { cause: _ } => false
+  }
+}
+
+test fn a_nonce_the_token_did_not_answer_refuses() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-other" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: _ } => false
+    SessionRefused { cause: SessionTransactionNonceMismatch { transaction_nonce: t, token_nonce: n } } =>
+      t == "nonce-abc" as NonEmptyStr && n == Present { value: "nonce-other" as NonEmptyStr }
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// SESSION LIFETIME: the bounded expiry is a total fold over the model's clock string.
+test fn a_session_expires_at_its_bound() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      session_not_expired(session: s, observed_at: "2026-09-25T11:59:59Z")
+        && !session_not_expired(session: s, observed_at: "2026-09-25T12:00:01Z")
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE CSRF PROOF IS SEPARATE FROM THE COOKIE FACTS: an exact presentation admits; absent and
+// mismatched refuse with different causes; an empty presentation is absent, never a match.
+test fn the_csrf_proof_admits_exactly_and_refuses_absent_and_mismatch() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      csrf_decision(session: s, presented_wire: "csrf-1") == CsrfAdmitted
+        && match csrf_decision(session: s, presented_wire: "") {
+          CsrfRefused { cause: CsrfTokenAbsent } => true
+          _ => false
+        }
+        && match csrf_decision(session: s, presented_wire: "csrf-wrong") {
+          CsrfRefused { cause: CsrfTokenMismatch { presented: p, expected: e } } =>
+            p == "csrf-wrong" as NonEmptyStr && e == "csrf-1" as NonEmptyStr
+          _ => false
+        }
+    SessionRefused { cause: _ } => false
+  }
+}
+
+// THE COOKIE ATTRIBUTES are the ruling's spelled set, as data a realization must emit verbatim.
+test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool {
+  session_cookie_secure == true
+    && session_cookie_http_only == true
+    && session_cookie_same_site_lax == true
+    && (session_cookie_path as String) == "/"
+}
+
+// ── The cookie channel (lane A3 frontier 1) ────────────────────────────────────────────────────
+
+// THE WIRE COOKIE IS THE ONLY COOKIE FACT: the store holds sessions keyed by the opaque id, and
+// the id is what crosses the wire. These controls drive the parse (pure syntax) and the standing
+// fold (pure over the store's three-valued answer); the store's filesystem realization is
+// substrate, witnessed by the live seam rather than here.
+
+// THE COOKIE CHANNEL WITNESS LAYOUT: the standing fold's total form takes a layout, but an
+// absent header never reaches the store, so the root is a marker string the store never sees.
+fn witness_store_layout() -> SessionStoreLayout {
+  SessionStoreLayout { root: "witness-cookie-channel-unused" as FilePath }
+}
+
+// THE INBOUND PARSE distinguishes a present id from an absent one and from malformed spellings:
+// an empty value, a character outside RFC 6265's cookie-octet set, and a duplicate session
+// cookie are three Malformed arms with their own causes — never silently NotPresent.
+test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -> Bool {
+  match session_cookie_id_of_header(cookie_header: "gunbc_session=abc-123") {
+    SessionCookieIdParsed { session_id } => (session_id as String) == "abc-123"
+    _ => false
+  }
+    && match session_cookie_id_of_header(cookie_header: "other=1; gunbc_session=abc-123; theme=dark") {
+      SessionCookieIdParsed { session_id } => (session_id as String) == "abc-123"
+      _ => false
+    }
+    && session_cookie_id_of_header(cookie_header: "") == SessionCookieIdNotPresent
+    && session_cookie_id_of_header(cookie_header: "other=1; theme=dark") == SessionCookieIdNotPresent
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=a b") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+    && match session_cookie_id_of_header(cookie_header: "gunbc_session=one; gunbc_session=two") {
+      SessionCookieIdMalformed { detail: _ } => true
+      _ => false
+    }
+}
+
+// THE STANDING FOLD KEEPS EVERY NON-VALID ARM DISTINCT: absent, unknown (the forged-cookie arm:
+// the id names no session the store holds), unread, malformed, and the valid/expired split each
+// survive the fold as their own constructor, because each names a different remedy.
+test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> Bool {
+  session_cookie_standing_of(cookie_header: "", layout: witness_store_layout(), observed_at: "2026-09-25T00:05:00Z")
+    == SessionCookieAbsent
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreUnknown { session_id: "forged" as NonEmptyStr },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieUnknown { session_id } => (session_id as String) == "forged"
+      _ => false
+    }
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreUnread { session_id: "s1" as NonEmptyStr, detail: "probe" },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieUnread { detail } => detail == "probe"
+      _ => false
+    }
+    && match session_cookie_standing_of_store_result(
+      lookup: SessionStoreEntryMalformed { session_id: "s1" as NonEmptyStr, detail: "member csrf is absent" },
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionCookieMalformed { detail } => detail == "member csrf is absent"
+      _ => false
+    }
+    && match witness_mint_session(
+      verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+      transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+      session_id: "session-1" as NonEmptyStr,
+      csrf_token_value: "csrf-1" as NonEmptyStr,
+      observed_at: "2026-09-25T00:05:00Z",
+    ) {
+      SessionMinted { session: s } =>
+        match session_cookie_standing_of_store_result(
+          lookup: SessionStoreFound { session: s },
+          observed_at: "2026-09-25T00:06:00Z",
+        ) {
+          SessionCookieValid { session: v } => (v.session_id as String) == "session-1"
+          _ => false
+        }
+          && match session_cookie_standing_of_store_result(
+            lookup: SessionStoreFound { session: s },
+            observed_at: "2026-09-26T00:00:00Z",
+          ) {
+            SessionCookieExpired { session: _, observed_at: _ } => true
+            _ => false
+          }
+      SessionRefused { cause: _ } => false
+    }
+}
+
+// THE SESSION FILE CODEC round-trips the whole session record through its JSON spelling, so a
+// file written by one login decodes to the same session the next request decides over — and a
+// file missing a member refuses with the member named, never a fabricated partial session.
+test fn the_session_file_codec_round_trips_and_refuses_with_the_member_named() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-1" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      match authenticated_session_of_json(text: authenticated_session_json(session: s)) {
+        SessionFileDecoded { session: d } =>
+          (d.session_id as String) == "session-1"
+            && (d.csrf.token as String) == "csrf-1"
+            && principal_ref_label(p: d.principal) == principal_ref_label(p: s.principal)
+            && (d.expires_at as String) == "2026-09-25T12:00:00Z"
+            && match d.auth_method {
+              AuthMethodGoogleOidc => true
+            }
+            && match d.client {
+              SessionClientTrackerWeb => true
+              SessionClientApprovalsWeb => false
+            }
+        SessionFileMalformed { detail: _ } => false
+      }
+    SessionRefused { cause: _ } => false
+  }
+    && match authenticated_session_of_json(text: "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"x\"}") {
+      SessionFileMalformed { detail } => string_contains(s: detail, pattern: "principal")
+      SessionFileDecoded { session: _ } => false
+    }
+    && match authenticated_session_of_json(text: "not json") {
+      SessionFileMalformed { detail: _ } => true
+      SessionFileDecoded { session: _ } => false
+    }
+}
+
+// THE PRE-PROJECTION FILE, the backward-compatibility control: every member the session record
+// requires, spelled the v1 way, with NO picture member — the shape every live session file
+// carried before the avatar projection landed.
+data witness_session_file_without_picture: String = "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"old-session\",\"principal\":\"principal:google-oidc/accounts/sub-123\",\"authenticated_at\":\"2026-09-25T00:00:00Z\",\"expires_at\":\"2026-09-25T12:00:00Z\",\"auth_method\":\"google-oidc\",\"client\":\"tracker-web\",\"csrf\":\"csrf-old\"}"
+
+// THE MALFORMED-PICTURE FILE: the projection landed but the picture member is not an http/https
+// Uri spelling — a located refusal naming the member, never a silently dropped fact.
+data witness_session_file_with_malformed_picture: String = "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"old-session\",\"principal\":\"principal:google-oidc/accounts/sub-123\",\"authenticated_at\":\"2026-09-25T00:00:00Z\",\"expires_at\":\"2026-09-25T12:00:00Z\",\"auth_method\":\"google-oidc\",\"client\":\"tracker-web\",\"csrf\":\"csrf-old\",\"picture\":\"not-a-uri\"}"
+
+// THE EMPTY-NAME FILE: the projection landed but the name member is present and empty — a
+// spelling the mint never writes, so a located refusal naming the member.
+data witness_session_file_with_empty_name: String = "{\"schema\":\"gunbc-auth-session/v1\",\"session_id\":\"old-session\",\"principal\":\"principal:google-oidc/accounts/sub-123\",\"authenticated_at\":\"2026-09-25T00:00:00Z\",\"expires_at\":\"2026-09-25T12:00:00Z\",\"auth_method\":\"google-oidc\",\"client\":\"tracker-web\",\"csrf\":\"csrf-old\",\"name\":\"\"}"
+
+// THE PROFILE'S DURABLE SPELLING: the codec round-trips the OPTIONAL picture and name members;
+// a file written before the projection landed decodes to a projection-less profile rather
+// than a malformed file — the projection never forces a re-login; and a member of a spelling
+// the mint never writes refuses with the member named.
+test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool {
+  match witness_mint_session(
+    verdict: witness_verdict_with_picture(nonce: Present { value: "nonce-abc" as NonEmptyStr }),
+    transaction: witness_transaction(nonce: "nonce-abc" as NonEmptyStr, expires_at: "2026-09-25T00:10:00Z"),
+    session_id: "session-pic" as NonEmptyStr,
+    csrf_token_value: "csrf-1" as NonEmptyStr,
+    observed_at: "2026-09-25T00:05:00Z",
+  ) {
+    SessionMinted { session: s } =>
+      let written = authenticated_session_json(session: s)
+      string_contains(s: written, pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/photo-sub-123\"")
+        && string_contains(s: written, pattern: "\"name\": \"A Person\"")
+        && string_contains(s: written, pattern: "\"email\": \"person@gunb.ai\"")
+        && match authenticated_session_of_json(text: written) {
+          SessionFileDecoded { session: d } =>
+            match d.profile.picture {
+              Present { value: u } => (u.locator as String) == "lh3.googleusercontent.com/a/photo-sub-123"
+              Absent => false
+            }
+            && match d.profile.name {
+              Present { value: n } => n == "A Person"
+              Absent => false
+            }
+            && match d.profile.email {
+              Present { value: e } => (e as String) == "person@gunb.ai"
+              Absent => false
+            }
+          SessionFileMalformed { detail: _ } => false
+        }
+    SessionRefused { cause: _ } => false
+  }
+    && match authenticated_session_of_json(text: witness_session_file_without_picture) {
+      SessionFileDecoded { session: d } =>
+        (d.session_id as String) == "old-session"
+          && match d.profile.picture {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match d.profile.name {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match d.profile.email {
+            Absent => true
+            Present { value: _ } => false
+          }
+      SessionFileMalformed { detail: _ } => false
+    }
+    && match authenticated_session_of_json(text: witness_session_file_with_malformed_picture) {
+      SessionFileMalformed { detail } => string_contains(s: detail, pattern: "picture")
+      SessionFileDecoded { session: _ } => false
+    }
+    && match authenticated_session_of_json(text: witness_session_file_with_empty_name) {
+      SessionFileMalformed { detail } => string_contains(s: detail, pattern: "name")
+      SessionFileDecoded { session: _ } => false
+    }
+}
+
+// THE OUTBOUND Set-Cookie LINE spells the ruling's attributes from the data rows — Secure,
+// HttpOnly, SameSite=Lax, path-bound, bounded lifetime — and the logout clearing line zeroes the
+// lifetime so the browser drops the cookie.
+test fn the_set_cookie_lines_spell_the_ruling_attributes() -> Bool {
+  let line = set_cookie_value(cookie: session_cookie_set_cookie(session_id: "abc-123" as NonEmptyStr, max_age_seconds: 43200))
+  let cleared = set_cookie_value(cookie: session_cookie_clear())
+  string_contains(s: line, pattern: "gunbc_session=abc-123; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200")
+    && string_contains(s: cleared, pattern: "gunbc_session=; ")
+    && string_contains(s: cleared, pattern: "Path=/")
+    && string_contains(s: cleared, pattern: "Max-Age=0")
+    && string_contains(s: cleared, pattern: "Secure")
+    && string_contains(s: cleared, pattern: "HttpOnly")
+}

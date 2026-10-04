@@ -264,7 +264,8 @@ fn harness_tool_use_input_string(block: HarnessWireBlock, member: String) -> Str
           }
         _ => none
       }
-    _ => none
+    WireTextBlock { text: _ } => none
+    WireThinkingBlock { thinking: _ } => none
   }
 }
 
@@ -311,7 +312,8 @@ fn harness_execute_tool_use(
               }
           }
       }
-    _ => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+    WireTextBlock { text: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
+    WireThinkingBlock { thinking: _ } => ToolRefused { disposition: ToolEffectRefused { detail: "block is not a tool use" } }
   }
 }
 

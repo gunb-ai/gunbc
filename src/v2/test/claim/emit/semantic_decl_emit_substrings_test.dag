@@ -5,8 +5,7 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.languages.rust.emit { rust_enum_derives_copy }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.text { String }
 import std.algebra { Empty }
 
@@ -15,7 +14,7 @@ fn sdr_empty_conj() -> Node {
 }
 
 fn sdr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdr_empty_conj() }
 }
 
 fn semantic_bool_coproduct() -> Node {
@@ -33,7 +32,8 @@ test fn emit_eq_golden() -> Bool {
     name: ^Bool,
     params: Empty,
     node: semantic_bool_coproduct(),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   ) {
     Accepted { value: m, diagnostics: _ } => m.carried == golden
     Rejected { diagnostics: _ } => false

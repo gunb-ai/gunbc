@@ -72,32 +72,25 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
   }
 }
 
-test fn witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash() -> Bool {
-  let curl_args = bmcweb_session_login_curl_args(
+// FIELD GRAIN: the login is a described curl command minted at extdeps.tools.curl; the
+// assertions read its fields -- the program against the cited curl_cli_tool row, and the flag
+// and operand words by membership. The joined-surface spelling this witness used (and the
+// never-falsifiable "surface does not mention serialize_bash" arm, vacuous over a word list)
+// retired with the raw flag lists. No secret reaches argv in either form: the body path does,
+// the password bytes stay in the file.
+test fn witness_bmcweb_session_login_command_uses_curl_authority() -> Bool {
+  let login = curl_bmcweb_session_login_command(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
     response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
-  let argv = bmcweb_session_login_argv(
-    bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
-    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
-  )
-  let curl_args_surface = fold(
-    curl_args,
-    init: "" as String,
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  let argv_surface = fold(
-    argv,
-    init: "" as String,
-    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-  )
-  string_contains(s: argv_surface, pattern: curl_cli_tool.name as String)
-    && string_contains(s: argv_surface, pattern: curl_args_surface)
-    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_body_path)
-    && string_contains(s: argv_surface, pattern: srv3_bmcweb_login_response_path)
-    && !string_contains(s: argv_surface, pattern: "serialize_bash")
+  login.program.invocation == curl_cli_tool.program.invocation
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-X")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "POST")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "--data")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == concat("@", srv3_bmcweb_login_body_path as String))
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == "-o")
+    && fold(login.arguments, init: false, f: (acc, w) => acc || w == (srv3_bmcweb_login_response_path as String))
 }
 
 test fn witness_srv3_apply_unsupported_transport_refuses_typed() -> Bool {
@@ -217,7 +210,7 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
   let effect = srv3_nbd_proxy_serve_host_effect(iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso")
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: _ } =>
-      host_effect_nbd_proxy_serve_websocat_argv_materialized_omits_shell_env_ref(
+      host_effect_nbd_proxy_serve_websocat_command_materialized_omits_shell_env_ref(
         intent: i,
         token: "materialized-bmcweb-token" as NonEmptyStr,
       )

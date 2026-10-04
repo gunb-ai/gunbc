@@ -1,0 +1,37 @@
+module test.claim.native_variant_realization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EMITTED BYTES OF A NATIVELY REALIZED COPRODUCT'S ARMS, through the PRODUCTION v1 emitter
+// (compile_dag_rust_emit_check). std.types Bool = True | False realizes as Rust `bool`
+// (gunbc.rust_source_type_bindings), and gunbc.rust_source_type_bindings
+// rust_source_variant_value_rows binds its arms to that carrier's values, keyed on the declaration.
+// The rustc half -- that these bytes type-check -- is fixtures/fixture_closure_rustc/
+// native_bool_variant_probe.dag on the fixture-closure route (v1.compiler.compiler_tests_rust
+// ct_native_bool_variant_fixture_closure_discrimination_test).
+
+// The RED this row turns on: the source spelling `Bool::True` against a `bool`, which is what the
+// emitter wrote before the rows existed (rustc E0308).
+test fn native_bool_arms_emit_the_carrier_values() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.native_bool_arm_probe\nimport std.types { Bool }\nfn probe(a: Bool, b: Bool) -> Bool {\n  match a {\n    True => b\n    False => False\n  }\n}\nfn probe_top() -> Bool { True }\n",
+    "src/test_claim_native_bool_arm_probe.rs",
+    ["true => ", "false => false"],
+    ["Bool::True", "Bool::False"]
+  )
+}
+
+// THE IDENTITY CONTROL: a module-local coproduct whose arms are spelled True/False has no row, so it
+// keeps its own enum and its arms keep their enum paths. A lowering keyed on the arm spelling would
+// pass the row above and fail this one.
+test fn local_coproduct_with_true_false_arms_keeps_its_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.local_verdict_arm_probe\ntype Verdict = True | False\nfn probe(a: Verdict) -> Verdict {\n  match a {\n    True => False\n    False => True\n  }\n}\n",
+    "src/test_claim_local_verdict_arm_probe.rs",
+    ["Verdict::True", "Verdict::False"],
+    ["true => ", "false => "]
+  )
+}
+

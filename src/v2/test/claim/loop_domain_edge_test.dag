@@ -1,0 +1,103 @@
+module v2.test.claim.loop_domain_edge
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.compilers.target_model { target_value_expr_loop_gate }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  loop_behavior_edges_conform,
+  loop_edge_contributes_to_iteration_fold,
+  LoopBoundEdge,
+  LoopCarrierEdge,
+  LoopDomainEdge,
+  core_edge_label,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE S0 DOMAIN EDGE (gunbc.plans.for_while_loop_sugar §2.2): at most one ^loop_domain_edge on a Loop,
+// the value iterated. These claims build Loops directly as nodes: a domain Loop conforms, two domain
+// edges refuse, the unary form is unchanged, the hash separates a domain Loop from a unary one and
+// does not move with the domain edge's position, the domain is not part of the iteration fold, and
+// the unary-only target realization refuses a domain Loop rather than reading it as unary.
+
+fn lde_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn lde_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Positional, target: lde_atom(s: ^lde_body_leaf) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn lde_body_edge() -> Edge { Edge { label: Positional, target: lde_body() } }
+fn lde_bound_edge() -> Edge { Edge { label: core_edge_label(marker: LoopBoundEdge), target: lde_atom(s: ^lde_measure) } }
+fn lde_domain_edge() -> Edge { Edge { label: core_edge_label(marker: LoopDomainEdge), target: lde_atom(s: ^lde_collection) } }
+fn lde_carrier_edge() -> Edge { Edge { label: core_edge_label(marker: LoopCarrierEdge), target: lde_atom(s: ^lde_acc) } }
+
+fn lde_loop(children: List<Edge>) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: children,
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn lde_unary() -> Node { lde_loop(children: [lde_body_edge(), lde_bound_edge()]) }
+fn lde_domain_last() -> Node { lde_loop(children: [lde_body_edge(), lde_bound_edge(), lde_domain_edge()]) }
+fn lde_domain_first() -> Node { lde_loop(children: [lde_domain_edge(), lde_body_edge(), lde_bound_edge()]) }
+fn lde_fold_shape() -> Node { lde_loop(children: [lde_body_edge(), lde_domain_edge(), lde_carrier_edge(), lde_bound_edge()]) }
+
+test fn loop_with_one_domain_edge_conforms() -> Bool {
+  loop_behavior_edges_conform(children: lde_domain_last().children)
+  && loop_behavior_edges_conform(children: lde_fold_shape().children)
+}
+
+test fn loop_with_two_domain_edges_refuses() -> Bool {
+  !loop_behavior_edges_conform(children: [lde_body_edge(), lde_bound_edge(), lde_domain_edge(), lde_domain_edge()])
+}
+
+test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool {
+  loop_behavior_edges_conform(children: lde_unary().children)
+  && !loop_behavior_edges_conform(children: [
+    lde_body_edge(),
+    lde_bound_edge(),
+    Edge { label: Authored { name: ^lde_not_a_loop_edge }, target: lde_atom(s: ^lde_collection) }
+  ])
+}
+
+test fn domain_loop_hash_is_stable_and_distinct_from_unary() -> Bool {
+  (content_hash(n: lde_domain_last()) == content_hash(n: lde_domain_first()))
+  && (content_hash(n: lde_domain_last()) != content_hash(n: lde_unary()))
+}
+
+test fn domain_edge_is_not_part_of_the_iteration_fold() -> Bool {
+  let parent = lde_fold_shape()
+  loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_body_edge())
+  && !loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_domain_edge())
+  && !loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_bound_edge())
+  && !loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_carrier_edge())
+}
+
+test fn unary_target_realization_refuses_domain_and_carrier_loops() -> Bool {
+  target_value_expr_loop_gate(node: lde_unary())
+  && !target_value_expr_loop_gate(node: lde_domain_last())
+  && !target_value_expr_loop_gate(node: lde_loop(children: [lde_body_edge(), lde_bound_edge(), lde_carrier_edge()]))
+}

@@ -13,7 +13,7 @@ import extdeps.github.org_actions { runner_group_visibility_wire }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.org_actions_inspection { read_runner_groups, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
 import extdeps.shell.credentials { env_credential }
 import gunbc.auth.approval_gate {
@@ -24,7 +24,7 @@ import gunbc.auth.approval_gate {
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.runner_group_restriction_ensure {
-  RunnerGroupCreateSubject, microvm_runner_group_create_subject, runner_group_create_subject_text,
+  RunnerGroupCreateSubject, restricted_runner_groups, runner_group_create_subject_text,
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused, plan_runner_group_ensure,
   CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create,
 }
@@ -43,7 +43,7 @@ import gunbc.runner_group_restriction_ensure {
 // one_credential_mint_classified_at_two_reaches).
 //
 // THE ORDER IS READ, THEN ASK, THEN ACT, THEN READ. The organization is read before anything is filed,
-// so a group already restricted to exactly the shakedown workflow ends the run with no request and
+// so a group already restricted to exactly its workflow ends the run with no request and
 // no tap, and a group holding the name with any other restriction refuses before the operator is
 // asked to approve something this run would not do. Only a planned create is filed. The POST runs
 // only on GateAdmitted, and the run succeeds only when the organization, read again, holds the
@@ -73,10 +73,12 @@ fn microvm_runner_group_approval_window() -> Second {
   second(count: microvm_runner_group_poll_tick_budget * (second_count(s: microvm_runner_group_poll_cadence) as Int))
 }
 
+// EVERY GROUP IN THE ROSTER MAY WAIT OUT ITS OWN APPROVAL, one after another, so the step covers
+// one window and one effect per group rather than one for the run.
 fn microvm_runner_group_step_timeout_minutes() -> Minute {
   let secs = second_count(s: microvm_runner_group_prelude_allowance)
-    + second_count(s: microvm_runner_group_approval_window())
-    + second_count(s: microvm_runner_group_effect_allowance)
+    + count(restricted_runner_groups()) * (second_count(s: microvm_runner_group_approval_window())
+      + second_count(s: microvm_runner_group_effect_allowance))
   minute(count: (secs + 59) / 60)
 }
 
@@ -109,17 +111,18 @@ fn microvm_runner_group_create_intent_hash(a: MicrovmRunnerGroupCreateApproval) 
 }
 
 fn microvm_runner_group_create_request(
+  group: RunnerGroupCreateSubject,
   escalation_id: NonEmptyStr,
   attempt: AttemptIdentity,
   execution_revision: NonEmptyStr,
 ) -> AuthorizationRequest<MicrovmRunnerGroupCreateApproval> {
-  let subject = MicrovmRunnerGroupCreateApproval { group: microvm_runner_group_create_subject(), execution_revision: execution_revision }
+  let subject = MicrovmRunnerGroupCreateApproval { group: group, execution_revision: execution_revision }
   AuthorizationRequest {
     escalation_id: escalation_id,
     scopes: [microvm_runner_group_create_scope],
     subject: subject,
     purpose: join([
-      "Create the GitHub runner group the microVM shakedown mints into, restricted so only the shakedown workflow can use it: ",
+      "Create a GitHub runner group microVM runners are minted into, restricted so only its one workflow can use it: ",
       microvm_runner_group_create_intent_text(a: subject),
     ], "") as NonEmptyStr,
     attempt: attempt,
@@ -140,8 +143,13 @@ fn read_org_runner_groups(organization: NonEmptyStr) -> RunnerGroupListDecode us
   }
 }
 
-fn write_receipt(line: String) -> ProcessExit {
-  let kept = Filesystem.Write(path: microvm_runner_group_ensure_receipt_path, content: concat(line, "\n"))
+// ONE LINE PER GROUP IN THE ROSTER, written once when every group has been ensured.
+type GroupEnsureOutcome
+  = GroupEnsuredLine { line: String }
+  | GroupEnsureExit { exit: ProcessExit }
+
+fn write_receipt(lines: List<String>) -> ProcessExit {
+  let kept = Filesystem.Write(path: microvm_runner_group_ensure_receipt_path, content: concat(join(lines, "\n"), "\n"))
   if kept.success { ExitSuccess } else { exit_failure(reason: concat("microvm runner group: receipt write refused: ", kept.error)) }
 }
 
@@ -149,18 +157,22 @@ fn write_receipt(line: String) -> ProcessExit {
 // admitted the grant when the poll returned, and a grant whose window closed since then must not
 // act. The subject posted is the one the grant names, not a fresh derivation, so the POST cannot
 // differ from what was approved.
+fn failed(reason: String) -> GroupEnsureOutcome {
+  GroupEnsureExit { exit: exit_failure(reason: reason) }
+}
+
 fn microvm_runner_group_after_gate(
   gate: ApprovalGate<MicrovmRunnerGroupCreateApproval>,
   request: AuthorizationRequest<MicrovmRunnerGroupCreateApproval>,
-) -> ProcessExit {
+) -> GroupEnsureOutcome {
   match gate {
     GateRefused { cause: c } =>
-      exit_failure(reason: concat("microvm runner group: not created; the approval was not admitted: ", approval_refusal_text(cause: c)))
+      failed(reason: concat("microvm runner group: not created; the approval was not admitted: ", approval_refusal_text(cause: c)))
     GateAdmitted { authorization: auth } => match approval_instant_now() {
-      Absent => exit_failure(reason: "microvm runner group: clock unreadable after admission; not created")
+      Absent => failed(reason: "microvm runner group: clock unreadable after admission; not created")
       Present { value: at } => match authorize(authorization: auth, request: request, observed_at: at) {
         AuthorizationRefused { cause: c } =>
-          exit_failure(reason: concat("microvm runner group: not created: ", authorization_refusal_reason(cause: c)))
+          failed(reason: concat("microvm runner group: not created: ", authorization_refusal_reason(cause: c)))
         AuthorizationPermitted { grant: g } => microvm_runner_group_create_under(
           s: g.subject.group,
           escalation: g.escalation_id,
@@ -171,7 +183,7 @@ fn microvm_runner_group_after_gate(
   }
 }
 
-fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> ProcessExit {
+fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> GroupEnsureOutcome {
   let created = github.CliOrgRunnerGroups.CreateRunnerGroupJson(
     org: s.organization,
     name: s.name,
@@ -182,32 +194,33 @@ fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: No
     selected_workflow: s.selected_workflow,
   )
   if !created.success {
-    exit_failure(reason: concat("microvm runner group: POST /orgs/\{org\}/actions/runner-groups refused: ", created.stderr))
+    failed(reason: concat("microvm runner group: POST /orgs/\{org\}/actions/runner-groups refused: ", created.stderr))
   } else {
     match readback_after_create(subject: s, listed: read_org_runner_groups(organization: s.organization)) {
       CreatedGroupNotRestricted { cause } =>
-        exit_failure(reason: concat("microvm runner group: created but the readback refuses: ", cause as String))
+        failed(reason: concat("microvm runner group: created but the readback refuses: ", cause as String))
       CreatedGroupRestricted { restriction } =>
-        write_receipt(line: join([
-          "microvm-runner-group=created escalation_id=", escalation as String,
+        GroupEnsuredLine { line: join([
+          "microvm-runner-group=created name=", restriction.name as String, " escalation_id=", escalation as String,
           " decided_by=", decided_by as String,
           " group_id=", to_string(restriction.group.value),
           " selected_workflow=", restriction.selected_workflow as String,
-        ], ""))
+        ], "") }
     }
   }
 }
 
-fn microvm_runner_group_file_and_create(escalation: NonEmptyStr, sha: String) -> ProcessExit
+fn microvm_runner_group_file_and_create(group: RunnerGroupCreateSubject, escalation: NonEmptyStr, sha: String) -> GroupEnsureOutcome
   uses net: std.resources.Network
 {
   let request = microvm_runner_group_create_request(
+    group: group,
     escalation_id: escalation,
     attempt: escalation as AttemptIdentity,
     execution_revision: sha as NonEmptyStr,
   )
   match approval_instant_now() {
-    Absent => exit_failure(reason: "microvm runner group: clock unreadable; cannot mint an approval window; nothing filed")
+    Absent => failed(reason: "microvm runner group: clock unreadable; cannot mint an approval window; nothing filed")
     Present { value: issued } => {
       let expires = approval_expires_at(issued: issued, window: microvm_runner_group_approval_window())
       match approval_file_stored_request(
@@ -215,7 +228,7 @@ fn microvm_runner_group_file_and_create(escalation: NonEmptyStr, sha: String) ->
         body_file_name: microvm_runner_group_submit_body_file_name,
         submit_timeout: microvm_runner_group_submit_timeout,
       ) {
-        ApprovalFilingRefused { reason: r } => exit_failure(reason: concat("microvm runner group: not filed: ", r))
+        ApprovalFilingRefused { reason: r } => failed(reason: concat("microvm runner group: not filed: ", r))
         ApprovalFiled => microvm_runner_group_after_gate(
           gate: approval_gate_from_outcome(
             outcome: approval_poll_ticks(
@@ -250,19 +263,44 @@ fn microvm_runner_group_ensure_on_srv1() -> ProcessExit
   if run_id == "" || sha == "" {
     return exit_failure(reason: "microvm runner group: GITHUB_RUN_ID or GITHUB_SHA is unset; the escalation id and the approved revision bind them")
   }
-  let subject = microvm_runner_group_create_subject()
+  let outcome = fold(restricted_runner_groups(), init: GroupEnsuredLine { line: "" }, f: fn(acc, subject) {
+    match acc {
+      GroupEnsureExit { exit } => GroupEnsureExit { exit: exit }
+      GroupEnsuredLine { line: prior } =>
+        match ensure_one_group(subject: subject, run_id: run_id, sha: sha) {
+          GroupEnsureExit { exit } => GroupEnsureExit { exit: exit }
+          GroupEnsuredLine { line } => GroupEnsuredLine { line: if prior == "" { line } else { join([prior, line], "\n") } }
+        }
+    }
+  })
+  match outcome {
+    GroupEnsureExit { exit } => exit
+    GroupEnsuredLine { line } => write_receipt(lines: [line])
+  }
+}
+
+// ONE GROUP: read, then leave alone, create under its own approval, or refuse. Each group files its
+// own escalation, named for the group, so an approval of one group is never spent on another.
+fn ensure_one_group(subject: RunnerGroupCreateSubject, run_id: String, sha: String) -> GroupEnsureOutcome
+  uses net: std.resources.Network
+{
   match plan_runner_group_ensure(subject: subject, listed: read_org_runner_groups(organization: subject.organization)) {
-    GroupEnsureRefused { cause } => exit_failure(reason: concat("microvm runner group: ", cause as String))
+    GroupEnsureRefused { cause } => failed(reason: concat("microvm runner group: ", cause as String))
     GroupAlreadyRestricted { restriction } =>
-      write_receipt(line: join([
-        "microvm-runner-group=already-restricted group_id=", to_string(restriction.group.value),
+      GroupEnsuredLine { line: join([
+        "microvm-runner-group=already-restricted name=", restriction.name as String,
+        " group_id=", to_string(restriction.group.value),
         " selected_workflow=", restriction.selected_workflow as String, " (nothing filed)",
-      ], ""))
+      ], "") }
     GroupCreateRequired { subject: _ } =>
       if actions_variable_trimmed(name: approval_submission_mac_key_path_env) == "" {
-        exit_failure(reason: concat("microvm runner group: the create is required and ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed")))
+        failed(reason: concat("microvm runner group: the create is required and ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed")))
       } else {
-        microvm_runner_group_file_and_create(escalation: concat("microvm-runner-group-", run_id) as NonEmptyStr, sha: sha)
+        microvm_runner_group_file_and_create(
+          group: subject,
+          escalation: join(["microvm-runner-group-", subject.name as String, "-", run_id], "") as NonEmptyStr,
+          sha: sha,
+        )
       }
   }
 }

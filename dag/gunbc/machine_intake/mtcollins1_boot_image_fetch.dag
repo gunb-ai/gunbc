@@ -13,6 +13,7 @@ import gunbc.machine_intake_boot_image_fetch {
   BootImagePublishedDigestMismatch,
   BootImagePublicationNotAdmitted,
   BootImagePresentWithDifferentDigest,
+  BootImageAdmittedStagingRemains,
   fetch_verified_boot_image,
 }
 
@@ -42,6 +43,8 @@ data mtcollins1_boot_image_sha256: NonEmptyStr = "2ee2163c9b901ff5926400e8075908
 fn mtcollins1_render_fetch(outcome: BootImageFetchOutcome) -> ProcessExit {
   match outcome {
     BootImageAdmitted { path: _, digest: _ } => ExitSuccess
+    BootImageAdmittedStagingRemains { path: p, digest: _, staging: st, reason: r } =>
+      exit_failure(reason: concat("mtcollins1 boot image: published and verified at ", p as String, " but the staging file ", st as String, " was not removed from the export: ", r))
     BootImageFetchFailed { url: u } =>
       exit_failure(reason: concat("mtcollins1 boot image: fetch failed for ", u as String))
     BootImageDigestUnreadable { path: p, reason: r } =>

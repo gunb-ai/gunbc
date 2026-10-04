@@ -12,6 +12,9 @@ import extdeps.bmc.capability {
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   BmcFirmwareVersion,
+  BmcFirmwareVersionParsed,
+  BmcFirmwareVersionRefused,
+  bmc_firmware_version_from_wire,
   bmc_firmware_version_intent_verdict,
 }
 import extdeps.bmc.types {
@@ -594,15 +597,22 @@ fn bmc_fan_parse_os_release_identity(
       reason: "BMC fan identity observer omitted target machine",
     }
   } else {
-    BmcFanLiveIdentityObserved {
-      identity: BmcFanLiveIdentity {
-        firmware: BmcFirmwareVersion {
-          family: OpenBmc,
-          version: unquoted_firmware as NonEmptyStr,
-        },
-        machine: unquoted_machine as NonEmptyStr,
-        stable_machine_id: stable_machine_id,
-      },
+    match bmc_firmware_version_from_wire(wire: unquoted_firmware) {
+      BmcFirmwareVersionRefused { wire: _ } =>
+        BmcFanLiveIdentityRefused {
+          reason: "BMC fan identity observer reported a firmware version that is not major.minor.patch",
+        }
+      BmcFirmwareVersionParsed { version: version } =>
+        BmcFanLiveIdentityObserved {
+          identity: BmcFanLiveIdentity {
+            firmware: BmcFirmwareVersion {
+              family: OpenBmc,
+              version: version,
+            },
+            machine: unquoted_machine as NonEmptyStr,
+            stable_machine_id: stable_machine_id,
+          },
+        }
     }
   }
 }
@@ -656,34 +666,36 @@ fn bmc_fan_build_curve_steps_rec(
   outputs: List<Percent>,
   built: List<BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
-  if readings.length() == 0 {
-    if outputs.length() == 0 {
-      CurveStepsParsed { steps: built }
-    } else {
-      CurveStepsParseRefused {
-        reason: "fan curve readings/outputs differ or are empty",
+  match readings.first() {
+    Absent =>
+      if outputs.length() == 0 {
+        CurveStepsParsed { steps: built }
+      } else {
+        CurveStepsParseRefused {
+          reason: "fan curve readings/outputs differ or are empty",
+        }
       }
-    }
-  } else if outputs.length() == 0 {
-    CurveStepsParseRefused {
-      reason: "fan curve readings and outputs have different cardinality",
-    }
-  } else {
-    let reading = readings.first()
-    let output = outputs.first()
-      bmc_fan_build_curve_steps_rec(
-        readings: readings.skip(n: 1),
-        outputs: outputs.skip(n: 1),
-        built: append(
-          built,
-          items: [
-            BmcFanCurveStep {
-              at_or_above: reading,
-              duty: output,
-            },
-          ],
-        ),
-      )
+    Present { value: reading } =>
+      match outputs.first() {
+        Absent =>
+          CurveStepsParseRefused {
+            reason: "fan curve readings and outputs have different cardinality",
+          }
+        Present { value: duty } =>
+          bmc_fan_build_curve_steps_rec(
+            readings: readings.skip(n: 1),
+            outputs: outputs.skip(n: 1),
+            built: append(
+              built,
+              items: [
+                BmcFanCurveStep {
+                  at_or_above: reading,
+                  duty: duty,
+                },
+              ],
+            ),
+          )
+      }
   }
 }
 

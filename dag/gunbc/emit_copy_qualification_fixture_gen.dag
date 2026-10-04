@@ -242,9 +242,9 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
         MatchBinding =>
           concat("match ", concat(ecq_classify_call(carrier: c, arg: "x"),
           concat(" {\n    EcqSmallSize => 7\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"), "\n  }"))))
-        _ =>
-          concat("if ", concat(size_call(carrier: c, arg: "x"),
-          concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"), " } else { 7 }"))))
+        StraightLine => branch_exclusive_if_body(c: c, k: k)
+        IfSplit => branch_exclusive_if_body(c: c, k: k)
+        LoopRecursion => branch_exclusive_if_body(c: c, k: k)
       }
     ReuseAcrossJoin =>
       match id.control_shape {
@@ -253,11 +253,9 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
           concat(" {\n    EcqSmallSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat(" + 1\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat("\n  }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
-        _ =>
-          concat("let a = if ", concat(size_call(carrier: c, arg: "x"),
-          concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"),
-          concat(" } else { ", concat(call_u(carrier: c, k: k, arg: "x"),
-          concat(" + 1 }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
+        StraightLine => reuse_across_join_if_body(c: c, k: k)
+        IfSplit => reuse_across_join_if_body(c: c, k: k)
+        LoopRecursion => reuse_across_join_if_body(c: c, k: k)
       }
     AliasThenMutate =>
       concat("let y = x\n  let z = ", concat(update_call(carrier: c, arg: "y"),
@@ -279,24 +277,62 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
   }
 }
 
+// BranchExclusive under a non-match control shape: the exclusive branch is an if over the carrier size.
+fn branch_exclusive_if_body(c: CarrierRealization, k: ConsumerContract) -> String {
+  concat("if ", concat(size_call(carrier: c, arg: "x"),
+  concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"), " } else { 7 }"))))
+}
+
+// ReuseAcrossJoin under a non-match control shape: the join is an if over the carrier size.
+fn reuse_across_join_if_body(c: CarrierRealization, k: ConsumerContract) -> String {
+  concat("let a = if ", concat(size_call(carrier: c, arg: "x"),
+  concat(" > 2 { ", concat(call_u(carrier: c, k: k, arg: "x"),
+  concat(" } else { ", concat(call_u(carrier: c, k: k, arg: "x"),
+  concat(" + 1 }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
+}
+
 fn subject_param_type(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "List<Int>"
-    _ => carrier_type_text(c: id.carrier_realization)
+    ConsumedOnce => carrier_type_text(c: id.carrier_realization)
+    BorrowedReadOnly => carrier_type_text(c: id.carrier_realization)
+    ByValueThenReused => carrier_type_text(c: id.carrier_realization)
+    BranchExclusive => carrier_type_text(c: id.carrier_realization)
+    ReuseAcrossJoin => carrier_type_text(c: id.carrier_realization)
+    AliasThenMutate => carrier_type_text(c: id.carrier_realization)
+    MoveIntoClosure => carrier_type_text(c: id.carrier_realization)
+    BorrowIntoClosure => carrier_type_text(c: id.carrier_realization)
+    FieldExtractThenReuseEnclosing => carrier_type_text(c: id.carrier_realization)
   }
 }
 
 fn subject_param_name(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "xs"
-    _ => "x"
+    ConsumedOnce => "x"
+    BorrowedReadOnly => "x"
+    ByValueThenReused => "x"
+    BranchExclusive => "x"
+    ReuseAcrossJoin => "x"
+    AliasThenMutate => "x"
+    MoveIntoClosure => "x"
+    BorrowIntoClosure => "x"
+    FieldExtractThenReuseEnclosing => "x"
   }
 }
 
 fn input_expr(id: EmitCopyQualificationCaseId) -> String {
   match id.ownership_pattern {
     LoopCarriedAccumulator => "ecq_build_list(n: n)"
-    _ => carrier_input_expr(c: id.carrier_realization)
+    ConsumedOnce => carrier_input_expr(c: id.carrier_realization)
+    BorrowedReadOnly => carrier_input_expr(c: id.carrier_realization)
+    ByValueThenReused => carrier_input_expr(c: id.carrier_realization)
+    BranchExclusive => carrier_input_expr(c: id.carrier_realization)
+    ReuseAcrossJoin => carrier_input_expr(c: id.carrier_realization)
+    AliasThenMutate => carrier_input_expr(c: id.carrier_realization)
+    MoveIntoClosure => carrier_input_expr(c: id.carrier_realization)
+    BorrowIntoClosure => carrier_input_expr(c: id.carrier_realization)
+    FieldExtractThenReuseEnclosing => carrier_input_expr(c: id.carrier_realization)
   }
 }
 

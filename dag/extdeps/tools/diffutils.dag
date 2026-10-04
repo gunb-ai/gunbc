@@ -2,7 +2,6 @@ module extdeps.tools.diffutils
 
 import std.types { FilePath, NonEmptyStr, Unit, Bool }
 import std.integer { Int }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -20,6 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service shell.Diff {
   operation Recursive {
+    requires none
     input { left: FilePath, right: FilePath }
     output { identical: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly

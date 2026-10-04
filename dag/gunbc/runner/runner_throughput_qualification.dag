@@ -14,7 +14,11 @@ import product.placement_supply { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }
-import extdeps.toolchain.types { Architecture }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import product.capacity.cohort_observation {
+  CohortSeal, CohortSealed, CohortRefused, SeatSucceeded, SeatFailed, cohort_refusal_wire,
+}
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.required_ci_phase_roster {
   RequiredCiPhase, required_ci_phase_name, required_ci_phase_is, required_ci_phases,
 }
@@ -96,6 +100,15 @@ type FloorWorkloadPin {
   specimen: NonEmptyStr
 }
 
+// THE RUNTIME THE WORKLOAD RAN IN IS SELECTED, NOT MERELY OBSERVED. The pin says what work ran; this
+// says what it ran IN -- the runner image by its measured digest and the toolchain closure inside it.
+// Two runs of one pinned workload in different images measured different subjects, so both are join
+// axes; before this carrier existed the observed run carried both and nothing compared them.
+type SelectedRunnerRuntime {
+  image_digest: NonEmptyStr
+  runtime_closure: NonEmptyStr
+}
+
 // WHERE THE WORKSPACE BYTES LAND IS ONE FACT WITH THREE ANSWERS. The selection DECLARES a backing;
 // the observed run carries the locus as READ; the join compares them. On a diskless live host a
 // tmpfs workspace is charged to the cgroup that faults its pages in, so the peak is
@@ -120,9 +133,9 @@ fn workspace_bytes_locus(backing: WorkspaceBacking) -> WorkspaceBytesLocus {
 
 fn workspace_locus_eq(a: WorkspaceBytesLocus, b: WorkspaceBytesLocus) -> Bool {
   match a {
-    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true _ => false }
-    OnSubjectUncharged => match b { OnSubjectUncharged => true _ => false }
-    OffSubject { peer: p } => match b { OffSubject { peer: q } => (p as String) == (q as String) _ => false }
+    OnSubjectChargedToSlot => match b { OnSubjectChargedToSlot => true  OnSubjectUncharged => false  OffSubject { peer: _ } => false }
+    OnSubjectUncharged => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => true  OffSubject { peer: _ } => false }
+    OffSubject { peer: p } => match b { OnSubjectChargedToSlot => false  OnSubjectUncharged => false  OffSubject { peer: q } => (p as String) == (q as String) }
   }
 }
 
@@ -278,6 +291,7 @@ type SelectedRunnerQualification<P> {
   host: HostIdentity
   requirements: ExecutionRequirements
   workload: FloorWorkloadPin
+  runtime: SelectedRunnerRuntime
   host_allocation: SelectedHostAllocation
   slot: SelectedSlot
   workspace: WorkspaceBacking
@@ -296,6 +310,10 @@ type SubjectJoinAxis
   | ProgramAxis
   | RevisionAxis
   | SpecimenAxis
+  | ImageDigestAxis
+  | RuntimeClosureAxis
+  | HostThreadsAxis
+  | HostArchitectureAxis
   | SlotUnitAxis
   | EffectiveMemoryMaxAxis
   | EffectiveMemoryHighAxis
@@ -310,6 +328,10 @@ fn subject_join_axis_wire(a: SubjectJoinAxis) -> String {
     ProgramAxis => "program"
     RevisionAxis => "revision"
     SpecimenAxis => "specimen"
+    ImageDigestAxis => "image digest"
+    RuntimeClosureAxis => "runtime closure"
+    HostThreadsAxis => "host threads"
+    HostArchitectureAxis => "host architecture"
     SlotUnitAxis => "slot unit"
     EffectiveMemoryMaxAxis => "effective MemoryMax"
     EffectiveMemoryHighAxis => "effective MemoryHigh"
@@ -372,6 +394,32 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
   }
 }
 
+// THE HOST AXES JOIN AGAINST THE SELECTED OFFER'S OWN SHAPE: its hard thread count, and the
+// architecture its CPU envelope states. An offer whose envelope states no architecture made no claim
+// the run could be about, so the join refuses rather than admitting any architecture (section 5).
+fn offer_architecture<P>(selection: SelectedRunnerQualification<P>) -> Architecture? {
+  match selection.offer.shape.envelope.cpu {
+    Absent => none
+    Present { value: c } => c.architecture
+  }
+}
+
+// THE JOIN DECIDES ON THE OPTIONAL, NOT ON ITS SPELLING: an unstated architecture holds for no run,
+// whatever the observed architecture's diagnostic name happens to be.
+fn architecture_joins<P>(selection: SelectedRunnerQualification<P>, observed: Architecture) -> Bool {
+  match offer_architecture(selection: selection) {
+    Absent => false
+    Present { value: a } => (architecture_diagnostic_name(arch: a) as String) == (architecture_diagnostic_name(arch: observed) as String)
+  }
+}
+
+fn offer_architecture_wire<P>(selection: SelectedRunnerQualification<P>) -> String {
+  match offer_architecture(selection: selection) {
+    Absent => "unstated"
+    Present { value: a } => architecture_diagnostic_name(arch: a) as String
+  }
+}
+
 fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQualificationRun) -> SubjectJoin {
   let want = selection.slot
   first_refused(joins: [
@@ -379,6 +427,10 @@ fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunne
     join_axis(run: run.run, axis: ProgramAxis, holds: (selection.workload.program as String) == (run.program as String), selected: selection.workload.program as String, observed: run.program as String),
     join_axis(run: run.run, axis: RevisionAxis, holds: selection.workload.revision == run.revision, selected: selection.workload.revision, observed: run.revision),
     join_axis(run: run.run, axis: SpecimenAxis, holds: (selection.workload.specimen as String) == (run.specimen as String), selected: selection.workload.specimen as String, observed: run.specimen as String),
+    join_axis(run: run.run, axis: ImageDigestAxis, holds: (selection.runtime.image_digest as String) == (run.image_digest as String), selected: selection.runtime.image_digest as String, observed: run.image_digest as String),
+    join_axis(run: run.run, axis: RuntimeClosureAxis, holds: (selection.runtime.runtime_closure as String) == (run.runtime_closure as String), selected: selection.runtime.runtime_closure as String, observed: run.runtime_closure as String),
+    join_axis(run: run.run, axis: HostThreadsAxis, holds: hardware_thread_count_value(t: selection.offer.shape.hard.threads) == hardware_thread_count_value(t: run.host_threads), selected: hardware_thread_count_value(t: selection.offer.shape.hard.threads) as String, observed: hardware_thread_count_value(t: run.host_threads) as String),
+    join_axis(run: run.run, axis: HostArchitectureAxis, holds: architecture_joins(selection: selection, observed: run.host_architecture), selected: offer_architecture_wire(selection: selection), observed: architecture_diagnostic_name(arch: run.host_architecture) as String),
     join_axis(run: run.run, axis: SlotUnitAxis, holds: (selection.slot.unit as String) == (run.slot_unit as String), selected: selection.slot.unit as String, observed: run.slot_unit as String),
     join_axis(run: run.run, axis: EffectiveMemoryMaxAxis, holds: byte_size_count(b: want.memory_max) == byte_size_count(b: run.effective.memory_max), selected: byte_size_count(b: want.memory_max) as String, observed: byte_size_count(b: run.effective.memory_max) as String),
     join_axis(run: run.run, axis: EffectiveMemoryHighAxis, holds: byte_size_count(b: want.memory_high) == byte_size_count(b: run.effective.memory_high), selected: byte_size_count(b: want.memory_high) as String, observed: byte_size_count(b: run.effective.memory_high) as String),
@@ -628,6 +680,94 @@ fn qualify_slot_width<P>(selection: SelectedRunnerQualification<P>) -> SlotWidth
   }
 }
 
+// ── CONCURRENCY: THE WIDTH IS OBSERVED, NOT ONLY DIVIDED ──────────────────────────────────────
+//
+// qualify_slot_width DIVIDES the admitted slice and CPU cap by the slot shape; that says how many
+// slots the host's budget admits, and nothing about whether that many ran at once and each did its
+// work. Delivering at a width therefore needs a sealed concurrent cohort AT that width
+// (product.capacity.cohort_observation): exactly `slots` seats, all active at one instant, each seat
+// one of the assessed runs -- so every seat is the subject and was measured -- and each seat's work
+// settled as a success. Repeatability sampling (SamplingPolicy) is a different question and stays
+// separate: N runs one after another establish a rate, not a width.
+type RunnerCohortEvidence
+  = NoCohortObserved
+  | CohortObserved { seal: CohortSeal<WorkflowRunId> }
+
+type ConcurrencyStanding
+  = ConcurrencyObservedAtWidth { population: Int }
+  | ConcurrencyUnobserved
+  | ConcurrencyCohortRefused { cause: NonEmptyStr }
+  | ConcurrencyPopulationIsNotTheWidth { population: Int, width: Int }
+  | ConcurrencySeatNotAnAssessedRun { seat: WorkflowRunId }
+  | ConcurrencySeatFailed { seat: WorkflowRunId, cause: NonEmptyStr }
+  | ConcurrencyNotAssessed { because: NonEmptyStr }
+
+fn run_key(r: WorkflowRunId) -> String { r as String }
+
+type SeatStanding
+  = SeatsHold
+  | SeatStandingRefused { standing: ConcurrencyStanding }
+
+fn qualify_concurrency(cohort: RunnerCohortEvidence, runs: List<ObservedRunnerQualificationRun>, width: SlotWidthStanding) -> ConcurrencyStanding {
+  match width {
+    SlotWidthUnderivable { cause: c } => ConcurrencyNotAssessed { because: concat("no width to observe: ", c as String) as NonEmptyStr }
+    SlotWidthDerived { by_memory: _, by_cpu: _, slots: slots } =>
+      match cohort {
+        NoCohortObserved => ConcurrencyUnobserved
+        CohortObserved { seal: seal } =>
+          match seal {
+            CohortRefused { refusal: r } => ConcurrencyCohortRefused { cause: cohort_refusal_wire(r: r, seat_key: run_key) as NonEmptyStr }
+            CohortSealed { cohort: c } => {
+              let assessed = fold(runs, init: empty_map(), f: fn(m, r) { map_insert(m: m, key: r.run as String, value: true) })
+              let seats = fold(c.seats, init: SeatsHold, f: (acc, w) =>
+                match acc {
+                  SeatStandingRefused { standing: _ } => acc
+                  SeatsHold =>
+                    match map_lookup(m: assessed, key: w.seat as String) {
+                      Absent => SeatStandingRefused { standing: ConcurrencySeatNotAnAssessedRun { seat: w.seat } }
+                      Present { value: _ } =>
+                        match w.settled {
+                          SeatSucceeded => SeatsHold
+                          SeatFailed { cause: why } => SeatStandingRefused { standing: ConcurrencySeatFailed { seat: w.seat, cause: why } }
+                        }
+                    }
+                })
+              match seats {
+                SeatStandingRefused { standing: st } => st
+                SeatsHold =>
+                  if c.population == slots { ConcurrencyObservedAtWidth { population: c.population } }
+                  else { ConcurrencyPopulationIsNotTheWidth { population: c.population, width: slots } }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn concurrency_refusal(s: ConcurrencyStanding) -> List<ThroughputRefusal> {
+  match s {
+    ConcurrencyObservedAtWidth { population: _ } => []
+    ConcurrencyUnobserved => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyCohortRefused { cause: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyPopulationIsNotTheWidth { population: _, width: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencySeatNotAnAssessedRun { seat: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencySeatFailed { seat: _, cause: _ } => [ConcurrencyDidNotHold { standing: s }]
+    ConcurrencyNotAssessed { because: _ } => [ConcurrencyDidNotHold { standing: s }]
+  }
+}
+
+fn concurrency_standing_wire(s: ConcurrencyStanding) -> String {
+  match s {
+    ConcurrencyObservedAtWidth { population: n } => concat("a concurrent cohort of ", concat(n as String, " seats was observed at the width"))
+    ConcurrencyUnobserved => "no concurrent cohort was observed, so the width is divided, not observed"
+    ConcurrencyCohortRefused { cause: c } => concat("the concurrent cohort was refused: ", c as String)
+    ConcurrencyPopulationIsNotTheWidth { population: n, width: w } => join(["the cohort ran ", n as String, " seats but the derived width is ", w as String], "")
+    ConcurrencySeatNotAnAssessedRun { seat: r } => concat("a cohort seat is not one of the assessed runs: ", r as String)
+    ConcurrencySeatFailed { seat: r, cause: c } => join(["cohort seat ", r as String, " failed: ", c as String], "")
+    ConcurrencyNotAssessed { because: b } => concat("concurrency not assessed: ", b as String)
+  }
+}
+
 // ── THE REFUSALS ──────────────────────────────────────────────────────────────────────────────
 
 type ThroughputRefusal
@@ -638,6 +778,7 @@ type ThroughputRefusal
   | PhaseRosterDidNotHold { standing: PhaseRosterStanding }
   | PhaseWallDidNotHold { standing: PhaseWallStanding }
   | SlotWidthDidNotHold { standing: SlotWidthStanding }
+  | ConcurrencyDidNotHold { standing: ConcurrencyStanding }
 
 fn sampling_refusal(policy: SamplingPolicy, observed_runs: Int) -> List<ThroughputRefusal> {
   match policy {
@@ -650,21 +791,26 @@ fn sampling_refusal(policy: SamplingPolicy, observed_runs: Int) -> List<Throughp
 fn throughput_refusal(s: ThroughputStanding) -> List<ThroughputRefusal> {
   match s {
     ThroughputMeetsPin { measured: _, pinned: _ } => []
-    _ => [ThroughputDidNotHold { standing: s }]
+    ThroughputBelowPin { measured: _, pinned: _ } => [ThroughputDidNotHold { standing: s }]
+    ThroughputUnread { because: _ } => [ThroughputDidNotHold { standing: s }]
   }
 }
 
 fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
   match s {
     PeakWithinSlotHigh { peak: _, high: _ } => []
-    _ => [MemoryEnvelopeDidNotHold { standing: s }]
+    PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryUnread { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
   }
 }
 
 fn phase_roster_refusal(s: PhaseRosterStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseRosterComplete => []
-    _ => [PhaseRosterDidNotHold { standing: s }]
+    PhaseMissing { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseDuplicated { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
+    PhaseRosterNotAssessed { because: _ } => [PhaseRosterDidNotHold { standing: s }]
   }
 }
 
@@ -672,7 +818,7 @@ fn phase_wall_refusal(s: PhaseWallStanding) -> List<ThroughputRefusal> {
   match s {
     PhaseWallsNotAssessed => []
     PhaseWallsWithinCeilings => []
-    _ => [PhaseWallDidNotHold { standing: s }]
+    PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => [PhaseWallDidNotHold { standing: s }]
   }
 }
 
@@ -695,6 +841,7 @@ type AssessedFact
   = InterpreterRateAgainstPin
   | SlotMemoryEnvelope
   | PhaseWallsAgainstSuppliedCeilings
+  | ConcurrentCohortAtWidth
 
 type RunnerThroughputAssessment<P> sole_constructor {
   offer: FabricIdentity<P, OfferKey>
@@ -707,6 +854,7 @@ type RunnerThroughputAssessment<P> sole_constructor {
   phase_roster: PhaseRosterStanding
   phase_walls: PhaseWallStanding
   slot_width: SlotWidthStanding
+  concurrency: ConcurrencyStanding
   assessed_facts: List<AssessedFact>
   refusals: List<ThroughputRefusal>
 }
@@ -728,6 +876,7 @@ fn join_holds(j: SubjectJoin) -> Bool {
 fn assess_runner_throughput<P>(
   selection: SelectedRunnerQualification<P>,
   runs: List<ObservedRunnerQualificationRun>,
+  cohort: RunnerCohortEvidence,
 ) -> RunnerThroughputAssessment<P> {
   let join = first_join_refusal(selection: selection, runs: runs)
   let sampling = sampling_refusal(policy: selection.sampling, observed_runs: runs.length())
@@ -738,6 +887,7 @@ fn assess_runner_throughput<P>(
   let roster = if joined { first_incomplete_roster(runs: runs) } else { PhaseRosterNotAssessed { because: not_assessed } }
   let walls = if joined { phase_wall_standing(ceilings: selection.phase_ceilings, runs: runs) } else { PhaseWallsNotAssessed }
   let width = qualify_slot_width(selection: selection)
+  let concurrency = if joined { qualify_concurrency(cohort: cohort, runs: runs, width: width) } else { ConcurrencyNotAssessed { because: not_assessed } }
   let join_refusals = if join_holds(j: join) { [] } else { [SubjectJoinDidNotHold { join: join }] }
   RunnerThroughputAssessment {
     offer: selection.offer.id,
@@ -750,14 +900,17 @@ fn assess_runner_throughput<P>(
     phase_roster: roster,
     phase_walls: walls,
     slot_width: width,
-    assessed_facts: if joined { assessed_facts_for(ceilings: selection.phase_ceilings) } else { [] },
+    concurrency: concurrency,
+    assessed_facts: if joined {
+      concat(assessed_facts_for(ceilings: selection.phase_ceilings), match concurrency { ConcurrencyObservedAtWidth { population: _ } => [ConcurrentCohortAtWidth] _ => [] })
+    } else { [] },
     refusals: concat(
       join_refusals,
       concat(
         sampling,
         concat(
           throughput_refusal(s: throughput),
-          concat(memory_refusal(s: memory), concat(phase_roster_refusal(s: roster), concat(phase_wall_refusal(s: walls), slot_width_refusal(s: width)))),
+          concat(memory_refusal(s: memory), concat(phase_roster_refusal(s: roster), concat(phase_wall_refusal(s: walls), concat(slot_width_refusal(s: width), concurrency_refusal(s: concurrency))))),
         ),
       ),
     ),
@@ -775,20 +928,36 @@ fn assessment_holds<P>(a: RunnerThroughputAssessment<P>) -> Bool {
 // route's collect stage parsing a real run's rows into `observed_run` -- is a frontier carried as
 // one (DESIGN section 3c). A DeclarationRef to its landing would stop the parse phase today, so the
 // leg names the capability the landing must be SUFFICIENT FOR (section 4b(3)).
+//
+// AN AUTHORITY EXISTING IS NOT A LEG BEING WIRED. A leg whose authority is implemented but has no
+// production caller on the route performs nothing when the route runs, so it is its own arm:
+// LegAuthorityImplemented names the authority AND the wiring still owed, at capability grain. Only
+// LegWired counts toward route_is_executable; reading an implemented authority as a wired leg is
+// the specification-without-execution DESIGN §5 forbids, one layer up.
 type RouteLegStanding
-  = LegBoundToAuthority { authority: DeclarationRef }
+  = LegWired { authority: DeclarationRef }
+  | LegAuthorityImplemented { authority: DeclarationRef, wiring_owed: NonEmptyStr }
   | LegAwaitingAuthority { lands_with: NonEmptyStr, sufficient_for: NonEmptyStr }
 
-fn leg_is_bound(leg: RouteLegStanding) -> Bool {
+fn leg_is_wired(leg: RouteLegStanding) -> Bool {
   match leg {
-    LegBoundToAuthority { authority: _ } => true
+    LegWired { authority: _ } => true
+    LegAuthorityImplemented { authority: _, wiring_owed: _ } => false
     LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => false
   }
 }
 
+fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
+  match leg {
+    LegWired { authority: a } => Present { value: a }
+    LegAuthorityImplemented { authority: a, wiring_owed: _ } => Present { value: a }
+    LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => none
+  }
+}
+
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "the fleet-converge mode row for the qualification route, landing with #11484 (boot leg) and #11731 (image leg): the collect stage parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, and admit_callers on observed_run names it" as NonEmptyStr,
-  sufficient_for: "minting an ObservedRunnerQualificationRun from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
+  sufficient_for: "minting ObservedRunnerQualificationRuns and a sealed concurrent cohort of them from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
 }
 
 // ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
@@ -857,6 +1026,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
           join(["phase ", required_ci_phase_name(p: p), " wall ", nat_wire(n: millisecond_count(m: w)), "ms exceeds ceiling ", nat_wire(n: millisecond_count(m: c)), "ms"], "")
       }
     SlotWidthDidNotHold { standing: s } => slot_width_wire(s: s) as String
+    ConcurrencyDidNotHold { standing: s } => concurrency_standing_wire(s: s)
   }
 }
 

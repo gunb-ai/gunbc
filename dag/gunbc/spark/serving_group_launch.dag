@@ -14,6 +14,7 @@ import gunbc.spark.native_serving_realization {
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
+import std.algebra { Cons, Empty }
 
 // ── WHICH LAUNCH A GROUP'S ROUTE IS ABOUT ──────────────────────────────────────────────────────
 //

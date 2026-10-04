@@ -1,5 +1,7 @@
 module v2.test.claim.anonymous_param_binder
 
+import std.types { List }
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -10,11 +12,9 @@ import v2.std.anonymous_binder { anonymous_param_label, is_anonymous_param_label
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.collection { List }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Hash, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, well_formed }
+import v2.std.node { Arrow, Hash, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, well_formed, StructuralLabel }
 import v2.std.node_query { pattern_wildcard_name }
 import v2.std.optional { Absent, Present }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -41,7 +41,7 @@ data apb_artifact: Artifact = Artifact {
   file_path: "src/v2/pilot/anonymous_param_binder_pilot.dag"
 }
 
-fn apb_assemble(src: String) -> Outcome<Node> {
+fn apb_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: DagSourceReadWitness {
@@ -57,28 +57,28 @@ fn apb_assemble(src: String) -> Outcome<Node> {
   )
 }
 
-fn apb_two_anonymous() -> Outcome<Node> {
+fn apb_two_anonymous() -> Outcome<ResolvedTree> {
   apb_assemble(src: "module p\n\nfn f(_: Int, _: Bool) -> Int { 1 }\n")
 }
 
-fn apb_body_reference() -> Outcome<Node> {
+fn apb_body_reference() -> Outcome<ResolvedTree> {
   apb_assemble(src: "module p\n\nfn f(_: Int, _: Int) -> Int { _ }\n")
 }
 
-fn apb_two_sites() -> Outcome<Node> {
+fn apb_two_sites() -> Outcome<ResolvedTree> {
   apb_assemble(src: "module p\n\nfn f(_: Int, _: Int) -> Int { 1 }\n\nfn g(_: Int, _: Int) -> Int { 2 }\n")
 }
 
-fn apb_mixed() -> Outcome<Node> {
+fn apb_mixed() -> Outcome<ResolvedTree> {
   apb_assemble(src: "module p\n\nfn h(x: Int, _: Int) -> Int { x }\n")
 }
 
 // The domain labels of every Arrow in the resolved tree, in walk order.
-fn apb_domain_label_lists(o: Outcome<Node>) -> List<List<Symbol>> {
+fn apb_domain_label_lists(o: Outcome<ResolvedTree>) -> List<List<Symbol>> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } => concat(acc, [apb_domain_labels(arrow: m)])
           _ => acc
@@ -104,18 +104,19 @@ fn apb_domain_labels(arrow: Node) -> List<Symbol> {
   fold(apb_arrow_domain(arrow: arrow), init: [], f: fn(acc, d) {
     fold(d.children, init: acc, f: fn(inner, e) {
       match e.label {
-        Named { name: sym } => concat(inner, [sym])
+        StructuralLabel { label: _ } => inner
+        Authored { name: sym } => concat(inner, [sym])
         Positional => inner
       }
     })
   })
 }
 
-fn apb_domain_hashes(o: Outcome<Node>) -> List<Hash> {
+fn apb_domain_hashes(o: Outcome<ResolvedTree>) -> List<Hash> {
   match o {
     Rejected { diagnostics: _ } => []
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: [], f: fn(acc, m) {
+      fold(node_subtree_nodes(root: n.root), init: [], f: fn(acc, m) {
         match m.kind {
           TypeNode { connective: Arrow } =>
             fold(apb_arrow_domain(arrow: m), init: acc, f: fn(inner, d) { concat(inner, [content_hash(n: d)]) })
@@ -131,7 +132,7 @@ test fn apb_two_anonymous_slots_are_accepted_as_distinct_binders() -> Bool {
   match apb_two_anonymous() {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
-      well_formed(n: n)
+      well_formed(n: n.root)
         && apb_domain_label_lists(o: apb_two_anonymous())
           == [[anonymous_param_label(slot: 1), anonymous_param_label(slot: 2)]]
   }

@@ -1,8 +1,9 @@
 module v2.std.provenance
 
+import std.types { List }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
@@ -14,7 +15,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present }
-import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional, witness_violates }
 
 type OriginEvent
@@ -147,6 +148,7 @@ fn node_occurrence_id_optional(node: Node) -> Optional<OccurrenceId> {
     OccurrenceSynthetic => Absent
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => Absent
   }
 }
 

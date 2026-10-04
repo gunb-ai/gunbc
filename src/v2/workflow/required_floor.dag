@@ -1,8 +1,7 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains }
-import v2.std.collection { List }
-import v2.std.logic { Bool, True, False }
+import v2.std.algebra { Cons, Empty, contains, list_reverse }
+import v2.std.optional { Optional, Present, Absent }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
@@ -43,9 +42,10 @@ import std.measure {
   eval_step_count,
   eval_step_count_value,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 import extdeps.languages.yaml.types { yaml_entry_count }
+import std.algebra { Cons, Empty }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
@@ -124,6 +124,8 @@ type RequiredFloorDisposition =
   | DeclinedOutsideGateClosure
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
+  | DeclinedNoCiWetLane { pattern: String }
+  | DeclinedChangedWitnessOutsideDiscovery { module_path: String }
 
 // THE WIRE NAME OF ONE ARM, HOMED WITH THE COPRODUCT IT NAMES. This spelling is what every
 // receipt, counter and blocking cause downstream prints, so it is a fact about the arm and not
@@ -141,7 +143,9 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
     DeclinedOutsideRequiredGate => "declined_outside_required_gate",
     DeclinedOutsideGateClosure => "declined_outside_gate_closure",
     DeclinedDiscoveryExcluded { matched_substring } => "declined_discovery_excluded",
-    DeclinedCostDebt => "declined_cost_debt"
+    DeclinedCostDebt => "declined_cost_debt",
+    DeclinedNoCiWetLane { pattern } => "declined_no_ci_wet_lane"
+    DeclinedChangedWitnessOutsideDiscovery { module_path } => "declined_changed_witness_outside_discovery"
   }
 }
 
@@ -150,15 +154,80 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
 // therefore replaces the static gate's answer with one planned arm before execution; every
 // identity still has exactly one disposition and the ordinary answer is preserved unchanged for
 // the standing population.
+//
+// A SELECTED IDENTITY WHOSE FILE IS A DECLARED BinWitnessWet ROW IS DECLINED, NOT PLANNED. No CI
+// lane executes that class, so planning it only mints a route gap; `declared_wet_pattern` is the
+// BinWitnessWet exclusion pattern the file matched AND that `gunbc.rung_drop`
+// `edited_bin_witness_wet_rows_not_executed_by_ci` names in its bounded population, or Absent.
+// The seed's `required_floor_runner` decision is the host mirror of THIS function.
 fn required_floor_disposition_with_changed_selection(
   ordinary: RequiredFloorDisposition,
   selected_as_changed_witness: Bool,
+  declared_wet_pattern: Optional<String>,
 ) -> RequiredFloorDisposition {
   if selected_as_changed_witness {
-    PlannedAsChangedWitness {}
+    match declared_wet_pattern {
+      Present { value: p } => DeclinedNoCiWetLane { pattern: p }
+      Absent => PlannedAsChangedWitness {}
+    }
   } else {
     ordinary
   }
+}
+
+// A CHANGED SELECTION NO DECLARED IDENTITY CAN ANSWER IS DECLINED, NOT DROPPED. The changed-witness
+// selector ranges over the run's whole diff, while the declared population is enumerated from the
+// discovered index, which is scoped to the run's source roots. So a witness homed outside those
+// roots (src/v1/tests/claim is the live population) is selectable and undeclarable by construction.
+// Each such selection gets its own row, carrying the module that declares it, rather than being
+// filtered out: a filter would green the floor by hiding the over-selection, which is the absorbing
+// arm. This handles the mismatch and does not retire it. The next-rung trigger is the capability
+// SELECTION AND DISPOSITION CONSUME ONE RANGE. The seed's `required_floor_runner`
+// `changed_selections_outside_discovery` is the host mirror of THIS function, and
+// `test.claim.discovery_census_witness` joins the two over one shared fixture.
+type ChangedSelectionDispositionRow {
+  identity: String
+  disposition: RequiredFloorDisposition
+}
+
+type IdentityModulePathFold {
+  has_joined: Bool
+  joined: String
+  has_pending: Bool
+  pending: String
+}
+
+// The module that declares a selected identity: everything before its LAST `.`, or the whole
+// identity when it has none. The empty prefix of `.w` is the empty module, not the identity.
+fn changed_selection_identity_module_path(identity: String) -> String {
+  let folded = fold(split(s: identity, delimiter: "."), init: IdentityModulePathFold { has_joined: false, joined: "", has_pending: false, pending: "" }, f: fn(acc, segment) {
+    if !acc.has_pending {
+      IdentityModulePathFold { has_joined: acc.has_joined, joined: acc.joined, has_pending: true, pending: segment }
+    } else {
+      if acc.has_joined {
+        IdentityModulePathFold { has_joined: true, joined: concat(concat(acc.joined, "."), acc.pending), has_pending: true, pending: segment }
+      } else {
+        IdentityModulePathFold { has_joined: true, joined: acc.pending, has_pending: true, pending: segment }
+      }
+    }
+  })
+  if folded.has_joined { folded.joined } else { identity }
+}
+
+fn changed_selections_outside_discovery(
+  changed: List<String>,
+  declared: List<String>,
+) -> List<ChangedSelectionDispositionRow> {
+  list_reverse(xs: fold(changed, init: [], f: fn(acc, identity) {
+    if contains(xs: declared, item: identity, eq: fn(a, b) { a == b }) {
+      acc
+    } else {
+      concat([ChangedSelectionDispositionRow {
+        identity: identity,
+        disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: changed_selection_identity_module_path(identity: identity) }
+      }], acc)
+    }
+  }))
 }
 
 // THE COST POLICY OF A CHANGED WITNESS: the typed join of two authorities that answer different
@@ -313,6 +382,8 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         PlannedAsChangedWitness => CostDebtWithholdOverriddenForChangedVerdict {}
         DeclinedOutsideGateClosure => CostDebtOutsideThisRunsUniverse {}
         DeclinedDiscoveryExcluded { matched_substring: _ } => CostDebtOutsideThisRunsUniverse {}
+        DeclinedNoCiWetLane { pattern: _ } => CostDebtOutsideThisRunsUniverse {}
+        DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => CostDebtOutsideThisRunsUniverse {}
         Planned => CostDebtDeclaredButNotWithheld {}
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
@@ -642,6 +713,10 @@ fn fixture_home_prefixes() -> List<String> {
 // it scales with the closure, so the roster is cut to the compiler's own core semantics until the
 // fold reuses preparation across runs or scopes it to the diff -- at which point these rows come
 // back. `v2.test.` is the row that pulled the whole v2 corpus in and is the first to return.
+// THE WITHDRAWAL OF `v2.test.` IS INSIDE THE DECLARED DROP gunbc.rung_drop required_gate_bankruptcy,
+// whose amendment gunbc.rung_drop_amendment v2_test_family_reds_measured_outside_the_gate names the
+// measured population it left without a route, by identity and owner.
+// This annotation is its receipt, not its declaration: no `//` line can be read by anything.
 //
 // WITHDRAWN, AND NAMED SO THE WIDENING IS A DIFF RATHER THAN A MEMORY: "v2.test.",
 // "test.claim.self_host_", "test.claim.import_admission_closure_membership_witness_test",
@@ -794,6 +869,39 @@ fn required_gate_prefixes() -> List<String> {
 // ReadsLiveTree, which is no longer a decline (DeclinedLiveTree is deleted above). Its preparation
 // growth is the ingest, neutralization and emit closure over the python and typescript
 // authorities; the first required run after admission is the priced receipt.
+//
+// THE REFERENCE-CONSERVATION CONTROLS (adhoc-095d4a35-c40). Two claims whose fixture must refuse
+// normalization went red on main when #12713 lowered that fixture's shape (repaired by #12812), and
+// no lane saw it: `v2.test.claim.namespace_xl0` matches no family prefix (every family row is a
+// `test.claim.` v1 path). Admitted at exact module grain -- not a `v2.test.claim.namespace_`
+// family, which would sweep the sibling census and admission modules in unmeasured. Every subject
+// its claims read is WARM in `v2.workflow.floor_pure_producer_share`, none is cost debt, and the
+// module declares SubstrateInputsOnly.
+//
+// THE FLOOR'S OWN MODEL WITNESSES (adhoc-3feba7c4-ac9, gunbc#12858; parent ruling from
+// deep-ferret-305). gunbc#11791 withdrew `v2.test.` and the discovery-census prefix for
+// preparation cost, and afterwards nothing executed the claims over the floor's own census and
+// effect-demand join. Their reds reached main and no lane saw them (repaired by gunbc#12857).
+// Priced on the required floor: admission adds only the two modules to the gate closure (their
+// imports were already in it), with preparation wall and runner peak inside run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
+// disposition and supplies its nodes, edges and rows. The instrument is this floor's own
+// gate-closure and floor-cgroup lines.
+//
+// THE TEST-REFERENCE WALL WITNESS (roadmap node test-reference-discipline-remainder). The reds of
+// `test.claim.test_reference_wall_witness` are the ledger's enforcement evidence: unledgered
+// test-to-test references refuse (TestCodeReferenced), observed-versus-declared drift refuses
+// (TestCodeReferenceBudgetMismatch), and a discharged-but-unpaid-down row refuses. They were
+// authored and then executed by NO lane -- the module matches no family prefix, which is the
+// srv1/deep-ferret class again: evidence written, never run, reds reaching main unnoticed. Admitted
+// at exact module grain, not a `test.claim.test_reference_wall_` family, which would sweep nothing
+// in today but would silently widen if a sibling is ever planted. Its claims run through the census
+// probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
+// fixture sources are supplied strings), priced at NewWitnessTier.
+// THE SEED-GROWTH ADMISSION WITNESS (operator ruling, escalation msg_341a9785, approved
+// 2026-10-03). `test.claim.seed_growth_admission_witness` carries the seed-growth roster's
+// duplicate-key and well-formed checks and the addition/staleness join; it matched no family prefix,
+// so those reds executed on no merge lane. Admitted at exact module grain for the same reason as the
+// test-reference wall: a family prefix would silently widen to any future sibling.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -802,10 +910,16 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.stage0_emitted_edge_admission_witness",
     "test.claim.emitted_crate_workspace_witness",
     "v2.test.claim.body_lowering.statement_let_bind",
+    "v2.test.claim.namespace_xl0.reference_conservation",
     "test.claim.host_allocation_conservation",
     "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.manual.cross_language_add_python_to_typescript",
+    "test.claim.deleted_lanes_countable_witness_test",
+    "test.claim.discovery_census_witness",
+    "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+    "test.claim.test_reference_wall_witness",
+    "test.claim.seed_growth_admission_witness",
   ]
 }
 
@@ -884,7 +998,16 @@ fn required_gate_admits(module_path: String) -> Bool {
 // depend on which single row someone remembered to enroll.
 data required_gate_allocation_deploy_seam_note: String = "test.claim.runner_slot_provision is admitted to the required gate because no_deploy_row_out_commits_the_memory_budget is the executable statement of the positive-width law at the allocation-to-deploy seam; it was declined_outside_required_gate at 890c264be36 while srv2 carried a zero-width operational deploy row"
 
-// THE WORKFLOW-CONSOLIDATION MODULE IS ADMITTED AT EXACT MODULE GRAIN. Three declared rung
+// THE DELETED-LANES COUNTABLE IS ADMITTED AT EXACT MODULE GRAIN, AS ITS OWN MODULE. Four declared
+// rung drops cite `test.claim.deleted_lanes_countable_witness_test` `w_RED_the_deleted_lanes_do_not_return`
+// as the countable refusal if a cut CI lane returns. It lived in
+// `test.claim.witness_floor_workflow_consolidation_witness_test`, whose import closure is the whole
+// workflow emitter; the 2026-09-19 nominal roster withdrew that module for its preparation cost and
+// the countable stopped running on any required path. The countable reads only the lane rosters, so
+// those moved to `gunbc.witness_floor_lanes` and the claim to its own module: re-admitting it adds
+// the rosters' closure, not the emitter's. The history below is the consolidation module's.
+//
+// (HISTORY) THE WORKFLOW-CONSOLIDATION MODULE WAS ADMITTED AT EXACT MODULE GRAIN. Three declared rung
 // drops cite its `w_RED_the_deleted_lanes_do_not_return` row as the countable refusal if a cut
 // CI lane returns. Before this row, the required floor discovered all 12 witnesses in that
 // module but dispositioned every one `DeclinedOutsideGateClosure`; eight happened also to be

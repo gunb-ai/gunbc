@@ -6,7 +6,7 @@ import v2.std.node {
   Node,
   Edge,
   Symbol,
-  Named,
+  Authored, StructuralLabel,
   EdgeLabel,
   TypeNode,
   Conj,
@@ -272,7 +272,8 @@ type RoleRequirementIntegrationOutcome
 
 fn edge_label_role(label: EdgeLabel) -> Symbol? {
   match label {
-    Named { name: name } => Present { value: name }
+    Authored { name: name } => Present { value: name }
+    StructuralLabel { label: _ } => none
     Positional => none
   }
 }
@@ -628,7 +629,7 @@ fn root_edge_for(store: ObjectStore, acc: RoleRequirementRootAcc, role: Symbol, 
       }
     CheckedOut { program: program } =>
       RoleRequirementRootAcc {
-        edges: concat([Edge { label: Named { name: role }, target: program }], acc.edges),
+        edges: concat([Edge { label: Authored { name: role }, target: program }], acc.edges),
         refusal: none,
       }
   }

@@ -51,7 +51,11 @@ fn yaml_lexeme_reads_back(v: YamlValue) -> Bool {
   match v {
     YamlInt { lexeme: l } => match yaml_resolve_plain(s: l) { YamlInt { lexeme: _ } => true  _ => false }
     YamlFloat { lexeme: l } => match yaml_resolve_plain(s: l) { YamlFloat { lexeme: _ } => true  _ => false }
-    _ => true
+    YamlNull => true
+    YamlBool { value: _ } => true
+    YamlString { value: _ } => true
+    YamlSequence { elements: _ } => true
+    YamlMapping { entries: _ } => true
   }
 }
 
@@ -83,7 +87,9 @@ fn yaml_emit_check(v: YamlValue, path: String) -> YamlEmitCheck {
       yaml_emit_check_elements(elements: els, index: 0, path: path)
     YamlMapping { entries: ents } =>
       yaml_emit_check_entries(entries: ents, index: 0, path: path, seen: empty_map())
-    _ => YamlEmitAdmitted
+    YamlNull => YamlEmitAdmitted
+    YamlBool { value: _ } => YamlEmitAdmitted
+    YamlString { value: _ } => YamlEmitAdmitted
   }
 }
 
@@ -161,7 +167,12 @@ fn emit_scalar(v: YamlValue) -> String {
 fn emit_flow_entry(v: YamlValue) -> String {
   match v {
     YamlString { value: s } => emit_flow_scalar_text(s: s)
-    _ => emit_scalar(v: v)
+    YamlNull => emit_scalar(v: v)
+    YamlBool { value: _ } => emit_scalar(v: v)
+    YamlInt { lexeme: _ } => emit_scalar(v: v)
+    YamlFloat { lexeme: _ } => emit_scalar(v: v)
+    YamlSequence { elements: _ } => emit_scalar(v: v)
+    YamlMapping { entries: _ } => emit_scalar(v: v)
   }
 }
 
@@ -253,7 +264,10 @@ fn block_sequence_element_doc(e: YamlValue) -> Doc {
         doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: block_sequence_doc(elements: els))])
       }
     YamlString { value: s } => string_doc(prefix: "- ", s: s)
-    _ => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlNull => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlBool { value: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlInt { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlFloat { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
   }
 }
 
@@ -271,7 +285,11 @@ fn yaml_root_doc_refusal(v: YamlValue) -> String {
   match v {
     YamlMapping { entries: ents } => if (ents |> count) == 0 { "an empty mapping has no block form, and a document root must be a block collection" } else { "" }
     YamlSequence { elements: els } => if (els |> count) == 0 { "an empty sequence has no block form, and a document root must be a block collection" } else { "" }
-    _ => "a document root must be a block mapping or a block sequence"
+    YamlNull => "a document root must be a block mapping or a block sequence"
+    YamlBool { value: _ } => "a document root must be a block mapping or a block sequence"
+    YamlInt { lexeme: _ } => "a document root must be a block mapping or a block sequence"
+    YamlFloat { lexeme: _ } => "a document root must be a block mapping or a block sequence"
+    YamlString { value: _ } => "a document root must be a block mapping or a block sequence"
   }
 }
 
@@ -279,7 +297,11 @@ fn yaml_root_doc(v: YamlValue) -> Doc {
   match v {
     YamlMapping { entries: ents } => mapping_body_doc(entries: ents)
     YamlSequence { elements: els } => block_sequence_doc(elements: els)
-    _ => doc_concat(parts: [])
+    YamlNull => doc_concat(parts: [])
+    YamlBool { value: _ } => doc_concat(parts: [])
+    YamlInt { lexeme: _ } => doc_concat(parts: [])
+    YamlFloat { lexeme: _ } => doc_concat(parts: [])
+    YamlString { value: _ } => doc_concat(parts: [])
   }
 }
 

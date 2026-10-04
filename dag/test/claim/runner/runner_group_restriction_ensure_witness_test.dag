@@ -9,8 +9,10 @@ import gunbc.runner_group_restriction_ensure {
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused,
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
-  runner_group_create_subject_text,
+  runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
+  private_heal_publisher_runner_group_name, restricted_runner_groups,
 }
+import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 
 // THE PLAN'S SUBJECT IS ONE INTERFACE: the organization's runner-groups wire body as GitHub's REST
 // read returns it, projected by the one production fold, in; which of three things to do, out.
@@ -107,4 +109,39 @@ test fn witness_create_subject_text_names_every_member() -> Bool {
     && string_contains(s: t, pattern: "restricted_to_workflows=true")
     && string_contains(s: t, pattern: shakedown())
     && string_contains(s: t, pattern: "repository_id=1143718943")
+}
+
+// ── gunbc-private's heal publisher group: the same three walls, its own workflow ──────────────
+
+fn private_publisher_workflow() -> String {
+  heal_publisher_federation_workflow_ref(f: private_heal_publisher_federation())
+}
+
+fn private_group(id: Int, selected: List<String>) -> OrgRunnerGroupWire {
+  group_wire(id: id, name: private_heal_publisher_runner_group_name as String, restricted: true, selected: selected)
+}
+
+// THE GROUP AND THE IDENTITY NAME ONE FILE. The group's selected workflow is the federation's
+// workflow_ref, so the only workflow that may run on the group is the only one that may federate.
+test fn witness_private_publisher_group_selects_the_federations_workflow() -> Bool {
+  let s = private_heal_publisher_runner_group_subject()
+  (s.selected_workflow as String) == private_publisher_workflow()
+    && private_publisher_workflow() == "gunb-ai/gunbc-private/.github/workflows/heal-publish.yml@refs/heads/main"
+    && s.selected_repository_id == private_heal_publisher_federation().numeric_identity.repository_id
+    && s.restricted_to_workflows && !s.allows_public_repositories
+    && count(filter(restricted_runner_groups(), g => g.name == private_heal_publisher_runner_group_name)) == 1
+}
+
+// ADMITTED ONLY FOR ITS OWN WORKFLOW: the same group restricted to the shakedown workflow is
+// refused for the publisher. The observer compares against the subject's workflow, not a constant.
+test fn witness_private_publisher_group_is_admitted_for_its_workflow_and_refused_for_another() -> Bool {
+  let admitted = match plan_runner_group_ensure(subject: private_heal_publisher_runner_group_subject(), listed: listed(groups: [default_group(), private_group(id: 21, selected: [private_publisher_workflow()])])) {
+    GroupAlreadyRestricted { restriction: r } => r.group.value == 21 && (r.selected_workflow as String) == private_publisher_workflow()
+    _ => false
+  }
+  let refused = match plan_runner_group_ensure(subject: private_heal_publisher_runner_group_subject(), listed: listed(groups: [private_group(id: 21, selected: [shakedown()])])) {
+    GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupSelectsOtherWorkflows") && string_contains(s: c as String, pattern: private_publisher_workflow())
+    _ => false
+  }
+  admitted && refused
 }

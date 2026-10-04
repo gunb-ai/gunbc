@@ -33,11 +33,10 @@ import gunbc.artifact_acquisition {
 }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SparkRemoteRun, RemoteRan, RemoteUnreachable, spark_remote_run, HostCli,
-  SparkTransferState, TransferAbsent, TransferRunning, TransferExitedClean, TransferExitedFailed, TransferStateUnreadable,
-  spark_transfer_state, spark_transfer_clear,
-  TransferStartOutcome, TransferStarted, TransferStartRejected, TransferStartUnreachable, spark_transfer_start_argv,
-  SparkTransferSupervision, SupervisedExitClean, SupervisedExitFailed, SupervisedStillRunning, SupervisedTransferUnitAbsent, SupervisionLost,
-  spark_transfer_supervise,
+}
+import gunbc.spark.spark_file_blob {
+  SparkFileBlobPolicy, spark_file_blob_attempt, spark_file_blob_observe, spark_file_blob_ensure_parent,
+  spark_read_file_digest, SparkFileDigestRead, SparkFileDigestUnread,
 }
 import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root, spark_local_checkpoint_repo_directory, spark_local_checkpoint_directory }
 import gunbc.spark.v41_engram_row_store {
@@ -195,193 +194,39 @@ fn v41_checkpoint_subject(file: DeepseekV41PublishedFile) -> AcquisitionSubject 
   }
 }
 
-// ── THE DIGEST IS COMPARED HERE, SO A MISMATCH IS A MISMATCH ───────────────────────────────────
+// ── ONE SOURCE'S ATTEMPT IS gunbc.spark.spark_file_blob's ─────────────────────────────────────
 //
-// sha256sum answers the digest of the bytes and this module compares it to the manifest row. That is
-// a real oracle, unlike a verifier that only says pass or fail, so a disagreement is a DigestMismatch
-// and an unreadable answer is a probe failure: the two stay apart.
-type V41FileDigestReading
-  = V41FileDigestRead { hex: String }
-  | V41FileDigestUnread { cause: NonEmptyStr }
-
-fn v41_read_file_digest(ctx: SparkMaterializeContext, path: NonEmptyStr) -> V41FileDigestReading {
-  match spark_remote_run(ctx: ctx, argv: sha256sum_argv(path: path as String)) {
-    RemoteUnreachable { cause: c } => V41FileDigestUnread { cause: join(["the digest leg did not run: ", c], "") as NonEmptyStr }
-    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
-      if code != 0 { V41FileDigestUnread { cause: join(["sha256sum exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
-        match sha256sum_line_digest(line: out) {
-          Absent => V41FileDigestUnread { cause: join(["sha256sum answered no digest: ", out], "") as NonEmptyStr }
-          Present { value: d } => V41FileDigestRead { hex: d.hex as String }
-        }
-      }
-  }
-}
-
-fn v41_observe(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> AcquisitionObservation {
-  match spark_remote_run(ctx: ctx, argv: ["test", "-e", subject.install_path as String]) {
-    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
-    RemoteRan { exit_code: present, stdout: _, stderr: err } =>
-      if present == 1 { AcquisitionAbsent } else if present != 0 {
-        AcquisitionProbeFailed { reason: join(["the presence test exited ", to_string(present), ": ", trim(s: err)], "") as NonEmptyStr }
-      } else {
-        match v41_read_file_digest(ctx: ctx, path: subject.install_path) {
-          V41FileDigestUnread { cause: c } => AcquisitionProbeFailed { reason: c }
-          V41FileDigestRead { hex: h } =>
-            if h == (v41_subject_hex(subject: subject) as String) { AcquisitionVerified } else { AcquisitionDigestMismatch }
-        }
-      }
-  }
-}
-
-fn v41_subject_hex(subject: AcquisitionSubject) -> NonEmptyStr {
-  match subject.key {
-    ContentDigestSha256 { hex: h } => h
-    UpstreamRevision { revision: r } => r
-  }
-}
-
-fn v41_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
-  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String, v41_checkpoint_staging_directory as String]) {
-    RemoteUnreachable { cause: _ } => false
-    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
-  }
-}
-
-// ── ONE SOURCE'S ATTEMPT ───────────────────────────────────────────────────────────────────────
+// Every step after the source list -- the presence and digest probe, the detached supervised unit,
+// the staged digest, the publish by rename -- is the generic sha256-keyed file handler; nothing in it
+// is V4.1's. What stays here is the one V4.1 fact about a source: the Hub cache copy is offered only
+// when that copy exists on the host, so a host without one moves on to the network instead of running
+// a `cp` that cannot succeed.
 //
-// THE TRANSFER IS gunbc.spark.model_snapshot_materialize's DETACHED UNIT, reused rather than
-// re-spelled: it runs under pid 1, survives the ssh leg and a cancelled CI step, and a rerun reattaches
-// to it. What differs is what happens after it: the STAGED bytes are digested, published by rename
-// only when they match, and removed when they do not -- so the install path only ever holds a file
-// that passed, and a wrong download never touches a right file.
-//
-// CURL'S EXIT STATUS SEPARATES "COULD NOT REACH" FROM "REACHED AND REFUSED" (curl(1) EXIT CODES): 6
-// could not resolve, 7 could not connect, 28 timed out, 35 TLS handshake failed, 52 empty reply and 56
-// receive failure are the network's; anything else (22 is an HTTP error) is the source answering.
 // ONE RUN DOES NOT WAIT OUT A DOWNLOAD. The fleet-converge job carries one spark step at its tier's
 // timeout, far short of half a terabyte, so a run supervises each transfer for a few polls and moves
 // on: every absent file's transfer is STARTED in the first run and keeps running detached, and a later
-// run reattaches, verifies what finished and publishes it. The still-running files are reported as
-// such (re-run to reattach), which is the transport's own typed carry-on, not a failure.
-data v41_checkpoint_supervision_polls: Nat = 3
-
-data v41_curl_unreachable_statuses: List<String> = ["6", "7", "28", "35", "52", "56"]
+// run reattaches, verifies what finished and publishes it.
+data v41_checkpoint_blob_policy: SparkFileBlobPolicy = SparkFileBlobPolicy {
+  staging_directory: v41_checkpoint_staging_directory,
+  supervision_polls: 3,
+}
 
 fn v41_attempt(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   if (origin.identity as String) == (v41_hub_cache_source_identity as String) {
     match spark_remote_run(ctx: ctx, argv: ["test", "-f", v41_hub_cache_copy_path(path: subject.identity) as String]) {
       RemoteUnreachable { cause: _ } => AttemptUnreachable
       RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
-        if e != 0 { AttemptUnreachable } else { v41_attempt_transfer(ctx: ctx, subject: subject, origin: origin) }
+        if e != 0 { AttemptUnreachable } else { spark_file_blob_attempt(ctx: ctx, policy: v41_checkpoint_blob_policy, subject: subject, origin: origin) }
     }
   } else {
-    v41_attempt_transfer(ctx: ctx, subject: subject, origin: origin)
-  }
-}
-
-// A TRANSFER THIS RUN DID NOT START IS STILL THIS FILE'S TRANSFER. A running unit is reattached; a
-// unit that exited clean left a complete staged file, which is verified rather than fetched again; a
-// unit systemd has already reaped (a transient unit that exits is garbage-collected) may have left one
-// too, so a staged file is digested before anything is started. Only a staged file under a unit that
-// exited CLEAN is known complete, so only its mismatch is the source's failed key; a staged file with
-// no unit may be a cancelled transfer's partial, and it is removed and fetched again.
-fn v41_attempt_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_state(ctx: ctx, subject: subject) {
-    TransferStateUnreadable { cause: _ } => AttemptUnreachable
-    TransferRunning => v41_after_transfer(ctx: ctx, subject: subject, origin: origin)
-    TransferExitedClean => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { v41_verify_staged(ctx: ctx, subject: subject, origin: origin) }
-    TransferExitedFailed { status: _ } => if !spark_transfer_clear(ctx: ctx, subject: subject) { AttemptUnreachable } else { v41_start_transfer(ctx: ctx, subject: subject, origin: origin) }
-    TransferAbsent => v41_adopt_or_start(ctx: ctx, subject: subject, origin: origin)
-  }
-}
-
-fn v41_adopt_or_start(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_remote_run(ctx: ctx, argv: ["test", "-f", v41_staged(subject: subject) as String]) {
-    RemoteUnreachable { cause: _ } => AttemptUnreachable
-    RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
-      if e != 0 { v41_start_transfer(ctx: ctx, subject: subject, origin: origin) } else {
-        match v41_read_file_digest(ctx: ctx, path: v41_staged(subject: subject)) {
-          V41FileDigestUnread { cause: c } =>
-            AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed { identity: subject.identity, source: origin.identity, reason: c } } }
-          V41FileDigestRead { hex: h } =>
-            if h == (v41_subject_hex(subject: subject) as String) { v41_publish(ctx: ctx, subject: subject, origin: origin) } else {
-              let removed = spark_remote_run(ctx: ctx, argv: ["rm", "-f", "--", v41_staged(subject: subject) as String])
-              v41_start_transfer(ctx: ctx, subject: subject, origin: origin)
-            }
-        }
-      }
-  }
-}
-
-fn v41_start_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match origin.locator {
-    SourceUrl { url: u } => AttemptRejected { detail: join(["source ", origin.identity as String, " carries a URL (", u as String, ") and this transport runs an argv on the Spark"], "") as NonEmptyStr }
-    SourceArgv { argv: a } =>
-      match spark_transfer_start_argv(ctx: ctx, subject: subject, argv: a) {
-        TransferStartUnreachable { cause: _ } => AttemptUnreachable
-        TransferStartRejected { detail: d } => AttemptRejected { detail: d }
-        TransferStarted => v41_after_transfer(ctx: ctx, subject: subject, origin: origin)
-      }
-  }
-}
-
-fn v41_after_transfer(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_transfer_supervise(ctx: ctx, subject: subject, remaining: v41_checkpoint_supervision_polls) {
-    SupervisionLost { cause: _ } => AttemptUnreachable
-    SupervisedStillRunning { polls: n } =>
-      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
-        identity: subject.identity, source: origin.identity,
-        reason: join(["the transfer is STILL RUNNING after ", to_string(n), " polls and has not been killed; re-run to reattach to it. This is not a failed transfer"], "") as NonEmptyStr,
-      } } }
-    SupervisedExitFailed { status: st } =>
-      if any(v41_curl_unreachable_statuses, s => s == st) { AttemptUnreachable } else {
-        AttemptRejected { detail: join(["source ", origin.identity as String, " exited with status ", st, "; the host ran it, so this is not a reachability failure"], "") as NonEmptyStr }
-      }
-    SupervisedTransferUnitAbsent => v41_verify_staged(ctx: ctx, subject: subject, origin: origin)
-    SupervisedExitClean => v41_verify_staged(ctx: ctx, subject: subject, origin: origin)
-  }
-}
-
-fn v41_staged(subject: AcquisitionSubject) -> NonEmptyStr {
-  match subject.staging_path {
-    Present { value: s } => s
-    Absent => v41_staging_path(path: subject.identity)
-  }
-}
-
-fn v41_verify_staged(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match v41_read_file_digest(ctx: ctx, path: v41_staged(subject: subject)) {
-    V41FileDigestUnread { cause: c } =>
-      AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed { identity: subject.identity, source: origin.identity, reason: c } } }
-    V41FileDigestRead { hex: h } =>
-      if h != (v41_subject_hex(subject: subject) as String) {
-        let removed = spark_remote_run(ctx: ctx, argv: ["rm", "-f", "--", v41_staged(subject: subject) as String])
-        AttemptFailedKey
-      } else {
-        v41_publish(ctx: ctx, subject: subject, origin: origin)
-      }
-  }
-}
-
-// PUBLISH IS A RENAME WITHIN ONE FILESYSTEM, so the install path goes from absent to the verified
-// bytes in one step and never holds a partial file.
-fn v41_publish(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
-  match spark_remote_run(ctx: ctx, argv: ["mv", "-f", "--", v41_staged(subject: subject) as String, subject.install_path as String]) {
-    RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
-      if e == 0 {
-        AttemptTerminal { outcome: AcquisitionFetched { identity: subject.identity, install_path: subject.install_path, source: origin } }
-      } else {
-        AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
-      }
-    RemoteUnreachable { cause: _ } =>
-      AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
+    spark_file_blob_attempt(ctx: ctx, policy: v41_checkpoint_blob_policy, subject: subject, origin: origin)
   }
 }
 
 fn v41_checkpoint_handler(ctx: SparkMaterializeContext) -> AcquisitionHandler {
   AcquisitionHandler {
-    observe: fn(subject) { v41_observe(ctx: ctx, subject: subject) },
-    ensure_parent: fn(subject) { v41_ensure_parent(ctx: ctx, subject: subject) },
+    observe: fn(subject) { spark_file_blob_observe(ctx: ctx, subject: subject) },
+    ensure_parent: fn(subject) { spark_file_blob_ensure_parent(ctx: ctx, policy: v41_checkpoint_blob_policy, subject: subject) },
     attempt: fn(subject, origin) { v41_attempt(ctx: ctx, subject: subject, origin: origin) },
   }
 }
@@ -613,7 +458,7 @@ fn v41_index_selection_read(ctx: SparkMaterializeContext) -> V41IndexSelectionOu
       match first(filter(files, f => (f.path as String) == (deepseek_v4_1_flash_safetensors_index_path as String))) {
         Absent => V41IndexSelectionUnread { cause: "the admitted population carries no index row" as NonEmptyStr }
         Present { value: row } => {
-          match v41_observe(ctx: ctx, subject: v41_checkpoint_subject(file: row)) {
+          match spark_file_blob_observe(ctx: ctx, subject: v41_checkpoint_subject(file: row)) {
             AcquisitionAbsent => V41IndexSelectionUnread { cause: "the index is not on the host; run the materialize step first" as NonEmptyStr }
             AcquisitionDigestMismatch => V41IndexSelectionUnread { cause: "the index on the host does not match its manifest row, so it is not read" as NonEmptyStr }
             AcquisitionProbeFailed { reason: r } => V41IndexSelectionUnread { cause: join(["the index could not be checked against its manifest row: ", r as String], "") as NonEmptyStr }
@@ -625,9 +470,9 @@ fn v41_index_selection_read(ctx: SparkMaterializeContext) -> V41IndexSelectionOu
 }
 
 fn v41_index_selection_of_verified(ctx: SparkMaterializeContext, path: NonEmptyStr) -> V41IndexSelectionOutcome {
-  match v41_read_file_digest(ctx: ctx, path: path) {
-    V41FileDigestUnread { cause: c } => V41IndexSelectionUnread { cause: c }
-    V41FileDigestRead { hex: h } =>
+  match spark_read_file_digest(ctx: ctx, path: path) {
+    SparkFileDigestUnread { cause: c } => V41IndexSelectionUnread { cause: c }
+    SparkFileDigestRead { hex: h } =>
       match spark_remote_run(ctx: ctx, argv: ["wc", "--bytes", path as String]) {
         RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the size read did not run: ", c], "") as NonEmptyStr }
         RemoteRan { exit_code: e, stdout: out, stderr: _ } =>

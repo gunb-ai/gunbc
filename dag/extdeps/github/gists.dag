@@ -7,6 +7,7 @@ import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -41,6 +42,7 @@ service github.Gist {
   }
 
   operation Create {
+    requires Network
     input {
       description: String
       filename: String

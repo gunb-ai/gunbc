@@ -1,10 +1,8 @@
 module v2.std.timeseries_signal
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Optional,
   Absent,
@@ -12,7 +10,6 @@ import v2.std.optional {
 }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, invariant_port_locus }
 import v2.std.integer { Int, int_add, int_div, int_mul }
-import v2.std.logic { Bool }
 import std.measure {
   Measure,
   Capacitance,
@@ -25,9 +22,10 @@ import std.measure {
   Resistance,
   Time,
 }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.text { String }
+import std.types { brand, List }
 
 type Voltage = Measure<ElectricPotential, Micro, Int>
 type Current = Measure<ElectricCurrent, Micro, Int>
@@ -254,7 +252,7 @@ type StepBranchVoltage {
 }
 
 type TimeSeriesSample {
-  tick: v2.std.nat.Nat
+  tick: std.nat.Nat
   microvolts: Voltage
 }
 

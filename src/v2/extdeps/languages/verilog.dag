@@ -1,19 +1,21 @@
 module v2.extdeps.languages.verilog
 
+import v2.std.algebra { list_reverse }
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import std.integer { Signedness }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
   Node,
-  Named,
+  Authored,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.compilers.target_model {
   EmitSpellingWrap,
   EmitLineBreaks,
@@ -22,11 +24,11 @@ import v2.std.compilers.target_model {
   TokenClassEmitTransform,
   render_target_text
 }
-import v2.compiler.target_serialize { target_serialize_relation_row_from_model_bounded }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.compiler.target_serialize { target_serialize_derived_row_bounded }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_nested_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_nested_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, derive_grammar_relation_row_for_lhs }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -618,8 +620,8 @@ type VerilogModule
     }
 
 type VerilogCost {
-  gate_cost: v2.std.nat.Nat
-  area_cost: v2.std.nat.Nat
+  gate_cost: std.nat.Nat
+  area_cost: std.nat.Nat
 }
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
@@ -670,7 +672,8 @@ fn verilog_lex() -> LexRules {
             right: LiteralPattern { text: "|" }
           }
         )
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -1038,35 +1041,19 @@ fn verilog_relation_row_for_productions(
   lhs: Symbol,
   emitted: Node
 ) -> Witness<Node> {
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 // The same population in reverse authoring order. Selection is structural, so this must derive a
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
 fn verilog_emission_formal_productions_reversed() -> List<FormalProduction> {
-  reverse(verilog_emission_formal_productions())
+  list_reverse(xs: verilog_emission_formal_productions())
 }
 
 fn verilog_relation_row_for(lhs: Symbol, emitted: Node) -> Witness<Node> {
   let productions = verilog_emission_formal_productions()
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: production } =>
-      derive_grammar_relation_row_node(
-        production: production,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn verilog_module_relation_row() -> Witness<Node> {
@@ -1077,7 +1064,7 @@ fn verilog_module_relation_row() -> Witness<Node> {
 }
 
 fn verilog_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {
@@ -1337,13 +1324,13 @@ type VerilogEmission
 fn verilog_emit_module(module_node: Node, spellings: Map<Symbol, String>) -> VerilogEmission {
   match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: module_node) {
     Holds { value: row } =>
-      match target_serialize_relation_row_from_model_bounded(
-        4096,
-        verilog_target_model_for(row: row, spellings: spellings),
-        module_node
+      match target_serialize_derived_row_bounded(
+        remaining: 4096,
+        target: verilog_target_model_for(row: row, spellings: spellings),
+        row: row
       ) {
         Accepted { value: text, diagnostics: _ } => VerilogEmitted { source: render_target_text(t: text) }
-        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: d.head.reason }
+        Rejected { diagnostics: d } => VerilogEmissionRefused { reason: diagnostics_fatal_reason(d: d) }
       }
     Violates { diagnostic: d } => VerilogEmissionRefused { reason: d.reason }
   }

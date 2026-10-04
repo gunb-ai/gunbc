@@ -1,7 +1,7 @@
 module v2.std.fold_assembly
 
 import v2.std.node {
-  Node, Edge, EdgeLabel, Named,
+  Node, Edge, EdgeLabel, Authored,
   NodeKind, TypeNode, Connective, Conj,
   Symbol, node_synthetic, node_subtree_nodes,
   NamedEdgeTargetLookup, Found, Ambiguous, Absent, named_edge_target_lookup
@@ -14,13 +14,12 @@ import v2.std.diagnostic {
   Diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown,
   node_locus, outcome_accepted, outcome_rejected
 }
-import v2.std.logic { Bool }
 
 data fold_template_edge: Symbol = ^fold_template
 data fold_elements_edge: Symbol = ^fold_elements
 
 fn named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn conj_record(children: FreeMonoid<Edge>) -> Node {

@@ -1,5 +1,6 @@
 module v2.test.claim.binding.selection_fold_two_implementations
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WHAT THIS WITNESS DISCRIMINATES, AND WHAT IT DELIBERATELY DOES NOT.
@@ -228,13 +229,13 @@ fn binding_inhabitance_qn_spine(segments: List<Symbol>) -> Node {
 
 fn binding_inhabitance_variant_edge(type_sym: Symbol, variants: List<Symbol>) -> Edge {
   Edge {
-    label: Named { name: type_sym },
+    label: Authored { name: type_sym },
     target: Node {
       kind: TypeNode { connective: Disj },
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
         concat(acc, [
           Edge {
-            label: Named { name: variant_sym },
+            label: Authored { name: variant_sym },
             target: binding_fixture_node(name: variant_sym)
           }
         ])
@@ -248,12 +249,10 @@ data binding_inhabitance_module_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: concat(
     [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: binding_inhabitance_qn_spine(segments: binding_inhabitance_module_qn)
       )
     ],
@@ -268,7 +267,7 @@ data binding_inhabitance_module_root: Node = Node {
 data binding_inhabitance_index: SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: binding_inhabitance_module_root,
-  record_declarations: no_record_declarations()
+  record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
 )
 
 // TWO CANDIDATES BY CONSTRUCTION, AND THE SHAPE IS THE ORDINARY SHADOWING ONE: the module exports

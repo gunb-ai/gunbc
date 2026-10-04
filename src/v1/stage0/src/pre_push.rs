@@ -90,7 +90,7 @@ fn run_inner() -> Result<ExitCode, String> {
 
 fn load_zero_sha(plan: &PlanCtx) -> Result<String, String> {
     match eval_fn(plan, "pre_push_zero_sha_authority")? {
-        Value::Str(s) => Ok(s.to_string()),
+        Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!(
             "pre_push_zero_sha_authority not a String: {other:?}"
         )),
@@ -282,7 +282,7 @@ fn eval_fmt_recipe(
     match v1_interpreter::run_in_context_with_args(&plan.eval_ctx, function, &args, false)
         .map_err(|e| format!("{function}: {e}"))?
     {
-        Value::Str(s) => Ok(s.to_string()),
+        Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!("{function} not a String: {other:?}")),
     }
 }

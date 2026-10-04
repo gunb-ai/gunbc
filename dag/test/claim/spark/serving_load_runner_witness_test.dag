@@ -1,0 +1,166 @@
+module test.claim.spark.serving_load_runner_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv9 }
+import gunbc.spark.serving_rank_observe { container_incarnation_id, ObservedRankIncarnation }
+import gunbc.spark.model_snapshot_materialize { RemoteRan }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.harness.harness_backend { harness_launch_from_body }
+import extdeps.vllm.bench_serve { VllmBenchServeRequest }
+import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
+import gunbc.spark.serving_load_runner { ServingLoadSubject }
+import gunbc.spark.serving_performance_subject { ServingPerformanceSubjectStanding }
+import gunbc.spark.serving_load_probe {
+  SamePrincipal, DrainObservedIdle, window_from_drain, counter_continuity,
+  occupancy_trace_from_endpoint_scrapes, serving_load_observation, serving_load_observation_text,
+  bench_serve_from_remote, BenchServeExecution, bench_serve_itl, bench_serve_bucket_peak,
+  client_itl_text, client_bucket_peak_text,
+}
+import gunbc.spark.serving_load_runner { serving_load_step_text, step_subject_mismatch }
+import gunbc.spark.glm_serving_load {
+  glm_native_serving_load_subject, glm_native_smoke_protocol,
+  glm_native_workload_admission, glm_native_qualification_frontier,
+}
+
+// Readings are supplied; the one route that captures them for real is serving_load_step, run by
+// glm_native_serving_load_wet (gunbc.spark.glm_serving_load).
+
+fn metrics_body(running: String, gen: String) -> String {
+  join([
+    "vllm:num_requests_waiting{", "model_name=\"glm\"} 0.0\n",
+    "vllm:num_requests_running{", "model_name=\"glm\"} ", running, "\n",
+    "vllm:generation_tokens_total{", "model_name=\"glm\"} ", gen, "\n",
+    "process_start_time_seconds 1789300000.12\n",
+  ], "")
+}
+
+data fx_before: String = metrics_body(running: "0.0", gen: "1000.0")
+data fx_after: String = metrics_body(running: "0.0", gen: "1128.0")
+
+data fx_bench_stdout: String = "Successful requests: 4\nFailed requests: 0\nTotal generated tokens: 128\nBenchmark duration (s): 2.00\nMean ITL (ms): 20.00\nMedian ITL (ms): 19.00\nP99 ITL (ms): 40.00\nPeak concurrent requests: 2\n"
+
+fn fx_incarnation() -> ObservedRankIncarnation? {
+  match container_incarnation_id(id: "0f3a9c1d2e4b") {
+    Absent => none
+    Present { value: cid } => Present { value: ObservedRankIncarnation { host: operator_host_srv9, container: cid, node_rank: 0 } }
+  }
+}
+
+fn fx_bench() -> BenchServeExecution {
+  bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: RemoteRan { exit_code: 0, stdout: fx_bench_stdout, stderr: "" })
+}
+
+// The GLM receipt body as serving_load_probe_cli composed it inline before the runner existed:
+// group B, srv9's LAN address, the group-B administrator principal, observation then client lines.
+fn pre_runner_glm_step_text(standing: ServingPerformanceSubjectStanding) -> String {
+  let bench = fx_bench()
+  let obs = serving_load_observation(
+    subject: standing,
+    window: window_from_drain(drain: DrainObservedIdle),
+    continuity: counter_continuity(
+      before: harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: fx_before),
+      after: harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: fx_after),
+    ),
+    occupancy: occupancy_trace_from_endpoint_scrapes(before_body: fx_before, after_body: fx_after),
+    before_body: fx_before,
+    after_body: fx_after,
+    before_incarnation: fx_incarnation(),
+    after_incarnation: fx_incarnation(),
+    bench: bench,
+    admission: glm_native_workload_admission,
+    qualification_frontier: glm_native_qualification_frontier,
+    provenance: SamePrincipal { principal: join(["group-B administrator ssh session on ", operator_host_srv9 as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
+  )
+  join([
+    serving_load_observation_text(o: obs),
+    "client itl (bench stdout): ", client_itl_text(d: bench_serve_itl(e: bench)), "\n",
+    "client bucket peak (bench stdout): ", client_bucket_peak_text(p: bench_serve_bucket_peak(e: bench)), "\n",
+  ], "")
+}
+
+fn runner_glm_step_text(subject: ServingLoadSubject) -> String {
+  serving_load_step_text(
+    subject: subject,
+    window: window_from_drain(drain: DrainObservedIdle),
+    before: fx_before,
+    after: fx_after,
+    before_incarnation: fx_incarnation(),
+    after_incarnation: fx_incarnation(),
+    bench: fx_bench(),
+  )
+}
+
+// GLM's c=2 smoke step through the shared runner is byte-equal to the pre-runner composition, and
+// the principal and host actually reach the text (the control is not equal by both being empty).
+test fn glm_step_text_through_the_runner_is_byte_equal_to_the_pre_runner_receipt() -> Bool {
+  match glm_native_serving_load_subject() {
+    Absent => false
+    Present { value: g } => {
+      let t = runner_glm_step_text(subject: g)
+      t == pre_runner_glm_step_text(standing: g.standing)
+        && contains(t, join(["group-B administrator ssh session on ", operator_host_srv9 as String], ""))
+        && contains(t, "client bucket peak (bench stdout): ")
+    }
+  }
+}
+
+// The real GLM rows inhabit the runner's subject/step agreement: the smoke protocol addresses the
+// subject's base URL and served alias.
+test fn glm_smoke_step_addresses_the_glm_subject() -> Bool {
+  match glm_native_serving_load_subject() {
+    Absent => false
+    Present { value: g } =>
+      match step_subject_mismatch(subject: g, req: glm_native_smoke_protocol) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// A step naming another served alias refuses before any remote run, and says which field.
+test fn a_step_for_another_alias_refuses() -> Bool {
+  let p = glm_native_smoke_protocol
+  let other = VllmBenchServeRequest {
+    backend: p.backend, base_url: p.base_url, model: "deepseek-v4.1-flash" as NonEmptyStr,
+    tokenizer: p.tokenizer, dataset: p.dataset, num_prompts: p.num_prompts, arrival: p.arrival,
+    max_concurrency: p.max_concurrency, ignore_eos: p.ignore_eos, seed: p.seed,
+  }
+  match glm_native_serving_load_subject() {
+    Absent => false
+    Present { value: g } =>
+      match step_subject_mismatch(subject: g, req: other) {
+        Absent => false
+        Present { value: m } => contains(m, "served alias")
+      }
+  }
+}
+
+// Admission is the subject's, never a model's row baked into the shared observation: a subject
+// carrying its own admission cause sees that cause in its receipt and not GLM's.
+test fn the_receipt_carries_the_subjects_admission_not_glms() -> Bool {
+  match glm_native_serving_load_subject() {
+    Absent => false
+    Present { value: g } => {
+  let other = ServingLoadSubject {
+    host: g.host, host_address: g.host_address, group: g.group, container: g.container,
+    base_url: g.base_url, served_alias: g.served_alias, standing: g.standing,
+    admission: AdmissionCostUnestablished { cause: "fixture admission cause for another model" as NonEmptyStr },
+    qualification_frontier: g.qualification_frontier,
+    principal: g.principal, receipt_heading: g.receipt_heading, receipt_path: g.receipt_path,
+  }
+  let t = serving_load_step_text(
+    subject: other,
+    window: window_from_drain(drain: DrainObservedIdle),
+    before: fx_before,
+    after: fx_after,
+    before_incarnation: fx_incarnation(),
+    after_incarnation: fx_incarnation(),
+    bench: fx_bench(),
+  )
+  contains(t, "admission: unread fixture admission cause for another model")
+    && !contains(t, "the live cache-group roster is unobserved")
+    }
+  }
+}

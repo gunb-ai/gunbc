@@ -237,6 +237,30 @@ type FinitelySupportedFunction<K, V> {
   size: fn() -> Int
 }
 
+// THE MAP-LITERAL INTRODUCTION: the declaration a map literal `{ "k": v, .. }` elaborates to, as
+// `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
+// path and constructor; docs/plans/map-literal-introduction-design.md). It is NOT a second
+// constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
+// `finitely_supported_function_templates`) folded over its own empty (the `empty_map` row), in
+// authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
+// to it; a home that imports `std.types` (v2.std.collection) would close an import cycle.
+//
+// The fold's last-write-wins is unobservable on every accepted program: the one writer that builds
+// this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
+// (v2.std.map_introduction map_introduction_duplicate_key). A caller that bypasses that writer and
+// calls this directly with a repeated key gets insert's semantics, which is what it asked for.
+// The result is spelled `Map<K, V>`, the kernel container spelling this module already uses bare
+// (kernel_algebra_profile_value), because the seed types `empty_map()` only under a keyed-collection
+// expectation; it names this carrier (std.types Map = FinitelySupportedFunction).
+type MapIntroductionEntry<K, V> {
+  key: K
+  value: V
+}
+
+fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> Map<K, V> {
+  entries |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.key, entry.value))
+}
+
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
 // total corner of the family above, and leaving them in a different module from their own axis is
 // where a fork starts. `TotalPolicy` travels with `TotalMap` rather than staying behind: it is the
@@ -285,6 +309,7 @@ fn ordering_is_less(o: Ordering) -> Bool {
 
 type AlgebraProfile
   = OrderedRingProfile
+  | OrderedSemiringProfile
   | ApproximateFieldProfile
   | BooleanAlgebraProfile
   | FinitePowerSetProfile
@@ -369,34 +394,124 @@ fn collection_fold_shape() -> AlgebraFieldTemplate {
   { name: "fold", param_types: [ReceiverSelf, AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 1 } }
 }
 
+// The collection callback operations, each ONE template declared once and referenced from every profile
+// list that carries it, as filter and fold are. A named row is what a realized call head binds to
+// (v2.compiler.fold_lowering fold_family_realization), and one row per operation removes the copy each
+// list used to hold.
+
+fn collection_map_shape() -> AlgebraFieldTemplate {
+  { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_flat_map_shape() -> AlgebraFieldTemplate {
+  { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_any_shape() -> AlgebraFieldTemplate {
+  { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_all_shape() -> AlgebraFieldTemplate {
+  { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_sort_by_shape() -> AlgebraFieldTemplate {
+  { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } }
+}
+
 type StepPositionScan {
   next: Int
   found: Int?
 }
 
-// The position of a template's step -- its first callable parameter -- in the free-call signature
-// the row declares. Absent when the row takes no callable.
-fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
+// The position of the first parameter the predicate admits, in the free-call signature the row
+// declares. Absent when no parameter is admitted. Every slot position below is this one scan.
+fn template_param_position(t: AlgebraFieldTemplate, admits: fn(AlgebraTypeTemplate) -> Bool) -> Int? {
   let scan = fold(t.param_types, init: StepPositionScan { next: 0, found: none }, f: fn(acc, p) {
     match acc.found {
       Present { value: _ } => acc
       Absent =>
-        match p {
-          CallableOf { params: _, return_type: _ } => StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
-          _ => StepPositionScan { next: acc.next + 1, found: none }
+        if admits(p) {
+          StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
+        } else {
+          StepPositionScan { next: acc.next + 1, found: none }
         }
     }
   })
   scan.found
 }
 
-fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {
-  let proto = collection_filter_shape()
-  t.return_type == proto.return_type
-    && t.size_effect == proto.size_effect
-    && t.cost_shape == proto.cost_shape
-    && t.callback_element_position == proto.callback_element_position
-    && t.param_types == proto.param_types
+// The position of a template's step -- its first callable parameter -- in the free-call signature
+// the row declares. Absent when the row takes no callable.
+fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) {
+    match p {
+      CallableOf { params: _, return_type: _ } => true
+      ReceiverSelf => false
+      ReceiverElement => false
+      ReceiverKey => false
+      ReceiverValue => false
+      NamedTemplate { name: _ } => false
+      ContainerOf { source: _, element: _ } => false
+      OptionalOf { inner: _ } => false
+      WitnessOf { inner: _ } => false
+      TupleOf { first: _, second: _ } => false
+      AlgebraTypeVariable { id: _ } => false
+    }
+  })
+}
+
+// The position of the collection a template iterates: its receiver slot.
+fn template_receiver_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) { p == ReceiverSelf })
+}
+
+// The position of a recurrence's initial accumulator: the plain (non-callable) parameter whose type
+// is the type the step returns. A row whose step returns the receiver, or that has no step, has no
+// accumulator slot and answers Absent.
+fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
+  let step_return = fold(t.param_types, init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match p {
+          CallableOf { params: _, return_type: r } => Present { value: r }
+          ReceiverSelf => none
+          ReceiverElement => none
+          ReceiverKey => none
+          ReceiverValue => none
+          NamedTemplate { name: _ } => none
+          ContainerOf { source: _, element: _ } => none
+          OptionalOf { inner: _ } => none
+          WitnessOf { inner: _ } => none
+          TupleOf { first: _, second: _ } => none
+          AlgebraTypeVariable { id: _ } => none
+        }
+    }
+  })
+  match step_return {
+    Absent => none
+    Present { value: acc_type } =>
+      if acc_type == ReceiverSelf {
+        none
+      } else {
+        template_param_position(t: t, admits: fn(p) {
+          match p {
+            CallableOf { params: _, return_type: _ } => false
+            ReceiverSelf => p == acc_type
+            ReceiverElement => p == acc_type
+            ReceiverKey => p == acc_type
+            ReceiverValue => p == acc_type
+            NamedTemplate { name: _ } => p == acc_type
+            ContainerOf { source: _, element: _ } => p == acc_type
+            OptionalOf { inner: _ } => p == acc_type
+            WitnessOf { inner: _ } => p == acc_type
+            TupleOf { first: _, second: _ } => p == acc_type
+            AlgebraTypeVariable { id: _ } => p == acc_type
+          }
+        })
+      }
+  }
 }
 
 // ONE ROSTER, DECLARED ONCE, AND EVERY SPELLING-KEYED MAP BELOW IS A FOLD OVER IT.
@@ -533,6 +648,11 @@ fn algebra_carriers() -> List<AlgebraCarrier> {
       name: "Int",
       profile: OrderedRingProfile,
       spellings: [scalar_carrier_spelling(text: "Int")],
+    },
+    AlgebraCarrier {
+      name: "Nat",
+      profile: OrderedSemiringProfile,
+      spellings: [scalar_carrier_spelling(text: "Nat")],
     },
     AlgebraCarrier {
       name: "Float",
@@ -719,6 +839,7 @@ type AlgebraSupportAxis
 fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
   match profile {
     OrderedRingProfile => FiniteSupport
+    OrderedSemiringProfile => FiniteSupport
     ApproximateFieldProfile => FiniteSupport
     BooleanAlgebraProfile => FiniteSupport
     FinitePowerSetProfile => FiniteSupport
@@ -728,6 +849,39 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
     PartialFunctionProfile => OpenSupport
     FinitelySupportedFunctionProfile => FiniteSupport
   }
+}
+
+// WHICH CARRIERS A NUMERAL DENOTES AN ELEMENT OF. A numeral names the image of an integer under the
+// unique ring homomorphism out of the integers, so it has a denotation exactly in a profile that
+// carries ring structure: the ordered ring and the (approximate) field. The ordered semiring is the
+// same reading one step down: a non-negative numeral names the image of a natural under the unique
+// semiring homomorphism out of the naturals, so it too has a denotation there. A Boolean algebra, a free
+// monoid and every collection or function profile carry no such map, so a numeral at one of them
+// is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
+// an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
+// decision here and never a silent admission.
+fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
+  match profile {
+    OrderedRingProfile => true
+    OrderedSemiringProfile => true
+    ApproximateFieldProfile => true
+    BooleanAlgebraProfile => false
+    FinitePowerSetProfile => false
+    PointwisePowerCollectionProfile => false
+    FreeMonoidScalarProfile => false
+    FreeMonoidCollectionProfile => false
+    PartialFunctionProfile => false
+    FinitelySupportedFunctionProfile => false
+  }
+}
+
+// The kernel-carrier reading of the same fact: a kernel scalar admits a numeral exactly when the
+// carrier roster assigns it a numeral-admitting profile. A name with no carrier row answers false.
+fn kernel_carrier_admits_numeral(name: String) -> Bool {
+  algebra_carriers() |> any(carrier =>
+    algebra_profile_admits_numeral(profile: carrier.profile)
+      && (carrier.spellings |> any(spelling =>
+        spelling.text == name && carrier_spelling_row_present(m: spelling.method_surface))))
 }
 
 fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
@@ -754,6 +908,29 @@ fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none }
+  ]
+}
+
+// THE NATURALS INHABIT AN ORDERED COMMUTATIVE SEMIRING, AND THIS IS WHERE THAT IS SAID (operator
+// ruling A, 2026-09-30). std.nat Nat used to carry its algebra in its BODY -- `type Nat =
+// CommutativeSemiring<Magnitude>` -- so the structure was the carrier and an opaque Magnitude stood
+// where the naturals' definition should have been. The carrier is now the inductive definition and
+// the algebra is something it inhabits: this row set, reached through the Nat carrier row in
+// algebra_carriers exactly as Int reaches the ordered ring.
+//
+// IT IS THE ORDERED RING'S SURFACE WITHOUT `negate`, and the omission is the content. A semiring
+// has no additive inverse: the naturals are closed under add and mul and not under subtraction
+// (std.coercion dag_subtraction_refinement types a difference of naturals as an Int). So `negate`
+// derives for Int and does not derive for Nat, from the two profiles rather than from a special
+// case -- which is what makes the inhabitance a claim that can be wrong.
+fn ordered_semiring_templates() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -797,11 +974,11 @@ fn finite_power_set_templates() -> List<AlgebraFieldTemplate> {
     { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     collection_filter_shape(),
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_map_shape(),
+    collection_flat_map_shape(),
     collection_fold_shape(),
-    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
-    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_any_shape(),
+    collection_all_shape(),
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
   ]
@@ -841,19 +1018,19 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
 
 fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
   [
-    { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_map_shape(),
     collection_filter_shape(),
-    { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_flat_map_shape(),
     collection_fold_shape(),
-    { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
-    { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } },
+    collection_any_shape(),
+    collection_all_shape(),
     { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "get", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Present { value: ShrinkEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
-    { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } },
+    collection_sort_by_shape(),
     { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
     { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
@@ -900,6 +1077,7 @@ fn algebra_method_template_name(name: String) -> Bool {
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
   match profile {
     OrderedRingProfile => ordered_ring_templates()
+    OrderedSemiringProfile => ordered_semiring_templates()
     ApproximateFieldProfile => approximate_field_templates()
     BooleanAlgebraProfile => boolean_algebra_templates()
     FinitePowerSetProfile => finite_power_set_templates()
@@ -914,6 +1092,7 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
 fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
   match profile {
     OrderedRingProfile => []
+    OrderedSemiringProfile => []
     ApproximateFieldProfile => []
     BooleanAlgebraProfile => []
     FinitePowerSetProfile => ["T"]
@@ -928,6 +1107,7 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
 fn all_algebra_profiles() -> List<AlgebraProfile> {
   [
     OrderedRingProfile,
+    OrderedSemiringProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
     FinitePowerSetProfile,

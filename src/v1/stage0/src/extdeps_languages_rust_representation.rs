@@ -6,8 +6,9 @@ pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_coercion::TypeCheckpoint;
-pub use crate::std_target_representation::{RepresentationSpelling, SourceTypeTargetBinding};
-use crate::std_types::Bool::*;
+pub use crate::std_target_representation::{
+    RepresentationSpelling, RepresentationValue, SourceTypeTargetBinding,
+};
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -135,6 +136,41 @@ pub fn rust_exact_type_checkpoint(
         })),
         std::option::Option::None => std::option::Option::None,
     }
+}
+
+pub fn rust_bool_true_value() -> Rc<RepresentationValue<RustRepresentation>> {
+    thread_local! {
+            static CACHED: Rc<RepresentationValue<RustRepresentation>> = {
+                Rc::new(RepresentationValue {
+        representation: RustRepresentation::RustBool,
+        value_spelling: "true".to_string(),
+        _phantom: std::marker::PhantomData,
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<RepresentationValue<RustRepresentation>>| c.clone())
+}
+
+pub fn rust_bool_false_value() -> Rc<RepresentationValue<RustRepresentation>> {
+    thread_local! {
+            static CACHED: Rc<RepresentationValue<RustRepresentation>> = {
+                Rc::new(RepresentationValue {
+        representation: RustRepresentation::RustBool,
+        value_spelling: "false".to_string(),
+        _phantom: std::marker::PhantomData,
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<RepresentationValue<RustRepresentation>>| c.clone())
+}
+
+pub fn rust_representation_values() -> Rc<Vec<Rc<RepresentationValue<RustRepresentation>>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<RepresentationValue<RustRepresentation>>>> = {
+            Rc::new(vec![rust_bool_true_value(), rust_bool_false_value()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<RepresentationValue<RustRepresentation>>>>| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

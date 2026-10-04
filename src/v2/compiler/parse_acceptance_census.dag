@@ -1,0 +1,87 @@
+module v2.compiler.parse_acceptance_census
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  Locus,
+  NodeLocus,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  diagnostics_fatal
+}
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.node { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.text { String }
+
+// WHETHER THE V2 PARSER ACCEPTS A FILE, AND IF NOT, WHY AND WHERE. One line per listed path: the path,
+// then `accepted`, or `refused <fatal reason> <start>..<end>` for the fatal diagnostic, or
+// `unreadable`. Tokenize and parse only, against the prepared dag grammar -- the question a grammar
+// change answers, without paying normalize and conservation per file (for that, the heavier
+// v2.compiler.reference_conservation_census). Driven as
+//   gunbc run --source-root dag --source-root src/v2 --entry src/v2/compiler/parse_acceptance_census.dag
+//     --function parse_acceptance_census_for_paths --arg paths_csv=<comma-separated paths>
+// and run once per grammar under comparison: the lines of two runs join by path.
+
+fn parse_acceptance_census_for_paths(paths_csv: String) -> String {
+  fold_list(
+    xs: split(s: paths_csv, delimiter: ","),
+    empty: "",
+    cons: fn(acc, path) { acc + parse_acceptance_census_line(path: path) + "\n" }
+  )
+}
+
+fn parse_acceptance_census_line(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    path + " " + parse_acceptance_of_text(text: read.content, path: path)
+  } else {
+    path + " unreadable"
+  }
+}
+
+fn parse_acceptance_of_text(text: String, path: String) -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "grammar-unprepared"
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: text, file: symbol_intern_lexeme(lexeme: path), rules: dag_lex()) {
+        Rejected { diagnostics: d } => "refused " + parse_acceptance_fatal_text(d: d)
+        Accepted { value: stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared, validation_residue: residue) {
+            Accepted { value: _, diagnostics: _ } => "accepted"
+            Rejected { diagnostics: d } => "refused " + parse_acceptance_fatal_text(d: d)
+          }
+      }
+  }
+}
+
+fn parse_acceptance_fatal_text(d: v2.std.diagnostic.NonEmptyDiagnostics) -> String {
+  let fatal = diagnostics_fatal(d: d)
+  symbol_lexeme(sym: fatal.reason) + " " + parse_acceptance_locus_text(at: fatal.at)
+}
+
+fn parse_acceptance_locus_text(at: Locus) -> String {
+  match at {
+    SourcePortLocus { anchor: _, file: _, extent: extent } => parse_acceptance_extent_text(extent: extent)
+    Textual { file: _, extent: extent } => parse_acceptance_extent_text(extent: extent)
+    NodeLocus { anchor: _ } => "node"
+    InvariantPortLocus { anchor: _, invariant: _ } => "invariant"
+    DeclarationLocus { declaration: _ } => "declaration"
+  }
+}
+
+fn parse_acceptance_extent_text(extent: v2.std.diagnostic.Extent) -> String {
+  match extent {
+    ByteRange { start: s, end: e } => integer_int_to_decimal_string(value: s) + ".." + integer_int_to_decimal_string(value: e)
+    WholeFile => "whole-file"
+  }
+}

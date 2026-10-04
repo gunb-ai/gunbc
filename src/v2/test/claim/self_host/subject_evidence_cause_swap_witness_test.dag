@@ -24,7 +24,6 @@ import v2.std.verdict {
   verdict_semantic_mismatch
 }
 import v2.std.collection { Absent }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -1,0 +1,71 @@
+module v2.test.claim.parse.admit_callers_trailing_comma
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN admit_callers LIST MAY END IN A COMMA (v2.extdeps.languages.dag
+// dag_grammar_admit_callers_clause_expr), as a comma list does everywhere else and as v1 reads it;
+// the list still needs a first element, so a list that is only a comma still refuses. The elements
+// are bare names: the clause admits any expression, so the comma behaviour is the same and each
+// claim stays one small parse (a decl_ref element list cost 118k eval steps against the 72.3k
+// new-witness budget).
+fn admit_source(list: String) -> String {
+  "module probe.admit\n\nfn sealed(n: Int) -> Int\n  admit_callers: [" + list + "]\n  = n\n"
+}
+
+fn admit_parse(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^admit_trailing_comma_probe, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn admit_parses(list: String) -> Bool {
+  match admit_parse(text: admit_source(list: list)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Each parse is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it: a parse is mostly fixed front-end
+// work, so a claim that parsed its own source was over the new-witness eval-step budget.
+fn trailing_comma_parsed() -> Bool {
+  admit_parses(list: "caller_a,\n    caller_b,\n  ")
+}
+
+fn no_trailing_comma_parsed() -> Bool {
+  admit_parses(list: "caller_a, caller_b")
+}
+
+fn only_a_comma_parsed() -> Bool {
+  admit_parses(list: ",")
+}
+
+test fn a_trailing_comma_in_admit_callers_parses_holds() -> Bool { trailing_comma_parsed() }
+
+test fn an_admit_callers_list_without_a_trailing_comma_parses_holds() -> Bool { no_trailing_comma_parsed() }
+
+test fn an_admit_callers_list_of_only_a_comma_refuses_holds() -> Bool {
+  match only_a_comma_parsed() {
+    true => false
+    false => true
+  }
+}

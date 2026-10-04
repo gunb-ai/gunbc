@@ -1207,7 +1207,7 @@ fn v1_dag_argv_consumers() -> List<V1ConsumerRow> {
       disposition: retained_open(justification: "the CLI-invocation carrier's name for the floor binary. Closes with the required-lane rows: it is the spelling those steps reach the binary through")
     ),
     v1_dag_argv_consumer(
-      module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_release_path",
+      module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_program",
       authority: claim_executor_bin, subject: V1HostedCiBinary,
       disposition: retained_open(justification: "the built path the claim-executor CLI surface names. A separate relation from the bin NAME above because a native successor could take the name and not the path, or the reverse, and each leaves a live reach the other does not")
     ),
@@ -1375,7 +1375,7 @@ fn v1_minted_manifest_dependencies() -> List<CargoPathDependency> {
     CargoPathDependency {
       consumer_package: FixedPackageName { name: "v1_compiled" },
       dependency_package: stage0_host_shell_package_name(),
-      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.self_host_curated_seed_linked_harness", decl_name: "cssl_v1_compiled_cargo_deps_block") },
+      origin: CargoManifestMinted { renderer: decl_ref(module_path: "tools.emitted_crate_harness_manifest", decl_name: "harness_seed_link_dependency_table") },
       linkage: SeedLinkedIntoEmittedCode,
     },
     CargoPathDependency {

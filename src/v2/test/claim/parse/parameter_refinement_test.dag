@@ -1,0 +1,56 @@
+module v2.test.claim.parse.parameter_refinement
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PARAMETER MAY REFINE ITS TYPE WITH A WHERE CLAUSE (v2.extdeps.languages.dag
+// dag_grammar_typed_param_expr), as v1 reads it. It PARSES; the fn REFUSES at the clause
+// (body_lowering_reason_parameter_refinement_unmodeled, gunbc.recurring_failure_mode
+// parameter_refinement_has_no_carrier) rather than lowering the base type and dropping the
+// refinement. An unrefined parameter is untouched.
+data refined_source: String = "module probe.param_refine\n\nfn wait(seconds: Int where range(min: 1, max: 3600)) -> Int {\n  seconds\n}\n"
+data plain_source: String = "module probe.param_refine\n\nfn wait(seconds: Int) -> Int {\n  seconds\n}\n"
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it.
+fn refined_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: refined_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn refined_refused_at_clause() -> Bool {
+  match conservation_subject_of_text(path: "probe_refined.dag", text: refined_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal(d: d).reason == ^body_lowering_reason_parameter_refinement_unmodeled
+        && match diagnostics_fatal(d: d).at {
+             NodeLocus { anchor: a } =>
+               match parse_production_emitted_identity_optional(node: a.at) {
+                 Present { value: id } => id == ^dag_surface_where_refinement_clause
+                 Absent => false
+               }
+             _ => false
+           }
+  }
+}
+
+fn plain_normalized() -> Bool {
+  match conservation_subject_of_text(path: "probe_plain.dag", text: plain_source).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_refined_parameter_parses_holds() -> Bool { refined_parsed() }
+
+test fn a_refined_parameter_refuses_at_its_clause_holds() -> Bool { refined_refused_at_clause() }
+
+test fn an_unrefined_parameter_still_normalizes_holds() -> Bool { plain_normalized() }

@@ -1,19 +1,22 @@
 module v2.test.claim.body_cast_node
 
+import std.types { List }
+import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, application_binding_plan, declared_signature }
+import v2.compiler.resolve { ResolvedTree }
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.coercion { NoTargetCandidate }
+import v2.std.coercion { CoercionQuality, CoercionResult, NoTargetCandidate, Widened, coercion_cast_crossing }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, inputs_root_only }
-import v2.compiler.infer { InferredFacts, InferredTree, infer }
+import v2.compiler.infer { InferredFacts, InferredTree, infer, refinement_declaration }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_node_from_lexeme, dag_type_atom_node }
 import v2.extdeps.languages.rust_test { rust_binop_target_model_staging }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.test.lens_common.infer_fixture { claim_canonical_grounding, claim_inferred_facts_from_nodes, claim_resolved_tree_without_declarations }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.compilers.target_model { canonical_operation_op_coerce, target_model_canonical_operation_wire_node }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -27,8 +30,8 @@ import v2.std.diagnostic {
   diagnostics_list_has_reason
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
+  Arrow,
   Atom,
   ComputationNode,
   Edge,
@@ -38,7 +41,7 @@ import v2.std.node {
   Transform,
   TypeNode,
   content_hash,
-  Named,
+  Authored,
   node_subtree_nodes,
   node_synthetic,
   well_formed
@@ -47,6 +50,7 @@ import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.runtime { RuntimeValue }
 import v2.std.type_binder { cast_target_edge, cast_target_optional, type_binder_labels_conform }
 import v2.test.claim.fold_lowering { lowered_fixture_loop }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -61,67 +65,102 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body_lowering_reason_type_annotation_not_carried at `T` (the as-cast refusal), and before that
 // they were Accepted with `T` dropped: no cast node, so the count in bcn_one_cast_to_int was 0.
 
-fn bcn_tail_cast() -> Outcome<Node> {
+fn bcn_tail_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Int\n}\n")
 }
 
-fn bcn_let_value_cast() -> Outcome<Node> {
+fn bcn_let_value_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  let y = x as Int\n  y\n}\n")
 }
 
-fn bcn_call_argument_cast() -> Outcome<Node> {
+fn bcn_call_argument_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x as Int)\n}\n")
 }
 
-fn bcn_if_arm_cast() -> Outcome<Node> {
+fn bcn_if_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  if b { x as Int } else { x }\n}\n")
 }
 
-fn bcn_match_arm_cast() -> Outcome<Node> {
+fn bcn_match_arm_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Int\n    false => x\n  }\n}\n")
 }
 
-fn bcn_call_operand_cast() -> Outcome<Node> {
+fn bcn_call_operand_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn g(v: Int) -> Int { v }\n\nfn f(x: Int) -> Int {\n  g(v: x) as Int\n}\n")
 }
 
-fn bcn_tail_undeclared() -> Outcome<Node> {
+fn bcn_tail_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  x as Q\n}\n")
 }
 
-fn bcn_match_arm_undeclared() -> Outcome<Node> {
+fn bcn_match_arm_undeclared() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(b: Bool, x: Int) -> Int {\n  match b {\n    true => x as Q\n    false => x\n  }\n}\n")
 }
 
-fn bcn_generic_cast() -> Outcome<Node> {
+fn bcn_generic_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f<T>(x: T) -> T {\n  x as T\n}\n")
 }
 
-fn bcn_value_param_as_type() -> Outcome<Node> {
+fn bcn_value_param_as_type() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(Q: Int) -> Int {\n  Q as Q\n}\n")
 }
 
-fn bcn_int_sum_as_int() -> Outcome<Node> {
+fn bcn_int_sum_as_int() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Int {\n  (x + x) as Int\n}\n")
 }
 
-fn bcn_int_sum_as_bool() -> Outcome<Node> {
+fn bcn_int_sum_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn f(x: Int) -> Bool {\n  (x + x) as Bool\n}\n")
 }
 
-fn bcn_into_refinement() -> Outcome<Node> {
+fn bcn_into_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ndata d: Pos = 1 as Pos\n")
 }
 
-fn bcn_out_of_refinement() -> Outcome<Node> {
+fn bcn_out_of_refinement() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Int {\n  x as Int\n}\n")
 }
 
-fn bcn_refinement_param_as_bool() -> Outcome<Node> {
+fn bcn_is_widened(q: Optional<CoercionQuality>) -> Bool {
+  match q {
+    Present { value: Widened } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// The crossing's quality, from the real assembled tree: the refinement declaration the reference's
+// path reaches, and the tree's one cast target. Absent when the tree refuses, the reader finds no
+// refinement, the tree does not carry exactly one cast, or the crossing refuses.
+fn bcn_crossing_quality(o: Outcome<ResolvedTree>, reference_path: QualifiedName) -> Optional<CoercionQuality> {
+  match o {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: root, diagnostics: _ } =>
+      match bcn_cast_targets(n: root.root) {
+        Cons { head: target, tail: Empty } =>
+          match refinement_declaration(index: root.resolved_declarations, reference: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic)) {
+            Absent => Absent
+            Present { value: decl } =>
+              match coercion_cast_crossing(
+                source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
+                source_type: declaration_reference_node(qn: reference_path, occurrence_id: OccurrenceSynthetic),
+                source_declared_carrier: Present { value: decl.carrier },
+                target: target
+              ) {
+                Accepted { value: crossed, diagnostics: _ } => Present { value: crossed.quality }
+                Rejected { diagnostics: _ } => Absent
+              }
+          }
+        _ => Absent
+      }
+  }
+}
+
+fn bcn_refinement_param_as_bool() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Bool {\n  x as Bool\n}\n")
 }
 
-fn bcn_refinement_identity_cast() -> Outcome<Node> {
+fn bcn_refinement_identity_cast() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x as Pos\n}\n")
 }
 
@@ -144,11 +183,11 @@ fn bcn_atom_identity(n: Node) -> Optional<Symbol> {
 
 // Accepted, with exactly one cast node whose target is a resolved atom: the lowering built the node
 // and resolve kept T.
-fn bcn_one_cast(o: Outcome<Node>) -> Bool {
+fn bcn_one_cast(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } =>
           match bcn_atom_identity(n: t) {
             Present { value: _ } => true
@@ -159,11 +198,11 @@ fn bcn_one_cast(o: Outcome<Node>) -> Bool {
   }
 }
 
-fn bcn_cast_target_identity(o: Outcome<Node>) -> Optional<Symbol> {
+fn bcn_cast_target_identity(o: Outcome<ResolvedTree>) -> Optional<Symbol> {
   match o {
     Rejected { diagnostics: _ } => Absent
     Accepted { value: root, diagnostics: _ } =>
-      match bcn_cast_targets(n: root) {
+      match bcn_cast_targets(n: root.root) {
         Cons { head: t, tail: Empty } => bcn_atom_identity(n: t)
         _ => Absent
       }
@@ -180,7 +219,7 @@ fn bcn_atom_in(n: Node, id: Symbol) -> Bool {
 }
 
 // Refused with `reason`, located at a node spelling `id` and not at the fn or the `as` token.
-fn bcn_refused_at(o: Outcome<Node>, reason: Symbol, id: Symbol) -> Bool {
+fn bcn_refused_at(o: Outcome<ResolvedTree>, reason: Symbol, id: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -250,7 +289,7 @@ fn bcn_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   diagnostics_list_has_reason(xs: Cons { head: d.head, tail: d.tail }, reason: reason)
 }
 
-fn bcn_infers(o: Outcome<Node>) -> Outcome<Bool> {
+fn bcn_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
   match o {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: root, diagnostics: _ } =>
@@ -382,7 +421,7 @@ test fn bcn_eval_realizes_the_operand_value() -> Bool {
 }
 
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
-// PositionalPlusOneNamedEdges): the target first or last is one node.
+// canonicalize_positional_then_named): the target first or last is one node.
 test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
   let op = Edge { label: Positional, target: bcn_coerce_wire() }
   let operand = Edge { label: Positional, target: bcn_int(lexeme: "7") }
@@ -437,17 +476,7 @@ fn bcn_refused_with_mismatch(o: Outcome<Bool>) -> Bool {
   }
 }
 
-// (15) THE CAST OUT OF A REFINEMENT REFUSES, STATED. A parameter is now bound by its ENCLOSING
-// Arrow (v2.compiler.infer infer_parameter_type_in_scope), so `x` in `fn f(x: Pos)` grounds as the
-// Pos declaration-reference, and Pos is not structurally Int: coercion_cast_crossing refuses with
-// its typed mismatch. RED BEFORE: on main at 21f4d0c this row ADMITTED, by the wrong route -- the
-// unscoped parameter walk bound f's `x` to the unrelated `fn positive(x: Int)`, and the crossing was
-// Int to Int. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2.std.coercion admitting a cast from a
-// refinement to its DECLARED carrier as Widened, decided from the type declaration; the existing
-// coercion_fold_refinement_widening cannot carry it because its predicate needs per-domain integer
-// value sets (v2.std.refinement_widening_predicate refinement_widening_value_sets_hold). When that
-// lands this row flips to an accepting control asserting the Widened quality. The partner `x as Bool`
-// refuses under both groundings.
+// A refusal located at the cast's OPERAND (not at the `as` keyword), with coercion's typed mismatch.
 fn bcn_refused_with_mismatch_at_operand(o: Outcome<Bool>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
@@ -465,12 +494,105 @@ fn bcn_operand_mismatch(x: Diagnostic) -> Bool {
     }
 }
 
-test fn bcn_cast_out_of_a_refinement_refuses_until_carrier_widening() -> Bool {
-  bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
-    && bcn_refused_with_mismatch_at_operand(o: bcn_out_of_refinement_inferred())
+// (15) THE CAST OUT OF A REFINEMENT TO ITS DECLARED CARRIER IS ADMITTED, WIDENED. `x as Int` from
+// `x: Pos` (`type Pos = Int where positive`): infer admits it on the production route, and the
+// crossing's quality is Widened -- read by v2.compiler.infer refinement_declaration from the SAME
+// assembled tree (the declaration reached by the reference's own path) and judged by
+// v2.std.coercion coercion_cast_crossing against the SAME tree's cast target. RED BEFORE (main at
+// 980761c838): infer refused NoTargetCandidate at the operand, because coercion judged only exact
+// structural equality and Pos is not structurally Int. The route is asserted, not only the verdict:
+// the quality is Widened, not Exact, so an admission through some other rule cannot green this row.
+test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
+  match bcn_out_of_refinement_inferred() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } =>
+      bcn_is_widened(q: bcn_crossing_quality(o: bcn_out_of_refinement(), reference_path: Cons { head: ^p, tail: Cons { head: ^Pos, tail: Empty } }))
+  }
 }
 
-// (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE. `x as Pos` from `x: Pos`:
+// (15b)/(15c) ONLY THE DECLARED CARRIER WIDENS -- at v2.std.coercion's interface, with SUPPLIED
+// values (DESIGN section 3, a witness discriminates at one interface): the source is a refinement's
+// declaration reference, its declared carrier the node refinement_declaration returns, the target the
+// cast's. Row (15) is the inhabitance claim that pairs them: on the production route the reader
+// returns the kernel Int atom as Pos's carrier and it meets the tree's own cast target, so the Int
+// atom supplied here is the shape the real producer emits. Row (16)'s partner keeps `x as Bool` from
+// x: Pos refusing on the production route.
+fn bcn_int_type() -> Node { dag_type_atom_node(identity: ^dag_binding_type_int) }
+fn bcn_bool_type() -> Node { dag_type_atom_node(identity: ^bool_node_symbol) }
+fn bcn_ref(leaf: Symbol) -> Node {
+  declaration_reference_node(qn: Cons { head: ^p, tail: Cons { head: leaf, tail: Empty } }, occurrence_id: OccurrenceSynthetic)
+}
+fn bcn_supplied_crossing(source_leaf: Symbol, carrier: Node, target: Node) -> Outcome<CoercionResult> {
+  coercion_cast_crossing(
+    source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
+    source_type: bcn_ref(leaf: source_leaf),
+    source_declared_carrier: Present { value: carrier },
+    target: target
+  )
+}
+fn bcn_supplied_refuses(o: Outcome<CoercionResult>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: discriminant(v: NoTargetCandidate))
+  }
+}
+fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality> {
+  match o {
+    Accepted { value: crossed, diagnostics: _ } => Present { value: crossed.quality }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+// (15b) ONE STEP, AND ONLY THE DECLARED CARRIER. `x as Bool` from x: Pos (carrier Int) refuses. For
+// `type Pos2 = Pos where ..` the carrier read from resolved_declarations is the RESOLVED declaration
+// reference to Pos (row 15c2 reads it on the production route), so `x as Pos` from x: Pos2 is Widened
+// and `x as Int` from x: Pos2 REFUSES: the carrier edge is not walked to a fixed point. Supplied values
+// at coercion's interface, in the shape the production route emits. RED if the widening arm admitted a
+// non-carrier target or walked the carrier chain.
+test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
+  bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_bool_type()))
+    && bcn_is_widened(q: bcn_supplied_quality(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_ref(leaf: ^Pos))))
+    && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_int_type()))
+}
+
+// (15c2) A REFINEMENT OF A REFINEMENT WIDENS ONE STEP ON THE PRODUCTION ROUTE. `x as Pos` from
+// `x: Pos2` (`type Pos2 = Pos where positive`): the crossing's quality is Widened, read through the
+// production assembly's resolved_declarations, where Pos2's carrier is the resolved reference to Pos,
+// against that tree's own cast target. infer's admission of a Widened cast end to end is row (15)'s
+// subject; this row's is the resolved carrier, so infer is not re-run here (DESIGN section 3). The
+// assembly is a producer rostered warm in v2.workflow.floor_pure_producer_share. RED BEFORE
+// gunbc#12629: the carrier was the unresolved atom Pos and the cast refused.
+fn bcn_refinement_of_refinement_as_its_carrier() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\nfn f(x: Pos2) -> Pos {\n  x as Pos\n}\n")
+}
+
+test fn bcn_refinement_of_a_refinement_widens_one_step() -> Bool {
+  bcn_is_widened(q: bcn_crossing_quality(o: bcn_refinement_of_refinement_as_its_carrier(), reference_path: Cons { head: ^p, tail: Cons { head: ^Pos2, tail: Empty } }))
+}
+
+// (15d) A REFINEMENT LOOKUP MISS REFUSES. When v2.compiler.infer refinement_declaration finds no
+// declaration -- a tree inferred without resolution (v2.compiler.ingest's bridge supplies an index
+// holding no declarations), or an index with no unambiguous entry at the path -- no carrier reaches
+// coercion, and `x as Int` from a refinement-typed x keeps the exact crossing's refusal. RED if a
+// miss were read as permission (the widening arm admitting with no declared carrier).
+test fn bcn_a_refinement_lookup_miss_refuses() -> Bool {
+  bcn_supplied_refuses(o: coercion_cast_crossing(
+    source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
+    source_type: bcn_ref(leaf: ^Pos),
+    source_declared_carrier: Absent,
+    target: bcn_int_type()
+  ))
+}
+
+// (15c) A SIBLING REFINEMENT OVER THE SAME CARRIER IS NOT A CARRIER: `x as Neg` from x: Pos, both
+// `Int where ..`, refuses. RED if sharing a carrier admitted a crossing between refinements.
+test fn bcn_cast_between_sibling_refinements_refuses() -> Bool {
+  bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_ref(leaf: ^Neg)))
+}
+
+// (16) THE IDENTITY CAST INTO A REFINEMENT IS ADMITTED BY THE EXACT RULE -- and the required control of
+// neat-boar-16's ResolvedTree ruling: `fn positive(x: Int)` beside `fn f(x: Pos)`, where x in f must ground
+// as Pos (the frozen parameter scope search), or this cast refuses. `x as Pos` from `x: Pos`:
 // infer grounds x as the Pos declaration-reference from f's own domain, and coercion_cast_crossing
 // finds the target structurally equal. The RED beside it: the same operand cast to Bool refuses
 // (row 15's partner), so this is a judged crossing, not the frontier passing it over. RED BEFORE
@@ -500,14 +622,45 @@ test fn bcn_a_loop_passes_the_resolver_gate() -> Bool {
   }
 }
 
-// (18) ... and a Transform carrying a named edge that is not the cast marker still refuses.
+// (18) ... and a Transform that MIXES the cast marker with any other Named edge refuses: a cast and an
+// application with named actuals are different forms, and this node is neither. Named actuals alone
+// are an application's (MQ-1); the gate admits those, and a label that names no parameter of the
+// callee refuses at binding instead (bcn_an_unknown_named_label_refuses_at_binding).
 test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
   !type_binder_labels_conform(root: node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
       Edge { label: Positional, target: bcn_coerce_wire() },
       Edge { label: Positional, target: bcn_int(lexeme: "7") },
-      Edge { label: Named { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+      cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int)),
+      Edge { label: Authored { name: ^bcn_not_a_marker }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
     ]
   ))
+}
+
+
+// (18b) THE OTHER HALF OF THE SPLIT WALL: a named label that names no parameter of the callee has no
+// slot, and the one binding authority refuses it -- so no Accepted program holds a foreign label on an
+// application either. The callee declares `x`; the actual is labelled `bcn_not_a_marker`.
+test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
+  let signature = declared_signature(
+    params: [binder_edge(name: ^x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))],
+    source: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  let callee = node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      signature.order
+    ]
+  )
+  match application_binding_plan(
+    arrow: callee,
+    actuals: [Edge { label: Authored { name: ^bcn_not_a_marker }, target: bcn_int(lexeme: "7") }]
+  ) {
+    ApplicationBindingRefused { reason: r, at: _ } => r == ^application_argument_label_unknown
+    ApplicationBound { slots: _ } => false
+  }
 }

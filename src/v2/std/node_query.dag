@@ -9,13 +9,19 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  bind_outcome,
+  outcome_with_diagnostics
 }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_tail }
-import v2.std.collection { Absent, List, Present, empty_map, list_at_optional, map_insert, map_lookup }
-import std.types { Map }
+import v2.std.collection { Absent, Present, empty_map, list_at_optional, map_insert, map_lookup }
+import std.types { Map, List }
 import v2.std.node {
+  Instantiation,
+  BinderTypeEdge,
+  BinderDefaultEdge,
+  core_edge,
   Cardinality,
   Ambiguous,
   Atom,
@@ -29,7 +35,7 @@ import v2.std.node {
   Disj,
   Edge,
   Found,
-  Named,
+  Authored,
   Node,
   Nullary,
   Positional,
@@ -42,8 +48,21 @@ import v2.std.node {
   named_edge_sort_key,
   node_lowered_from,
   node_with_occurrence_id,
+  symbol_eq,
+  node_synthetic,
   symbol_intern_lexeme,
+  StructuralLabel,
+  CoreEdgeLabel,
+  FieldProjectionBaseEdge,
+  FieldProjectionFieldEdge,
+  core_edge_label,
+  edge_is_core,
+  EdgeLabel,
+  is_positional,
+  ConstructTagEdge,
+  ConstructTagElidedEdge,
 }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.optional { Optional, optional_absent, optional_present }
 
@@ -74,7 +93,7 @@ fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
     Empty => acc
     Cons { head: h, tail: t } =>
       let field_name = named_edge_sort_key(e: h)
-      let type_name = edge_field_type_name(target: h.target)
+      let type_name = member_edge_type_name(e: h)
       let piece = concat(field_name, concat(": ", type_name))
       conj_payload_type_name_go(
         xs: t,
@@ -191,15 +210,48 @@ type DeclaredField {
   name: Symbol
   type_node: Node
   cardinality: Cardinality
+  default: Optional<Node>
 }
 
 fn positional_payload_field_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "0")
 }
 
-// The wildcard pattern `_` binds nothing and names nothing (v1.compiler.parse parse_pattern).
+// THE AUTHORED SPELLING of the wildcard: the `_` a source writes in a pattern or as a parameter.
+// It binds nothing and names nothing (v1.compiler.parse parse_pattern). It is the SPELLING only:
+// lowering never leaves it in a pattern, it mints the wildcard pattern form below instead.
 fn pattern_wildcard_name() -> Symbol {
   symbol_intern_lexeme(lexeme: "_")
+}
+
+// A WILDCARD PATTERN IS ITS OWN FORM, NOT AN ATOM SPELLED `_`. A pattern atom is otherwise a
+// constructor or a binder, both names, so a `_` atom was a name to every reader that did not
+// special-case its spelling -- resolve looked it up as a reference
+// (gunbc.recurring_failure_mode a_wildcard_match_arm_resolves_as_an_unbound_name). Lowering
+// (v2.compiler.body_lowering_fold body_lower_pattern_lowered) mints this identity for an authored `_`
+// pattern, and `<` is not an identifier character, so no authored name can spell it -- the
+// anonymous-slot precedent (v2.std.anonymous_binder anonymous_param_label). It is still an Atom told
+// apart by identity, so a reader that must not treat it as a name asks is_wildcard_pattern; a typed
+// pattern carrier with a wildcard variant is the next rung (the row above). THE ONE MINT;
+// is_wildcard_pattern is the one recogniser.
+fn wildcard_pattern_identity() -> Symbol {
+  symbol_intern_lexeme(lexeme: "<wildcard-pattern>")
+}
+
+// THE ONE RECOGNISER, AT TWO GRAINS. A reader holding a Symbol (a conserved atom's identity, an
+// emitted binding) asks is_wildcard_pattern_identity; a reader holding a pattern Node asks
+// is_wildcard_pattern, which is that same question plus the form's structure (an Atom with no
+// children). No reader compares against wildcard_pattern_identity() itself.
+fn is_wildcard_pattern_identity(sym: Symbol) -> Bool {
+  sym == wildcard_pattern_identity()
+}
+
+fn is_wildcard_pattern(pattern: Node) -> Bool {
+  match pattern.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      is_wildcard_pattern_identity(sym: id) && (count(pattern.children) == 0)
+    _ => false
+  }
 }
 
 
@@ -210,17 +262,161 @@ fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
   }
 }
 
+// A BINDER'S TARGET IS A BINDER NODE (XL-2 PR2b-3; docs/plans/binder-node-representation.md): a Conj
+// whose children are exactly a CoreEdgeLabel BinderTypeEdge to T and, when the binder has a default, a
+// BinderDefaultEdge to v. Both are core-marker arms of v2.std.node EdgeLabel, which no authored name can
+// carry, so a binder node identifies itself from its own labels with no parent context, and no
+// authored record field can collide with it. One binder concept carries the type and the optional
+// default for fn parameters, service io fields and record fields alike.
+
+// Whether an edge is one of a binder node's own two edges. A walk that extends a path by edge labels
+// stops extending across them: a binder's type and default are parts of the binder, not members.
+fn binder_node_edge(e: Edge) -> Bool {
+  edge_is_core(e: e, marker: BinderTypeEdge) || edge_is_core(e: e, marker: BinderDefaultEdge)
+}
+
+type BinderParts {
+  type_node: Node
+  default: Optional<Node>
+}
+
+fn binder_node(type_node: Node, default: Optional<Node>) -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: binder_node_children(type_node: type_node, default: default))
+}
+
+fn binder_node_children(type_node: Node, default: Optional<Node>) -> List<Edge> {
+  match default {
+    Present { value: v } => [
+      core_edge(marker: BinderTypeEdge, target: type_node),
+      core_edge(marker: BinderDefaultEdge, target: v)
+    ]
+    Absent => [core_edge(marker: BinderTypeEdge, target: type_node)]
+  }
+}
+
+// THE ONE READ OF A BINDER NODE: its parts when `n` is one -- a Conj holding exactly one
+// BinderTypeEdge, at most one BinderDefaultEdge, and nothing else -- and Absent for any other
+// node, so a record type or a bare type is never mistaken for a binder.
+fn binder_node_parts(n: Node) -> Optional<BinderParts> {
+  match n.kind {
+    TypeNode { connective: Conj } =>
+      binder_node_parts_of_edges(edges: n.children)
+    _ => optional_absent()
+  }
+}
+
+type BinderPartsRead {
+  type_node: Optional<Node>
+  default: Optional<Node>
+  foreign: Bool
+}
+
+fn binder_node_parts_of_edges(edges: List<Edge>) -> Optional<BinderParts> {
+  let read = fold(edges, init: BinderPartsRead { type_node: optional_absent(), default: optional_absent(), foreign: false }, f: fn(acc, e) {
+    binder_parts_read_step(acc: acc, e: e)
+  })
+  if read.foreign {
+    optional_absent()
+  } else {
+    match read.type_node {
+      Present { value: t } => optional_present(value: BinderParts { type_node: t, default: read.default })
+      Absent => optional_absent()
+    }
+  }
+}
+
+fn binder_parts_read_step(acc: BinderPartsRead, e: Edge) -> BinderPartsRead {
+  if edge_is_core(e: e, marker: BinderTypeEdge) {
+    match acc.type_node {
+      Present { value: _ } => BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
+      Absent => BinderPartsRead { type_node: optional_present(value: e.target), default: acc.default, foreign: acc.foreign }
+    }
+  } else if edge_is_core(e: e, marker: BinderDefaultEdge) {
+    match acc.default {
+      Present { value: _ } => BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
+      Absent => BinderPartsRead { type_node: acc.type_node, default: optional_present(value: e.target), foreign: acc.foreign }
+    }
+  } else {
+    BinderPartsRead { type_node: acc.type_node, default: acc.default, foreign: true }
+  }
+}
+
+// THE BINDER BUILDER: the named member of an Arrow domain, an io payload or a record payload, declaring
+// `name` of type `type_node` with no default. Every binder producer builds through it,
+// binder_edge_with_default or binder_relabelled; a hand-built name-to-type edge is refused by the
+// binder wall (v2.std.type_binder arrow_domain_members_are_binders) and by every binder reader.
+fn binder_edge(name: Symbol, type_node: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: Absent) }
+}
+
+fn binder_edge_with_default(name: Symbol, type_node: Node, default: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: Present { value: default }) }
+}
+
+// THE ONE RELABEL OF A BINDER: the same binder under another name (an anonymous slot's minted label,
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list). It keeps the whole binder node, so the
+// default survives the rename.
+fn binder_relabelled(binder: Edge, name: Symbol) -> Edge {
+  Edge { label: Authored { name: name }, target: binder.target }
+}
+
+// THE ONE BINDER READER: a Named member whose target is a binder node. A Positional member, or a Named
+// member whose target is not a binder node, is not a binder and answers Absent.
 fn declared_field_from_edge(e: Edge) -> Optional<DeclaredField> {
   match e.label {
-    Named { name: field_name } =>
-      Present {
-        value: DeclaredField {
-          name: field_name,
-          type_node: e.target,
-          cardinality: declared_field_cardinality_of_target(target: e.target)
-        }
+    Authored { name: field_name } =>
+      match binder_node_parts(n: e.target) {
+        Present { value: parts } =>
+          Present {
+            value: DeclaredField {
+              name: field_name,
+              type_node: parts.type_node,
+              cardinality: declared_field_cardinality_of_target(target: parts.type_node),
+              default: parts.default
+            }
+          }
+        Absent => optional_absent()
       }
-    Positional => Absent
+    StructuralLabel { label: _ } => optional_absent()
+    Positional => optional_absent()
+  }
+}
+
+// THE TYPE A MEMBER EDGE OF A PAYLOAD OR DOMAIN CONJ DECLARES: a binder's type through the binder
+// reader, and a Positional member's target, which is its type. A Named member that is not a binder
+// answers Absent -- never its raw target -- so a hand-built binder is refused by the caller rather
+// than read as if it were well formed.
+fn member_edge_type_node(e: Edge) -> Optional<Node> {
+  match e.label {
+    Positional => optional_present(value: e.target)
+    StructuralLabel { label: _ } => optional_absent()
+    Authored { name: _ } =>
+      match declared_field_from_edge(e: e) {
+        Present { value: binder } => optional_present(value: binder.type_node)
+        Absent => optional_absent()
+      }
+  }
+}
+
+// A MEMBER THAT IS NOT A BINDER, as a located refusal for the lenses that judge each field's type: a
+// Named member whose target is not a binder node declares no type, so a lens reports it rather than
+// answering "no violation" for it.
+fn member_not_a_binder_diagnostic(e: Edge) -> Diagnostic {
+  Diagnostic {
+    reason: ^member_not_a_binder,
+    at: node_locus(node: e.target),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A member's type name, for the indexes that record one. A Named member that is not a binder declares
+// no type, so it answers ^coproduct_unresolved_payload -- this module's one marker for a type it cannot
+// read (edge_field_type_name answers it for any non-Atom type) -- never a name no declaration carries.
+// The marker names no declaration, so nothing that joins on type names can match it.
+fn member_edge_type_name(e: Edge) -> Symbol {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => edge_field_type_name(target: t)
+    Absent => ^coproduct_unresolved_payload
   }
 }
 
@@ -254,62 +450,131 @@ fn declared_field_named(payload: Node, name: Symbol) -> Optional<DeclaredField> 
 }
 
 // A CONSTRUCT is the value-side twin of a payload: the same field edges, each targeting the
-// value supplied for that field, behind one leading TAG edge whose label and target both name
-// the constructor (`Rec { n: 1 }` is Conj { Rec: Atom(Rec), n: 1 }). It is the shape
-// v2.std.node RecordConstructBody admits (arrow_body_record_construct_conforms: every edge Named,
-// the first one an Atom) and the shape the language authority's fixtures build
-// (v2.extdeps.languages.dag dag_rec_construct_body_node, dag_variant_holds_construct_node). A
-// match-arm PATTERN over a fielded variant is the same construct whose field targets are the
-// binders, so construction and elimination read one shape.
-// THE TAG ATOM STANDS FOR THE TAG TOKEN, so it is lowered from that token, not from the whole
-// construct: `tag_source` is the authored terminal the constructor name was read from, and the
-// Conj keeps the construct's own occurrence. Lowering the atom from the enclosing capture gave it
-// the shell's occurrence, so the tag's locus was a coarser, different span
-// (docs/plans/lowering-occurrence-projection-design.md, rank 3).
-fn construct_tag_edge(tag: Symbol, tag_source: Node) -> Edge {
-  Edge {
-    label: Named { name: tag },
-    target: node_lowered_from(
-      kind: TypeNode { connective: Atom { identity: tag } },
-      children: [],
-      source: tag_source
-    )
-  }
+// value supplied for that field, behind one leading TAG edge. The tag edge is labelled by its ROLE,
+// v2.std.node CoreEdgeLabel ConstructTagEdge, and targets the constructor as a REFERENCE: the authored
+// qualified-name spine before resolution (a bare `Rec` is its one-segment case, a module-qualified
+// `m.Rec` its longer one) and v2.std.qualified_name declaration_reference_node after it. So
+// `Rec { n: 1 }` is Conj { <construct-tag>: spine[Rec], n: 1 }. It is the shape v2.std.node
+// RecordConstructBody admits (arrow_body_record_construct_conforms). A match-arm PATTERN over a
+// fielded variant is the same construct whose field targets are the binders, so construction and
+// elimination read one shape.
+//
+// THE REFERENCE IS BUILT BY THE CALLER FROM THE AUTHORED SEGMENTS, never trimmed and never resolved
+// here: lowering hands in the whole path (v2.std.qualified_name qualified_name_spine_of_atoms over
+// atoms lowered from their own tokens), and resolution binds it by identity through the same doors
+// every other reference uses. Before this, the label WAS the constructor's spelling and the target an
+// Atom of the same identity; resolution rewrote the target, so the label-equals-identity read failed
+// for every resolved user construct (gunbc.recurring_failure_mode
+// construct_tag_read_by_label_equality_after_resolve_rewrote_the_target), and a qualified head had
+// no representation.
+fn construct_tag_edge(reference: Node) -> Edge {
+  Edge { label: core_edge_label(marker: ConstructTagEdge), target: reference }
 }
 
-fn construct_node(tag: Symbol, tag_source: Node, field_edges: List<Edge>, source: Node) -> Node {
+fn construct_node(reference: Node, field_edges: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: list_append(
-      left: [construct_tag_edge(tag: tag, tag_source: tag_source)],
+      left: [construct_tag_edge(reference: reference)],
       right: field_edges
     ),
     occurrence_id: source.occurrence_id
   )
 }
 
-// The tag of a construct: its first edge, when that edge names the atom it targets. Anything
-// else -- a payload Conj, a domain Conj, a bare record with no tag -- has no constructor tag.
-fn construct_tag_optional(n: Node) -> Optional<Symbol> {
+// AN ANONYMOUS RECORD LITERAL IS THE SAME CONSTRUCT WITH ITS TAG ELIDED: the marked tag edge is
+// present and targets a reference marked elided (construct_tag_elided_reference), never a guessed one.
+// Resolve's construct-tag writer replaces that target with the expected type's record reference, or
+// refuses (docs/plans/anonymous-record-literal-design.md).
+// THE ELISION IS AN EDGE LABEL, NOT AN ATOM IDENTITY. The reference is a one-edge Conj whose label is
+// v2.std.node CoreEdgeLabel ConstructTagElidedEdge, targeting an empty Conj -- the same mechanism the tag edge
+// itself uses (ConstructTagEdge), which survives normalize. An Atom carrying the marker as its
+// IDENTITY did not: between lowering and resolve its identity no longer compared equal, the
+// elision went unrecognised, and resolve looked the marker up as a name (measured on #12740).
+fn construct_tag_elided_reference(source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: core_edge_label(marker: ConstructTagElidedEdge),
+        target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: [], occurrence_id: source.occurrence_id)
+      }
+    ],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+fn construct_node_elided(field_edges: List<Edge>, source: Node) -> Node {
+  construct_node(reference: construct_tag_elided_reference(source: source), field_edges: field_edges, source: source)
+}
+
+// WHAT A NODE'S CONSTRUCT TAG IS, READ ONCE. Every reader of the tag -- the reference reader below,
+// body lowering's core-substrate test, resolve's construct-tag writer -- matches on this one answer,
+// so "is this a construct, and is its tag authored or elided" has a single classifier rather than a
+// Bool predicate beside a reader that re-reads the tag.
+type ConstructTagReading
+  = ConstructTagAuthored { reference: Node }
+  | ConstructTagElided
+  | NotAConstruct
+
+fn construct_tag_reading(n: Node) -> ConstructTagReading {
   match n.kind {
     TypeNode { connective: Conj } =>
       match first(n.children) {
         Present { value: e } =>
-          match e.label {
-            Named { name: label } =>
-              match e.target.kind {
-                TypeNode { connective: Atom { identity: id } } =>
-                  match id == label {
-                    true => Present { value: label }
-                    false => Absent
-                  }
-                _ => Absent
-              }
-            Positional => Absent
-          }
-        Absent => Absent
+          if edge_is_core(e: e, marker: ConstructTagEdge) { construct_tag_reading_of_target(target: e.target) } else { NotAConstruct }
+        Absent => NotAConstruct
       }
-    _ => Absent
+    _ => NotAConstruct
+  }
+}
+
+// The tag edge's target is either the elided reference (its first edge carries
+// v2.std.node CoreEdgeLabel ConstructTagElidedEdge) or an authored/resolved reference.
+fn construct_tag_reading_of_target(target: Node) -> ConstructTagReading {
+  match target.kind {
+    TypeNode { connective: Conj } =>
+      match first(target.children) {
+        Present { value: e } =>
+          if edge_is_core(e: e, marker: ConstructTagElidedEdge) { ConstructTagElided } else { ConstructTagAuthored { reference: target } }
+        Absent => ConstructTagAuthored { reference: target }
+      }
+    _ => ConstructTagAuthored { reference: target }
+  }
+}
+
+// The tag of a construct: the reference its marked first edge targets. Anything else -- a payload
+// Conj, a domain Conj, a declaration reference, a field projection, a bare record -- has none. The
+// answer is the reference NODE, at whichever stage the tree is: a spine before resolution, a
+// declaration reference after it.
+fn construct_tag_optional(n: Node) -> Optional<Node> {
+  match construct_tag_reading(n: n) {
+    ConstructTagAuthored { reference: reference } => optional_present(value: reference)
+    ConstructTagElided => optional_absent()
+    NotAConstruct => optional_absent()
+  }
+}
+
+// The constructor's PATH, read from the tag at either stage: the resolved declaration's path after
+// resolution, the authored path before it. Absent when the node is not a construct, its tag is
+// elided, or its tag is not a well-formed reference. A pre-resolution path is what the author wrote, not a declaration
+// identity; only a resolved tree's answer names the declaration.
+fn construct_tag_path_optional(n: Node) -> Optional<QualifiedName> {
+  match construct_tag_optional(n: n) {
+    Absent => optional_absent()
+    Present { value: reference } =>
+      match declaration_reference_path_optional(node: reference) {
+        Present { value: path } => optional_present(value: path)
+        Absent =>
+          if qualified_name_spine_shape_present(root: reference) {
+            match qualified_name_from_node(root: reference) {
+              Accepted { value: path, diagnostics: _ } => optional_present(value: path)
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          } else {
+            optional_absent()
+          }
+      }
   }
 }
 
@@ -354,22 +619,14 @@ fn construct_field_edges(n: Node) -> List<Edge> {
 // typecheck stage's, over this node, and it is the declared frontier this shape exists to give a
 // subject. Until it lands, a misspelled field is a resolve/typecheck-stage question and NOT
 // silently answered here.
-fn field_projection_base_name() -> Symbol {
-  ^field_projection_base
-}
-
-fn field_projection_field_name() -> Symbol {
-  ^field_projection_field
-}
-
 // `field` is the field-name atom the caller already lowered from its own token, so the projection
 // keeps that token's occurrence rather than the whole chain's.
 fn field_projection_node(base: Node, field: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: field_projection_base_name() }, target: base },
-      Edge { label: Named { name: field_projection_field_name() }, target: field }
+      Edge { label: core_edge_label(marker: FieldProjectionBaseEdge), target: base },
+      Edge { label: core_edge_label(marker: FieldProjectionFieldEdge), target: field }
     ],
     occurrence_id: source.occurrence_id
   )
@@ -381,29 +638,17 @@ type FieldProjection {
 }
 
 fn field_projection_edge_base_optional(e: Edge) -> Optional<Node> {
-  match e.label {
-    Named { name: n } =>
-      if n == field_projection_base_name() {
-        optional_present(value: e.target)
-      } else {
-        optional_absent()
-      }
-    Positional => optional_absent()
-  }
+  if edge_is_core(e: e, marker: FieldProjectionBaseEdge) { optional_present(value: e.target) } else { optional_absent() }
 }
 
 fn field_projection_edge_field_optional(e: Edge) -> Optional<Symbol> {
-  match e.label {
-    Named { name: n } =>
-      if n == field_projection_field_name() {
-        match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-          _ => optional_absent()
-        }
-      } else {
-        optional_absent()
-      }
-    Positional => optional_absent()
+  if edge_is_core(e: e, marker: FieldProjectionFieldEdge) {
+    match e.target.kind {
+      TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+      _ => optional_absent()
+    }
+  } else {
+    optional_absent()
   }
 }
 
@@ -446,7 +691,7 @@ fn field_projection_optional(n: Node) -> Optional<FieldProjection> {
 fn variant_declaration_node(label: Symbol, payload: Node, source: Node) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: label }, target: payload }],
+    children: [Edge { label: Authored { name: label }, target: payload }],
     occurrence_id: source.occurrence_id
   )
 }
@@ -460,11 +705,12 @@ fn variant_declaration_edge_optional(n: Node) -> Optional<Edge> {
           match first(n.children) {
             Present { value: e } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match e.target.kind {
                     TypeNode { connective: Conj } => optional_present(value: e)
                     _ => optional_absent()
                   }
+                StructuralLabel { label: _ } => optional_absent()
                 Positional => optional_absent()
               }
             Absent => optional_absent()
@@ -565,8 +811,9 @@ fn nullary_inhabitant_by_discriminant<T>(
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => list_snoc_item(xs: acc, item: e.target)
-      Named { name: _ } => acc
+      Authored { name: _ } => acc
     }
   })
 }
@@ -574,7 +821,8 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
 fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
-      Named { name: _ } => list_snoc_item(xs: acc, item: e)
+      Authored { name: _ } => list_snoc_item(xs: acc, item: e)
+      StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: e)
       Positional => acc
     }
   })
@@ -591,7 +839,7 @@ fn node_envelope_without_named_coordinate_go(
     Empty => outcome_accepted(value: acc)
     Cons { head: h, tail: t } =>
       match h.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if (n == coordinate) && saw_coordinate {
             outcome_rejected(d: Diagnostic {
               reason: ^named_child_ambiguous,
@@ -607,6 +855,14 @@ fn node_envelope_without_named_coordinate_go(
               saw_coordinate: saw_coordinate || (n == coordinate)
             )
           }
+        StructuralLabel { label: _ } =>
+          node_envelope_without_named_coordinate_go(
+            root: root,
+            xs: t,
+            coordinate: coordinate,
+            acc: list_snoc_item(xs: acc, item: h),
+            saw_coordinate: saw_coordinate
+          )
         Positional =>
           node_envelope_without_named_coordinate_go(
             root: root,
@@ -634,30 +890,79 @@ type NamedChildLookup
   | NamedChildMissing
   | NamedChildAmbiguous
 
+fn child_lookup_step(acc: NamedChildLookup, hit: Bool, target: Node) -> NamedChildLookup {
+  if hit {
+    match acc {
+      NamedChildMissing => NamedChildFound { target: target }
+      NamedChildFound { target: _ } => NamedChildAmbiguous
+      NamedChildAmbiguous => NamedChildAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+// The Conj child carrying this AUTHORED name. A structural label is never found by its spelling:
+// a core marker is looked up by core_child_lookup, which matches the arm.
 fn named_child_lookup(root: Node, name: Symbol) -> NamedChildLookup {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
         match e.label {
           Positional => acc
-          Named { name: edge_name } =>
-            if edge_name == name {
-              match acc {
-                NamedChildMissing => NamedChildFound { target: e.target }
-                NamedChildFound { target: _ } => NamedChildAmbiguous
-                NamedChildAmbiguous => NamedChildAmbiguous
-              }
-            } else {
-              acc
-            }
+          StructuralLabel { label: _ } => acc
+          Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == name, target: e.target)
         }
       })
     _ => NamedChildMissing
   }
 }
 
+fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        child_lookup_step(acc: acc, hit: edge_is_core(e: e, marker: marker), target: e.target)
+      })
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
+  }
+}
+
+// The Conj child carrying exactly this label, compared whole (arm and payload).
+fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: NamedChildMissing, f: fn(acc, e) {
+        child_lookup_step(acc: acc, hit: (e.label == label) && !is_positional(e: e), target: e.target)
+      })
+    TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
+    TypeNode { connective: Disj } => NamedChildMissing
+    TypeNode { connective: Arrow } => NamedChildMissing
+    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: Instantiation } => NamedChildMissing
+    ComputationNode { behavior: _ } => NamedChildMissing
+  }
+}
+
+fn find_labeled_child(root: Node, label: EdgeLabel) -> Outcome<Node> {
+  child_lookup_outcome(root: root, lookup: labeled_child_lookup(root: root, label: label))
+}
+
+fn find_core_child(root: Node, marker: CoreEdgeLabel) -> Outcome<Node> {
+  child_lookup_outcome(root: root, lookup: core_child_lookup(root: root, marker: marker))
+}
+
 fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
-  match named_child_lookup(root: root, name: name) {
+  child_lookup_outcome(root: root, lookup: named_child_lookup(root: root, name: name))
+}
+
+fn child_lookup_outcome(root: Node, lookup: NamedChildLookup) -> Outcome<Node> {
+  match lookup {
     NamedChildFound { target: target } => outcome_accepted(value: target)
     NamedChildMissing =>
       outcome_rejected(d: Diagnostic {
@@ -672,6 +977,23 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
         correction: Unavailable { reason: ExternalContractUnknown }
       })
   }
+}
+
+// THE TYPE OF THE BINDER `name` IN A DOMAIN OR PAYLOAD CONJ: find_named_child's refusals (missing,
+// ambiguous), plus one more -- a member that is not a binder node refuses with
+// ^named_child_not_a_binder rather than returning its raw target as a type.
+fn find_binder_type(root: Node, name: Symbol) -> Outcome<Node> {
+  bind_outcome(o: find_named_child(root: root, name: name), f: fn(target) {
+    match binder_node_parts(n: target) {
+      Present { value: parts } => outcome_accepted(value: parts.type_node)
+      Absent =>
+        outcome_rejected(d: Diagnostic {
+          reason: ^named_child_not_a_binder,
+          at: node_locus(node: target),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+    }
+  })
 }
 
 fn find_arrow_body_child(root: Node) -> Outcome<Node> {
@@ -716,10 +1038,14 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
         match acc {
           Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
-              Named { name: sym } =>
+              Authored { name: sym } =>
                 outcome_with_diagnostics(
                   value: list_snoc_item(xs: bindings, item: sym),
                   diagnostics: d
+                )
+              StructuralLabel { label: _ } =>
+                outcome_rejected(
+                  d: node_query_domain_malformed_diagnostic(domain: domain)
                 )
               Positional =>
                 outcome_rejected(
@@ -783,8 +1109,9 @@ type RepeatedNameScan {
 fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
   let scanned = fold(children, init: RepeatedNameScan { seen: empty_map(), repeated: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => acc
       Positional => acc
-      Named { name: n } =>
+      Authored { name: n } =>
         match map_lookup(m: acc.seen, key: n) {
           Present { value: _ } => RepeatedNameScan { seen: acc.seen, repeated: list_snoc_item(xs: acc.repeated, item: e) }
           Absent => RepeatedNameScan { seen: map_insert(m: acc.seen, key: n, value: true), repeated: acc.repeated }
@@ -792,4 +1119,19 @@ fn repeated_name_edges(children: List<Edge>) -> List<Edge> {
     }
   })
   scanned.repeated
+}
+
+// A CONJ TYPE NODE'S CHILDREN, AS A VALUE: Present for a Conj, Absent for every other connective or a computation.
+// The one place the NodeKind / Connective discrimination for "is this a product" is written; a reader that needs
+// a Conj's members matches this Optional instead of re-enumerating the kinds.
+fn conj_children_optional(n: Node) -> Optional<List<Edge>> {
+  match n.kind {
+    TypeNode { connective: Conj } => Present { value: n.children }
+    TypeNode { connective: Atom { identity: _ } } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
+  }
 }

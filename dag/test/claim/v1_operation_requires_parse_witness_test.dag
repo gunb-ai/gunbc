@@ -1,0 +1,111 @@
+module test.claim.v1_operation_requires_parse_witness_test
+
+// THE SEED PARSES AN OPERATION'S `requires R, ..` (D13 step b0; v1.compiler.parse
+// parse_op_requires_members). v2 admits the member (v2.extdeps.languages.dag
+// dag_grammar_op_requires_expr) and the seed compiles the corpus, so until the seed parses it no
+// extdeps operation can declare the resources it reaches. Each claim compiles a source through the
+// real seed route (compile_dag_rust_emit_check), so a claim cannot pass on a parser it does not reach.
+
+fn compiles(source: String, path: String) -> Bool {
+  compile_dag_rust_emit_check(source, path, [], [])
+}
+
+// The positive control: one member, and two members, on an operation of a module that declares the
+// resource. Both must compile clean.
+test fn an_operation_requiring_a_declared_resource_compiles() -> Bool {
+  compiles(
+    "module requires_one\nresource Net {\n  kind: Capability\n  mode: Read\n  acquire {}\n  release {}\n}\nservice requires_one.S {\n  operation Op {\n    requires Net\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "src/requires_one.rs"
+  )
+}
+
+test fn an_operation_requiring_two_resources_compiles() -> Bool {
+  compiles(
+    "module requires_two\nresource Net {\n  kind: Capability\n  mode: Read\n  acquire {}\n  release {}\n}\nresource Fs {\n  kind: Capability\n  mode: ReadWrite\n  acquire {}\n  release {}\n}\nservice requires_two.S {\n  operation Op {\n    requires Net, Fs\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "src/requires_two.rs"
+  )
+}
+
+// The negative controls: a member that is not a type expression, and a `requires` with no member,
+// both refuse at parse rather than being read as some other entry or dropped.
+test fn a_requires_member_that_is_not_a_type_refuses() -> Bool {
+  !compiles(
+    "module requires_literal\nservice requires_literal.S {\n  operation Op {\n    requires 123\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "src/requires_literal.rs"
+  )
+}
+
+// AN EMPTY `requires` REFUSES AS EMPTY. It is the LAST entry, directly before the operation's closing
+// brace, so the member reader meets `}` where a type expression must start and refuses there -- it
+// cannot read the next entry as a member, which is how an earlier revision of this control refused for
+// an incidental reason. Paired with the identical operation without the line, which compiles clean, so
+// the refusal is the empty `requires` and nothing else in the source.
+test fn a_requires_with_no_member_refuses() -> Bool {
+  !compiles(
+    "module requires_empty\nservice requires_empty.S {\n  operation Op {\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n    requires\n  }\n}\n",
+    "src/requires_empty.rs"
+  )
+}
+
+test fn the_same_operation_without_requires_compiles() -> Bool {
+  compiles(
+    "module requires_empty_control\nservice requires_empty_control.S {\n  operation Op {\n    output { ok: Bool }\n    transport shell { argv: [\"true\"] }\n  }\n}\n",
+    "src/requires_empty_control.rs"
+  )
+}
+
+// THE MEMBERS ARE CARRIED, NOT ONLY ACCEPTED. A parser that read and dropped them would compile every
+// source above. compile_dag_operation_requires parses the source with the seed's own parser and reads
+// the named operation through v1.compiler.parse operation_requires_declaration, the closed answer D13
+// step (c) consumes: one member gives exactly that member, two give both in authored order, and an
+// operation without the clause is UNDECLARED -- not none (D13 ruling B).
+data requires_carry_source: String = "module requires_carry\nservice requires_carry.S {\n  operation One {\n    requires Net\n    output { ok: Bool }\n  }\n  operation Two {\n    requires Net, Fs\n    output { ok: Bool }\n  }\n  operation None {\n    output { ok: Bool }\n  }\n}\n"
+
+test fn one_requires_member_is_carried_as_that_member() -> Bool {
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "One") == ["resources", "Net"]
+}
+
+test fn two_requires_members_are_carried_in_order() -> Bool {
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "Two") == ["resources", "Net", "Fs"]
+}
+
+test fn an_operation_without_requires_is_undeclared_not_none() -> Bool {
+  compile_dag_operation_requires(requires_carry_source, "requires_carry.S", "None") == ["undeclared"]
+}
+
+// THE TWO WHOLE-CLAUSE WORDS (D13 ruling B). `requires none` and `requires opaque` are carried as their
+// own declared forms, distinct from an undeclared operation and from each other; a member after either
+// refuses, so one clause cannot both declare nothing and name a resource.
+data requires_words_source: String = "module requires_words\nservice requires_words.S {\n  operation Quiet {\n    requires none\n    output { ok: Bool }\n  }\n  operation Exec {\n    requires opaque\n    output { ok: Bool }\n  }\n}\n"
+
+test fn requires_none_is_carried_as_declared_none() -> Bool {
+  compile_dag_operation_requires(requires_words_source, "requires_words.S", "Quiet") == ["none"]
+}
+
+test fn requires_opaque_is_carried_as_declared_opaque() -> Bool {
+  compile_dag_operation_requires(requires_words_source, "requires_words.S", "Exec") == ["opaque"]
+}
+
+test fn requires_none_followed_by_a_member_refuses() -> Bool {
+  !compiles(
+    "module requires_none_member\nservice requires_none_member.S {\n  operation Op {\n    requires none, Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_none_member.rs"
+  )
+}
+
+// ONE CLAUSE PER OPERATION (review 73995). Two clauses could otherwise say both "none" and a resource, and
+// a reader of the merged members would answer one of them silently. A second clause refuses at parse,
+// whichever words it carries.
+test fn a_second_requires_clause_after_none_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_none\nservice requires_twice_none.S {\n  operation Op {\n    requires none\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_none.rs"
+  )
+}
+
+test fn a_second_requires_clause_after_opaque_refuses() -> Bool {
+  !compiles(
+    "module requires_twice_opaque\nservice requires_twice_opaque.S {\n  operation Op {\n    requires opaque\n    requires Net\n    output { ok: Bool }\n  }\n}\n",
+    "src/requires_twice_opaque.rs"
+  )
+}

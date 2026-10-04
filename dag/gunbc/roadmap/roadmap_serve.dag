@@ -1,7 +1,56 @@
 module gunbc.roadmap_serve
 
-import extdeps.tailscale.identity { tailnet_identity_of }
-import std.types { String, Int, Bool, List, CommitSha, HttpStatus }
+import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
+
+import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
+import gunbc.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
+
+import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
+
+import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
+import gunbc.auth.profile_projection {
+  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
+  ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
+}
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
+import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_allocation_client { allocation_client_source }
+
+
+import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
+
+import extdeps.tailscale.serve { ServeStatusUnreadable }
+import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
+import extdeps.tailscale.acl { operator_tailscale_acl_policy }
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence,
+  AuthAbsent,
+  GoogleOidcSession,
+  FabricServiceEvidence,
+  SessionStandingInvalid,
+  request_access_path_of,
+  authenticated_viewer_label,
+  human_write_admission,
+  tracker_write_authorization_policy,
+  roadmap_deployment_access_policy,
+  ServeActionAssignIssue,
+  ServeActionCommentIssue,
+  RequestAccessPath,
+}
+import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
+import extdeps.uri { Uri, uri_wire }
+import extdeps.languages.json.emit { json_bool }
+import gunbc.principal_projection {
+  PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
+}
+import std.access { access_refusal_reason, Permit, Deny }
+import gunbc.clock_read { clock_now_probed_at }
+import std.algebra { trim }
+import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -9,7 +58,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
+  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -18,6 +67,8 @@ import extdeps.http.server {
   ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
+  ServeRequestHeader, ServeRequestHeaderReading, ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
   ServedRoute, StaticRoute, DynamicRoute,
   ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
@@ -26,6 +77,7 @@ import extdeps.http.server {
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
   parse_http_method_label,
+  RequestSecurityContext,
   http_method_label_join,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -36,17 +88,28 @@ import extdeps.languages.json.emit {
   json_string,
   json_int,
   json_array,
+  JsonValue,
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
   LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved,
-  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
-  LaunchDispatchBindingMissing, LaunchExecutionContractMissing, LaunchNotAgentWork, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNotReady, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
-  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
+  launch_refusal_label, launch_refusal_reason,
 }
-import gunbc.roadmap_page { roadmap_page_for_projection_launch, roadmap_fleet_page }
-import gunbc.roadmap_authority { roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection }
+import gunbc.roadmap_page {
+  roadmap_page_for_projection_launch, roadmap_fleet_page,
+  issue_detail_page_for, issue_detail_node_exists,
+  project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
+}
+import gunbc.roadmap_authority {
+  roadmap_acceptance_event_history_load, RoadmapAuthorityProjection, roadmap_authority_projection,
+  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  declared_roadmap_edges,
+}
+import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -76,12 +139,35 @@ import gunbc.roadmap_site_surface_render {
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
   served_observation_surface_response_for_instance,
+  served_attempt_revision_observations, served_current_revision_hex,
   served_observation_standing_response_for_instance,
 }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout,
+  roadmap_event_carrier_layout_for_instance,
+  roadmap_events_read,
+  roadmap_event_append,
+  roadmap_events_read_all,
+  EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
+  AllEventsRead, AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
+  EventPrincipal, EventPrincipalAuthenticated,
+  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_recent_claimed_assignees,
+  IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
+}
+import extdeps.google.issue_tracker {
+  issue_assignee_input_is_email, issue_assign_fabric_display,
+}
+import gunbc.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node, belt_dispatch_node_for_instance_over,
+  belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
+  WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
@@ -184,6 +270,10 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
+  | AllocationPageHandler
+  | AllocationListHandler
+  | AllocationGetHandler
+  | AllocationClientHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
   | DispatchJsonHandler
@@ -208,6 +298,15 @@ type RoadmapServeHandler
   | BeltStopHandler
   | BeltPublishHandler
   | ApprovalBrokerCutoverHandler { route: ApprovalBrokerHandler }
+  | IssueDetailPageHandler
+  | IssueAssignHandler
+  | IssueAssignmentContextHandler
+  | IssueCommentHandler
+  | ProjectSuitePageHandler
+  | AuthSessionHandler
+  | AuthLoginHandler
+  | AuthGoogleCallbackHandler
+  | AuthLogoutHandler
 
 // Fail-closed table construction (review 40286, the section 5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -254,6 +353,10 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations.json", handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations/\{allocation_id\}", handler: AllocationGetHandler },
+    ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
+    ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
@@ -275,6 +378,15 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     ServedRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
+    ServedRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
+    ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
+    ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
+    ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
+    ServedRouteSpec { method: POST, raw: auth_logout_route_path, handler: AuthLogoutHandler },
     ServedRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     ServedRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     ServedRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -293,7 +405,7 @@ fn roadmap_serve_route_table_build() -> ServedRouteTableBuild<RoadmapServeHandle
 }
 
 fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+  ServeHttpResponse { status: status, content_type: content_type, body: body, headers: [] }
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and
@@ -335,7 +447,7 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 // state, the same idempotent-success fold the CLI exit map uses); LaunchNoActuatingInstance and
 // LaunchInstanceActuationRefused = 403 (no actuating instance stands behind the request);
 // LaunchNodeUnknown = 404; the state conflicts (superseded, accepted, review-only, unsized,
-// contract missing, dependencies blocked, stale or conflicting session, capacity, cause not
+// contract missing, centering absent, dependencies blocked, stale or conflicting session, capacity, cause not
 // permitted by mode) = 409, retryable only after the state changes; the observation refusals
 // (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
 // unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
@@ -348,13 +460,7 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchNoActuatingInstance { reason: _ } => 403
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => 403
     LaunchNodeUnknown => 404
-    LaunchAlreadyAccepted => 409
-    LaunchNodeSuperseded { by: _ } => 409
-    LaunchReviewRequired => 409
-    LaunchDispatchBindingMissing => 409
-    LaunchExecutionContractMissing { reason: _ } => 409
-    LaunchNotAgentWork { mode: _ } => 409
-    LaunchDependenciesBlocked { blockers: _ } => 409
+    LaunchNotReady { missing: _ } => 409
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
     LaunchCauseNotPermitted { cause: _, mode: _ } => 409
     LaunchStaleSession { session_name: _, detail: _ } => 409
@@ -365,12 +471,14 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
     LaunchRevisionUnobserved { cause: _ } => 503
     LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
     LaunchGateNotEvaluated { gate: _ } => 503
+    LaunchNoPlacementGrant { detail: _ } => 503
   }
 }
 
 fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
@@ -403,7 +511,7 @@ fn serve_dispatch_handler_response_over(
     )
   } else {
     belt_dispatch_response(
-      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id),
+      r: belt_dispatch_node_for_instance_over(instance: instance, plan: plan, node_id: node_id, request: LaunchAutonomous),
     )
   }
 }
@@ -515,6 +623,7 @@ fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
     ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
+    ApprovalStoreReceiptHandler => false
     DeviceEnrolHandler => false
     DeviceRedeemHandler => false
     DevicePendingHandler => false
@@ -537,6 +646,510 @@ fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapS
   } else {
     []
   }
+}
+
+// THE ISSUE DETAIL ROUTE (owner ruling 2026-09-24: the detail page is a real served route). ONE
+// issue rendered live from the same authorities the daily page reads: the plan for the ticket and
+// the parent/blocking links, the standings observation for the holder, the node's event log for
+// the Work tab's durable execution history — a local read per request, the same grain the tick's
+// standings read pays. THE ASSIGNMENT FIELD'S RECENTS ride the all-events read (the cross-issue
+// ledger fold); a refused all-events read degrades to the seeds alone rather than refusing the
+// page — the suggestions feed is furniture, not the issue's truth. Attempts ride the render
+// entry's parameter (the live attempt feed is the belt-side observation-storage decision, deferred
+// with its reason in the report); the events keep the Work tab honest until it lands. Unknown ids
+// render the not-found document at 404. THE CSRF TOKEN rides the page AT RENDER: a seated
+// Google session's token fills the comment composer's hidden csrf field (the synchronizer-token
+// pattern — the detail route renders per request with the session in hand, so no context fetch
+// or client fill), every other standing renders the empty field the write law refuses honestly,
+// and the response is NO-STORE because the page now carries a session secret (session-dependent
+// HTML is never reused for a different viewer — the allocation page's law, extended here).
+// THE WORK TAB READS THE SAME OBSERVATION THE DAILY PAGE DOES, scoped to this node: the
+// dispatch-ref census and current-attempt selection, then this node's progress. A census that
+// refuses stays a refusal on the page -- never an empty attempt list.
+fn serve_issue_detail_response_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+    EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
+      body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
+    EventsRead { node: _, envelopes } => {
+      let state = roadmap_issue_state(envs: envelopes)
+      let standing = state.standing
+      let standing_key = roadmap_node_standing_key(s: standing)
+      if standing_key == "forked" || standing_key == "history_incomplete" {
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", roadmap_node_standing_text(s: standing)))
+      } else {
+        let context = match request.security.authentication {
+          GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
+          FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+          SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
+          AuthAbsent => IssueFormContext { operation: "", csrf: "" }
+        }
+        let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
+        let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+        let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
+        let attempts = match observed {
+          WorkflowAttemptsObserved { attempts: a } => a
+          WorkflowAttemptsRefused { reason: _ } => []
+        }
+        let attempts_refused = match observed {
+          WorkflowAttemptsObserved { attempts: _ } => none
+          WorkflowAttemptsRefused { reason: r } => Present { value: r }
+        }
+        let page = issue_detail_page_for(proj: plan, node_id: node_id, attempts: attempts,
+          attempts_refused: attempts_refused,
+          standings: StandingsObserved { rows: [NodeStandingRow { node_id: node_id, standing: standing, assignment: state.assignment }] },
+          launch: launch,
+          stale_nodes: stale_attempt_nodes(
+            observations: served_attempt_revision_observations(instance: instance, attempts: attempts),
+            current_revision_hex: served_current_revision_hex(launch: launch)),
+          events: envelopes,
+          viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
+          profiles: serve_profiles_for_instance(instance: instance))
+        let response = serve_page_response_with_status(page: page, status: 200)
+        response
+      }
+    }
+  } }
+}
+
+// THE PROJECT SUITE ROUTE (GET /project/<node_id>): ONE project's direct membership listing
+// rendered live from the same authorities the issue detail route reads -- the declared nesting
+// for the member set, the declared dependency edges for the topological layering, the plan's own
+// rows for the titles. The heading is the project row's own ticket headline; an absent row or a
+// non-ticket row renders the not-found document at 404, the issue route's grain. The page carries
+// no form and no session secret, so it renders for every viewer standing exactly alike; the
+// viewer label is still resolved here, so the render entry keeps the issue route's signature
+// shape. A refused plan is a located 503, never a silent empty page.
+fn serve_project_suite_response_over(
+  plan: RoadmapAuthorityProjection,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let viewer = authenticated_viewer_label(evidence: request.security.authentication)
+  match plan {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      serve_text_response(status: 503, content_type: text_plain_utf8,
+        body: join(["project suite unavailable: the roadmap authority refused at ", detail], ""))
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
+      match project_suite_headline(nodes: doc_all_nodes(doc: doc), node_id: node_id) {
+        Absent =>
+          serve_page_response_with_status(page: project_suite_not_found_page(node_id: node_id, viewer: viewer), status: 404)
+        Present { value: headline } =>
+          serve_page_response_with_status(
+            page: project_suite_page_launch(
+              headline: headline,
+              node_id: node_id,
+              rows: project_suite_rows(
+                memberships: roadmap_memberships(),
+                edges: declared_roadmap_edges(),
+                nodes: doc_all_nodes(doc: doc),
+                project: node_id),
+              viewer: viewer),
+            status: 200)
+      }
+  }
+}
+
+// THE AUTH PROFILE ROSTER, read once per render under the never-blocks law: the store's refusal
+// (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
+// exactly as before, never a failed page on a profile read.
+fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
+  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+    ProfileStoreRead { profiles, skipped: _ } => profiles
+    ProfileStoreUnread { step: _, reason: _ } => []
+  }
+}
+
+// THE ASSIGNEE SUBMISSION, resolved to the stable PrincipalRef the v3 event records (owner
+// ruling: the picker displays emails but submits principals). Resolution order: a principal label
+// parses directly; the fabric selector maps by declaration to the one workflow principal; any
+// other email goes through the directory lookup — and the directory producer is A9, so until it
+// lands the lookup refuses with the typed vocabulary rather than minting a principal from an
+// email (the banned shape has no constructor anywhere in gunbc).
+// Fresh, session-bound picker context. Refuse unread history rather than inventing a
+// revision; the existing POST remains the sole assignment and launch authority.
+fn serve_issue_assignment_context_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  match request.security.authentication {
+    GoogleOidcSession { session } =>
+      if !issue_detail_node_exists(proj: plan, node_id: node_id) {
+        serve_text_response(status: 404, content_type: text_plain_utf8, body: "Issue not found.")
+      } else {
+        let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+        match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+          EventsReadRefused { node: _, step, reason } =>
+            serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["Cannot load assignment history at ", step, ": ", reason], ""))
+          EventsRead { node: _, envelopes } =>
+            let recents = match roadmap_events_read_all(layout: layout) {
+              AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
+              AllEventsReadRefused { step: _, reason: _ } => []
+            }
+            match issue_operation_nonce() {
+              Absent => serve_text_response(status: 503, content_type: text_plain_utf8, body: "Cannot prepare a stable assignment operation. Try again before submitting.")
+              Present { value: nonce } => serve_text_response(
+                status: 200, content_type: application_json_utf8,
+                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce))
+            }
+        }
+      }
+    AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
+    SessionStandingInvalid { standing: _ } => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Your session has expired or is unavailable. Sign in again.")
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
+  }
+}
+
+fn assignee_submission_shape_valid(s: String) -> Bool {
+  issue_assignee_input_is_email(s: s)
+    || trim(s) == (issue_assign_fabric_display as String)
+    || match principal_ref_parse_label(s: s) { Present { value: _ } => true  Absent => false }
+}
+
+fn assignee_principal_of(raw: String) -> PrincipalRef? {
+  let t = trim(raw)
+  match principal_ref_parse_label(s: t) {
+    Present { value: ref } => Present { value: ref }
+    Absent =>
+      if t == (issue_assign_fabric_display as String) {
+        Present { value: fabric_workflow_principal }
+      } else {
+        none
+      }
+  }
+}
+
+fn assignee_lookup_refusal(raw: String) -> String {
+  let t = trim(raw)
+  if issue_assignee_input_is_email(s: t) && t != (issue_assign_fabric_display as String) {
+    join(["'", t, "' names no admitted principal — the typed-email directory lookup is the A9 producer and no directory is bound yet, so human emails cannot mint a principal (and never will: email is display, not identity)"], "")
+  } else {
+    join(["'", t, "' is neither a principal spelling, the fabric selector, nor an email spelling"], "")
+  }
+}
+
+// A HUMAN WRITE READS THE CLOCK ONLY WHERE A READING IS CONSUMED. The write law
+// (gunbc.auth.request_authentication human_authentication_decision) reads observed_at only on the
+// GoogleOidcSession arm -- session expiry -- and only that arm can reach the append that records
+// it; absent, invalid and service evidence refuse at the authentication axis without it. So the
+// early refusals (404 unknown issue, 403 without a session) answer before any host read.
+fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> String {
+  match security.authentication {
+    GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
+    SessionStandingInvalid { standing: _ } => ""
+    AuthAbsent => ""
+  }
+}
+
+// THE DURABLE ASSIGN ROUTE — the AssignIssue command (owner rulings 2026-09-24 and the 2026-09-25
+// issue-page mandate): POST /issue/<id>/assign records a Claimed event carrying the ASSIGNEE and
+// the RETURN_TO principal explicitly (default return_to = the requester — the authenticated
+// principal, never derived from whichever event was first), chained on the single head by the
+// event-CLI idiom: read, refuse on forked/incomplete history (409), parent = the head, probed
+// clock, append through the carrier. The expected_issue_revision field pins the head the page
+// rendered under: a mismatch is 409 STALE, never a silent chain onto a history the writer never
+// saw — reload and the form re-pins. The author is the AUTHENTICATED PRINCIPAL: the write law
+// (gunbc.auth.request_authentication.human_write_admission) admits this route only on the
+// conjunction of a Google OIDC session, action authorization, and the CSRF proof, and the event
+// records the session principal's stable label — tailnet transport alone refuses at the
+// authentication axis with a located reason and is never a person the backend may act for.
+// A HUMAN ASSIGNEE NEVER
+// DISPATCHES: the response records the fact and stops. THE FABRIC ENDPOINT IS THE EXECUTION ENTRY
+// POINT (the Start Work button is retired): after the event lands, the handler drives the SAME
+// launch admission the /dispatch route answers. AN ADMISSION REFUSAL DOES NOT UNDO THE ASSIGNMENT:
+// the event stands, the issue stays with Fabric, and the response renders the located waiting
+// condition in the launch's typed refusal vocabulary — "waiting on fabric: <label> — <reason>",
+// never "assignment failed". RE-ASSIGNING THE SAME REVISION joins the existing request: the
+// admission's own already-live / already-accepted arms refuse the duplicate attempt, and the
+// response says the assignment stands beside the refusal. THE REQUEST BODY is the form's
+// application/x-www-form-urlencoded encoding, decoded once by the shared strict codec.
+fn serve_issue_assign_response_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let observed_at = human_write_observed_at(security: request.security)
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
+    action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignment refused: a valid operation key and explicit expected_revision are required") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => match assignee_principal_of(raw: issue_form_field(body: request.body, name: "assignee")) {
+          Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "assignee has no admitted principal")
+          Present { value: assignee } => {
+            let target = issue_form_field(body: request.body, name: "return_to")
+            match (if target == "" { Present { value: author } } else { assignee_principal_of(raw: target) }) {
+              Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
+              Present { value: return_to } => {
+                let expected = issue_form_field(body: request.body, name: "expected_revision")
+                let outcome = issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+                  command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
+                    author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
+                    expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
+                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at)
+                match outcome {
+                  EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
+                  EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
+                  EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+                }
+              }
+            }
+          }
+        }
+      } }
+  } }
+}
+
+fn issue_command_form_valid(body: String) -> Bool {
+  issue_form_has_field(body: body, name: "expected_revision")
+    && roadmap_operation_identity_valid(operation: issue_form_field(body: body, name: "key"))
+}
+
+fn issue_command_refusal_response(step: String, reason: String) -> ServeHttpResponse {
+  serve_text_response(status: if step == "revision-conflict" || step == "operation-conflict" { 409 } else { 503 },
+    content_type: text_plain_utf8, body: join(["issue command refused at ", step, ": ", reason, "\n"], ""))
+}
+
+// THE AUTHOR PRINCIPAL OF AN ADMITTED WRITE, the typed form the v3 event records: a Google OIDC
+// session writes as its seated principal; fabric service evidence writes as the one workflow
+// principal (a service writer never presents a human session as workload identity — the ruling's
+// service-writer law). Only reachable past the write law's Permit arm; the Absent fallback is the
+// loud spelling of an unreachable state, refused at the call site, never a value that reaches the
+// durable record.
+fn authenticated_write_author_principal(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> PrincipalRef? {
+  match security.authentication {
+    GoogleOidcSession { session } => Present { value: session.principal }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    SessionStandingInvalid { standing: _ } => none
+    AuthAbsent => none
+  }
+}
+
+// THE AUTHOR OF AN ADMITTED HUMAN WRITE. Only reachable past the write law's Permit arm, which
+// only a GoogleOidcSession can produce; every other arm is refused above, so the fallback string
+// is the loud spelling of an unreachable state, never a value that can reach the durable record.
+fn authenticated_write_author_label(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> NonEmptyStr {
+  match security.authentication {
+    GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
+    SessionStandingInvalid { standing: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
+    AuthAbsent => "unreachable: admitted human write without a session principal" as NonEmptyStr
+  }
+}
+
+// Both native and enhanced issue commands use the same admitted form codec (Cut 1's
+// form_decode, superseding the 2026-09-28 text/plain CR-strip repair — the full codec handles
+// the CRLF separation the located repair handled field-by-field).
+fn issue_form_field(body: String, name: String) -> String {
+  match form_field(form: form_decode(wire: body), name: name) {
+    Present { value } => value
+    Absent => ""
+  }
+}
+
+fn issue_form_has_field(body: String, name: String) -> Bool {
+  match form_field(form: form_decode(wire: body), name: name) { Present { value: _ } => true Absent => false }
+}
+
+// THE EXECUTION ENTRY POINT'S FOLLOW-THROUGH, factored pure over the admission outcome so the
+// witness drives it with constructed outcomes: a human assignee stops at the recorded fact (NEVER
+// dispatches); the fabric endpoint drives the SAME admission the /dispatch route answers and the
+// response renders what came back — admitted (the attempt renders on the Work tab), actuation
+// failure (502, the assignment stands), or the typed refusal: the issue STAYS with Fabric and the
+// body names the located waiting condition, never "assignment failed". THE CONFIRMATION NAMES THE
+// PERSON, NOT THE PRINCIPAL: the profile store is read ONCE and the assignee renders through its
+// display — "name (email)" when the store carries both, the email when only the email, the name
+// when only the name, else the principal label. THE LABEL IS THE IDENTITY, THE DISPLAY IS
+// PRESENTATION: principal_ref_label stays out of the visible text whenever a profile exists (the
+// label remains only as the no-profile fallback, where it is the only spelling known).
+fn serve_assignment_launch_follow_through(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+  assignee: PrincipalRef,
+  event_id: String,
+) -> ServeHttpResponse {
+  serve_assignment_launch_follow_through_over(
+    instance: instance,
+    plan: plan,
+    node_id: node_id,
+    assignee: assignee,
+    event_id: event_id,
+    profiles: serve_profiles_for_instance(instance: instance),
+  )
+}
+
+// The follow-through over a profile roster the caller read once: the display resolution is a pure
+// fold over it, so the human/Fabric decision is reachable without the profile-store read.
+fn serve_assignment_launch_follow_through_over(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+  assignee: PrincipalRef,
+  event_id: String,
+  profiles: List<PrincipalProfile>,
+) -> ServeHttpResponse {
+  let assignee_display = assignment_confirmation_display(assignee: assignee, profiles: profiles)
+  if principal_ref_eq(a: assignee, b: fabric_workflow_principal) {
+    serve_fabric_assignment_response(
+      node_id: node_id,
+      assignee_display: assignee_display,
+      event_id: event_id,
+      outcome: belt_dispatch_node_for_instance_over(
+        instance: instance,
+        plan: plan,
+        node_id: node_id,
+        request: LaunchForClaim { node: node_id as NonEmptyStr as RoadmapNodeId, claim: event_id as NonEmptyStr as RoadmapEventId },
+      ),
+    )
+  } else {
+    serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\n"], ""))
+  }
+}
+
+// THE CONFIRMATION'S DISPLAY RESOLUTION over the read-once roster: the first profile matching the
+// assignee principal by principal_ref_eq contributes name and email; nothing known falls back to
+// the principal label.
+fn assignment_confirmation_display(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> String {
+  match assignment_confirmation_profile(assignee: assignee, profiles: profiles) {
+    Absent => principal_ref_label(p: assignee)
+    Present { value: p } =>
+      match p.name {
+        Present { value: n } => match p.email {
+          Present { value: e } => join([n, " (", e as String, ")"], "")
+          Absent => n
+        }
+        Absent => match p.email {
+          Present { value: e } => e as String
+          Absent => principal_ref_label(p: assignee)
+        }
+      }
+  }
+}
+
+// THE ROSTER WALK: the first profile whose principal equals the assignee wins. (The Present
+// binder rides the short spelling p: the binder spelling 'profile' is a named resolver failure
+// mode — gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup.)
+fn assignment_confirmation_profile(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> PrincipalProfile? {
+  match profiles.first() {
+    Absent => none
+    Present { value: p } =>
+      if principal_ref_eq(a: p.principal, b: assignee) {
+        Present { value: p }
+      } else {
+        assignment_confirmation_profile(assignee: assignee, profiles: profiles.skip(n: 1))
+      }
+  }
+}
+
+fn serve_fabric_assignment_response(node_id: String, assignee_display: String, event_id: String, outcome: BeltSpawnOutcome) -> ServeHttpResponse {
+  match outcome {
+    Spawned { node_id: _, session_name, provider: _, launch: _ } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
+    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
+    SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
+    SpawnNotAdmitted { node_id: _, refusal } =>
+      serve_text_response(status: launch_refusal_http_status(r: refusal), content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nwaiting on fabric: ", launch_refusal_label(r: refusal), " — ", launch_refusal_reason(r: refusal), " — the assignment stands; the request joins the existing attempt when one is live\n"], ""))
+  }
+}
+
+// Comment commands use the same strict URL-encoded codec as native and enhanced assignment.
+// Every form has a stable operation identity, explicit expected revision, and session CSRF.
+// A retry returns the original event and comment ordinal, even after intervening events;
+// equal text with another operation identity is an intentional second comment.
+fn serve_issue_comment_response_over(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  let observed_at = human_write_observed_at(security: request.security)
+  if !issue_detail_node_exists(proj: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  else { match human_write_admission(route_path: concat("/issue/", concat(node_id, "/comment")) as NonEmptyStr,
+    action: ServeActionCommentIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: observed_at) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: a valid operation key and explicit expected_revision are required") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => {
+          let body = issue_comment_body_of(wire: request.body)
+          if body == "" { serve_text_response(status: 400, content_type: text_plain_utf8, body: "comment refused: empty body") }
+          else {
+            let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+            let expected = issue_form_field(body: request.body, name: "expected_revision")
+            let operation = issue_form_field(body: request.body, name: "key")
+            let outcome = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
+              node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
+              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at)
+            match outcome {
+              EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+              EventAppended { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false)
+              EventAlreadyPresent { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true)
+            }
+          }
+        }
+      } }
+  } }
+}
+
+// THE COMMENT RESPONSE, factored pure over the recorded comments so the witness drives it without
+// a carrier: the deep link /issue/<id>#comment-N is the answer a retry and a first write share —
+// the client re-anchors instead of re-posting.
+// POST/REDIRECT/GET: the composer is a native form, so a 200 body strands the browser on a text
+// page. A recorded comment -- first write or an idempotent retry -- answers 303 to its own numbered
+// anchor, which is the one canonical location for it; the retry reaches the same address. A
+// readback that does not carry the committed comment names no anchor at all: it refuses, loudly,
+// rather than linking #comment-0.
+// A committed or already-present comment answers from the event log read back after the commit;
+// a refused readback is a 503 that names its step, never a page built from the request.
+fn issue_comment_readback_response(layout: RoadmapEventCarrierLayout, node_id: String, operation: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
+  match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+    EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
+      body: concat("comment commit acknowledged, but readback refused; retry with the same operation key: ", concat(step, concat(": ", reason))))
+    EventsRead { node: _, envelopes } => serve_comment_recorded_response(node_id: node_id, comments: roadmap_issue_comments(envs: envelopes), comment: operation,
+      event_id: event_id, already_present: already_present)
+  }
+}
+
+fn serve_comment_recorded_response(node_id: String, comments: List<IssueComment>, comment: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
+  match (filter(comments, c => (c.comment as String) == comment)).first() {
+    Absent =>
+      serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["comment ", comment, " was committed (event ", event_id, ") but the issue's readback does not carry it; reload /issue/", node_id, "\n"], ""))
+    Present { value: c } => {
+      let link = join(["/issue/", node_id, "#comment-", to_string(value: c.ordinal)], "")
+      let body = if already_present {
+        join(["comment recorded (already present): ", link, "\n"], "")
+      } else {
+        join(["comment recorded: ", link, " (event ", event_id, ")\n"], "")
+      }
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: body)
+    }
+  }
+}
+
+// The body is a decoded value; its newlines and field-looking text are never reparsed.
+fn issue_comment_body_of(wire: String) -> String {
+  issue_form_field(body: wire, name: "body")
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
@@ -593,7 +1206,7 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
 // identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
 // 400 that names the valid label set, never a fabricated arm.
 
-fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
+fn sandbox_echo_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let status = uri_query_param(path: request.path, key: "status")
   match belt_dispatch_result_for_label(wire_label: status) {
     Present { value: r } =>
@@ -646,14 +1259,18 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 // same authority).
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match handler {
+    AuthLoginHandler => auth_login_response(instance: instance, request: request)
+    AuthGoogleCallbackHandler => auth_google_callback_response(instance: instance, path: request.path, cookie_header: cookie_header)
+    AuthLogoutHandler => auth_logout_response(instance: instance, request: request)
     RoadmapDailyPageHandler =>
       match daily_body {
         DailyBodyRenderedUnderThisPlan => serve_daily_page_response_for_instance(instance: instance)
@@ -673,14 +1290,20 @@ fn roadmap_serve_invoke_over(
             ], ""),
           )
       }
-    RoadmapFullPageHandler =>
+    RoadmapFullPageHandler => {
+      let p = plan()
       serve_page_response(page: roadmap_page_for_projection_launch(
-        proj: plan,
-        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: plan),
+        proj: p,
+        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: p),
       ))
+    }
+    AllocationPageHandler => allocation_page_response(request: request)
+    AllocationListHandler => workspace_route_list(request: request)
+    AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
+    AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan))
-    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan))
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>
       serve_text_response(
@@ -695,7 +1318,7 @@ fn roadmap_serve_invoke_over(
         body: dashboard_provider_readiness_json(instance: instance),
       )
     BeltDispatchHandler =>
-      serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params)
+      serve_dispatch_handler_response_over(instance: instance, plan: plan(), params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
     InstrumentSandboxPageHandler => serve_page_response(page: instrument_sandbox_page())
@@ -706,6 +1329,12 @@ fn roadmap_serve_invoke_over(
     RepoAtlasPageHandler => serve_page_response(page: repo_atlas_page())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
+    IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
+    ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan(), params: params, request: request)
+    IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
@@ -721,12 +1350,12 @@ fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     handler: handler,
     params: params,
@@ -738,7 +1367,7 @@ fn roadmap_serve_invoke_for_instance(
 fn roadmap_serve_invoke(
   handler: RoadmapServeHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_invoke_for_instance(
@@ -875,11 +1504,12 @@ fn serve_sessions_response() -> ServeHttpResponse {
 
 fn roadmap_serve_selection_response_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
+  cookie_header: String = "",
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
@@ -891,9 +1521,10 @@ fn roadmap_serve_selection_response_over(
         params: ps,
         request: request,
         release_revision: release_revision,
+        cookie_header: cookie_header,
       )
     SelectedStatic { route: r } =>
-      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body, headers: [] }
     MethodNotAllowed { allowed: ms } =>
       serve_text_response(
         status: 405,
@@ -908,12 +1539,12 @@ fn roadmap_serve_selection_response_over(
 fn roadmap_serve_selection_response_for_instance(
   instance: HostDashboardInstance,
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     sel: sel,
     request: request,
@@ -923,7 +1554,7 @@ fn roadmap_serve_selection_response_for_instance(
 
 fn roadmap_serve_selection_response(
   sel: RouteSelection<RoadmapServeHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_selection_response_for_instance(
@@ -934,14 +1565,40 @@ fn roadmap_serve_selection_response(
   )
 }
 
+// THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
+// modeled from the instance bind and the tailnet header through the ACL and serve-route
+// authorities (a header alone mints no tailnet path -- the readback does, and this revision
+// performs none, so a tailnet header reads as transport absent). Authentication evidence is the
+// session cookie the seam passes through, resolved against the session store
+// (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent cookie is
+// AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid with its
+// cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
+fn roadmap_serve_request_security(
+  instance: HostDashboardInstance,
+  tailscale_identity: String,
+  cookie_header: String = "",
+) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: request_access_path_of(
+      listen_host: instance.listen_host,
+      tailscale_header: tailscale_identity,
+      serve_status: ServeStatusUnreadable,
+      serve_route: none,
+      acl_policy: operator_tailscale_acl_policy,
+    ),
+    authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+  }
+}
+
 fn roadmap_serve_respond_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   method_label: String,
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
@@ -970,11 +1627,16 @@ fn roadmap_serve_respond_over(
             plan: plan,
             daily_body: daily_body,
             sel: serve_select_route(table: t, method: m, path: path),
+            cookie_header: cookie_header,
             request: ServeHttpRequest {
               method: m,
               path: path,
               body: body,
-              identity: tailnet_identity_of(header_value: tailscale_identity),
+              security: roadmap_serve_request_security(
+                instance: instance,
+                tailscale_identity: tailscale_identity,
+                cookie_header: cookie_header,
+              ),
             },
             release_revision: release_revision,
           )
@@ -988,16 +1650,18 @@ fn roadmap_serve_respond_for_instance(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_over(
     instance: instance,
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method_label: method_label,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
@@ -1007,6 +1671,7 @@ fn roadmap_serve_respond(
   path: String,
   body: String,
   tailscale_identity: String,
+  cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
   roadmap_serve_respond_for_instance(
@@ -1015,23 +1680,31 @@ fn roadmap_serve_respond(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    cookie_header: cookie_header,
     release_revision: release_revision,
   )
 }
 
-// THE IDENTITY ARGUMENT, and why it arrives as one named value rather than a header bag.
+// THE TAILSCALE_HEADER ARGUMENT — the raw Tailscale-User-Login string — and why it still arrives
+// as one named value rather than a header bag.
 //
 // `tailscale serve` authenticates the tailnet device and user before proxying, and injects the
-// resulting login. It is threaded through the entry rather than read at the handler because there
-// is exactly one entry, and a fact every route may need to consult belongs on the request that
-// reaches them all; handlers that do not need it ignore it.
+// resulting login. UNDER THE 2026-09-25 RULING THAT LOGIN IS TRANSPORT METADATA, never
+// application identity: it is one INPUT to the access-path modeling (which vouches for it only
+// behind a serve-status readback and the ACL revision), and the request-security context carries
+// it strictly separate from the authentication evidence. A signed capability establishes WHAT
+// is being decided; the Google OIDC session establishes WHO is deciding; the tailnet
+// observation, where attributed, is the audit trail the consent record may name.
 //
-// NO ROUTE IN THIS TABLE CURRENTLY CONSULTS IT. The routes that did -- the approval pair, where an
-// authenticated login is what makes a leaked capability useless to whoever it leaked to -- moved to
-// gunbc.auth.approval_broker_serve, which populates its own request from the same header. The
-// argument stays because the header is a fact about every request this entry receives rather than
-// about the routes that happened to read it, and a serving entry that dropped it would have to
-// re-earn it for the next route that needs an authenticated caller.
+// It is threaded through the entry rather than read at the handler because there is exactly one
+// entry, and a fact every route may need to consult belongs on the request that reaches them all.
+// Handlers that do not need it ignore it; the write routes consult the write law, which refuses
+// on the authentication axis until a Google session arrives at the seam.
+//
+// THE APPROVAL ROUTES NO LONGER READ IT HERE. They moved to gunbc.auth.approval_broker_serve,
+// which populates its own request from the same header; the argument stays because the header is
+// a fact about every request this entry receives rather than about the routes that happened to
+// read it.
 //
 // THE PLAN AUTHORITY IS THE PARAMETER, AND A SERVE ENTRY IS THE WHOLE INTEGRATION.
 //
@@ -1051,24 +1724,29 @@ fn roadmap_serve_respond(
 // stays unaware of who calls it and needs no edit when another one does.
 fn roadmap_serve_handle_over(
   instance: HostDashboardInstance,
-  plan: RoadmapAuthorityProjection,
+  plan: fn() -> RoadmapAuthorityProjection,
   daily_body: ServedDailyBodyAuthority,
   method: String,
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond_over(
-    instance: instance,
-    plan: plan,
-    daily_body: daily_body,
-    method_label: method,
-    path: path,
-    body: body,
-    tailscale_identity: tailscale_identity,
-    release_revision: release_revision,
-  ))
+  match serve_request_header_reading(headers: request_headers, name: "cookie") {
+    ServeRequestHeaderRepeated { occurrences: _ } =>
+      serve_wire_response(r: serve_text_response(status: 400, content_type: text_plain_utf8, body: "bad request: duplicate cookie header\n"))
+    ServeRequestHeaderAbsent =>
+      serve_wire_response(r: roadmap_serve_respond_over(
+        instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
+        tailscale_identity: tailscale_identity, cookie_header: "", release_revision: release_revision,
+      ))
+    ServeRequestHeaderSingle { value: cookie_header } =>
+      serve_wire_response(r: roadmap_serve_respond_over(
+        instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
+        tailscale_identity: tailscale_identity, cookie_header: cookie_header, release_revision: release_revision,
+      ))
+  }
 }
 
 fn roadmap_serve_handle(
@@ -1076,16 +1754,18 @@ fn roadmap_serve_handle(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_live_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1102,16 +1782,18 @@ fn roadmap_serve_handle_macbook_local(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: macbook_local_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1121,16 +1803,18 @@ fn roadmap_serve_handle_srv1_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv1_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1140,16 +1824,18 @@ fn roadmap_serve_handle_srv2_preview(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1162,16 +1848,18 @@ fn roadmap_serve_handle_srv2_deploy(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_deploy_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
 }
@@ -1181,16 +1869,194 @@ fn roadmap_serve_handle_srv2_lab(
   path: String,
   body: String,
   tailscale_identity: String,
+  request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_lab_dashboard_instance(),
-    plan: roadmap_authority_projection(history: roadmap_acceptance_event_history_load()),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: method,
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    request_headers: request_headers,
     release_revision: release_revision,
   )
+}
+
+// ── GET /auth/session ──────────────────────────────────────────────────────────────────────────
+// THE SESSION READ: the standing the seam decoded, rendered as JSON — the authenticated
+// principal's label and expiry for a live session, the invalid standing's reason for anything
+// else, anonymous for absence. THE PROFILE rides the wire as OPTIONAL MEMBERS: the picture is
+// emitted only when the seated session's login projected one (the verified ID token's picture
+// claim, stored at login and re-read from the session file), so the client renders the Google
+// PFP when present and the initials fallback when absent; the name is the same shape (the
+// verified token's name claim), so the header greets the operator's display name and falls
+// back to the principal label's short form. Both are presentation only, never an input to
+// identity or authorization, and a read renders; it never decides.
+fn auth_session_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  serve_text_response(
+    status: 200,
+    content_type: application_json_utf8,
+    body: auth_session_body(evidence: request.security.authentication),
+  )
+}
+
+// THE SESSION STANDING READS THE DURABLE PROJECTION (Cut B): the header displays the profile the
+// projection carries, not a freshly parsed session wire, so merge-retained members cannot be
+// silently reverted by a login that omitted a claim. The session stays the identity authority;
+// the projection is the display authority; a member the projection does not hold falls back to
+// the session's. The roster's degradation standing (unreadable store, skipped records) is
+// reported as data -- a missing-looking avatar must not read as 'nobody published'.
+fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  serve_text_response(
+    status: 200,
+    content_type: application_json_utf8,
+    body: auth_session_body_over(roster: roster, evidence: request.security.authentication),
+  )
+}
+
+fn auth_session_roster_standing_members(roster: ProfileStoreReadAll) -> List<JsonValue> {
+  let unreadable = [ json_kv(key: "profile_standing", value: json_string(s: "profile store unread; session profile only")) ] as List<JsonValue>
+  let partial = [ json_kv(key: "profile_standing", value: json_string(s: "one or more profile records unreadable; the affected members render their fallback")) ] as List<JsonValue>
+  match roster {
+    ProfileStoreUnread { step: _, reason: _ } => unreadable
+    ProfileStoreRead { profiles: _, skipped } =>
+      if count(skipped) == 0 {
+        [] as List<JsonValue>
+      } else {
+        partial
+      }
+  }
+}
+
+fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenticationEvidence) -> String {
+  serialize_json(v: json_object(members: match evidence {
+    GoogleOidcSession { session } => {
+      let found = match roster {
+        ProfileStoreRead { profiles, skipped: _ } =>
+          filter(profiles, p => principal_ref_eq(a: p.principal, b: session.principal)).first()
+        ProfileStoreUnread { step: _, reason: _ } => none
+      }
+      let name = match found {
+        Present { value: stored } => match stored.name {
+          Present { value: n } => Present { value: n }
+          Absent => session.profile.name
+        }
+        Absent => session.profile.name
+      }
+      let email = match found {
+        Present { value: stored } => match stored.email {
+          Present { value: e } => Present { value: e }
+          Absent => session.profile.email
+        }
+        Absent => session.profile.email
+      }
+      let picture = match found {
+        Present { value: stored } => match stored.picture {
+          Present { value: u } => Present { value: u }
+          Absent => session.profile.picture
+        }
+        Absent => session.profile.picture
+      }
+      concat([
+        json_kv(key: "authenticated", value: json_bool(b: true)),
+        json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+        json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+        json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+      ], concat(auth_session_picture_members(picture: picture), concat(auth_session_name_members(name: name), concat(auth_session_email_members(email: email), auth_session_roster_standing_members(roster: roster)))))
+    }
+    SessionStandingInvalid { standing } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    AuthAbsent => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+  }))
+}
+
+// THE OPTIONAL PICTURE MEMBER of the session wire: present only when the session's profile
+// projected one — absence is the member's ABSENCE, never an empty string standing in for none,
+// and the client reads absence (like a failed fetch) as the initials fallback, never an
+// identity claim from a hole in the wire.
+fn auth_session_picture_members(picture: Uri?) -> List<JsonValue> {
+  match picture {
+    Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
+// never an empty string standing in for none.
+fn auth_session_name_members(name: String?) -> List<JsonValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, the same law as the name: absence is the member's ABSENCE.
+fn auth_session_email_members(email: Email?) -> List<JsonValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
+    Absent => []
+  }
+}
+
+fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
+  serialize_json(v: json_object(members: match evidence {
+    GoogleOidcSession { session } => concat([
+      json_kv(key: "authenticated", value: json_bool(b: true)),
+      json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
+      json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ], concat(auth_session_picture_members(picture: session.profile.picture), concat(auth_session_name_members(name: session.profile.name), auth_session_email_members(email: session.profile.email))))
+    SessionStandingInvalid { standing } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
+    AuthAbsent => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
+      json_kv(key: "viewer", value: json_string(s: "")),
+    ]
+  }))
+}
+
+// Session-dependent HTML; its no-store header moved to the OAuth follow-up with the response-header channel.
+fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_css())
+}
+
+// The response over a supplied roadmap stylesheet: the session and header decisions do not read the
+// stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
+// allocation_page_with_stylesheet).
+fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
+  let signed_in = match request.security.authentication {
+    GoogleOidcSession { session: _ } => true
+    AuthAbsent => false
+    SessionStandingInvalid { standing: _ } => false
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+  }
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
+    EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
+    EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
 }

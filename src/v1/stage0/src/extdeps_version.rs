@@ -6,6 +6,7 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
+pub use crate::std_types::brand;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

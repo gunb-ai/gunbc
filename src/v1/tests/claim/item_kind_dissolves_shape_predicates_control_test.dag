@@ -39,7 +39,7 @@ fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Node {
     params: [], inferred: none, return_cardinality: Required, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
-    module_item_kind: kind, declaration_marker: Unmarked, expr_data: NoExprData
+    module_item_kind: kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 
@@ -50,7 +50,7 @@ fn structured_item(kind: ParsedModuleItemKind) -> Node {
     params: [], inferred: none, return_cardinality: Required, uses: [],
     body: none, transport: none, properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none,
-    module_item_kind: kind, declaration_marker: Unmarked, expr_data: NoExprData
+    module_item_kind: kind, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
 }
 

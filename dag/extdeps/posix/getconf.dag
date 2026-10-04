@@ -1,7 +1,8 @@
 module extdeps.posix.getconf
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -35,15 +36,16 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // fleet runs (the kernel's USER_HZ), and that fact is deliberately NOT written here as a constant: a
 // reader that divides by a number it did not measure is asserting as deduced what it only inferred
 // (DESIGN 4d), and the cost of measuring is one argv on a transport the reader already holds.
-data getconf_program: NonEmptyStr = "getconf"
+fn getconf_program() -> ProgramIdentity = uncataloged_program(invocation: "getconf")
 
 // The ClockTicksPerSecond operation below, as a command for the command transport.
 fn getconf_clock_ticks_command() -> ArgvCommand {
-  argv_command(program: getconf_program, arguments: ["CLK_TCK"])
+  argv_command(program: getconf_program(), arguments: ["CLK_TCK"])
 }
 
 service posix.Getconf {
   operation ClockTicksPerSecond {
+    requires none
     input {}
     output {
       value: String from "stdout"

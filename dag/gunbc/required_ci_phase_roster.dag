@@ -74,6 +74,7 @@ type RequiredCiPhase
   | RegenFixedPointPhase
   | FloorPhase
   | PrimitiveRuntimeBodyPhase
+  | BareReferenceAdmissionPhase
 
 // TWO NAMED ARMS, NEVER A WIDENED PATH PREDICATE. A path that neither authority owns is in
 // neither arm; inability to produce either arm refuses GeneratedArtifactPhase. The registry arm
@@ -119,6 +120,7 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     RegenFixedPointPhase => "regen-fixed-point"
     FloorPhase => "floor"
     PrimitiveRuntimeBodyPhase => "primitive-runtime-body"
+    BareReferenceAdmissionPhase => "bare-reference-admission"
   }
 }
 
@@ -131,6 +133,7 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     RegenFixedPointPhase => BuildLane
     FloorPhase => WitnessesLane
     PrimitiveRuntimeBodyPhase => WitnessesLane
+    BareReferenceAdmissionPhase => WitnessesLane
   }
 }
 
@@ -138,11 +141,19 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
 // list is declared and not enrolled -- representable on purpose, because that is what a deliberate
 // un-enrolment (a bankruptcy) looks like, and it must be a visible row edit here, not a silent host
 // edit. The per-run host join keeps the two from diverging silently in either direction.
+// BareReferenceAdmissionPhase:
+// THE WHOLE-POOL BARE-REFERENCE OBLIGATION, judged on every required run. An entry resolve
+// judges only the files its closure reaches (#12419 decision comment 5857893764); the pool is
+// judged here, over the same per-file predicate, on the same process-shared index the floor
+// then prepares from -- so it adds no second pool reading. Its own phase rather than a line
+// inside the floor's preparation, because a phase is what the lane roster joins and the ran-set
+// check requires to have executed: removing or skipping it makes the witnesses lane refuse.
 data required_ci_phases: List<RequiredCiPhase> = [
   ParsePhase,
   PrimitiveRuntimeBodyPhase,
   GeneratedArtifactPhase,
   RegenFixedPointPhase,
+  BareReferenceAdmissionPhase,
   FloorPhase,
 ]
 

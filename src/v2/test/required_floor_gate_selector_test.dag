@@ -3,14 +3,13 @@ module v2.test.required_floor_gate_selector
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
-  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedNoCiWetLane, DeclinedChangedWitnessOutsideDiscovery,
   DeclinedCostDebt,
   required_floor_site_disposition,
   RequiredGateSelector, GateModuleFamily, GateAuthoredModule,
   RequiredGateMatch, GateUnmatched, GateMatched,
   first_required_gate_match, required_gate_selectors,
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -36,6 +35,8 @@ fn site_is_planned(module_path: String) -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedNoCiWetLane { pattern: _ } => false
+    DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => false
     PlannedAsChangedWitness => false
   }
 }

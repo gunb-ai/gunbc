@@ -1,6 +1,7 @@
 module test.claim.host_effect_plan_witness
 
 import std.logic { Bool }
+import std.algebra { Empty }
 import gunbc.host_effect {
   HostEffect,
   NodeControlPlane, HostOs,

@@ -5,13 +5,12 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.reference_deps { reference_deps_ingest_source_text, reference_sites_from_parsed_module }
 import v2.std.algebra { fold_list }
+import std.types { list_length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -20,23 +19,19 @@ import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// TWO SITE ENUMERATORS STAND, AND THIS FILE MEASURES WHERE THEY DISAGREE, SO THAT THE OLDER ONE IS
-// NOT DELETED ON A CLAIM OF EQUIVALENCE (side-chat ruling on gunbc#11582, finding 3).
+// THE COLLECTOR'S SITES OVER ONE FIXTURE, CELL BY REFERENCE POSITION.
 //
-// v2.lens.reference_deps reference_sites_from_parsed_module walks the PARSE tree and keys on the
-// ^dag_surface_qualified_name production, so it sees a qualified name wherever that production
-// survives -- including a record FIELD type. v2.compiler.reference_site_collector walks the
-// NORMALIZED tree the resolver consumes, and since the dotted-reference lowering it sees a
-// qualified body reference and a qualified PARAMETER type -- but not a qualified FIELD type,
-// because v2.compiler.namespace_graft never rehomes a type declaration into the containment
-// tree (the declaration-grafting loss, v2.test.claim.namespace_xl0.field_type_tree_presence).
-//
-// The lens's dissolution row (reference_deps_dissolve_on) therefore stays PENDING: the collector
-// is the single authority for the classes it covers, and the deletion of the parse walker waits on
-// an identity-grain site-set comparison being EMPTY across every reference position. This file is
-// the first cell of that comparison, and the disagreement row below reds -- and is re-stated --
-// when the graft lands and the collector sees the field type.
-data qsd_source: String = "module v2.test.qsd_subject\n\nimport v2.std.logic { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n"
+// This file stood as a DIFFERENTIAL between two site enumerators: v2.lens.reference_deps
+// reference_sites_from_parsed_module over the PARSE tree, and v2.compiler.reference_site_collector
+// over the NORMALIZED tree the resolver consumes. The comparison found the collector a superset:
+// both saw a qualified parameter type and a qualified field type, and only the collector saw a
+// dotted callee and a qualified call argument, because the parse walker had no postfix handling
+// (gunbc.recurring_failure_mode reference_reader_without_postfix_handling_drops_call_sites). The
+// parse walker was deleted on that evidence (replacement migration, DESIGN section 3), and these
+// cells remain as the collector's regression controls (DESIGN section 4b(4)): each reds if the
+// collector loses its site, and the call cells red if the collector mislocates a site or emits an
+// extra one inside the call.
+data qsd_source: String = "module v2.test.qsd_subject\n\nimport std.types { Bool }\n\ntype QsdWrapper { fld: v2.test.qsd_provider.QsdFieldType }\n\nfn qsd_param(p: v2.test.qsd_provider.QsdParamType) -> Bool { true }\n\nfn qsd_call() -> Bool { v2.test.qsd_provider.qsd_callee(x: v2.test.qsd_provider.qsd_argument) }\n"
 
 data qsd_field_spelling: String = "v2.test.qsd_provider.QsdFieldType"
 
@@ -59,10 +54,6 @@ fn qsd_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
   module_roots_from_source_root_ingest(ingest: qsd_ingest, lm: dag_language_model())
 }
 
-fn qsd_parsed() -> Outcome<Node> {
-  reference_deps_ingest_source_text(source_text: qsd_source, file: ^qsd_subject_parse)
-}
-
 fn collector_sees(spelling: String) -> Bool {
   match qsd_normalized() {
     Rejected { diagnostics: _ } => false
@@ -75,30 +66,66 @@ fn collector_sees(spelling: String) -> Bool {
   }
 }
 
-fn parse_walker_sees(spelling: String) -> Bool {
-  match qsd_parsed() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: root, diagnostics: _ } =>
-      match reference_sites_from_parsed_module(module_root: root) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: sites, diagnostics: _ } =>
-          fold_list(
-            xs: sites,
-            empty: false,
-            cons: fn(acc, qn) { acc || qualified_name_to_dotted_string(qn: qn) == spelling }
-          )
-      }
+fn qsd_sites() -> FreeMonoid<String> {
+  match qsd_normalized() {
+    Rejected { diagnostics: _ } => Empty
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: collect_reference_sites(roots: normalized_tree_roots_to_nodes(roots: roots)).sites,
+        empty: Empty,
+        cons: fn(acc, site) {
+          Cons {
+            head: concat(concat(qualified_name_to_dotted_string(qn: site.position), " @ "), qualified_name_to_dotted_string(qn: site.spelling)),
+            tail: acc
+          }
+        }
+      )
   }
 }
 
-// AGREEMENT CELL: a qualified parameter type is seen by both enumerators.
-test fn both_enumerators_see_a_qualified_parameter_type_holds() -> Bool {
-  parse_walker_sees(spelling: qsd_param_spelling) && collector_sees(spelling: qsd_param_spelling)
+// The containment chain of qsd_call's body as the collector records it: the module, the
+// declaration graft's projection edge, the declaration, then the arrow's body edge.
+data qsd_call_body_position: String = "v2.test.qsd_subject.grammar_production_captured_node_projection.v2.test.qsd_subject.qsd_call.arrow_body_edge"
+
+data qsd_callee_row: String = "v2.test.qsd_subject.grammar_production_captured_node_projection.v2.test.qsd_subject.qsd_call.arrow_body_edge @ v2.test.qsd_provider.qsd_callee"
+
+data qsd_argument_row: String = "v2.test.qsd_subject.grammar_production_captured_node_projection.v2.test.qsd_subject.qsd_call.arrow_body_edge.x @ v2.test.qsd_provider.qsd_argument"
+
+fn qsd_call_body_rows() -> FreeMonoid<String> {
+  fold_list(
+    xs: qsd_sites(),
+    empty: Empty,
+    cons: fn(acc, row) {
+      if starts_with(s: row, prefix: qsd_call_body_position) { Cons { head: row, tail: acc } } else { acc }
+    }
+  )
 }
 
-// DISAGREEMENT CELL, MEASURED: the parse walker sees the qualified field type; the collector does
-// not, because the record declaration never reaches the normalized tree. This is the row that
-// keeps the parse walker alive, and it reds when declaration grafting lands.
-test fn only_the_parse_walker_sees_a_qualified_field_type_today() -> Bool {
-  parse_walker_sees(spelling: qsd_field_spelling) && !collector_sees(spelling: qsd_field_spelling)
+fn qsd_call_body_has_exactly(row: String) -> Bool {
+  let rows = qsd_call_body_rows()
+  list_length(items: rows) == 2
+    && fold_list(xs: rows, empty: false, cons: fn(acc, r) { acc || r == row })
+}
+
+// A qualified parameter type reaches the collector.
+test fn collector_sees_a_qualified_parameter_type_holds() -> Bool {
+  collector_sees(spelling: qsd_param_spelling)
+}
+
+// A qualified field type reaches the collector. It stood as a measured disagreement until
+// declaration grafting (gunbc#11574) carried the record declaration into the normalized tree.
+test fn collector_sees_a_qualified_field_type_holds() -> Bool {
+  collector_sees(spelling: qsd_field_spelling)
+}
+
+// EXACT SITE SET, CALLEE: qsd_call's body carries exactly two sites, and the dotted callee is one,
+// whole, at the body edge itself.
+test fn collector_sees_exactly_the_dotted_callee_site_holds() -> Bool {
+  qsd_call_body_has_exactly(row: qsd_callee_row)
+}
+
+// EXACT SITE SET, ARGUMENT: qsd_call's body carries exactly two sites, and the qualified argument is
+// one, whole, under its argument label x.
+test fn collector_sees_exactly_the_call_argument_site_holds() -> Bool {
+  qsd_call_body_has_exactly(row: qsd_argument_row)
 }

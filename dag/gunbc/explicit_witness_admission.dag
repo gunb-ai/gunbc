@@ -194,11 +194,27 @@ data known_red_class_note: String = "WHAT A KNOWN-RED ADMISSION IS: a witness re
 
 data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
   known_red_probe(
-    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
-    f: "w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses",
+    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    f: "ml_an_elaborated_map_infers_holds",
     kind: CorpusWitnessKind,
     budget: FastLaneEvalBudget,
-    reason: "THE DISCRIMINATING RED FOR A LIVE FLOOR HOLE, enrolled red because the defect is live rather than because it is new. A branded where-refinement value (HostIdentity, which is NonEmptyStr where brand(...)) passed at an ordinary product formal (Box) reaches NO refusal at the direct call argument seam, so a value of an unrelated constructor is admitted in silence at a declared position -- the DESIGN 4b floor sentence `values inhabit declared types`. The two chains share nothing, which makes this the STRONGER incompatibility: pairs whose chains merely MEET are at least reported undecidable, while this one mints a positive inhabitance claim. ATTRIBUTION IS MEASURED ON BOTH SIDES, NOT ASSERTED, and it is PRE-EXISTING rather than introduced: the same control over the same fixtures and the same corpus, run against two compilers differing only in the three stage0 infer mirrors, evaluates false under BOTH main`s mirrors and the candidate`s. It was surfaced by review 62172 as a consequence of a where-refinement exclusion in the nominal-product arm, and that attribution does not survive the measurement -- removing the exclusion does not change the result, because the product arm was not making the refusal the exclusion was thought to suppress. The assertion RUNS and returns false, so the expectation is ExpectAssertionFalse and not a pre-verdict refusal; the fixtures resolve cleanly. Owner: the declared-type inhabitance lane.",
+    reason: "map arm control: a well-typed elaborated map infers. RED beyond the map arm: measured with gunbc#12760 merged, infer refuses infer_grounding_not_derived located (NodeLocus) at the MapIntroductionEntry { .. } construct, identically for the HEADED spelling and under Map<String, Int>. The discriminating specimen ml_a_same_module_generic_entry_construct_infers_holds (generic record declared in the same module) refuses the same way, so this is neither cross-module declaration reading (#12726 PR2) nor the v2 Bool fork. Owner: smart-newt-725 (record construct typing, #12763 lineage), per quiet-gull-780.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "src/v2/test/claim/body_lowering/map_literal_test.dag",
+    f: "ml_a_same_module_generic_entry_construct_infers_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "the discriminating specimen for ml_an_elaborated_map_infers_holds: LocalEntry<K, V> and local_from_entries declared beside the data decl, so no cross-module declaration is read; infer refuses infer_grounding_not_derived at the LocalEntry { .. } construct (measured with gunbc#12760 merged; without it, unbound String refuses first). Owner: smart-newt-725.",
+    dissolution: unbound_dissolution(description: "infer grounds a construct of a generic record whose type arguments come only from its expected type (callee parameter or list element): this witness greens and the row deletes in that change")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness_test.dag",
+    f: "w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "RE-ENROLLED ON THE RESIDUAL BY gunbc#12695: the original HostIdentity-at-Box specimen below now refuses through the produced-side refinement peel in kernel_value_declared_type_mismatch (its chain bottoms out in kernel String), so that witness is a permanent regression control; this row's TRIGGER DID NOT FIRE, and the enrolled RED is now a brand refinement over a PRODUCT (Tagged = Other where brand) at Box, measured admitted (0 refusals vs 1 for plain Other). The original text follows. THE DISCRIMINATING RED FOR A LIVE FLOOR HOLE, enrolled red because the defect is live rather than because it is new. A branded where-refinement value (HostIdentity, which is NonEmptyStr where brand(...)) passed at an ordinary product formal (Box) reaches NO refusal at the direct call argument seam, so a value of an unrelated constructor is admitted in silence at a declared position -- the DESIGN 4b floor sentence `values inhabit declared types`. The two chains share nothing, which makes this the STRONGER incompatibility: pairs whose chains merely MEET are at least reported undecidable, while this one mints a positive inhabitance claim. ATTRIBUTION IS MEASURED ON BOTH SIDES, NOT ASSERTED, and it is PRE-EXISTING rather than introduced: the same control over the same fixtures and the same corpus, run against two compilers differing only in the three stage0 infer mirrors, evaluates false under BOTH main`s mirrors and the candidate`s. It was surfaced by review 62172 as a consequence of a where-refinement exclusion in the nominal-product arm, and that attribution does not survive the measurement -- removing the exclusion does not change the result, because the product arm was not making the refusal the exclusion was thought to suppress. The assertion RUNS and returns false, so the expectation is ExpectAssertionFalse and not a pre-verdict refusal; the fixtures resolve cleanly. Owner: the declared-type inhabitance lane.",
     dissolution: unbound_dissolution(description: "the declared-type inhabitance judgment's FINAL DEFAULT stops accepting: Inhabits for an identity-established pair requires a NAMED POSITIVE COMPATIBILITY AUTHORITY -- there is no implicit accepting residual -- sufficient for the HostIdentity-at-Box specimen to refuse. THE GRAIN IS DELIBERATE, because the obvious phrasing is a FALSE TRIGGER: `refuses every pair whose refinement chains are disjoint` is BROADER THAN THE DEFECT and would license an OVER-REFUSING repair, since disjointness is not itself evidence of incompatibility. The defect is the accepting residual at the final default, which is what this trigger names. It is the capability and not any artifact contributing to it: neither a control existing nor a diagnostic variant being declared retires this row. When that refusal lands, this witness greens with no edit to it and this admission row deletes in the same change, promoting the control to an ordinary permanent regression control for the disjoint case")
   ),
   known_red_probe(
@@ -280,14 +296,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: FastLaneEvalBudget,
     reason: "THE DISCRIMINATING RED FOR #8592 (v1 infer: use each method arg's own declared parameter type, not the receiver's element_type), red on main for a reason that is not this fix's defect: the witness host builtin compile_dag_rust_emit_check executes the COMPILED stage0 mirror, and the fix lives in src/v1/04_infer.dag and src/v1/04_lookup.dag (declared_arg_types_for_method) authority only. Measured directly at 98d7147f9e (BuildBuddy 1047f203) by building gunbc from both 98d7147f9e and its parent and running each on the discriminating fixture (List<NonEmptyStr>.get called with a NonEmptyStr where the declared contract requires Int): BOTH binaries compile the fixture clean with zero diagnostics of any severity, byte-identical emitted output. grep on src/v1/stage0/src/v1_compiler_infer.rs confirms declared_arg_types_for_method appears in ZERO stage0 .rs files, and the pre-fix scalar_shaped_builtin_method_arg_type whitelist function is still present and still called — the #8592 commit touched only .dag authority plus 38 unrelated lines in required_regen_host.rs, and its own commit message records that required-regen's v2 self-compile refused with 11 source-annotation diagnostics, blocking the mirror regen for this exact change. This row is therefore NOT a feature gap in the fix; it is the identical authority/mirror gap independently found and quarantined the same day for the where-refinement wall — owned by the required-regen lane. THAT PRECEDENT ROW HAS SINCE DISSOLVED (2026-08-20): its 04_infer mirror was regenerated on gunbc#8619 and the row deleted in that same change, per its own trigger, so this sentence no longer names it as a live row. The precedent stands as a recorded instance of the class, not as a citation a reader can resolve. The witness function itself is written to assert the CORRECTED behavior (compile_dag_rust_emit_check must refuse) so that regenerating the mirror greens it with no edit; today, run against the committed (unmirrored) binary, it evaluates false because the ill-typed call is silently accepted. COVERAGE, checked rather than assumed (2026-08-20, per deep-ant-102): this witness's module (test.claim.method_arg_declared_contract_witness_test) is NOT under dag/test/claim/long/ and matches none of the required floor's long-home exclusion prefixes, so it IS discovered and executed by the required floor regardless of cadence — unlike the where-refinement precedent's witness file dag/test/claim/long/where_refinement_enforcement_witness_test.dag, which sits under that excluded directory and is discovered nowhere (the row itself is gone as recorded above; the fact was always about the FILE's home, and that home is unchanged by the row's dissolution). That floor execution is the row's real, present protection. Separately, this row's cadence field (QuarantineProbeExpectRed, from known_red_probe) also names it for the periodic falsifier re-probe cadence, whose consumer (falsifier.yml) was deleted in the 2026-08-15 floor cut and is not yet re-added — so the cadence tag should not be read as implying that second, currently-inert consumer.",
     dissolution: unbound_dissolution(description: "the 04_infer and 04_lookup stage0 mirrors are regenerated so the compiled harness contains declared_arg_types_for_method — this row deletes in that same change, promoting the unchanged witness to ordinary DiscoverySelection as the permanent regression control for #8572/#8579/#8592 (infer method args against the declared param contract, never the receiver element type)")
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_ingest_round_trip_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
-    dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
@@ -465,14 +473,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     reason: "Admitted RED whose cited boundary NO LONGER EXISTS: gunbc#10245 replaced the witness entry import closure with a caller-declared pool, so the population is exactly origin_probe_subject_files, and run_direct_rust_door_emit_write_compile_smoke lives in dag/test/claim/direct_rust_door_write_compile_witness_test.dag, which that subject does not name. The cause is the declared subject and is decidable by reading it; it is neither the marshal nor the reachability horizon. Owner: witness-evidence-lifecycle lane.",
     dissolution: unbound_dissolution(description: "a population authority enumerates fn-arrow declarations repository-wide within this lane's budget, so the direct-door smoke declaration is in the probe's subject without the witness naming its file one by one; this witness greens and this row deletes. Naming that one file in origin_probe_subject_files would also green it and is NOT the trigger: it would green the row without the capability the row stands for")
   ),
-  known_red_probe(
-    entry: "dag/test/claim/file_hold_plan_refusal_probe_witness_test.dag",
-    f: "the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "RED ON THIS STACK FOR A MAIN-WIDE COMPILER DEFECT, NOT FOR THE HOLD STORE. The claim asserts a census of the hold-store harness has zero blocking rows. Bisected to 9945e9268f1 (its parent is clean): cas_slot_keys began importing std.decimal, whose closure reaches std.measure through std.bytes and std.integer, and the census's measured compile (gunbc.type_ref_hit_ne_bind_measure) charges std.measure's own unit variants, passed as phantom type arguments in Measure<Memory, One, Nat>, as missing imports -- 38 blocking UnresolvedType rows here, and 147 for a source importing std.measure alone on plain main. The unmeasured resolve admits the same leaves, so the two routes of one compiler disagree; the measure is the wrong side. Kept enrolled rather than deleted or loosened: it is the discriminating red that shows the census is not yet fit for any closure reaching std.measure.",
-    dissolution: unbound_dissolution(description: "the measured compile's binding authority (v1.compiler.infer_env type_ref_measure_binding_authority) treats a zero-payload variant as bound exactly when the observed unit_variant_index keys it, and its regenerated stage0 mirror is what claim_batch executes -- SUFFICIENT FOR a census whose closure reaches std.measure to report zero blocking UnresolvedType rows for std.measure's own unit variants. Delivered by gunbc#12132; this row deletes when #12132 is merged into this branch and the claim reads green."),
-  ),
   source_root_ingest_gate_admitted_witness(
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
     f: "compiler_closure_scoped_ingest_module_count_ok_holds",
@@ -649,7 +649,15 @@ fn explicit_witness_admission_substrate_long_lane_roster() -> List<ScheduleWitne
     f: fn(acc, row) {
       match row.cadence {
         FalsifierSubstrateLongLane => Cons { head: row.witness, tail: acc }
-        _ => acc
+        DiscoverySelection => acc
+        FalsifierSelfHostWet => acc
+        FalsifierRehomedBinWet => acc
+        BinWitnessWet => acc
+        LocalRepoWetLane => acc
+        QuarantineProbeExpectRed => acc
+        OfflineLocalRecipe => acc
+        FixtureExplicitRoster => acc
+        NoConsumer => acc
       }
     }
   ))
@@ -960,7 +968,13 @@ fn explicit_witness_admission_well_formed(row: ExplicitWitnessAdmission) -> Bool
               QuarantineProbeExpectRed => true
               FalsifierSubstrateLongLane => true
               BinWitnessWet => true
-              _ => false
+              DiscoverySelection => false
+              FalsifierSelfHostWet => false
+              FalsifierRehomedBinWet => false
+              LocalRepoWetLane => false
+              OfflineLocalRecipe => false
+              FixtureExplicitRoster => false
+              NoConsumer => false
             }))
 }
 

@@ -1,8 +1,7 @@
 module v2.workflow.floor_subject_seed
 
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
+import v2.std.algebra { any, filter, length }
 
 // WHY A MODULE IS IN THE REQUIRED FLOOR'S PREPARED SUBJECT, one ground per seed.
 //
@@ -40,6 +39,7 @@ type PreparedSubjectSeedGround
   | SeedChangedWitnessModule { module_path: String }
   | SeedLocalRepoWetSchedule { module_path: String }
   | SeedTouchedEntryModule { path: String, module_path: String }
+  | SeedCheckerSourceChanged { changed_checker_path: String, module_path: String }
   | SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: String
       changed_declaration: String
@@ -276,6 +276,7 @@ fn seed_ground_wire_name(ground: PreparedSubjectSeedGround) -> String {
     SeedChangedWitnessModule { module_path: _ } => "SeedChangedWitnessModule"
     SeedLocalRepoWetSchedule { module_path: _ } => "SeedLocalRepoWetSchedule"
     SeedTouchedEntryModule { path: _, module_path: _ } => "SeedTouchedEntryModule"
+    SeedCheckerSourceChanged { changed_checker_path: _, module_path: _ } => "SeedCheckerSourceChanged"
     SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
@@ -298,6 +299,7 @@ fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
     SeedChangedWitnessModule { module_path: _ } => false
     SeedLocalRepoWetSchedule { module_path: _ } => false
     SeedTouchedEntryModule { path: _, module_path: _ } => false
+    SeedCheckerSourceChanged { changed_checker_path: _, module_path: _ } => false
     SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: _,
       changed_declaration: _,
@@ -305,4 +307,186 @@ fn seed_ground_is_textual_prefix(ground: PreparedSubjectSeedGround) -> Bool {
       binding: _,
     } => false
   }
+}
+
+// THE CHECKER IS A DEPENDENCY OF EVERY MODULE IT JUDGES. A module's Strict verdict is a function
+// of two inputs: its own .dag closure and the checker that reads it. Every other ground in this
+// module is keyed to the first input, so a change to the second reached no module at all. The
+// host treated a changed non-.dag path as structural-empty for the .dag frontier, which is true
+// of the frontier and false of the verdict. RECEIPT: gunbc#12441 (7299157) added a check to the
+// seed's infer (v1_compiler_infer.rs) that refuses a distinct type argument of one generic
+// coproduct at a declared return. Its landing run 36641740799 prepared 2342 of 7028 admitted
+// modules and left out v2.test.claim.type_param_binder_frame, which the new check refuses. That
+// module had been prepared green on gunbc#12432's own landing run 36585500472, so the red entered
+// main with the checker change and not with any .dag change. Class:
+// gunbc.recurring_failure_mode.checker_change_landing_subject_keyed_to_changed_files.
+//
+// THE EDGE IS COMPUTED, NOT GUESSED. The checker's inputs are the files its binary was compiled
+// from, which the build tool records (cargo dep-info beside the binary that runs the floor), plus
+// the build manifests that decide which of those files and crates are compiled. The host observes
+// that set; it never lists checker paths by hand, so a new infer helper, stage0 mirror or runtime
+// file enters the set by being compiled.
+//
+// THE ANSWER IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, NOT A FALLBACK (DESIGN section 5's
+// named neighbour). The observed grain is the whole binary, so an edit to any file it compiles
+// seeds every admitted module into Strict preparation. That is what the edge says at that grain,
+// and the run says which rule chose it. It is not the absorbing arm: that arm widens because
+// selection could not look. Here the one state in which the host cannot look refuses. Claims are
+// planned exactly as before; only preparation widens.
+type CheckerDependencyObservation
+  = CheckerDependenciesObserved { dependency_paths: List<String> }
+  | CheckerDependenciesUnavailable { reason: String }
+
+type CheckerSubjectRule
+  = CheckerInputsUnchanged
+  | EveryAdmittedModule { changed_checker_paths: List<String> }
+  | CheckerSubjectRefused { reason: String }
+
+fn checker_changed_paths(dependency_paths: List<String>, changed_paths: List<String>) -> List<String> {
+  filter(xs: changed_paths, predicate: fn(changed) {
+    any(xs: dependency_paths, predicate: fn(dependency) { dependency == changed })
+  })
+}
+
+// An EMPTY observed set refuses as well. A checker binary compiled from no file is an instrument
+// that failed to read its own dependency record, and treating it as "no checker input changed"
+// is the value this instrument would fail toward.
+fn checker_subject_rule(
+  observation: CheckerDependencyObservation,
+  changed_paths: List<String>,
+) -> CheckerSubjectRule {
+  match observation {
+    CheckerDependenciesUnavailable { reason: r } => CheckerSubjectRefused { reason: r }
+    CheckerDependenciesObserved { dependency_paths: deps } =>
+      if length(xs: deps) == 0 {
+        CheckerSubjectRefused {
+          reason: "the checker dependency record lists no file, so whether this change reaches the checker is unknown"
+        }
+      } else {
+        let changed = checker_changed_paths(dependency_paths: deps, changed_paths: changed_paths)
+        if length(xs: changed) == 0 {
+          CheckerInputsUnchanged
+        } else {
+          EveryAdmittedModule { changed_checker_paths: changed }
+        }
+      }
+  }
+}
+
+// THE HOST CALL. It returns the CheckerSubjectRule coproduct itself, and the host decodes that
+// by variant, so a renamed or added arm is an unknown variant the host refuses. An earlier
+// revision flattened the rule into a String tag with fields meaningful only for some tags, and
+// the host narrowed on any tag it did not recognise, which is the silent narrowing this module
+// exists to close (review 73329). `observed` is a Bool rather than an empty-string sentinel, so
+// an empty refusal reason cannot read as an observation.
+fn checker_subject_rule_from_host(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectRule {
+  if observed {
+    checker_subject_rule(
+      observation: CheckerDependenciesObserved { dependency_paths: dependency_paths },
+      changed_paths: changed_paths
+    )
+  } else {
+    checker_subject_rule(
+      observation: CheckerDependenciesUnavailable { reason: refusal_reason },
+      changed_paths: changed_paths
+    )
+  }
+}
+
+// WHETHER THE WIDENING IS APPLIED ON THE REQUIRED PATH. The edge above is modeled and decided on
+// every run. APPLYING it, meaning Strict-preparing every admitted module, was measured over the
+// per-PR runner class: gunbc#12761 on srv1 over main with gunbc#12765, 2142s wall and 43.66 GiB
+// peak against the 28 GiB class and the 30-minute line (neat-boar-16, 2026-09-30). So the widening
+// is withheld under the standing drop that already owns this loss,
+// gunbc.rung_drop.compiler_change_refusals_land_outside_every_compiled_closure, and the amendment
+// gunbc.rung_drop_amendment.checker_edge_withheld_over_the_per_pr_runner_class says why. The
+// standing names the drop it is withheld under, so the host cannot withhold without citing one,
+// and every run prints the rule it would have applied. This is a declared, bounded rung drop and not
+// an escape hatch: there is no argument, environment variable or flag that changes it, and it is
+// retired only by the drop's trigger.
+type CheckerWideningStanding
+  = WideningApplied
+  | WideningWithheldUnderDrop { drop_identity: String }
+
+data checker_widening_standing: CheckerWideningStanding = WideningWithheldUnderDrop {
+  drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
+}
+
+type CheckerSubjectApplication
+  = NarrowSubject
+  | PrepareEveryAdmittedModule { changed_checker_paths: List<String> }
+  | EveryAdmittedModuleWithheld { changed_checker_paths: List<String>, drop_identity: String }
+  | CheckerSubjectApplicationRefused { reason: String }
+
+fn checker_subject_application(
+  rule: CheckerSubjectRule,
+  standing: CheckerWideningStanding,
+) -> CheckerSubjectApplication {
+  match rule {
+    CheckerInputsUnchanged => NarrowSubject
+    CheckerSubjectRefused { reason: r } => CheckerSubjectApplicationRefused { reason: r }
+    EveryAdmittedModule { changed_checker_paths: changed } =>
+      match standing {
+        WideningApplied => PrepareEveryAdmittedModule { changed_checker_paths: changed }
+        WideningWithheldUnderDrop { drop_identity: d } =>
+          EveryAdmittedModuleWithheld { changed_checker_paths: changed, drop_identity: d }
+      }
+  }
+}
+
+// THE HOST CALLS. The floor's call applies the DECLARED standing. The route control applies an
+// explicit one, so it can show what the edge prepares once the drop's trigger fires, without the
+// floor having any way to choose its own standing.
+fn checker_subject_application_under(
+  standing: CheckerWideningStanding,
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application(
+    rule: checker_subject_rule_from_host(
+      observed: observed,
+      dependency_paths: dependency_paths,
+      refusal_reason: refusal_reason,
+      changed_paths: changed_paths
+    ),
+    standing: standing
+  )
+}
+
+fn checker_subject_application_from_host(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: checker_widening_standing,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
+}
+
+// The route control's call, with the standing the drop's retirement would declare.
+fn checker_subject_application_when_applied(
+  observed: Bool,
+  dependency_paths: List<String>,
+  refusal_reason: String,
+  changed_paths: List<String>,
+) -> CheckerSubjectApplication {
+  checker_subject_application_under(
+    standing: WideningApplied,
+    observed: observed,
+    dependency_paths: dependency_paths,
+    refusal_reason: refusal_reason,
+    changed_paths: changed_paths
+  )
 }

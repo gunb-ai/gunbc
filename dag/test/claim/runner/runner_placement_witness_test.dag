@@ -33,7 +33,10 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
     && all(hosts, h =>
         runner_count_is_the_derived_width(host: h.identity, count: h.runner_count)
           && h.runner_count <= host_memory_admitted_width(host: h.identity)
-          && h.runner_count <= host_cpu_admitted_width(host: h.identity)
+          && match host_cpu_admitted_width(host: h.identity) {
+            CpuWidthDerived { slots: n } => h.runner_count <= n
+            CpuWidthOfferAbsent { host: _ } => false
+          }
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: h.runner_count))
           && hardware_thread_count_value(t: h.build_tokens) > 0
@@ -71,7 +74,7 @@ test fn witness_sound_manifest_line_is_populated() -> Bool {
   let hosts = live_derived()
   hosts.length() > 0
         && all(hosts, h => {
-            let rendered = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+            let rendered = std.layout.render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
             starts_with(s: rendered, prefix: concat(concat("host=", h.identity), " runner_count="))
           })
 }
@@ -120,7 +123,7 @@ test fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
 test fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
   let hosts = live_derived()
   hosts.length() > 0
-    && all(hosts, h => string_contains(s: render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol), pattern: " cpu_weight=100"))
+    && all(hosts, h => string_contains(s: std.layout.render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol), pattern: " cpu_weight=100"))
 }
 
 test fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
@@ -147,15 +150,15 @@ test fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
     per_session_reservation: byte_size(4294967296),
     workload_class: InteractiveLatencySensitive,
   }
-  !(string_contains(s: render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
+  !(string_contains(s: std.layout.render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
 }
 
 test fn witness_real_manifest_fields_drive_both_formats() -> Bool {
   let hosts = live_derived()
   hosts.length() > 0 &&
       all(hosts, h => {
-        let text_out = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
-        let json_out = render(doc: serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)), proto: runner_deploy_protocol)
+        let text_out = std.layout.render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+        let json_out = std.layout.render(doc: serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)), proto: runner_deploy_protocol)
         text_out != json_out &&
           string_contains(s: text_out, pattern: concat("host=", h.identity)) &&
           string_contains(s: json_out, pattern: concat("\"host\": \"", h.identity))
@@ -353,7 +356,7 @@ test fn a_refused_host_makes_the_fleet_incomplete() -> Bool {
 }
 
 fn rendered_roster(ds: List<RunnerHostDeployment>) -> String {
-  fold(ds, init: "", f: (acc, d) => concat(acc, render(doc: manifest_host_doc(h: d), proto: runner_deploy_protocol)))
+  fold(ds, init: "", f: (acc, d) => concat(acc, std.layout.render(doc: manifest_host_doc(h: d), proto: runner_deploy_protocol)))
 }
 
 fn refused_fixture(host: HostIdentity, cause: HostRunnerDeploymentRefusal) -> HostRunnerDeploymentStanding {

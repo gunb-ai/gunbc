@@ -1,9 +1,8 @@
 module v2.workflow.wet_evidence
 
+import std.types { List }
 import v2.std.algebra { any, contains, filter, fold_list, length }
 import std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
@@ -176,6 +175,49 @@ type WetScheduledClaim {
   expectation: ClaimExpectation
 }
 
+// A HOST PREMISE: a fact about the RUNNER that a scheduled claim needs before its subject can be
+// reached at all, and that the claim neither creates nor supplies. It is declared, never inferred
+// from a failure: a premise read after the claim failed would be an excuse authored by the
+// verdict, so the executor reads it BEFORE invoking the claim and records which one it read.
+//
+// The arms name premises, not probes. How a premise is read back is realized where its authority
+// lives (`gunbc.wet_host_premise_readback`), so this vocabulary stays free of the runner modules
+// and the join below can be validated against supplied readings.
+type WetHostPremise
+  = RunnerBrowserToolchainReadyForJobUser {}
+
+fn wet_host_premise_name(premise: WetHostPremise) -> String {
+  match premise {
+    RunnerBrowserToolchainReadyForJobUser => "runner-browser-toolchain-ready-for-job-user"
+  }
+}
+
+// ONE DECLARED PREMISE PER CLAIM, keyed by identity. A separate keyed roster rather than a field on
+// `WetScheduledClaim`: the premise is a fact about the RUNNER the claim lands on, not about what the
+// claim asserts, and almost every scheduled claim declares none. A claim absent from the roster has
+// no premise, and its failures stay `WetTerminalVerdictNotExpected` exactly as before.
+type WetPremisedClaim {
+  identity: WitnessIdentity
+  premise: WetHostPremise
+}
+
+// WHAT THE PREMISE READBACK ANSWERED, in the premise authority's own words when it is unmet. Unmet
+// carries those words verbatim -- the toolchain's readback standing names the path and what was
+// missing -- because a generic "premise unmet" would send the reader to the runner without saying
+// which part of it.
+type WetHostPremiseReading
+  = WetHostPremiseMet { premise: WetHostPremise }
+  | WetHostPremiseUnmet { premise: WetHostPremise, words: String }
+
+// WHAT THE EXECUTOR DID WITH ONE SCHEDULED IDENTITY. FUSED, like the route and its antecedent: an
+// unmet premise means the claim was NEVER INVOKED, so there is no attempt terminal to carry, and a
+// row that held both "premise unmet" and an attempt terminal would describe a state that cannot
+// exist. A met premise, or no declared premise, leads to an attempt, and that attempt is the
+// ledger's terminal unchanged.
+type WetTerminal
+  = WetClaimAttempted { attempt: ClaimAttemptTerminal }
+  | WetPremiseUnmetBeforeAttempt { premise: WetHostPremise, words: String }
+
 // ONE TERMINAL ROW. `observed_entry` and `observed_function` are what the executor ACTUALLY
 // resolved and invoked, never the scheduled row echoed back -- recopying them makes the foreign-
 // resolution join below tautological, so the producer must record what it resolved.
@@ -190,7 +232,7 @@ type WetTerminalRow {
   identity: WitnessIdentity
   observed_entry: String
   observed_function: String
-  terminal: ClaimAttemptTerminal
+  terminal: WetTerminal
   binding: WetEvidenceBinding
 }
 
@@ -206,6 +248,7 @@ type WetEvidenceRefusal
   | WetTerminalForeignEntry { identity: String, observed: String, required: String }
   | WetTerminalForeignFunction { identity: String, observed: String, required: String }
   | WetTerminalVerdictNotExpected { identity: String, disposition: ClaimDisposition }
+  | WetTerminalHostPremiseUnmet { identity: String, premise: WetHostPremise, words: String }
   | WetTerminalForeignRoute { identity: String }
   | WetBindingPreparedSubjectDiffers { identity: String, observed: String, required: String }
   | WetBindingSemanticSubjectDiffers { identity: String, observed: String, required: String }
@@ -292,7 +335,10 @@ fn wet_terminals_for(name: String, terminals: List<WetTerminalRow>) -> List<WetT
 
 // THE FORWARD JOIN: every scheduled claim has exactly one terminal, produced by the route that
 // scheduled it, bound to this tree by the required relation, naming the entry and function that
-// were actually resolved, with a disposition the expectation admits.
+// were actually resolved, with a disposition the expectation admits. A claim never invoked because
+// its declared host premise read back unmet refuses as `WetTerminalHostPremiseUnmet`: the runner,
+// not the subject. Still a refusal -- never a pass, a skip or a widen (DESIGN section 5) -- but its
+// remedy is the host the lane ran on.
 fn wet_forward_causes(
   scheduled: List<WetScheduledClaim>,
   terminals: List<WetTerminalRow>,
@@ -330,13 +376,19 @@ fn wet_forward_causes(
                     if t.observed_function != s.function {
                       list_append(left: inner, right: [WetTerminalForeignFunction { identity: name, observed: t.observed_function, required: s.function }])
                     } else {
-                      let disposition = claim_disposition(
-                        row: ClaimTerminalRow { identity: s.identity, expectation: s.expectation, terminal: t.terminal }
-                      )
-                      if wet_disposition_is_agreement(d: disposition) {
-                        inner
-                      } else {
-                        list_append(left: inner, right: [WetTerminalVerdictNotExpected { identity: name, disposition: disposition }])
+                      match t.terminal {
+                        WetPremiseUnmetBeforeAttempt { premise: p, words: w } =>
+                          list_append(left: inner, right: [WetTerminalHostPremiseUnmet { identity: name, premise: p, words: w }])
+                        WetClaimAttempted { attempt: a } => {
+                          let disposition = claim_disposition(
+                            row: ClaimTerminalRow { identity: s.identity, expectation: s.expectation, terminal: a }
+                          )
+                          if wet_disposition_is_agreement(d: disposition) {
+                            inner
+                          } else {
+                            list_append(left: inner, right: [WetTerminalVerdictNotExpected { identity: name, disposition: disposition }])
+                          }
+                        }
                       }
                     }
                   }

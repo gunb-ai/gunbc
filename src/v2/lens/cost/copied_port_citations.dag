@@ -1,6 +1,9 @@
 module v2.lens.cost.copied_port_citations
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { declared_signature }
+import v2.std.node_query { binder_edge }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { Cons, Empty }
@@ -10,9 +13,6 @@ import v2.lens.cost.copied_port_derivation {
   copied_port_index_from_registry
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,
@@ -26,12 +26,15 @@ import v2.std.node {
   Conj,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  ArrowBodyEdge,
+  LoopBoundEdge,
+  core_edge_label,
 }
 
 // Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner
@@ -147,7 +150,7 @@ fn citation_loop_body_linear_in(measure: Node) -> Node {
           occurrence_id: OccurrenceSynthetic
         }
       },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: measure }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -160,20 +163,14 @@ fn citation_arrow_two_param_loop(
 ) -> Node {
   let left = citation_param_ref(sym: left_sym)
   let right = citation_param_ref(sym: right_sym)
+  let signature = declared_signature(
+    params: [binder_edge(name: left_sym, type_node: left), binder_edge(name: right_sym, type_node: right)],
+    source: left
+  )
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge { label: Named { name: left_sym }, target: left },
-            Edge { label: Named { name: right_sym }, target: right }
-          ],
-          occurrence_id: OccurrenceSynthetic
-        }
-      },
+      signature.domain,
       Edge {
         label: Positional,
         target: Node {
@@ -182,8 +179,9 @@ fn citation_arrow_two_param_loop(
           occurrence_id: OccurrenceSynthetic
         }
       },
+      signature.order,
       Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: citation_loop_body_linear_in(measure: measure)
       }
     ],

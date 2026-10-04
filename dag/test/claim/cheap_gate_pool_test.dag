@@ -34,6 +34,9 @@ test fn cheap_pool_chunk_cap_splits_at_cap() -> Bool {
   let c = ClaimRun { entry: "b.dag", function: "g" }
   let chunks = chunk_claims(claims: [a, b, c], max_per_child: 2)
   length(chunks) == 2
-    && claim_in_pool(c: c, pool: chunks.skip(n: 1).first())
+    && match chunks.skip(n: 1).first() {
+      Present { value: second } => claim_in_pool(c: c, pool: second)
+      Absent => false
+    }
     && cheap_gate_pool_max_claims_per_child > 0
 }

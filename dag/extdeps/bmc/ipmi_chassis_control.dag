@@ -71,7 +71,11 @@ fn chassis_power_line_value(v: String) -> ChassisPowerLine {
 fn chassis_power_line_seen(acc: ChassisPowerLine, value: ChassisPowerLine) -> ChassisPowerLine {
   match acc {
     ChassisPowerLineAbsent => value
-    _ => ChassisPowerLineRepeated
+    ChassisPowerLineOn => ChassisPowerLineRepeated
+    ChassisPowerLineOff => ChassisPowerLineRepeated
+    ChassisPowerLineUnrecognised { text: _ } => ChassisPowerLineRepeated
+    ChassisPowerLineMalformed { line: _ } => ChassisPowerLineRepeated
+    ChassisPowerLineRepeated => ChassisPowerLineRepeated
   }
 }
 

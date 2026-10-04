@@ -605,27 +605,39 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
             alloc_growth: growth,
             whole_value_materializations: 1
           } }
-        _ =>
-          let m = required_whole_value_materializations(p: id.ownership_pattern, k: id.consumer_contract)
-          let base_growth = if m == 0 { ConstantAllocGrowth } else { materialization_alloc_growth(f: realization) }
-          let growth = match id.carrier_realization {
-            PersistentMapCarrier => LinearAllocGrowth
-            other_carrier => base_growth
-          }
-          if m == 0 {
-            DerivedExpectation { expected: ExpectedCopyCost {
-              cost_class: NoCopyWork,
-              alloc_growth: growth,
-              whole_value_materializations: 0
-            } }
-          } else {
-            DerivedExpectation { expected: ExpectedCopyCost {
-              cost_class: materialization_cost_class(f: realization),
-              alloc_growth: growth,
-              whole_value_materializations: m
-            } }
-          }
+        ConsumedOnce => derive_materialized_expectation(id: id, realization: realization)
+        BorrowedReadOnly => derive_materialized_expectation(id: id, realization: realization)
+        ByValueThenReused => derive_materialized_expectation(id: id, realization: realization)
+        BranchExclusive => derive_materialized_expectation(id: id, realization: realization)
+        ReuseAcrossJoin => derive_materialized_expectation(id: id, realization: realization)
+        MoveIntoClosure => derive_materialized_expectation(id: id, realization: realization)
+        BorrowIntoClosure => derive_materialized_expectation(id: id, realization: realization)
+        FieldExtractThenReuseEnclosing => derive_materialized_expectation(id: id, realization: realization)
       }
+  }
+}
+
+// The remaining ownership patterns: the expectation follows the whole-value materializations the
+// pattern and consumer contract require, bounded LINEAR on a persistent-map carrier.
+fn derive_materialized_expectation(id: EmitCopyQualificationCaseId, realization: CloneRealizationFact) -> ExpectationDerivation {
+  let m = required_whole_value_materializations(p: id.ownership_pattern, k: id.consumer_contract)
+  let base_growth = if m == 0 { ConstantAllocGrowth } else { materialization_alloc_growth(f: realization) }
+  let growth = match id.carrier_realization {
+    PersistentMapCarrier => LinearAllocGrowth
+    other_carrier => base_growth
+  }
+  if m == 0 {
+    DerivedExpectation { expected: ExpectedCopyCost {
+      cost_class: NoCopyWork,
+      alloc_growth: growth,
+      whole_value_materializations: 0
+    } }
+  } else {
+    DerivedExpectation { expected: ExpectedCopyCost {
+      cost_class: materialization_cost_class(f: realization),
+      alloc_growth: growth,
+      whole_value_materializations: m
+    } }
   }
 }
 

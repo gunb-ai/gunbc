@@ -1,7 +1,7 @@
 module extdeps.http.client
+import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -74,8 +74,23 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
 // handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
 // stderr text.
+// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
+// at module grain because an operation's rationale cannot live inside the service body: it is
+// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
+// them), one content-type line differs, and the body still rides --data @{file} so a client
+// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
+// PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
+// the URL still names the scheme, authority and path the server routes on, but the connection is
+// made to the socket file and the kernel attests the caller to the server. The exit codes are
+// PostStdinWithin's; a socket that is absent or not traversable is exit 7, could not connect.
+// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
+// at module grain because an operation's rationale cannot live inside the service body: it is
+// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
+// them), one content-type line differs, and the body still rides --data @{file} so a client
+// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
 service http.Client {
   operation Get {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -89,6 +104,7 @@ service http.Client {
   }
 
   operation GetLocalhostBounded {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -113,6 +129,7 @@ service http.Client {
   }
 
   operation GetBounded {
+    requires Network
     input { url: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -137,6 +154,7 @@ service http.Client {
   }
 
   operation GetWithin {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -153,6 +171,7 @@ service http.Client {
   }
 
   operation StatusWithin {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
     output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly
@@ -169,6 +188,7 @@ service http.Client {
   }
 
   operation GetQueryStdinWithin {
+    requires Network
     input { url: NonEmptyStr, query: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output { success: Bool from "exit_success", body: String from "stdout" }
     readonly
@@ -181,6 +201,7 @@ service http.Client {
   }
 
   operation PostStdinWithin {
+    requires Network
     input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
@@ -201,7 +222,30 @@ service http.Client {
     }
   }
 
+  operation PostStdinWithinUnixSocket {
+    requires Network
+    input { socket: NonEmptyStr, url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["curl", "-sS", "--unix-socket", "{socket}", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: request_body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST over a unix socket did not complete"
+    }
+    mock_response {
+      0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live socket" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
+    }
+  }
+
   operation PostJsonFromFile {
+    requires Network
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -209,7 +253,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
@@ -223,7 +267,33 @@ service http.Client {
     }
   }
 
+  operation PostFormFromFile {
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/x-www-form-urlencoded",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl form POST from file failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live token endpoint; the code exchange refuses rather than fabricate a response"
+    }
+  }
+
   operation DownloadToFile {
+    requires Network
     input { url: NonEmptyStr, destination: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
@@ -234,6 +304,7 @@ service http.Client {
   }
 
   operation GetFollowRedirectsBoundedWithHeaderFile {
+    requires Network
     input { url: NonEmptyStr, max_seconds: NonEmptyStr, accept: NonEmptyStr, header_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly

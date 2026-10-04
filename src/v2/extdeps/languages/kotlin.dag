@@ -1,5 +1,7 @@
 module v2.extdeps.languages.kotlin
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -54,7 +56,6 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection {
-  List,
   Map,
   PointwisePower,
   empty_map,
@@ -84,15 +85,16 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { BooleanAlgebra, approximate_field_node, boolean_algebra_node, fold_list, ordered_ring_node }
+import v2.std.algebra { BooleanAlgebra, fold_list }
+import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
 type KotlinIntWidth
@@ -329,7 +331,7 @@ fn kotlin_concrete_tokens() -> List<ConcreteSyntaxToken> {
 
 data kotlin_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
 
-data kotlin_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn kotlin_atom(id: Symbol) -> Node {
   Node {
@@ -340,7 +342,7 @@ fn kotlin_atom(id: Symbol) -> Node {
 }
 
 fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
@@ -987,15 +989,7 @@ fn kotlin_param_binding_node(binding: Symbol) -> Node {
 }
 
 fn kotlin_add_fn_signature_arrow() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
-      Edge { label: Positional, target: kotlin_inhabitant_int_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [kotlin_inhabitant_int_node(), kotlin_inhabitant_int_node()], codomain: kotlin_inhabitant_int_node(), source: kotlin_inhabitant_int_node())
 }
 
 fn kotlin_return_add_expr_node() -> Node {
@@ -1056,46 +1050,6 @@ fn kotlin_source_text_authority() -> String {
 fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
   concrete_syntax_token_to_node(token: token)
-}
-
-fn kotlin_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: kotlin_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: kotlin_atom(id: ^kotlin_source_literal)
-    ),
-    tail: Cons {
-      head: kotlin_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: kotlin_atom(id: ^kotlin_production_fn_add)
-      ),
-      tail: Empty
-    }
-  }
-}
-
-fn kotlin_serialize_source_children() -> List<Edge> {
-  list_append(
-    left: kotlin_serialize_source_prefix_edges(),
-    right: [
-      kotlin_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: kotlin_concrete_tokens(),
-          token_to_node: kotlin_concrete_token_node
-        )
-      )
-    ]
-  )
-}
-
-fn kotlin_serialize_source_node() -> Node {
-  let _authority = kotlin_source_text_authority()
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: kotlin_serialize_source_children(),
-    occurrence_id: OccurrenceSynthetic
-}
 }
 
 fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -1348,10 +1302,6 @@ fn kotlin_target_model_node() -> Node {
       kotlin_named_edge(
         name: ^target_model_edge_translation_rules,
         target: kotlin_translation_rules_node()
-      ),
-      kotlin_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: kotlin_serialize_source_node()
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -1622,7 +1572,8 @@ fn kotlin_lex_rules() -> LexRuleSet {
       kotlin_lex_rule(token_class: ^kotlin_token_colon, text: ":"),
       kotlin_lex_rule(token_class: ^kotlin_token_dot, text: "."),
       kotlin_lex_rule(token_class: ^kotlin_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 

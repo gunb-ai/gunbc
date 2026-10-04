@@ -8,6 +8,7 @@ import extdeps.cloud.gcp.gcp { GcpOperation }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "cloud.google.com/iam/docs/reference/rest/v2/policies" }
@@ -32,6 +33,7 @@ service gcp.IamDeny {
   config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetPolicy {
+    requires Network
     input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr }
     output { name: String, etag: String, rules: List<GcpDenyPolicyRule>?, outcome: RestOutcome }
     readonly
@@ -47,6 +49,7 @@ service gcp.IamDeny {
   }
 
   operation CreatePolicy {
+    requires Network
     input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr, rules: List<GcpDenyPolicyRule> }
     output { operation_name: String from "name", outcome: RestOutcome }
     transport rest { method: POST, path: "/v2/policies/\{attachment_point\}/denypolicies",

@@ -16,14 +16,18 @@ fn wave1_gate1_a1_find_arrow_in_module(root: Node) -> Optional<Node> {
           Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
         }
       })
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => wave1_gate1_a1_find_arrow_in_module_children(root: root)
+    ComputationNode { behavior: _ } => wave1_gate1_a1_find_arrow_in_module_children(root: root)
   }
+}
+
+fn wave1_gate1_a1_find_arrow_in_module_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => wave1_gate1_a1_find_arrow_in_module(root: e.target)
+    }
+  })
 }
 
 fn wave1_gate1_a1_parsed_add_module() -> Optional<Node> {
@@ -53,17 +57,20 @@ fn wave1_gate1_a1_ingest_param_domain_parity_holds() -> Bool {
   match wave1_gate1_a1_parsed_add_module() {
     Absent => false
     Present { value: parsed } =>
-      let ingest_bindings = body_lower_param_binding_symbols_from_fn_decl_module(root: parsed)
-      match wave1_gate1_a1_normalized_add_module() {
+      match body_lower_param_binding_symbols_from_fn_decl_module(root: parsed) {
         Absent => false
-        Present { value: normalized } =>
-          match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+        Present { value: ingest_bindings } =>
+          match wave1_gate1_a1_normalized_add_module() {
             Absent => false
-            Present { value: arrow } =>
-              body_lower_arrow_domain_matches_ingest_param_bindings(
-                arrow: arrow,
-                ingest_bindings: ingest_bindings
-              )
+            Present { value: normalized } =>
+              match wave1_gate1_a1_find_arrow_in_module(root: normalized) {
+                Absent => false
+                Present { value: arrow } =>
+                  body_lower_arrow_domain_matches_ingest_param_bindings(
+                    arrow: arrow,
+                    ingest_bindings: ingest_bindings
+                  )
+              }
           }
       }
   }
@@ -105,7 +112,7 @@ fn wave1_gate1_a1_symbol_index_frontend_parity_holds() -> Bool {
                   }
               }
           }
-        _ => false
+        ParseSubtreeAbsent => false
       }
   }
 }

@@ -1,0 +1,59 @@
+module extdeps.posix.clock_gettime
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/clock_gettime.html"
+  }
+}
+
+// clock_gettime(2) AS THE PORTABLE CPU-TIME INTERFACE. POSIX names the clocks by id; the two this
+// corpus distinguishes are the ones that answer DIFFERENT QUESTIONS, and the difference is the whole
+// reason this module exists. CLOCK_MONOTONIC advances whenever time passes, whether or not the
+// calling thread is running, so a span read on it contains every interval the host took the thread
+// away -- scheduling, page-fault service, lock waits, another tenant's build. CLOCK_THREAD_CPUTIME_ID
+// advances only while the calling thread executes (user and system time on its behalf), so a span
+// read on it is the thread's own work and nothing the host did instead.
+//
+// A PARTITION OF A THREAD'S OWN WORK MUST BE READ ON THE SECOND CLOCK. A wall span makes the
+// verdict a function of host load rather than of the subject; the CPU span does not.
+//
+// POSIX MARKS CLOCK_THREAD_CPUTIME_ID AS AN OPTION (_POSIX_THREAD_CPUTIME), not a requirement, so an
+// implementation may lack it. That is modeled here rather than assumed away: a realization reading
+// this clock must refuse, never substitute the monotonic wall, when clock_gettime returns -1 --
+// substituting the wall would re-open exactly the nondeterminism the CPU clock was chosen to close.
+// Linux (since 2.6.12) and Darwin (since 10.12) provide it; the refusal arm is the honest answer
+// everywhere else.
+type ClockId
+  = ClockMonotonic
+  | ClockThreadCputimeId
+
+fn clock_id_label(c: ClockId) -> NonEmptyStr {
+  match c {
+    ClockMonotonic => "CLOCK_MONOTONIC"
+    ClockThreadCputimeId => "CLOCK_THREAD_CPUTIME_ID"
+  }
+}
+
+// ONLY THE CLOCK IDENTITY IS MODELED HERE, because only it has a consumer: v1.compiler.runtime_rust
+// renders the emitted clock read through clock_id_label, so the constant the emitted Rust passes to
+// libc is this declaration's spelling and not a second literal beside it. The call's timespec result
+// and its error arm are realized in that emitted body (a refusal of the process); modeling them here
+// with no .dag reader would be a declaration nothing consumes.
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.clock_gettime",
+      decl_name: "ClockId",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.posix.clock_gettime.extdeps_external_authority_anchor,
+  further_citations: []
+}

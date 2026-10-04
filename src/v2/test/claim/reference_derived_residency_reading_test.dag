@@ -1,5 +1,6 @@
 module v2.test.claim.reference_derived_residency_reading
 
+import std.types { List }
 import gunbc.namespace_reference_derived_residency_qualification {
   BoundedRealizationQualified,
   BoundedRealizationRefused,
@@ -7,8 +8,10 @@ import gunbc.namespace_reference_derived_residency_qualification {
   CarrierPayloadGrain,
   carrier_holds_whole_corpus_syntax,
   CarrierReadingUndecidable,
+  CarrierMemberUnreadable,
   CarrierTypeRecognized,
   CarrierTypeUnrecognized,
+  CarrierMemberNotABinder,
   BoundedRealizationAdmitted,
   BoundedRealizationSemanticDeliveryOutstanding,
   BoundedRealizationResourceQualificationOutstanding,
@@ -34,21 +37,20 @@ import v2.std.qualified_name { qualified_name_snoc }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.test.claim.reference_derived_graph_fixture { xl4_fixture_trees, xl4_item_at, consumer_field_bare_local_path }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
   Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
 import v2.std.text { String }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -85,7 +87,7 @@ fn positional_to(target: Node) -> Edge {
 }
 
 fn named_to(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  binder_edge(name: name, type_node: target)
 }
 
 // `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its
@@ -217,6 +219,7 @@ fn readability_is_recognised(r: ProducerCarrierReading) -> Bool {
   match r.readability {
     CarrierTypeRecognized => true
     CarrierTypeUnrecognized { spelling: _ } => false
+    CarrierMemberNotABinder { member: _ } => false
   }
 }
 
@@ -249,6 +252,7 @@ test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool {
     BoundedRealizationRefused { subject: _, failure: failure } =>
       match failure {
         CarrierReadingUndecidable { carrier: _, spelling: spelling } => spelling == ^TreePool
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => false
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
         LifecycleReadingAbsent => false
@@ -299,6 +303,7 @@ test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bo
         WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
         WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
         CarrierReadingUndecidable { carrier: _, spelling: _ } => false
+        CarrierMemberUnreadable { carrier: _, member: _ } => false
         LifecycleReadingAbsent => false
       }
   }
@@ -343,10 +348,13 @@ test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
   live_fixture_lookup(segment: ^uses)
 }
 
-// THE FRONTIER CLAIM. A type declaration in the SAME module, through the SAME index, does not. This
-// is why this branch carries no reading of the live producer.
-test fn a_type_declaration_does_not_resolve_from_a_live_module_root_pending_11574() -> Bool {
-  !live_fixture_lookup(segment: ^LocalWrapper)
+// THE FRONTIER CLAIM, FLIPPED 2026-10-01 (DESIGN 4b(4)) on its named trigger. It asserted that a type
+// declaration in the SAME module, through the SAME index, does not resolve, pending gunbc#11574; that
+// PR landed and the claim went red exactly as predicted above (measured at c2ab4458d2 and abcb48293f:
+// LocalWrapper resolves). It stays enrolled as the type-declaration half of the control. Wiring the
+// derivation to the producer's own declaration is the follow-on the trigger names; it is not done here.
+test fn a_type_declaration_resolves_from_a_live_module_root() -> Bool {
+  live_fixture_lookup(segment: ^LocalWrapper)
 }
 
 fn live_fixture_lookup(segment: Symbol) -> Bool {
@@ -363,7 +371,8 @@ fn live_fixture_lookup(segment: Symbol) -> Bool {
                 index: symbol_index_fill_module_root(
                   index: empty_symbol_index(),
                   root: item.root,
-                  record_declarations: item.record_declarations
+                  record_declarations: item.record_declarations,
+                  resource_declarations: item.resource_declarations
                 ),
                 qualified_path: qualified_name_snoc(qn: mqn, segment: segment),
               ) {

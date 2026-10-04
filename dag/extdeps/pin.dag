@@ -87,8 +87,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // PINNING IS A DIMENSION, NOT A PROPERTY OF CLI TOOLS (operator, 2026-07-29). The first version of
 // this model was a ToolPin record keyed by tool_name: NonEmptyStr, which was wrong three ways and
 // the operator caught it by reading the shape. (1) It referred to a tool by NAME STRING while
-// extdeps.tools already passes the modeled row by value everywhere else — resolve(tool: CliTool),
-// ResolvedTool { tool: CliTool }, NotFound { tool: CliTool } — so ToolPin was the single site in
+// extdeps.tools already passed the modeled row by value everywhere else — at the time resolve(tool:
+// CliTool), ResolvedTool { tool: CliTool } and NotFound { tool: CliTool }, since deleted as dead — so ToolPin was the single site in
 // that namespace joining to a modeled type through string equality, the anemic-leaf failure of
 // DESIGN section 2 with tool identity then living in two places. (2) It fixed the GRAIN at CLI
 // tools, when the corpus already contains other pinnable subjects that are not CliTool at all:

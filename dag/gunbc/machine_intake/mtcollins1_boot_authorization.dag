@@ -7,7 +7,7 @@ import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_st
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 
 // THE BOOT SUBJECT: what one Mt. Collins boot attaches, selects and power-cycles. It was the signed
@@ -15,7 +15,7 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 // recurring automated effect under workload identity (gunbc.auth.privileged_effect_census); it
 // remains the one record the attach, the handoff and the terminal verdict all read, and the
 // physical-safety interlock the approval implicitly provided is
-// gunbc.machine_intake_mtcollins1_maintenance_hold.
+// gunbc.managed_host_unit_hold.
 type MtCollins1BootSubject {
   machine: NonEmptyStr
   bmc_host: NonEmptyStr
@@ -42,20 +42,19 @@ type MtCollins1BootMedium
   = MtCollins1StockInstallerMedium
   | MtCollins1CensusMedium { output_digest: NonEmptyStr }
 
-// CENSUS STAGE 0D. The digest is the publish receipt (target/mtcollins1-census-image.txt) of
-// mtcollins1_census_image_publish_wet executed on srv2 at exact revision
-// 6f192b6ffefcc12cef51aa77761891a290015871, via SSH to srv2 as gunbc-fleet in a MemoryMax=30G
-// systemd scope with FLEET_CONVERGE_EXPECTED_HOST=srv2, from a git-archive export and a gunbc
-// release built at that revision on srv2 (no srv2 runner slots since 2026-09-19; operator approved
-// the SSH route 2026-09-26), exit 0; receipt sha256
-// bb05eabbc912c34bf18ace32ea8854befb23166cfcf494fd08f5a6fcbe3773d4: image_name
-// gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso, build_key 8d357a525f078cb4,
-// published_path /srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso.
-// Republished because the seed's workload stage became bound to the boot milestone profile
-// (#12362). This row is publication-time evidence only: mtcollins1_census_medium_readback
-// re-measures the served path on srv2 before the signed subject is minted, every run.
+// CENSUS STAGE 0D. The digest is the publish receipt of the gated create-only publication run
+// 36651495873 (main, fleet SSH to srv2 as gunbc-fleet; receipt artifact sha256
+// ca40bf02982bb1dd71d9adf4663aa74e97b99b03109d9c8626dc9ff53f9ddbcf): gate (a) the srv2 rebuild of the
+// pinned-input derivation equalled the hermetic receipt eb23f174..., gate (b) the rebuilt vmlinuz and
+// initrd equalled stock; image_name gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso,
+// build_key c001ac127d718e72, published_path
+// /srv/bmc/gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso. Repinned because #12594
+// bumped builder_revision, so the previous image (30ca88d4..., build_key 8d357a525f078cb4) no longer
+// describes the current derivation and the boot refuses it (run 36660907341). This row is
+// publication-time evidence only: mtcollins1_census_medium_readback re-measures the served path on
+// srv2 before the signed subject is minted, every run.
 data mtcollins1_boot_medium: MtCollins1BootMedium = MtCollins1CensusMedium {
-  output_digest: "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a103f460dd146a706",
+  output_digest: "161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513",
 }
 
 // THE CENSUS ARM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST from the publish receipt. The image name

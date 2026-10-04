@@ -1,5 +1,8 @@
 module v2.extdeps.languages.rust_test
 
+import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
+import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
+
 import std.algebra { Cons, Empty }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -8,7 +11,6 @@ import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 
 import v2.extdeps.languages.rust {
   rust_add_declared_inhabitants_root,
-  rust_add_serialize_source_node,
   rust_binding_spellings,
   rust_collection_realization_catalog_node,
   rust_concrete_token_node,
@@ -36,7 +38,6 @@ import v2.extdeps.languages.rust {
   rust_selection_policy_node,
   rust_sg2_binding_spellings,
   rust_sg2_lex_rules,
-  rust_sg2_serialize_source_node,
   rust_sg2_type_alias_text,
   rust_sg_rc_use_site_ownership_catalog,
   rust_source_text,
@@ -53,6 +54,7 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_emission_bundle_node
 }
 import v2.std.logic { bool_boolean_algebra }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs }
 import v2.std.compilers.target_model { TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 
 // Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and
@@ -66,7 +68,7 @@ import v2.std.compilers.target_model { TokenClassEmitTransform, EmitSpellingQuot
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data rust_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn rust_grammar_production_fn_bind_literal() -> GrammarProduction {
   GrammarProduction {
@@ -203,39 +205,6 @@ fn rust_pick_translation_rules_node() -> Node {
   }
 }
 
-fn rust_pick_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_pick_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_pick)
-    )
-  ]
-}
-
-fn rust_pick_serialize_source_node() -> Node {
-  let _authority = rust_pick_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_pick_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_pick_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_pick_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
   let m1 = map_insert(m0, ^dag_binding_pick_lit_one, "1")
@@ -257,7 +226,8 @@ fn rust_pick_lex_rules() -> LexRuleSet {
         right: rust_pick_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -278,10 +248,6 @@ fn rust_pick_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_pick_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_pick_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -364,7 +330,7 @@ fn rust_sgb_target_model_bundle_core() -> Node {
 }
 
 fn rust_sgb_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: [] } }
+  ModeledLexRules { root: LexRuleSet { rules: [], modes: [] } }
 }
 
 fn rust_sgb_binding_spellings() -> Map<Symbol, String> {
@@ -510,39 +476,6 @@ fn rust_match_translation_rules_node() -> Node {
   }
 }
 
-fn rust_match_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_match_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_match)
-    )
-  ]
-}
-
-fn rust_match_serialize_source_node() -> Node {
-  let _authority = rust_match_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_match_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_match_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_match_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
   let m1 = map_insert(m0, ^dag_binding_pick_lit_one, "1")
@@ -564,7 +497,8 @@ fn rust_match_lex_rules() -> LexRuleSet {
         right: rust_match_additional_lex_rules()
       ),
       right: rust_value_expression_family_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -584,7 +518,8 @@ fn rust_call_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_call_closure_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -670,10 +605,6 @@ fn rust_match_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_match_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_match_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -897,39 +828,6 @@ fn rust_loop_translation_rules_node() -> Node {
   }
 }
 
-fn rust_loop_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_loop_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_loop)
-    )
-  ]
-}
-
-fn rust_loop_serialize_source_node() -> Node {
-  let _authority = rust_loop_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_loop_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_loop_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_loop_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_one, "one")
   let m1 = map_insert(m0, ^dag_binding_pick_lit_one, "1")
@@ -948,7 +846,8 @@ fn rust_loop_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_loop_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -969,10 +868,6 @@ fn rust_loop_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_loop_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_loop_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -1092,7 +987,7 @@ fn rust_semantic_decl_target_model_staging() -> TargetModel {
       occurrence_id: OccurrenceSynthetic
     },
     lex: VoidLexRules,
-    binding_spellings: empty_map(),
+    binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: "",
     runtime_row: target_emit_host_runtime_row_unconfigured
@@ -1202,7 +1097,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -1214,6 +1109,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -1366,39 +1262,6 @@ fn rust_field_access_translation_rules_node() -> Node {
   }
 }
 
-fn rust_field_access_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_field_access_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_field_access)
-    )
-  ]
-}
-
-fn rust_field_access_serialize_source_node() -> Node {
-  let _authority = rust_field_access_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_field_access_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_field_access_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_field_access_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_get, "get")
   let m1 = map_insert(m0, ^dag_binding_param_r, "r")
@@ -1420,10 +1283,6 @@ fn rust_field_access_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_field_access_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_field_access_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -1662,39 +1521,6 @@ fn rust_variant_construct_translation_rules_node() -> Node {
   }
 }
 
-fn rust_variant_construct_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_variant_construct_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_variant_construct)
-    )
-  ]
-}
-
-fn rust_variant_construct_serialize_source_node() -> Node {
-  let _authority = rust_variant_construct_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_variant_construct_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_variant_construct_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_variant_construct_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_one_or_two, "one_or_two")
   let m1 = map_insert(m0, ^dag_binding_rec_lit_nine, "9")
@@ -1718,7 +1544,8 @@ fn rust_variant_construct_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_variant_construct_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -1739,10 +1566,6 @@ fn rust_variant_construct_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_variant_construct_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_variant_construct_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -1971,39 +1794,6 @@ fn rust_logic_complement_translation_rules_node() -> Node {
   }
 }
 
-fn rust_logic_complement_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_logic_complement_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_logic_complement)
-    )
-  ]
-}
-
-fn rust_logic_complement_serialize_source_node() -> Node {
-  let _authority = rust_logic_complement_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_logic_complement_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_logic_complement_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_logic_complement_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_complement, "complement")
   map_insert(m0, ^dag_binding_param_a, "a")
@@ -2025,7 +1815,8 @@ fn rust_logic_complement_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: rust_fn_add_lex_rules().rules,
       right: rust_logic_complement_additional_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2046,10 +1837,6 @@ fn rust_logic_complement_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_logic_complement_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_logic_complement_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -2240,34 +2027,6 @@ fn rust_bool_fn_translation_rules_node(
   }
 }
 
-fn rust_bool_fn_serialize_source_node(
-  source_literal_sym: Symbol,
-  production_sym: Symbol,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^serialize_source_field_source_text,
-        target: rust_inhabitant_atom(id: source_literal_sym)
-      ),
-      rust_named_edge(
-        name: ^serialize_source_field_source_grammar,
-        target: rust_inhabitant_atom(id: production_sym)
-      ),
-      rust_named_edge(
-        name: ^grammar_relation_field_tokens,
-        target: grammar_relation_tokens_node(
-          tokens: tokens,
-          token_to_node: rust_concrete_token_node
-        )
-      )
-    ],
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_bool_fn_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
@@ -2286,14 +2045,14 @@ fn rust_bool_fn_lex() -> LexRules {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: rust_bool_fn_additional_lex_rules()
-      )
+      ),
+      modes: []
     }
   }
 }
 
 fn rust_bool_fn_target_model_core_edges(
-  translation_rules: Node,
-  serialize_source: Node
+  translation_rules: Node
 ) -> List<Edge> {
   [
     rust_named_edge(
@@ -2307,10 +2066,6 @@ fn rust_bool_fn_target_model_core_edges(
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: translation_rules
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: serialize_source
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -2430,13 +2185,7 @@ fn rust_bool_fn_target_model(
           production_sym: production_sym,
           tokens: tokens,
           signature_with_open: signature_with_open
-        ),
-        serialize_source: rust_bool_fn_serialize_source_node(
-          source_literal_sym: source_literal_sym,
-          production_sym: production_sym,
-          tokens: tokens
-        )
-      ),
+        )),
       occurrence_id: OccurrenceSynthetic
     },
     lex: rust_bool_fn_lex(),
@@ -2533,51 +2282,6 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
     host_identity_sym: ^rust_host_transport_logic_join_identity,
     main_suffix: rust_logic_join_emit_host_main_suffix
   )
-}
-
-// Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
-// witness family — the family main is DERIVED from member arm rows (member_id -> i32 result
-// expression), never a hand-written N+1th main. Member selection is a run-time argv parameter
-// (cargo's `--` separator is this transport's convention, owned here); the derived match is
-// fail-closed — an unknown member id exits 2, a refused run, never fabricated octets.
-
-type RustEmitHostFamilyMember {
-  member_id: String,
-  result_expression: String
-}
-
-data rust_family_main_open: String = "\n\nfn main() { let member: String = std::env::args().nth(1).unwrap_or_default(); let d: i32 = match member.as_str() {\n"
-
-data rust_family_main_close: String = "    _ => std::process::exit(2),\n  }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
-
-fn rust_family_dispatch_arm(member: RustEmitHostFamilyMember) -> String {
-  concat("    \"", member.member_id, "\" => ", member.result_expression, ",\n")
-}
-
-fn rust_family_dispatch_arms(members: List<RustEmitHostFamilyMember>) -> String {
-  fold_list(
-    xs: members,
-    empty: "",
-    cons: fn(acc, member) {
-      concat(acc, rust_family_dispatch_arm(member: member))
-    }
-  )
-}
-
-fn rust_family_main_suffix(
-  prelude: String,
-  members: List<RustEmitHostFamilyMember>
-) -> String {
-  concat(
-    prelude,
-    rust_family_main_open,
-    rust_family_dispatch_arms(members: members),
-    rust_family_main_close
-  )
-}
-
-fn rust_family_member_run_args(member_id: String) -> List<String> {
-  ["--", member_id]
 }
 
 data rust_logic_family_prelude: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }"
@@ -2984,39 +2688,6 @@ fn rust_rec_translation_rules_node() -> Node {
   }
 }
 
-fn rust_rec_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_rec_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_rec)
-    )
-  ]
-}
-
-fn rust_rec_serialize_source_node() -> Node {
-  let _authority = rust_rec_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_rec_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_rec_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_rec_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_mk, "mk")
   let m1 = map_insert(m0, ^dag_binding_type_rec, "Rec")
@@ -3044,10 +2715,6 @@ fn rust_rec_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_rec_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_rec_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -3242,39 +2909,6 @@ fn rust_rec_nine_translation_rules_node() -> Node {
   }
 }
 
-fn rust_rec_nine_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_rec_nine_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_production,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_rec_nine)
-    )
-  ]
-}
-
-fn rust_rec_nine_serialize_source_node() -> Node {
-  let _authority = rust_rec_nine_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_rec_nine_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_rec_nine_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_rec_nine_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^rust_binding_fn_nine, "nine")
   let m1 = map_insert(m0, ^dag_binding_type_rec, "Rec")
@@ -3302,10 +2936,6 @@ fn rust_rec_nine_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_rec_nine_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_rec_nine_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -3567,39 +3197,6 @@ fn rust_fold_call_translation_rules_node() -> Node {
   }
 }
 
-fn rust_fold_call_serialize_source_prefix_edges() -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: ^rust_fold_call_source_literal)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: ^rust_production_fn_fold_call)
-    )
-  ]
-}
-
-fn rust_fold_call_serialize_source_node() -> Node {
-  let _authority = rust_fold_call_source_text
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_fold_call_serialize_source_prefix_edges(),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: rust_fold_call_concrete_tokens(),
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
 fn rust_fold_call_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^dag_binding_fn_fold_demo, "fold_demo")
   let m1 = map_insert(m0, ^dag_binding_mvp1_fold_callee, "fold_call_callee")
@@ -3624,10 +3221,6 @@ fn rust_fold_call_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_fold_call_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_fold_call_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -3777,7 +3370,8 @@ fn rust_literal_emit_lex_rules() -> LexRuleSet {
         rust_lex_rule(token_class: ^rust_lit_char_a, text: "'a'"),
         rust_lex_rule(token_class: ^rust_lit_char_b, text: "'b'")
       ]
-    )
+    ),
+    modes: []
   }
 }
 
@@ -3847,7 +3441,7 @@ fn rust_arrow_with_body_node(
         label: Positional,
         target: rust_type_atom_node(identity: return_type_binding)
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -3981,7 +3575,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
       init: Empty,
       f: fn(acc, edge) {
         match edge.label {
-          Named { name: n } =>
+          Authored { name: n } =>
             if n == ^target_model_edge_translation_rules {
               list_snoc_item(
                 xs: acc,
@@ -3993,6 +3587,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
             } else {
               list_snoc_item(xs: acc, item: edge)
             }
+          StructuralLabel { label: _ } => list_snoc_item(xs: acc, item: edge)
           Positional => list_snoc_item(xs: acc, item: edge)
         }
       }
@@ -4063,15 +3658,7 @@ fn rust_lhs_exact_relation_row_witness(
 ) -> Witness<Node> {
   let production = rust_formal_production_from_tokens(lhs: lhs, tokens: tokens)
   let productions = [production]
-  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
-    Holds { value: selected } =>
-      derive_grammar_relation_row_node(
-        production: selected,
-        productions: productions,
-        emitted: emitted
-      )
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
+  derive_grammar_relation_row_for_lhs(productions: productions, lhs: lhs, emitted: emitted)
 }
 
 fn rust_empty_translation_rules_node() -> Node {
@@ -4101,51 +3688,11 @@ fn rust_relation_translation_rules_node(
   }
 }
 
-fn rust_serialize_source_prefix_edges(source_text_binding: Symbol, production_binding: Symbol) -> List<Edge> {
-  [
-    rust_named_edge(
-      name: ^serialize_source_field_source_text,
-      target: rust_inhabitant_atom(id: source_text_binding)
-    ),
-    rust_named_edge(
-      name: ^serialize_source_field_source_grammar,
-      target: rust_inhabitant_atom(id: production_binding)
-    )
-  ]
-}
-
-fn rust_serialize_source_node(
-  source_text_binding: Symbol,
-  production_binding: Symbol,
-  tokens: List<ConcreteSyntaxToken>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: list_append(
-      left: rust_serialize_source_prefix_edges(
-        source_text_binding: source_text_binding,
-        production_binding: production_binding
-      ),
-      right: [
-        rust_named_edge(
-          name: ^grammar_relation_field_tokens,
-          target: grammar_relation_tokens_node(
-            tokens: tokens,
-            token_to_node: rust_concrete_token_node
-          )
-        )
-      ]
-    ),
-    occurrence_id: OccurrenceSynthetic
-  }
-}
-
-fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
+fn rust_target_model_bundle(rules: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
-      rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
+      rust_named_edge(name: ^target_model_edge_translation_rules, target: rules)
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -4174,7 +3721,8 @@ fn rust_emit_directive_lex() -> LexRules {
       rules: [
         rust_lex_rule(token_class: ^rust_token_macro_eprintln_open, text: "eprintln!("),
         rust_lex_rule(token_class: ^rust_token_rparen, text: ")")
-      ]
+      ],
+      modes: []
     }
   }
 }
@@ -4185,14 +3733,6 @@ fn rust_emit_directive_translation_rules_node() -> Node {
     lhs: ^rust_production_emit_directive_eprintln,
     tokens: rust_emit_directive_concrete_tokens(),
     emitted: rust_emit_directive_emitted_call
-  )
-}
-
-fn rust_emit_directive_serialize_source_node() -> Node {
-  rust_serialize_source_node(
-    source_text_binding: ^rust_emit_directive_source_literal,
-    production_binding: ^rust_production_emit_directive_eprintln,
-    tokens: rust_emit_directive_concrete_tokens()
   )
 }
 
@@ -4224,9 +3764,7 @@ fn rust_emit_directive_token_class_emit_transforms() -> Map<Symbol, TokenClassEm
 fn rust_emit_directive_target_model(d: EmitDirective) -> TargetModel {
   target_model_make_with_emit_transforms(
     bundle: rust_target_model_bundle(
-      rules: rust_emit_directive_translation_rules_node(),
-      serialize_source: rust_emit_directive_serialize_source_node()
-    ),
+      rules: rust_emit_directive_translation_rules_node()),
     lex: rust_emit_directive_lex(),
     binding_spellings: rust_emit_directive_message_spellings(d: d),
     token_class_emit_transforms: rust_emit_directive_token_class_emit_transforms(),
@@ -4289,7 +3827,8 @@ fn rust_type_alias_decl_structural_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: ^rust_token_type_alias_eq, text: " = "),
       rust_lex_rule(token_class: ^rust_token_semicolon, text: ";"),
       rust_ident_lex_rule()
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -4455,7 +3994,10 @@ fn rust_shell_exec_run_family_argv() -> List<String> {
 }
 
 fn rust_shell_exec_run_family_argv_token(index: Int) -> String {
-  rust_shell_exec_run_family_argv().skip(n: index).first()
+  match rust_shell_exec_run_family_argv().skip(n: index).first() {
+    Present { value: token } => token
+    Absent => rust_shell_exec_run_family_refusal_marker
+  }
 }
 
 fn rust_shell_exec_run_family_prelude() -> String {
@@ -4603,8 +4145,7 @@ fn rust_body_add_target_model_staging() -> TargetModel {
 
 // Shared minimal bundle core used by multiple emit-test fixtures.
 // Omits the semantic_decl_emission edge that production rust_target_model_bundle_core includes.
-// Uses production rust_translation_rules_node() and rust_add_serialize_source_node()
-// since fn_add body tests use the same relations.
+// Uses production rust_translation_rules_node(), since fn_add body tests use the same relations.
 
 fn rust_minimal_target_model_core_edges() -> List<Edge> {
   [
@@ -4619,10 +4160,6 @@ fn rust_minimal_target_model_core_edges() -> List<Edge> {
     rust_named_edge(
       name: ^target_model_edge_translation_rules,
       target: rust_translation_rules_node()
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_serialize_source,
-      target: rust_add_serialize_source_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_collection_realization,
@@ -4745,10 +4282,6 @@ fn rust_sg2_type_expression_projection_bundle() -> Node {
         target: rust_type_expression_projection_bundle_node()
       ),
       rust_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: rust_sg2_serialize_source_node()
-      ),
-      rust_named_edge(
         name: ^target_model_edge_translation_rules,
         target: Node {
           kind: TypeNode { connective: Conj },
@@ -4771,4 +4304,9 @@ fn rust_sg2_type_expression_projection_target_model() -> TargetModel {
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
+}
+
+// Preserve the existing native-runner entry while sharing its argument contract.
+fn rust_family_member_run_args(member_id: String) -> List<String> {
+  v2.extdeps.languages.rust_native_driver.rust_family_member_run_args(member_id: member_id)
 }

@@ -25,12 +25,11 @@ import v2.compiler.compile {
 }
 import std.decl_ref { declaration_ref_display_key }
 import std.content_hash { content_hash_atom }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.algebra { fold_list, length }
 import std.algebra { freemonoid_empty, list_snoc_item }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Symbol }
 import v2.std.text { String }
@@ -64,6 +63,28 @@ type ObservationAvailability<T>
 type EquivalenceOutcome
   = BehaviorAgrees
   | BehaviorDiverges { at_case: String }
+  | BehaviorDivergesExactly { cases: List<String> }
+
+// THE SEED IS A REGRESSION ORACLE, NEVER THE SPECIFICATION (DESIGN section 7, operator ruling
+// 2026-10-02). A divergence from the seed is one of two things: a v2 regression -- something the
+// seed got right that v2 lost, a defect -- or a seed defect v2 does not carry forward, which v2 fixes
+// and records as the correction it is. This row is that record. It names the corpus and case it
+// disposes of, the `.dag` contract claim that pins v2's behaviour there, and why the seed's
+// behaviour is the defect. A divergence with no row is a regression by default, so the gate stays
+// fail-closed: recording a correction is the only way a divergence admits.
+//
+// WHY ONLY A COMPLETE ENUMERATION CAN BE DISPOSED OF. `BehaviorDiverges { at_case }` reports the
+// FIRST diverging case, so the cases after it were never judged; a row for that case would admit a
+// run whose later cases may have regressed unseen -- one wall masking the next. Only
+// `BehaviorDivergesExactly`, which names EVERY diverging case of a run that compared the whole
+// declared corpus, can be matched against the rows. A first-divergence receipt refuses whether or
+// not its case is recorded.
+type SeedDefectCorrection {
+  corpus: String
+  at_case: String
+  contract: NonEmptyStr
+  reason: NonEmptyStr
+}
 
 type FaultOutcome
   = FaultCaught
@@ -240,6 +261,8 @@ type PromotionRefusalCause
   | ReceiptObservationUnavailable { receipt: Symbol, cause: Symbol }
   | BuildNotGreen { receipt: Symbol }
   | BehaviorDivergedFromOracle { receipt: Symbol, at_case: String }
+  | SeedDefectCorrectionNotObserved { receipt: Symbol, at_case: String }
+  | DivergenceEnumerationEmpty { receipt: Symbol }
   | DiscriminatingFaultNotCaught { at_case: String }
   | EmptyBehavioralCorpus { receipt: Symbol }
   | ProvenanceNotDeclaredProducer { receipt: Symbol }
@@ -319,11 +342,73 @@ fn build_receipt_causes(
 // admission — the self-authorization hole wearing a different field name. The seed
 // comes from the generation chain, which construction already fixed, so the receipt
 // cannot choose what it was measured against.
+fn seed_defect_correction_recorded(
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  at_case: String
+) -> Bool {
+  fold_list(
+    xs: corrections,
+    empty: false,
+    cons: fn(acc, k) { acc || (k.corpus == corpus && k.at_case == at_case) }
+  )
+}
+
+fn diverging_case_listed(cases: List<String>, at_case: String) -> Bool {
+  fold_list(xs: cases, empty: false, cons: fn(acc, c) { acc || c == at_case })
+}
+
+// A recorded correction this corpus's run does not observe as a divergence. Where v2 now agrees
+// with the seed on a case it declared corrected, v2 has reverted to the seed's defect -- the
+// correction regressed -- so the row refuses until it is deleted or the behaviour restored.
+fn unobserved_correction_causes(
+  receipt: Symbol,
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  observed: List<String>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: corrections,
+    empty: freemonoid_empty(),
+    cons: fn(acc, k) {
+      if k.corpus == corpus && !diverging_case_listed(cases: observed, at_case: k.at_case) {
+        list_snoc_item(xs: acc, item: SeedDefectCorrectionNotObserved { receipt: receipt, at_case: k.at_case })
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn unrecorded_divergence_causes(
+  receipt: Symbol,
+  corrections: List<SeedDefectCorrection>,
+  corpus: String,
+  cases: List<String>
+) -> List<PromotionRefusalCause> {
+  fold_list(
+    xs: cases,
+    empty: freemonoid_empty(),
+    cons: fn(acc, c) {
+      if seed_defect_correction_recorded(corrections: corrections, corpus: corpus, at_case: c) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: BehaviorDivergedFromOracle { receipt: receipt, at_case: c })
+      }
+    }
+  )
+}
+
+fn concat_cause_lists(left: List<PromotionRefusalCause>, right: List<PromotionRefusalCause>) -> List<PromotionRefusalCause> {
+  fold_list(xs: right, empty: left, cons: fn(acc, c) { list_snoc_item(xs: acc, item: c) })
+}
+
 fn equivalence_receipt_causes(
   receipt: Symbol,
   r: BehavioralEquivalenceReceipt,
   expected: GenerationIdentity,
-  expected_oracle: GenerationIdentity
+  expected_oracle: GenerationIdentity,
+  corrections: List<SeedDefectCorrection>
 ) -> List<PromotionRefusalCause> {
   let subject_stale = stale_causes_for(
     receipt: receipt,
@@ -362,12 +447,28 @@ fn equivalence_receipt_causes(
       )
     ObservationPresent { value: v } =>
       match v {
-        BehaviorAgrees => sized
+        BehaviorAgrees =>
+          concat_cause_lists(
+            left: sized,
+            right: unobserved_correction_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, observed: freemonoid_empty())
+          )
         BehaviorDiverges { at_case: c } =>
           list_snoc_item(
             xs: sized,
             item: BehaviorDivergedFromOracle { receipt: receipt, at_case: c }
           )
+        BehaviorDivergesExactly { cases: cs } =>
+          if length(xs: cs) == 0 {
+            list_snoc_item(xs: sized, item: DivergenceEnumerationEmpty { receipt: receipt })
+          } else {
+            concat_cause_lists(
+              left: concat_cause_lists(
+                left: sized,
+                right: unrecorded_divergence_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, cases: cs)
+              ),
+              right: unobserved_correction_causes(receipt: receipt, corrections: corrections, corpus: r.corpus.identity, observed: cs)
+            )
+          }
       }
   }
 }
@@ -748,6 +849,13 @@ fn lens_coverage_causes(
 }
 
 fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
+  promotion_refusal_causes_with_seed_corrections(c: c, corrections: freemonoid_empty())
+}
+
+fn promotion_refusal_causes_with_seed_corrections(
+  c: SelfHostCandidate,
+  corrections: List<SeedDefectCorrection>
+) -> List<PromotionRefusalCause> {
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
   let seed_identity = c.candidate.produced_by_seed.identity
@@ -797,13 +905,15 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
         receipt: ^receipt_candidate_equivalence,
         r: c.candidate_equivalence,
         expected: candidate_identity,
-        expected_oracle: seed_identity
+        expected_oracle: seed_identity,
+        corrections: corrections
       ),
       equivalence_receipt_causes(
         receipt: ^receipt_successor_equivalence,
         r: c.successor_equivalence,
         expected: successor_identity,
-        expected_oracle: seed_identity
+        expected_oracle: seed_identity,
+        corrections: corrections
       ),
       fault_receipt_causes(r: c.discriminating_fault, expected: candidate_identity),
       provenance_receipt_causes(
@@ -836,7 +946,17 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
 // flag. Adding a new obligation therefore cannot be forgotten into silence: an
 // unhandled case has no arm that produces Promoted.
 fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
-  let causes = promotion_refusal_causes(c: c)
+  admit_promotion_with_seed_corrections(c: c, corrections: freemonoid_empty())
+}
+
+// The seed-defect correction roster is supplied by the caller from its recorded authority, never
+// read off the candidate: a candidate that carried its own dispositions could excuse any
+// divergence it produced.
+fn admit_promotion_with_seed_corrections(
+  c: SelfHostCandidate,
+  corrections: List<SeedDefectCorrection>
+) -> PromotionOutcome {
+  let causes = promotion_refusal_causes_with_seed_corrections(c: c, corrections: corrections)
   if length(xs: causes) == 0 {
     Promoted {
       successor: c.successor,
@@ -867,6 +987,9 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     BuildNotGreen { receipt: _ } => ^refusal_build_not_green
     BehaviorDivergedFromOracle { receipt: _, at_case: _ } =>
       ^refusal_behavior_diverged_from_oracle
+    SeedDefectCorrectionNotObserved { receipt: _, at_case: _ } =>
+      ^refusal_seed_defect_correction_not_observed
+    DivergenceEnumerationEmpty { receipt: _ } => ^refusal_divergence_enumeration_empty
     DiscriminatingFaultNotCaught { at_case: _ } =>
       ^refusal_discriminating_fault_not_caught
     EmptyBehavioralCorpus { receipt: _ } => ^refusal_empty_behavioral_corpus
@@ -946,6 +1069,10 @@ fn behavioral_receipt_standing(o: BehavioralComparisonObservation) -> Behavioral
             ObservationPresent { value: e } =>
               match e {
                 BehaviorDiverges { at_case: a } => ReceiptBehaviorDiverges { at_case: a }
+                BehaviorDivergesExactly { cases: cs } =>
+                  ReceiptBehaviorDiverges {
+                    at_case: fold_list(xs: cs, empty: "", cons: fn(acc, c) { if acc == "" { c } else { acc } })
+                  }
                 BehaviorAgrees =>
                   match o.fault {
                     ObservationUnavailable { cause: c } => ReceiptFaultUnobserved { cause: c }

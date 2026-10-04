@@ -1,5 +1,6 @@
 module v2.std.inhabitance
 
+import std.types { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -9,7 +10,8 @@ import v2.std.diagnostic {
   Rejected,
   Suggested,
   Unavailable,
-  node_locus
+  node_locus,
+  diagnostics_fatal_reason
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -18,21 +20,19 @@ import v2.std.find_witness {
   find_witness
 }
 import v2.std.node {
-  Arrow,
   Atom,
   Cardinality,
-  ComputationNode,
   Conj,
-  Disj,
   Edge,
-  Instantiation,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
+  node_subtree_nodes,
   node_synthetic
 }
+import std.algebra { list_append }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 
@@ -84,13 +84,21 @@ fn type_variable_instance_lookup(
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
+  | PositionRecordField { record: Node }
+  | PositionLetAnnotation { bound: Node }
+  | PositionBinderDefault { default: Node }
 
+// type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
+// the only atoms in `declared` that name no type, and so the only thing that keeps an
+// Instantiation from being decided structurally.
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
   parameter_identity: Symbol
   declared: Node
   produced: Node
+  produced_declared_carrier: Optional<Node>
   application: Node
+  type_variables: List<Symbol>
 }
 
 type InhabitanceFormal {
@@ -103,24 +111,58 @@ type InhabitanceUndecidableReason
   | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
+  | UndecidableWherePredicateSubjectUnmodelled
 
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// PositionDeclaredReturn is the second coproduct arm so DeclaredTypePosition is not a one-arm
-// alias. This fold only constructs PositionDirectCallArgument. Declared frontier: a return-type
-// inhabitance obligation (produced body type vs declared return) at the same declared_type_inhabitance
-// consumer, trigger = that producer landing in v2.compiler.infer.
+// Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// an application, PositionDeclaredReturn per Arrow body against its declared return, and
+// PositionRecordField per field value of a record construct against the field the record declares,
+// and PositionLetAnnotation per annotated let's bound value against its annotation, and all four
+// hand the obligation to declared_type_inhabitance. A record field's position carries
+// the construct's resolved constructor reference, so its refusal names the record as well as the
+// field (the obligation's parameter_identity) and the two types.
 fn position_direct_call_argument() -> DeclaredTypePosition {
   PositionDirectCallArgument
+}
+
+fn position_declared_return() -> DeclaredTypePosition {
+  PositionDeclaredReturn
+}
+
+fn position_record_field(record: Node) -> DeclaredTypePosition {
+  PositionRecordField { record: record }
+}
+
+// An annotated let (`let x: T = e`) is a declared position like the others, not a cast. Its
+// obligation is located at the authored annotation (the declared type the author wrote, as a
+// declared return is located at the body it judges), and the position names the bound value e
+// whose type did not inhabit it.
+fn position_let_annotation(bound: Node) -> DeclaredTypePosition {
+  PositionLetAnnotation { bound: bound }
+}
+
+// A binder's default (XL-2 PR2c-ii) is a declared position like the others: its value is judged at the
+// binder's declared type, the type an omitted argument or field is declared to have. The obligation is
+// located at the default, and the position names it.
+fn position_binder_default(default: Node) -> DeclaredTypePosition {
+  PositionBinderDefault { default: default }
+}
+
+fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
+  ^infer_reason_default_does_not_inhabit_binder_type
 }
 
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
     PositionDeclaredReturn => ^position_declared_return
+    PositionRecordField { record: _ } => ^position_record_field
+    PositionLetAnnotation { bound: _ } => ^position_let_annotation
+    PositionBinderDefault { default: _ } => ^position_binder_default
   }
 }
 
@@ -143,29 +185,51 @@ fn inhabitance_cardinality_type(inner: Node) -> Node {
   )
 }
 
+// A TYPE MENTIONS A TYPE VARIABLE WHEN ANY ATOM IN IT IS SPELLED AS ONE. v2.compiler.resolve refuses
+// a type parameter that shadows a visible name, so inside the declaring Arrow that spelling means
+// the binder and nothing else -- whether it stands bare (`x: T`) or as an Instantiation's head
+// or argument (`Box<T>`, `T` lowered as Instantiation[T]).
+fn inhabitance_node_mentions_type_variable(n: Node, type_variables: List<Symbol>) -> Bool {
+  fold(node_subtree_nodes(root: n), init: false, f: fn(acc, m) {
+    acc || (match m.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        fold(type_variables, init: false, f: fn(found, v) { found || (v == id) })
+      _ => false
+    })
+  })
+}
+
+// A TYPE IS DECIDED UNLESS IT MENTIONS A TYPE VARIABLE. An applied type whose constructor and
+// arguments are all established (`Outcome<Node>`) is a type node like any other, and
+// exact_structural_equality_zip_fold compares it argument by argument, so `Outcome<Record>` at
+// `Outcome<Node>` refuses. A type that mentions one of the declaring Arrow's type variables -- bare
+// (`-> T`) or inside an Instantiation (`Box<T>`) -- stays UndecidableGenericFormal: this relation
+// holds no instance for the variable, and comparing its spelling against a concrete type would
+// refuse for the wrong reason. The check reads the variable first, so no connective arm can decide
+// a type that carries one.
 fn inhabitance_node_undecidable_reason(
-  n: Node
+  n: Node,
+  type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match n.kind {
-    TypeNode { connective: Cardinality } =>
-      optional_present(value: UndecidableOptionalCarrier)
-    TypeNode { connective: Instantiation } =>
-      optional_present(value: UndecidableGenericFormal)
-    TypeNode { connective: Atom { identity: _ } } => Absent
-    TypeNode { connective: Conj } => Absent
-    TypeNode { connective: Disj } => Absent
-    TypeNode { connective: Arrow } => Absent
-    ComputationNode { behavior: _ } => Absent
+  if inhabitance_node_mentions_type_variable(n: n, type_variables: type_variables) {
+    optional_present(value: UndecidableGenericFormal)
+  } else {
+    match n.kind {
+      TypeNode { connective: Cardinality } =>
+        optional_present(value: UndecidableOptionalCarrier)
+      _ => Absent
+    }
   }
 }
 
 fn inhabitance_pair_undecidable_reason(
   declared: Node,
-  produced: Node
+  produced: Node,
+  type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared) {
+  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
     Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced)
+    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
   }
 }
 
@@ -183,10 +247,60 @@ fn inhabitance_pair_undecidable_reason(
 // Calling it with algebra: produced would never hold, so it would not admit a widening-legal argument.
 // Rung, ceiling, and next-rung triggers live in
 // gunbc.recurring_failure_mode.argument_type_obligation_absent_while_the_route_advances.
+// AN OPTIONAL PRODUCED AT A REQUIRED DECLARED TYPE IS DECIDED: IT DOES NOT INHABIT. `T?` admits
+// absence and a required type admits no absent value, so a produced Cardinality type node (the type
+// `T?` lowers to; v2.std.node_query declared_field_cardinality_of_target reads the same node as
+// Optional) inhabits no required declared type, whatever T is. UndecidableOptionalCarrier was
+// written for the LIFT direction -- a produced `T` at a declared `T?` -- and, read off either side,
+// it swallowed this converse and admitted it with an advisory
+// (gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared; the seed's
+// relation refuses the same pair, v1.compiler.infer optional_produced_at_required_declared).
+//
+// THE DECLARED SIDE IS KNOWN REQUIRED ONLY WHEN IT IS AN ATOM THAT IS NOT A TYPE VARIABLE: a kernel
+// value type as the judge's denotation hands it over. A declared type variable may be instantiated
+// at an optional. A declared declaration reference may name an alias of an optional type
+// (`type Maybe = Int?`), and a declared Instantiation may be the nominal Optional, and this
+// relation unfolds neither -- so against those a produced optional stays the counted
+// UndecidableOptionalCarrier it was, never refused on a guess. A declared `T?` is the lift and
+// optional-at-optional cases, unchanged.
+fn inhabitance_optional_produced_at_required_declared(
+  declared: Node,
+  produced: Node,
+  type_variables: List<Symbol>
+) -> Bool {
+  match produced.kind {
+    TypeNode { connective: Cardinality } =>
+      match declared.kind {
+        TypeNode { connective: Atom { identity: _ } } =>
+          (count(declared.children) == 0)
+            && !inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn inhabitance_optional_at_required_reason() -> Symbol {
+  ^inhabitance_optional_produced_at_required_declared
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
+  if inhabitance_optional_produced_at_required_declared(
+    declared: obligation.declared,
+    produced: obligation.produced,
+    type_variables: obligation.type_variables
+  ) {
+    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
+  } else {
+    declared_type_inhabitance_structural(obligation: obligation)
+  }
+}
+
+fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> InhabitanceVerdict {
   match inhabitance_pair_undecidable_reason(
     declared: obligation.declared,
-    produced: obligation.produced
+    produced: obligation.produced,
+    type_variables: obligation.type_variables
   ) {
     Present { value: reason } => InhabitanceUndecidable { reason: reason }
     Absent =>
@@ -207,7 +321,48 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
             }
           }
         Rejected { diagnostics: r } =>
-          InhabitanceRefused { find_witness_reason: r.head.reason }
+          declared_type_inhabitance_declared_carrier(
+            obligation: obligation,
+            exact_refusal: InhabitanceRefused { find_witness_reason: diagnostics_fatal_reason(d: r) }
+          )
+      }
+  }
+}
+
+// A REFINED VALUE INHABITS ITS DECLARED CARRIER (subsumption). `type Pos = Int where positive`: every
+// Pos is an Int, so a produced Pos inhabits a declared Int. Reached only after the exact comparison
+// refused, and only for the carrier the refinement's declaration states -- one step, never walked:
+// a produced Pos2 (`type Pos2 = Pos where ..`) inhabits Pos and not Int, and a sibling refinement of
+// the same carrier (Neg at Pos) refuses. The carrier is SUPPLIED by the producer of the obligation
+// (v2.compiler.infer refinement_declared_carrier over ResolvedTree.resolved_declarations), because
+// reading a declaration is resolution's fact, not this relation's; Absent -- not a refinement, or a
+// lookup miss -- leaves the exact refusal standing, never admits. No predicate is evaluated: widening
+// forgets the predicate, it does not check one. The optional-at-required refusal is decided before
+// this half (declared_type_inhabitance), so a refinement of an optional cannot widen past it.
+fn declared_type_inhabitance_declared_carrier(
+  obligation: DeclaredTypeObligation,
+  exact_refusal: InhabitanceVerdict
+) -> InhabitanceVerdict {
+  match obligation.produced_declared_carrier {
+    Absent => exact_refusal
+    Present { value: carrier } =>
+      match find_witness(
+        source_facts: carrier,
+        candidates: inhabitance_declared_singleton(declared: obligation.declared),
+        predicate: PreservationPredicate {
+          algebra: carrier,
+          preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
+        },
+        multiplicity_policy: UniqueOnly
+      ) {
+        Accepted { value: fw, diagnostics: _ } =>
+          Inhabits {
+            homomorphism: HomomorphismWitness {
+              rule: ^homomorphism_rule_refinement_declared_carrier,
+              evidence: fw.witness.evidence
+            }
+          }
+        Rejected { diagnostics: _ } => exact_refusal
       }
   }
 }
@@ -216,9 +371,47 @@ fn inhabitance_no_candidate_application_reason() -> Symbol {
   ^application_argument_does_not_inhabit
 }
 
-fn inhabitance_application_refusal_reason(find_witness_reason: Symbol) -> Symbol {
+fn inhabitance_no_candidate_return_reason() -> Symbol {
+  ^arrow_body_does_not_inhabit_declared_return
+}
+
+fn inhabitance_no_candidate_record_field_reason() -> Symbol {
+  ^record_field_value_does_not_inhabit
+}
+
+fn inhabitance_no_candidate_let_annotation_reason() -> Symbol {
+  ^infer_reason_bound_value_does_not_inhabit_annotation
+}
+
+// WHAT A POSITION ADDS TO ITS REFUSAL BEYOND THE SITE, THE FORMAL AND THE TWO TYPES. A record field
+// names the record it is a field of; an argument and a declared return are already named by the
+// site they are located at.
+fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Edge> {
+  match position {
+    PositionDirectCallArgument => []
+    PositionDeclaredReturn => []
+    PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record }]
+    PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound }]
+    PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default }]
+  }
+}
+
+fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
+  match position {
+    PositionDirectCallArgument => inhabitance_no_candidate_application_reason()
+    PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
+    PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
+    PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
+    PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
+  }
+}
+
+fn inhabitance_application_refusal_reason(
+  position: DeclaredTypePosition,
+  find_witness_reason: Symbol
+) -> Symbol {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_no_candidate_application_reason()
+    inhabitance_no_candidate_reason(position: position)
   } else {
     find_witness_reason
   }
@@ -232,6 +425,10 @@ fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
   UndecidableArgumentTypeNotDerived
 }
 
+fn undecidable_where_predicate_subject_unmodelled() -> InhabitanceUndecidableReason {
+  UndecidableWherePredicateSubjectUnmodelled
+}
+
 
 fn inhabitance_undecidable_reason_symbol(
   reason: InhabitanceUndecidableReason
@@ -241,6 +438,7 @@ fn inhabitance_undecidable_reason_symbol(
     UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
     UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
+    UndecidableWherePredicateSubjectUnmodelled => ^inhabitance_undecidable_where_predicate_subject_unmodelled
   }
 }
 
@@ -273,7 +471,7 @@ fn application_positional_arity_reason(formal_count: Int, argument_count: Int) -
 
 // POSITIONAL BINDING HAS NO DECLARED ORDER TO READ. The callee's domain is a Conj, sorted by label,
 // so its stored sequence is not the order the author wrote; the order lives only on the Arrow's
-// ^arrow_signature_order_edge (v2.std.compilers.body_lowering arrow_declared_parameter_order). An
+// ^arrow_signature_order_edge (v2.std.arrow_signature arrow_declared_parameter_order). An
 // Arrow without one, or with one that is not a permutation of its binders, refuses here, located at
 // the application, and is never bound by label order.
 fn application_parameter_order_absent_reason() -> Symbol {
@@ -312,29 +510,32 @@ fn application_argument_does_not_inhabit_diagnostic(
   find_witness_reason: Symbol
 ) -> Diagnostic {
   Diagnostic {
-    reason: inhabitance_application_refusal_reason(find_witness_reason: find_witness_reason),
+    reason: inhabitance_application_refusal_reason(
+      position: obligation.position,
+      find_witness_reason: find_witness_reason
+    ),
     at: node_locus(node: obligation.application),
     correction: Suggested {
       node: Node {
         kind: TypeNode { connective: Conj },
-        children: [
+        children: list_append(left: [
           Edge {
-            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            label: Authored { name: inhabitance_position_symbol(position: obligation.position) },
             target: obligation.application
           },
           Edge {
-            label: Named { name: obligation.parameter_identity },
+            label: Authored { name: obligation.parameter_identity },
             target: obligation.declared
           },
           Edge {
-            label: Named { name: ^inhabitance_produced_type },
+            label: Authored { name: ^inhabitance_produced_type },
             target: obligation.produced
           },
           Edge {
-            label: Named { name: find_witness_reason },
+            label: Authored { name: find_witness_reason },
             target: obligation.produced
           }
-        ],
+        ], right: inhabitance_position_context_edges(position: obligation.position)),
         occurrence_id: obligation.application.occurrence_id
       }
     }

@@ -60,7 +60,7 @@ import gunbc.fleet_posix_accounts { fleet_ci_runner_reported_contradiction }
 import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
 import gunbc.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_registration_labels, runner_browser_ready_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
 }
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.build_cache_unit {
@@ -483,6 +483,32 @@ fn gunbc_runner_unit_depriv_dropin_text(deploy: RunnerHostDeploy, host: HostIden
     host: host,
     figure: runner_job_user_xdg_runtime_uid(),
   )
+}
+
+// THE READINESS LABEL REACHES THE RUNNER AS A TEMPLATE DROP-IN, NOT A SECOND FRAGMENT. systemd reads
+// actions-runner@.service.d after the fragment, and a later Environment= assignment of the same
+// name wins, so this drop-in replaces LABELS_JSON for every instance on the host with the host's set
+// plus gunbc-browser-ready. It uses the fragment's own quoted-environment rule and JSON serializer,
+// so the two cannot disagree about how a label set is spelled. Its only writer is the
+// browser-toolchain converge (gunbc.runner_browser_toolchain browser_ready_labels_converge_wet).
+fn runner_host_browser_ready_labels_dropin_text(host: HostIdentity) -> RunnerUnitTextRendering {
+  match runner_browser_ready_registration_labels(host: host) {
+    RegistrationLabelsRefused { host: _, cause: c } =>
+      RunnerUnitTextRefused { reason: concat("runner_unit_file: ", c as String) as NonEmptyStr }
+    RegistrationLabelsResolved { labels: labels } =>
+      match runner_unit_labels_json(spec: SelfHosted { labels: labels }) {
+        RunnerUnitLabels { json_text: labels_json } =>
+          RunnerUnitText {
+            text: serialize_systemd_drop_in(drop_in: SystemdDropIn {
+              sections: [DropInServiceSection { directives: [runner_unit_quoted_environment(name: "LABELS_JSON", value: labels_json)] }],
+            }),
+          }
+        RunnerUnitLabelsHostedRunner =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as a hosted runner" as NonEmptyStr }
+        RunnerUnitLabelsUnresolvedExpression { expression: _ } =>
+          RunnerUnitTextRefused { reason: "runner_unit_file: a self-hosted label set rendered as an unresolved expression" as NonEmptyStr }
+      }
+  }
 }
 
 fn gunbc_runner_unit_fragment_from_deploy(deploy: RunnerHostDeploy, host: HostIdentity) -> RunnerUnitTextRendering {

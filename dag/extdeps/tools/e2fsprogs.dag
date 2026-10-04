@@ -1,5 +1,7 @@
 module extdeps.tools.e2fsprogs
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr, Bool, Int }
 import std.algebra { trim }
 import std.measure { Mebibyte, mebibyte_count }
@@ -27,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data mke2fs_program: NonEmptyStr = "mke2fs"
+fn mke2fs_program() -> ProgramIdentity = uncataloged_program(invocation: "mke2fs")
 
 // THE FILESYSTEM TYPE IS A CLOSED SET, not the `-t` operand's free string. e2fsprogs builds exactly
 // the three ext generations; anything else is a different tool, and an open string would defer the
@@ -49,12 +51,12 @@ fn ext_filesystem_type_wire(fs: Ext2FilesystemType) -> String {
 // length; this builder must not steal the size-operand annotation that belongs to populate.
 fn mke2fs_format_command(fs: Ext2FilesystemType, image_path: String) -> ArgvCommand {
   argv_command(
-    program: mke2fs_program,
+    program: mke2fs_program(),
     arguments: ["-t", ext_filesystem_type_wire(fs: fs), "-F", "-q", image_path],
   )
 }
 
-data dumpe2fs_program: NonEmptyStr = "dumpe2fs"
+fn dumpe2fs_program() -> ProgramIdentity = uncataloged_program(invocation: "dumpe2fs")
 
 // `-h` PRINTS THE SUPERBLOCK AND STOPS, which is the whole readback a freshly formatted image needs:
 // the magic number that says an ext filesystem is there, and the block count and block size whose
@@ -63,7 +65,7 @@ data dumpe2fs_program: NonEmptyStr = "dumpe2fs"
 // separate "no ext superblock" from "file unreadable", so a caller reports it as a failed reading and
 // never as a filesystem-type fact.
 fn dumpe2fs_superblock_command(image_path: String) -> ArgvCommand {
-  argv_command(program: dumpe2fs_program, arguments: ["-h", image_path])
+  argv_command(program: dumpe2fs_program(), arguments: ["-h", image_path])
 }
 
 // `-d` IS WHAT MAKES A ROOT FILESYSTEM BUILDABLE WITHOUT MOUNTING ONE, and that is the reason this
@@ -84,7 +86,7 @@ fn mke2fs_populate_command(
   size: Mebibyte,
 ) -> ArgvCommand {
   argv_command(
-    program: mke2fs_program,
+    program: mke2fs_program(),
     arguments: [
       "-t", ext_filesystem_type_wire(fs: fs),
       "-d", from_directory,

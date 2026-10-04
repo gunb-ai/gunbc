@@ -2,8 +2,7 @@ module gunbc.seed_growth
 
 import std.decl_ref { DeclarationRef }
 import gunbc.roadmap_model { RoadmapNodeId }
-import std.types { String }
-import v2.std.collection { List }
+import std.types { String, List }
 
 // Temporary hand-authored Rust debt, stated as an obligation roster rather than a size. A
 // SeedGrowthJustification says which declarations a change adds to the seed, why the substrate

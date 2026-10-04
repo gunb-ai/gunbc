@@ -24,7 +24,6 @@ import gunbc.auth.heal_publisher_federation {
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant, secret_access_ensure_for_member }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
 import gunbc.gcp_estate_observation { role_iam_workload_identity_user }
-import gunbc.rust_item_scan { ends_with }
 
 // ONE-TIME PROVISIONING OF THE PUBLISHER'S OWN IDENTITY, run by an operator with a control-plane
 // token (gunbc.auth.access_token_source secret_access_token_path_env). It handles no key material at
@@ -56,7 +55,7 @@ fn rest_ok(o: RestOutcome) -> Bool {
 }
 
 // ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
-// provider and service account; the Mt. Collins boot (gunbc.auth.mtcollins1_boot_federation) is the
+// provider and service account; the managed-host boot (gunbc.auth.managed_host_boot_federation) is the
 // second. The provisioning below was written against the heal publisher's names, and a second copy
 // differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
 // so the names are a record and each federation binds its own. Everything else -- the 409 handling,
@@ -349,9 +348,9 @@ fn classify_dedicated_federation(f: DedicatedFederation, pool: PoolReading, prov
     FederationUnclassified { reasons: reasons }
   } else {
     FederationClassified {
-      create_pool: match pool { PoolObservedAbsent => true  _ => false },
+      create_pool: match pool { PoolObservedAbsent => true  PoolObserved { pool: _ } => false  PoolUnreadable { cause: _ } => false },
       create_provider: providers_absent(providers: providers),
-      create_account: match account { AccountObservedAbsent => true  _ => false },
+      create_account: match account { AccountObservedAbsent => true  AccountObserved { email: _ } => false  AccountUnreadable { cause: _ } => false },
     }
   }
 }

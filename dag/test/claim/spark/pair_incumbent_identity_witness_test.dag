@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch { vllm_serving_launch, EndpointIncarnationObservation, endpoint_incarnation_observation }
@@ -86,6 +86,7 @@ fn t_head_observation(unit_digest: ContentHash, image: ContentHash) -> EndpointI
       systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
       executable_digest: image, unit_digest: unit_digest, started_at: 1788907506,
     ),
+    container_env: [],
     receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
   )
 }
@@ -199,6 +200,7 @@ test fn a_head_on_another_host_is_a_population_difference() -> Bool {
         systemd_invocation: "fixture-invocation-head" as NonEmptyStr, container_id: "fixture-container" as NonEmptyStr,
         executable_digest: img, unit_digest: a, started_at: 1788907506,
       ),
+      container_env: [],
       receipt: "test.claim.spark.pair_incumbent_identity_witness fixture" as ObservationReceiptRef,
     )
     let observed = ObservedPairRealizationRead {

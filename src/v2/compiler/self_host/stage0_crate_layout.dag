@@ -1,9 +1,8 @@
 module v2.compiler.self_host.stage0_crate_layout
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // The stage0 crate's module layout, authored as registration rows.
@@ -71,13 +70,12 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "declaration_index", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "closure_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "namespace_baseline", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },

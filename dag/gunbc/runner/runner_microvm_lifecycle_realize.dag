@@ -1,7 +1,14 @@
 module gunbc.runner_microvm_lifecycle_realize
 
+import extdeps.systemd.journalctl
+import gunbc.runner_microvm_network_observe { observe_slot_network_readings }
+import extdeps.virtualization.firecracker { FirecrackerVmConfig, firecracker_vm_config_document }
+
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.tools.gnu_coreutils { timeout_command }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.resources { Filesystem }
@@ -40,10 +47,10 @@ import gunbc.runner_microvm_attempt {
 import gunbc.runner_attempt_launch {
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
-  AttemptStagingVerdict, StagingAdmitsJailer, AttemptStagingReceipt,
+  AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedVmConfiguration, AttemptStagingReceipt, jail_config_path,
   JailMaterialStaging, jail_kernel_destination, jail_rootfs_destination,
   WorkspaceReadback, WorkspaceSuperblockRead, WorkspaceReadbackFailed, WorkspaceStagingObservation,
-  attempt_staging_verdict, workspace_readback_command, stage_jit_device,
+  launch_payload_device, attempt_staging_verdict, workspace_readback_command, stage_bootstrap_device,
 }
 import gunbc.runner_microvm_attempt_bounds {
   runner_attempt_vmm_deadline, attempt_stop_grace, attempt_force_stop_bound,
@@ -67,6 +74,7 @@ import product.fabric.sanitation { CellId }
 import extdeps.tools.e2fsprogs {
   decode_dumpe2fs_superblock, Ext2SuperblockRead, Ext2SuperblockUnreadable, ext2_superblock_magic,
 }
+import extdeps.systemd.journalctl
 import extdeps.systemd.systemd_run { systemd_run_property_argv, SystemdRunProperty }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -826,33 +834,25 @@ fn perform_teardown_and_observe(
       mounts: ObservedPath { path: jail, readback: observe_resource_absence(path: jail) },
       attempt_storage: ObservedPath { path: dir, readback: observe_resource_absence(path: dir) },
       credential_disk: ObservedPath { path: drive, readback: observe_resource_absence(path: drive) },
-      network: observe_slot_network_after_stop(subject: subject, after: outcome),
+      network: observe_slot_network_after_stop(subject: subject, after: outcome, after_cleanup: cleanup),
     },
     cleanup: cleanup,
   }
 }
 
-// DECLARED FRONTIER (DESIGN 3c) AND A HOST FACT, NOT A PLACEHOLDER: the slot network's readings
-// cannot be taken on any host this repository has.
-//
-// gunbc.runner_microvm_network owns the seven facts and the commands that would read them, and it is
-// pure decisions -- there is no producer. There cannot be one yet either: the readings need conntrack
-// and the converged gunbc-microvm nft table, and neither exists on srv1 (measured: no conntrack
-// binary, and nft lists only the stock ip/ip6 filter, nat and mangle tables). The slot-network
-// converge that would create them has not run on any host.
-//
-// SO EVERY READING IS Unreadable WITH THE REASON, WHICH QUARANTINES, AND THAT IS THE HONEST STATE.
-// SlotNetworkQuiescent is one of the required facts, so a teardown settled through this today can
-// only ever be CellQuarantined. That is not this function degrading -- it is the host being unable to
-// answer, reported as unable rather than as clean. The alternative, omitting the fact, is the
-// empty-observation narrow that product.fabric.sanitation exists to refuse.
-//
-// TRIGGER, at capability grain: the slot-network converge running on a host, so conntrack and the
-// gunbc-microvm ruleset exist to be read, and a readings producer in gunbc.runner_microvm_network
-// that takes them. SUFFICIENT FOR deleting this row. NOT satisfied by a witness supplying readings,
-// nor by this function returning anything other than what it read.
-fn observe_slot_network_after_stop(subject: SlotNetworkSanitationSubject, after: TeardownStop) -> BoundSlotNetworkReadback {
-  slot_network_readback(s: subject, readings: unreadable_slot_network_readings(s: subject, after: after))
+// After a quiescent stop, read each slot-network obligation from the host. Missing tools,
+// unreadable proc descriptors, stale ruleset digests, and remaining residue stay distinct refusals.
+fn observe_slot_network_after_stop(subject: SlotNetworkSanitationSubject, after: TeardownStop, after_cleanup: AttemptCleanupRun) -> BoundSlotNetworkReadback {
+  match after_cleanup {
+    CleanupPerformed { unmounted: _, steps: _ } => {
+  if stop_admits_cleanup(stop: after) {
+    slot_network_readback(s: subject, readings: observe_slot_network_readings(subject: subject))
+  } else {
+    slot_network_readback(s: subject, readings: unreadable_slot_network_readings(s: subject, after: after))
+  }
+    }
+    other => slot_network_readback(s: subject, readings: unreadable_slot_network_readings(s: subject, after: after))
+  }
 }
 
 data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dissolution(
@@ -875,7 +875,7 @@ data slot_network_readings_producer_frontier: DissolutionCondition = unbound_dis
 // make this depend on a distant invariant instead of naming the compared authority.
 fn unreadable_slot_network_readings(s: SlotNetworkSanitationSubject, after: TeardownStop) -> SlotNetworkReadings {
   let why = join([
-    "the slot network cannot be read on this host: no conntrack binary and no converged gunbc-microvm ruleset (stop outcome: ",
+    "slot network observation withheld because stop is not quiescent (stop outcome: ",
     teardown_stop_label(stop: after),
     ")",
   ], "") as NonEmptyStr
@@ -1032,14 +1032,31 @@ type AttemptStaging
   = AttemptStaged { verdict: AttemptStagingVerdict }
   | AttemptStagingNotPlanned { plan: AttemptLaunchPlan }
 
+// Persist the exact planned configuration before admitting the jailer. The plan previously
+// carried these bytes without any production writer, leaving /vm.json absent at execution.
+fn stage_attempt_configuration(jail_root: String, config: FirecrackerVmConfig) -> String? {
+  let path = concat(jail_root, jail_config_path)
+  let document = firecracker_vm_config_document(config: config)
+  let wrote = Filesystem.Write(path: path, content: document)
+  if wrote.success == false {
+    Present { value: concat("could not write VM configuration: ", path) }
+  } else {
+    let read = Filesystem.Read(path: path)
+    if read.success == false || read.content != document {
+      Present { value: concat("VM configuration readback differs: ", path) }
+    } else { none }
+  }
+}
+
 fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
 {
   match plan {
     LaunchAuthorized {
       authorization: _,
-      jit_runner_name: _,
-      jit_registration_id: _,
-      jit_device: device,
+      payload: payload,
+      workspace_grant: _,
+      runtime_properties: _,
+      lease_expires_unix: _,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -1051,7 +1068,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       workspace_create: create,
       workspace_format: format,
       kvm_device: _,
-      vm_config: _,
+      vm_config: config,
       jailer: _,
     } => {
       let root_outcome = run_shell_command_capture(command: stage_root, transport: LocalExec)
@@ -1061,7 +1078,9 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let format_outcome = run_staged_after(after: create_outcome, command: format)
       let kernel_present = observe_path_exists(path: jail_kernel_destination(jail_root: jail_root))
       let rootfs_present = observe_path_exists(path: jail_rootfs_destination(jail_root: jail_root))
-      AttemptStaged {
+      match stage_attempt_configuration(jail_root: jail_root, config: config) {
+        Present { value: detail } => AttemptStaged { verdict: StagingRefusedVmConfiguration { detail: detail } }
+        Absent => AttemptStaged {
         verdict: attempt_staging_verdict(
           plan: plan,
           jail: JailMaterialStaging {
@@ -1071,13 +1090,14 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
             kernel: kernel_present,
             rootfs: rootfs_present,
           },
-          jit: stage_jit_device(device: device),
+          jit: stage_bootstrap_device(device: launch_payload_device(payload: payload)),
           workspace: WorkspaceStagingObservation {
             create_exit: command_exit_code(outcome: create_outcome),
             format_exit: command_exit_code(outcome: format_outcome),
             readback: read_workspace_superblock(workspace_path: workspace_path),
           },
         ),
+      }
       }
     }
     refused => AttemptStagingNotPlanned { plan: refused }
@@ -1125,22 +1145,40 @@ fn launch_attempt(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, plan: Att
   }
 }
 
-fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, receipt: AttemptStagingReceipt) -> AttemptLaunch
-{
+// Re-read time after staging. Preparing an image never extends the absolute lease.
+fn attempt_jailer_at_launch(receipt: AttemptStagingReceipt) -> ArgvCommand? {
+  match receipt.lease_expires_unix {
+    Absent => Present { value: receipt.jailer }
+    Present { value: expiry } => match clock_unix_millis_read() {
+      ClockUnixMillisObserved { millis: now } => {
+        let remaining = expiry - epoch_secs_of_millis(millis: now)
+        if remaining <= 0 { none } else { match checked_int_magnitude(a: remaining) {
+          CheckedNatReady { value: duration } => Present { value: timeout_command(duration: second(count: duration), kill_after: second(count: 5), command: receipt.jailer) }
+          CheckedNatOverflow { cause: _ } => none
+        } }
+      }
+      ClockUnixMillisRefused { detail: _ } => none
+    }
+  }
+}
+
+fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, receipt: AttemptStagingReceipt) -> AttemptLaunch {
   let unit = runner_microvm_attempt_unit_name(attempt: attempt)
-  let started = systemd.SystemdRun.RunTransientRetained(
-    unit: unit,
-    property_argv: systemd_run_property_argv(properties: [
-      runner_microvm_attempt_slice_property(attempt: attempt),
-      runner_microvm_attempt_part_of_property(attempt: attempt),
-      attempt_invocation_env_setting(invocation_id: invocation_id),
-    ]),
-    command_argv: concat([receipt.jailer.program as String], receipt.jailer.arguments),
-  )
-  if started.success {
-    VmmStarted { unit: unit, receipt: receipt }
-  } else {
-    VmmStartFailed { unit: unit, detail: trim(s: started.stderr) }
+  match attempt_jailer_at_launch(receipt: receipt) {
+    Absent => VmmStartFailed { unit: unit, detail: "lease expired during staging or launch clock is unreadable" }
+    Present { value: jailer } => {
+      let started = systemd.SystemdRun.RunTransientRetained(
+        unit: unit,
+        property_argv: systemd_run_property_argv(properties: concat([
+          runner_microvm_attempt_slice_property(attempt: attempt),
+          runner_microvm_attempt_part_of_property(attempt: attempt),
+          attempt_invocation_env_setting(invocation_id: invocation_id),
+        ], receipt.runtime_properties)),
+        command_argv: concat([jailer.program.invocation as String], jailer.arguments),
+      )
+      if started.success { VmmStarted { unit: unit, receipt: receipt } }
+      else { VmmStartFailed { unit: unit, detail: trim(s: started.stderr) } }
+    }
   }
 }
 
@@ -1243,6 +1281,19 @@ fn run_controller(
   allocation_generation: Int,
   plan: AttemptLaunchPlan,
   subject: SlotNetworkSanitationSubject,
+) -> ControllerOutcome {
+  run_controller_with_wait(
+    identity: identity, allocation_generation: allocation_generation, plan: plan, subject: subject,
+    await_workload: (identity, launch) => terminal_trigger_of_launch(launch: launch),
+  )
+}
+
+fn run_controller_with_wait(
+  identity: AttemptIdentity,
+  allocation_generation: Int,
+  plan: AttemptLaunchPlan,
+  subject: SlotNetworkSanitationSubject,
+  await_workload: fn(AttemptIdentity, AttemptLaunch) -> TerminalTrigger,
 ) -> ControllerOutcome
 {
   let cell = runner_slot_instance_name(slot: identity.attempt.slot) as CellId
@@ -1257,7 +1308,7 @@ fn run_controller(
     StartQuarantineUnattributedResidue { trigger: _, record: r } =>
       ControllerQuarantinedUnattributedResidue { persisted: persist_cell_readiness_write(write: r) }
     StartRecovery { bound: b, trigger: t } => ControllerRecovered { teardown: run_teardown(bound: b, subject: subject, trigger: t) }
-    StartAttempt { bound: b, record: r } => run_started_attempt(identity: identity, bound: b, record: r, plan: plan, subject: subject)
+    StartAttempt { bound: b, record: r } => run_started_attempt(identity: identity, bound: b, record: r, plan: plan, subject: subject, await_workload: await_workload)
   }
 }
 
@@ -1267,11 +1318,12 @@ fn run_started_attempt(
   record: CellReadinessWrite,
   plan: AttemptLaunchPlan,
   subject: SlotNetworkSanitationSubject,
+  await_workload: fn(AttemptIdentity, AttemptLaunch) -> TerminalTrigger,
 ) -> ControllerOutcome
 {
   let persisted = persist_cell_readiness_write(write: record)
   match persisted {
-    StorePersisted { record: _ } => run_launched_attempt(identity: identity, bound: bound, plan: plan, subject: subject)
+    StorePersisted { record: _ } => run_launched_attempt(identity: identity, bound: bound, plan: plan, subject: subject, await_workload: await_workload)
     refused => ControllerStartNotRecorded { persisted: refused }
   }
 }
@@ -1281,6 +1333,7 @@ fn run_launched_attempt(
   bound: CellBoundIdentity,
   plan: AttemptLaunchPlan,
   subject: SlotNetworkSanitationSubject,
+  await_workload: fn(AttemptIdentity, AttemptLaunch) -> TerminalTrigger,
 ) -> ControllerOutcome
 {
   let launch = launch_attempt(
@@ -1289,7 +1342,7 @@ fn run_launched_attempt(
     plan: plan,
   )
   let console = bind_attempt_console(identity: identity, launch: launch)
-  let trigger = terminal_trigger_of_launch(launch: launch)
+  let trigger = await_workload(identity, launch)
   let bring_up = observe_guest_bring_up(identity: identity, console: console)
   ControllerRanAttempt {
     launch: launch,

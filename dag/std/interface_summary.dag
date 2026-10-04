@@ -1,6 +1,6 @@
 module std.interface_summary
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, brand }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,

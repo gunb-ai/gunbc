@@ -1,0 +1,54 @@
+module test.claim.emit.nested_constant_pattern_emission_witness_test
+
+import std.types { Int, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the Rust lowering of a THREE-LEVEL CONSTANT PATTERN
+// (gunbc.recurring_failure_mode nested_pattern_accepted_by_the_interpreter_and_broken_in_emitted_rust).
+// Two sibling arms share their outer and middle variants and differ only in the innermost constant,
+// and a WILDCARD sibling at the middle level follows them (without it the emitter groups the arms
+// into a correct nested match).
+// The interpreter picks the right arm. The seed's Rust emitter used to guard the middle variant only
+// and take the innermost constant with `let ... else { unreachable!() }`, so the emitted binary
+// panicked on the second sibling -- what broke the EdgeLabel cut's self-host (gunbc#12799). The
+// wildcard sibling was why: it planned as ungroupable and so refused the nested match for the whole
+// variant. It now joins that match as its trailing `_` arm (v1.compiler.emit_rust
+// rc_group_representative).
+
+type NcpInner = NcpA | NcpB | NcpC
+type NcpMid = NcpM { inner: NcpInner } | NcpN
+type NcpOuter = NcpO { mid: NcpMid } | NcpP
+
+fn ncp_probe(x: NcpOuter) -> Int {
+  match x {
+    NcpP => 4
+    NcpO { mid: NcpM { inner: NcpA } } => 1
+    NcpO { mid: NcpM { inner: NcpB } } => 2
+    NcpO { mid: _ } => 3
+  }
+}
+
+// THE INTERPRETED ROUTE IS RIGHT: every arm, including the second constant sibling that the
+// emitted lowering cannot reach.
+test fn the_interpreter_selects_each_nested_constant_arm() -> Bool {
+  (ncp_probe(x: NcpO { mid: NcpM { inner: NcpA } }) == 1)
+    && (ncp_probe(x: NcpO { mid: NcpM { inner: NcpB } }) == 2)
+    && (ncp_probe(x: NcpO { mid: NcpM { inner: NcpC } }) == 3)
+    && (ncp_probe(x: NcpO { mid: NcpN }) == 3)
+    && (ncp_probe(x: NcpP) == 4)
+}
+
+// THE EMITTED ROUTE LOWERS THE CONSTANTS AS A NESTED MATCH. This row asserted the defect until the
+// emitter fix and was flipped by it; it stays as the permanent regression control (DESIGN §4b(4)).
+// It reds if the variant falls back to the guard-plus-let-else lowering, or if the wildcard sibling
+// stops being the inner match's trailing arm.
+test fn the_emitter_lowers_a_nested_constant_with_a_wildcard_sibling_as_a_nested_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ncp_emit_probe\nimport std.types { Int }\ntype NcpInner = NcpA | NcpB | NcpC\ntype NcpMid = NcpM { inner: NcpInner } | NcpN\ntype NcpOuter = NcpO { mid: NcpMid } | NcpP\nfn ncp_emit_probe(x: NcpOuter) -> Int {\n  match x {\n    NcpP => 4\n    NcpO { mid: NcpM { inner: NcpA } } => 1\n    NcpO { mid: NcpM { inner: NcpB } } => 2\n    NcpO { mid: _ } => 3\n  }\n}\n",
+    "src/test_claim_ncp_emit_probe.rs",
+    ["NcpOuter::NcpO { ref mid, .. } => { match mid.as_ref() {", "NcpMid::NcpM { inner: NcpInner::NcpB, .. } => 2,", "    _ => 3,"],
+    ["else { unreachable!() }"]
+  )
+}

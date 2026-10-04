@@ -1,6 +1,7 @@
 module gunbc.machine_intake_mtcollins1_bmc_sensor_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly, SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.algebra { trim }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured, SdrTypeLine }
@@ -54,23 +55,24 @@ fn mtcollins1_socket_unstructured_lines(lines: List<SdrLineResult>, socket: Int)
   })
 }
 
-// PER SOCKET, TWO KINDS OF FINDING. A socket sensor whose status is not "ok" is quoted as the tool
-// printed it ("ns" is no reading), decoded or not; and a socket with NO sensor in the table at all is
-// its own finding. Either on socket 1 beside a clean socket 0 is what the socket-1 investigation
+
+// PER SOCKET, TWO KINDS OF ANOMALY. A socket sensor whose status is not "ok" is carried as the tool
+// printed it ("ns" is no reading), decoded or not, for every socket the board's sensor names cover;
+// and a socket with NO sensor in the table at all is an anomaly ONLY when the attempt's receipt
+// EXPECTS that socket -- with its CPU removed, an empty socket's missing sensors are the expected
+// state, and with no recorded expectation absence judges nothing (law 6). Either on socket 1 beside a clean socket 0 is what the socket-1 investigation
 // asked the BMC for (gunbc.machine_intake_mtcollins1_socket1_investigation_observation
-// mtcollins1_socket1_open_hypotheses, the VRM row). No status or reading is interpreted further.
-fn mtcollins1_sensor_findings(lines: List<SdrLineResult>, sockets: List<Int>) -> List<String> {
+// mtcollins1_socket1_open_hypotheses, the VRM row). No status or reading is interpreted further; the
+// power-on fold (gunbc.machine_intake_mtcollins1_power_on_account) places them on the chassis power-on stage.
+fn mtcollins1_sensor_anomalies(lines: List<SdrLineResult>, sockets: List<Int>, expected: List<Int>?) -> List<BmcAnomaly> {
   flat_map(sockets, k => {
     let decoded = mtcollins1_socket_sensor_lines(lines: lines, socket: k)
     let discrete = mtcollins1_socket_unstructured_lines(lines: lines, socket: k)
     if count(decoded) == 0 && count(discrete) == 0 {
-      [concat("bmc sensors: no ", mtcollins1_sensor_socket_prefix, to_string(k), "_ sensor in the table")]
+      match expected { Present { value: ks } => if any(ks, j => j == k) { [SocketSensorsAbsent { socket: k }] } else { [] } Absent => [] }
     } else {
-      concat(
-        map(filter(decoded, l => (l.status as String) != "ok"), l =>
-          concat("bmc sensor ", l.name as String, " status ", l.status as String, ": ", l.reading_text as String)),
-        map(filter(discrete, t => pipe_field(text: t, index: 2) != "ok"), t => concat("bmc sensor line (no reading field): ", t)),
-      )
+      concat(map(filter(decoded, l => (l.status as String) != "ok"), l => SensorNotNominal { line: l }),
+        map(filter(discrete, t => pipe_field(text: t, index: 2) != "ok" && t != ""), t => SensorLineWithoutReadingNotNominal { text: t as NonEmptyStr }))
     }
   })
 }
@@ -81,7 +83,7 @@ fn sensor_line_text(l: SdrTypeLine) -> String {
 
 // PER SOCKET FIRST, in the order the controller lists them, then every line as read.
 fn mtcollins1_sensor_table_text(lines: List<SdrLineResult>, sockets: List<Int>) -> String {
-  let unstructured = filter(lines, r => match r { SdrLineUnstructured { text: _ } => true _ => false })
+  let unstructured = filter(lines, r => match r { SdrLineUnstructured { text: _ } => true SdrLineDecoded { line: _ } => false })
   join([
     concat(to_string(count(lines)), " line(s), ", to_string(count(unstructured)), " without a reading field"),
     join(map(sockets, k => {

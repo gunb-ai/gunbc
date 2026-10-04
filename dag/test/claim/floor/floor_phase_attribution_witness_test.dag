@@ -1,0 +1,105 @@
+module test.claim.floor_phase_attribution_witness_test
+
+import std.types { Bool, String, Int, list_length }
+import std.measure { byte_size_count }
+import gunbc.floor_demand {
+  FloorBeatReading, FloorPhaseHeldSet, floor_phase_attribution, FloorPhasesAttributed, FloorPhaseSeamUnknown, FloorPhaseReadingNegative,
+  HeldSetPeakAt, SeamParse, SeamPrepareClosureResolve, StallUnread, SwapUnread,
+}
+
+// A reading with every held-set term zero except anon, so the held set IS anon and each claim's
+// expected bytes can be read off its own inputs.
+fn reading(beat: Int, opens: Bool, seam: String, anon: Int) -> FloorBeatReading {
+  FloorBeatReading {
+    beat: beat, opens_phase: opens, seam_before: seam, seam_after: seam,
+    stall_per_min: none, swap_bytes: none,
+    charge: anon, anon: anon, file: 7, shmem: 0, unevictable: 0, slab_unreclaimable: 0,
+    slab_reclaimable: 5, kernel_stack: 0, pagetables: 0, percpu: 0, sock: 0, file_dirty: 0,
+  }
+}
+
+fn held_bytes_are(p: FloorPhaseHeldSet, entry: Int, peak: Int) -> Bool {
+  let e = match p.entry {
+    HeldSetPeakAt { beat: _, bytes: b } => byte_size_count(b: b) == entry
+    _ => false
+  }
+  let k = match p.peak {
+    HeldSetPeakAt { beat: _, bytes: b } => byte_size_count(b: b) == peak
+    _ => false
+  }
+  e && k
+}
+
+// A SEAM BEAT OPENS A PHASE AND A WATCHDOG BEAT STAYS IN IT: the parse phase inherits 10, peaks at
+// 30 on its watchdog tick, and the next seam beat (20) opens the next phase with its own entry --
+// so a phase's peak is its own beats' maximum and what it left is the next phase's entry. The
+// reclaimable `file`/`slab_reclaimable` terms are set and must not reach the held set.
+test fn a_seam_beat_opens_a_phase_and_its_watchdog_beats_set_its_peak() -> Bool {
+  match floor_phase_attribution(readings: [
+    reading(beat: 0, opens: true, seam: "parse", anon: 10),
+    reading(beat: 1, opens: false, seam: "parse", anon: 30),
+    reading(beat: 2, opens: true, seam: "prepare-closure-resolve", anon: 20),
+  ]) {
+    FloorPhasesAttributed { phases: ps } =>
+      list_length(items: ps) == 2
+        && match ps[0] {
+          Present { value: first } =>
+            held_bytes_are(p: first, entry: 10, peak: 30)
+              && first.opened_at == 0
+              && match first.seam { SeamParse => true, _ => false }
+          Absent => false
+        }
+        && match ps[1] {
+          Present { value: second } =>
+            held_bytes_are(p: second, entry: 20, peak: 20)
+              && second.opened_at == 2
+              && match second.seam { SeamPrepareClosureResolve => true, _ => false }
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+// A TOKEN NO ROW NAMES REFUSES, naming the beat and the token, rather than being dropped -- a
+// dropped beat would lower the peak of the phase it belonged to.
+test fn an_unknown_seam_token_refuses_the_attribution() -> Bool {
+  match floor_phase_attribution(readings: [
+    reading(beat: 0, opens: true, seam: "parse", anon: 10),
+    reading(beat: 1, opens: true, seam: "not-a-seam", anon: 99),
+  ]) {
+    FloorPhaseSeamUnknown { beat: b, token: t } => b == 1 && t == "not-a-seam"
+    _ => false
+  }
+}
+
+// AN UNREAD STALL OR SWAP IS CARRIED AS UNREAD, NOT AS A ZERO: the transcription passes `na` as a
+// false read flag, and the phase's peak beat must still carry StallUnread / SwapUnread, because a
+// zero is the reading that would uncensor a peak (receipt_peak_reading_standing).
+test fn an_unread_stall_and_swap_reach_the_phase_as_unread() -> Bool {
+  match floor_phase_attribution(readings: [reading(beat: 0, opens: true, seam: "parse", anon: 10)]) {
+    FloorPhasesAttributed { phases: ps } =>
+      match ps[0] {
+        Present { value: p } =>
+          match p.peak {
+            HeldSetPeakAt { beat: b, bytes: _ } =>
+              match b.stall { StallUnread => true, _ => false }
+                && match b.swap { SwapUnread => true, _ => false }
+            _ => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// A NEGATIVE COUNTER REFUSES, naming its beat: nat_magnitude would otherwise lift -5 to a plausible
+// 5-byte anon and the phase would report memory nobody measured.
+test fn a_negative_counter_refuses_rather_than_lifting_to_its_magnitude() -> Bool {
+  match floor_phase_attribution(readings: [
+    reading(beat: 0, opens: true, seam: "parse", anon: 10),
+    reading(beat: 1, opens: false, seam: "parse", anon: 0 - 5),
+  ]) {
+    FloorPhaseReadingNegative { beat: b } => b == 1
+    _ => false
+  }
+}

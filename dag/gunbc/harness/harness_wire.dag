@@ -468,15 +468,22 @@ fn harness_decode_each(els: List<JsonValue>, decode: fn(JsonValue) -> HarnessBlo
   }
 }
 
-// THE WILDCARD BELOW IS OVER THE VALUE'S TYPE, NOT OVER A LOOKUP, which is why it survives the
-// sweep that wrote every lookup's arms out (review 63850): duplicated and not-an-object were
-// already decided by the lookup that PRODUCED this value and cannot reach here, so "not an array"
-// is the only fact left to state.
+// THE NON-ARRAY ARMS BELOW ARE OVER THE VALUE'S TYPE, NOT OVER A LOOKUP (review 63850): duplicated
+// and not-an-object were already decided by the lookup that PRODUCED this value and cannot reach
+// here, so "not an array" is the only fact left to state, once per JSON value kind.
 fn harness_decode_blocks(v: JsonValue) -> HarnessBlocksRead {
   match v {
     JsonArray { elements: els } => harness_decode_each(els: els, decode: e => harness_decode_block(v: e))
-    _ => BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
+    JsonNull => harness_content_not_an_array()
+    JsonBool { value: _ } => harness_content_not_an_array()
+    JsonNumber { lexeme: _ } => harness_content_not_an_array()
+    JsonString { value: _ } => harness_content_not_an_array()
+    JsonObject { members: _ } => harness_content_not_an_array()
   }
+}
+
+fn harness_content_not_an_array() -> HarnessBlocksRead {
+  BlocksUnreadable { cause: "the response content member is not an array of content blocks" }
 }
 
 // THE RESPONSE IS DECODED OR REFUSED, and every refusal names which member failed.
@@ -990,9 +997,17 @@ fn harness_decode_chat_choices(unit: HarnessServingUnit, doc: JsonValue, choices
                   }
               }
           }
-    _ => HarnessResponseUnreadable {
-      cause: "the chat completion's choices member is not an array; what the model returned this round is unknown",
-    }
+    JsonNull => harness_chat_choices_not_an_array()
+    JsonBool { value: _ } => harness_chat_choices_not_an_array()
+    JsonNumber { lexeme: _ } => harness_chat_choices_not_an_array()
+    JsonString { value: _ } => harness_chat_choices_not_an_array()
+    JsonObject { members: _ } => harness_chat_choices_not_an_array()
+  }
+}
+
+fn harness_chat_choices_not_an_array() -> HarnessResponseRead {
+  HarnessResponseUnreadable {
+    cause: "the chat completion's choices member is not an array; what the model returned this round is unknown",
   }
 }
 

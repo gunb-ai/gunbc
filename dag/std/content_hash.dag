@@ -81,6 +81,24 @@ fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: Int
     && content_hash_validate_lower_hex_syntax(text: text)
 }
 
+// WHERE-PREDICATES FOR THE HEX DIGEST CARRIERS above, one per digest width; a where atom binds to
+// them by name in v2 resolve. Each is content_hash_validate_lower_hex_length at its width.
+fn lower_hex_16(value: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 16)
+}
+
+fn lower_hex_40(value: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 40)
+}
+
+fn lower_hex_64(value: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 64)
+}
+
+fn lower_hex_128(value: String) -> Bool {
+  content_hash_validate_lower_hex_length(text: value, expected_hex_digits: 128)
+}
+
 fn sha256_hex_digest(hex: String) -> Sha256Digest? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 64) {
     Present { value: Sha256Digest { hex: hex as Sha256DigestHex } }

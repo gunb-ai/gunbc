@@ -51,6 +51,7 @@ pub enum CompilerEntryDriver {
     SourceRootEvalDriver,
     NativeCliDriver,
     NativeClaimDriver,
+    NativeServeDriver,
 }
 
 #[derive(
@@ -67,6 +68,9 @@ pub enum NativeDriverExclusiveRowKey {
     ExclusiveRowSerialization,
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
+    ExclusiveDemandScheduling,
+    ExclusiveDriverCollection,
+    ExclusiveOccurrenceCensus,
 }
 
 pub fn native_driver_exclusive_row_keys() -> Rc<Vec<NativeDriverExclusiveRowKey>> {
@@ -80,6 +84,9 @@ pub fn native_driver_exclusive_row_keys() -> Rc<Vec<NativeDriverExclusiveRowKey>
         NativeDriverExclusiveRowKey::ExclusiveRowSerialization,
         NativeDriverExclusiveRowKey::ExclusiveModuleRelease,
         NativeDriverExclusiveRowKey::ExclusiveRelayEmit,
+        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling,
+        NativeDriverExclusiveRowKey::ExclusiveDriverCollection,
+        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus,
     ])
 }
 
@@ -96,6 +103,9 @@ pub fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> Str
         NativeDriverExclusiveRowKey::ExclusiveRowSerialization => "row_serialization".to_string(),
         NativeDriverExclusiveRowKey::ExclusiveModuleRelease => "module_release".to_string(),
         NativeDriverExclusiveRowKey::ExclusiveRelayEmit => "relay_emit".to_string(),
+        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => "demand_scheduling".to_string(),
+        NativeDriverExclusiveRowKey::ExclusiveDriverCollection => "driver_collection".to_string(),
+        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => "occurrence_census".to_string(),
     }
 }
 
@@ -259,6 +269,8 @@ pub struct NativeCliDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeClaimDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeServeDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveUniverseDerivation;
@@ -276,6 +288,12 @@ pub struct ExclusiveRowSerialization;
 pub struct ExclusiveModuleRelease;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveRelayEmit;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExclusiveDemandScheduling;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExclusiveDriverCollection;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExclusiveOccurrenceCensus;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeDriverCostRowsObserved;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

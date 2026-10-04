@@ -1,0 +1,130 @@
+module v2.test.claim.body_lowering.parameter_slot_refusal
+
+import v2.compiler.body_lowering_fold {
+  BodyLowering,
+  body_lower_find_production_shell_optional,
+  body_lower_find_captured,
+  body_lower_fn_decl_to_arrow,
+  body_lower_param_list_comma_spine_optional
+}
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { list_snoc_item }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PARAMETER SLOT THAT DOES NOT READ REFUSES THE DECLARATION; IT IS NEVER DROPPED FROM THE DOMAIN.
+//
+// THE SUBJECT IS ONE INTERFACE: v2.compiler.body_lowering_fold body_lower_fn_decl_to_arrow, over a
+// SUPPLIED fn declaration. `fn f(a: Int, b: Int)` is tokenized and parsed, and its FIRST parameter
+// slot is replaced by an atom that is not a typed parameter. The real grammar writes no such slot --
+// no parameter shape found parses and then fails to read -- so the input is supplied, and the real
+// parameter route keeps its own witnesses (the pairing of DESIGN section 3); the unmodified
+// declaration is this file's control.
+//
+// THE RED ON MAIN (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand, the
+// binder route): lowering's parameter view (body_lower_collect_typed_params) FILTERED OUT an unread
+// slot, so the declaration Accepted with a one-parameter domain -- `a` gone with no refusal. It now
+// refuses body_lowering_reason_parameter_unlowered, located at the slot.
+
+type PsrVerdict
+  = PsrAccepted
+  | PsrRefused { reason: Symbol }
+  | PsrUnread
+
+type PsrVerdicts {
+  doctored: PsrVerdict
+  control: PsrVerdict
+}
+
+fn psr_fn_decl_shell() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: "module m\n\nfn psr_f(psr_a: Int, psr_b: Int) -> Int \{ psr_b }\n", file: ^psr_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: artifact, diagnostics: _ } =>
+          body_lower_find_production_shell_optional(root: artifact.tree, emitted: ^dag_surface_fn_decl)
+      }
+  }
+}
+
+// The first slot of the declaration's parameter list: the left projection of its comma spine.
+fn psr_first_slot(shell: Node) -> Optional<Node> {
+  match body_lower_find_captured(root: shell, emitted: ^dag_surface_param_list) {
+    ParseSubtreeAbsent => optional_absent()
+    ParseSubtreeFound { captured: param_list } =>
+      match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
+        Absent => optional_absent()
+        Present { value: spine } =>
+          fold(spine.children, init: optional_absent(), f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match e.label {
+                  Authored { name: n } => if n == ^grammar_sequence_left_node_projection { optional_present(value: e.target) } else { acc }
+                  _ => acc
+                }
+            }
+          })
+      }
+  }
+}
+
+// `root` with the node equal to `target` replaced by `with`.
+fn psr_replace(root: Node, target: Node, with: Node) -> Node {
+  if root == target {
+    with
+  } else {
+    Node {
+      kind: root.kind,
+      children: fold(root.children, init: [], f: fn(acc, e) {
+        list_snoc_item(xs: acc, item: Edge { label: e.label, target: psr_replace(root: e.target, target: target, with: with) })
+      }),
+      occurrence_id: root.occurrence_id
+    }
+  }
+}
+
+fn psr_lower(shell: Node) -> PsrVerdict {
+  match body_lower_fn_decl_to_arrow(shell: shell) {
+    Accepted { value: _, diagnostics: _ } => PsrAccepted
+    Rejected { diagnostics: d } => PsrRefused { reason: diagnostics_fatal_reason(d: d) }
+  }
+}
+
+// ONE FRONT END FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: two verdicts.
+fn psr_verdicts() -> PsrVerdicts {
+  match psr_fn_decl_shell() {
+    Absent => PsrVerdicts { doctored: PsrUnread, control: PsrUnread }
+    Present { value: shell } =>
+      match psr_first_slot(shell: shell) {
+        Absent => PsrVerdicts { doctored: PsrUnread, control: psr_lower(shell: shell) }
+        Present { value: slot } =>
+          PsrVerdicts {
+            doctored: psr_lower(shell: psr_replace(root: shell, target: slot, with: node_synthetic(kind: TypeNode { connective: Atom { identity: ^psr_not_a_parameter } }, children: []))),
+            control: psr_lower(shell: shell)
+          }
+      }
+  }
+}
+
+test fn an_unread_parameter_slot_refuses_the_declaration() -> Bool {
+  match psr_verdicts().doctored {
+    PsrRefused { reason: r } => r == ^body_lowering_reason_parameter_unlowered
+    _ => false
+  }
+}
+
+test fn a_declaration_whose_every_slot_reads_lowers() -> Bool {
+  match psr_verdicts().control {
+    PsrAccepted => true
+    _ => false
+  }
+}

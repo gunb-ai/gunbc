@@ -1,5 +1,7 @@
 module v2.test.claim.infer_list_introduction
 
+import std.types { List }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer, inferred_facts_resolved_type }
 import v2.std.integer { integer_int_type_node }
@@ -7,13 +9,12 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_nod
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.text { String }
 import std.process { ProcessExit, exit_failure }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
@@ -25,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE FREE-MONOID INTRODUCTION'S ONE INFER CASE (v2.compiler.infer
 // infer_transform_freemonoid_introduction), AT ITS OWN INTERFACE. The inputs are SUPPLIED: a flat
 // Transform whose head is the std.algebra FreeMonoid reference and whose operands are literals --
-// the shape v2.std.compilers.body_lowering lower_list_introduction builds, which
+// the shape v2.std.list_introduction lower_list_introduction builds, which
 // v2.test.claim.namespace_xl0.list_literal_value_lowering establishes on the production route
 // (DESIGN section 3: the inhabitance claim for this supplied boundary). Three cases, one each:
 // elements of one type derive FreeMonoid<T>; a differing element refuses AT that element, not at
@@ -100,7 +101,7 @@ fn ilt_freemonoid_argument(t: Node) -> Optional<Node> {
 
 // The literal's derived type, when infer accepts it with one.
 fn ilt_derived_type(tree: Node) -> Optional<Node> {
-  match infer(tree: tree) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       match t.facts.lookup(tree) {
@@ -158,7 +159,7 @@ test fn a_list_of_equal_lists_infers_to_a_nested_freemonoid() -> Bool {
 // A STRUCTURAL MISMATCH refuses located AT the differing element: the second inner list (a
 // FreeMonoid<Bool> beside a FreeMonoid<Int>), not the outer literal or the first element.
 test fn a_list_of_differently_typed_lists_refuses_at_the_differing_list() -> Bool {
-  match infer(tree: ilt_nested_mixed) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: ilt_nested_mixed)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
       (diagnostics_fatal(d: r).reason == ^infer_list_element_type_mismatch)
@@ -184,7 +185,7 @@ fn ilt_is_mismatch_at_true(d: Diagnostic) -> Bool {
 }
 
 test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
-  match infer(tree: ilt_mixed) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: ilt_mixed)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => ilt_is_mismatch_at_true(d: diagnostics_fatal(d: r))
   }
@@ -195,7 +196,7 @@ test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
 // It must still be ACCEPTED: a refusal would also "derive no type", so accepting Rejected here would
 // let one failure common to every list pass this claim while the other two went red.
 test fn an_empty_list_derives_no_type_here() -> Bool {
-  match infer(tree: ilt_empty) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: ilt_empty)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match tree.facts.lookup(ilt_empty) {
@@ -223,7 +224,7 @@ fn ilt_diagnostic_text(d: Diagnostic) -> String {
 }
 
 fn ilt_outcome_text(tree: Node) -> String {
-  match infer(tree: tree) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Rejected { diagnostics: r } => "rejected fatal=" + ilt_diagnostic_text(d: diagnostics_fatal(d: r)) + " head=" + ilt_diagnostic_text(d: r.head)
     Accepted { value: t, diagnostics: _ } =>
       match t.facts.lookup(tree) {

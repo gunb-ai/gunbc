@@ -1,5 +1,6 @@
 module v2.compiler.wrap_decision
 
+import std.types { List }
 import v2.std.compilers.target_model {
   TargetModel,
   TargetOwnershipUseSite,
@@ -14,7 +15,6 @@ import v2.std.compilers.target_model {
 }
 import std.algebra { Empty }
 import v2.std.collection {
-  List,
   Symbol
 }
 import v2.std.optional {
@@ -36,7 +36,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
 
 type WrapDecisionBundleChildLookup
   = WrapDecisionBundleChildMissing
@@ -54,22 +54,24 @@ fn wrap_decision_bundle_child_lookup_step(
     WrapDecisionBundleChildDuplicate => acc
     WrapDecisionBundleChildMissing =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildFound { value: e.target }
           } else {
             acc
           }
+        StructuralLabel { label: _ } => WrapDecisionBundleChildInvalidEdge
         Positional => WrapDecisionBundleChildInvalidEdge
       }
     WrapDecisionBundleChildFound { value: _ } =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             WrapDecisionBundleChildDuplicate
           } else {
             acc
           }
+        StructuralLabel { label: _ } => WrapDecisionBundleChildInvalidEdge
         Positional => WrapDecisionBundleChildInvalidEdge
       }
   }

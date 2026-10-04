@@ -1,0 +1,37 @@
+module gunbc.guarantee_stall.test_reference_ledger_typed_census_stall
+
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+import v2.std.algebra { Cons, Empty }
+
+// A DESIGN 4b(2) STALL: the test-reference ledger's typed census sits below its attainable
+// ceiling, and what blocks the climb is named here rather than in a comment or a PR body.
+//
+// The unobservable fact: a program claim that counts CorpusDebtRow rows in
+// v1.compiler.compile test_reference_debt (clause 5 of the node's closing bar) and one that
+// plants the orphan refusal -- a TestReferenceDebtRow whose module is absent from a
+// CensusLoaded census, refused as TestCodeReferenceRowOrphaned (clause 4). Both would import
+// v1.compiler.compile, and no open lane's source roots include the v1 seed: the witnesses lane
+// compiles dag + src/v2 only. The census probe cannot carry it either -- a probe compile of one
+// supplied source is CorpusUnknown (CensusAbsent), so the orphan arm never fires there and its
+// planted red executes nowhere (owned today by the v1 seed's cfg(test) orphan test).
+//
+// WHAT DOES EXECUTE, so the rung is honest: the ledger's equality budget refuses both wrong
+// directions at every compile of a census-loaded corpus (a row without its reference, a
+// reference without its row), and the enrolled wall witness's arms execute on the required
+// gate, pinning the wall.fixture.paid_down FixtureControlRow as standing (occurrences 1) and
+// admitting nothing. What stalls is the DIRECT observation -- folding the actual ledger data.
+//
+// REMOVED STAND-IN: a substring audit of src/v1/compile.dag briefly stood in for the count in
+// this node's closing witness; the required floor demonstrated it measured prose rather than
+// the ledger (it went red on the test_reference_row helper's own declaration, line 299 of that
+// file, while the ledger it claimed to read was empty), so it was removed rather than repaired.
+// A .contains() grep is not a consumer (DESIGN 5).
+data test_reference_ledger_typed_census_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the test-reference ledger's typed census -- a program-claim count of CorpusDebtRow rows in test_reference_debt, and the orphan-arm planted red under a CensusLoaded census -- is observable by no open lane",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: "a witness-lane source root that includes the v1 seed, so a program claim can import v1.compiler.compile -- opening one is a CI job-roster change, which was closed for the discharging node's brief" },
+  population: BoundedPopulation { members: Cons { head: "v1.compiler.compile test_reference_debt: CorpusDebtRow count", tail: Cons { head: "v1.compiler.compile test_reference_unevaluated_row_diag: planted TestCodeReferenceRowOrphaned red", tail: Empty {} } } },
+  next_rung_trigger: climbs_when(capability: "a program claim on an open lane evaluates test_reference_debt() from v1.compiler.compile and folds its scope field, refusing unless zero rows carry CorpusDebtRow while the wall.fixture.paid_down FixtureControlRow stands with occurrences 1; on the same route, a claim plants a TestReferenceDebtRow whose module is absent from a CensusLoaded census and refuses on TestCodeReferenceRowOrphaned. Grounding the route (a witness-lane source root including src/v1) makes both claims authorable without further design work"),
+}

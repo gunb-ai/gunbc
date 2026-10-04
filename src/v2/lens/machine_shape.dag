@@ -1,12 +1,12 @@
 module v2.lens.machine_shape
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional,
   qualified_name_from_module_node
 }
-import v2.std.collection { List }
 import v2.std.optional {
   Absent,
   Optional,
@@ -25,7 +25,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
   Node,
@@ -33,7 +32,7 @@ import v2.std.node {
   Symbol,
   fold_node_topdown
 }
-import v2.std.node_query { construct_tag_optional }
+import v2.std.node_query { construct_tag_path_optional }
 import v2.std.compilers.body_lowering {
   ApplicationHeadFound,
   ApplicationHeadRefused,
@@ -43,7 +42,7 @@ import v2.std.compilers.body_lowering {
   application_head_read
 }
 import std.algebra { Cons, Empty }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.witness { Holds, Witness }
 
 // Single-constructor discipline (machine-shape-orthogonal-scheduling.md §2 ruling 9 / operator
@@ -54,8 +53,8 @@ import v2.std.witness { Holds, Witness }
 // symbol_index_fill's fill-only discipline (SymbolIndex materializes only through
 // symbol_index_fill_* / empty_symbol_index, never a parallel index walk). Recognition:
 // module-context fold_node_topdown over BOTH lowered spellings of a construction: a record literal
-// `MachineShape { .. }` lowers to a construct (a Conj whose first edge names the tag,
-// v2.std.node_query construct_tag_optional), and a call-spelled `MachineShape(..)` to an
+// `MachineShape { .. }` lowers to a construct (a Conj whose marked first edge targets the tag's path,
+// v2.std.node_query construct_tag_path_optional), and a call-spelled `MachineShape(..)` to an
 // application whose head is the atom. Until MQ-2 (gunbc#12202) only the call spelling was read, so
 // a real record literal passed unseen.
 
@@ -123,9 +122,17 @@ type ConstructedTag
   | Constructs { tag: Symbol }
   | ConstructionUnreadable { diagnostics: NonEmptyDiagnostics }
 
+// A construct's tag is its authored path here: this lens reads the lowered tree before resolution,
+// so it holds the author's spelling, never a declaration identity, at the same grain as the call
+// spelling below. The whole path is read, so `std.machine_shape.MachineShape { .. }` is the
+// construction of MachineShape as much as the bare spelling is.
 fn constructed_tag(n: Node) -> ConstructedTag {
-  match construct_tag_optional(n: n) {
-    Present { value: tag } => Constructs { tag: tag }
+  match construct_tag_path_optional(n: n) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: tag } => Constructs { tag: tag }
+        Absent => NoConstruction
+      }
     Absent =>
       match application_head_read(site: n) {
         NotApplicationHead => NoConstruction

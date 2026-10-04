@@ -1,7 +1,10 @@
 module test.claim.parse_test_fn_decl_return_clause
 
 import v2.compiler.body_lowering_fold {
+  BodyLowerFnSignature,
   BodyLowered,
+  NoTypeParams,
+  body_lower_fn_signature_bindings_refusal,
   body_lower_fn_decl_to_arrow,
   body_lower_fn_decl_to_census_arrow,
   body_lower_outcome_is_wrapper_retained,
@@ -19,8 +22,9 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, None, Rejected, Unavailable }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node_query { binder_edge }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +187,7 @@ fn nfbcp_atom_identity_deep(node: Node) -> Optional<Symbol> {
 test fn nfbcp_hazard_return_type_is_positional_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_fn_type_param_source) {
     Absent => false
-    Present { value: id } => id == ^bool_node_symbol
+    Present { value: id } => id == ^Bool
   }
 }
 
@@ -209,11 +213,14 @@ test fn nfbcp_hazard_no_return_type_retains_wrapper_holds() -> Bool {
 }
 
 // POSITIVE CONTROL for the repair: an ordinary fn with a declared return type and no
-// fn-typed parameter still lowers, so the positional read is not a blanket refusal.
+// fn-typed parameter still lowers, so the positional read is not a blanket refusal. Lowering
+// carries the AUTHORED spelling: v2.compiler.resolve maps an unshadowed kernel spelling to its
+// canonical binding, so these rows read `Int` and `Bool` as written, as the generic row reads `T`
+// (gunbc.recurring_failure_mode kernel_type_spelling_captured_a_module_declaration).
 test fn nfbcp_control_ordinary_fn_return_type_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_ordinary_fn_source) {
     Absent => false
-    Present { value: id } => id == ^dag_binding_type_int
+    Present { value: id } => id == ^Int
   }
 }
 
@@ -231,7 +238,7 @@ test fn nfbcp_falsifier_generic_fn_return_type_holds() -> Bool {
 test fn nfbcp_falsifier_eq_body_fn_return_type_holds() -> Bool {
   match nfbcp_return_atom(text: nfbcp_eq_body_fn_source) {
     Absent => false
-    Present { value: id } => id == ^dag_binding_type_int
+    Present { value: id } => id == ^Int
   }
 }
 
@@ -324,18 +331,17 @@ test fn nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds(
 // that Conj, and normalize's recursive well_formed gate refused the module with
 // normalize_reason_post_normalize_not_well_formed at the module root (the gen-two census specimens,
 // std.key_relation and provider_readiness_independence_claim, were repeated `_`, which now lower to
-// distinct minted binders). These rows parse a
-// real fn and run the fn_decl producer itself, body_lower_fn_decl_to_arrow, the same entry
-// nfbcp_hazard_no_return_type_retains_wrapper_holds uses; the normalize chain that reaches it is
-// already run end to end by nfbcp_retention_refuses_at_the_retained_fn_decl_through_normalize_holds,
-// so these rows do not pay for it again (DESIGN section 3, a witness discriminates at one interface).
-// Each asserts the cause and that the locus is the SECOND binding's type (B; the first is A).
-// Answering optional_absent from the bindings arm restores the ill-formed domain and reds the
-// named-repeat row.
+// distinct minted binders). The first row supplies the signature at the refusal's own interface,
+// body_lower_fn_signature_bindings_refusal, because the domain is the only input that refusal reads; on
+// the full parse-and-lower route it exceeded the required floor's per-claim eval-step budget while its
+// assertion inspected one diagnostic. The second row is that boundary's one inhabitance claim: a parsed
+// fn through body_lower_fn_decl_to_census_arrow, which reaches the same refusal without lowering the
+// body; its `= a` body keeps the parsed source to the fewest tokens that still reach the signature. Both assert the cause and that the locus is the SECOND binding's type (B; the first is A).
+// Answering optional_absent from the bindings arm restores the ill-formed domain and reds both rows.
 // Ordinary distinct parameters are the existing nfbcp_control_ordinary_fn_return_type_holds.
 // Two `_` parameters are NOT a repeat: each anonymous slot lowers to its own minted binder
 // (v2.std.anonymous_binder), and v2.test.claim.anonymous_param_binder holds that route.
-data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A { a }\n"
+data nfbcp_named_repeat_source: String = "module m\nfn g(a: A, a: B) -> A = a\n"
 
 fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
   match d.at {
@@ -348,26 +354,47 @@ fn nfbcp_locus_is_atom(d: Diagnostic, atom: Symbol) -> Bool {
   }
 }
 
-fn nfbcp_fn_decl_refuses_with(text: String, reason: Symbol, atom: Symbol) -> Bool {
-  match nfbcp_fn_decl_shell(text: text) {
+test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
+  match body_lower_fn_signature_bindings_refusal(shell: nfbcp_atom(identity: ^g), sig: nfbcp_repeated_signature()) {
+    Absent => false
+    Present { value: Accepted { value: _, diagnostics: _ } } => false
+    Present { value: Rejected { diagnostics: ne } } =>
+      (ne.head.reason == ^body_lowering_reason_arrow_domain_param_binding_repeated) && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
+  }
+}
+
+// THE SAME REFUSAL ON THE REAL ROUTE: a parsed fn through the census-grade fn_decl producer, which reads
+// the signature and reaches body_lower_fn_signature_refusal without lowering the body. This is the one
+// inhabitance claim for the supplied signature above (DESIGN section 3, the pairing obligation).
+test fn nfbcp_repeated_named_param_refuses_on_the_parsed_route_holds() -> Bool {
+  match nfbcp_fn_decl_shell(text: nfbcp_named_repeat_source) {
     Absent => false
     Present { value: shell } =>
-      match body_lower_fn_decl_to_arrow(shell: shell) {
+      match body_lower_fn_decl_to_census_arrow(shell: shell) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: ne } =>
-          fold(ne.tail, init: (ne.head.reason == reason) && nfbcp_locus_is_atom(d: ne.head, atom: atom), f: fn(found, d) {
-            found || ((d.reason == reason) && nfbcp_locus_is_atom(d: d, atom: atom))
-          })
+          (ne.head.reason == ^body_lowering_reason_arrow_domain_param_binding_repeated) && nfbcp_locus_is_atom(d: ne.head, atom: ^B)
       }
   }
 }
 
-test fn nfbcp_repeated_named_param_refuses_at_the_second_binding_holds() -> Bool {
-  nfbcp_fn_decl_refuses_with(
-    text: nfbcp_named_repeat_source,
-    reason: ^body_lowering_reason_arrow_domain_param_binding_repeated,
-    atom: ^B
-  )
+fn nfbcp_atom(identity: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
+}
+
+// The signature fn g(a: A, a: B) -> A as the fn_decl producer reads it: the domain is the one place the
+// refusal looks, so it is supplied here at that boundary instead of parsed.
+fn nfbcp_repeated_signature() -> BodyLowerFnSignature {
+  BodyLowerFnSignature {
+    domain: node_synthetic(kind: TypeNode { connective: Conj }, children: [
+      binder_edge(name: ^a, type_node: nfbcp_atom(identity: ^A)),
+      binder_edge(name: ^a, type_node: nfbcp_atom(identity: ^B))
+    ]),
+    order: [^a, ^a],
+    return_type: nfbcp_atom(identity: ^A),
+    fn_name: ^g,
+    type_params: NoTypeParams
+  }
 }
 
 // A REPEATED DECLARATION NAME REFUSES AT THE GRAFT, AT THE SECOND DECLARATION. The module body is a

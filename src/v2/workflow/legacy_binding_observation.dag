@@ -2,7 +2,7 @@ module v2.workflow.legacy_binding_observation
 
 import std.types { String, Bool, Int, List, Map, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq, TypeParameter }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -341,6 +341,7 @@ fn decl_field_label(field: DeclField) -> String {
   match field {
     WholeDeclaration => "whole_declaration"
     NamedField { field_name: n } => concat("named_field:", n)
+    TypeParameter { name: t } => concat("type_parameter:", t)
   }
 }
 

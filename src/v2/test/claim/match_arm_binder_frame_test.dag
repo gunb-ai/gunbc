@@ -1,5 +1,7 @@
 module v2.test.claim.match_arm_binder_frame
 
+import v2.compiler.normalized_tree { normalized_tree_record_declarations }
+import v2.compiler.resolve { ResolvedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
   Admission,
@@ -19,9 +21,10 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -65,7 +68,7 @@ fn mab_admission() -> Admission {
   }
 }
 
-fn mab_assemble(src: String) -> Outcome<Node> {
+fn mab_assemble(src: String) -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(ingest: mab_ingest_for(src: src), admission: mab_admission(), lm: dag_language_model())
 }
 
@@ -76,64 +79,64 @@ fn mab_assemble(src: String) -> Outcome<Node> {
 // refused exactly that as ServeCacheValueNotPortable at .value.lm.canonical_symbols.member
 // kind=Closure, because a LanguageModel carries a function and the store serves values. So these
 // rows take the seam v2.workflow.floor_pure_producer_share already uses for resolve subjects --
-// the RESOLVED Outcome<Node> per subject, nullary, pure, over an inline source, Nodes and located
+// the RESOLVED Outcome<ResolvedTree> per subject, nullary, pure, over an inline source, Nodes and located
 // diagnostics with no closure at any depth.
 //
 // THE REAL PATH STILL EXECUTES. Preparation runs each producer once, for real, and is REFUSED
 // there if it cannot run; the rows then read it. That is the DESIGN section 3 pairing obligation
 // discharged by the mechanism rather than by an extra claim -- delete the integration and
 // preparation breaks, not just an assertion.
-fn mab_outcome_accepts(o: Outcome<Node>) -> Bool {
+fn mab_outcome_accepts(o: Outcome<ResolvedTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn mab_outcome_refuses_with(o: Outcome<Node>, reason: Symbol) -> Bool {
+fn mab_outcome_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
   }
 }
 
-fn mab_resolved_0() -> Outcome<Node> {
+fn mab_resolved_0() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(x) => x\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_1() -> Outcome<Node> {
+fn mab_resolved_1() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn x() -> Int { 1 }\n\nfn pick(c: C) -> Int {\n  match c {\n    A(_) => x\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_2() -> Outcome<Node> {
+fn mab_resolved_2() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_3() -> Outcome<Node> {
+fn mab_resolved_3() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => z\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_4() -> Outcome<Node> {
+fn mab_resolved_4() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    Aa(y) => y\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_5() -> Outcome<Node> {
+fn mab_resolved_5() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => y\n  }\n}\n")
 }
 
-fn mab_resolved_6() -> Outcome<Node> {
+fn mab_resolved_6() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\ntype C = A(Opt) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(Present { value: y }) => y\n    A(Absent) => 0\n    B => 1\n  }\n}\n")
 }
 
-fn mab_resolved_7() -> Outcome<Node> {
+fn mab_resolved_7() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n")
 }
 
-fn mab_resolved_8() -> Outcome<Node> {
+fn mab_resolved_8() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value } => value\n    Absent => 0\n  }\n}\n")
 }
 
-fn mab_resolved_9() -> Outcome<Node> {
+fn mab_resolved_9() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn tag(c: C) -> Int {\n  match c {\n    A(_) => 1\n    B => 0\n  }\n}\n")
 }
 
@@ -207,11 +210,11 @@ test fn mab_nested_braced_and_shorthand_binders_bind() -> Bool {
 // spine segments without inserting a path), so the module-name specimen this package was filed on
 // does not reach the classifier by lexical ascent. No shape was found that the old predicate admits
 // and the index rejects, so the repair is construction with no behavioural delta on this corpus.
-fn mab_has_atom(o: Outcome<Node>, id: Symbol) -> Bool {
+fn mab_has_atom(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
     Accepted { value: n, diagnostics: _ } =>
-      fold(node_subtree_nodes(root: n), init: false, f: fn(found, m) {
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
         found || (match m.kind {
           TypeNode { connective: Atom { identity: i } } => i == id
           _ => false
@@ -220,15 +223,15 @@ fn mab_has_atom(o: Outcome<Node>, id: Symbol) -> Bool {
   }
 }
 
-fn mab_resolved_where_alias_binder() -> Outcome<Node> {
+fn mab_resolved_where_alias_binder() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype W = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_unshadowed_binder() -> Outcome<Node> {
+fn mab_resolved_unshadowed_binder() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\nfn lower_hex_64(v: Int) -> Bool { true }\n\ntype V = Int where lower_hex_64\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(W) => W\n    B => 0\n  }\n}\n")
 }
 
-fn mab_resolved_record_data_binder() -> Outcome<Node> {
+fn mab_resolved_record_data_binder() -> Outcome<ResolvedTree> {
   mab_assemble(src: "module p\n\ntype Rec { f: Int }\ndata d: Rec = Rec { f: 1 }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(d) => 0\n    B => 0\n  }\n}\n")
 }
 
@@ -262,7 +265,7 @@ fn mab_file(src: String, id: Symbol) -> DagSourceReadWitness {
   }
 }
 
-fn mab_resolved_ambiguous_binder() -> Outcome<Node> {
+fn mab_resolved_ambiguous_binder() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: mab_file(src: "module p.a\n\nfn n() -> Int { 1 }\n", id: ^match_arm_binder_ambiguous_a_cu),
@@ -292,7 +295,7 @@ test fn mab_binder_spelling_a_non_payload_declared_in_two_modules_binds() -> Boo
 // ambiguous arm answers constructor, the atom resolves as a reference and refuses unbound, rather
 // than becoming a catch-all binder. It discriminates the per-candidate question from "ambiguity is
 // a binder": with the arm answering binder unconditionally this row reds.
-fn mab_resolved_two_module_variant() -> Outcome<Node> {
+fn mab_resolved_two_module_variant() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: mab_file(src: "module p.a\n\ntype K = M | N\n", id: ^match_arm_binder_variant_a_cu),
@@ -340,7 +343,7 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
               match normalize(parse_tree: artifact.tree) {
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: tree, diagnostics: d } =>
-                  Accepted { value: tree.record_declarations, diagnostics: d }
+                  Accepted { value: normalized_tree_record_declarations(t: tree), diagnostics: d }
               }
           }
       }
@@ -350,7 +353,7 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
 // NULLARY AND PURE so the floor prepares it once (v2.workflow.floor_pure_producer_share), for the
 // same reason the mab_resolved_* specimens are.
 fn mab_record_declarations_specimen() -> Outcome<FreeMonoid<Symbol>> {
-  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
+  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where string_non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
 }
 
 test fn mab_where_alias_is_not_a_record() -> Bool {
@@ -369,7 +372,7 @@ test fn mab_where_alias_is_not_a_record() -> Bool {
 // symbol_index_declared_payload_at, which returns the payload kind): the tree is Accepted and the binder's Atom survives. It is
 // established HERE, at the resolve interface over a supplied mirror of the two modules -- not on the
 // native route, whose emitted compiler does not build -- and says so rather than more.
-fn mab_resolved_module_named_binder() -> Outcome<Node> {
+fn mab_resolved_module_named_binder() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: mab_file(src: "module v2.std.node\n\nfn content_hash(v: Int) -> Int { v }\n", id: ^match_arm_binder_specimen_node_cu),
@@ -391,6 +394,28 @@ test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
     && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
 }
 
+// A DECLARED CONSTRUCTOR IN A PATTERN STAYS A DECLARATION REFERENCE. `True` is a declared payload,
+// answered by the symbol index before the canonical set is consulted (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor LexicalHit), so narrowing the canonical set to token
+// classes and kernel bindings (v2.extdeps.languages.dag dag_canonical_symbol_map) leaves it a
+// reference. Red with the LexicalHit arm answering binder: the atom then stays an Atom.
+fn mab_resolved_declared_constructor() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype T = True | False\ntype C = A(T) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(True) => 1\n    A(_) => 0\n    B => 0\n  }\n}\n")
+}
+
+test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() -> Bool {
+  match mab_resolved_declared_constructor() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
+        found || (match declaration_reference_path_optional(node: m) {
+          Present { value: path } => qualified_name_last_segment(qn: path) == Present { value: ^True }
+          Absent => false
+        })
+      })
+  }
+}
+
 // AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in
 // p.o and not imported into p.q, so it is off the arm's lexical chain and the classifier takes its
 // LexicalUnbound -> global-bare branch. A variant is indexed under its containment path AND its
@@ -400,7 +425,7 @@ test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
 // answering binder; still green with the declared-payload fact forced false, because this spelling
 // never reaches the GlobalBareHit arm. It is the executed receipt for the bridge's fail-safe
 // direction, not evidence for the index-keyed payload fact.
-fn mab_resolved_unimported_constructor() -> Outcome<Node> {
+fn mab_resolved_unimported_constructor() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
       head: mab_file(src: "module p.o\n\ntype Opt = Some(Int) | None\n", id: ^match_arm_binder_unimported_o_cu),

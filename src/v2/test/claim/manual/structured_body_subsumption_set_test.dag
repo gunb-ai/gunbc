@@ -1,5 +1,6 @@
 module v2.test.manual.structured_body_subsumption_set
 
+import v2.std.arrow_signature { declared_signature }
 import v2.std.node {
   Arrow,
   Edge,
@@ -20,15 +21,16 @@ import v2.extdeps.languages.dag {
   dag_type_atom_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 
 fn int_pair_arrow_signature() -> Node {
+  let signature = declared_signature(params: dag_pick_arrow_domain_conj_node().children, source: dag_pick_arrow_domain_conj_node())
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: dag_pick_arrow_domain_conj_node() },
+      signature.domain,
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) }
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
+      signature.order
     ]
   )
 }

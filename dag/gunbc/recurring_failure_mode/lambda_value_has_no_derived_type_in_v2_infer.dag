@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.lambda_value_has_no_derived_type_in_v2_infer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data lambda_value_has_no_derived_type_in_v2_infer: RecurringFailureMode = RecurringFailureMode {
+  identity: "lambda_value_has_no_derived_type_in_v2_infer" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a lambda -- an Arrow node standing as a VALUE, its formals and return minted as fresh type variables by function-value lowering -- has no derived type in v2.compiler.infer. infer_gather_fold_init sends an Arrow to infer_gather_fold_not_derived, so the lambda's facts are the counted infer_grounding_not_derived frontier, and any row that asks for the lambda's own type refuses there. HARM: until gunbc#13028 that row was the Loop row of every collection fold -- it read the step callable's type as the carrier and refused at the step Arrow, so no fold-bearing module could infer on the native route. #13028 STOPPED THE FOLD ROW FROM ASKING (a collection fold iterates its step's BODY: v2.compiler.infer infer_loop_iteration_fold_child_targets, selected by v2.compiler.fold_lowering fold_realized_member_role) rather than answering the question, so the gap stands for every other position a lambda value reaches: an argument to a higher-order parameter that is not a fold slot, a lambda bound by `let`, a lambda returned from a function, a record field holding one.",
+    "DISTINGUISHING FACTS: this is not the fold row's defect and not the frame's. Under a fold, the step's formals ARE instantiated (the member from the domain, the carrier from init) and its body IS typed; what is missing is the lambda's own Arrow type assembled from those -- `fn(carrier, member) -> body` -- which no row builds, because typing an Arrow VALUE needs its formals' types (fresh variables, instantiated only where a frame supplies them) and its body's type together, and a lambda outside a fold has no frame to supply the formals at all. Elsewhere it is ordinary type inference over the fresh variables (unification), which v2 infer does not have.",
+    "RUNG FOUND AT: mitigatable -- a counted frontier entry, refused where a row demands the type, never fabricated. CEILING: structurally guaranteed; the lambda's type is decidable from its formals and body once its variables are solved. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: v2 infer derives a lambda value's Arrow type from its formals' types and its body's type, with its fresh variables either instantiated by the consuming position's declared formal (a higher-order parameter's declared fn type, applied through the existing application-instantiation route) or refused as undetermined -- SUFFICIENT FOR a lambda passed to a declared `fn(A) -> B` parameter to be judged against that parameter, and for the fold row's body-not-callable read to remain the only fold-specific arm.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_gather_fold_init", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.infer", decl_name: "infer_loop_iteration_fold_child_targets", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "fold_step_body_node", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.std.anonymous_binder", decl_name: "fresh_type_variable", field: WholeDeclaration },
+  ],
+}

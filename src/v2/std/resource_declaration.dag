@@ -1,0 +1,51 @@
+module v2.std.resource_declaration
+
+import std.resource_contract { ResourceKind, Capability, Observation, ResourceMode, Read, ReadWrite }
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.optional { Optional, optional_absent, optional_present }
+
+// THE VALUES A `resource` DECLARATION'S kind: AND mode: ENTRIES MAY TAKE, read against their home
+// (std.resource_contract) by v2.compiler.body_lowering_fold body_lower_resource_decl, which refuses an
+// entry whose value inhabits neither. The values are validated and not carried: see
+// gunbc.recurring_failure_mode resource_contract_validated_but_not_carried.
+
+// THE SURFACE SPELLING OF EACH HOME VARIANT, once, as an exhaustive match: a variant added to
+// std.resource_contract must be spelled here before a declaration can state it.
+fn resource_kind_label(kind: ResourceKind) -> Symbol {
+  match kind {
+    Capability => symbol_intern_lexeme(lexeme: "Capability")
+    Observation => symbol_intern_lexeme(lexeme: "Observation")
+  }
+}
+
+fn resource_mode_label(mode: ResourceMode) -> Symbol {
+  match mode {
+    Read => symbol_intern_lexeme(lexeme: "Read")
+    ReadWrite => symbol_intern_lexeme(lexeme: "ReadWrite")
+  }
+}
+
+// A LABEL READ BACK TO ITS VARIANT compares it to each variant's projection, the one place a home's
+// variants are listed by hand, as v2.std.arrow_contract does for effect claims: the language has no
+// fold over a closed coproduct's constructors. A label matching no projection answers Absent, which
+// the lowering refuses at the entry, so a missing variant fails closed. BOUNDED: two kinds and two
+// modes. TRIGGER: a language capability to enumerate a closed coproduct's constructors.
+fn resource_kind_of_label(label: Symbol) -> Optional<ResourceKind> {
+  if label == resource_kind_label(kind: Capability) {
+    optional_present(value: Capability)
+  } else if label == resource_kind_label(kind: Observation) {
+    optional_present(value: Observation)
+  } else {
+    optional_absent()
+  }
+}
+
+fn resource_mode_of_label(label: Symbol) -> Optional<ResourceMode> {
+  if label == resource_mode_label(mode: Read) {
+    optional_present(value: Read)
+  } else if label == resource_mode_label(mode: ReadWrite) {
+    optional_present(value: ReadWrite)
+  } else {
+    optional_absent()
+  }
+}

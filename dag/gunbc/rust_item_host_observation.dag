@@ -90,7 +90,7 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust
 // standing in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt, and
 // assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package named
-// `v1_compiled` (cssl_v1_compiled_cargo_package_header). The namespace root is the crate name, by
+// `v1_compiled` (tools.emitted_crate_harness_manifest harness_lib_target_table). The namespace root is the crate name, by
 // the rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the path compiles
 // into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag instruments
 // beside these files declare: the citation gate (v1_compiler.declaration_index
@@ -561,25 +561,68 @@ fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
 // to an item makes a modification visible; attributing to a file-level line keeps a `use` edit from
 // reading as a capability change. The third answer -- a line the scan cannot place -- is the refusal
 // this carrier exists to produce, asked for every changed line rather than inferred from file shape.
+// AN UNATTRIBUTED LINE CARRIES THE CAUSE THAT REFUSED IT, CAPTURED WHERE THE ATTRIBUTION WAS MADE.
+// A line inside a macro block the scanner delimited and a line beyond the file are different facts
+// with different remedies -- the first is the named macro-item ceiling of gunbc.rust_item_scan
+// RustMacroRegion, the second an inconsistency between the diff and the content it was read
+// against -- and one sentence for both sent gunbc#12886's census readers hunting for a scanner gap
+// in v1_interpreter.rs when the line was inside a thread_local! block the scanner had delimited
+// exactly. The refusal is matched ONCE, from the one attribution made, into a type with only the
+// two refusing arms, so the detail cannot be re-derived and cannot disagree with the record.
+type RustLineRefusal
+  = LineInsideUnnamedMacroBlock { macro_name: String, line: Int }
+  | LineBeyondTheFile { line: Int, line_count: Int }
+
+fn rust_line_refusal_line(refusal: RustLineRefusal) -> Int {
+  match refusal {
+    LineInsideUnnamedMacroBlock { macro_name: _, line: line } => line
+    LineBeyondTheFile { line: line, line_count: _ } => line
+  }
+}
+
+fn rust_line_refusal_detail(side: String, refusal: RustLineRefusal) -> String {
+  match refusal {
+    LineInsideUnnamedMacroBlock { macro_name: name, line: _ } =>
+      concat(
+        "changed line at ",
+        concat(
+          side,
+          concat(
+            " lies inside a `",
+            concat(name, "!` block: the scanner delimits the block but can name no item a macro declares, so a change inside it is unattributable rather than file-level")
+          )
+        )
+      )
+    LineBeyondTheFile { line: _, line_count: n } =>
+      concat(
+        "changed line at ",
+        concat(side, concat(" lies beyond the file's ", concat(n as String, " scanned lines")))
+      )
+  }
+}
+
 fn change_lines_unattributed(
   items: List<RustItemIdentity>,
   macro_regions: List<RustMacroRegion>,
   line_count: Int,
   lines: List<Int>
-) -> List<Int> {
-  filter(
+) -> List<RustLineRefusal> {
+  fold_list(
     xs: lines,
-    predicate: fn(line) {
+    empty: [] as List<RustLineRefusal>,
+    cons: fn(acc, line) {
       match attribute_scanned_line(
         items: items,
         macro_regions: macro_regions,
         line_count: line_count,
         line: line
       ) {
-        AttributionOutOfRange { line: _, line_count: _ } => true
-        AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => true
-        AttributedToItem { item_key: _ } => false
-        AttributedToFileLevel => false
+        AttributionOutOfRange { line: l, line_count: n } =>
+          list_snoc_item(xs: acc, item: LineBeyondTheFile { line: l, line_count: n })
+        AttributedToUnnamedMacroBlock { macro_name: name, line: l } =>
+          list_snoc_item(xs: acc, item: LineInsideUnnamedMacroBlock { macro_name: name, line: l })
+        AttributedToItem { item_key: _ } => acc
+        AttributedToFileLevel => acc
       }
     }
   )
@@ -660,11 +703,11 @@ fn change_fold_hand_file(
               refusal: fold_list(
                 xs: unattributed_new,
                 empty: RustItemChangeHostRefused { detail: "unattributed line list was non-empty and then empty" },
-                cons: fn(_acc, line) {
+                cons: fn(_acc, refusal) {
                   RustItemChangeUnattributed {
                     repo_path: file_change.repo_path,
-                    line: line,
-                    detail: "changed line at HEAD falls outside every scanned item and outside the file's recognized line range"
+                    line: rust_line_refusal_line(refusal: refusal),
+                    detail: rust_line_refusal_detail(side: "HEAD", refusal: refusal)
                   }
                 }
               )
@@ -675,11 +718,11 @@ fn change_fold_hand_file(
               refusal: fold_list(
                 xs: unattributed_old,
                 empty: RustItemChangeHostRefused { detail: "unattributed line list was non-empty and then empty" },
-                cons: fn(_acc, line) {
+                cons: fn(_acc, refusal) {
                   RustItemChangeUnattributed {
                     repo_path: file_change.repo_path,
-                    line: line,
-                    detail: "changed line at the merge base falls outside every scanned item and outside the file's recognized line range"
+                    line: rust_line_refusal_line(refusal: refusal),
+                    detail: rust_line_refusal_detail(side: "the merge base", refusal: refusal)
                   }
                 }
               )

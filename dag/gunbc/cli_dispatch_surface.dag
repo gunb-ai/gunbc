@@ -732,6 +732,17 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {
+          field: "unix_socket",
+          long: "unix-socket",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne,
+          doc: [
+            "Listen on this unix socket INSTEAD of --host/--port. Each request's",
+            "kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user."
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
           field: "release_revision",
           long: "release-revision",
           value: CliTextValue { text_default: none },

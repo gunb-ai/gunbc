@@ -1,6 +1,13 @@
 module gunbc.auth.approval_broker_serve
 
-import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
+import extdeps.tailscale.identity { tailnet_identity_login }
+import extdeps.tailscale.serve { ServeStatusUnreadable }
+import extdeps.tailscale.acl { operator_tailscale_acl_policy }
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence, AuthAbsent,
+  request_access_path_of, tailnet_transport_observation,
+  RequestAccessPath,
+}
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
@@ -23,9 +30,10 @@ import gunbc.auth.approval_writer_authority {
   ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
   approval_write_admission, approval_write_refusal_reason,
 }
+import gunbc.auth.approval_store_receipt { store_receipt_answer }
 import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, approval_broker_marked_body,
-  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
+  ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved, StoreReceiptHandlerObserved,
   DeviceEnrolHandlerObserved, DeviceRedeemHandlerObserved, DevicePendingHandlerObserved,
   DeviceRequestHandlerObserved, DeviceEnrollmentReadbackHandlerObserved, DevicePushUpdateHandlerObserved,
   BrokerNoRouteMatched, BrokerMethodNotAllowed, BrokerAdapterRefused, BrokerStaticRouteServed,
@@ -35,9 +43,11 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_decide_path_template,
   approval_broker_submit_path,
   approval_broker_status_path_template,
+  approval_broker_store_receipt_path_template,
   approval_broker_confirm_path_prefix,
   approval_device_request_path_template,
   approval_device_enrollment_path_template,
+  approval_broker_listen_host,
 }
 import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
 import gunbc.auth.approval_device_routes {
@@ -52,6 +62,7 @@ import gunbc.site.markup { txt, el, el_attrs, page_render_refusal_body }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8,
   ServeHttpRequest,
+  RequestSecurityContext,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
   ServedRoute, StaticRoute, DynamicRoute,
@@ -110,6 +121,7 @@ type ApprovalBrokerHandler
   | ApprovalDecideHandler
   | ApprovalSubmitHandler
   | ApprovalStatusHandler
+  | ApprovalStoreReceiptHandler
   | DeviceEnrolHandler
   | DeviceRedeemHandler
   | DevicePendingHandler
@@ -134,6 +146,7 @@ fn approval_broker_route_specs() -> List<ServedRouteSpec<ApprovalBrokerHandler>>
     ServedRouteSpec { method: POST, raw: approval_broker_decide_path_template as String, handler: ApprovalDecideHandler },
     ServedRouteSpec { method: POST, raw: approval_broker_submit_path as String, handler: ApprovalSubmitHandler },
     ServedRouteSpec { method: GET, raw: approval_broker_status_path_template as String, handler: ApprovalStatusHandler },
+    ServedRouteSpec { method: POST, raw: approval_broker_store_receipt_path_template as String, handler: ApprovalStoreReceiptHandler },
     ServedRouteSpec { method: POST, raw: approval_device_enrol_path as String, handler: DeviceEnrolHandler },
     ServedRouteSpec { method: POST, raw: approval_device_redeem_path as String, handler: DeviceRedeemHandler },
     ServedRouteSpec { method: POST, raw: approval_device_pending_path as String, handler: DevicePendingHandler },
@@ -179,6 +192,7 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
     status: status,
     content_type: content_type,
     body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
+    headers: [],
   }
 }
 
@@ -219,7 +233,7 @@ fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker, process: A
 // this very fold until stage 6, so a response that named only the route was emitted identically by
 // both processes and the cutover probe could not tell them apart.
 fn approval_confirm_page_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -247,10 +261,10 @@ fn approval_confirm_page_response(
 // things only the request carries -- the method, the capability segment from the path, the
 // AUTHENTICATED IDENTITY and the clock reading -- and to render whatever comes back.
 //
-// The identity comes from request.identity, which the serve entry populated from the header
-// tailscale serve injects. It is not read from the body, a query parameter, or a cookie: those are
-// all supplied by whoever is making the request, and an identity the caller supplies is not an
-// identity. And whether that header is evidence at all is the deployment's to establish, not this
+// The operator observation comes from the request's ACCESS PATH -- the proxy-attributed tailnet
+// login the path modeling vouches for, else absent. It is transport/audit metadata for the consent
+// record, never authentication evidence, and it is not read from the body, a query parameter, or a
+// cookie: those are all supplied by whoever is making the request. And whether that header is evidence at all is the deployment's to establish, not this
 // handler's to assume: gunbc.auth.approval_decision_store approval_identity_trust says NOT
 // ESTABLISHED while the unit binds 0.0.0.0, and redeem_over_store refuses on that row before it
 // reads anything else. So until the deployment earns the trust, this route answers a located
@@ -266,7 +280,7 @@ fn approval_confirm_page_response(
 // store untouched -- which is also what keeps the hermetic witness able to reach this handler
 // whether or not the trust standing is established, since Clock.Now has no hermetic arm.
 fn approval_decide_response(
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -276,7 +290,7 @@ fn approval_decide_response(
       broker_text_response(
         status: 400,
         content_type: text_plain_utf8,
-        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\ntransport observation: ", tailnet_identity_login(i: tailnet_transport_observation(security: request.security)), "\n"], ""),
         marker: DecisionHandlerObserved,
         process: process,
       )
@@ -296,7 +310,7 @@ fn approval_decide_response(
   }
 }
 
-fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -307,13 +321,14 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
     IdentityHeaderUnattributed { residual: _ } => read_approval_keyring()
   }
+  let transport_observation = tailnet_transport_observation(security: request.security)
   let outcome = redeem_over_store(
     root: approval_decision_store_root,
     trust: approval_identity_trust,
     keyring: keyring,
     method: request.method,
     segment: segment,
-    presented_identity: request.identity,
+    presented_identity: transport_observation,
     observed_at: observed_at,
   )
   let status = match outcome {
@@ -335,7 +350,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
     body: join([
       "approval decision: ", store_redemption_reason(r: outcome), "\n",
       "capability: ", segment, "\n",
-      "identity: ", tailnet_identity_login(i: request.identity), "\n",
+      "transport observation: ", tailnet_identity_login(i: transport_observation), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),
     marker: DecisionHandlerObserved,
@@ -348,7 +363,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String, p
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   match approval_write_admission(asker: process) {
     ApprovalWriteRefused { holder: h, asker: a } =>
       broker_text_response(
@@ -378,7 +393,7 @@ fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingP
 // the server for it. Copying a body once is an extraction; keeping the copy while its authority
 // moves is a reimplementation that drifts silently -- and the tell is exactly this, a merge where
 // the other side changed a fold I had duplicated rather than consumed.
-fn approval_submit_admitted_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -427,6 +442,14 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
   broker_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body, marker: StatusHandlerObserved, process: process)
 }
 
+// THE STORE RECEIPT ROUTE (gunbc.auth.approval_store_receipt). It reads the store and mints, and
+// writes nothing, so like the status route it takes no writer admission; the asker's authentication
+// is the submission-key MAC the fold checks before it reads the escalation at all.
+fn approval_store_receipt_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+  let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
+  broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
+}
+
 // ── The HTTP adapter ─────────────────────────────────────────────────────────────────────────
 // THE ADAPTER TAKES NO PLAN, NO INSTANCE AND NO RELEASE REVISION, and the absence of all three is
 // the extraction's evidence rather than an omission. The roadmap's adapter threads an instance (so
@@ -443,7 +466,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 
 fn approval_broker_selection_response(
   sel: RouteSelection<ApprovalBrokerHandler>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match sel {
@@ -485,7 +508,7 @@ fn approval_broker_selection_response(
 fn approval_broker_invoke(
   handler: ApprovalBrokerHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
@@ -493,6 +516,7 @@ fn approval_broker_invoke(
     ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
     ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
     ApprovalStatusHandler => approval_status_response(params: params, process: process)
+    ApprovalStoreReceiptHandler => approval_store_receipt_response(request: request, params: params, process: process)
     DeviceEnrolHandler => device_route_response(marker: DeviceEnrolHandlerObserved, process: process, r: device_enrol_response(body: request.body, process: process))
     DeviceRedeemHandler => device_route_response(marker: DeviceRedeemHandlerObserved, process: process, r: device_redeem_response(body: request.body, process: process))
     DevicePendingHandler => device_route_response(marker: DevicePendingHandlerObserved, process: process, r: device_pending_response(body: request.body))
@@ -561,10 +585,29 @@ fn approval_broker_respond_as(
               method: m,
               path: path,
               body: body,
-              identity: tailnet_identity_of(header_value: tailscale_identity),
+              security: approval_broker_request_security(tailscale_identity: tailscale_identity),
             },
           )
       }
+  }
+}
+
+// THE REQUEST-SECURITY CONTEXT, built the way the roadmap entry builds its own (gunbc.roadmap_serve
+// roadmap_serve_request_security) so there is one request shape. The tailnet login is TRANSPORT
+// METADATA (2026-09-25 ruling): an input to the access-path modeling, which vouches for it only
+// behind a serve-status readback this entry does not perform, so it reaches the handlers as an
+// unattributed observation. The broker reads no session cookie -- the signed capability and the
+// submission MAC are its authentication -- so the evidence is AuthAbsent.
+fn approval_broker_request_security(tailscale_identity: String) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: request_access_path_of(
+      listen_host: approval_broker_listen_host,
+      tailscale_header: tailscale_identity,
+      serve_status: ServeStatusUnreadable,
+      serve_route: none,
+      acl_policy: operator_tailscale_acl_policy,
+    ),
+    authentication: AuthAbsent,
   }
 }
 

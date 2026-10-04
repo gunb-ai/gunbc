@@ -7,10 +7,11 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_stri
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty, member_nat }
 import product.capacity.pool {
   Pool, PoolOutcome, PoolAdvanced, PoolRefused, PoolRefusal, LedgerRefusal,
+  LeaseCrossesLapse, PoolInstantBeforeAnchor, LeaseAlreadyLapsed, LeaseUnknownToPool, EmptyTerm,
   PoolReading, PoolRead, PoolReadingRefused,
   pool_acquire, pool_replay_acquire, pool_settle, pool_release, lapse_pass, observe_upstream_remaining, pool_reading_at, pool_refusal_wire, pool_reanchor,
 }
-import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation }
+import extdeps.accounting.encumbrance { EncumbranceRefusal, ExceedsAppropriation, UnknownEncumbrance, DuplicateReference, ExpenditureExceedsEncumbrance, AlreadyTerminal }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
   AppendDecision, AppendAdmitted, AppendStale, EventDecode, EventDecoded, EventUndecodable,
@@ -225,9 +226,16 @@ fn seat_refusal_wire<Q, S>(r: PoolRefusal<Q, S>) -> String {
     LedgerRefusal { refusal: lr } =>
       match lr {
         ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => pool_full_wire
-        _ => pool_refusal_wire(r: r)
+        UnknownEncumbrance { reference: _ } => pool_refusal_wire(r: r)
+        DuplicateReference { reference: _ } => pool_refusal_wire(r: r)
+        ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => pool_refusal_wire(r: r)
+        AlreadyTerminal { reference: _ } => pool_refusal_wire(r: r)
       }
-    _ => pool_refusal_wire(r: r)
+    LeaseCrossesLapse { reference: _, expires_at: _, window_end: _ } => pool_refusal_wire(r: r)
+    PoolInstantBeforeAnchor { anchor: _, at: _ } => pool_refusal_wire(r: r)
+    LeaseAlreadyLapsed { reference: _, lapsed_at: _, at: _ } => pool_refusal_wire(r: r)
+    LeaseUnknownToPool { reference: _ } => pool_refusal_wire(r: r)
+    EmptyTerm { reference: _ } => pool_refusal_wire(r: r)
   }
 }
 

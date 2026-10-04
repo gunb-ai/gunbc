@@ -289,6 +289,19 @@ pub struct ModuleDeclarationRecord {
     /// an interface change PROPAGATE -- a product whose field is a re-branded alias has itself
     /// changed -- while a body reference does not.
     pub interface_references: BTreeSet<(String, String)>,
+    /// The subset of `interface_references` in an INPUT position: every interface occurrence
+    /// except those inside a function's return type, when that return type contains no function
+    /// type. A value is admitted into a type through an input position -- a constructor field, a
+    /// parameter, an alias target, or a parameter of a function a caller receives -- and only
+    /// through one; a plain return type is an output, and reading `b.f` supplies nothing. A refinement change
+    /// propagates through these alone (`namespace_baseline` `RefinementPredicatesChanged`).
+    pub input_interface_references: BTreeSet<(String, String)>,
+    /// WHERE-REFINED ALIASES: declaration -> (its refinement predicates, serialized canonically
+    /// from the parser's predicate nodes; its interface text with those predicates left out).
+    /// The v1 parser mints predicate nodes with no source position, so they are keyed on the
+    /// parser's own nodes, never on a re-scan of the text. Two sides whose second halves are
+    /// equal and whose first halves differ changed ONLY which values inhabit the alias.
+    pub where_refinements: BTreeMap<String, (String, String)>,
     /// CALLER ADMISSIONS: function name -> the `(module_path, decl_name)` callers its
     /// `admit_callers:` roster admits. Kept OUT of `declaration_interfaces` because the two move
     /// different populations: growing a roster strands no caller, while narrowing one strands
@@ -829,6 +842,7 @@ fn authored_type_references_from_transport(
 
 /// One module-scope declaration's INTERFACE REGION: its item span, minus its body span when it
 /// has one. Positions only; the text is read from the newline index by `interface_text`.
+#[derive(Clone)]
 struct InterfaceRegion {
     declaration: String,
     file: String,
@@ -954,45 +968,7 @@ fn admitted_callers_of(
 /// The names and string literals of the unpositioned nodes below `node`, body excluded, in tree
 /// order. See `InterfaceRegion::unpositioned`.
 fn unpositioned_interface_parts(node: &Rc<Node>, file: &str, out: &mut Vec<String>) {
-    // An unpositioned node is serialized CANONICALLY: its name, its literal of EVERY kind (a
-    // `range(min: 1, max: 5)` bound is an Int, and a string-only reading made 5 -> 6 invisible),
-    // and its children inside brackets so argument position and nesting are part of the reading.
-    // A positioned node contributes nothing itself -- its text is already in the region.
-    let positioned = node.span.file == file && node.span.end > node.span.start;
-    if !positioned {
-        out.push("(".to_string());
-        if !node.name.is_empty() {
-            out.push(node.name.clone());
-        }
-        match node.expr_data.as_ref() {
-            ExprData::ExprLiteral { value } | ExprData::ExprElaboratedLiteral { value, .. } => {
-                out.push(format!("{value:?}"));
-            }
-            _ => {}
-        }
-    }
-    for child in node
-        .children
-        .iter()
-        .chain(node.params.iter())
-        .chain(node.uses.iter())
-        .chain(
-            node.properties
-                .iter()
-                .filter(|p| !is_admit_callers_property(p)),
-        )
-        .chain(node.type_annotation.iter())
-    {
-        unpositioned_interface_parts(child, file, out);
-    }
-    if let Some(inferred) = node.inferred.as_ref() {
-        if let crate::v1_std_core::InferredNode::Resolved { node: parked } = inferred.as_ref() {
-            unpositioned_interface_parts(parked, file, out);
-        }
-    }
-    if !positioned {
-        out.push(")".to_string());
-    }
+    unpositioned_interface_parts_skipping(node, file, None, out);
 }
 
 fn interface_region(item: &Rc<Node>, declaration: &str) -> InterfaceRegion {
@@ -1090,6 +1066,163 @@ fn interface_text(
     } else {
         format!("{text} [unpositioned: {}]", region.unpositioned.join(" "))
     }
+}
+
+/// A where-refined alias's predicate node. A type declaration carries its target on the parser's
+/// resolved node (`InferredNode::Resolved`), and a where-refined target is `Conj` over one child
+/// with a type annotation -- the shape v1.compiler.infer `is_where_refinement_type` reads.
+fn where_refinement_annotation(item: &Rc<Node>) -> Option<&Rc<Node>> {
+    if item.module_item_kind == crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction {
+        return None;
+    }
+    let refined = |node: &'_ Rc<Node>| -> bool {
+        node.connective == Connective::Conj
+            && node.children.len() == 1
+            && node.type_annotation.is_some()
+    };
+    if refined(item) {
+        return item.type_annotation.as_ref();
+    }
+    match item.inferred.as_ref().map(|i| i.as_ref()) {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: parked }) if refined(parked) => {
+            parked.type_annotation.as_ref()
+        }
+        _ => None,
+    }
+}
+
+/// A function's OUTPUT position: the extent of its declared return type, in its own file. The
+/// parser parks a function's return type on its resolved node, as it does a type's target.
+fn function_output_extent(item: &Rc<Node>) -> Option<(String, i64, i64)> {
+    if item.module_item_kind != crate::v1_std_core::ParsedModuleItemKind::ModuleItemFunction {
+        return None;
+    }
+    let returns = match item.inferred.as_ref().map(|i| i.as_ref()) {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: parked }) => parked,
+        _ => return None,
+    };
+    // A RETURNED FUNCTION'S PARAMETERS ARE INPUTS: a caller of `fn mk() -> fn(Tag) -> Int`
+    // admits a value into `Tag` through the closure it receives. Telling that function type's
+    // parameters from its result would be a variance judgment this index does not make, so a
+    // return type containing any function type is not an output at all -- the sound direction.
+    if contains_function_type(returns) {
+        return None;
+    }
+    let file = item.span.file.clone();
+    let mut extent: Option<(i64, i64)> = None;
+    subtree_extent(returns, &file, &mut extent);
+    extent.map(|(start, end)| (file, start, end))
+}
+
+/// Whether a type subtree contains a function type (`Arrow`) anywhere.
+fn contains_function_type(node: &Rc<Node>) -> bool {
+    node.connective == Connective::Arrow
+        || node
+            .children
+            .iter()
+            .chain(node.params.iter())
+            .chain(node.type_annotation.iter())
+            .any(contains_function_type)
+        || matches!(
+            node.inferred.as_ref().map(|i| i.as_ref()),
+            Some(crate::v1_std_core::InferredNode::Resolved { node: parked }) if contains_function_type(parked)
+        )
+}
+
+/// The one walk behind `unpositioned_interface_parts`: optionally with ONE node -- an alias's
+/// where predicates -- left out, compared by identity so nothing else that happens to look like
+/// it is dropped.
+fn unpositioned_interface_parts_skipping(
+    node: &Rc<Node>,
+    file: &str,
+    skip: Option<&Rc<Node>>,
+    out: &mut Vec<String>,
+) {
+    if skip.is_some_and(|skipped| Rc::ptr_eq(node, skipped)) {
+        return;
+    }
+    // An unpositioned node is serialized CANONICALLY: its name, its literal of EVERY kind (a
+    // `range(min: 1, max: 5)` bound is an Int, and a string-only reading made 5 -> 6 invisible),
+    // and its children inside brackets so argument position and nesting are part of the reading.
+    // A positioned node contributes nothing itself -- its text is already in the region.
+    let positioned = node.span.file == file && node.span.end > node.span.start;
+    if !positioned {
+        out.push("(".to_string());
+        if !node.name.is_empty() {
+            out.push(node.name.clone());
+        }
+        match node.expr_data.as_ref() {
+            ExprData::ExprLiteral { value } | ExprData::ExprElaboratedLiteral { value, .. } => {
+                out.push(format!("{value:?}"));
+            }
+            _ => {}
+        }
+    }
+    for child in node
+        .children
+        .iter()
+        .chain(node.params.iter())
+        .chain(node.uses.iter())
+        .chain(
+            node.properties
+                .iter()
+                .filter(|p| !is_admit_callers_property(p)),
+        )
+        .chain(node.type_annotation.iter())
+    {
+        unpositioned_interface_parts_skipping(child, file, skip, out);
+    }
+    if let Some(inferred) = node.inferred.as_ref() {
+        if let crate::v1_std_core::InferredNode::Resolved { node: parked } = inferred.as_ref() {
+            unpositioned_interface_parts_skipping(parked, file, skip, out);
+        }
+    }
+    if !positioned {
+        out.push(")".to_string());
+    }
+}
+
+/// `interface_type_references` restricted to INPUT positions: an occurrence inside the
+/// declaring function's return-type extent is an output and is left out.
+fn input_interface_type_references(
+    transport: &Rc<OccurrenceTransport>,
+    regions: &[InterfaceRegion],
+    output_extents: &BTreeMap<String, (String, i64, i64)>,
+) -> BTreeSet<(String, String)> {
+    let mut by_id: HashMap<i64, (String, Rc<SourceSpan>)> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            (
+                entry.projection.authored_name.clone(),
+                entry.projection.diagnostic_span.clone(),
+            ),
+        );
+    }
+    let mut out = BTreeSet::new();
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::TypeOccurrence {
+            continue;
+        }
+        let Some((spelling, span)) = by_id.get(&reference.occurrence.value) else {
+            continue;
+        };
+        if spelling.is_empty() {
+            continue;
+        }
+        for region in regions.iter().filter(|r| region_contains(r, span)) {
+            let is_output =
+                output_extents
+                    .get(&region.declaration)
+                    .is_some_and(|(file, start, end)| {
+                        &span.file == file && span.start >= *start && span.end <= *end
+                    });
+            if !is_output {
+                out.insert((region.declaration.clone(), spelling.clone()));
+            }
+        }
+    }
+    out
 }
 
 /// The parser's type occurrences that lie in a declaration's interface region, keyed
@@ -1280,6 +1413,8 @@ pub fn record_from_module(
     let mut admitted_callers: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
     let mut arm_interfaces: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut coproduct_residuals: BTreeMap<String, String> = BTreeMap::new();
+    let mut where_predicate_items: BTreeMap<String, (String, Rc<Node>)> = BTreeMap::new();
+    let mut output_extents: BTreeMap<String, (String, i64, i64)> = BTreeMap::new();
     let mut data_decl_types: Vec<(String, String)> = Vec::new();
     for item in module_items(module.clone()).iter() {
         let name = authored_name_at(source_indices.clone(), item.clone());
@@ -1295,6 +1430,14 @@ pub fn record_from_module(
             ));
         }
         interface_regions.push(interface_region(item, &name));
+        if let Some(annotation) = where_refinement_annotation(item) {
+            let mut predicates = Vec::new();
+            unpositioned_interface_parts(annotation, "", &mut predicates);
+            where_predicate_items.insert(name.clone(), (predicates.join(" "), item.clone()));
+        }
+        if let Some(extent) = function_output_extent(item) {
+            output_extents.insert(name.clone(), extent);
+        }
         if let Some(admitted) = admitted_callers_of(item, source_indices) {
             admitted_callers.insert(name.clone(), admitted);
         }
@@ -1339,6 +1482,25 @@ pub fn record_from_module(
                 region.declaration.clone(),
                 interface_text(region, source_indices),
             )
+        })
+        .collect();
+    let where_refinements: BTreeMap<String, (String, String)> = interface_regions
+        .iter()
+        .filter_map(|region| {
+            let (predicates, item) = where_predicate_items.get(&region.declaration)?;
+            let annotation = where_refinement_annotation(item)?;
+            let mut without = region.clone();
+            without.unpositioned = Vec::new();
+            unpositioned_interface_parts_skipping(
+                item,
+                &region.file,
+                Some(annotation),
+                &mut without.unpositioned,
+            );
+            Some((
+                region.declaration.clone(),
+                (predicates.clone(), interface_text(&without, source_indices)),
+            ))
         })
         .collect();
 
@@ -1423,6 +1585,12 @@ pub fn record_from_module(
         value_occurrences: value_occurrences_from_transport(transport, &declared),
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         interface_references: interface_type_references(transport, &interface_regions),
+        input_interface_references: input_interface_type_references(
+            transport,
+            &interface_regions,
+            &output_extents,
+        ),
+        where_refinements,
         declaration_interfaces,
         admitted_callers,
         arm_interfaces,
@@ -1536,7 +1704,7 @@ pub fn index_get<'a>(
 /// judgments distinct from content-addressed cross-process judgments. The broader parse-sweep
 /// index is deliberately not a denominator, and import edges are deliberately absent: neither
 /// establishes that the lane judged a module.
-pub fn modules_unresolved_by_lane(
+pub fn modules_outside_lane_subject(
     admitted_module_identities: Vec<String>,
     judged_module_identities: &[String],
 ) -> Vec<String> {

@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.value_position_whole_read
 
+import std.types { List }
 import v2.compiler.compile {
   NativeCensusModuleFileRefused,
   NativeCensusModuleOutcome,
@@ -20,14 +21,13 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Outcome, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   content_hash,
   Bind,
   ComputationNode,
   Arrow,
   Found,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -37,18 +37,15 @@ import v2.std.node {
   node_subtree_nodes
 }
 import v2.std.compilers.body_lowering {
-  ArrowParameterOrderAbsent,
-  ArrowParameterOrderDeclared,
-  ArrowParameterOrderMalformed,
-  arrow_declared_parameter_order,
   Application,
   ApplicationRefused,
   NotApplication,
   application_read
 }
-import v2.std.node_query { node_positional_child_targets }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.node_query { field_projection_optional, node_positional_child_targets }
 import v2.std.type_binder { type_param_names }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -86,50 +83,69 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolve). They hold now that the lambda lowers to the Arrow a named fn lowers to
 // (body_lowering_fold body_lower_function_value), its binder a Named edge of the Arrow's domain
 // that resolve scopes through the one Arrow binder model.
-data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
+data vpw_match_call_source: String = "module v2.test.vpw_match_call\n\nimport std.types { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: vpw_undeclared_scrutinee) {\n    true => p\n    false => p\n  }\n}\n"
 
-data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
+data vpw_match_declared_source: String = "module v2.test.vpw_match_declared\n\nimport std.types { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match vpw_id(p: p) {\n    true => p\n    false => p\n  }\n}\n"
 
-data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => x, v: p) }\n"
+data vpw_arg_lambda_source: String = "module v2.test.vpw_arg_lambda\n\nimport std.types { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => x, v: p) }\n"
 
-data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclared\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => vpw_undeclared_lambda_body, v: p) }\n"
+data vpw_lambda_undeclared_source: String = "module v2.test.vpw_lambda_undeclared\n\nimport std.types { Bool }\n\nfn vpw_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply(f: x => vpw_undeclared_lambda_body, v: p) }\n"
 
 // A fn literal in argument position, once with an expression body and once with a let-block body.
 // The callees differ from the lambda fixture's so each shape claim is satisfied by its own module.
-data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_literal(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_apply_block(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_literal(f: fn(x) { x }, v: p) }\n\nfn vpw_probe_block(p: Bool) -> Bool {\n  vpw_apply_block(f: fn(x) {\n    let y = x\n    y\n  }, v: p)\n}\n"
+data vpw_arg_fn_literal_source: String = "module v2.test.vpw_arg_fn_literal\n\nimport std.types { Bool }\n\nfn vpw_apply_literal(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_apply_block(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_literal(f: fn(x) { x }, v: p) }\n\nfn vpw_probe_block(p: Bool) -> Bool {\n  vpw_apply_block(f: fn(x) {\n    let y = x\n    y\n  }, v: p)\n}\n"
 
 // THE SEVEN'S token_stream WALL, MINIMISED (warm-bear-132's chunk c00017 of
 // src/v2/test/claim/parse/expression_bodied_fn_decl_parse_test.dag g_tokenize_parse): a match arm
 // whose body is a call taking a fn literal, whose own body is a match over the literal's binder and
 // also reads the enclosing fn's parameter. Before fn literals lowered, the binder was never scoped and
 // resolve refused it as resolve_reason_unbound_symbol.
-data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport v2.std.logic { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
+data vpw_fn_literal_in_arm_source: String = "module v2.test.vpw_fn_literal_in_arm\n\nimport std.types { Bool }\n\nfn vpw_then(o: Bool, f: Bool) -> Bool { o }\n\nfn vpw_probe(p: Bool) -> Bool {\n  match p {\n    true =>\n      vpw_then(\n        o: p,\n        f: fn(token_stream) {\n          match token_stream {\n            true => token_stream\n            false => p\n          }\n        }\n      )\n    false => p\n  }\n}\n"
 
 // FN LITERALS AS RECORD FIELDS INSIDE A CALL ARGUMENT (warm-bear-132's 02_parse c01376 / c02555 and
 // grammar c01874 shapes, and c01376's `fn(_, _)` wildcards): the argument value is folded bottom-up
 // before it is read, and a function
 // value must reach its producer unfolded. A single-atom body once came back unread, and a
 // record-construct body as an Arrow the post-normalize well-formedness gate refused.
-data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      wild: fn(_, _) { false },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
+data vpw_fn_literal_record_source: String = "module v2.test.vpw_fn_literal_record\n\nimport std.types { Bool }\n\nfn vpw_apply_record(r: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe(p: Bool) -> Bool {\n  vpw_apply_record(\n    r: VpwAlgebra {\n      leaf: fn(t) { t },\n      wild: fn(_, _) { false },\n      node: fn(l, r) { VpwPair { a: l, b: r } }\n    },\n    v: p\n  )\n}\n"
 
 // TWO LAMBDAS, ONE PARAMETER NAME: each must carry its OWN fresh type parameter, not share one.
-data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
+data vpw_two_lambdas_source: String = "module v2.test.vpw_two_lambdas\n\nimport std.types { Bool }\n\nfn vpw_apply_two(f: Bool, g: Bool) -> Bool { g }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_apply_two(f: x => x, g: x => p) }\n"
 
 // A LET-BOUND FN LITERAL WITH A WRITTEN RETURN TYPE (crisp-dove-95's specimen for
 // gunbc.recurring_failure_mode body_type_annotation_dropped_before_resolve_in_v2): the let's value
 // once lowered to the literal's first token, dropping the literal and its `-> Bool`.
-data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport v2.std.logic { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
+data vpw_let_fn_literal_source: String = "module v2.test.vpw_let_fn_literal\n\nimport std.types { Bool }\n\nfn vpw_probe(x: Bool) -> Bool {\n  let g = fn(y) -> Bool { y }\n  x\n}\n"
+
+// A FIELD PROJECTION ON A CALL RESULT (warm-bear-132's 02_parse c02590, parse_memo_recurrence_census:
+// `acc + expr_parse_demand_fold(expr: p.expression).discarding_sites`), once as an operator operand
+// inside a fn literal -- the specimen -- and once as a two-step projection in fn-body value position.
+// Before the chain door lowered a call head, the first refused its module operator_operand_unread.
+data vpw_call_projection_source: String = "module v2.test.vpw_call_projection\n\nimport std.types { Bool }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_fold(f: fn(acc, q) { acc + vpw_demand(e: q.expression).sites }) }\n\nfn vpw_probe_chain(p: Bool) -> Bool { vpw_demand_two(e: p).outer.inner }\n"
 
 // FRESH TYPE VARIABLES ARE NAMED BY STRUCTURAL PATH (ruled on gunbc#12210). Consumers identify type
 // variables by spelling (gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2), so
 // a function value's minted variables must be distinct from any other function value's its types can
 // meet -- a nested literal reusing its parameter name, and siblings -- while the same lambda at the same
 // position in two declarations keeps the same type and content hash (no occurrence in the type).
-data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(x) { x }\n    g\n  }, v: p)\n}\n"
+// THE NESTED LITERALS BIND DIFFERENT NAMES, AND THE RENAME IS THE POINT OF THIS COMMENT. This fixture
+// used to nest `fn(x) { let g = fn(x) { x } ... }` -- the same value name at both levels. That was
+// INCIDENTAL to what the claim over it establishes, which is that a nested literal's fresh TYPE variables
+// are not a shadow of the outer's; the shared spelling did no work for that subject. Once
+// v2.compiler.resolve admitted value binders through one gate, the inner `x` hid the outer `x` and the
+// fixture refused resolve_reason_binder_hides_visible_value -- so the claim could no longer reach its own
+// subject, and reversing it would have deleted a property rather than recording a rule.
+//
+// The value-shadowing rule has its own control at its own interface
+// (v2.test.claim.binder_admission.callable_binder_slice cbs_a_binder_hiding_an_enclosing_binder_refuses),
+// so nothing is lost by making this fixture bind distinct names: the type-variable property stays
+// exercised by two nested literals that each mint their own, and the shadowing property is asserted where
+// it belongs instead of riding on an unrelated fixture.
+data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport std.types { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(y) { y }\n    g\n  }, v: p)\n}\n"
 
-data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_order_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_order_site(f: (y, x) => y, v: p) }\n"
+data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport std.types { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_order_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_order_site(f: (y, x) => y, v: p) }\n"
 
-data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport v2.std.logic { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
+data vpw_arg_call_source: String = "module v2.test.vpw_arg_call\n\nimport std.types { Bool }\n\nfn vpw_id(p: Bool) -> Bool { p }\n\nfn vpw_probe(p: Bool) -> Bool { vpw_id(p: vpw_id(p: vpw_undeclared_argument)) }\n"
 
 fn vpw_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -208,7 +224,7 @@ fn vpw_verdict_in(context: NativeTestContext, module_name: String) -> VpwVerdict
             context: context,
             refusal_index: native_lane_file_refusal_index(refusals: context.file_refusals),
             entry: entry
-          )
+          ).outcome
         )
       } else {
         acc
@@ -314,10 +330,13 @@ data vpw_shape_ingest: SourceRootIngest = Cons {
               tail: Cons {
                 head: vpw_read(source: vpw_let_fn_literal_source, id: ^vpw_let_fn_literal_artifact, unit: ^vpw_let_fn_literal_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_let_fn_literal.dag"),
                 tail: Cons {
-                  head: vpw_read(source: vpw_fv_nest_source, id: ^vpw_fv_nest_artifact, unit: ^vpw_fv_nest_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_nest.dag"),
+                  head: vpw_read(source: vpw_call_projection_source, id: ^vpw_call_projection_artifact, unit: ^vpw_call_projection_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_call_projection.dag"),
                   tail: Cons {
-                    head: vpw_read(source: vpw_fv_siblings_source, id: ^vpw_fv_siblings_artifact, unit: ^vpw_fv_siblings_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_siblings.dag"),
-                    tail: Empty
+                    head: vpw_read(source: vpw_fv_nest_source, id: ^vpw_fv_nest_artifact, unit: ^vpw_fv_nest_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_nest.dag"),
+                    tail: Cons {
+                      head: vpw_read(source: vpw_fv_siblings_source, id: ^vpw_fv_siblings_artifact, unit: ^vpw_fv_siblings_cu, path: "src/v2/test/fixture/namespace_xl0/vpw_fv_siblings.dag"),
+                      tail: Empty
+                    }
                   }
                 }
               }
@@ -625,6 +644,49 @@ test fn a_let_bound_fn_literal_lowers_whole_with_its_authored_return_type() -> B
   })
 }
 
+// THE PROJECTION IS KEPT, OFF THE CALL (gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering, the call-then-field residue). The operand is
+// v2.std.node_query field_projection_node over the lowered call: the projection is the one form a
+// field access off any value lowers to, the call its base. A lowering that dropped the projection
+// (answering the call), kept the head atom, or refused the module (the shape ingest then refuses
+// whole) fails these.
+fn vpw_projects(n: Node, field: Symbol) -> Optional<Node> {
+  match field_projection_optional(n: n) {
+    Present { value: fp } => if fp.field == field { optional_present(value: fp.base) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
+fn vpw_is_projection_of_call(n: Node, field: Symbol, callee: Symbol) -> Bool {
+  match vpw_projects(n: n, field: field) {
+    Present { value: base } => vpw_is_call_to(n: base, callee: callee)
+    Absent => false
+  }
+}
+
+fn vpw_is_two_step_projection_of_call(n: Node) -> Bool {
+  match vpw_projects(n: n, field: ^inner) {
+    Present { value: mid } => vpw_is_projection_of_call(n: mid, field: ^outer, callee: ^vpw_demand_two)
+    Absent => false
+  }
+}
+
+test fn a_field_projection_on_a_call_result_in_an_operand_lowers_whole() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_projection_of_call(n: n, field: ^sites, callee: ^vpw_demand)
+    })
+  })
+}
+
+test fn a_two_step_projection_on_a_call_result_lowers_every_step() -> Bool {
+  fold_list(xs: vpw_roots(), empty: false, cons: fn(acc, r) {
+    acc || fold_list(xs: node_subtree_nodes(root: r), empty: false, cons: fn(a, n) {
+      a || vpw_is_two_step_projection_of_call(n: n)
+    })
+  })
+}
+
 // `fn(_, _)`: two wildcard parameters in one domain. A domain is a record (every edge Named, every
 // name distinct), so the wildcards are minted distinct unauthorable labels by the one anonymous-slot
 // mint (v2.std.anonymous_binder anonymous_binder_mint_parameter_list), as a named fn's are; two edges named
@@ -737,7 +799,7 @@ test fn a_nested_fn_literal_resolves_without_a_type_parameter_shadow_refusal() -
 // A FUNCTION VALUE'S ARROW CARRIES ITS DECLARED PARAMETER ORDER, READ WHERE POSITIONAL BINDING READS
 // IT. The domain is a Conj sorted by label, so `(y, x) => y` stores x before y; positional binding
 // (v2.compiler.infer infer_application_formals, v2.compiler.eval eval_bind_arrow_params) reads order
-// only through v2.std.compilers.body_lowering arrow_declared_parameter_order, off the Arrow's
+// only through v2.std.arrow_signature arrow_declared_parameter_order, off the Arrow's
 // ^arrow_signature_order_edge, and refuses application_parameter_order_absent without one. The
 // lambda is lowered from production source, and the claim asks that reader for [y, x] -- the
 // authored order, not the sorted one. Dropping the order edge from body_lower_function_value_arrow

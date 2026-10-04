@@ -52,12 +52,11 @@ import v2.std.diagnostic {
 }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, Atom, Conj, TypeNode, node_synthetic, symbol_intern_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
-import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,21 +90,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   referencing node, so the row must identify that node's occurrence.
 // - clean: a module that resolves, so a route that refused everything cannot green the rest.
 
-data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_outer_source: String = "module v2.ndp.shadow\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
-data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport v2.std.logic { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
+data ndp_shadow_inner_source: String = "module v2.ndp.shadow.inner\n\nimport std.types { Bool }\n\nfn twin_value(p: Bool) -> Bool { p }\n"
 
-data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport v2.std.logic { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
+data ndp_shadow_leaf_source: String = "module v2.ndp.shadow.inner.leaf\n\nimport std.types { Bool }\n\nfn leaf_value(p: Bool) -> Bool { twin_value(p) }\n"
 
-data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+data ndp_collision_left_source: String = "module v2.ndq.left\n\nimport std.types { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
 
-data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport v2.std.logic { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
+data ndp_collision_right_source: String = "module v2.ndq.right\n\nimport std.types { Bool }\n\nfn lone_value(p: Bool) -> Bool { p }\n"
 
-data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport v2.std.logic { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
+data ndp_collision_user_source: String = "module v2.ndq.user\n\nimport std.types { Bool }\n\nfn user_value(p: Bool) -> Bool { lone_value(p) }\n"
 
-data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport v2.std.logic { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
+data ndp_unbound_source: String = "module v2.ndp.unbound\n\nimport std.types { Bool }\n\nfn unbound_value(p: Bool) -> Bool { ndp_absent_callee(p) }\n"
 
-data ndp_clean_source: String = "module v2.ndp.clean\n\nimport v2.std.logic { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
+data ndp_clean_source: String = "module v2.ndp.clean\n\nimport std.types { Bool }\n\nfn clean_value(p: Bool) -> Bool { p }\n"
 
 fn ndp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -156,22 +155,22 @@ fn ndp_resolutions() -> NdpResolutions {
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.shadow.inner.leaf", path: ^ndp_shadow_leaf_cu, declaration: "leaf_value")
-        ),
+        ).resolution,
         collision: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndq.user", path: ^ndp_collision_user_cu, declaration: "user_value")
-        ),
+        ).resolution,
         unbound: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.unbound", path: ^ndp_unbound_cu, declaration: "unbound_value")
-        ),
+        ).resolution,
         clean: native_lane_module_resolution(
           context: context,
           refusal_index: index,
           entry: ndp_universe_module(module: "v2.ndp.clean", path: ^ndp_clean_cu, declaration: "clean_value")
-        )
+        ).resolution
       }
     }
   }
@@ -247,6 +246,7 @@ fn ndp_fatal_is_at_minted_occurrence(d: NonEmptyDiagnostics) -> Bool {
       match a.at.occurrence_id {
         OccurrenceMinted { id: _ } => true
         OccurrenceProjected { id: _, caused_by: _ } => true
+        OccurrencePending { caused_by: _ } => true
         OccurrenceSynthetic => false
       }
     Textual { file: _, extent: _ } => false

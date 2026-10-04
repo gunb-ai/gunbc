@@ -1,6 +1,6 @@
 module product.fabric.sanitation
 
-import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.types { String, NonEmptyStr, Bool, List, Int, brand }
 
 // A CELL RETURNS TO SUPPLY ONLY AFTER TEARDOWN IS PROVEN, NOT WHEN THE PROCESS EXITS.
 //
@@ -197,12 +197,22 @@ type CellReadiness
   | CellQuarantined { cell: CellId, unproven: List<UnprovenFact> }
 
 fn cell_readiness_after(readback: SanitationReadback) -> CellReadiness {
-  let unproven = unproven_facts(readback: readback)
-  if (unproven |> count) == 0 {
-    CellReady { cell: readback.cell }
-  } else {
-    CellQuarantined { cell: readback.cell, unproven: unproven }
-  }
+  cell_readiness_from_observations(cell: readback.cell, network_scope: readback.network_scope, observations: readback.observations)
+}
+
+// Commissioning has no prior sandbox identity to invent. Both initial cell audit and attempt
+// teardown owe the same closed sanitation facts and share this one verdict authority.
+fn cell_readiness_from_observations(cell: CellId, network_scope: SandboxNetworkScope, observations: List<SanitationObservation>) -> CellReadiness {
+  let unproven = fold(required_sanitation_facts(scope: network_scope), init: [], f: (acc, required) => {
+    let readings = filter(observations, o => observed_fact(observation: o) == required)
+    match readings.first() {
+      Absent => concat(acc, [FactNotObserved { fact: required }])
+      Present { value: observed } => if observation_confirms(observation: observed) { acc }
+        else { concat(acc, [FactObservedFailing { observation: observed }]) }
+    }
+  })
+  if (unproven |> count) == 0 { CellReady { cell: cell } }
+  else { CellQuarantined { cell: cell, unproven: unproven } }
 }
 
 fn cell_is_ready(readiness: CellReadiness) -> Bool {

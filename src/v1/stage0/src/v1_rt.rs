@@ -651,6 +651,14 @@ pub fn lookup<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, ke
     m.get(&key).cloned()
 }
 
+pub fn list_get_optional<T: Clone>(items: &Vec<T>, index: i64) -> Option<T> {
+    if index < 0 {
+        None
+    } else {
+        items.get(index as usize).cloned()
+    }
+}
+
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
     let mut map = HashMap::new();
     for item in list {
@@ -978,6 +986,67 @@ pub fn scan_string_end(s: &str, start: i64) -> i64 {
 
 pub fn code_point(c: String) -> i64 {
     c.chars().next().map(|ch| ch as i64).unwrap_or(0)
+}
+
+// THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS — the interpreted piece-walk this primitive
+// replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the
+// measured interpreter constant), which was the read's wall once every quadratic above it was
+// gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown
+// escape refuses before a value is built) holds at native speed. A \u high surrogate must be
+// followed by a \u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);
+// an unpaired surrogate of either half refuses. It used to decode through from_code_point,
+// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).
+// The caller owns the span: this kernel takes the already-scanned body and answers the
+// decoded value or None.
+pub fn json_unescape_checked(s: &str) -> Option<String> {
+    if !s.contains('\\') {
+        return Some(s.to_string());
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('b') => out.push('\x08'),
+            Some('f') => out.push('\x0c'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('u') => {
+                let cp = json_unescape_hex4(&mut chars)?;
+                if (0xD800..=0xDBFF).contains(&cp) {
+                    if chars.next() != Some('\\') || chars.next() != Some('u') {
+                        return None;
+                    }
+                    let lo = json_unescape_hex4(&mut chars)?;
+                    if !(0xDC00..=0xDFFF).contains(&lo) {
+                        return None;
+                    }
+                    out.push(char::from_u32(
+                        0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00),
+                    )?);
+                } else {
+                    out.push(char::from_u32(cp)?);
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let mut v: u32 = 0;
+    for _ in 0..4 {
+        v = v * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(v)
 }
 
 pub fn from_code_point(cp: i64) -> String {
@@ -1317,6 +1386,10 @@ pub fn gunbc_file_write_create_new(
     published
 }
 
+pub fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {
+    std::fs::hard_link(source_path, file_path)
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,
@@ -1402,6 +1475,61 @@ pub fn int_neg(operand: i64) -> i64 {
         Some(v) => v,
         None => int_overflow("-", 0, operand),
     }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveElapsedAtSubject.
+///
+/// The builtin was registered for the INTERPRETER and had no emitted body, so a .dag fold that
+/// read the clock typechecked, ran under `gunbc run`, and PANICKED in the emitted binary --
+/// which is where the native route actually executes. The two capabilities are different and
+/// registering one does not supply the other.
+///
+/// The label is not identity material and is never hashed or keyed on. It exists so two
+/// observations around one subject cannot be collapsed by pure-call memoization into a single
+/// read, which would make every measured span zero.
+///
+/// The epoch is process-local and monotone: callers subtract two readings around the subject
+/// they are measuring, so the absolute value is neither calendar time nor comparable across
+/// processes. A saturating subtraction at the call site is therefore the caller's obligation.
+pub fn observed_monotonic_nanos(_label: String) -> i64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    let epoch = EPOCH.get_or_init(Instant::now);
+    // i64 nanoseconds saturates at ~292 years of uptime; clamping is honest rather than
+    // wrapping into a negative duration that would read as a span running backwards.
+    let nanos = epoch.elapsed().as_nanos();
+    if nanos > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        nanos as i64
+    }
+}
+
+/// THE EMITTED REALIZATION OF std.realization_measurement ObserveThreadCpuAtSubject.
+///
+/// The calling thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId): it advances
+/// only while this thread executes, so a span read on it is the thread's own work and never an
+/// interval the host took the thread away. The label plays the same anti-memoization role as
+/// observed_monotonic_nanos's and is never identity material.
+///
+/// A HOST WITHOUT THE CLOCK REFUSES THE PROCESS. POSIX makes CLOCK_THREAD_CPUTIME_ID an option;
+/// answering with the monotonic wall instead would put host load back into every verdict read
+/// on this clock, and answering zero would make every span vanish. Neither is a reading.
+pub fn observed_thread_cpu_nanos(_label: String) -> i64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime writes one timespec through a pointer to a live local.
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    if rc != 0 {
+        eprintln!("REFUSED: clock_gettime(CLOCK_THREAD_CPUTIME_ID) is unavailable on this host ({}); no thread CPU span is measurable and the wall is not substituted", std::io::Error::last_os_error());
+        std::process::exit(2);
+    }
+    (ts.tv_sec as i64)
+        .saturating_mul(1_000_000_000)
+        .saturating_add(ts.tv_nsec as i64)
 }
 
 fn int_relu(x: i64) -> i64 {

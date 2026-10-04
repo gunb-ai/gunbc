@@ -1,7 +1,5 @@
 module gunbc.codex_app_server_press
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
-
 import std.types { NonEmptyStr, String, FilePath, List, Bool, Int, EpochSecs }
 import std.content_hash { ContentHash, content_hash_of_value }
 import gunbc.provider_interface_binding {
@@ -72,9 +70,15 @@ import extdeps.llm.codex_app_server {
   codex_structured_error_code_quota_exceeded,
   codex_structured_error_code_authentication_required,
 }
-import gunbc.retained_shell_script { retained_foreign }
 import extdeps.shell
 import extdeps.shell.exec
+import extdeps.tools.env { env_path_resolved_program, env_prefixed_args }
+import v2.std.orchestration { EnvSet }
+import v2.std.compilers.cli_surface {
+  ProcessArgvExpansion,
+  process_argv_expansion,
+  cli_surface_of_literal_words,
+}
 import extdeps.languages.json.emit {
   JsonValue, JsonObject, JsonString, JsonNumber, JsonBool, JsonArray, JsonNull,
   JsonKeyValue,
@@ -415,11 +419,12 @@ type CodexAccountStandingSummary {
 // std.process.ProcessExit (ExitSuccess | ExitFailure with code and reason) models CLI/program exit
 // semantics with a typed reason string. ProcessExitObservation in gunbc.provider_wire_evidence
 // models shell.Exec transport (success bool + optional exit_code from the host).
-// ProviderProcessExited carries only the parsed sentinel exit code while
-// ProviderProcessObservationFailed means the mux marker or exit observation was absent — a
-// press-parse outcome, not a host refusal reason. Converge when shell→intent typed stdio transport
-// lands (docs/plans/shell-intent-emit-realization-design.md) and replaces sentinel reparsing — this
-// coproduct deletes with that scaffold.
+// ProviderProcessExited carries the transport's declared exit_code; ObservationFailed means the
+// press never reached a process observation at all (interface binding unavailable, bundled
+// executable absent) — a press-arm outcome, not a host refusal reason. The sentinel-parse
+// alternative this coproduct once named is gone: the account trip runs as a typed argv through
+// shell.Exec.RunArgvStdin, whose exit_code is a declared output, never parsed back out of a
+// stream.
 
 type ProviderProcessExit
   = ProviderProcessExited { code: Int }
@@ -515,49 +520,39 @@ fn binding_from_initialize_session(
   }
 }
 
-data codex_press_stdio_sentinel_mux_dissolve_note: DissolutionCondition = unbound_dissolution(description: "Interim stdout/stderr/exit capture muxes shell.Exec.Run output through literal ---GUNBC_EXIT---/---GUNBC_STDOUT---/---GUNBC_STDERR--- sentinels (codex_press_account_trip_script → split_gunbc_stdio_capture). Wrapped in retained_foreign with dissolve-on v2.workflow.bash_emit. The sentinel concat itself dissolves when shell→intent typed stdio transport replaces foreign script muxing (docs/plans/shell-intent-emit-realization-design.md Phase 2 host-effect route for runtime-present press sites).")
+// THE ACCOUNT TRIP IS A TYPED PROCESS, NOT A SHELL SCRIPT. The deleted shape concat-built one
+// bash script (codex_press_account_trip_script) that exported CODEX_HOME, wrote the four request
+// lines to temp files with printf, ran `codex app-server --stdio` with its streams redirected to
+// files, and muxed exit+stdout+stderr back through literal ---GUNBC_ sentinels that
+// split_gunbc_stdio_capture re-parsed out of the combined stream — wrapped in retained_foreign
+// with a dissolve-on. The whole carrier is deleted with its site, per its own
+// codex_press_stdio_sentinel_mux_dissolve_note, which named exactly this replacement and is
+// deleted beside the concat it described. The child now spawns through shell.Exec.RunArgvStdin:
+// env(1) carries the CODEX_HOME binding as an argv element (extdeps.tools.env, the one env(1)
+// authority), the four request lines ride stdin as data, and stdout, stderr and the exit code
+// arrive as separate declared outputs — no script body, no temp file, no sentinel, and no
+// quoting for a path to escape.
+fn codex_press_account_trip_request_lines() -> String {
+  join(
+    [
+      codex_app_server_initialize_request_line() as String,
+      codex_app_server_initialized_notification_line() as String,
+      codex_app_server_account_read_request_line() as String,
+      codex_app_server_rate_limits_read_request_line() as String,
+    ],
+    "\n",
+  ) + "\n"
+}
 
-fn codex_press_account_trip_script(
+fn codex_press_account_trip_invocation(
   executable: FilePath,
   codex_home: FilePath,
-) -> String {
-  concat(
-    "export CODEX_HOME='",
-    concat(
-      codex_home as String,
-      concat(
-        "'; REQ=$(mktemp); OUT=$(mktemp); ERR=$(mktemp); ",
-        concat(
-          "printf '%s\\n' '",
-          concat(
-            codex_app_server_initialize_request_line() as String,
-            concat(
-              "' >\"$REQ\"; printf '%s\\n' '",
-              concat(
-                codex_app_server_initialized_notification_line() as String,
-                concat(
-                  "' >>\"$REQ\"; printf '%s\\n' '",
-                  concat(
-                    codex_app_server_account_read_request_line() as String,
-                    concat(
-                      "' >>\"$REQ\"; printf '%s\\n' '",
-                      concat(
-                        codex_app_server_rate_limits_read_request_line() as String,
-                        concat(
-                          "' >>\"$REQ\"; cat \"$REQ\" | '",
-                          concat(
-                            executable as String,
-                            "' app-server --stdio >\"$OUT\" 2>\"$ERR\"; EC=$?; echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$REQ\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+) -> ProcessArgvExpansion {
+  process_argv_expansion(
+    surface: cli_surface_of_literal_words(
+      words: env_prefixed_args(
+        bindings: [EnvSet { name: "CODEX_HOME", value: codex_home as String }],
+        command_argv: [executable as String, "app-server", "--stdio"],
       ),
     ),
   )
@@ -658,7 +653,10 @@ fn disposition_from_account_read_result(result: JsonValue) -> AccountTripFrameDi
         key: codex_account_read_result_requires_openai_auth_key as String,
       ) {
         JsonMemberFound { value: JsonBool { value: true } } => AccountTripLoginRequiredSignal
-        _ => AccountTripMissing
+        JsonMemberFound { value: _ } => AccountTripMissing
+        JsonMemberAbsent => AccountTripMissing
+        JsonMemberDuplicated { count: _ } => AccountTripMissing
+        JsonMemberNotAnObject => AccountTripMissing
       }
     JsonMemberDuplicated { count: _ } => AccountTripMissing
     JsonMemberNotAnObject => AccountTripMissing
@@ -732,23 +730,37 @@ fn rate_limits_snapshot_has_exhaustion_signal(snapshot: JsonValue) -> Bool {
     key: codex_rate_limits_snapshot_rate_limit_reached_type_key as String,
   ) {
     JsonMemberFound { value: JsonString { value: t } } => t != ""
-    _ =>
-      match json_object_unique_member(
-        v: snapshot,
-        key: codex_rate_limits_snapshot_spend_control_reached_key as String,
-      ) {
-        JsonMemberFound { value: JsonBool { value: true } } => true
-        _ =>
-          rate_limits_snapshot_window_saturated(
-            snapshot: snapshot,
-            key: codex_rate_limits_snapshot_primary_key as String,
-          )
-            || rate_limits_snapshot_window_saturated(
-              snapshot: snapshot,
-              key: codex_rate_limits_snapshot_secondary_key as String,
-            )
-      }
+    JsonMemberFound { value: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_spend_or_window_signal(snapshot: snapshot)
   }
+}
+
+// No rate-limit-reached type: exhaustion is the spend-control flag, else a saturated window.
+fn rate_limits_snapshot_spend_or_window_signal(snapshot: JsonValue) -> Bool {
+  match json_object_unique_member(
+    v: snapshot,
+    key: codex_rate_limits_snapshot_spend_control_reached_key as String,
+  ) {
+    JsonMemberFound { value: JsonBool { value: true } } => true
+    JsonMemberFound { value: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberAbsent => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberDuplicated { count: _ } => rate_limits_snapshot_window_signal(snapshot: snapshot)
+    JsonMemberNotAnObject => rate_limits_snapshot_window_signal(snapshot: snapshot)
+  }
+}
+
+// No spend-control flag: exhaustion is a saturated primary or secondary window.
+fn rate_limits_snapshot_window_signal(snapshot: JsonValue) -> Bool {
+  rate_limits_snapshot_window_saturated(
+    snapshot: snapshot,
+    key: codex_rate_limits_snapshot_primary_key as String,
+  )
+    || rate_limits_snapshot_window_saturated(
+      snapshot: snapshot,
+      key: codex_rate_limits_snapshot_secondary_key as String,
+    )
 }
 
 fn rate_limits_snapshot_window_saturated(snapshot: JsonValue, key: String) -> Bool {
@@ -781,9 +793,13 @@ fn rate_limits_primary_resets_at(snapshot: JsonValue) -> EpochSecs? {
         key: codex_rate_limits_window_resets_at_key as String,
       ) {
         JsonMemberFound { value: ts } => json_number_as_epoch_secs(v: ts)
-        _ => none
+        JsonMemberAbsent => none
+        JsonMemberDuplicated { count: _ } => none
+        JsonMemberNotAnObject => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -798,7 +814,10 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
       } else {
         Present { value: t as NonEmptyStr }
       }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -893,7 +912,11 @@ fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitB
             )
           },
       )
-    _ => []
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
   }
 }
 
@@ -905,7 +928,11 @@ fn rate_limit_buckets_from_result(result: JsonValue) -> List<CodexRateLimitBucke
     JsonMemberFound { value: by_id } =>
       match by_id {
         JsonObject { members: _ } => rate_limit_buckets_from_by_limit_id(by_id: by_id)
-        _ => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNull => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonBool { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonNumber { lexeme: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonString { value: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
+        JsonArray { elements: _ } => rate_limit_buckets_from_legacy_rate_limits(result: result)
       }
     JsonMemberAbsent => rate_limit_buckets_from_legacy_rate_limits(result: result)
     JsonMemberDuplicated { count: _ } => []
@@ -940,9 +967,15 @@ fn rate_limit_buckets_from_legacy_rate_limits(
               ]
             CodexRateLimitIdMalformed { cause: _ } => []
           }
-        _ => []
+        JsonNull => []
+        JsonBool { value: _ } => []
+        JsonNumber { lexeme: _ } => []
+        JsonString { value: _ } => []
+        JsonArray { elements: _ } => []
       }
-    _ => []
+    JsonMemberAbsent => []
+    JsonMemberDuplicated { count: _ } => []
+    JsonMemberNotAnObject => []
   }
 }
 
@@ -955,7 +988,10 @@ fn disposition_from_rate_limits_result(result: JsonValue) -> AccountTripFrameDis
       match snapshot {
         JsonObject { members: _ } => AccountTripResultOk
         JsonNull => AccountTripMissing
-        _ => AccountTripMissing
+        JsonBool { value: _ } => AccountTripMissing
+        JsonNumber { lexeme: _ } => AccountTripMissing
+        JsonString { value: _ } => AccountTripMissing
+        JsonArray { elements: _ } => AccountTripMissing
       }
     JsonMemberAbsent => AccountTripMissing
     JsonMemberDuplicated { count: _ } => AccountTripMissing
@@ -1037,9 +1073,14 @@ fn disposition_from_structured_rpc_error(err: JsonValue) -> AccountTripFrameDisp
         native_cause_from_json_rpc_error(err: err)
       }
     JsonMemberFound { value: JsonNumber { lexeme: n } } =>
-      AccountTripNativeCauseNumericCode { code: n }
-    _ =>
-      native_cause_from_json_rpc_error(err: err)
+      match parse_int(s: n as String) {
+        Present { value: c } => AccountTripNativeCauseNumericCode { code: c }
+        Absent => native_cause_from_json_rpc_error(err: err)
+      }
+    JsonMemberFound { value: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberAbsent => native_cause_from_json_rpc_error(err: err)
+    JsonMemberDuplicated { count: _ } => native_cause_from_json_rpc_error(err: err)
+    JsonMemberNotAnObject => native_cause_from_json_rpc_error(err: err)
   }
 }
 
@@ -1193,7 +1234,9 @@ fn buckets_from_rate_limits_frame(
     AccountTripResponseAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } => rate_limit_buckets_from_result(result: result)
-        _ => []
+        JsonMemberAbsent => []
+        JsonMemberDuplicated { count: _ } => []
+        JsonMemberNotAnObject => []
       }
     AccountTripResponseUnique { response: _ } => prior_buckets
     AccountTripResponseDuplicate { id: _, count: _ } => prior_buckets
@@ -1314,13 +1357,9 @@ fn absorb_account_trip_line(
                   )
                 }
             }
-          _ =>
-            push_unknown_digest(
-              acc: acc,
-              line: trimmed,
-              evidence_root: evidence_root,
-              mode: mode,
-            )
+          JsonMemberAbsent => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberDuplicated { count: _ } => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
+          JsonMemberNotAnObject => push_unknown_digest(acc: acc, line: trimmed, evidence_root: evidence_root, mode: mode)
         }
     }
   }
@@ -1471,61 +1510,6 @@ fn parse_account_trip_session(
   }
 }
 
-type GunbcStdioCapture {
-  stdout: String
-  stderr: String
-  exit_code: Int?
-}
-
-fn parse_gunbc_exit_marker(combined: String) -> Int? {
-  let parts = split(s: combined, delimiter: "---GUNBC_EXIT---")
-  match parts.skip(n: 1).first() {
-    Absent => none
-    Present { value: after } => {
-      let code_parts = split(s: after, delimiter: "---")
-      match code_parts.first() {
-        Absent => none
-        Present { value: code_s } => parse_int(s: code_s.trim())
-      }
-    }
-  }
-}
-
-fn split_gunbc_stdio_capture(combined: String) -> GunbcStdioCapture {
-  let exit_code = parse_gunbc_exit_marker(combined: combined)
-  let parts = split(s: combined, delimiter: "---GUNBC_STDOUT---")
-  match parts.skip(n: 1).first() {
-    Absent =>
-      GunbcStdioCapture { stdout: combined, stderr: "", exit_code: exit_code }
-    Present { value: after_marker } => {
-      let err_parts = split(s: after_marker, delimiter: "---GUNBC_STDERR---")
-      match err_parts.first() {
-        Absent =>
-          GunbcStdioCapture {
-            stdout: after_marker.trim(),
-            stderr: "",
-            exit_code: exit_code,
-          }
-        Present { value: out } =>
-          match err_parts.skip(n: 1).first() {
-            Absent =>
-              GunbcStdioCapture {
-                stdout: out.trim(),
-                stderr: "",
-                exit_code: exit_code,
-              }
-            Present { value: err } =>
-              GunbcStdioCapture {
-                stdout: out.trim(),
-                stderr: err.trim(),
-                exit_code: exit_code,
-              }
-          }
-      }
-    }
-  }
-}
-
 fn preflight_subject_from_bundle(
   bundle: CodexRuntimeBundle,
   binding: ProviderInterfaceBinding,
@@ -1593,32 +1577,6 @@ fn parse_account_trip_stdout_for_tests(stdout: String) -> CodexAccountStandingEv
   )
 }
 
-fn process_receipt_from_capture(
-  capture: GunbcStdioCapture,
-  wire: ProviderWireEvidenceReceipt?,
-  run_success: Bool,
-) -> ProviderProcessReceipt {
-  match capture.exit_code {
-    Present { value: code } =>
-      ProviderProcessReceipt {
-        exit: ProviderProcessExited { code: code },
-        wire: wire,
-      }
-    Absent =>
-      if run_success {
-        ProviderProcessReceipt {
-          exit: ProviderProcessObservationFailed,
-          wire: wire,
-        }
-      } else {
-        ProviderProcessReceipt {
-          exit: ProviderProcessObservationFailed,
-          wire: wire,
-        }
-      }
-  }
-}
-
 fn observe_codex_account_preflight(
   bundle: CodexRuntimeBundle,
   probe_key: ProviderProbeKey,
@@ -1645,30 +1603,28 @@ fn observe_codex_account_preflight(
           },
         }
       } else {
-        let script = retained_foreign(
-          body: codex_press_account_trip_script(
+        let run = shell.Exec.RunArgvStdin(
+          program: env_path_resolved_program().invocation,
+          arguments: codex_press_account_trip_invocation(
             executable: projected.executable.path,
             codex_home: codex_home,
           ),
-          reason: "Codex app-server held-open account session; exit+stdout/stderr captured for typed NDJSON id correlation" as NonEmptyStr,
+          stdin_payload: codex_press_account_trip_request_lines(),
         )
-        let run = shell.Exec.Run(script: script)
-        let capture = split_gunbc_stdio_capture(combined: run.stdout)
         let wire_capture = retain_provider_wire_capture(
           evidence_root: evidence_root,
-          stdout: capture.stdout,
-          stderr: capture.stderr,
-          success: run.success,
-          exit_code: capture.exit_code,
+          stdout: run.stdout,
+          stderr: run.stderr,
+          success: run.exit_code == 0,
+          exit_code: Present { value: run.exit_code },
         )
-        let process = process_receipt_from_capture(
-          capture: capture,
+        let process = ProviderProcessReceipt {
+          exit: ProviderProcessExited { code: run.exit_code },
           wire: match wire_capture {
             ProviderWireCaptureOk { receipt: wire } => Present { value: wire }
             ProviderWireCaptureRefused { cause: _ } => none
           },
-          run_success: run.success,
-        )
+        }
         match wire_capture {
           ProviderWireCaptureRefused { cause: reason } =>
             CodexPressUnavailable {
@@ -1677,8 +1633,8 @@ fn observe_codex_account_preflight(
             }
           ProviderWireCaptureOk { receipt: wire } => {
             let evidence = parse_account_trip_session(
-              stdout: capture.stdout,
-              stderr: capture.stderr,
+              stdout: run.stdout,
+              stderr: run.stderr,
               evidence_root: evidence_root,
               mode: AccountTripDigestRetainPrivateSha512,
             )
@@ -1701,21 +1657,13 @@ fn observe_codex_account_preflight(
                 wire: Present { value: wire },
               },
             }
-            match capture.exit_code {
-              Present { value: code } =>
-                if code != 0 {
-                  CodexPressUnavailable {
-                    reason: "codex app-server process exited nonzero" as NonEmptyStr,
-                    process: receipt.process,
-                  }
-                } else {
-                  outcome_from_standing_receipt(receipt: receipt)
-                }
-              Absent =>
-                CodexPressUnavailable {
-                  reason: "codex app-server process exit observation refused" as NonEmptyStr,
-                  process: receipt.process,
-                }
+            if run.exit_code != 0 {
+              CodexPressUnavailable {
+                reason: "codex app-server process exited nonzero" as NonEmptyStr,
+                process: receipt.process,
+              }
+            } else {
+              outcome_from_standing_receipt(receipt: receipt)
             }
           }
         }

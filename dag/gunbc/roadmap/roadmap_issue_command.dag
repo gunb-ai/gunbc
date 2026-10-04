@@ -1,0 +1,47 @@
+module gunbc.roadmap_issue_command
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.entropy { Urandom }
+import std.encoding { base64_decode, Standard }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, roadmap_event_append }
+
+// Authorization precedes this boundary. The operation is a submission identity, independent of
+// comment text or the observation clock. Native forms receive it before submission, just as JS does.
+type IssueCommandSubject {
+  node: RoadmapNodeId
+  author: EventPrincipal
+  operation: NonEmptyStr
+  expected: RoadmapEventId?
+}
+
+type IssueCommand
+  = AssignIssue { subject: IssueCommandSubject, assignee: EventPrincipal, return_to: EventPrincipal }
+  | CreateComment { subject: IssueCommandSubject, body: NonEmptyStr }
+
+type IssueFormContext { operation: String, csrf: String }
+
+fn issue_operation_nonce() -> String? {
+  let wire = trim(Urandom.ReadBytes(count: 32).octets_b64)
+  match base64_decode(s: wire, variant: Standard) {
+    Absent => none
+    Present { value: bytes } => if count(bytes) != 32 { none }
+      else { Present { value: replace(replace(replace(wire, "+", "-"), "/", "_"), "=", "") } }
+  }
+}
+
+fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEvent {
+  match command {
+    AssignIssue { subject, assignee, return_to } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: Claimed { assignee: assignee, return_to: return_to }, recorded_at: recorded_at }
+    CreateComment { subject, body } => RoadmapEvent { node: subject.node, author: subject.author,
+      parent: subject.expected, kind: CommentCreated { comment: subject.operation, body: body, visibility: "public", parent_comment: none }, recorded_at: recorded_at }
+  }
+}
+
+fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> RoadmapEventAppend {
+  let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation }
+  roadmap_event_append(layout: layout, event: issue_command_event(command: command, recorded_at: recorded_at), operation: operation as String)
+}

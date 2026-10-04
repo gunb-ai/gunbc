@@ -10,8 +10,10 @@ import extdeps.llm.anthropic_errors { AnthropicErrorShape }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Unit }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+import std.resources { Network }
+import extdeps.ietf.http_semantics { POST }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,6 +32,7 @@ service llm.Anthropic {
   }
 
   operation Messages {
+    requires Network
     input {
       api_key: Secret
       model: String
@@ -64,6 +67,7 @@ service llm.Anthropic {
   }
 
   operation CliPrompt {
+    requires opaque
     input {
       prompt: String
       model: String = "opus"

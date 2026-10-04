@@ -580,7 +580,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
-                    head_index = Some(sweep.index.clone());
                     v1_compiler::cli_run::floor_seam("declarations");
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
@@ -719,6 +718,9 @@ fn run() -> Result<ExitCode, ExitCode> {
                             );
                         }
                     }
+                    // MOVED, NOT CLONED: the riders above read the sweep's own index, so it is
+                    // handed on once they are done rather than copied while they run.
+                    head_index = Some(sweep.index);
                 }
                 Err(errors) => {
                     for e in &errors {
@@ -1008,6 +1010,32 @@ fn run() -> Result<ExitCode, ExitCode> {
         // The subject is the SAME PRODUCER the cargo board runs
         // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
         // a green here and an emitting board are one fact rather than two.
+        // THE WHOLE POOL'S BARE-REFERENCE OBLIGATION. An entry resolve judges only the files its
+        // closure reaches; this phase is where every import-less pool file is judged, on every
+        // pull_request and merge_group, so the narrowing an entry run is allowed never becomes a
+        // pool nobody judged. Before the floor, on the index the floor reuses.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase bare-reference-admission (every pool file, one judgment)"
+            );
+            let phase_started = std::time::Instant::now();
+            let judgment =
+                v1_compiler::cli_run::run_required_bare_reference_admission(&source_roots);
+            let phase_wall_ms = phase_started.elapsed().as_millis();
+            match judgment {
+                Ok(coverage) => eprintln!(
+                    "required-ci: bare-reference-admission OK {coverage} wall_ms={phase_wall_ms}"
+                ),
+                Err(e) => {
+                    eprintln!(
+                        "required-ci: bare-reference-admission REFUSED wall_ms={phase_wall_ms} {e}"
+                    );
+                    phase_failures.push(format!("bare-reference-admission refused: {e}"));
+                }
+            }
+            ran.push("bare-reference-admission");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             v1_compiler::cli_run::floor_seam("floor-entry");
@@ -1022,7 +1050,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &source_roots,
                 &commit,
                 v1_compiler::cli_run::ShardStyle::single_shard(),
-                head_index.as_ref(),
+                head_index.take(),
             ) {
                 Ok(outcome) => {
                     report_required_floor_outcome(&outcome);
@@ -1037,6 +1065,21 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("floor");
+        }
+
+        // THE WHOLE-POOL ADMISSION'S COMPLETION IS THE PRODUCER'S RECORD, NOT THE MARKER. The
+        // ran-set below compares literals this driver pushes; for this phase the evidence that the
+        // judgment happened is what the producer recorded, so a driver that kept the marker and
+        // lost the call refuses here, under this phase's own name.
+        if required_ci_phase_selected(RequiredCiPhase::BareReferenceAdmission, required_ci_lane) {
+            if let Some(failure) =
+                v1_compiler::cli_run::required_bare_reference_admission_completion_failure(
+                    &source_roots,
+                )
+            {
+                eprintln!("required-ci: {failure}");
+                phase_failures.push(failure);
+            }
         }
 
         // THE OBSERVED RAN SET IS THE AUTHORITY-EXPECTED SET, EXACTLY. The census below prints
@@ -1075,22 +1118,26 @@ fn run() -> Result<ExitCode, ExitCode> {
             "required-ci: judged-module-identities {:?}",
             judged_module_identities
         );
-        eprintln!(
-            "required-ci: cross-process-content-judged-module-identities {:?}",
-            v1_compiler::cli_run::required_lane_cross_process_content_judged_module_identities_for_ci()
-        );
         match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
             Ok(admitted_module_identities) => {
                 eprintln!(
                     "required-ci: admitted-module-identities {:?}",
                     admitted_module_identities
                 );
+                // ADMITTED MINUS JUDGED IS THE POPULATION OUTSIDE THIS RUN'S PREPARED SUBJECT,
+                // not a set of resolve failures: a module here was never handed to the checker,
+                // so nothing about it was refused. It was printed as
+                // `unresolved-module-identities`, a name for a failure it does not record (DESIGN
+                // section 3, a meaning fork), and a reader took it for silently dropped resolve
+                // errors. Which modules a run prepares, and under which seed ground, is printed by
+                // the floor's `[floor-phase]` lines; this is the count of the rest.
                 eprintln!(
-                    "required-ci: unresolved-module-identities {:?}",
-                    v1_compiler::cli_run::declaration_index::modules_unresolved_by_lane(
+                    "required-ci: outside-subject-module-count {}",
+                    v1_compiler::cli_run::declaration_index::modules_outside_lane_subject(
                         admitted_module_identities,
                         &judged_module_identities,
                     )
+                    .len()
                 );
             }
             Err(cause) => {
@@ -1754,6 +1801,7 @@ enum RequiredCiPhase {
     PrimitiveRuntimeBody,
     GeneratedArtifact,
     RegenFixedPoint,
+    BareReferenceAdmission,
     Floor,
 }
 
@@ -1764,6 +1812,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::PrimitiveRuntimeBody => "primitive-runtime-body",
             RequiredCiPhase::RegenFixedPoint => "regen-fixed-point",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
+            RequiredCiPhase::BareReferenceAdmission => "bare-reference-admission",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1778,6 +1827,10 @@ impl RequiredCiPhase {
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
             RequiredCiPhase::PrimitiveRuntimeBody => RequiredCiLane::Witnesses,
+            // THE POOL'S BARE-REFERENCE OBLIGATION RIDES WITH THE FLOOR because they share one
+            // subject and one index: the phase judges the whole pool on the process-shared index
+            // the floor then prepares from, so the heads census is read once.
+            RequiredCiPhase::BareReferenceAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             // THE FIXED POINT RIDES WITH GENERATED-ARTIFACT BY NECESSITY, NOT PREFERENCE. It reads
             // the receipt that phase's stage0-mirror adjudicator wrote at
@@ -1802,11 +1855,12 @@ impl RequiredCiPhase {
 // (2026-08-26 to 2026-09-19) left by operator ruling 2026-09-19 — its consumed-row bookkeeping
 // refused every merge_group run on a clean floor; the drop is gunbc.rung_drop
 // namespace_wave_admission_wall_removed.
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::PrimitiveRuntimeBody,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::RegenFixedPoint,
+    RequiredCiPhase::BareReferenceAdmission,
     RequiredCiPhase::Floor,
 ];
 
@@ -1819,11 +1873,12 @@ const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
 const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
 
 /// Every phase this binary realizes, in the authority's own variant spelling.
-const PHASE_ROSTER_VARIANT_LABELS: [&str; 5] = [
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 6] = [
     "ParsePhase",
     "PrimitiveRuntimeBodyPhase",
     "GeneratedArtifactPhase",
     "RegenFixedPointPhase",
+    "BareReferenceAdmissionPhase",
     "FloorPhase",
 ];
 
@@ -2073,6 +2128,10 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
          misses={census_misses}"
     );
+    // The eval-frame call memo, process-wide: the subject of a whole-floor before/after
+    // comparison when its keying changes. Its own line for the same reason as the two above.
+    let (eval_hits, eval_misses) = v1_compiler::v1_interpreter::eval_call_memo_process_counts();
+    eprintln!("required-floor: eval_call_memo hits={eval_hits} misses={eval_misses}");
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
     }

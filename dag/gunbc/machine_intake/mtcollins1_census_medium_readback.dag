@@ -6,13 +6,13 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir, mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_image_name,
@@ -218,10 +218,7 @@ fn mtcollins1_census_readback_refusal_before_attach(readback: CensusMediumReadba
 data mtcollins1_census_readback_attempt_raw: String = "mtcollins1-census-readback"
 
 fn mtcollins1_census_readback_target() -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
-  }
+  mtcollins1_boot_export_host_target()
 }
 
 fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {

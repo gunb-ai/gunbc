@@ -1,10 +1,16 @@
 module gunbc.seeded_install_media_publish
 
-import std.types { NonEmptyStr, String, FilePath }
+import std.types { NonEmptyStr, String }
 import std.algebra { trim }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import v2.std.optional { Present }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
+import extdeps.tools.gnu_coreutils { cat_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import gunbc.host_command_binding {
+  CommandHost, HostCommandDone, HostCommandFailed, host_command, host_command_outcome_text,
+  HostFileWrite, HostFileWritten, host_write_file,
+  ScratchOutcome, CreationNotRequested,
+}
 import extdeps.provisioning.ubuntu_seeded_install_media {
   UbuntuSeededInstallMediaBuildInput,
   UbuntuSeededInstallMediaBuilt,
@@ -28,6 +34,8 @@ import gunbc.machine_intake_boot_image_fetch {
   BootImagePublishedDigestMismatch,
   BootImagePublicationNotAdmitted,
   BootImagePresentWithDifferentDigest,
+  BootImageAdmittedStagingRemains,
+  boot_image_digest_on,
   admit_then_publish_boot_image,
   boot_image_published_path,
   publish_verified_boot_image,
@@ -63,53 +71,66 @@ type SeededImageResolution
   | SeededImageUnobservable { reason: String }
 
 type SeededImagePublication
-  = SeededImagePublished { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr }
+  = SeededImagePublished { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String? }
   | SeededImageAlreadyPublished { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr }
-  | SeededImagePublicationRefused { reason: String }
+  | SeededImagePublicationRefused { reason: String, work: ScratchOutcome }
+  | SeededImagePublishedRecordNotWritten { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?, record: HostFileWrite }
 
-fn resolve_seeded_image_named(input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, recorded: NonEmptyStr) -> SeededImageResolution {
+fn seeded_image_publication_refused(reason: String) -> SeededImagePublication {
+  SeededImagePublicationRefused { reason: reason, work: CreationNotRequested }
+}
+
+// EVERY EFFECT BELOW RUNS ON `host` (gunbc.host_command_binding) -- this machine for a host's own
+// artifacts directory, the serving host over fleet SSH for an image built where it is served -- so
+// resolution, build and publication are one fold whichever transport realizes it.
+fn resolve_seeded_image_named(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, recorded: NonEmptyStr) -> SeededImageResolution {
   let built = ubuntu_seeded_install_media_built(input: input, output_digest: recorded)
   let path = boot_image_published_path(export_dir: dir, image_name: built.image_name)
-  if shell.Test.IsFile(path: path as FilePath).is_file == false {
-    SeededImageRecordedImageAbsent { path: path, recorded: recorded }
-  } else {
-    match sha256sum_file_digest_via_shell(path: path) {
-      Sha256FileDigestUnavailable { path: _, reason: r } =>
-        SeededImageUnobservable { reason: concat("the image at ", path as String, " exists but its digest could not be read: ", r) }
-      Sha256FileDigest { digest: d } =>
-        if (d.hex as String) == (recorded as String) {
-          SeededImageResolved { built: built, path: path }
-        } else {
-          SeededImageRecordDiverged { path: path, recorded: recorded, observed: d.hex }
-        }
-    }
+  match host_command(host: host, command: test_regular_file_command(path: path as String)) {
+    HostCommandFailed { exit_code: _, stderr: _ } => SeededImageRecordedImageAbsent { path: path, recorded: recorded }
+    HostCommandDone { stdout: _ } =>
+      match boot_image_digest_on(host: host, path: path) {
+        Sha256FileDigestUnavailable { path: _, reason: r } =>
+          SeededImageUnobservable { reason: concat("the image at ", path as String, " exists but its digest could not be read: ", r) }
+        Sha256FileDigest { digest: d } =>
+          if (d.hex as String) == (recorded as String) {
+            SeededImageResolved { built: built, path: path }
+          } else {
+            SeededImageRecordDiverged { path: path, recorded: recorded, observed: d.hex }
+          }
+      }
+    other => SeededImageUnobservable { reason: concat("whether ", path as String, " exists is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 
-fn resolve_seeded_image(input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr) -> SeededImageResolution {
+fn resolve_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr) -> SeededImageResolution {
   let record_path = ubuntu_seeded_install_media_record_path(dir: dir, input: input)
-  if shell.Test.IsFile(path: record_path as FilePath).is_file == false {
-    SeededImageNotBuilt { record_path: record_path }
-  } else {
-    let read = Filesystem.Read(path: record_path as String)
-    let recorded = trim(s: read.content)
-    if read.success == false {
-      SeededImageUnobservable { reason: concat("derivation record unreadable at ", record_path as String) }
-    } else if recorded.length() == 0 {
-      SeededImageUnobservable { reason: concat("derivation record is empty at ", record_path as String) }
-    } else {
-      resolve_seeded_image_named(input: input, dir: dir, recorded: recorded as NonEmptyStr)
-    }
+  match host_command(host: host, command: test_regular_file_command(path: record_path as String)) {
+    HostCommandFailed { exit_code: _, stderr: _ } => SeededImageNotBuilt { record_path: record_path }
+    HostCommandDone { stdout: _ } =>
+      match host_command(host: host, command: cat_command(path: record_path as String)) {
+        HostCommandDone { stdout: content } => {
+          let recorded = trim(s: content)
+          if recorded.length() == 0 {
+            SeededImageUnobservable { reason: concat("derivation record is empty at ", record_path as String) }
+          } else {
+            resolve_seeded_image_named(host: host, input: input, dir: dir, recorded: recorded as NonEmptyStr)
+          }
+        }
+        other => SeededImageUnobservable { reason: concat("derivation record unreadable at ", record_path as String, ": ", host_command_outcome_text(e: other)) }
+      }
+    other => SeededImageUnobservable { reason: concat("whether the derivation record ", record_path as String, " exists is unread: ", host_command_outcome_text(e: other)) }
   }
 }
 
 fn seeded_image_publish_refusal(outcome: BootImageFetchOutcome) -> String {
   match outcome {
     BootImageAdmitted { path: p, digest: _ } => concat("published at ", p as String)
+    BootImageAdmittedStagingRemains { path: p, digest: _, staging: st, reason: r } => concat("published at ", p as String, "; staging ", st as String, " not removed: ", r)
     BootImageFetchFailed { url: u } => concat("fetch failed for ", u as String)
     BootImageDigestUnreadable { path: p, reason: r } => concat("digest unreadable at ", p as String, ": ", r)
     BootImageDigestMismatchRefused { expected: e, observed: o } => concat("digest ", o as String, " is not ", e as String)
-    BootImagePublishFailed { staged: s, destination: d } => concat("linking ", s as String, " to ", d as String, " failed")
+    BootImagePublishFailed { staged: st, destination: d } => concat("linking ", st as String, " to ", d as String, " failed")
     BootImagePublishedDigestMismatch { path: p, expected: e, observed: o } =>
       concat(p as String, " reads back as ", o as String, " rather than the built ", e as String)
     BootImagePublicationNotAdmitted { export_dir: d, reason: r } => concat("publication into ", d as String, " not admitted: ", r)
@@ -118,40 +139,51 @@ fn seeded_image_publish_refusal(outcome: BootImageFetchOutcome) -> String {
   }
 }
 
-fn publish_staged_seeded_image(boundary: SeededImageWriteBoundary, staging_path: NonEmptyStr, published_path: NonEmptyStr, digest: NonEmptyStr) -> BootImageFetchOutcome {
+fn publish_staged_seeded_image(host: CommandHost, boundary: SeededImageWriteBoundary, staging_path: NonEmptyStr, published_path: NonEmptyStr, digest: NonEmptyStr) -> BootImageFetchOutcome {
   match boundary {
     BmcExportBoundary { export_dir: d } =>
-      admit_then_publish_boot_image(staging_path: staging_path, published_path: published_path, export_dir: d, digest: digest)
+      admit_then_publish_boot_image(host: host, staging_path: staging_path, published_path: published_path, export_dir: d, digest: digest)
     HostArtifactsDirectory { dir: _ } =>
-      publish_verified_boot_image(staging_path: staging_path, published_path: published_path, digest: digest)
+      publish_verified_boot_image(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
   }
 }
 
 // The record is written only after the image reads back at its published name, so a record never
-// names bytes that are not there. If the write fails the image stays published and the refusal says
-// so: a consumer will find no record and report the image as not built, which is the safe reading.
-fn record_published_seeded_image(input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr) -> SeededImagePublication {
-  let wrote = Filesystem.Write(
-    path: ubuntu_seeded_install_media_record_path(dir: dir, input: input) as String,
-    content: concat(built.output_digest as String, "\n"),
-  )
-  if wrote.success {
-    SeededImagePublished { built: built, path: path }
-  } else {
-    SeededImagePublicationRefused { reason: concat("image published at ", path as String, " but its derivation record could not be written") }
+// names bytes that are not there. If the write does not land the image stays published and the arm
+// says so: a consumer will find no record and report the image as not built, which is the safe
+// reading. EVERY EARLIER OBLIGATION RIDES THE RECORD-FAILURE ARM TOO -- the build work directory's end
+// and a staging file left in the export -- so a later failure never erases the evidence of an earlier
+// one; and the record write's own outcome says whether it was refused (nothing sent) or not confirmed
+// (the remote destination may already have changed), never "not written" for both.
+fn seeded_image_publication_after_record(built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?, record: HostFileWrite) -> SeededImagePublication {
+  match record {
+    HostFileWritten => SeededImagePublished { built: built, path: path, work: work, staging_residue: staging_residue }
+    other => SeededImagePublishedRecordNotWritten { built: built, path: path, work: work, staging_residue: staging_residue, record: other }
   }
 }
 
-fn publish_built_seeded_image(input: UbuntuSeededInstallMediaBuildInput, boundary: SeededImageWriteBoundary, staged: SeededInstallMediaStageOutcome) -> SeededImagePublication {
+fn record_published_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr, work: ScratchOutcome, staging_residue: String?) -> SeededImagePublication {
+  seeded_image_publication_after_record(
+    built: built,
+    path: path,
+    work: work,
+    staging_residue: staging_residue,
+    record: host_write_file(host: host, path: ubuntu_seeded_install_media_record_path(dir: dir, input: input), content: concat(built.output_digest as String, "\n"), scope_root: dir),
+  )
+}
+
+fn publish_built_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, boundary: SeededImageWriteBoundary, staged: SeededInstallMediaStageOutcome) -> SeededImagePublication {
   let dir = seeded_image_boundary_dir(boundary: boundary)
   match staged {
-    SeededInstallMediaStageRefused { reason: r } => SeededImagePublicationRefused { reason: r as String }
-    SeededInstallMediaStaged { staging_path: s, output_digest: digest } => {
+    SeededInstallMediaStageRefused { reason: r, work: w } => SeededImagePublicationRefused { reason: r as String, work: w }
+    SeededInstallMediaStaged { staging_path: s, output_digest: digest, work: w } => {
       let built = ubuntu_seeded_install_media_built(input: input, output_digest: digest)
       let path = boot_image_published_path(export_dir: dir, image_name: built.image_name)
-      match publish_staged_seeded_image(boundary: boundary, staging_path: s, published_path: path, digest: digest) {
-        BootImageAdmitted { path: _, digest: _ } => record_published_seeded_image(input: input, dir: dir, built: built, path: path)
-        other => SeededImagePublicationRefused { reason: seeded_image_publish_refusal(outcome: other) }
+      match publish_staged_seeded_image(host: host, boundary: boundary, staging_path: s, published_path: path, digest: digest) {
+        BootImageAdmitted { path: _, digest: _ } => record_published_seeded_image(host: host, input: input, dir: dir, built: built, path: path, work: w, staging_residue: none)
+        BootImageAdmittedStagingRemains { path: _, digest: _, staging: st, reason: r } =>
+          record_published_seeded_image(host: host, input: input, dir: dir, built: built, path: path, work: w, staging_residue: Present { value: concat(st as String, ": ", r) })
+        other => SeededImagePublicationRefused { reason: seeded_image_publish_refusal(outcome: other), work: w }
       }
     }
   }
@@ -160,28 +192,31 @@ fn publish_built_seeded_image(input: UbuntuSeededInstallMediaBuildInput, boundar
 // BUILD ONCE PER DERIVATION. An existing record whose image re-measures clean is the answer; a record
 // that disagrees with its image REFUSES rather than rebuilding, because publication is create-only and
 // the name it points at is already taken by bytes someone must look at.
-fn publish_seeded_image(input: UbuntuSeededInstallMediaBuildInput, stock_path: NonEmptyStr, boundary: SeededImageWriteBoundary) -> SeededImagePublication {
+fn publish_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, stock_path: NonEmptyStr, boundary: SeededImageWriteBoundary) -> SeededImagePublication {
   let dir = seeded_image_boundary_dir(boundary: boundary)
-  match resolve_seeded_image(input: input, dir: dir) {
+  match resolve_seeded_image(host: host, input: input, dir: dir) {
     SeededImageResolved { built: b, path: p } => SeededImageAlreadyPublished { built: b, path: p }
     SeededImageRecordDiverged { path: p, recorded: r, observed: o } =>
-      SeededImagePublicationRefused { reason: concat("derivation record names ", r as String, " but ", p as String, " reads ", o as String) }
-    SeededImageUnobservable { reason: r } => SeededImagePublicationRefused { reason: r }
-    SeededImageRecordedImageAbsent { path: _, recorded: _ } => build_and_publish_seeded_image(input: input, stock_path: stock_path, boundary: boundary)
-    SeededImageNotBuilt { record_path: _ } => build_and_publish_seeded_image(input: input, stock_path: stock_path, boundary: boundary)
+      seeded_image_publication_refused(reason: concat("derivation record names ", r as String, " but ", p as String, " reads ", o as String))
+    SeededImageUnobservable { reason: r } => seeded_image_publication_refused(reason: r)
+    SeededImageRecordedImageAbsent { path: _, recorded: _ } => build_and_publish_seeded_image(host: host, input: input, stock_path: stock_path, boundary: boundary)
+    SeededImageNotBuilt { record_path: _ } => build_and_publish_seeded_image(host: host, input: input, stock_path: stock_path, boundary: boundary)
   }
 }
 
 // The record's image is gone or there is no record: the name is free, so the derivation is built
-// and published create-only. With pinned dates a rebuild of the same inputs reproduces the recorded
-// digest; if it does not, the new record names what was actually built and the earlier digest is
-// simply no longer claimed.
-fn build_and_publish_seeded_image(input: UbuntuSeededInstallMediaBuildInput, stock_path: NonEmptyStr, boundary: SeededImageWriteBoundary) -> SeededImagePublication {
+// and published create-only. With pinned dates a rebuild of the same inputs on the same host
+// reproduces the recorded digest (across build hosts it need not -- see gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts); if it does not, the new record names
+// what was actually built and the earlier digest is simply no longer claimed.
+fn build_and_publish_seeded_image(host: CommandHost, input: UbuntuSeededInstallMediaBuildInput, stock_path: NonEmptyStr, boundary: SeededImageWriteBoundary) -> SeededImagePublication {
   let dir = seeded_image_boundary_dir(boundary: boundary)
   publish_built_seeded_image(
+    host: host,
     input: input,
     boundary: boundary,
     staged: seeded_install_media_stage(
+      host: host,
       input: input,
       stock_path: stock_path,
       staging_path: ubuntu_seeded_install_media_staging_path(dir: dir, input: input),

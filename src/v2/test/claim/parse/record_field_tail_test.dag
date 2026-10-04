@@ -1,0 +1,49 @@
+module v2.test.claim.parse.record_field_tail
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A RECORD FIELD MAY CARRY v1 parse_field's `[from "key"] [= default]` TAIL
+// (v2.extdeps.languages.dag dag_grammar_field_decl_list_helper). It PARSES, as v1 reads it; it does
+// NOT lower yet: the record refuses at the tail with body_lowering_reason_interface_member_unmodeled
+// (gunbc.recurring_failure_mode service_interface_member_has_no_carrier), so the tail is never
+// dropped while the type lowers. A record without a tail lowers as before.
+data default_source: String = "module probe.record_default\n\ntype Config {\n  headless: Bool = false\n  width: Int\n}\n"
+
+data from_key_source: String = "module probe.record_from_key\n\ntype Account {\n  unique_id: String from \"uniqueId\"\n}\n"
+
+data plain_source: String = "module probe.record_plain\n\ntype Plain {\n  width: Int\n}\n"
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it (a claim that parsed its own source
+// is over the new-witness eval-step budget).
+fn default_parsed() -> Bool {
+  match conservation_subject_of_text(path: "probe_record_default.dag", text: default_source).parsed {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn from_key_refused_as_unmodeled() -> Bool {
+  match conservation_subject_of_text(path: "probe_record_from_key.dag", text: from_key_source).normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^body_lowering_reason_interface_member_unmodeled
+  }
+}
+
+fn plain_normalized() -> Bool {
+  match conservation_subject_of_text(path: "probe_record_plain.dag", text: plain_source).normalized {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_record_field_with_a_default_parses_holds() -> Bool { default_parsed() }
+
+test fn a_record_field_with_a_wire_key_refuses_at_its_tail_holds() -> Bool { from_key_refused_as_unmodeled() }
+
+test fn a_record_without_a_tail_still_normalizes_holds() -> Bool { plain_normalized() }

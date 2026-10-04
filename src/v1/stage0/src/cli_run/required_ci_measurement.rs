@@ -104,7 +104,7 @@ pub fn adjudicate_required_ci_measurement(
         RequiredCiMeasurementReceipt::MeasurementCompleted { blockers } if blockers.is_empty() => {
             RequiredCiAdmission::Admitted {
                 summary: "required-ci: adjudication PASSED standing=measurement_completed \
-                          blockers=0"
+                          blocked_phases=0"
                     .to_string(),
             }
         }
@@ -119,7 +119,7 @@ pub fn adjudicate_required_ci_measurement(
                 })
                 .collect();
             diagnostics.push(format!(
-                "required-ci: adjudication REFUSED standing=measurement_completed blockers={}",
+                "required-ci: adjudication REFUSED standing=measurement_completed blocked_phases={}",
                 blockers.len()
             ));
             RequiredCiAdmission::Refused { diagnostics }

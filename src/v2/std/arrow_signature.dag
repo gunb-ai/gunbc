@@ -1,0 +1,282 @@
+module v2.std.arrow_signature
+
+import std.types { List }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.anonymous_binder { anonymous_binder_mint_parameter_list }
+import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
+import v2.std.list_introduction { list_introduction_head_path, list_introduction_head_path_optional, lower_list_introduction }
+import v2.std.integer { Int }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  OrderAbsent,
+  OrderLabels,
+  OrderUnreadable,
+  Positional,
+  Symbol,
+  TypeNode,
+  arrow_signature_edges_conform,
+  arrow_signature_order_label,
+  arrow_signature_order_read,
+  edge_label_of,
+  node_with_occurrence_id,
+  ArrowSignatureOrderEdge,
+  core_edge_label,
+  StructuralLabel,
+}
+import v2.std.node_query { binder_edge, node_positional_child_targets, pattern_wildcard_name }
+
+// THE ONE BUILDER OF A DECLARED-ORDER EDGE: the ^arrow_signature_order_edge whose target is the
+// FreeMonoid introduction of `order`'s labels as childless Atoms. Its callers take `order` from
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list, the fold that mints the domain's edges
+// in the same pass, so the domain and its order come from one authority: the declared-signature
+// lowering (v2.compiler.body_lowering_fold body_lower_fn_decl_arrow) and the fixture constructor
+// (v2.extdeps.languages.dag dag_arrow_with_body_node).
+fn signature_order_edge(order: List<Symbol>, source: Node) -> Edge {
+  Edge {
+    label: core_edge_label(marker: ArrowSignatureOrderEdge),
+    target: lower_list_introduction(
+      elements: fold(order, init: Empty, f: fn(acc, sym) {
+        list_snoc_item(xs: acc, item: node_with_occurrence_id(
+          kind: TypeNode { connective: Atom { identity: sym } },
+          children: [],
+          occurrence_id: source.occurrence_id
+        ))
+      }),
+      source: source
+    )
+  }
+}
+
+// A DECLARED SIGNATURE'S DOMAIN AND ORDER, FROM ONE MINT: the authored parameter edges go through
+// v2.std.anonymous_binder anonymous_binder_mint_parameter_list once, and both the domain Conj and the
+// ^arrow_signature_order_edge are built from that one result. The constructor for any Arrow built
+// outside the declared-signature lowering (fixtures, supplied callees), so a domain and its order
+// cannot disagree; an Arrow that deliberately carries a malformed order is built by hand and says so.
+type DeclaredSignatureEdges {
+  domain: Edge
+  order: Edge
+}
+
+fn declared_signature(params: List<Edge>, source: Node) -> DeclaredSignatureEdges {
+  let minted = anonymous_binder_mint_parameter_list(edges: params)
+  DeclaredSignatureEdges {
+    domain: Edge {
+      label: Positional,
+      target: node_with_occurrence_id(kind: TypeNode { connective: Conj }, children: minted.edges, occurrence_id: source.occurrence_id)
+    },
+    order: signature_order_edge(order: minted.order, source: source)
+  }
+}
+
+// AN ARROW WHOSE PARAMETERS HAVE NO AUTHORED NAMES, IN THE ONE ENCODING. A function type written or
+// built from types alone -- `fn(Int, Int) -> Int`, an algebra's operation signature, a language
+// model's add -- is not a second Arrow shape: each domain type becomes a parameter the author spelled
+// `_`, so v2.std.anonymous_binder mints its `<anonymous-parameter-N>` binder and its declared order in
+// the same pass as any named signature, through declared_signature. The retired positional-types form
+// [T1..Tn, U] has no producer: it carries no order edge, so every reader that binds or projects by
+// position refuses it (v2.compiler.translate translate_arrow_signature_split, v2.std.decl_index
+// export_signature_declared_arrow). A well_formed wall requiring the order edge on every Arrow is A4's.
+fn anonymous_signature_arrow(domain_types: List<Node>, codomain: Node, source: Node) -> Node {
+  declared_signature_arrow(
+    params: fold(domain_types, init: Empty, f: fn(acc, t) {
+      list_snoc_item(xs: acc, item: binder_edge(name: pattern_wildcard_name(), type_node: t))
+    }),
+    codomain: codomain,
+    source: source
+  )
+}
+
+// THE ONE ASSEMBLER OF A BODILESS SIGNATURE ARROW: [domain, codomain, order], the domain and order from
+// one declared_signature mint over `params` (Named edges in authored order). Every producer of a
+// signature-only Arrow reaches the node layout here -- anonymous_signature_arrow for type-only
+// signatures, v2.std.decl_index export_signature_declared_from for exported ones -- so the child layout
+// of the one encoding is decided in one place.
+fn declared_signature_arrow(params: List<Edge>, codomain: Node, source: Node) -> Node {
+  let signature = declared_signature(params: params, source: source)
+  node_with_occurrence_id(
+    kind: TypeNode { connective: Arrow },
+    children: [signature.domain, Edge { label: Positional, target: codomain }, signature.order],
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// THE ONE READER OF DECLARED PARAMETER ORDER, and the only thing positional binding may read it from.
+// An Arrow built from a declared signature carries one ^arrow_signature_order_edge whose target is a
+// FreeMonoid introduction of its parameter labels (signature_order_edge). ArrowParameterOrderAbsent is not a fallback to domain order:
+// the domain is a Conj, a set of labelled binders whose stored sequence is not a fact about the
+// signature (lowering keeps the authored sequence, canonicalization sorts it by label -- v2.std.node
+// arrow_signature_order_conforms), so no reader may take positions from it, and a binder
+// that finds no order edge refuses (v2.compiler.infer infer_application_formals,
+// v2.compiler.eval eval_bind_arrow_params).
+type ArrowParameterOrder
+  = ArrowParameterOrderDeclared { labels: List<Symbol> }
+  | ArrowParameterOrderAbsent
+  | ArrowParameterOrderMalformed
+
+fn arrow_declared_parameter_order(arrow: Node) -> ArrowParameterOrder {
+  if !arrow_signature_edges_conform(children: arrow.children) {
+    ArrowParameterOrderMalformed
+  } else {
+    match arrow_signature_order_read(children: arrow.children) {
+      OrderAbsent => ArrowParameterOrderAbsent
+      OrderUnreadable => ArrowParameterOrderMalformed
+      OrderLabels { labels: labels } =>
+        if arrow_signature_order_head_is_list_introduction(arrow: arrow) {
+          ArrowParameterOrderDeclared { labels: labels }
+        } else {
+          ArrowParameterOrderMalformed
+        }
+    }
+  }
+}
+
+// The one fact v2.std.node cannot check: the order list's head is the FreeMonoid introduction.
+fn arrow_signature_order_head_is_list_introduction(arrow: Node) -> Bool {
+  fold(arrow.children, init: false, f: fn(acc, e) {
+    if (edge_label_of(e: e) == arrow_signature_order_label) {
+      match list_at_optional(xs: node_positional_child_targets(node: e.target), index: 0) {
+        Present { value: head } =>
+          match list_introduction_head_path_optional(head: head) {
+            Present { value: path } => path == list_introduction_head_path()
+            Absent => false
+          }
+        Absent => false
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+// THE ONE BINDING AUTHORITY FOR AN APPLICATION. Given the callee Arrow and the application's actual
+// edges (callee excluded) in authored order, it answers, for each declared parameter IN DECLARED
+// ORDER, which actual fills it -- by its index in authored order. A positional actual fills the next
+// declared slot; a named actual fills the slot of that name. v2.compiler.infer checks inhabitance
+// over this plan, and v2.compiler.eval evaluates the actuals in authored order and binds through it,
+// so the two stages cannot bind one call differently (ruling neat-boar-16, 2026-09-26: eval consumes
+// infer's binding plan, a section 5 hard-reject class otherwise). Every conflict refuses with a typed
+// reason and the actual it is located at; none is resolved by guessing.
+type ApplicationSlot {
+  label: Symbol
+  actual_index: Int
+}
+
+type ApplicationBindingPlan
+  = ApplicationBound { slots: List<ApplicationSlot> }
+  | ApplicationBindingRefused { reason: Symbol, at: Int }
+
+type ApplicationBindingRefusal {
+  reason: Symbol
+  at: Int
+}
+
+fn application_binding_plan(arrow: Node, actuals: List<Edge>) -> ApplicationBindingPlan {
+  match arrow_declared_parameter_order(arrow: arrow) {
+    ArrowParameterOrderAbsent => ApplicationBindingRefused { reason: ^application_parameter_order_absent, at: 0 }
+    ArrowParameterOrderMalformed => ApplicationBindingRefused { reason: ^application_parameter_order_malformed, at: 0 }
+    ArrowParameterOrderDeclared { labels: labels } => application_binding_plan_over(labels: labels, actuals: actuals)
+  }
+}
+
+// The declared parameters, keyed both ways, built in one pass.
+type DeclaredParameterIndex {
+  count: Int
+  position_of: Map<Symbol, Int>
+  label_at: Map<Int, Symbol>
+}
+
+// The walk over the actuals: which declared label each has filled, with the authored index of the
+// actual that filled it.
+type ApplicationBindingWalk {
+  index: Int
+  positional_next: Int
+  filled: Map<Symbol, Int>
+  refused: List<ApplicationBindingRefusal>
+}
+
+fn declared_parameter_index(labels: List<Symbol>) -> DeclaredParameterIndex {
+  fold(labels, init: DeclaredParameterIndex { count: 0, position_of: empty_map(), label_at: empty_map() }, f: fn(acc, l) {
+    DeclaredParameterIndex {
+      count: acc.count + 1,
+      position_of: map_insert(m: acc.position_of, key: l, value: acc.count),
+      label_at: map_insert(m: acc.label_at, key: acc.count, value: l)
+    }
+  })
+}
+
+// ONE PASS OVER THE ACTUALS, ONE OVER THE DECLARED LABELS, each step a map lookup -- no scan per
+// actual or per label. A positional actual fills the next declared slot; a named actual fills the slot
+// of its name. The first conflict refuses, located at the actual that makes it: a positional actual
+// beyond the declared count (surplus), a label that names no parameter (unknown), a slot filled twice.
+// A declared slot left unfilled refuses as a deficit.
+fn application_binding_plan_over(labels: List<Symbol>, actuals: List<Edge>) -> ApplicationBindingPlan {
+  let declared = declared_parameter_index(labels: labels)
+  let walk = fold(actuals, init: ApplicationBindingWalk { index: 0, positional_next: 0, filled: empty_map(), refused: [] }, f: fn(acc, e) {
+    if count(acc.refused) > 0 {
+      acc
+    } else {
+      match e.label {
+        StructuralLabel { label: _ } => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
+        Positional =>
+          match map_lookup(m: declared.label_at, key: acc.positional_next) {
+            Absent => application_walk_refuse(acc: acc, reason: ^application_positional_surplus)
+            Present { value: label } => application_walk_fill(acc: acc, label: label, positional: true)
+          }
+        Authored { name: label } =>
+          match map_lookup(m: declared.position_of, key: label) {
+            Absent => application_walk_refuse(acc: acc, reason: ^application_argument_label_unknown)
+            Present { value: _ } => application_walk_fill(acc: acc, label: label, positional: false)
+          }
+      }
+    }
+  })
+  match list_at_optional(xs: walk.refused, index: 0) {
+    Present { value: r } => ApplicationBindingRefused { reason: r.reason, at: r.at }
+    Absent =>
+      fold(labels, init: ApplicationBound { slots: [] }, f: fn(acc, label) {
+        match acc {
+          ApplicationBindingRefused { reason: _, at: _ } => acc
+          ApplicationBound { slots: slots } =>
+            match map_lookup(m: walk.filled, key: label) {
+              Present { value: i } => ApplicationBound { slots: list_snoc_item(xs: slots, item: ApplicationSlot { label: label, actual_index: i }) }
+              Absent => ApplicationBindingRefused { reason: ^application_positional_deficit, at: walk.index }
+            }
+        }
+      })
+  }
+}
+
+fn application_walk_fill(acc: ApplicationBindingWalk, label: Symbol, positional: Bool) -> ApplicationBindingWalk {
+  match map_lookup(m: acc.filled, key: label) {
+    Present { value: _ } => application_walk_refuse(acc: acc, reason: ^application_argument_slot_bound_twice)
+    Absent =>
+      ApplicationBindingWalk {
+        index: acc.index + 1,
+        positional_next: if positional { acc.positional_next + 1 } else { acc.positional_next },
+        filled: map_insert(m: acc.filled, key: label, value: acc.index),
+        refused: []
+      }
+  }
+}
+
+fn application_walk_refuse(acc: ApplicationBindingWalk, reason: Symbol) -> ApplicationBindingWalk {
+  ApplicationBindingWalk {
+    index: acc.index + 1,
+    positional_next: acc.positional_next,
+    filled: acc.filled,
+    refused: [ApplicationBindingRefusal { reason: reason, at: acc.index }]
+  }
+}
+
+// The application's actual edges, callee excluded, in authored order.
+fn application_actual_edges(site: Node) -> List<Edge> {
+  match site.children {
+    Empty => []
+    Cons { head: _, tail: rest } => rest
+  }
+}

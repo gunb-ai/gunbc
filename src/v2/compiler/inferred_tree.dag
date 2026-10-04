@@ -1,9 +1,14 @@
 module v2.compiler.inferred_tree
 
+import std.types { List }
 import v2.std.cardinality { TerminationProof }
-import v2.std.collection { List, Map }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
+import std.algebra { list_snoc_item }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
+import v2.std.optional { Optional, optional_absent }
 import v2.std.witness { Witness }
 import std.algebra { PartialFunction }
 
@@ -29,9 +34,25 @@ type NodeGrounding
   = DerivedGrounding { grounding: CanonicalGrounding }
   | GroundingNotDerived { node: Node }
 
+// WHAT A NODE DENOTES IS AN INFERRED FACT ABOUT IT, WHICH IS WHY IT LIVES HERE AND NOT IN A SECOND
+// CARRIER. A resolved reference to a corpus declaration (v2.compiler.resolve resolved_reference_node)
+// names a declaration, and the ONE place that may answer which declaration is the stage holding the
+// symbol index -- infer, through the guarded reader v2.std.symbol_index symbol_index_lookup, whose
+// ambiguity refusal is the whole point of it being guarded. Recording the answer here is what keeps
+// that single authority: eval CONSUMES the denotation and never re-resolves, so there is no second,
+// weaker reference-resolution path that could accept a reference the guarded reader refuses.
+//
+// IT IS A SEPARATE FIELD FROM THE GROUNDING, DELIBERATELY. The grounding carries the node's TYPE --
+// for a reference, its callable contract. Callable type evidence is not an executable body, and
+// recovering the declaration's implementation out of the type slot would conflate the two facts; a
+// consumer wanting the body reads the denotation, a consumer wanting the type reads the grounding.
+//
+// Absent is the ordinary case: only a node that denotes a declaration carries one, and a node that
+// denotes nothing is not thereby defective.
 type InferredFacts {
   grounding: NodeGrounding
   descent: Witness<TerminationProof>
+  denotation: Optional<Node>
 }
 
 type InferredTree {
@@ -65,4 +86,59 @@ type ObligatedInferredTree {
   root: Node
   facts: PartialFunction<Node, InferredFacts>
   obligations: List<RefinementObligation>
+}
+
+// WHETHER AN AUTHORED OCCURRENCE IDENTIFIES ONE NODE IN A TREE. Infer's facts table is Node-keyed. The
+// proposed derived subject for a fact (DESIGN section 3b, keys/hashing) is the node's AUTHORED
+// occurrence (std.occurrence_identity NodeOccurrenceIdentity, minted or projected arm), with scope one
+// tree infer is handed, equality OccurrenceId value equality, and collision disposition refusal. It is
+// sound only if no tree holds two DIFFERENT nodes under one authored occurrence. This walk measures
+// exactly that and nothing else; a synthetic node has no authored occurrence and is not counted. It is
+// the one authority a later key admission would refuse with, so the census and the refusal cannot
+// disagree. The native lane reports it per module (v2.compiler.compile native_lane_occurrence_census).
+fn authored_occurrence_id(n: Node) -> Optional<OccurrenceId> {
+  match n.occurrence_id {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrenceSynthetic => Absent
+    OccurrencePending { caused_by: cause } => Present { value: cause }
+  }
+}
+
+type AuthoredOccurrenceCollision {
+  occurrence: OccurrenceId
+  first: Node
+  second: Node
+}
+
+type AuthoredOccurrenceCensus {
+  seen: Map<Int, Node>
+  collisions: List<AuthoredOccurrenceCollision>
+}
+
+fn authored_occurrence_census_step(acc: AuthoredOccurrenceCensus, n: Node) -> AuthoredOccurrenceCensus {
+  let here = match authored_occurrence_id(n: n) {
+    Absent => acc
+    Present { value: id } =>
+      match map_lookup(m: acc.seen, key: id.value) {
+        Absent => AuthoredOccurrenceCensus { seen: map_insert(m: acc.seen, key: id.value, value: n), collisions: acc.collisions }
+        Present { value: held } =>
+          if held == n {
+            acc
+          } else {
+            AuthoredOccurrenceCensus {
+              seen: acc.seen,
+              collisions: list_snoc_item(xs: acc.collisions, item: AuthoredOccurrenceCollision { occurrence: id, first: held, second: n })
+            }
+          }
+      }
+  }
+  fold(n.children, init: here, f: fn(a, e) { authored_occurrence_census_step(acc: a, n: e.target) })
+}
+
+fn authored_occurrence_collisions(root: Node) -> List<AuthoredOccurrenceCollision> {
+  authored_occurrence_census_step(
+    acc: AuthoredOccurrenceCensus { seen: empty_map(), collisions: [] },
+    n: root
+  ).collisions
 }

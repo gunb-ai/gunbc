@@ -1,5 +1,7 @@
 module v2.workflow.floor_enrolment_margin
 
+import v2.std.algebra { list_reverse }
+import std.types { List }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
 import v2.workflow.floor_cost_debt_admission {
   floor_cost_debt_typed_admitted_identities,
@@ -8,9 +10,7 @@ import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
 }
-import v2.std.collection { List }
 import v2.workflow.floor_enrolment_dead_band { enrolment_dead_band_identities }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import std.measure { Millisecond, millisecond_count }
 
@@ -188,6 +188,43 @@ fn floor_enrolment_margin_budget_ms_count() -> Int {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
 }
 
+// THE DEAD BAND'S ENVELOPE FLOOR, DERIVED FROM THE SAME MEASURED RUNNER ENVELOPE AS THE MARGIN, AND
+// NEVER WRITTEN. A dead-band row asserts that the claim's cost can land above the margin on a runner
+// the envelope admits. A reading r taken on a FAST runner is consistent with that assertion while a
+// p90-slow runner could read it above the margin -- while r * p90 > margin, that is r > margin / p90
+// -- because the envelope above is exactly the spread of identical work across runners. So the
+// margin applied once more to the same envelope is where a row stops being a fast runner's reading of
+// a band member and becomes a claim cheap enough to enrol without it. Measured specimen (gunbc#12533,
+// two matrix cases): 332 and 339 ms in PR floor run 36648847499, then 294 and 294 ms in run
+// 36661418914 -- identical eval_steps, a 1.13-1.15x spread, inside the envelope's 1.653x p90 -- a
+// pair the band could not hold, because the fast run staled rows the slow run needed.
+fn floor_enrolment_dead_band_envelope_floor(budget_ms: Millisecond) -> Millisecond {
+  implied_clean_run_budget(ceiling_ms: budget_ms, inflation_permille: floor_enrolment_margin_envelope_permille())
+}
+
+fn floor_enrolment_dead_band_envelope_floor_ms_count() -> Int {
+  millisecond_count(m: floor_enrolment_dead_band_envelope_floor(budget_ms: floor_enrolment_margin_budget_ms()))
+}
+
+// THE TYPED COST-DEBT ROW'S ENVELOPE FLOOR, THE SAME RULE AT THE LINE (gunbc#12800's line straddle;
+// ruling of eager-owl-205, 2026-10-01). A typed cost-debt row asserts its claim costs MORE than the
+// per-subject line on a runner the envelope admits. A reading r on a FAST runner is consistent with
+// that while a p90-slow runner could read it above the line -- while r * p90 > line, that is
+// r > line / p90 -- so the line applied once more to the same measured envelope is where a row stops
+// being a fast runner's reading of a member over the line and becomes a claim cheap enough not to need
+// the row on any runner. Derived from floor_enrolment_margin_envelope_permille, never written.
+// Measured specimen: test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
+// an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one read 523, 582 and 543 ms on srv1 and
+// srv3 (PR floor runs 36765162766, 36775473983, 36783312538) and 466 ms on srv4 in merge-group run
+// 36793281217, which staled its row and dequeued gunbc#12800.
+fn floor_enrolment_roster_envelope_floor(line_ms: Millisecond) -> Millisecond {
+  implied_clean_run_budget(ceiling_ms: line_ms, inflation_permille: floor_enrolment_margin_envelope_permille())
+}
+
+fn floor_enrolment_roster_envelope_floor_ms_count() -> Int {
+  millisecond_count(m: floor_enrolment_roster_envelope_floor(line_ms: required_floor_per_subject_cpu_line_ms()))
+}
+
 // TYPED COST-DEBT IDENTITIES THIS GATE MAY HONOUR AS ROSTER GROUND. Decoded by the host
 // the same way `floor_cost_debt_roster` is decoded -- never a Rust-empty HashSet.
 //
@@ -280,14 +317,20 @@ type EnrolmentMarginStanding =
       ground: EnrolmentExpensivenessGround
       reading: EnrolmentCostReading
     }
-  | EnrolmentRosterGroundStale { witness_identity: String, observed_cpu_ms: Millisecond, line_ms: Millisecond }
-  | EnrolmentDeadBandStale { witness_identity: String, observed_cpu_ms: Millisecond, budget_ms: Millisecond }
+  | EnrolmentRosterGroundStale { witness_identity: String, observed_cpu_ms: Millisecond, line_ms: Millisecond, envelope_floor_ms: Millisecond }
+  | EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: String, observed_cpu_ms: Millisecond, line_ms: Millisecond, envelope_floor_ms: Millisecond }
+  | EnrolmentDeadBandStale { witness_identity: String, observed_cpu_ms: Millisecond, budget_ms: Millisecond, envelope_floor_ms: Millisecond }
   | EnrolmentDeadBandWrongGround { witness_identity: String, observed_cpu_ms: Millisecond, line_ms: Millisecond }
+  | EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: String, observed_cpu_ms: Millisecond, budget_ms: Millisecond, envelope_floor_ms: Millisecond }
 
 // THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row carries
 // an identity and a reason, never a reading, so the only cost that can justify it is THIS run's:
-// it stays declared only while the live observed CPU is strictly above the per-subject line, and
-// at or under the line it is stale and blocks, naming that the row must delete. Absence is handled
+// it stays declared only while the live observed CPU is strictly above the per-subject line. At or
+// under the line but above floor_enrolment_roster_envelope_floor it is
+// EnrolmentRosterGroundWithinRunnerEnvelope: a fast runner's reading of a member a p90-slow runner
+// reads over the line, reported with both bounds and not blocking. At or under that floor it is
+// stale and blocks, naming that the row must delete. Only a DECLARED row reaches either arm: an
+// undeclared reading is decided by the margin, and a dead-band row over the line stays wrong ground. Absence is handled
 // in `enrolment_margin_standing`: a Roster identity with no cost row is EnrolmentNotMeasured,
 // exactly as an undeclared planned identity is, or the declaration would buy an exemption from
 // being measured at all. LongHome is unchanged -- reported, never decided -- which is the declared
@@ -296,10 +339,13 @@ type EnrolmentMarginStanding =
 // at or under it proves nothing, so on the Roster ground it blocks under the same bound or censored
 // arm an undeclared identity would get, whose remedy is to produce a reading that decides.
 //
-// THE DEAD BAND IS SELF-STALING, and only an EXACT reading can hold it: strictly above the margin and
-// at or under the line. At or under the margin the row is stale (the claim is cheap enough to enrol
-// without it); above the line it is the wrong ground (ordinary typed cost debt is the authority
-// there). A lower bound, with or without a ceiling, decides nothing about a band and blocks under the
+// THE DEAD BAND IS SELF-STALING, and only an EXACT reading can hold it. Strictly above the margin and
+// at or under the line it is declared. At or under the margin but above the envelope floor
+// (floor_enrolment_dead_band_envelope_floor) it is EnrolmentDeadBandWithinRunnerEnvelope: a fast
+// runner's reading of a band member, reported with both bounds and not blocking -- a typed standing,
+// not a pass, so the line names it. At or under the envelope floor the row is stale (the claim is
+// cheap enough to enrol without it even on a p90-slow runner); above the line it is the wrong ground
+// (ordinary typed cost debt is the authority there). A lower bound, with or without a ceiling, decides nothing about a band and blocks under the
 // arm an undeclared identity with the same reading would get.
 fn enrolment_declared_measured_standing(
   witness_identity: String,
@@ -324,7 +370,12 @@ fn enrolment_declared_measured_standing(
             if millisecond_count(m: c) > millisecond_count(m: budget_ms) {
               declared
             } else {
-              EnrolmentDeadBandStale { witness_identity: witness_identity, observed_cpu_ms: c, budget_ms: budget_ms }
+              let envelope_floor = floor_enrolment_dead_band_envelope_floor(budget_ms: budget_ms)
+              if millisecond_count(m: c) > millisecond_count(m: envelope_floor) {
+                EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: witness_identity, observed_cpu_ms: c, budget_ms: budget_ms, envelope_floor_ms: envelope_floor }
+              } else {
+                EnrolmentDeadBandStale { witness_identity: witness_identity, observed_cpu_ms: c, budget_ms: budget_ms, envelope_floor_ms: envelope_floor }
+              }
             }
           }
         CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
@@ -338,10 +389,16 @@ fn enrolment_declared_measured_standing(
           if millisecond_count(m: c) > millisecond_count(m: per_subject_line_ms) {
             declared
           } else {
-            EnrolmentRosterGroundStale {
-              witness_identity: witness_identity,
-              observed_cpu_ms: c,
-              line_ms: per_subject_line_ms,
+            let envelope_floor = floor_enrolment_roster_envelope_floor(line_ms: per_subject_line_ms)
+            if millisecond_count(m: c) > millisecond_count(m: envelope_floor) {
+              EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: witness_identity, observed_cpu_ms: c, line_ms: per_subject_line_ms, envelope_floor_ms: envelope_floor }
+            } else {
+              EnrolmentRosterGroundStale {
+                witness_identity: witness_identity,
+                observed_cpu_ms: c,
+                line_ms: per_subject_line_ms,
+                envelope_floor_ms: envelope_floor,
+              }
             }
           }
         CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: b, eval_steps_before_censor: _ } =>
@@ -463,9 +520,11 @@ fn enrolment_margin_standing_blocks(standing: EnrolmentMarginStanding) -> Bool {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => true
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => false
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => false
-    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => true
-    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } => true
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => true
+    EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => false
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => true
     EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => true
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => false
   }
 }
 
@@ -493,9 +552,11 @@ fn enrolment_margin_blocking_cause(standing: EnrolmentMarginStanding) -> String 
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "enrolment_not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => ""
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => ""
-    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "enrolment_roster_ground_stale"
-    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } => "enrolment_dead_band_stale"
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => "enrolment_roster_ground_stale"
+    EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => ""
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => "enrolment_dead_band_stale"
     EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "enrolment_dead_band_wrong_ground"
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => ""
   }
 }
 
@@ -511,9 +572,11 @@ fn enrolment_margin_standing_name(standing: EnrolmentMarginStanding) -> String {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not_measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside_this_runs_execution"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness_declared"
-    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "roster_ground_stale"
-    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } => "dead_band_stale"
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => "roster_ground_stale"
+    EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } => "roster_ground_within_runner_envelope"
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => "dead_band_stale"
     EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "dead_band_wrong_ground"
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } => "dead_band_within_runner_envelope"
   }
 }
 
@@ -537,12 +600,16 @@ fn enrolment_unpaired_pairing_hole(standing: EnrolmentMarginStanding) -> Enrolme
       EnrolmentPairingHoleOutsideExecution
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } =>
       EnrolmentPairingHoleDeclared
-    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } =>
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } =>
       EnrolmentPairingHoleNone
-    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _ } =>
+    EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, line_ms: _, envelope_floor_ms: _ } =>
+      EnrolmentPairingHoleDeclared
+    EnrolmentDeadBandStale { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } =>
       EnrolmentPairingHoleNone
     EnrolmentDeadBandWrongGround { witness_identity: _, observed_cpu_ms: _, line_ms: _ } =>
       EnrolmentPairingHoleNone
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: _, observed_cpu_ms: _, budget_ms: _, envelope_floor_ms: _ } =>
+      EnrolmentPairingHoleDeclared
   }
 }
 
@@ -566,7 +633,7 @@ type EnrolmentMarginRow {
 // cannot red a PR for debt it did not author: the population is the identities THIS change
 // enrols, never the standing corpus.
 fn enrolment_margin_blockers(rows: List<EnrolmentMarginRow>) -> List<EnrolmentMarginBlocker> {
-  reverse(fold(rows, init: [], f: fn(acc, row) {
+  list_reverse(xs: fold(rows, init: [], f: fn(acc, row) {
     if enrolment_margin_standing_blocks(standing: row.standing) {
       concat(
         [EnrolmentMarginBlocker {

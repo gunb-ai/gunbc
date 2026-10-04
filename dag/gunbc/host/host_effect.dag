@@ -23,7 +23,7 @@ import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinary
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 import gunbc.runner_lifecycle { RunnerReplacementCause }
 import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import std.effects {
   EffectShape,
@@ -104,6 +104,17 @@ type BootstrapFragment {
   script: String
 }
 
+// A HAND-SPELLED BOOTSTRAP LITERAL IS NOT AN ADMITTED ARTIFACT. The fresh-standup bootstrap route
+// is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold): production
+// never builds this field by concat, and a caller that hands the realization a non-empty script
+// literal is trying to author shell text through the transport. The empty fragment — "the artifact
+// was emitted by the lane, carry the thin run" — is the only admitted bootstrap. This predicate is
+// the wall the fresh-standup EmitArtifactThenThinRun leg refuses through, so the distinction is
+// typed and located rather than an anonymous refusal.
+fn bootstrap_fragment_carries_hand_script(f: BootstrapFragment) -> Bool {
+  f.script != ""
+}
+
 type ThinInvocation {
   argv: List<String>
 }
@@ -178,20 +189,15 @@ fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
 }
 
 data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
-  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
+  reason: "EmitArtifactThenThinRun transport is realized for the converge lane: the fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved) and the thin run dispatches through the gunbc converge invocation-shape authority (thin_invocation_argv_carrier_scaffold dissolved); hand-spelled bootstrap literals refuse typed at the leg."
 }
 
 data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
   reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
 }
 
-data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.fleet_converge_apply",
-    decl_name: "fleet_converge_thin_invocation",
-    field: WholeDeclaration,
-  }
+data thin_invocation_argv_carrier_scaffold: Disposition = Terminal {
+  reason: "the thin invocation stopped authoring argv: gunbc.fleet_converge_apply fleet_converge_thin_invocation derives every word from the ONE gunbc converge shape authority (gunbc.cli_invoke gunbc_converge_invocation_words), composing only the program word through gunbc_bin_name — the caller names semantics and the shape has one home (shell-to-dag section 0c: argv is never the authority); the realize_converge_on_host fresh-standup EmitArtifactThenThinRun leg dispatches the typed invocation in-process and refuses hand-spelled bootstrap literals typed"
 }
 
 

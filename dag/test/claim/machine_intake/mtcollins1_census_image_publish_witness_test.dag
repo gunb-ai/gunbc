@@ -1,0 +1,171 @@
+module test.claim.machine_intake.mtcollins1_census_image_publish_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { SeededInstallMediaStageOutcome, SeededInstallMediaStaged, SeededInstallMediaStageRefused }
+import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, CreationUnconfirmed, HostFileWriteNotConverged, HostFileWriteRefused }
+import gunbc.seeded_install_media_publish { SeededImagePublication, SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused, SeededImagePublishedRecordNotWritten, seeded_image_publication_after_record }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused }
+import gunbc.machine_intake_mtcollins1_census_member_readback {
+  CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, CasperKernel,
+}
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
+import gunbc.machine_intake_boot_image_export_ownership { srv2_account_key_for_name, fleet_account_key_matches, boot_image_export_ownership_requirement }
+import gunbc.machine_intake_mtcollins1_census_image_publish {
+  CensusRegression, RegressionReproduced, RegressionDiverged, RegressionUnbuilt, RegressionNotApplicable,
+  census_regression_of, census_regression_holds,
+  CensusPublishAttempt, CensusPublishStoppedAtRegression, CensusPublishRan,
+  census_publish_attempt_of, census_publish_attempt_holds, render_census_publish_attempt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pinned: NonEmptyStr = "eb23f1746e33cab008317a604d6f27527579d44db95923cbcf351290ecb90a0d"
+data other_build: NonEmptyStr = "d27d584dc8d2c64ad92026cf8a3defb0f8b3ca26199a940dc1ec9cc8c9ee2c18"
+data pinned_key: NonEmptyStr = "bf916c060d072e72"
+
+data work_removed: String = "/tmp/gunbc-seeded-media.AAAAAAAA"
+data scratch_removed_dir: String = "/var/tmp/gunbc-mtcollins1-census-regress.BBBBBBBB"
+
+fn staged(digest: NonEmptyStr) -> SeededInstallMediaStageOutcome {
+  SeededInstallMediaStaged { staging_path: "/var/tmp/x/pinned-rebuild.iso", output_digest: digest, work: Removed { dir: work_removed as NonEmptyStr } }
+}
+
+// The rebuilt image's boot chain as the regression's comparison would read it: kernel and initrd equal
+// to stock (the identity that matters), grub.cfg rewritten. Supplied here; the comparison itself is the
+// member readback's, exercised in its own witness.
+fn stock_chain() -> CensusMemberReadback {
+  BootChainIdenticalToStock { stock_iso: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555", census_iso: pinned, kernel: "k0", initrd: "i0" }
+}
+
+fn reproduced() -> CensusRegression {
+  census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+}
+
+fn census_built() -> UbuntuSeededInstallMediaBuilt? {
+  match mtcollins1_census_image {
+    Mtcollins1CensusImageRefused { reason: _ } => none
+    Mtcollins1CensusImageDerived { input: i } => Present { value: ubuntu_seeded_install_media_built(input: i, output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") }
+  }
+}
+
+// A SENTINEL PUBLICATION: reaching it proves the publication leg was consulted.
+fn published_clean(ok: Bool) -> SeededImagePublication {
+  match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } => SeededImagePublished { built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: none }
+  }
+}
+
+// POSITIVE: the pinned digest reproduced on srv2 with both directories removed holds, and gates the publish open.
+test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => published_clean(ok: ok))
+  census_regression_holds(r: reproduced())
+    && census_publish_attempt_holds(a: a)
+    && match a { CensusPublishRan { regression: _, publication: _ } => true _ => false }
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "regression=reproduced")
+}
+
+// RED: a rebuild that gives other bytes (the host-dependence this gate exists for) stops the run and
+// the publication is NEVER consulted.
+test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: other_build), chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  let a = census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok))
+  !census_regression_holds(r: r)
+    && match r { RegressionDiverged { build_key: _, expected: e, observed: o, build_work: _, scratch: _ } => e == pinned && o == other_build _ => false }
+    && match a { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+    && !census_publish_attempt_holds(a: a)
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "regression=DIVERGED")
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=not attempted")
+}
+
+// A reproduced digest whose scratch removal was not confirmed does NOT hold: residue on srv2 stops the run.
+test fn a_reproduced_digest_with_unconfirmed_scratch_removal_does_not_hold() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), chain: p => stock_chain(), scratch: RemovalUnconfirmed { dir: scratch_removed_dir as NonEmptyStr, exit_code: 255, stderr: "Connection closed" })
+  !census_regression_holds(r: r)
+    && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+}
+
+test fn an_unbuilt_rebuild_stops_the_run() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: SeededInstallMediaStageRefused { reason: "xorriso -osirrox extract: failed exit=5", work: Removed { dir: work_removed as NonEmptyStr } }, chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  !census_regression_holds(r: r)
+    && match r { RegressionUnbuilt { reason: why, build_work: _, scratch: _ } => string_contains(s: why, pattern: "extract") _ => false }
+}
+
+// A PUBLICATION THAT LEAVES RESIDUE DOES NOT HOLD even after a held regression: a staging file left in
+// the export, or a build work directory not removed, is reported and fails the run.
+test fn a_publication_with_staging_residue_does_not_hold() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } => SeededImagePublished { built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: Present { value: "/srv/bmc/x.iso.gunbc-staging: failed exit=1" } }
+  })
+  !census_publish_attempt_holds(a: a) && string_contains(s: render_census_publish_attempt(a: a), pattern: "staging_residue=")
+}
+
+test fn a_refused_publication_does_not_hold() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => SeededImagePublicationRefused { reason: "publication into /srv/bmc not admitted", work: CreationUnconfirmed { exit_code: 255, stdout: "", stderr: "" } })
+  !census_publish_attempt_holds(a: a)
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=refused")
+    && string_contains(s: render_census_publish_attempt(a: a), pattern: "CREATION UNCONFIRMED")
+}
+
+// BOTH FAILURES SURVIVE (review 5341204067): the image is published and verified, the export staging
+// file's removal was not confirmed, and then the derivation record's write did not converge. Built
+// through the production composition (seeded_image_publication_after_record), the receipt keeps the
+// staging obligation AND says the record's state is unknown -- never that it "was not written".
+test fn a_staging_residue_survives_a_later_record_write_failure() -> Bool {
+  let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
+    Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
+    Present { value: b } =>
+      seeded_image_publication_after_record(
+        built: b,
+        path: "/srv/bmc/x.iso",
+        work: Removed { dir: work_removed as NonEmptyStr },
+        staging_residue: Present { value: "/srv/bmc/x.iso.gunbc-staging: UNCONFIRMED (reply lost) exit=255" },
+        record: HostFileWriteNotConverged { reason: "rename: exit=255" },
+      )
+  })
+  let text = render_census_publish_attempt(a: a)
+  !census_publish_attempt_holds(a: a)
+    && match a { CensusPublishRan { regression: _, publication: SeededImagePublishedRecordNotWritten { built: _, path: _, work: _, staging_residue: Present { value: _ }, record: _ } } => true _ => false }
+    && string_contains(s: text, pattern: "staging_residue=/srv/bmc/x.iso.gunbc-staging")
+    && string_contains(s: text, pattern: "derivation_record=NOT CONVERGED (destination state unknown)")
+    && string_contains(s: text, pattern: "output_digest=")
+    && !string_contains(s: text, pattern: "not written")
+}
+
+// A record write refused before anything was sent is reported as refused, beside the same obligations.
+test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() -> Bool {
+  match census_built() {
+    Absent => false
+    Present { value: b } => {
+      let p = seeded_image_publication_after_record(built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: Present { value: "staging left" }, record: HostFileWriteRefused { reason: "path outside scope" })
+      let text = render_census_publish_attempt(a: CensusPublishRan { regression: reproduced(), publication: p })
+      string_contains(s: text, pattern: "derivation_record=refused: path outside scope") && string_contains(s: text, pattern: "staging_residue=staging left")
+    }
+  }
+}
+
+// GATE (b): a digest that matches the hermetic receipt is not enough -- a rebuilt image whose kernel
+// differs from stock does not hold, and the publication is never consulted.
+test fn a_reproduced_digest_whose_kernel_differs_from_stock_does_not_hold() -> Bool {
+  let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned),
+    chain: p => BootChainFirstDifference { stock_iso: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555", census_iso: pinned, member: CasperKernel, stock: "k0", census: "k1" },
+    scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
+  !census_regression_holds(r: r)
+    && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
+    && string_contains(s: render_census_publish_attempt(a: CensusPublishStoppedAtRegression { regression: r }), pattern: "verdict=first_difference")
+}
+
+// THE WRITER IS THE EXPORT'S ADMITTED OWNER: the fleet-SSH target for the host that serves the export
+// names a login the export-ownership admission resolves to its required owner principal. Run 36613515243
+// passed both gates as the bootstrap principal and could not write /srv/bmc; retargeting to anything the
+// admission does not name would reopen that, and this goes red.
+test fn the_export_host_target_is_the_principal_the_ownership_admission_requires() -> Bool {
+  match srv2_account_key_for_name(name: mtcollins1_boot_export_host_target().principal) {
+    Absent => false
+    Present { value: k } => fleet_account_key_matches(a: k, b: boot_image_export_ownership_requirement.required_owner)
+  }
+}

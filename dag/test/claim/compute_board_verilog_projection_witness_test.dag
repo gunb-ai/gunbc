@@ -30,10 +30,11 @@ import product.compute_board.verilog_projection {
   power_interlock_verilog_bindings,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.compute_board.article { BoardArticleIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_article_identity: NonEmptyStr = "witness fixture rev 0"
+data witness_article_identity: BoardArticleIdentity = BoardArticleIdentity { name: "witness fixture", revision: "0" }
 
 data bad_interlock_bindings: List<VerilogBinding> = [
   VerilogBinding { signal: "bad_interlock" as SignalName, symbol: ^probe_bad_interlock, spelling: "bad_interlock" },

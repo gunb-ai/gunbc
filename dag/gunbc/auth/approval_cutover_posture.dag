@@ -36,7 +36,7 @@ type ApprovalCutoverPosture
 // THE ROLLBACK IS THE SAME EDIT BACKWARDS, which is the property that makes this safe to schedule:
 // the roadmap route code stays mounted through BrokerServesAndWrites precisely so the posture can
 // move back without a deploy, and its store effects are gated by the authority this row derives.
-data approval_cutover_posture: ApprovalCutoverPosture = RoadmapServesAndWrites
+data approval_cutover_posture: ApprovalCutoverPosture = BrokerServesAndWrites
 
 fn approval_cutover_posture_label(p: ApprovalCutoverPosture) -> NonEmptyStr {
   match p {

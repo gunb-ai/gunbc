@@ -1,0 +1,845 @@
+module test.claim.roadmap.roadmap_alignment_witness_test
+
+
+// THE ALIGNMENT LADDER, WITNESSED (docs/plans/harness-work-lifecycle.md, "Alignment ladder").
+// Chain derivation is derived, never transcribed: the production example is read off the REAL
+// declared authority edges, and every fixture claim supplies its own rows at the module boundary.
+// Cadence claims pin the magnitudinal bases, the verdict step function's floor/ceiling walls, the
+// per-lineage state codec, and the due evaluation over an adaptive state.
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_eq, WholeDeclaration }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChain, AlignmentChainCyclic,
+  AlignmentChainLink,
+  AlignmentChained, AlignmentChainUnrooted, AlignmentChainRowUndeclared,
+  alignment_chain, alignment_chain_for, alignment_chain_in, alignment_index,
+  AlignmentLevel,
+  TaskContractLevel, ProjectIntentLevel, RootPrinciplesLevel,
+  AlignmentResolvedChain,
+  alignment_levels, alignment_levels_due,
+  AlignmentRefusal,
+  AlignmentWalkUnrooted, AlignmentRowUndeclared, AlignmentNestingCyclic,
+  alignment_refusal_reason,
+  AlignmentResolution,
+  AlignmentReady, AlignmentUnresolved,
+  alignment_resolve_chain, alignment_resolve,
+  alignment_chain_fingerprint,
+  alignment_base_cadence_state,
+  AlignmentBinding, alignment_binding_text, alignment_binding_decode,
+  AlignmentBindingDecoded, AlignmentBindingNotDecodable, alignment_binding_schema,
+  AlignmentVerdict,
+  Aligned, Misaligned, ExtremelyMisaligned, CatastrophicallyMisaligned, RoutedConflict,
+  alignment_verdict_key,
+  AlignmentCadenceStep,
+  CadenceStepInterval, CadenceStepStopTheLine,
+  alignment_interval, alignment_interval_floor, alignment_interval_ceiling,
+  alignment_clamp_turns, alignment_next_interval,
+  alignment_cadence_base_turns, alignment_cadence_step_turns,
+  AlignmentCadenceState,
+  alignment_cadence_state_text, alignment_cadence_state_decode,
+  AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
+  alignment_cadence_state_schema,
+}
+import gunbc.roadmap.roadmap_attempt_continuation {
+  continuation_alignment_l0_pointer,
+  continuation_alignment_ask,
+}
+import gunbc.roadmap_model {  RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable, NodeParent, MemberOf, AdmittedRoot }
+import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContract, ExecutionContractUnspecified, NotAgentWork }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ------------------------------------------------------------------------------------------------
+// Fixture rows and edges, supplied at the module boundary (DESIGN section 3: a witness
+// discriminates at one interface; the derived authority rows are the production claim's subject,
+// and these fixtures are the derivation-control claims' inputs).
+// ------------------------------------------------------------------------------------------------
+
+fn fixture_fields(headline: String, brief: String) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: brief,
+    displaced_cost: "fixture displaced cost",
+    current_state: "fixture current state",
+    first_slice: "fixture first slice",
+    red_control: "fixture red control",
+    out_of_scope: "fixture out of scope",
+    handback: "fixture handback",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
+}
+
+fn fixture_node(id: String, headline: String, brief: String, parent: NodeParent?) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["fixture_identity_", id], "") as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fixture_fields(headline: headline, brief: brief) },
+    carriers: [] as List<Pointer>,
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "alignment-fixture",
+    signoff: Unsigned,
+    parent: parent,
+    centering: none,
+  }
+}
+
+// The parent of a fixture row, with the edge's argument spelled from both ends so a claim can read
+// which edge a contribution came from.
+fn under(child: String, project: String) -> NodeParent? {
+  Present { value: MemberOf { project: project, contribution: join(["fixture contribution of ", child, " to ", project], "") as NonEmptyStr } }
+}
+
+fn fixture_root() -> RoadmapNode {
+  fixture_node(id: "gunbc-project-root", headline: "Root project headline", brief: "Root project boundary", parent: Present { value: AdmittedRoot })
+}
+
+// ONE PARENT PER ROW: the fixture graph is the rows themselves. A chain is re-wired by giving a row
+// a different parent, never by editing a second list beside it.
+fn linear_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(id: "task-a", headline: "Task A headline", brief: "Task A boundary", parent: under(child: "task-a", project: "arc-one")),
+    fixture_node(id: "arc-one", headline: "Arc One headline", brief: "Arc One boundary", parent: under(child: "arc-one", project: "arc-two")),
+    fixture_node(id: "arc-mid", headline: "Arc Mid headline", brief: "Arc Mid boundary", parent: none),
+    fixture_node(id: "arc-two", headline: "Arc Two headline", brief: "Arc Two boundary", parent: under(child: "arc-two", project: "gunbc-project-root")),
+    fixture_node(id: "lone-task", headline: "Lone headline", brief: "Lone boundary", parent: none),
+    fixture_root(),
+  ]
+}
+
+fn deep_linear_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(id: "task-a", headline: "Task A headline", brief: "Task A boundary", parent: under(child: "task-a", project: "arc-one")),
+    fixture_node(id: "arc-one", headline: "Arc One headline", brief: "Arc One boundary", parent: under(child: "arc-one", project: "arc-mid")),
+    fixture_node(id: "arc-mid", headline: "Arc Mid headline", brief: "Arc Mid boundary", parent: under(child: "arc-mid", project: "arc-two")),
+    fixture_node(id: "arc-two", headline: "Arc Two headline", brief: "Arc Two boundary", parent: under(child: "arc-two", project: "gunbc-project-root")),
+    fixture_root(),
+  ]
+}
+
+fn missing_arc_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(id: "task-a", headline: "Task A headline", brief: "Task A boundary", parent: under(child: "task-a", project: "arc-missing")),
+    fixture_root(),
+  ]
+}
+
+fn cyclic_nodes() -> List<RoadmapNode> {
+  [
+    fixture_node(id: "task-a", headline: "Task A headline", brief: "Task A boundary", parent: under(child: "task-a", project: "arc-one")),
+    fixture_node(id: "arc-one", headline: "Arc One headline", brief: "Arc One boundary", parent: under(child: "arc-one", project: "task-a")),
+    fixture_root(),
+  ]
+}
+
+// ------------------------------------------------------------------------------------------------
+// Chain derivation. Task first, motivating projects nearest-first, root principles last; the link
+// carries the row's own headline and brief (the contribution check reads against carried text,
+// never a fresh interpretation).
+// ------------------------------------------------------------------------------------------------
+
+test fn a_linear_chain_runs_task_then_projects_then_the_root_pointer() -> Bool {
+  match alignment_chain(node_id: "task-a", nodes: linear_nodes()) {
+    AlignmentChained { task, projects, root } =>
+      task.node_id == "task-a"
+        && task.purpose == "Task A headline"
+        && task.boundary == "Task A boundary"
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-two", "gunbc-project-root"]
+        && (map(projects, p => p.purpose)) == ["Arc One headline", "Arc Two headline", "Root project headline"]
+        && (map(projects, p => p.boundary)) == ["Arc One boundary", "Arc Two boundary", "Root project boundary"]
+        && task.contribution_to_parent == "fixture contribution of task-a to arc-one"
+        && (map(projects, p => p.contribution_to_parent)) == ["fixture contribution of arc-one to arc-two", "fixture contribution of arc-two to gunbc-project-root", ""]
+        && root.module_path as String == "gunbc.design_document"
+        && root.decl_name as String == "design_document"
+        && decl_field_eq(a: root.field, b: WholeDeclaration)
+    _ => false
+  }
+}
+
+// DERIVATION CONTROL: the same rows with arc-one's parent rewired to arc-mid. The derived chain
+// follows the row; nothing beside it is edited, because nothing beside it exists.
+test fn a_parent_edit_re_renders_the_chain_there_is_no_second_list() -> Bool {
+  match alignment_chain(node_id: "task-a", nodes: deep_linear_nodes()) {
+    AlignmentChained { task, projects, root: _ } =>
+      task.node_id == "task-a"
+        && (map(projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two", "gunbc-project-root"]
+    _ => false
+  }
+}
+
+// A PARENTLESS END THAT IS NOT THE ADMITTED ROOT REFUSES (review 5354823380): lone-task declares no
+// parent and is not the root, so the walk never reached the top of a functional decomposition and
+// the chain says so with the walked prefix intact. This planted row is the unrooted control's
+// subject; it replaced the live extended-admission-cardinality row, which now has a parent.
+test fn a_projectless_node_that_is_not_the_admitted_root_refuses_unrooted() -> Bool {
+  match alignment_chain(node_id: "lone-task", nodes: linear_nodes()) {
+    AlignmentChainUnrooted { walked, at } => at == "lone-task" && count(walked) == 0
+    _ => false
+  }
+}
+
+test fn the_admitted_roots_own_chain_resolves_with_no_parent_contribution() -> Bool {
+  match alignment_chain(node_id: "gunbc-project-root", nodes: linear_nodes()) {
+    AlignmentChained { task, projects, root } =>
+      task.node_id == "gunbc-project-root"
+        && task.contribution_to_parent == ""
+        && count(projects) == 0
+        && root.module_path as String == "gunbc.design_document"
+    _ => false
+  }
+}
+
+// TWO OWNERS FOR ONE LEVEL HAS NO CONSTRUCTOR (operator ruling, 2026-09-30): a row carries one
+// parent field, so the fork the keyed membership roster could express -- and the typed ambiguity
+// refusal that answered it -- are gone with the roster. The class climbed to structurally
+// impossible (DESIGN §4b rung 4); there is no invalid fixture left to author here.
+
+test fn an_undeclared_task_row_refuses_the_chain() -> Bool {
+  match alignment_chain(node_id: "ghost", nodes: linear_nodes()) {
+    AlignmentChainRowUndeclared { node_id } => node_id == "ghost"
+    _ => false
+  }
+}
+
+test fn an_undeclared_arc_row_mid_walk_refuses_rather_than_projecting_nothing() -> Bool {
+  match alignment_chain(node_id: "task-a", nodes: missing_arc_nodes()) {
+    AlignmentChainRowUndeclared { node_id } => node_id == "arc-missing"
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE PRODUCTION EXAMPLE, DERIVED from the live rows: the shell batch member climbs through the
+// shell project, the debt-payoff milestone that holds the shell batch, debt-payoff itself, and the
+// root. Blocking edges never invent ownership; only the rows' parents do.
+// ------------------------------------------------------------------------------------------------
+
+test fn production_blockers_do_not_invent_project_ownership() -> Bool {
+  match alignment_chain_for(node_id: "shell-dag-cron-entry-line-builder") {
+    AlignmentChained { task, projects, root: _ } => task.node_id == "shell-dag-cron-entry-line-builder" && map(projects, p => p.node_id) == ["shell-typed-invocation", "dp-m2-shell-residue-retired", "debt-payoff", "gunbc-project-root"]
+    _ => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The cadence. Magnitudinal bases off the level index only; the step function's walls are the
+// declared floor and the magnitudinal ceiling.
+// ------------------------------------------------------------------------------------------------
+
+test fn the_base_intervals_are_magnitudinal_off_the_level_index_only() -> Bool {
+  alignment_interval(level_index: 0) == 20
+    && alignment_interval(level_index: 1) == 200
+    && alignment_interval(level_index: 2) == 2000
+    && alignment_interval(level_index: 3) == 20000
+    && alignment_cadence_base_turns == 20
+    && alignment_interval(level_index: 0) == alignment_cadence_base_turns
+}
+
+test fn the_declared_bounds_are_one_magnitude_around_the_base() -> Bool {
+  alignment_interval_floor(level_index: 0) == 2
+    && alignment_interval_ceiling(level_index: 0) == 20
+    && alignment_interval_floor(level_index: 1) == 20
+    && alignment_interval_ceiling(level_index: 1) == 200
+    && alignment_interval_floor(level_index: 2) == 200
+    && alignment_interval_ceiling(level_index: 2) == 2000
+}
+
+test fn aligned_widens_by_the_declared_step_and_never_past_the_ceiling() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: Aligned) {
+    CadenceStepInterval { turns } => turns == 20
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 18, verdict: Aligned) {
+      CadenceStepInterval { turns } => turns == 20
+      CadenceStepStopTheLine => false
+    }
+    && match alignment_next_interval(level_index: 0, current: 2, verdict: Aligned) {
+      CadenceStepInterval { turns } => turns == 4
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn misaligned_shortens_by_the_declared_step_and_never_below_the_floor() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: Misaligned { direction: "scope crept into the adjacent module" }) {
+    CadenceStepInterval { turns } => turns == 18
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 2, verdict: Misaligned { direction: "scope crept into the adjacent module" }) {
+      CadenceStepInterval { turns } => turns == 2
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn extremely_misaligned_drops_to_the_floor_outright() -> Bool {
+  match alignment_next_interval(level_index: 1, current: 200, verdict: ExtremelyMisaligned { direction: "the work is off the project contract" }) {
+    CadenceStepInterval { turns } => turns == 20
+    CadenceStepStopTheLine => false
+  }
+}
+
+test fn catastrophically_misaligned_stops_the_line_rather_than_tuning() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 20, verdict: CatastrophicallyMisaligned { reason: "the diff violates a root principle" }) {
+    CadenceStepStopTheLine => true
+    CadenceStepInterval { turns: _ } => false
+  }
+}
+
+test fn a_routed_conflict_is_not_a_magnitude_and_tunes_nothing() -> Bool {
+  match alignment_next_interval(level_index: 0, current: 18, verdict: RoutedConflict { conflict: "the brief contradicts DESIGN.md on the same point" }) {
+    CadenceStepInterval { turns } => turns == 18
+    CadenceStepStopTheLine => false
+  }
+    && match alignment_next_interval(level_index: 0, current: 18, verdict: RoutedConflict { conflict: "the brief contradicts DESIGN.md on the same point" }) {
+      CadenceStepInterval { turns } => turns == alignment_cadence_step_turns - alignment_cadence_step_turns + 18
+      CadenceStepStopTheLine => false
+    }
+}
+
+test fn the_verdict_keys_name_the_five_arm_vocabulary() -> Bool {
+  alignment_verdict_key(v: Aligned) == "aligned"
+    && alignment_verdict_key(v: Misaligned { direction: "d" }) == "misaligned"
+    && alignment_verdict_key(v: ExtremelyMisaligned { direction: "d" }) == "extremely-misaligned"
+    && alignment_verdict_key(v: CatastrophicallyMisaligned { reason: "r" }) == "catastrophically-misaligned"
+    && alignment_verdict_key(v: RoutedConflict { conflict: "c" }) == "routed-conflict"
+}
+
+// THE MONOTONICITY WALL: a level never aligns more often than any level below it. The clamp is
+// monotone in the level (ceiling(k) == floor(k+1) == the magnitudinal base), so ANY demanded
+// interval an author, verdict, or fabricated state can produce keeps the ladder ordered.
+test fn the_clamp_is_monotone_in_the_level_for_any_demanded_turns() -> Bool {
+  fold([1, 2, 3, 17, 20, 40, 196, 200, 500, 2000, 5000, 20000], init: true, f: fn(ok, t) {
+    ok
+      && alignment_clamp_turns(level_index: 0, turns: t) <= alignment_clamp_turns(level_index: 1, turns: t)
+      && alignment_clamp_turns(level_index: 1, turns: t) <= alignment_clamp_turns(level_index: 2, turns: t)
+  })
+}
+
+fn stepped_interval(level_index: Int, current: Int, verdict: AlignmentVerdict) -> Int {
+  match alignment_next_interval(level_index: level_index, current: current, verdict: verdict) {
+    CadenceStepInterval { turns } => turns
+    CadenceStepStopTheLine => 0
+  }
+}
+
+// The same verdict applied at adjacent levels from their bases never inverts the order, for every
+// verdict in the vocabulary (a RoutedConflict included, an EXTREMELY included).
+test fn a_verdict_step_at_adjacent_levels_preserves_the_ladder_order() -> Bool {
+  stepped_interval(level_index: 0, current: 20, verdict: Aligned) <= stepped_interval(level_index: 1, current: 200, verdict: Aligned)
+    && stepped_interval(level_index: 0, current: 20, verdict: Misaligned { direction: "d" }) <= stepped_interval(level_index: 1, current: 200, verdict: Misaligned { direction: "d" })
+    && stepped_interval(level_index: 0, current: 20, verdict: ExtremelyMisaligned { direction: "d" }) <= stepped_interval(level_index: 1, current: 200, verdict: ExtremelyMisaligned { direction: "d" })
+    && stepped_interval(level_index: 0, current: 20, verdict: RoutedConflict { conflict: "c" }) <= stepped_interval(level_index: 1, current: 200, verdict: RoutedConflict { conflict: "c" })
+}
+
+fn interval_streak(level_index: Int, current: Int, steps: Int, verdict: AlignmentVerdict) -> Int {
+  if steps <= 0 {
+    current
+  } else {
+    match alignment_next_interval(level_index: level_index, current: current, verdict: verdict) {
+      CadenceStepInterval { turns } => interval_streak(level_index: level_index, current: turns, steps: steps - 1, verdict: verdict)
+      CadenceStepStopTheLine => current
+    }
+  }
+}
+
+// RED CONTROL: a verdict sequence can never fabricate an interval past the declared bounds. An
+// ALIGNED streak folds 50 steps from the base and from the floor and never passes the ceiling; a
+// MISALIGNED streak never passes below the floor; an EXTREMELY streak sits at the floor.
+test fn a_long_aligned_streak_can_never_fabricate_past_the_ceiling() -> Bool {
+  interval_streak(level_index: 0, current: 20, steps: 50, verdict: Aligned) == 20
+    && interval_streak(level_index: 1, current: 200, steps: 50, verdict: Aligned) == 200
+    && interval_streak(level_index: 0, current: 2, steps: 50, verdict: Aligned) == 20
+}
+
+test fn a_long_misaligned_streak_can_never_fabricate_past_the_floor() -> Bool {
+  interval_streak(level_index: 0, current: 20, steps: 50, verdict: Misaligned { direction: "scope creep" }) == 2
+    && interval_streak(level_index: 1, current: 200, steps: 100, verdict: Misaligned { direction: "scope creep" }) == 20
+    && interval_streak(level_index: 0, current: 20, steps: 50, verdict: ExtremelyMisaligned { direction: "off contract" }) == 2
+}
+
+// ------------------------------------------------------------------------------------------------
+// The per-lineage state codec: round-trip, payload fidelity, and the refusal walls.
+// ------------------------------------------------------------------------------------------------
+
+fn sample_state() -> AlignmentCadenceState {
+  AlignmentCadenceState {
+    level_intervals: [20, 200, 2000],
+    last_verdicts: [
+      Aligned,
+      Misaligned { direction: "drifted into the adjacent module" },
+      RoutedConflict { conflict: "brief contradicts DESIGN on the same point" },
+    ],
+  }
+}
+
+// TEXT STABILITY closes the round-trip: a decode that lost anything re-encodes differently, so
+// equality of the re-encoded texts proves the decode captured every member the encode wrote.
+test fn the_cadence_state_codec_round_trips_the_per_lineage_record() -> Bool {
+  let state = sample_state()
+  match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: state)) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => false
+    AlignmentCadenceStateDecoded { state: decoded } =>
+      decoded.level_intervals == [20, 200, 2000]
+        && count(decoded.last_verdicts) == 3
+        && alignment_cadence_state_text(state: decoded) == alignment_cadence_state_text(state: state)
+  }
+}
+
+test fn the_codec_carries_the_verdict_payloads_not_just_the_kinds() -> Bool {
+  let extreme = AlignmentCadenceState {
+    level_intervals: [18],
+    last_verdicts: [ExtremelyMisaligned { direction: "the work is off the project contract" }],
+  }
+  let catastrophic = AlignmentCadenceState {
+    level_intervals: [20],
+    last_verdicts: [CatastrophicallyMisaligned { reason: "the diff violates a root principle" }],
+  }
+  match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: extreme)) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => false
+    AlignmentCadenceStateDecoded { state: d1 } =>
+      match d1.last_verdicts.first() {
+        Present { value: ExtremelyMisaligned { direction } } => direction == "the work is off the project contract"
+        _ => false
+      }
+      && match alignment_cadence_state_decode(text: alignment_cadence_state_text(state: catastrophic)) {
+        AlignmentCadenceStateNotDecodable { reason: _ } => false
+        AlignmentCadenceStateDecoded { state: d2 } =>
+          match d2.last_verdicts.first() {
+            Present { value: CatastrophicallyMisaligned { reason } } => reason == "the diff violates a root principle"
+            _ => false
+          }
+      }
+  }
+}
+
+test fn a_document_without_the_schema_is_not_a_cadence_state() -> Bool {
+  match alignment_cadence_state_decode(text: "{\"level_intervals\": [20], \"last_verdicts\": []}") {
+    AlignmentCadenceStateNotDecodable { reason } => reason != ""
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+    && match alignment_cadence_state_decode(
+      text: join(["{\"schema\": \"roadmap-alignment-cadence-state/v2\", \"level_intervals\": [20], \"last_verdicts\": []}"], ""),
+    ) {
+      AlignmentCadenceStateNotDecodable { reason: _ } => true
+      AlignmentCadenceStateDecoded { state: _ } => false
+    }
+}
+
+test fn a_state_whose_parallel_lists_disagree_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [20], \"last_verdicts\": []}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason } => reason != ""
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+test fn a_fabricated_non_positive_interval_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [0], \"last_verdicts\": [{\"kind\": \"aligned\"}]}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => true
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+test fn an_unknown_verdict_kind_refuses() -> Bool {
+  match alignment_cadence_state_decode(
+    text: join([
+      "{\"schema\": \"", alignment_cadence_state_schema as String,
+      "\", \"level_intervals\": [20], \"last_verdicts\": [{\"kind\": \"vibes\"}]}",
+    ], ""),
+  ) {
+    AlignmentCadenceStateNotDecodable { reason: _ } => true
+    AlignmentCadenceStateDecoded { state: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Due evaluation over a chain and the adaptive per-lineage state.
+// ------------------------------------------------------------------------------------------------
+
+// THE DUE FIXTURE CHAIN: task-a -> arc-one -> arc-mid -> arc-two, then the root -- four levels
+// above the floor, five due slots including the root principles. The levels math's domain is the
+// RESOLVED chain, so the fixture supplies the resolved record directly at the boundary (the chain
+// derivation claims above already discriminate the raw walk). The resolution claims consume the
+// same fixture as the Chained variant -- a record and its variant are different types, and the
+// claims pass the variant to the resolution fold, never the record.
+fn four_level_resolved() -> AlignmentResolvedChain {
+  AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  }
+}
+
+fn four_level_chained() -> AlignmentChain {
+  AlignmentChained {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  }
+}
+
+fn alignment_root_pointer_fixture() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.design_document", decl_name: "design_document")
+}
+
+fn base_state() -> AlignmentCadenceState {
+  AlignmentCadenceState {
+    level_intervals: [20, 200, 2000, 20000],
+    last_verdicts: [Aligned, Aligned, Aligned, Aligned],
+  }
+}
+
+test fn with_base_intervals_the_due_set_grows_by_magnitude() -> Bool {
+  let chain = four_level_resolved()
+  count(alignment_levels_due(chain: chain, turns_elapsed: 20, state: base_state())) == 1
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 40, state: base_state())) == 1
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 200, state: base_state())) == 2
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 2000, state: base_state())) == 3
+    && count(alignment_levels_due(chain: chain, turns_elapsed: 20000, state: base_state())) == 4
+}
+
+test fn turn_zero_is_dispatch_not_a_checkpoint_nothing_is_due() -> Bool {
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 0, state: base_state())) == 0
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 0 - 5, state: base_state())) == 0
+}
+
+// DUE SETS READ ROOT TO LEAF like the levels themselves: at turn 2000 the arc-mid project (cadence
+// index 2, interval 2000), the arc-one project (index 1, interval 200) and the task (index 0,
+// interval 20) are due, and the task -- the most frequently checked level -- closes the list. The
+// cadence index of each level is unchanged (leaf distance), only the presentation order moved.
+test fn the_task_level_closes_every_due_set() -> Bool {
+  let due = alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 2000, state: base_state())
+  count(due) == 3
+    && match due.last() {
+      Present { value: TaskContractLevel { link } } => link.node_id == "task-a"
+      _ => false
+    }
+    && match due.first() {
+      Present { value: ProjectIntentLevel { link } } => link.node_id == "arc-mid"
+      _ => false
+    }
+}
+
+// THE ADAPTIVE STATE REPLACES THE BASE INTERVAL: two MISALIGNED steps moved the first project
+// 200 -> 196, so turn 980 (20 * 49 == 196 * 5, due for the task either way) is due for the task
+// and the project under the adaptive state, and only for the task under the base state.
+test fn the_adaptive_state_replaces_the_base_interval_a_shortened_level_comes_due_sooner() -> Bool {
+  let adaptive = AlignmentCadenceState {
+    level_intervals: [20, 196, 2000, 20000],
+    last_verdicts: [Aligned, Misaligned { direction: "drift" }, Aligned, Aligned],
+  }
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 980, state: base_state())) == 1
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 980, state: adaptive)) == 2
+}
+
+// A STATE THAT PREDATES A LEVEL starts that level at its declared base: one recorded interval, so
+// the task level reads 10 from the state and every level above reads the magnitudinal base, never
+// a zero and never an error.
+test fn a_state_that_predates_a_level_starts_that_level_at_its_declared_base() -> Bool {
+  let partial = AlignmentCadenceState {
+    level_intervals: [10],
+    last_verdicts: [Aligned],
+  }
+  count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 200, state: partial)) == 2
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 20, state: partial)) == 1
+    && count(alignment_levels_due(chain: four_level_resolved(), turns_elapsed: 2000, state: partial)) == 3
+}
+
+// THE REFUSAL-TO-NEUTRAL WALL, at the resolution boundary (review finding 2026-09-26;
+// docs/plans/harness-work-lifecycle.md conservation law 2). The old shape mapped BOTH refusal arms
+// of alignment_levels to [] — "the chain cannot be derived" read downstream as "no levels are due".
+// Now the levels functions take ONLY the resolved record (a refusal cannot be typed into them), and
+// the single crossing — alignment_resolve_chain — freezes a refused chain into AlignmentUnresolved
+// carrying the typed cause and no levels answer at all.
+test fn a_refused_chain_resolves_unresolved_naming_where_the_walk_halted() -> Bool {
+  match alignment_resolve_chain(
+    chain: alignment_chain(node_id: "lone-task", nodes: linear_nodes()),
+    turns_elapsed: 200,
+    state: base_state(),
+  ) {
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentWalkUnrooted { at, walked } => at == "lone-task" && count(walked) == 0
+        AlignmentNestingCyclic { node_id: _ } => false
+        AlignmentRowUndeclared { node_id: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+  }
+}
+
+test fn an_undeclared_referenced_row_resolves_unresolved_refused_by_name() -> Bool {
+  let refusal_text = alignment_refusal_reason(cause: AlignmentRowUndeclared { node_id: "arc-missing" })
+  match alignment_resolve_chain(
+    chain: alignment_chain(node_id: "task-a", nodes: missing_arc_nodes()),
+    turns_elapsed: 200,
+    state: base_state(),
+  ) {
+    AlignmentUnresolved { cause } =>
+      match cause {
+        AlignmentRowUndeclared { node_id } => node_id == "arc-missing"
+        AlignmentNestingCyclic { node_id: _ } => false
+        AlignmentWalkUnrooted { at: _, walked: _ } => false
+      }
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt: _ } => false
+  }
+    && string_contains(s: refusal_text, pattern: "arc-missing")
+}
+
+// THE READY ARM CARRIES THE WHOLE ANSWER: the resolved chain, the levels due at the asked turn, and
+// the rendered prompt — one value, so the brief and the gate can never disagree about which
+// question was answered.
+test fn the_ready_resolution_carries_the_chain_the_due_levels_and_the_rendered_prompt() -> Bool {
+  match alignment_resolve_chain(chain: four_level_chained(), turns_elapsed: 200, state: base_state()) {
+    AlignmentReady { chain, due_levels, rendered_prompt } =>
+      chain.task.node_id == "task-a"
+        && (map(chain.projects, p => p.node_id)) == ["arc-one", "arc-mid", "arc-two"]
+        && count(due_levels) == 2
+        && count(alignment_levels(chain: chain)) == 5
+        && rendered_prompt != ""
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+// THE RENDER LISTS EVERY LEVEL FROM THE NODE TO THE ROOT: the L0 pointer, each project level
+// nearest-first, then the task contract level, then the bounded ask. Order is load-bearing (the
+// ladder reads top-down), so the claim walks the rendered lines and pins each level's position.
+fn first_line_containing(lines: List<String>, needle: String, from: Int) -> Int? {
+  fold(lines, init: { seen: 0, hit: none }, f: fn(acc, line) {
+    let already = match acc.hit {
+      Present { value: _ } => true
+      Absent => false
+    }
+    if already {
+      acc
+    } else if acc.seen < from {
+      { seen: acc.seen + 1, hit: none }
+    } else if string_contains(s: line, pattern: needle) {
+      { seen: acc.seen + 1, hit: Present { value: acc.seen } }
+    } else {
+      { seen: acc.seen + 1, hit: none }
+    }
+  }).hit
+}
+
+fn render_lists_ids_in_order(rendered: String, ordered_ids: List<String>) -> Bool {
+  let lines = split(s: rendered, delimiter: "\n")
+  let scan = fold(ordered_ids, init: { from: 0, ok: true }, f: fn(acc, id) {
+    if !acc.ok {
+      acc
+    } else {
+      match first_line_containing(lines: lines, needle: id, from: acc.from) {
+        Present { value: idx } => {
+          { from: idx + 1, ok: true }
+        }
+        Absent => {
+          { from: acc.from, ok: false }
+        }
+      }
+    }
+  })
+  scan.ok
+}
+
+test fn the_rendered_prompt_carries_every_level_from_the_node_to_the_root_in_order() -> Bool {
+  match alignment_resolve_chain(chain: four_level_chained(), turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
+      string_contains(s: rendered_prompt, pattern: continuation_alignment_l0_pointer)
+        && string_contains(s: rendered_prompt, pattern: continuation_alignment_ask)
+        && string_contains(s: rendered_prompt, pattern: "L1 project intent: arc-two: Arc Two headline")
+        && string_contains(s: rendered_prompt, pattern: "L2 project intent: arc-mid: Arc Mid headline")
+        && string_contains(s: rendered_prompt, pattern: "L3 project intent: arc-one: Arc One headline")
+        && string_contains(s: rendered_prompt, pattern: "L4 task contract: task-a: Task A headline")
+        && string_contains(s: rendered_prompt, pattern: "red control: fixture red control")
+        && render_lists_ids_in_order(rendered: rendered_prompt, ordered_ids: ["arc-two", "arc-mid", "arc-one", "task-a"])
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+test fn the_root_projects_own_chain_renders_its_row_as_the_top_level() -> Bool {
+  let root_chain = AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "gunbc-project-root", purpose: "Root project headline", boundary: "Root project boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    projects: [],
+    root: alignment_root_pointer_fixture(),
+  }
+  match alignment_resolve_chain(chain: AlignmentChained { task: root_chain.task, projects: [], root: root_chain.root }, turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: _, due_levels: _, rendered_prompt } =>
+      string_contains(s: rendered_prompt, pattern: "L1 task contract: gunbc-project-root: Root project headline")
+        && string_contains(s: rendered_prompt, pattern: "none -- this level is the admitted root project")
+    AlignmentUnresolved { cause: _ } => false
+  }
+}
+
+// THE FINGERPRINT IS THE BINDING'S DRIFT DETECTOR: identical chains derive identical fingerprints,
+// and ANY moved link — a retitled purpose, a reworded boundary, a renamed node, a reordered chain —
+// moves the fingerprint, so a continuation can prove the chain it is about to brief against is the
+// chain the lineage started with.
+test fn the_chain_fingerprint_moves_when_any_link_moves() -> Bool {
+  let base = alignment_chain_fingerprint(chain: four_level_resolved())
+  let retitled = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One retitled", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  })
+  let reordered = alignment_chain_fingerprint(chain: AlignmentResolvedChain {
+    task: AlignmentChainLink { node_id: "task-a", purpose: "Task A headline", boundary: "Task A boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    projects: [
+      AlignmentChainLink { node_id: "arc-two", purpose: "Arc Two headline", boundary: "Arc Two boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-mid", purpose: "Arc Mid headline", boundary: "Arc Mid boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+      AlignmentChainLink { node_id: "arc-one", purpose: "Arc One headline", boundary: "Arc One boundary", current_approach: "fixture current state", red_control: "fixture red control", handback: "fixture handback", displaced_cost: "fixture displaced cost", contribution_to_parent: "" },
+    ],
+    root: alignment_root_pointer_fixture(),
+  })
+  base == alignment_chain_fingerprint(chain: four_level_resolved())
+    && base != retitled
+    && base != reordered
+    && base != ""
+}
+
+// THE PRODUCTION FORK, THROUGH THE ONE AUTHORITY. The real declared edges refuse the
+// shell-dag-cron-entry-line-builder chain at the shell-gate-migration fork; the resolution names
+// the fork and both dependents — and carries no levels answer any consumer could misread as
+// "nothing due" (the negative control the review finding demanded: the derived refusal is typed,
+// named, and reaches no worker-start effect downstream).
+test fn production_resolution_has_no_fabricated_dependency_parents() -> Bool {
+  match alignment_resolve(node_id: "shell-dag-cron-entry-line-builder", turns_elapsed: 1, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain, due_levels: _, rendered_prompt: _ } => map(chain.projects, p => p.node_id) == ["shell-typed-invocation", "dp-m2-shell-residue-retired", "debt-payoff", "gunbc-project-root"]
+    _ => false
+  }
+}
+
+// EVERY DISPATCHABLE NODE REACHES THE ADMITTED ROOT (review 5358022153 lane B, 2026-09-30): the
+// dispatchable population -- every node in declared_roadmap_nodes() whose execution is an
+// ExecutionContract, derived here, never transcribed -- must derive AlignmentChained, because the
+// dispatch actuator refuses to spawn on any other resolution. This claim has NO named exclusions,
+// and its unrooted RED is the planted lone-task control above (the live unrooted subject was
+// retired on 2026-09-30 when extended-admission-cardinality got its parent). A future node bound to
+// a contract without a parent reds this claim exactly as its author needs it to.
+fn dispatchable_node_ids() -> List<String> {
+  declared_roadmap_nodes()
+    |> filter(n => match n.execution {
+      ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: _ } => true
+      ExecutionContractUnspecified => false
+      NotAgentWork { mode: _ } => false
+    })
+    |> map(n => n.node as String)
+}
+
+// One index over the declared rows, built once: for a declared id alignment_chain_for resolves over
+// exactly these rows at this fuel, so each chain is the one dispatch would derive.
+test fn every_dispatchable_node_reaches_the_admitted_root() -> Bool {
+  let nodes = declared_roadmap_nodes()
+  let index = alignment_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  fold(dispatchable_node_ids(), init: true, f: fn(ok, id) {
+    ok && match alignment_chain_in(node_id: id, index: index, fuel: fuel) {
+      AlignmentChained { task: _, projects: _, root: _ } => true
+      _ => false
+    }
+  })
+}
+
+// ------------------------------------------------------------------------------------------------
+// The attempt binding codec: the chain fingerprint bound to the attempt identity, on the
+// submission/receipt idiom — schema wall, typed decode envelope, text round-trip.
+// ------------------------------------------------------------------------------------------------
+
+fn sample_binding() -> AlignmentBinding {
+  AlignmentBinding { attempt_identity: "worker:task-a-deadbeef", fingerprint: alignment_chain_fingerprint(chain: four_level_resolved()) }
+}
+
+test fn the_binding_codec_round_trips_the_identity_and_fingerprint() -> Bool {
+  let binding = sample_binding()
+  match alignment_binding_decode(text: alignment_binding_text(binding: binding)) {
+    AlignmentBindingNotDecodable { reason: _ } => false
+    AlignmentBindingDecoded { binding: decoded } =>
+      decoded.attempt_identity == "worker:task-a-deadbeef"
+        && decoded.fingerprint == binding.fingerprint
+        && alignment_binding_text(binding: decoded) == alignment_binding_text(binding: binding)
+  }
+}
+
+test fn a_binding_without_the_schema_wall_refuses() -> Bool {
+  (match alignment_binding_decode(
+    text: "{\"attempt_identity\": \"worker:task-a-deadbeef\", \"fingerprint\": \"fp\"}",
+  ) {
+    AlignmentBindingNotDecodable { reason } => string_contains(s: reason, pattern: "schema")
+    AlignmentBindingDecoded { binding: _ } => false
+  })
+    && (match alignment_binding_decode(
+      text: "{\"schema\": \"roadmap-alignment-binding/v2\", \"attempt_identity\": \"worker:task-a-deadbeef\", \"fingerprint\": \"fp\"}",
+    ) {
+      AlignmentBindingNotDecodable { reason: _ } => true
+      AlignmentBindingDecoded { binding: _ } => false
+    })
+    && (match alignment_binding_decode(
+      text: join(["{\"schema\": \"", alignment_binding_schema as String, "\", \"attempt_identity\": \"worker:task-a-deadbeef\"}"], ""),
+    ) {
+      AlignmentBindingNotDecodable { reason: _ } => true
+      AlignmentBindingDecoded { binding: _ } => false
+    })
+}
+
+test fn cyclic_nesting_refuses_instead_of_truncating_the_alignment_chain() -> Bool {
+  match alignment_chain(node_id: "task-a", nodes: cyclic_nodes()) {
+    AlignmentChainCyclic { node_id } => node_id == "task-a"
+    _ => false
+  }
+}
+
+// EVERY CARRIED FIELD MOVES THE FINGERPRINT (review 5358022153): a field that claims to define
+// alignment but does not move the digest is a silent context channel. One mutation per field, each
+// must change the fingerprint.
+fn link_with(node_id: String, field: String, value: String) -> AlignmentChainLink {
+  let base = AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  if field == "purpose" {
+    AlignmentChainLink { node_id: node_id, purpose: value, boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "boundary" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: value, current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "current_approach" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: value, red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "red_control" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: value, handback: "H", displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "handback" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: value, displaced_cost: "D", contribution_to_parent: "C" }
+  } else if field == "displaced_cost" {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: value, contribution_to_parent: "C" }
+  } else {
+    AlignmentChainLink { node_id: node_id, purpose: "P", boundary: "B", current_approach: "A", red_control: "R", handback: "H", displaced_cost: "D", contribution_to_parent: value }
+  }
+}
+
+fn chain_with_task(link: AlignmentChainLink) -> AlignmentResolvedChain {
+  AlignmentResolvedChain { task: link, projects: [], root: alignment_root_pointer_fixture() }
+}
+
+test fn every_carried_field_moves_the_fingerprint() -> Bool {
+  let base = alignment_chain_fingerprint(chain: chain_with_task(link: link_with(node_id: "t", field: "", value: "")))
+  fold(["purpose", "boundary", "current_approach", "red_control", "handback", "displaced_cost", "contribution_to_parent"], init: true, f: fn(ok, field) {
+    ok && base != alignment_chain_fingerprint(chain: chain_with_task(link: link_with(node_id: "t", field: field, value: "MUTATED")))
+  })
+}

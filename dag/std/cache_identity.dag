@@ -2,7 +2,7 @@ module std.cache_identity
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, brand }
 import std.content_hash { ContentHash, content_hash_of_value }
 
 type CacheInterfaceId = NonEmptyStr where brand("CacheInterfaceId")
@@ -35,5 +35,13 @@ data native_compiler_artifact_kind: ArtifactKindId = "native_compiler"
 data native_test_universe_artifact_kind: ArtifactKindId = "native_test_universe"
 
 data native_module_verdict_bundle_artifact_kind: ArtifactKindId = "native_module_verdict_bundle"
+
+data native_module_resolve_artifact_kind: ArtifactKindId = "native_module_resolve"
+
+data native_module_infer_artifact_kind: ArtifactKindId = "native_module_infer"
+
+data native_test_identity_artifact_kind: ArtifactKindId = "native_test_identity"
+
+data native_module_occurrence_census_artifact_kind: ArtifactKindId = "native_module_occurrence_census"
 
 data cache_interface_product_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.cache_identity.CacheInterfaceProduct — deleted closed enum fork; sole cache-backend identity authority is CacheInterfaceId (extdeps/cache/*.dag cited rows keyed by id).")

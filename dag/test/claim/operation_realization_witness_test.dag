@@ -31,6 +31,7 @@ import extdeps.bmc.ipmi_chassis_control {
 import gunbc.machine_intake_oob_boot_handoff { read_chassis_power }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
+  bmc_world, bmc_with_pending, bmc_with_power,
 }
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
@@ -71,7 +72,7 @@ fn modeled_frame(realization: OperationRealization<BmcWorld>) -> WitnessEvaluati
 }
 
 fn world(power_on: Bool) -> BmcWorld {
-  BmcWorld { power: if power_on { BmcPowerOn } else { BmcPowerOff }, pending: [], fired: [] }
+  bmc_world(power: if power_on { BmcPowerOn } else { BmcPowerOff })
 }
 
 fn read_power() -> ChassisPowerObservation {
@@ -202,7 +203,7 @@ fn loss_fired_and_none_pending(w: BmcWorld) -> Bool {
 // (t 0 -> 1), sleeps five seconds through the production sleep helper (t 1 -> 6), and reads again. The
 // loss fired during the sleep with no operation issued at t=3, and the second read observes it.
 test fn a_scheduled_event_fires_during_a_quiet_wait() -> Bool {
-  let initial = BmcWorld { power: BmcPowerOn, pending: [BmcScheduledEvent { at: second(count: 3), event: BmcAcPowerLost {} }], fired: [] }
+  let initial = bmc_with_pending(world: bmc_world(power: BmcPowerOn), pending: [BmcScheduledEvent { at: second(count: 3), event: BmcAcPowerLost {} }], fired: [])
   let result = evaluate_in_witness_frame(
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: initial, epoch: virtual_clock_origin())),
     subject: fn(_scope) {
@@ -307,7 +308,7 @@ test fn a_binding_to_an_undeclared_identity_refuses_before_the_subject_runs() ->
 // witness is the supervisor: it resumes a SECOND attempt from that world in a new frame, and the
 // resumed attempt reads before it writes and finds the host already on.
 fn killed_after_power_on(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {
-  OperationWorkerKilled { committed: true, state: BmcWorld { power: BmcPowerOn, pending: state.pending, fired: state.fired } }
+  OperationWorkerKilled { committed: true, state: bmc_with_power(world: state, power: BmcPowerOn) }
 }
 
 test fn a_killed_worker_is_interrupted_and_a_resumed_attempt_reconciles() -> Bool {
@@ -523,7 +524,7 @@ test fn frames_are_independent_after_the_outer_scope_ends() -> Bool {
 // fires) and reads off, exactly as the uninterrupted history does. Had the resume restarted at the
 // origin its reads would complete at 1 and the loss would not yet have fired.
 fn loss_at_five() -> BmcWorld {
-  BmcWorld { power: BmcPowerOn, pending: [BmcScheduledEvent { at: second(count: 5), event: BmcAcPowerLost {} }], fired: [] }
+  bmc_with_pending(world: bmc_world(power: BmcPowerOn), pending: [BmcScheduledEvent { at: second(count: 5), event: BmcAcPowerLost {} }], fired: [])
 }
 
 fn killed_without_commit(state: BmcWorld, call: OperationCall) -> OperationStep<BmcWorld> {

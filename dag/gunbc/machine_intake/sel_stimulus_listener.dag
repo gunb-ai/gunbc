@@ -78,7 +78,7 @@ fn sel_snapshot_summary(text: String) -> ObservationAttempt<NonEmptyStr, NonEmpt
   match sel_read(text: text) {
     ObservationRefused { cause } => ObservationRefused { cause: cause }
     ObservationEstablished { observed: watermark } => {
-      let restart = any(watermark.events, event => match event.kind { BootRestart { offset: _ } => true _ => false })
+      let restart = any(watermark.events, event => match event.kind { BootRestart { offset: _ } => true FirmwareProgressRecord { offset: _ } => false OemTimestamped { payload: _ } => false OtherStandardEvent { rendering: _ } => false })
       ObservationEstablished { observed: concat(if restart { "restart observed" } else { "no restart observed" },
         " in supplied SEL rows only: ", to_string(map(watermark.records, line => sel_field(fields: split(s: line, delimiter: "|"), index: 0))),
         "; generation and continuity unestablished") as NonEmptyStr }

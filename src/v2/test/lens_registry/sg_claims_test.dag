@@ -1,5 +1,7 @@
 module v2.test.lens_registry.sg_claims
 
+import std.types { List }
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.lens.registry {
   Bound,
   ComplexityDerivedKernel,
@@ -40,7 +42,6 @@ import v2.lens.registry {
   MetaExecConfinement,
   MockTotality,
   MutationAdequacy,
-  NonFoldResidue,
   Parallelism,
   Provenance,
   ProductionQualificationOriginProbe,
@@ -67,8 +68,7 @@ import v2.lens.registry {
   lens_registry_ids_resolve,
   lens_registry_row_count
 }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_registry_v0_required_ids: List<LensIdV0> = [
@@ -114,7 +114,6 @@ data lens_registry_v0_required_ids: List<LensIdV0> = [
   MetaExecConfinement,
   MockTotality,
   MutationAdequacy,
-  NonFoldResidue,
   RealizationVocabularyContainment,
   RosterRegistry,
   ScheduleLens,

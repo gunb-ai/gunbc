@@ -201,27 +201,27 @@ data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustificat
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
+      module_path: "v1_compiler.generated_artifact_boundary_host.tests",
       decl_name: "disposition_separates_absent_from_drifted",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
+      module_path: "v1_compiler.generated_artifact_boundary_host.tests",
       decl_name: "an_unadjudicated_member_is_not_clean_even_when_every_verdict_matched",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
+      module_path: "v1_compiler.generated_artifact_boundary_host.tests",
       decl_name: "an_empty_population_is_not_clean_even_though_no_verdict_disagreed",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
+      module_path: "v1_compiler.generated_artifact_boundary_host.tests",
       decl_name: "a_carrier_refusal_is_not_clean_and_names_no_population",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.generated_artifact_boundary_host",
+      module_path: "v1_compiler.generated_artifact_boundary_host.tests",
       decl_name: "drift_is_reported_and_stops_the_line",
       field: WholeDeclaration
     },

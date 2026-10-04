@@ -8,12 +8,13 @@ import std.fabric_storage {
   FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricReplyUndecodable,
   FabricHeadObserved, FabricHeadReadRefused, FabricHeadMoved, FabricHeadAdvanced, FabricHeadAdvanceRefused,
   FabricClosureRead, FabricClosureRefused,
-  FabricWriterRefused, WriterLoginAbsent, WriterLoginUnrostered, FabricPutRefused,
+  FabricWriterRefused, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested, FabricPutRefused,
 }
 import gunbc.fabric_storage_wire {
   fabric_storage_wire_head, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_put, fabric_storage_unwire_put,
   fabric_storage_unwire_head, fabric_storage_unwire_advance, fabric_storage_unwire_closure,
   fabric_storage_wire_identity, fabric_storage_unwire_identity, FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused,
+  FabricIdentityLocalPeer, FabricIdentityUnattested, DoorProxied, DoorLocalPeer, DoorUnattested,
 }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import gunbc.fabric_storage_client { served_reply_from, ServedAnswered, ServedFault }
@@ -121,12 +122,20 @@ test fn an_answered_200_hands_back_the_body_without_the_status_line() -> Bool {
 // undecodable -- a malformed reply can never read as the store saying the proxy supplied no login.
 // THE REPLY IS ONE LINE: a continuation after either arm, or a trailing newline, is undecodable.
 test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() -> Bool {
-  let present = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr })) {
+  let present = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(principal: DoorProxied { identity: TailnetUser { login: "writer@example.ts.net" as NonEmptyStr } })) {
     FabricIdentityPresented { identity: i } => match i { TailnetUser { login: l } => (l as String) == "writer@example.ts.net"  TailnetIdentityAbsent => false }
-    FabricIdentityUnproxied => false
-    FabricIdentityReadRefused { fault: _ } => false
+    _ => false
   }
-  let absent = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(identity: TailnetIdentityAbsent)) {
+  let local = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(principal: DoorLocalPeer { user: "ghrunner" as NonEmptyStr })) {
+    FabricIdentityLocalPeer { user: u } => (u as String) == "ghrunner"
+    _ => false
+  }
+  let unattested = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(principal: DoorUnattested)) {
+    FabricIdentityUnattested => true
+    _ => false
+  }
+  let local_bare = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity local") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
+  let absent = match fabric_storage_unwire_identity(text: fabric_storage_wire_identity(principal: DoorProxied { identity: TailnetIdentityAbsent })) {
     FabricIdentityPresented { identity: i } => match i { TailnetIdentityAbsent => true  TailnetUser { login: _ } => false }
     _ => false
   }
@@ -143,12 +152,13 @@ test fn a_presented_login_crosses_the_wire_as_that_login_and_absent_as_absent() 
   let absent_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let present_continued = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity present writer@example.ts.net\nunexpected continuation") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
   let trailing_newline = match fabric_storage_unwire_identity(text: "fabric_storage/1 identity absent\n") { FabricIdentityReadRefused { fault: _ } => true  _ => false }
-  present && absent && skew && other && absent_extra && present_extra && absent_continued && present_continued && trailing_newline
+  present && absent && local && unattested && local_bare && skew && other && absent_extra && present_extra && absent_continued && present_continued && trailing_newline
 }
 
-// A WRITER REFUSAL CROSSES THE WIRE AS ITS ARM: no login presented stays absent, and an unrostered
-// login stays that login -- the caller tells the two cases apart by the arm, never by parsing prose.
-// A trailing word on either is undecodable.
+// A WRITER REFUSAL CROSSES THE WIRE AS ITS ARM: no login presented stays absent, an unrostered login
+// stays that login, an unrostered local account stays that account, and an unattested peer stays
+// unattested -- the caller tells the cases apart by the arm, never by parsing prose. A trailing word
+// is undecodable.
 test fn a_writer_refusal_crosses_the_wire_as_its_arm() -> Bool {
   let absent = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterLoginAbsent } })) {
     FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterLoginAbsent => true  _ => false }  _ => false }
@@ -162,5 +172,13 @@ test fn a_writer_refusal_crosses_the_wire_as_its_arm() -> Bool {
     FabricPutRefused { fault: f } => match f { FabricReplyUndecodable { detail: _ } => true  _ => false }
     _ => false
   }
-  absent && unrostered && trailing
+  let peer = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterPeerUnrostered { account: "stranger" as NonEmptyStr } } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterPeerUnrostered { account: a } => (a as String) == "stranger"  _ => false }  _ => false }
+    _ => false
+  }
+  let unattested = match fabric_storage_unwire_put(text: fabric_storage_wire_put(put: FabricPutRefused { fault: FabricWriterRefused { refusal: WriterPeerUnattested } })) {
+    FabricPutRefused { fault: f } => match f { FabricWriterRefused { refusal: r } => match r { WriterPeerUnattested => true  _ => false }  _ => false }
+    _ => false
+  }
+  absent && unrostered && peer && unattested && trailing
 }

@@ -219,7 +219,9 @@ fn check_loop_before_restore_is_the_bounded_terminal() -> ProcessExit {
       } else {
         exit_failure(reason: concat("pre-restore loop: expected three closed restarts without progress before 0x63f, counted ", to_string(n)))
       }
-    _ => exit_failure(reason: "pre-restore loop: records 0x637..0x63f -- four restarts, no firmware-progress record -- did not resolve to PhysicalRemediationRequired")
+    FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } => exit_failure(reason: "pre-restore loop: records 0x637..0x63f -- four restarts, no firmware-progress record -- did not resolve to PhysicalRemediationRequired")
+    BringupUndetermined { cause: _ } => exit_failure(reason: "pre-restore loop: records 0x637..0x63f -- four restarts, no firmware-progress record -- did not resolve to PhysicalRemediationRequired")
+    TrainingRefusedByFirmwareStatement { statement: _, localization: _ } => exit_failure(reason: "pre-restore loop: records 0x637..0x63f -- four restarts, no firmware-progress record -- did not resolve to PhysicalRemediationRequired")
   }
 }
 
@@ -244,7 +246,13 @@ fn check_restore_window_is_undetermined_not_terminal(console: SolCaptureReading)
           } else {
             exit_failure(reason: concat("restore window: undetermined on an unexpected firmware statement: ", st as String))
           }
-        _ => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        ConsoleCaptureUnreadable { capture_path: _ } => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        SelStandardDecodeUnavailable => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        ConsoleBytesUnattributedToHost => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        FirmwareEmittedUndecodedErrorCodes { err_lines: _ } => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        NoRestartInWindow => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        RestartsBelowTerminalThreshold { restarts_without_progress: _ } => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
+        NothingObservedBeyondActivation => exit_failure(reason: "restore window: undetermined, but not by the console's unrecognised UEFI line -- the reading is not the restore verification capture's")
       }
     FirmwareProgressObserved { cycles_with_progress: _, cycles_without_progress: _ } =>
       exit_failure(reason: "restore window: a window with no firmware-progress record was read as progress")

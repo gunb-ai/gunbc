@@ -1,0 +1,94 @@
+module extdeps.languages.rust.function_type_forms
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE TWO FORMS RUST OFFERS FOR A FUNCTION-TYPED VALUE WHOSE TYPE IS A CLOSURE, as the language
+// states them (rustc 1.93, The Rust Reference). These are upstream facts about Rust and nothing
+// else: which form a compiler SELECTS at a position is gunbc.rust_function_type_selection, and how
+// each is spelled is the target model's rows (v2.extdeps.languages.rust
+// rust_function_type_realization_rows). A closure's own type is unnameable ("Closure types",
+// types.closure), so a signature returning one must name it through a trait: either opaquely
+// (`impl Fn`) or erased behind a pointer (`Box<dyn Fn>`).
+
+data rust_reference_impl_trait: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/1.93.0/reference/types/impl-trait.html" }
+}
+
+data rust_reference_trait_object: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/1.93.0/reference/types/trait-object.html" }
+}
+
+data rust_reference_closure_types: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/1.93.0/reference/types/closure.html" }
+}
+
+// E0562: "`impl Trait` is not allowed in the return type of `Fn` trait bounds". Observed from
+// rustc 1.93.0 (254b59607 2026-01-19) on `fn f(p: bool) -> impl Fn(bool) -> impl Fn(bool) -> bool`
+// before any row cited it.
+data rustc_error_e0562: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/1.93.0/error_codes/E0562.html" }
+}
+
+// The positions a function-typed value can stand in that this model distinguishes: a function
+// item's return type, and the return type of an Fn bound (the `R` of `Fn(A) -> R`). Field and
+// argument positions are not modeled yet; the target model has no row for them, so a signature
+// needing one refuses at emission (produced_decl_render_function_type_position_unrealized).
+type RustFunctionTypePosition
+  = RustFnItemReturn
+  | RustFnBoundReturn
+
+type RustFunctionTypeForm
+  = RustImplFnForm
+  | RustBoxDynFnForm
+
+// What Rust states about one form. `admitted_at` is the position grain at which the Reference
+// admits or refuses it; the three cost/shape facts hold wherever the form is admitted.
+type RustFunctionTypeFormFacts {
+  form: RustFunctionTypeForm
+  admitted_at_item_return: Bool
+  admitted_at_fn_bound_return: Bool
+  heap_allocations_per_value: Int
+  dynamic_dispatch_per_call: Int
+  type_is_nameable: Bool
+  authority: ExternalAuthority
+  admission_authority: ExternalAuthority
+}
+
+// `impl Fn(A) -> R` -- "Impl trait" (types.impl-trait): admitted only as a function's parameter or
+// return type; the caller sees an anonymous type it cannot name; one concrete type, statically
+// dispatched, no allocation. As the return type of an Fn bound it is refused (E0562).
+data rust_impl_fn_facts: RustFunctionTypeFormFacts = RustFunctionTypeFormFacts {
+  form: RustImplFnForm,
+  admitted_at_item_return: true,
+  admitted_at_fn_bound_return: false,
+  heap_allocations_per_value: 0,
+  dynamic_dispatch_per_call: 0,
+  type_is_nameable: false,
+  authority: rust_reference_impl_trait,
+  admission_authority: rustc_error_e0562
+}
+
+// `Box<dyn Fn(A) -> R>` -- "Trait objects" (types.trait-object) behind alloc::boxed::Box: a
+// nameable type admitted at every type position; the value is heap-allocated once and every call
+// goes through the vtable.
+data rust_box_dyn_fn_facts: RustFunctionTypeFormFacts = RustFunctionTypeFormFacts {
+  form: RustBoxDynFnForm,
+  admitted_at_item_return: true,
+  admitted_at_fn_bound_return: true,
+  heap_allocations_per_value: 1,
+  dynamic_dispatch_per_call: 1,
+  type_is_nameable: true,
+  authority: rust_reference_trait_object,
+  admission_authority: rust_reference_trait_object
+}
+
+fn rust_function_type_form_admitted(facts: RustFunctionTypeFormFacts, position: RustFunctionTypePosition) -> Bool {
+  match position {
+    RustFnItemReturn => facts.admitted_at_item_return
+    RustFnBoundReturn => facts.admitted_at_fn_bound_return
+  }
+}
+
+data rust_function_type_form_facts: List<RustFunctionTypeFormFacts> = [rust_impl_fn_facts, rust_box_dyn_fn_facts]

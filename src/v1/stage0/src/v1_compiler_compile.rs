@@ -479,13 +479,13 @@ pub fn test_reference_row(
 
 pub fn test_reference_debt() -> Rc<Vec<Rc<TestReferenceDebtRow>>> {
     Rc::new(vec![Rc::new(TestReferenceDebtRow {
-    module_name: "wall.fixture.paid_down".to_string(),
-    referrer: "reader".to_string(),
-    target: "wall.fixture.paid_down.leaf".to_string(),
-    occurrences: 1,
-    scope: TestReferenceRowScope::FixtureControlRow,
-    dissolution: test_reference_debt_dissolution(),
-}), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "<import>".to_string(), "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "<import>".to_string(), "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "witness_model_refusal_controls_remain_distinct".to_string(), "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "witness_model_refusal_controls_remain_distinct".to_string(), "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact".to_string(), 1), test_reference_row("test.claim.native_witness_transition_receipt_witness".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds".to_string(), 1), test_reference_row("test.claim.native_witness_transition_receipt_witness".to_string(), "cited_evidence_declaration_is_an_executing_witness".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds".to_string(), 1)])
+        module_name: "wall.fixture.paid_down".to_string(),
+        referrer: "reader".to_string(),
+        target: "wall.fixture.paid_down.leaf".to_string(),
+        occurrences: 1,
+        scope: TestReferenceRowScope::FixtureControlRow,
+        dissolution: test_reference_debt_dissolution(),
+    })])
 }
 
 pub fn test_reference_import_referrer() -> String {
@@ -682,9 +682,7 @@ pub fn function_value_target(
                     crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
                 ),
                 VarBindingKind::LocalValueBinding => std::option::Option::None,
-                VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
-                    std::option::Option::None
-                }
+                VarBindingKind::VariantValueBinding { .. } => std::option::Option::None,
                 VarBindingKind::MatchBoundBinding => std::option::Option::None,
                 VarBindingKind::ServiceValueBinding => std::option::Option::None,
             },
@@ -1692,9 +1690,7 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     match (*value.clone()).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
         VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
-        VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
-            "VariantValueBinding".to_string()
-        }
+        VarBindingKind::VariantValueBinding { .. } => "VariantValueBinding".to_string(),
         VarBindingKind::MatchBoundBinding => "MatchBoundBinding".to_string(),
         VarBindingKind::ServiceValueBinding => "ServiceValueBinding".to_string(),
     }
@@ -2480,15 +2476,14 @@ pub fn serialize_expr_data(
                                     ),
                                 ),
                                 match (*inner.clone()).clone() {
-                                    VarBindingKind::VariantValueBinding {
-                                        parent_enum: parent_enum,
-                                        ..
-                                    } => v1_rt::concat(
-                                        ", \"parent_enum\": ".to_string(),
-                                        crate::v1_compiler_dag_collect_support::json_quote(
-                                            parent_enum.clone(),
-                                        ),
-                                    ),
+                                    VarBindingKind::VariantValueBinding { parent_enum, .. } => {
+                                        v1_rt::concat(
+                                            ", \"parent_enum\": ".to_string(),
+                                            crate::v1_compiler_dag_collect_support::json_quote(
+                                                parent_enum.clone(),
+                                            ),
+                                        )
+                                    }
                                     _ => "".to_string(),
                                 },
                             ),
@@ -3709,6 +3704,7 @@ pub fn census_heads_node(
         match_pattern: std::option::Option::None,
         module_item_kind: node.module_item_kind.clone(),
         declaration_marker: node.declaration_marker.clone(),
+        declaration: node.declaration.clone(),
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -4076,12 +4072,6 @@ pub struct ResolvedPipelineResult {
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
     compile_to_resolved_with_options(sources.clone(), default_compile_pipeline_options())
-}
-
-pub fn compile_to_resolved_discovery_corpus_advisory(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-) -> Rc<ResolvedPipelineResult> {
-    compile_to_resolved(sources.clone())
 }
 
 pub fn compile_to_resolved_with_options(

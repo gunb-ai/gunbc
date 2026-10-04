@@ -1,5 +1,7 @@
 module extdeps.tools.openssl
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, Int, Bool, List, Unit }
 import std.integer { UInt8, qualified_octet_members }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -15,14 +17,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "docs.openssl.org/3.0/man1/openssl-dgst/" }
 }
 
-data openssl_binary_name: NonEmptyStr = "openssl"
+fn openssl_program() -> ProgramIdentity = cataloged_program(invocation: "openssl")
 
 // ENROLLED THE WAY extdeps.tools.sshpass IS: the binary this module execs and the binary
 // gunbc.host_cli_dependency probes for are one declaration, so a probe cannot pass while the exec
 // fails. min_version is none: `dgst -sign -hex` is present in every OpenSSL this fleet runs (1.1 and
 // 3.x), and a floor nothing measured would be an invented constraint.
 data openssl_cli_tool: CliTool = CliTool {
-  name: openssl_binary_name,
+  program: openssl_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_openssl, bin_dir: apt_bin_dir }],
 }
@@ -37,6 +39,7 @@ data openssl_cli_tool: CliTool = CliTool {
 // through a String is a lossy decode the caller could not detect; hex round-trips exactly.
 service openssl.Dgst {
   operation SignSha256Hex {
+    requires none
     input { key_file: NonEmptyStr, signing_input: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
@@ -45,7 +48,7 @@ service openssl.Dgst {
     }
     readonly
     transport shell {
-      argv: [openssl_binary_name, "dgst", "-sha256", "-sign", "{key_file}", "-hex"]
+      argv: [openssl_program().invocation, "dgst", "-sha256", "-sign", "{key_file}", "-hex"]
       stdin: signing_input
     }
     exit {

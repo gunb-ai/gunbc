@@ -1,0 +1,6 @@
+module v2.test.fixture.export_signature_order.ordered
+
+
+fn firewall_ordered(b: Int, _: Int, a: Int) -> Int {
+  a + b
+}

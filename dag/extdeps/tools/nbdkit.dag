@@ -1,11 +1,13 @@
 module extdeps.tools.nbdkit
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Int, String }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_nbdkit }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -16,8 +18,29 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data nbdkit_pinned_version: VersionConstraint = ">= 1.34"
 
+fn nbdkit_program() -> ProgramIdentity = cataloged_program(invocation: "nbdkit")
+
 data nbdkit_cli_tool: CliTool = CliTool {
-  name: "nbdkit",
+  program: nbdkit_program(),
   min_version: Present { value: nbdkit_pinned_version },
   installable_via: [SourceApt { package: package_nbdkit, bin_dir: apt_bin_dir }],
+}
+
+// THE READ-ONLY FILE EXPORT the nbd-proxy serve path runs as a systemd transient unit
+// (gunbc.host_effect_nbd_proxy_serve): one nbdkit file plugin serving <backing_path> read-only
+// on <port>. The flags are this operation's own, minted here beside the cited nbdkit(1) authority
+// above and nowhere else -- a builder outside this module would re-home "which flags does nbdkit
+// take" (extdeps.exec.command argv_command wall). PATH-resolved program name, deliberately: this
+// repository has made no filesystem observation of the host this command runs on, and an absolute
+// path is a claim about one (extdeps.exec.command program_spelling_is_an_observation_claim).
+fn nbdkit_readonly_file_serve_command(port: Int, backing_path: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: nbdkit_program(),
+    arguments: [
+      "-p", to_string(port),
+      "--readonly",
+      "file",
+      concat("file=", backing_path as String),
+    ],
+  )
 }

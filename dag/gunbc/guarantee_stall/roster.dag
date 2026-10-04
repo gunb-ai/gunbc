@@ -28,12 +28,12 @@ import gunbc.guarantee_stall.doc_graph_orphan_population_stall { doc_graph_orpha
 import gunbc.guarantee_stall.doc_graph_dangling_link_population_stall { doc_graph_dangling_link_population_stall }
 import gunbc.guarantee_stall.enforcement_live_closure_gate_stall { enforcement_live_closure_gate_stall }
 import gunbc.guarantee_stall.mandatory_tag_live_corpus_stall { mandatory_tag_live_corpus_stall }
+import gunbc.guarantee_stall.test_reference_ledger_typed_census_stall { test_reference_ledger_typed_census_stall }
 import gunbc.guarantee_stall.parse_ingest_grammar_relation_stall { parse_ingest_grammar_relation_stall }
 import gunbc.guarantee_stall.required_regen_host_derivation_stall { required_regen_host_derivation_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall { self_host_hand_authorized_cargo_toml_stall }
 import gunbc.guarantee_stall.self_host_hand_authorized_driver_source_stall { self_host_hand_authorized_driver_source_stall }
 import gunbc.guarantee_stall.self_host_spelling_search_stall { self_host_spelling_search_stall }
-import gunbc.guarantee_stall.non_fold_residue_roster_stall { non_fold_residue_roster_stall }
 import gunbc.guarantee_stall.retained_rust_live_tree_migration_stall { retained_rust_live_tree_migration_stall }
 import gunbc.guarantee_stall.variant_owner_identity_stall { variant_owner_identity_stall }
 import gunbc.guarantee_stall.gitattributes_committed_emit_drift_stall { gitattributes_committed_emit_drift_stall }
@@ -42,7 +42,6 @@ import gunbc.guarantee_stall.builtin_parameter_name_forked_across_hand_authored_
 import gunbc.guarantee_stall.algebra_operation_associativity_undeclarable_stall { algebra_operation_associativity_undeclarable_stall }
 import gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall { deployed_repository_empty_root_bootstrap_stall }
 import gunbc.guarantee_stall.prose_declared_rung_drop_stall { prose_declared_rung_drop_stall }
-import gunbc.guarantee_stall.two_nat_authorities_stall { two_nat_authorities_stall }
 import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_model_scope_live_cover_stall }
 import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
@@ -69,7 +68,10 @@ import gunbc.guarantee_stall.information_retrieval_transport_cannot_report_statu
 import gunbc.guarantee_stall.module_cited_only_in_annotation_prose_stall { module_cited_only_in_annotation_prose_stall }
 import gunbc.guarantee_stall.joint_claim_join_private_corpus_unindexed_stall { joint_claim_join_private_corpus_unindexed_stall }
 import gunbc.guarantee_stall.coercion_two_algebras_answer_one_question_stall { coercion_two_algebras_answer_one_question_stall }
+import gunbc.guarantee_stall.text_carrier_render_not_keyed_on_identity_stall { text_carrier_render_not_keyed_on_identity_stall }
+import gunbc.guarantee_stall.free_semigroup_text_crossing_decided_by_spelling_stall { free_semigroup_text_crossing_decided_by_spelling_stall }
 import gunbc.guarantee_stall.emitted_inline_crate_path_edges_unreturned_stall { emitted_inline_crate_path_edges_unreturned_stall }
+import gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall { compile_pool_provision_wired_but_unreachable_stall }
 
 // THE COHORT PROVENANCE NOTES BELOW WERE AUTHORED WHEN EVERY ROW SAT IN ONE FILE, and they are
 // carried here verbatim rather than split across the row modules they describe. Their membership
@@ -192,7 +194,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   self_host_hand_authorized_cargo_toml_stall,
   self_host_hand_authorized_driver_source_stall,
   self_host_spelling_search_stall,
-  non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
   variant_owner_identity_stall,
   gitattributes_committed_emit_drift_stall,
@@ -201,7 +202,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   algebra_operation_associativity_undeclarable_stall,
   deployed_repository_empty_root_bootstrap_stall,
   prose_declared_rung_drop_stall,
-  two_nat_authorities_stall,
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
@@ -234,7 +234,11 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   pci_address_rendering_equivalence_stall,
   fabric_purpose_handover_registration_unobserved_stall,
   coercion_two_algebras_answer_one_question_stall,
+  text_carrier_render_not_keyed_on_identity_stall,
+  free_semigroup_text_crossing_decided_by_spelling_stall,
   emitted_inline_crate_path_edges_unreturned_stall,
+  test_reference_ledger_typed_census_stall,
+  compile_pool_provision_wired_but_unreachable_stall,
 ]
 
 // THE FOUR SUBJECTS RESTORED TO THE ROSTER, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
@@ -270,7 +274,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
 // after the one-file-per-row split the declaration is named by IMPORT, which refuses at resolve if
 // the row module is renamed or deleted rather than silently matching nothing.
 data restored_stalls: List<GuaranteeStall> = [
-  two_nat_authorities_stall,
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,

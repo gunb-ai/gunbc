@@ -1,6 +1,6 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int, List, NonEmptyStr }
+import std.types { Timestamp, Int, List, NonEmptyStr, brand }
 import std.decl_ref { DeclarationRef }
 import std.measure {
   ByteSize,
@@ -21,6 +21,7 @@ import product.fabric.isolation {
   IsolationProfile, IsolationGuarantee,
   unsatisfied_isolation_guarantees, unsatisfied_isolation_wire,
 }
+import std.nat { Nat }
 
 // A SupplierOffer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind

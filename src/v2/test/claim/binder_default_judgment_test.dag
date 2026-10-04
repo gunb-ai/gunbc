@@ -1,0 +1,115 @@
+module v2.test.claim.binder_default_judgment
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Symbol }
+
+// A BINDER'S DEFAULT IS JUDGED AT THE BINDER'S DECLARED TYPE (XL-2 PR2c-ii; v2.compiler.infer
+// infer_binder_default_check, position v2.std.inhabitance PositionBinderDefault): the same relation an
+// argument meets at its formal. A default that inhabits its parameter's type infers; one that does not
+// refuses, located at the default, as ^infer_reason_default_does_not_inhabit_binder_type. Both sources
+// lower and resolve, so the refusal is infer's judgment and not a lowering or resolution refusal.
+
+fn bdj_inhabiting() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int = 1) -> Int {\n  x\n}\n")
+}
+
+fn bdj_not_inhabiting() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(x: Int = true) -> Int {\n  x\n}\n")
+}
+
+fn bdj_infers(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
+  match o {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
+  }
+}
+
+fn bdj_refused_as_not_inhabiting(o: Outcome<Bool>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_default_does_not_inhabit_binder_type
+  }
+}
+
+// Each outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and each claim reads it: assembling and inferring the program
+// inside each claim put both over the new-witness eval-step budget. The inferred outcome carries the
+// assembly's own refusal, so a program that did not assemble cannot pass either claim.
+fn bdj_inhabiting_inferred() -> Outcome<Bool> {
+  bdj_infers(o: bdj_inhabiting())
+}
+
+fn bdj_not_inhabiting_inferred() -> Outcome<Bool> {
+  bdj_infers(o: bdj_not_inhabiting())
+}
+
+test fn a_default_that_inhabits_its_binder_type_infers() -> Bool {
+  tpb_accepts(o: bdj_inhabiting_inferred())
+}
+
+test fn a_default_that_does_not_inhabit_its_binder_type_refuses() -> Bool {
+  bdj_refused_as_not_inhabiting(o: bdj_not_inhabiting_inferred())
+}
+
+// SCOPE (side-chat review on #12948): a default resolves in the ENCLOSING value scope, with the
+// declaration's type parameters only as its type scope (v2.compiler.resolve resolve_arrow_domain_walk).
+// An outer value is visible; a sibling parameter is not; a type parameter's spelling is not a value.
+// GENERIC: a default under a generic declaration refuses at the default until it is judged with the
+// declaration's type parameters in scope (v2.compiler.infer infer_generic_default_refusal).
+fn bdj_outer_value_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\ndata d: Int = 1\n\nfn f(x: Int = d) -> Int {\n  x\n}\n"))
+}
+
+fn bdj_sibling_param_assembled() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f(a: Int, x: Int = a) -> Int {\n  x\n}\n")
+}
+
+fn bdj_type_param_as_default_assembled() -> Outcome<ResolvedTree> {
+  tpb_assemble(src: "module p\n\nfn f<T>(x: Int = T) -> Int {\n  x\n}\n")
+}
+
+fn bdj_generic_default_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\nfn f<T>(x: T = 1) -> Int {\n  1\n}\n"))
+}
+
+fn bdj_refused_with(o: Outcome<Bool>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+test fn a_default_sees_an_outer_value_holds() -> Bool {
+  tpb_accepts(o: bdj_outer_value_inferred())
+}
+
+test fn a_default_does_not_see_a_sibling_parameter_holds() -> Bool {
+  !tpb_accepts(o: bdj_sibling_param_assembled())
+}
+
+test fn a_type_parameter_spelling_is_not_a_default_value_holds() -> Bool {
+  !tpb_accepts(o: bdj_type_param_as_default_assembled())
+}
+
+test fn a_generic_default_refuses_until_modeled_holds() -> Bool {
+  bdj_refused_with(o: bdj_generic_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
+}
+
+// A default nested in a generic COPRODUCT's arm payload is under the declaration's type parameters too:
+// the traversal (v2.compiler.infer infer_first_default_beneath) reaches it, so it refuses at the default
+// rather than reaching the per-binder judgment with no type variables in scope (side-chat review on
+// #12948).
+fn bdj_generic_coproduct_default_inferred() -> Outcome<Bool> {
+  bdj_infers(o: tpb_assemble(src: "module p\n\ntype Box<T> = Full { value: T = 1 } | Empty\n"))
+}
+
+test fn a_default_in_a_generic_coproduct_payload_refuses_until_modeled_holds() -> Bool {
+  bdj_refused_with(o: bdj_generic_coproduct_default_inferred(), reason: ^infer_binder_default_generic_unmodeled)
+}

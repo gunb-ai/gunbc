@@ -11,7 +11,7 @@ import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.vllm.source_build { vllm_d2d649e6_revision, vllm_deepseek_v4_1_sm12_revision, vllm_recipe_targeting }
-import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel, flashinfer_0_6_18_post1, flashinfer_0_6_18_post1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, FlashInferWheelAdmission, FlashInferWheelAdmitted, FlashInferWheelRefused, admit_flashinfer_wheel, flashinfer_0_7_1rc1, flashinfer_0_7_1rc1_wheels, FlashInferPublishedRelease, FlashInferProjectStable }
 import gunbc.spark.serving_deployment_selection { topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity, engram_route_c_identity }
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
@@ -92,7 +92,7 @@ fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResiden
   V41CandidateInputs {
     runtime: V41RuntimeArtifactInputs {
       recipe: vllm_recipe_targeting(base: v41_candidate_recipe(), torch_cuda_arch_list: v41_candidate_recipe().torch_cuda_arch_list, install_kv_connectors: v41_candidate_recipe().install_kv_connectors, max_jobs: max_jobs, nvcc_threads: 2),
-      kernel_acquisition: flashinfer_0_6_18_post1,
+      kernel_acquisition: flashinfer_0_7_1rc1,
       kernel_wheels: wheels,
       patches: patches,
     },
@@ -108,11 +108,11 @@ fn w_inputs_with_wheels(patches: V41PatchPopulation, partition: V41EngramResiden
 }
 
 fn w_inputs(patches: V41PatchPopulation, partition: V41EngramResidencyPartition, route: DeclarationRef, tp: Nat, device: GpuComputeCapability, max_jobs: Nat) -> V41CandidateInputs {
-  w_inputs_with_wheels(patches: patches, partition: partition, route: route, tp: tp, device: device, max_jobs: max_jobs, wheels: flashinfer_0_6_18_post1_wheels)
+  w_inputs_with_wheels(patches: patches, partition: partition, route: route, tp: tp, device: device, max_jobs: max_jobs, wheels: flashinfer_0_7_1rc1_wheels)
 }
 
 fn w_wheels_named(names: List<String>) -> List<FlashInferWheel> {
-  flat_map(names, n => filter(flashinfer_0_6_18_post1_wheels, w => (w.package as String) == n))
+  flat_map(names, n => filter(flashinfer_0_7_1rc1_wheels, w => (w.package as String) == n))
 }
 
 fn w_two_patches() -> V41PatchPopulation {
@@ -372,7 +372,7 @@ test fn a_wrong_topology_device_or_kernel_version_refuses() -> Bool {
     runtime: V41RuntimeArtifactInputs {
       recipe: v41_candidate_recipe(),
       kernel_acquisition: FlashInferPublishedRelease { version: "0.7.0" as NonEmptyStr, channel: FlashInferProjectStable, index: "fixture" as NonEmptyStr },
-      kernel_wheels: flashinfer_0_6_18_post1_wheels,
+      kernel_wheels: flashinfer_0_7_1rc1_wheels,
       patches: w_two_patches(),
     },
     model_source: w_default(patches: w_two_patches()).model_source,
@@ -402,10 +402,10 @@ test fn a_patch_needs_a_sha256_digest_and_the_fixtures_are_admitted() -> Bool {
 // THE KERNEL CLOSURE IS AN EXACT PACKAGE POPULATION. A runtime carrying only flashinfer-python, or two
 // variants of one package, is not the closure upstream's Dockerfile installs, so it refuses instead of
 // keying. The complete population keys, which is what stops a mint that refuses everything.
-test fn the_kernel_population_must_be_exactly_the_three_required_packages() -> Bool {
+test fn the_kernel_population_must_be_exactly_the_required_closure() -> Bool {
   let full = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
   let only_python = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-python"])))
-  let doubled = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: concat(flashinfer_0_6_18_post1_wheels, w_wheels_named(names: ["flashinfer-cubin"]))))
+  let doubled = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: concat(flashinfer_0_7_1rc1_wheels, w_wheels_named(names: ["flashinfer-cubin"]))))
   w_key(s: full, which: "runtime") != "unestablished" && w_key(s: full, which: "runtime") != "refused"
     && w_refused_with(s: only_python, fragment: "carries no flashinfer-cubin wheel")
     && w_refused_with(s: doubled, fragment: "more than one flashinfer-cubin wheel")
@@ -423,7 +423,7 @@ test fn a_patch_for_a_different_revision_refuses() -> Bool {
 // patch-order witness above asserts in the other direction.
 test fn reordering_wheels_or_partition_members_does_not_change_the_key() -> Bool {
   let a = v41_candidate_standing(readback: w_readback_unread(), c: w_default(patches: w_two_patches()))
-  let reversed_wheels = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: ["flashinfer-jit-cache", "flashinfer-cubin", "flashinfer-python"])))
+  let reversed_wheels = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: w_wheels_named(names: concat(["flashinfer-jit-cache-sm90a", "flashinfer-jit-cache-sm89", "flashinfer-jit-cache-sm80", "flashinfer-jit-cache-sm121a", "flashinfer-jit-cache-sm120f", "flashinfer-jit-cache-sm110a", "flashinfer-jit-cache-sm103a", "flashinfer-jit-cache-sm100a"], ["flashinfer-jit-cache", "flashinfer-cubin", "flashinfer-python"]))))
   let reordered_partition = v41_candidate_standing(readback: w_readback_unread(), c: w_inputs(patches: w_two_patches(), partition: V41EngramResidencyPartition {
     storage_backed: ["layers.14.engram.embed.scale" as NonEmptyStr, "layers.1.engram.embed.weight" as NonEmptyStr, "layers.14.engram.embed.weight" as NonEmptyStr, "layers.1.engram.embed.scale" as NonEmptyStr],
     resident: v41_candidate_partition.resident,
@@ -463,9 +463,15 @@ fn w_foreign_release_wheel() -> List<FlashInferWheel> {
 // which is the whole point: it re-admits cleanly, the package bag is exact, and neither the population check
 // nor re-admission can see anything wrong with it. Only the build-target assertion refuses it, and without
 // that assertion this fixture keys a runtime whose image installs kernels a GB10 cannot load.
+// THE EIGHT PER-ARCHITECTURE PROVIDERS THE 0.7.x JIT-CACHE SHIM REQUIRES, in the shim's own order.
+fn w_provider_names() -> List<String> {
+  ["flashinfer-jit-cache-sm100a", "flashinfer-jit-cache-sm103a", "flashinfer-jit-cache-sm110a", "flashinfer-jit-cache-sm120f",
+   "flashinfer-jit-cache-sm121a", "flashinfer-jit-cache-sm80", "flashinfer-jit-cache-sm89", "flashinfer-jit-cache-sm90a"]
+}
+
 fn w_jit_cache_wheel(filename: String) -> List<FlashInferWheel> {
   match admit_flashinfer_wheel(
-    acquisition: flashinfer_0_6_18_post1,
+    acquisition: flashinfer_0_7_1rc1,
     package: "flashinfer-jit-cache" as NonEmptyStr,
     filename: filename as NonEmptyStr,
     sha256_hex: w_sha(c: "e").hex as String,
@@ -479,7 +485,7 @@ fn w_with_jit_cache(filename: String) -> V41CandidateVerdict {
   v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(
     patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity,
     tp: 4, device: gb10_observed_compute_capability, max_jobs: 6,
-    wheels: concat(w_wheels_named(names: ["flashinfer-python", "flashinfer-cubin"]), w_jit_cache_wheel(filename: filename)),
+    wheels: concat(concat(w_wheels_named(names: ["flashinfer-python", "flashinfer-cubin"]), w_jit_cache_wheel(filename: filename)), w_wheels_named(names: w_provider_names())),
   ))
 }
 
@@ -488,32 +494,32 @@ fn w_with_jit_cache(filename: String) -> V41CandidateVerdict {
 // carrying no jit-cache wheel, and this test would pass without ever reaching the assertion it exists to
 // discriminate.
 test fn a_jit_cache_wheel_for_another_cuda_label_or_platform_refuses() -> Bool {
-  let wrong_platform = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl")
-  let wrong_label = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl")
-  let wrong_abi = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl")
+  let wrong_platform = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl")
+  let wrong_label = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.7.1rc1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl")
+  let wrong_abi = w_jit_cache_wheel(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl")
   length(wrong_platform) == 1
     && length(wrong_label) == 1
     && length(wrong_abi) == 1
-    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl"), fragment: "carries platform tag manylinux_2_28_x86_64")
-    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl"), fragment: "carries version 0.6.18.post1+cu129")
-    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl"), fragment: "carries python tag cp312")
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_x86_64.whl"), fragment: "carries platform tag manylinux_2_28_x86_64")
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.7.1rc1+cu129-cp39-abi3-manylinux_2_28_aarch64.whl"), fragment: "carries version 0.7.1rc1+cu129")
+    && w_refused_with(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp312-cp312-manylinux_2_28_aarch64.whl"), fragment: "carries python tag cp312")
 }
 
 // THE POSITIVE CONTROL FOR THE ASSERTION ABOVE. The published row is the exact target, so the same fixture
 // with the real wheel keys rather than refusing -- which is what makes the three refusals above evidence
 // about the build target rather than about this fixture being unkeyable.
 test fn the_published_jit_cache_wheel_is_this_runtimes_build_target() -> Bool {
-  w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
+  w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
     != "refused"
-    && w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.6.18.post1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
+    && w_key(s: w_with_jit_cache(filename: "flashinfer_jit_cache-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl"), which: "candidate")
     != "unestablished"
 }
 
 test fn a_wheel_from_a_neighbouring_release_refuses_even_with_the_right_package_names() -> Bool {
   let foreign = w_foreign_release_wheel()
-  let swapped = concat(foreign, w_wheels_named(names: ["flashinfer-cubin", "flashinfer-jit-cache"]))
+  let swapped = concat(foreign, w_wheels_named(names: concat(["flashinfer-cubin", "flashinfer-jit-cache"], w_provider_names())))
   length(foreign) == 1
-    && length(swapped) == 3
+    && length(swapped) == 11
     && w_refused_with(s: v41_candidate_standing(readback: w_readback_unread(), c: w_inputs_with_wheels(patches: w_two_patches(), partition: v41_candidate_partition, route: engram_route_b_identity, tp: 4, device: gb10_observed_compute_capability, max_jobs: 6, wheels: swapped)), fragment: "does not re-admit")
 }
 

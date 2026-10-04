@@ -190,7 +190,11 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
 fn on_success_runnable_is_admitted(runnable: Runnable) -> Bool {
   match on_success_runnable_disposition(runnable: runnable) {
     OnSuccessRunnableAdmitted => true
-    _ => false
+    OnSuccessDiscoveryRefused => false
+    OnSuccessKernelRefused => false
+    OnSuccessHeavyResolveRefused => false
+    OnSuccessHostCompilerRefused => false
+    OnSuccessSubstantialRefused => false
   }
 }
 

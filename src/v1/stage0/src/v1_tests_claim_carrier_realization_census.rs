@@ -17,7 +17,8 @@ pub use crate::std_coercion::{
     ReferenceIdentityUnavailableCause, TypeDeclarationProvenance, TypeRealizationDecision,
     TypeReferenceIdentity,
 };
-use crate::std_types::Bool::*;
+pub use crate::std_decl_ref::declaration_ref_display_key;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
@@ -26,19 +27,31 @@ pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_emit_core_support::is_type_def_item;
 pub use crate::v1_compiler_emit_rust::{function_value_params, is_host_text_carrier_type};
-pub use crate::v1_compiler_infer_env::lookup_type_for;
-pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer::declared_return_type_node;
+use crate::v1_compiler_infer_env::TypeNodeUnidentifiedCause::{
+    TypeNodeAuthoredNameEmpty, TypeNodeCarriesNoSpan, TypeNodeNameDeclaredNowhere,
+    TypeNodeQualifierMatchesNoDeclarer, TypeNodeSpanDeclaresNothing,
+};
+use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{
+    TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceNamesDeclaration,
+    TypeReferenceUnidentified,
+};
+pub use crate::v1_compiler_infer_env::{lookup_type_for, type_reference_declaration_reading};
+pub use crate::v1_compiler_infer_env::{
+    TypeEnv, TypeNodeUnidentifiedCause, TypeReferenceDeclarationReading,
+};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
 use crate::v1_std_core::InferredNode::Resolved;
+use crate::v1_std_core::ParsedModuleItemKind::ModuleItemTypeDeclaration;
 pub use crate::v1_std_core::{
     authored_name_at, declaration_provenance_of, param_node_type_expr, provenance_reported_file,
     type_reference_identity, type_reference_provenance,
 };
-pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node};
+pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node, ParsedModuleItemKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -89,9 +102,11 @@ pub struct TypedCarrierRow {
     pub identity: Rc<DeclarationIdentityObservation>,
     pub legacy: Rc<LegacyKeyObservation>,
     pub split: Rc<TypeReferenceIdentity>,
+    pub decl_identity: Rc<TypeReferenceDeclarationReading>,
     pub legacy_base: String,
     pub authority_base: String,
     pub outcome: CensusOutcome,
+    pub recorded_declaration: Option<Rc<DeclarationRef>>,
 }
 
 pub fn identity_observation(
@@ -234,6 +249,7 @@ pub fn typed_decision_row(
     enclosing: String,
     position_kind: String,
     n: Rc<Node>,
+    decl_identity: Rc<TypeReferenceDeclarationReading>,
     env: Rc<TypeEnv>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedCarrierRow> {
@@ -259,8 +275,10 @@ pub fn typed_decision_row(
                 legacy_key.clone(),
             ),
             split: crate::v1_std_core::type_reference_identity(n.clone()),
+            decl_identity: decl_identity.clone(),
             legacy_base: legacy_base_label(n.clone(), si.clone()),
             authority_base: authority_base_of(name.clone(), query_provenance.clone()),
+            recorded_declaration: n.declaration.clone(),
             outcome: outcome_of(
                 claims_text.clone(),
                 authority_realizes(name.clone(), query_provenance.clone()),
@@ -319,14 +337,58 @@ pub fn typed_occurrence_rows(
                 v1_rt::concat(param_rows.clone(), return_rows.clone())
             }
         } else {
-            Rc::new(vec![typed_decision_row(
-                module_file.clone(),
-                enclosing.clone(),
-                position_kind.clone(),
-                n.clone(),
-                env.clone(),
-                si.clone(),
-            )])
+            {
+                let is_declaration = match n.module_item_kind.clone() {
+                    ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+                    _ => false,
+                };
+                let decl_identity =
+                    crate::v1_compiler_infer_env::type_reference_declaration_reading(
+                        n.clone(),
+                        si.clone(),
+                        env.clone(),
+                    );
+                let is_kernel_mint = match (*decl_identity.clone()).clone() {
+                    TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
+                        name: _, ..
+                    } => true,
+                    _ => false,
+                };
+                let arg_children = if (is_declaration.clone() || is_kernel_mint.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    n.children.clone()
+                };
+                let arg_rows =
+                    arg_children
+                        .iter()
+                        .cloned()
+                        .fold(no_typed_rows(), |acc: _, a: Rc<Node>| {
+                            v1_rt::concat(
+                                acc,
+                                typed_occurrence_rows(
+                                    module_file.clone(),
+                                    enclosing.clone(),
+                                    v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
+                                    a.clone(),
+                                    env.clone(),
+                                    si.clone(),
+                                ),
+                            )
+                        });
+                v1_rt::concat(
+                    Rc::new(vec![typed_decision_row(
+                        module_file.clone(),
+                        enclosing.clone(),
+                        position_kind.clone(),
+                        n.clone(),
+                        decl_identity.clone(),
+                        env.clone(),
+                        si.clone(),
+                    )]),
+                    arg_rows.clone(),
+                )
+            }
         }
     })
 }
@@ -413,7 +475,24 @@ pub fn typed_item_rows(
                     )
                 })
         };
-        v1_rt::concat(decl_rows.clone(), param_rows_t.clone())
+        let return_rows = if ((item.body.clone() == std::option::Option::None)
+            || crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()))
+        {
+            no_typed_rows()
+        } else {
+            typed_occurrence_rows(
+                module_file.clone(),
+                enclosing.clone(),
+                "fn_signature_return".to_string(),
+                crate::v1_compiler_infer::declared_return_type_node(item.clone()),
+                env.clone(),
+                si.clone(),
+            )
+        };
+        v1_rt::concat(
+            v1_rt::concat(decl_rows.clone(), param_rows_t.clone()),
+            return_rows.clone(),
+        )
     }
 }
 
@@ -523,6 +602,74 @@ pub fn split_label(i: Rc<TypeReferenceIdentity>) -> String {
     }
 }
 
+pub fn unidentified_cause_label(c: Rc<TypeNodeUnidentifiedCause>) -> String {
+    match (*c.clone()).clone() {
+        TypeNodeUnidentifiedCause::TypeNodeAuthoredNameEmpty => "AuthoredNameEmpty".to_string(),
+        TypeNodeUnidentifiedCause::TypeNodeNameDeclaredNowhere { name: _, .. } => {
+            "NameDeclaredNowhere".to_string()
+        }
+        TypeNodeUnidentifiedCause::TypeNodeSpanDeclaresNothing { name: _, .. } => {
+            "SpanDeclaresNothing".to_string()
+        }
+        TypeNodeUnidentifiedCause::TypeNodeCarriesNoSpan { name: _, .. } => {
+            "CarriesNoSpan".to_string()
+        }
+        TypeNodeUnidentifiedCause::TypeNodeQualifierMatchesNoDeclarer { qualified: _, .. } => {
+            "QualifierMatchesNoDeclarer".to_string()
+        }
+    }
+}
+
+pub fn decl_identity_label(r: Rc<TypeReferenceDeclarationReading>) -> String {
+    match (*r.clone()).clone() {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => v1_rt::concat(
+            "Declaration:".to_string(),
+            crate::std_decl_ref::declaration_ref_display_key(d.clone()),
+        ),
+        TypeReferenceDeclarationReading::TypeReferenceIsKernelType { name: k, .. } => {
+            v1_rt::concat("Kernel:".to_string(), k.clone())
+        }
+        TypeReferenceDeclarationReading::TypeReferenceIsTypeVariable { id: v, .. } => {
+            v1_rt::concat("TypeVariable:".to_string(), v.clone())
+        }
+        TypeReferenceDeclarationReading::TypeReferenceUnidentified {
+            authored: a,
+            resolved: r2,
+            ..
+        } => match r2.clone() {
+            Some(rc) => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "Unidentified:".to_string(),
+                        unidentified_cause_label(a.clone()),
+                    ),
+                    "/resolved:".to_string(),
+                ),
+                unidentified_cause_label(rc.clone()),
+            ),
+            std::option::Option::None => v1_rt::concat(
+                v1_rt::concat(
+                    "Unidentified:".to_string(),
+                    unidentified_cause_label(a.clone()),
+                ),
+                "/resolved:none".to_string(),
+            ),
+        },
+    }
+}
+
+pub fn recorded_declaration_label(d: Option<Rc<DeclarationRef>>) -> String {
+    match d.clone() {
+        Some(r) => v1_rt::concat(
+            "Declaration:".to_string(),
+            crate::std_decl_ref::declaration_ref_display_key(r.clone()),
+        ),
+        std::option::Option::None => "none".to_string(),
+    }
+}
+
 pub fn outcome_label(o: CensusOutcome) -> String {
     match o.clone() {
         CensusOutcome::Agrees => "Agrees".to_string(),
@@ -540,7 +687,7 @@ pub fn tsv_escape(v: String) -> String {
 }
 
 pub fn typed_census_header() -> String {
-    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tlegacy_base\tauthority_base\toutcome".to_string()
+    "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tsplit_identity\tdecl_identity\tlegacy_base\tauthority_base\toutcome\trecorded_declaration".to_string()
 }
 
 pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
@@ -553,9 +700,11 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
         tsv_escape(identity_file_label(r.identity.clone())),
         tsv_escape(legacy_label(r.legacy.clone())),
         tsv_escape(split_label(r.split.clone())),
+        tsv_escape(decl_identity_label(r.decl_identity.clone())),
         tsv_escape(r.legacy_base.clone()),
         tsv_escape(r.authority_base.clone()),
         outcome_label(r.outcome.clone()),
+        recorded_declaration_label(r.recorded_declaration.clone()),
     ])
     .join(&"\t".to_string())
 }

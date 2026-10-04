@@ -8,7 +8,7 @@ import gunbc.generated_artifact_emit {
   ArtifactGenerated,
   ArtifactGenerationRefused,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_host_grants {
   runner_slot_teardown_grant_index_bound,
@@ -21,8 +21,9 @@ import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthR
 import gunbc.runner_slot_desired { gunbc_runner_slot_cpu_quota, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
+import gunbc.executor_privileged_operation { sudoers_argument_word }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -179,19 +180,23 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
 // throttle the ruling forbids. That negative is a LINE-TERMINAL `%`: a percentage grant is the
 // only sudoers line that ends in one, whereas a `%group` principal line begins with it, so the
 // clause names the CPU grant and not every future row that happens to carry the character
-// (review 68479).
+// (review 68479). THE SUDOERS SIDE IS READ IN SUDOERS' OWN SPELLING: since #12563 every grant word
+// passes through gunbc.executor_privileged_operation sudoers_argument_word, which escapes `=` as
+// sudoers(5) documents, so the file carries `CPUQuota\=` and the bare directive line can never
+// appear in it. The claim renders the assignment through that same escape rather than transcribing
+// the escaped literal, so the two sides stay one word under the grammar that joins them.
 test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool {
   let ds = fabric_cell_slice_desired_directives()
   let desired_lines = join(map(ds, d => systemd_slice_directive_line(directive: d)), "\n")
   match gunbc_runner_slot_cpu_quota() {
     CpuQuotaResolved { threads: t } => {
       let assignment = systemd_slice_directive_line(directive: slice_cpu_quota(threads: t))
-      string_contains(s: srv3_runner_host_sudoers(), pattern: assignment)
+      string_contains(s: srv3_runner_host_sudoers(), pattern: sudoers_argument_word(w: assignment))
         && string_contains(s: desired_lines, pattern: assignment)
     }
     SlotCpuQuotaUnbounded => {
       let assignment = systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
-      string_contains(s: srv3_runner_host_sudoers(), pattern: join([assignment, "\n"], ""))
+      string_contains(s: srv3_runner_host_sudoers(), pattern: join([sudoers_argument_word(w: assignment), "\n"], ""))
         && string_contains(s: desired_lines, pattern: assignment)
         && !string_contains(s: srv3_runner_host_sudoers(), pattern: join(["%", "\n"], ""))
     }
@@ -326,3 +331,4 @@ fn wt_srv3_deploy() -> RunnerHostDeploy {
     Absent => wt_missing_deploy()
   }
 }
+

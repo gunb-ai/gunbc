@@ -1,23 +1,27 @@
 module v2.compiler.name_resolve
 
+import std.types { List }
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_fill_module_roots }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
 import v2.std.declaration_marker { TestCodeIndex, test_code_index_add_module, test_code_index_empty }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.compiler.resolve {
+  module_binding_edge_is_namespace_body,
   DeclaredBinding,
   Namespace,
   namespace_bindings_augment_from_module_atoms,
   ObservationIncomplete,
   ResolveNodeWalk,
   ResolveWalkRefused,
+  ClosureProviderRefusal,
   ResolvedTree,
-  resolve_walk_outcome,
+  resolved_tree_outcome,
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
-  try_edge_declared_binding
+  try_edge_declared_binding,
+  ResolveWalkAccepted
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -26,18 +30,16 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  dag_surface_module_header_metadata_edge,
-  namespace_graft_already_grafted,
-  namespace_graft_spine_segment_edge_optional,
   qualified_name_from_module_node
 }
 import v2.compiler.namespace_graft {
-  namespace_graft_strip_provenance_marker
+  namespace_graft_module_body_root
 }
 import v2.compiler.parse { parse_tree_projection_edge }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Present, List, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
+import v2.std.collection { Absent, Map, Present, PointwisePower, empty_map, map_get, map_lookup, map_insert, optional_absent, optional_present }
+import v2.std.optional { Optional }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -116,30 +118,102 @@ type ValidatedModuleRoots {
   test_code: TestCodeIndex
 }
 
+// ONE PER INGEST (gunbc#11401 R1), AND THE HOME OF WHAT THAT INGEST'S RESOLUTION PRODUCES ONCE.
+// The fields above `namespaces` are fixed when the context is built: the language, the validated roots,
+// the corpus index, and the three admission inputs every subject of this ingest is admitted under
+// (the source-root index, the active roots, the name-resolution policy). Binding them here is what makes
+// a module's QualifiedName a COMPLETE key for its namespace: nothing a namespace depends on varies per
+// demand except the admission's imports, and those are stored beside the value and compared.
+//
+// `namespaces` IS THE MODULE NAMESPACE PROVIDER (docs/plans/declaration-body-resolution-provider.md,
+// P1). A module's admitted namespace is produced AT MOST ONCE PER INGEST, on first demand, by
+// resolution_context_namespace -- the only caller of the builder namespace_for_subject_root -- and
+// every later demand reads the stored value. Until this cut every resolve rebuilt its subject's
+// namespace from scratch and carried it nowhere, so no second consumer could read the one the first
+// built. A pure substrate has no mutable cache, so the provider is THREADED: every resolve returns the
+// context it ended with (ContextResolved, ContextWalk), and a caller holding one context across
+// subjects binds the returned one. A caller that drops it does not get a stale answer -- it pays the
+// build again -- and `namespaces_built` is what makes that countable: it increments on every miss, so
+// a context that resolved N distinct subjects and reports more than N builds rebuilt one
+// (v2.test.name_resolve.admission_fail_closed
+// namespace_provider_builds_each_module_at_most_once_per_context).
+//
+// SCOPE: the modules this ingest read. A demand for a module outside `roots` refuses at the provider
+// (resolve_module_not_found, located at the requested name), is recorded like any other outcome, and
+// is never rebuilt from anywhere else.
 type ResolutionContext {
   lm: LanguageModel
   roots: ValidatedModuleRoots
   symbol_index: SymbolIndex
+  index: SourceRootIndex
+  active_roots: FreeMonoid<SourceRootRef>
+  policy: NameResolutionPolicy
+  namespaces: Map<QualifiedName, NamespaceProviderEntry>
+  namespaces_built: Int
+  closure_declarations: Optional<ClosureIndex>
+}
+
+// THE CLOSURE'S RESOLVED DECLARATIONS AND THE ROOTS THAT CONTRIBUTED NONE BECAUSE THEIR OWN RESOLVE
+// REFUSED. Both are the one demand's product (closure_declarations_demand) and are memoized together, so a
+// later subject reading the cached index also reads which providers it lacks.
+type ClosureIndex {
+  declarations: SymbolIndex
+  refused: List<ClosureProviderRefusal>
+}
+
+// One stored production: the admission it was produced under, and its outcome -- a refusal is
+// produced once too, so a subject whose admission refused is not re-admitted by a second demand.
+type NamespaceProviderEntry {
+  admission: Admission
+  admitted: Outcome<AdmittedSubject>
 }
 
 fn resolution_context(
   lm: LanguageModel,
-  roots: FreeMonoid<NormalizedTree>
+  roots: FreeMonoid<NormalizedTree>,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
 ) -> Outcome<ResolutionContext> {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: validated_roots, diagnostics: d } =>
       Accepted {
-        value: ResolutionContext {
+        value: resolution_context_of_validated(
           lm: lm,
           roots: validated_roots,
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
             roots: normalized_tree_roots_to_binding_sources(roots: validated_roots.roots)
-          )
-        },
+          ),
+          index: index,
+          active_roots: active_roots,
+          policy: policy
+        ),
         diagnostics: d
       }
+  }
+}
+
+// The context over roots a caller has already validated and indexed, with an empty provider.
+fn resolution_context_of_validated(
+  lm: LanguageModel,
+  roots: ValidatedModuleRoots,
+  symbol_index: SymbolIndex,
+  index: SourceRootIndex,
+  active_roots: FreeMonoid<SourceRootRef>,
+  policy: NameResolutionPolicy
+) -> ResolutionContext {
+  ResolutionContext {
+    lm: lm,
+    roots: roots,
+    symbol_index: symbol_index,
+    index: index,
+    active_roots: active_roots,
+    policy: policy,
+    namespaces: empty_map(),
+    namespaces_built: 0,
+    closure_declarations: optional_absent()
   }
 }
 
@@ -370,9 +444,7 @@ fn module_root_find(
 fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
   match try_edge_declared_binding(e: e) {
     Present { value: b } =>
-      if dag_surface_module_header_metadata_edge(name: b.name) {
-        optional_absent()
-      } else if parse_tree_projection_edge(name: b.name) {
+      if parse_tree_projection_edge(name: b.name) {
         optional_absent()
       } else {
         optional_present(value: b)
@@ -385,17 +457,43 @@ type AdmitExportsFold {
   origin: QualifiedName
   state: AdmissionState
   at_conj: Bool
+  scope: ExportAdmissionScope
 }
 
+// WHOSE NAMES AN ADMISSION READS. The subject's OWN body is the scope the operator's nesting ban governs:
+// a service namespace it declares is a path segment, never a bare binding, so its members are reached
+// qualified. An IMPORTED module's exports are the sanctioned route by which a service's name enters a
+// module bare: `import t` admits t's service `s`, and `s.F.Run` then resolves in the importer (XL-2
+// manager ruling, 2026-10-02).
+type ExportAdmissionScope
+  = OwnModuleBody
+  | ImportedModuleExports
+
+// A SERVICE NAMESPACE OF THE SUBJECT'S OWN BODY IS NOT ADMITTED AS A BARE NAME (v2.compiler.resolve
+// module_binding_edge_is_namespace_body). This is the multi-root route's counterpart of the single-tree
+// module-root harvest, so both resolution entries agree on the subject's own names; an imported module's
+// service namespaces are admitted as any export is.
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
-  state: AdmissionState
+  state: AdmissionState,
+  scope: ExportAdmissionScope
 ) -> AdmissionState {
-  match try_admitted_export_binding(e: edge) {
-    Present { value: b } =>
-      admit_export_symbol(sym: b.name, origin: origin, state: state)
-    Absent => state
+  if export_edge_is_withheld(edge: edge, scope: scope) {
+    state
+  } else {
+    match try_admitted_export_binding(e: edge) {
+      Present { value: b } =>
+        admit_export_symbol(sym: b.name, origin: origin, state: state)
+      Absent => state
+    }
+  }
+}
+
+fn export_edge_is_withheld(edge: Edge, scope: ExportAdmissionScope) -> Bool {
+  match scope {
+    OwnModuleBody => module_binding_edge_is_namespace_body(e: edge)
+    ImportedModuleExports => false
   }
 }
 
@@ -408,7 +506,8 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
         at_conj: match n.kind {
           TypeNode { connective: Conj } => true
           _ => false
-        }
+        },
+        scope: fold.scope
       }
     },
     child_context: fn(n, fold, e) { fold },
@@ -419,9 +518,11 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
           state: admit_named_export_edge(
             edge: e,
             origin: acc.origin,
-            state: acc.state
+            state: acc.state,
+            scope: acc.scope
           ),
-          at_conj: true
+          at_conj: true,
+          scope: acc.scope
         }
       } else {
         child_r
@@ -430,30 +531,13 @@ fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExp
   }
 }
 
-fn admit_named_exports_body_root(root: Node) -> Node {
-  if namespace_graft_already_grafted(root: root) {
-    admit_named_exports_descend_spine(
-      node: namespace_graft_strip_provenance_marker(root: root)
-    )
-  } else {
-    root
-  }
-}
-
-fn admit_named_exports_descend_spine(node: Node) -> Node {
-  match namespace_graft_spine_segment_edge_optional(node: node) {
-    Present { value: edge } =>
-      admit_named_exports_descend_spine(node: edge.target)
-    Absent => node
-  }
-}
-
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
-  state: AdmissionState
+  state: AdmissionState,
+  scope: ExportAdmissionScope
 ) -> AdmissionState {
-  let working = admit_named_exports_body_root(root: root)
+  let working = namespace_graft_module_body_root(root: root)
   match working.kind {
     TypeNode { connective: Conj } =>
       match fold_node_topdown(
@@ -461,11 +545,12 @@ fn admit_named_exports(
         ctx: AdmitExportsFold {
           origin: origin,
           state: state,
-          at_conj: false
+          at_conj: false,
+          scope: scope
         },
         algebra: named_exports_topdown_algebra()
       ) {
-        AdmitExportsFold { state: folded_state, origin: _, at_conj: _ } =>
+        AdmitExportsFold { state: folded_state, origin: _, at_conj: _, scope: _ } =>
           folded_state
       }
     _ => state
@@ -485,7 +570,8 @@ fn admit_import_root_find(
         admit_named_exports(
           root: imported_root.root,
           origin: origin,
-          state: state
+          state: state,
+          scope: ImportedModuleExports
         )
       } else {
         AdmissionRejected {
@@ -613,7 +699,8 @@ fn namespace_admission_initial_state(
       admit_named_exports(
         root: subject_module_root.root,
         origin: subject_qn,
-        state: admission_initial(base: base)
+        state: admission_initial(base: base),
+        scope: OwnModuleBody
       )
   }
 }
@@ -644,36 +731,83 @@ fn admitted_subject_from_bindings(
   }
 }
 
-fn namespace_for_subject_in_context(
-  context: Outcome<ResolutionContext>,
-  admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
-) -> Outcome<AdmittedSubject> {
-  match context {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: shared, diagnostics: validate_diag } =>
-      let validated_roots = shared.roots
-      match subject_module_root_for_name(
-        roots: validated_roots,
-        name: admission.subject.name
-      ) {
-        Rejected { diagnostics: r } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: validate_diag, rejected: r)
-          }
-        Accepted { value: subject_module_root, diagnostics: _ } =>
-          namespace_for_subject_root(
-            shared: shared,
-            validate_diag: validate_diag,
-            subject_module_root: subject_module_root,
-            admission: admission,
-            index: index,
-            active_roots: active_roots,
-            policy: policy
-          )
+// THE NAMESPACE PROVIDER'S ONE DOOR: the stored namespace of the admission's subject, or -- on the
+// first demand in this ingest -- the one namespace_for_subject_root produces, stored before it is
+// returned. A demand whose imports differ from the stored admission's REFUSES rather than being
+// served a namespace produced from different inputs, and rather than overwriting the stored one
+// (resolve_reason_namespace_provider_admission_conflict, located at the subject's name).
+type NamespaceDemand {
+  admitted: Outcome<AdmittedSubject>
+  context: ResolutionContext
+}
+
+fn resolution_context_namespace(
+  shared: ResolutionContext,
+  validate_diag: Diagnostics,
+  admission: Admission
+) -> NamespaceDemand {
+  match map_lookup(m: shared.namespaces, key: admission.subject.name) {
+    Present { value: entry } =>
+      if entry.admission == admission {
+        NamespaceDemand { admitted: entry.admitted, context: shared }
+      } else {
+        NamespaceDemand {
+          admitted: Rejected { diagnostics: namespace_provider_admission_conflict_diagnostic(name: admission.subject.name) },
+          context: shared
+        }
       }
+    Absent =>
+      let admitted = namespace_for_subject_produced(shared: shared, validate_diag: validate_diag, admission: admission)
+      NamespaceDemand {
+        admitted: admitted,
+        context: ResolutionContext {
+          lm: shared.lm,
+          roots: shared.roots,
+          symbol_index: shared.symbol_index,
+          index: shared.index,
+          active_roots: shared.active_roots,
+          policy: shared.policy,
+          namespaces: map_insert(
+            m: shared.namespaces,
+            key: admission.subject.name,
+            value: NamespaceProviderEntry { admission: admission, admitted: admitted }
+          ),
+          namespaces_built: shared.namespaces_built + 1,
+          closure_declarations: shared.closure_declarations
+        }
+      }
+  }
+}
+
+fn namespace_provider_admission_conflict_diagnostic(name: QualifiedName) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: textual_whole_file_diagnostic(
+      reason: ^resolve_reason_namespace_provider_admission_conflict,
+      module_file: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: name)),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    )
+  )
+}
+
+// The provider's miss arm and nothing else: the subject's root, located, then its admission.
+fn namespace_for_subject_produced(
+  shared: ResolutionContext,
+  validate_diag: Diagnostics,
+  admission: Admission
+) -> Outcome<AdmittedSubject> {
+  match subject_module_root_for_name(roots: shared.roots, name: admission.subject.name) {
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: validate_diag, rejected: r) }
+    Accepted { value: subject_module_root, diagnostics: _ } =>
+      namespace_for_subject_root(
+        shared: shared,
+        validate_diag: validate_diag,
+        subject_module_root: subject_module_root,
+        admission: admission,
+        index: shared.index,
+        active_roots: shared.active_roots,
+        policy: shared.policy
+      )
   }
 }
 
@@ -755,6 +889,9 @@ fn namespace_for_subject_root(
   }
 }
 
+// ONE SUBJECT IN A FRESH CONTEXT: the context is built here and dropped here, so its provider serves
+// exactly this resolution. A caller resolving more than one subject over one ingest holds a context
+// and goes through resolve_in_context instead.
 fn resolve_with_admission_policy(
   lm: LanguageModel,
   roots: FreeMonoid<NormalizedTree>,
@@ -763,72 +900,183 @@ fn resolve_with_admission_policy(
   active_roots: FreeMonoid<SourceRootRef>,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  resolve_with_admission_context_policy(
-    context: resolution_context(lm: lm, roots: roots),
-    admission: admission,
-    index: index,
-    active_roots: active_roots,
-    policy: policy
-  )
+  resolve_in_context(
+    context: resolution_context(lm: lm, roots: roots, index: index, active_roots: active_roots, policy: policy),
+    admission: admission
+  ).resolved
 }
 
-fn resolve_with_admission_context_policy(
-  context: Outcome<ResolutionContext>,
-  admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
-) -> Outcome<ResolvedTree> {
-  resolve_walk_outcome(w: resolve_walk_with_admission_context_policy(
-    context: context,
-    admission: admission,
-    index: index,
-    active_roots: active_roots,
-    policy: policy
-  ))
+// A resolution over a held context, and the context it ends with.
+type ContextResolved {
+  resolved: Outcome<ResolvedTree>
+  context: Outcome<ResolutionContext>
 }
 
-// THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order. The
-// Outcome entry above is its projection and answers what it always answered. A context or
-// namespace refusal means the walk was never entered, so none of the subject's sites were observed:
-// that is recorded as ObservationIncomplete, never as a complete observation holding one refusal.
-fn resolve_walk_with_admission_context_policy(
-  context: Outcome<ResolutionContext>,
-  admission: Admission,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  policy: NameResolutionPolicy
-) -> ResolveNodeWalk {
+type ContextWalk {
+  walk: ResolveNodeWalk
+  context: Outcome<ResolutionContext>
+}
+
+// The admitted namespace is built over the context's own index, so that index is the one this
+// resolution consulted. A refused context resolved nothing.
+fn resolve_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextResolved {
+  let walked = resolve_walk_in_context(context: context, admission: admission)
+  match walked.context {
+    Rejected { diagnostics: r } => ContextResolved { resolved: Rejected { diagnostics: r }, context: walked.context }
+    Accepted { value: shared, diagnostics: d } =>
+      let closure = closure_declarations_demand(shared: shared)
+      ContextResolved {
+        resolved: resolved_tree_outcome(
+          w: walked.walk,
+          symbol_index: shared.symbol_index,
+          closure_declarations: closure.declarations,
+          unavailable_providers: closure.refused
+        ),
+        context: Accepted { value: closure.context, diagnostics: d }
+      }
+  }
+}
+
+// EVERY ROOT IN THE CLOSURE, RESOLVED ONCE PER CONTEXT, so inference can retrieve a declaration an imported
+// provider owns. v2.compiler.resolve resolved_declarations_of walks ONE root, so the subject's index held only
+// the subject's declarations and every cross-module field read refused -- measured as
+// fps_a_cross_module_record_projection_infers against a passing same-module control.
+//
+// ONCE PER CONTEXT, NOT ONCE PER SUBJECT. Every subject a context resolves demands the same closure index,
+// and the shared ResolutionContext is their least common ancestor (DESIGN section 2), so the index is
+// produced on the first demand and carried on the context like the namespace provider beside it; a later
+// subject reads it. Recomputing it per subject made a lane of N modules do N x (N + 1) resolves, and folding
+// the roots per subject was a second quadratic term (review 74212). The per-root resolves thread the context
+// they are given, so the namespaces they admit are kept as well.
+//
+// THE RECURSION IS CUT BY THE PER-ROOT RESOLVES NOT ASKING FOR A CLOSURE: each provider is walked by
+// resolve_walk_in_context exactly as any subject is, and only resolved_tree_of reads the collected index. A
+// provider does not need the closure index to produce the declarations this fold reads from it.
+//
+// A REFUSED ROOT CONTRIBUTES NO DECLARATIONS AND DOES NOT FAIL THE FOLD, AND ITS REFUSAL IS KEPT. It does not
+// widen an answer or substitute a reading -- but contributing nothing SILENTLY was the absorbing fallback's
+// other half: a consumer's miss could not say the provider never resolved, so the provider's defect never
+// ranked. Its module and its first refusal chain are recorded (ClosureProviderRefusal) and reach every
+// lookup miss through v2.compiler.resolve resolved_tree_unavailable_provider. A provider that cannot resolve simply has
+// no resolved declarations to offer, so a receiver typed by one of its records refuses at
+// infer_reason_projection_receiver_declaration_unavailable -- the located refusal that names missing
+// evidence.
+//
+// THIS IS THE ONE-SEAT FORM OF A DEPENDENCY THE DEMAND ENGINE OWNS. Infer(module) depends on
+// Resolve(module) AND Resolve(each provider it consumes); here that is discharged by resolving the whole
+// SELECTED closure, which is broader than the import closure. Narrowing it to the exact provider set changes
+// WHICH roots are folded and not the inference rule.
+//
+// RECORD AND RESOURCE PAYLOAD MARKS ARE NOT CARRIED HERE, AND THAT IS INHERITED RATHER THAN CHOSEN: a resolved
+// Node does not carry the normalize-time record roster, so each root is filled with Empty carriers, and
+// v2.std.symbol_index symbol_index_declared_payload_at answers Absent for a RECORD in this index. The
+// projection path reads through symbol_index_lookup and is unaffected.
+type ClosureDeclarations {
+  declarations: SymbolIndex
+  refused: List<ClosureProviderRefusal>
+  context: ResolutionContext
+}
+
+type ClosureDeclarationsFold {
+  index: SymbolIndex
+  refused: List<ClosureProviderRefusal>
+  context: ResolutionContext
+}
+
+fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
+  match shared.closure_declarations {
+    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, refused: closure.refused, context: shared }
+    Absent =>
+      let built = fold_list(
+        xs: shared.roots.roots,
+        empty: ClosureDeclarationsFold { index: empty_symbol_index(), refused: [], context: shared },
+        cons: fn(acc, nt) {
+          match qualified_name_from_module_node(root: nt.root) {
+            Rejected { diagnostics: _ } => acc
+            Accepted { value: module_qn, diagnostics: _ } =>
+              let walked = resolve_walk_in_context(
+                context: Accepted { value: acc.context, diagnostics: None },
+                admission: Admission { subject: ResolutionSubject { name: module_qn }, imports: [] }
+              )
+              let next_context = match walked.context {
+                Accepted { value: c, diagnostics: _ } => c
+                Rejected { diagnostics: _ } => acc.context
+              }
+              match walked.walk {
+                ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } =>
+                  ClosureDeclarationsFold {
+                    index: symbol_index_fill_module_declarations(index: acc.index, root: resolved, record_declarations: Empty, resource_declarations: Empty),
+                    refused: acc.refused,
+                    context: next_context
+                  }
+                ResolveWalkRefused { first: first, rest: _, observation: _ } =>
+                  ClosureDeclarationsFold {
+                    index: acc.index,
+                    refused: list_snoc_item(xs: acc.refused, item: ClosureProviderRefusal { module: module_qn, refusal: first }),
+                    context: next_context
+                  }
+              }
+          }
+        }
+      )
+      ClosureDeclarations {
+        declarations: built.index,
+        refused: built.refused,
+        context: ResolutionContext {
+          lm: built.context.lm,
+          roots: built.context.roots,
+          symbol_index: built.context.symbol_index,
+          index: built.context.index,
+          active_roots: built.context.active_roots,
+          policy: built.context.policy,
+          namespaces: built.context.namespaces,
+          namespaces_built: built.context.namespaces_built,
+          closure_declarations: optional_present(value: ClosureIndex { declarations: built.index, refused: built.refused })
+        }
+      }
+  }
+}
+
+// THE SUBJECT'S WHOLE RESOLUTION OBSERVATION, every independent failure chain in walk order.
+// resolve_in_context is its projection. A context or namespace refusal means the walk was never
+// entered, so none of the subject's sites were observed: that is recorded as ObservationIncomplete,
+// never as a complete observation holding one refusal.
+fn resolve_walk_in_context(context: Outcome<ResolutionContext>, admission: Admission) -> ContextWalk {
   match context {
     Rejected { diagnostics: r } =>
-      ResolveWalkRefused {
-        first: r,
-        rest: [],
-        observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+      ContextWalk {
+        walk: ResolveWalkRefused {
+          first: r,
+          rest: [],
+          observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
+        },
+        context: context
       }
-    Accepted { value: shared, diagnostics: _ } =>
-      match namespace_for_subject_in_context(
-        context: context,
-        admission: admission,
-        index: index,
-        active_roots: active_roots,
-        policy: policy
-      ) {
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      let demand = resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: admission)
+      let threaded = Accepted { value: demand.context, diagnostics: validate_diag }
+      match demand.admitted {
         Accepted { value: admitted, diagnostics: namespace_diag } =>
-          resolve_walk_prefix_pending(
-            pending: namespace_diag,
-            w: resolve_walk_with_namespace_policy(
-              tree: admitted.subject_root,
-              namespace: admitted.namespace,
-              lm: shared.lm,
-              policy: policy
-            )
-          )
+          ContextWalk {
+            walk: resolve_walk_prefix_pending(
+              pending: namespace_diag,
+              w: resolve_walk_with_namespace_policy(
+                tree: admitted.subject_root,
+                namespace: admitted.namespace,
+                lm: shared.lm,
+                policy: shared.policy
+              )
+            ),
+            context: threaded
+          }
         Rejected { diagnostics: r } =>
-          ResolveWalkRefused {
-            first: r,
-            rest: [],
-            observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
+          ContextWalk {
+            walk: ResolveWalkRefused {
+              first: r,
+              rest: [],
+              observation: ObservationIncomplete { reason: ^resolve_observation_namespace_refused }
+            },
+            context: threaded
           }
       }
   }

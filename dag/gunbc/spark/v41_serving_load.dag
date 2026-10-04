@@ -1,0 +1,511 @@
+module gunbc.spark.v41_serving_load
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { token_count, microsecond_count }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.vllm.bench_serve { VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request }
+import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
+import extdeps.linux.psi { PsiReading, PsiRead, PsiUnparseable, parse_psi }
+import extdeps.linux.diskstats { DiskstatsReading, DiskReadMeasured, DiskReadUnmeasurable, parse_diskstats, disk_read_interval }
+import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete }
+import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
+import gunbc.fleet_intent_network { srv6_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv6 }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostWork, SparkBuildHostRefused, SparkBuildHostRan }
+import gunbc.spark.serving_arm {
+  DeepseekV41FlashDba1be0a, FourSparkTp4, GunbcDeepseekV41EngramProduced, deepseek_v41_flash_row,
+  runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
+}
+import gunbc.spark.serving_arm_launch { arm_mount_plan }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias, v41_group_a_profile }
+import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
+import gunbc.spark.v41_runtime_image_converge { v41_production_produced_image }
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding,
+}
+import gunbc.spark.serving_load_probe {
+  ClientRateQualificationFrontier, client_rate_qualification_frontier, preemption_count, bench_serve_latency,
+  ClientBenchLatency,
+}
+import gunbc.spark.serving_load_runner {
+  ServingLoadSubject, ServingLoadStepRecord, serving_load_records, serving_load_receipt_body,
+  ServingLoadRunObserved, ServingLoadRunRefused,
+}
+import gunbc.spark.v41_capacity_measurement {
+  v41_staircase_concurrencies, v41_measurement_launch_shape, v41_capacity_policy, V41StaircaseStepReading,
+  v41_run_staircase, v41_sla_capacity, v41_capacity_wire,
+}
+//
+// V4.1's binding of the shared serving-load runner (gunbc.spark.serving_load_runner): its subject on
+// Group A, one load step per staircase concurrency, and a host-pressure reading on every rank around
+// each step, projected into gunbc.spark.v41_capacity_measurement V41StaircaseStepReading and run
+// through v41_run_staircase. Only the numbers below are V4.1's; the engineering is the runner's.
+//
+//   fleet-converge mode spark_v41_serving_load (SPARK_CONVERGE_TARGET must be the head, srv6), or
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/v41_serving_load.dag --function v41_serving_load_ci_wet
+
+// ── THE PROTOCOL (operator ruling 2026-10-01, via proud-deer-538) ─────────────────────────────────
+//
+// THIS IS A COPY OF GLM's SHAPE, NOT A V4.1 PROTOCOL: the same random dataset shape as
+// gunbc.spark.glm_serving_load glm_native_sweep_dataset (256 in / 128 out / prefix 0), declared here as
+// V4.1's own row so a GLM change never moves V4.1's measurement. It stands until a V4.1-specific
+// protocol is ruled. At 256 input tokens it DOES NOT EXERCISE the 262k-context TTFT gate in
+// v41_capacity_policy, so a staircase run on it says nothing about that gate (v41_ttft_gate_frontier).
+data v41_serving_load_dataset: RandomDatasetSpec = RandomDatasetSpec {
+  input_len: token_count(count: 256),
+  output_len: token_count(count: 128),
+  prefix_len: token_count(count: 0),
+}
+
+data v41_serving_load_seed: Nat = 20261001
+
+// Prompts per step are twice the step's concurrency (GLM's smoke is c=2 with 4 prompts; the staircase
+// scales it per step).
+data v41_serving_load_prompts_per_concurrency: Nat = 2
+
+data v41_ttft_gate_frontier: String = "the 262k-context TTFT gate is NOT exercised: the protocol is GLM's 256-in/128-out shape, so TTFT here is a short-prefill reading and the gate's reading is a frontier until a V4.1-specific long-context protocol is ruled"
+
+// The head the bench client and the metrics scrape address (brief, 2026-09-30: head srv6, port 30000).
+data v41_serving_load_head: HostIdentity = operator_host_srv6
+
+fn v41_serve_base_url() -> NonEmptyStr {
+  join(["http://127.0.0.1:", to_string(spark_pair_serve_port)], "") as NonEmptyStr
+}
+
+fn v41_serving_load_step(concurrency: Nat) -> VllmBenchServeRequest {
+  vllm_bench_serve_request(
+    backend: OpenaiChat,
+    base_url: v41_serve_base_url(),
+    model: v41_group_a_served_alias,
+    tokenizer: arm_mount_plan(row: deepseek_v41_flash_row).model_path,
+    dataset: v41_serving_load_dataset,
+    num_prompts: concurrency * v41_serving_load_prompts_per_concurrency,
+    arrival: SendAllImmediately,
+    max_concurrency: Present { value: concurrency },
+    ignore_eos: true,
+    seed: v41_serving_load_seed,
+  )
+}
+
+fn v41_serving_load_steps() -> List<VllmBenchServeRequest> {
+  map(v41_staircase_concurrencies, c => v41_serving_load_step(concurrency: c))
+}
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+
+data v41_serving_load_receipt_path: String = "target/v41-serving-load-receipt.txt"
+data v41_serving_load_attempt_raw: String = "v41-serving-load"
+
+data v41_serving_load_qualification_frontier: ClientRateQualificationFrontier = client_rate_qualification_frontier(
+  request_start_events: "per-request start events so ArrivalSkewObserved can be minted; SendAllImmediately stays ArrivalSkewUnread until that producer exists" as NonEmptyStr,
+  reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over the V4.1 measurement serve; the measurement serve is admitted with a no-production-traffic contract (v41_capacity_measurement V41MeasurementServe), which is not yet an exclusion receipt" as NonEmptyStr,
+  interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
+  serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py digest inside the V4.1 production image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
+)
+
+// The runtime is the production image the Group A launch applies (v41_production_produced_image); this
+// probe does not read the running container's image back, so the subject is believed, not established.
+// THE LAUNCH AXES ARE THE PROFILE'S, DERIVED through gunbc.spark.serving_performance_subject
+// serving_subject_for_launch from the profile the Group A launch renders (v41_group_a_launch
+// v41_group_a_profile), the same constructor the GLM subject uses; the kv dtype is therefore the
+// fp8_ds_mla the launch requests rather than unread.
+fn v41_serving_load_live_subject() -> ServingPerformanceSubject? {
+  let shape = v41_measurement_launch_shape()
+  let image = v41_production_produced_image
+  match v41_group_a_profile(shape: shape) {
+   Absent => none
+   Present { value: launch_profile } => Present { value: serving_subject_for_launch(
+    checkpoint_revision: Present { value: deepseek_v41_flash_row.revision },
+    runtime: GunbcDeepseekV41EngramProduced {
+      artifact: runtime_artifact_identity(
+        pin: PinnedByDigest { reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr },
+        source: SourceRevisionEstablished { revision: image.observed.revision_head },
+        patch_set: [join(["worktree-diff-sha256:", image.observed.worktree_diff_sha256.hex as String], "") as NonEmptyStr],
+        provenance: join(["the V4.1 production image produced by fleet-converge run ", image.receipt_run as String, " on ", image.held_on as String], "") as NonEmptyStr,
+      ),
+      registry_reading: none,
+    },
+    runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
+    topology: FourSparkTp4,
+    profile: launch_profile,
+    collective_transport: none,
+  ) }
+  }
+}
+
+fn v41_serving_load_subject_standing() -> ServingPerformanceSubjectStanding? {
+  match v41_serving_load_live_subject() {
+    Absent => none
+    Present { value: subject } => Present { value: serving_subject_standing(
+      subject: subject,
+      believed: "the running Group A arm is believed to be the production image at the profile the launch derives; collective transport is unread; speculation is off (the launch renders none)" as NonEmptyStr,
+      would_settle: "read the head container's image Id and launch argv on this incarnation, and the NCCL transport announcement on every rank" as NonEmptyStr,
+    ) }
+  }
+}
+
+fn v41_serving_load_subject() -> ServingLoadSubject? {
+  match v41_serving_load_subject_standing() {
+   Absent => none
+   Present { value: standing } => Present { value: ServingLoadSubject {
+    host: v41_serving_load_head,
+    host_address: srv6_host_lan_endpoint.address,
+    group: FabricGroupA,
+    container: v41_group_a_container_name,
+    base_url: v41_serve_base_url(),
+    served_alias: v41_group_a_served_alias,
+    standing: standing,
+    admission: AdmissionCostUnestablished {
+      cause: "V4.1's per-request KV cost is unread: no cache-group roster is observed for the measurement serve, so cold_admission_blocks cannot establish it; the startup receipt's pool is the capacity measurement's KV-admission axis, not a per-request cost" as NonEmptyStr,
+    },
+    qualification_frontier: v41_serving_load_qualification_frontier,
+    principal: "group-A administrator" as NonEmptyStr,
+    receipt_heading: "v41 serving-load staircase" as NonEmptyStr,
+    receipt_path: v41_serving_load_receipt_path,
+  } }
+  }
+}
+
+// ── THE RANK PRESSURE READING (operator ruling 2026-10-01: every rank, the step takes the worst) ──
+//
+// Three readings per rank, each a refusal when unread: host PSI memory, the diskstats row of the
+// device holding the Engram row stores (found by findmnt on that directory, never named by guess),
+// and the rank container's memory.stat. THE CGROUP PATH IS A STATED BET on dockerd's default systemd
+// cgroup driver (extdeps.docker.cgroup: the container is system.slice/docker-<id>.scope); a daemon on
+// the cgroupfs driver makes the read refuse with the path it tried, never a misread.
+data v41_rank_docker_scope_parent: String = "/sys/fs/cgroup/system.slice"
+
+type V41RankPressure {
+  host: HostIdentity
+  refault_file: Nat
+  psi: PsiReading
+  nvme: DiskstatsReading
+}
+
+type V41RankPressureRead
+  = V41RankPressureObserved { pressure: V41RankPressure }
+  | V41RankPressureUnread { host: HostIdentity, cause: String }
+
+type V41StepPressure { ranks: List<V41RankPressureRead> }
+
+fn v41_rank_context(ctx: SparkMaterializeContext, host: HostIdentity) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: host,
+    trust: ctx.trust,
+    path: ctx.path,
+    admin_credential: ctx.admin_credential,
+    admin_credential_file: ctx.admin_credential_file,
+    executor: ctx.executor,
+  }
+}
+
+// One remote read, its stdout or the located refusal.
+type V41RemoteText
+  = V41RemoteTextRead { stdout: String }
+  | V41RemoteTextRefused { cause: String }
+
+fn v41_remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> V41RemoteText {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: c } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        V41RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", err], "") }
+      } else {
+        V41RemoteTextRead { stdout: out }
+      }
+  }
+}
+
+// findmnt prints the SOURCE as /dev/<name>; /proc/diskstats names the device without the prefix.
+fn v41_device_of_findmnt(stdout: String) -> NonEmptyStr? {
+  let source = trim(s: stdout)
+  let prefix = "/dev/"
+  let n = string_length(source)
+  let p = string_length(prefix)
+  if n > p && substring(s: source, start: 0, end: p) == prefix {
+    Present { value: substring(s: source, start: p, end: n) as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+fn v41_read_rank_pressure(ctx: SparkMaterializeContext) -> V41RankPressureRead {
+  let host = ctx.host
+  match v41_remote_text(ctx: ctx, what: "findmnt row-store device", argv: ["findmnt", "--noheadings", "--output", "SOURCE", "--target", v41_row_store_output_directory() as String]) {
+    V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+    V41RemoteTextRead { stdout: mnt } => match v41_device_of_findmnt(stdout: mnt) {
+      Absent => V41RankPressureUnread { host: host, cause: join(["findmnt named no /dev source for the row-store directory: ", mnt], "") }
+      Present { value: device } =>
+        match v41_remote_text(ctx: ctx, what: "docker container inspect", argv: argv_words(command: docker_container_inspect_command(name: v41_group_a_container_name))) {
+          V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+          V41RemoteTextRead { stdout: inspect } => match docker_container_inspect_identity_from_stdout(stdout: inspect) {
+            DockerContainerInspectIdentityUnreadable { cause: c } => V41RankPressureUnread { host: host, cause: c }
+            DockerContainerInspectIdentity { id: id, image: _ } => {
+              let stat_path = join([v41_rank_docker_scope_parent, "/docker-", id as String, ".scope/memory.stat"], "")
+              match v41_remote_text(ctx: ctx, what: join(["cat ", stat_path], ""), argv: ["cat", "--", stat_path]) {
+                V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+                V41RemoteTextRead { stdout: stat } => match parse_cgroup_memory_stat(body: stat) {
+                  CgroupMemoryStatIncomplete { missing: m } => V41RankPressureUnread { host: host, cause: join(["memory.stat is missing ", join(m, ", ")], "") }
+                  CgroupMemoryStatRead { stat: s } =>
+                    match v41_remote_text(ctx: ctx, what: "cat /proc/pressure/memory", argv: ["cat", "/proc/pressure/memory"]) {
+                      V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+                      V41RemoteTextRead { stdout: psi } =>
+                        match v41_remote_text(ctx: ctx, what: "cat /proc/diskstats", argv: ["cat", "/proc/diskstats"]) {
+                          V41RemoteTextRefused { cause: c } => V41RankPressureUnread { host: host, cause: c }
+                          V41RemoteTextRead { stdout: disk } =>
+                            V41RankPressureObserved { pressure: V41RankPressure {
+                              host: host,
+                              refault_file: s.workingset_refault_file,
+                              psi: parse_psi(body: psi),
+                              nvme: parse_diskstats(body: disk, device: device),
+                            } }
+                        }
+                    }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// The runner's host-reading bracket for V4.1: every Group A rank, read from the head's session.
+fn v41_read_step_pressure(ctx: SparkMaterializeContext) -> V41StepPressure {
+  V41StepPressure { ranks: map(fabric_group_hosts(g: FabricGroupA), h => v41_read_rank_pressure(ctx: v41_rank_context(ctx: ctx, host: h))) }
+}
+
+// ── THE WORST-RANK PROJECTION INTO THE STAIRCASE STEP READING ────────────────────────────────────
+//
+// A rank is a pair (its before and after reading). For each stop rule's field the step takes the
+// rank that rule would judge worst; a rank whose interval is unmeasurable is worst of all, so the
+// stop rule reports it as a missing reading rather than another rank's clean interval hiding it.
+type V41RankPair { before: V41RankPressure, after: V41RankPressure }
+
+type V41StepProjection
+  = V41StepProjected { reading: V41StaircaseStepReading }
+  | V41StepUnprojected { concurrency: Nat, causes: List<String> }
+  | V41StepConcurrencyUnbound { cause: String }
+
+fn v41_observed_ranks(p: V41StepPressure) -> List<V41RankPressure> {
+  flat_map(p.ranks, r => match r {
+    V41RankPressureObserved { pressure: x } => [x]
+    V41RankPressureUnread { host: _, cause: _ } => [] as List<V41RankPressure>
+  })
+}
+
+fn v41_unread_causes(p: V41StepPressure, phase: String) -> List<String> {
+  flat_map(p.ranks, r => match r {
+    V41RankPressureObserved { pressure: _ } => [] as List<String>
+    V41RankPressureUnread { host: h, cause: c } => [join([phase, " ", h as String, ": ", c], "")]
+  })
+}
+
+// Pairs by host; a host read on one side only is a cause, never a pair.
+fn v41_rank_pairs(before: V41StepPressure, after: V41StepPressure) -> List<V41RankPair> {
+  flat_map(v41_observed_ranks(p: before), b => flat_map(filter(v41_observed_ranks(p: after), a => a.host == b.host), a => [V41RankPair { before: b, after: a }]))
+}
+
+// Larger is worse; an unmeasurable interval ranks above every measured one.
+type V41Severity = SeverityUnmeasurable | SeverityMeasured { amount: Nat }
+
+fn v41_severity_above(a: V41Severity, b: V41Severity) -> Bool {
+  match a {
+    SeverityUnmeasurable => match b { SeverityUnmeasurable => false  SeverityMeasured { amount: _ } => true }
+    SeverityMeasured { amount: x } => match b { SeverityUnmeasurable => false  SeverityMeasured { amount: y } => x > y }
+  }
+}
+
+fn v41_worst(pairs: List<V41RankPair>, severity: fn(V41RankPair) -> V41Severity) -> V41RankPair? {
+  fold(pairs, init: none, f: (acc, p) => match acc {
+    Absent => Present { value: p }
+    Present { value: q } => if v41_severity_above(a: severity(p), b: severity(q)) { Present { value: p } } else { acc }
+  })
+}
+
+fn v41_refault_severity(p: V41RankPair) -> V41Severity {
+  if p.after.refault_file < p.before.refault_file { SeverityUnmeasurable } else { SeverityMeasured { amount: p.after.refault_file - p.before.refault_file } }
+}
+
+fn v41_psi_full(r: PsiReading) -> Nat? {
+  match r {
+    PsiUnparseable { body: _, cause: _ } => none
+    PsiRead { some_total: _, full_total: f } => match f {
+      Absent => none
+      Present { value: m } => Present { value: microsecond_count(m: m) }
+    }
+  }
+}
+
+fn v41_psi_severity(p: V41RankPair) -> V41Severity {
+  match v41_psi_full(r: p.before.psi) {
+    Absent => SeverityUnmeasurable
+    Present { value: b } => match v41_psi_full(r: p.after.psi) {
+      Absent => SeverityUnmeasurable
+      Present { value: a } => if a < b { SeverityUnmeasurable } else { SeverityMeasured { amount: a - b } }
+    }
+  }
+}
+
+fn v41_nvme_severity(p: V41RankPair) -> V41Severity {
+  match disk_read_interval(before: p.before.nvme, after: p.after.nvme) {
+    DiskReadUnmeasurable { cause: _ } => SeverityUnmeasurable
+    DiskReadMeasured { read_bytes: _, reads: _, mean_read_await: aw } => match aw {
+      Absent => SeverityMeasured { amount: 0 }
+      Present { value: m } => SeverityMeasured { amount: microsecond_count(m: m) }
+    }
+  }
+}
+
+fn v41_preemption_delta(before_body: String, after_body: String) -> Nat? {
+  match preemption_count(body: before_body) {
+    Absent => none
+    Present { value: b } => match preemption_count(body: after_body) {
+      Absent => none
+      Present { value: a } => if a < b { none } else { Present { value: a - b } }
+    }
+  }
+}
+
+// Every rank must be read on both sides; a missing rank is a cause and the step is not projected, so
+// run_staircase reports a missing reading at that concurrency instead of judging three ranks as four.
+fn v41_project_step(run_id: NonEmptyStr, concurrency: Nat, before: V41StepPressure, after: V41StepPressure, before_body: String, after_body: String, latency: ClientBenchLatency) -> V41StepProjection {
+  let pairs = v41_rank_pairs(before: before, after: after)
+  let causes = concat(v41_unread_causes(p: before, phase: "before"), v41_unread_causes(p: after, phase: "after"))
+  let expected = length(fabric_group_hosts(g: FabricGroupA))
+  if length(causes) != 0 || length(pairs) != expected {
+    V41StepUnprojected { concurrency: concurrency, causes: if length(causes) != 0 { causes } else { [join(["read ", to_string(length(pairs)), " of ", to_string(expected), " ranks on both sides"], "")] } }
+  } else {
+    match v41_worst(pairs: pairs, severity: v41_refault_severity) {
+      Absent => V41StepUnprojected { concurrency: concurrency, causes: ["no rank was read"] }
+      Present { value: rf } => match v41_worst(pairs: pairs, severity: v41_psi_severity) {
+        Absent => V41StepUnprojected { concurrency: concurrency, causes: ["no rank was read"] }
+        Present { value: ps } => match v41_worst(pairs: pairs, severity: v41_nvme_severity) {
+          Absent => V41StepUnprojected { concurrency: concurrency, causes: ["no rank was read"] }
+          Present { value: nv } => V41StepProjected { reading: V41StaircaseStepReading {
+            run_id: run_id,
+            concurrency: concurrency,
+            preemptions: v41_preemption_delta(before_body: before_body, after_body: after_body),
+            refault_file_before: rf.before.refault_file,
+            refault_file_after: rf.after.refault_file,
+            memory_pressure_before: ps.before.psi,
+            memory_pressure_after: ps.after.psi,
+            nvme_before: nv.before.nvme,
+            nvme_after: nv.after.nvme,
+            latency: latency,
+          } }
+        }
+      }
+    }
+  }
+}
+
+// The step's staircase level is the concurrency its own request carries; a request with none names
+// no level and refuses rather than being judged at a made-up one.
+fn v41_project_for_request(run_id: NonEmptyStr, req: VllmBenchServeRequest, before: V41StepPressure, after: V41StepPressure, before_body: String, after_body: String, latency: ClientBenchLatency) -> V41StepProjection {
+  match req.max_concurrency {
+    Absent => V41StepConcurrencyUnbound { cause: "the step's request carried no max_concurrency, so it names no staircase level and is judged at none" }
+    Present { value: c } => v41_project_step(
+      run_id: run_id, concurrency: c, before: before, after: after,
+      before_body: before_body, after_body: after_body, latency: latency,
+    )
+  }
+}
+
+fn v41_project_record(run_id: NonEmptyStr, r: ServingLoadStepRecord<V41StepPressure>) -> V41StepProjection {
+  v41_project_for_request(
+    run_id: run_id, req: r.request, before: r.host_before, after: r.host_after,
+    before_body: r.before_body, after_body: r.after_body,
+    latency: bench_serve_latency(e: r.bench, window: r.observation.window),
+  )
+}
+
+fn v41_projection_text(p: V41StepProjection) -> String {
+  match p {
+    V41StepProjected { reading: r } => join(["x", to_string(r.concurrency), ": step reading formed (worst rank per stop rule)"], "")
+    V41StepUnprojected { concurrency: c, causes: cs } => join(["x", to_string(c), ": NO step reading (run_staircase reports it missing): ", join(cs, "; ")], "")
+    V41StepConcurrencyUnbound { cause: why } => join(["a step with no staircase level: NO step reading: ", why], "")
+  }
+}
+
+fn v41_projected_readings(ps: List<V41StepProjection>) -> List<V41StaircaseStepReading> {
+  flat_map(ps, p => match p {
+    V41StepProjected { reading: r } => [r]
+    V41StepUnprojected { concurrency: _, causes: _ } => [] as List<V41StaircaseStepReading>
+    V41StepConcurrencyUnbound { cause: _ } => [] as List<V41StaircaseStepReading>
+  })
+}
+
+// ── THE WET ENTRY (fleet-converge mode spark_v41_serving_load) ──────────────────────────────────
+//
+// The session host is the dispatch's target and must be the head; any other host refuses, because
+// the bench and the scrape address 127.0.0.1 on the session host. Exit zero means every step was
+// observed and the staircase ran; its verdict (a capacity or a stop) is in the receipt, not the exit.
+fn v41_serving_load_session(run_id: NonEmptyStr, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
+  match v41_serving_load_subject() {
+   Absent => SparkBuildHostWork { receipt: "v41 serving-load refused: the V4.1 measurement shape's cold intent refused, so no launched profile exists to measure\n", converged: false }
+   Present { value: subject } =>
+  match serving_load_records(ctx: ctx, subject: subject, steps: v41_serving_load_steps(), host_read: v41_read_step_pressure) {
+    ServingLoadRunRefused { reason: r } => SparkBuildHostWork { receipt: join(["v41 serving-load refused: ", r, "\n"], ""), converged: false }
+    ServingLoadRunObserved { records: rs } => {
+      let projections = map(rs, r => v41_project_record(run_id: run_id, r: r))
+      let staircase = v41_run_staircase(policy: v41_capacity_policy, run_id: run_id, steps: v41_projected_readings(ps: projections))
+      let extra = join([
+        "run_id: ", run_id as String, "\n",
+        join(map(projections, p => join([v41_projection_text(p: p), "\n"], "")), ""),
+        "sla_sustainable: ", v41_capacity_wire(c: v41_sla_capacity(o: staircase)), "\n",
+        "ttft gate: ", v41_ttft_gate_frontier, "\n",
+      ], "")
+      SparkBuildHostWork { receipt: serving_load_receipt_body(subject: subject, records: rs, extra: extra), converged: true }
+    }
+  }
+  }
+}
+
+
+fn v41_serving_load_ci_wet() -> ProcessExit
+{
+  let now_word = probed_at_word(reading: clock_now_probed_at()) as String
+  let run_id = join(["v41-serving-load-", now_word], "") as NonEmptyStr
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: the serving-load run opens its session on the V4.1 head, and it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: session_host } =>
+      if (session_host as String) != (v41_serving_load_head as String) {
+        exit_failure(reason: join(["SPARK_CONVERGE_TARGET ", session_host as String, " is not the V4.1 head ", v41_serving_load_head as String, "; the bench and the scrape address the head's loopback"], ""))
+      } else {
+        match with_spark_build_host(
+          host: v41_serving_load_head,
+          attempt_raw: v41_serving_load_attempt_raw,
+          identity_file_name: "gunbc-v41-serving-load-admin-password" as NonEmptyStr,
+          use: fn(target, context, ctx) { v41_serving_load_session(run_id: run_id, ctx: ctx) },
+        ) {
+          SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+          SparkBuildHostRan { work: work, endpoint: _, executor: _, trust_receipt: _ } => {
+            let w = Filesystem.Write(path: v41_serving_load_receipt_path, content: work.receipt)
+            if !w.success {
+              exit_failure(reason: join(["v41 serving-load receipt write failed: ", w.error, "\n", work.receipt], ""))
+            } else if work.converged {
+              ExitSuccess
+            } else {
+              exit_failure(reason: work.receipt)
+            }
+          }
+        }
+      }
+  }
+}

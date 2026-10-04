@@ -8,12 +8,12 @@ import v2.extdeps.languages.dag {
   dag_lex,
   parse_subtree_find_production_captured,
   ParseSubtreeAbsent,
-  ParseSubtreeFound
+  ParseSubtreeFound,
+  dag_surface_edge_is,
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Edge, Named, Node, Positional, well_formed, symbol_lexeme }
+import v2.std.node { Edge, Authored, Node, Positional, well_formed, symbol_lexeme, StructuralLabel }
 import v2.std.optional { Absent, Optional, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
@@ -62,10 +62,7 @@ fn d1_tree_carries_where_clause(root: Node) -> Bool {
 }
 
 fn d1_edge_names_where_clause(e: Edge) -> Bool {
-  match e.label {
-    Named { name: n } => n == ^dag_surface_where_refinement_clause
-    _ => false
-  }
+  dag_surface_edge_is(e: e, edge: ^dag_surface_where_refinement_clause)
 }
 
 fn d1_find_where_host_conj(root: Node) -> Optional<Node> {
@@ -85,7 +82,8 @@ fn d1_find_where_host_conj(root: Node) -> Optional<Node> {
 
 fn d1_edge_label_text(e: Edge) -> String {
   match e.label {
-    Named { name: n } => symbol_lexeme(sym: n)
+    StructuralLabel { label: _ } => "structural"
+    Authored { name: n } => symbol_lexeme(sym: n)
     Positional => "positional"
   }
 }
@@ -122,7 +120,7 @@ fn d1_locus_from_root(root: Node) -> String {
 
 data d1_where_reproducer: String = "module m\ntype A = NonEmptyStr where brand(\"A\")\nfn f() -> Int { 1 }\n"
 data d1_where_control: String = "module m\ntype A = NonEmptyStr\nfn f() -> Int { 1 }\n"
-data d1_where_bare: String = "module m\ntype A = NonEmptyStr where non_empty\nfn f() -> Int { 1 }\n"
+data d1_where_bare: String = "module m\ntype A = NonEmptyStr where string_non_empty\nfn f() -> Int { 1 }\n"
 data d1_where_empty: String = "module m\ntype A = NonEmptyStr where\nfn f() -> Int { 1 }\n"
 
 data d1_cache_identity_where_source: String = "module probe.cache_identity\n\ntype CacheInterfaceId = NonEmptyStr where brand(\"CacheInterfaceId\")\ntype ArtifactKindId = NonEmptyStr where brand(\"ArtifactKindId\")\n\nfn f() -> Int {\n  1\n}\n"

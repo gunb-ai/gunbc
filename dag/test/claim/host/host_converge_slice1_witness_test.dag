@@ -4,8 +4,8 @@ import std.types { Bool, NonEmptyStr, List, String }
 import gunbc.host_effect { LocalShell }
 import gunbc.runner_host_deploy { runner_index_seq }
 import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
-import gunbc.host_converge { Drifted, PerSlotMemoryCap, VerdictConverged }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_converge { ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
@@ -47,7 +47,7 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1UnitTasksConverged,
   HostConvergeSlice1TasksConverged,
 }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
@@ -249,11 +249,28 @@ test fn witness_tasks_verdict_desired_count_converges_and_offbyone_drifts() -> B
   }
 }
 
+// THE VERDICT IS READ BY A MATCH OVER ITS OWN TYPE, NOT COMPARED TO A BARE `Absent`. `Absent` names
+// two constructors here -- the Optional arm this claim matches on one line up, and
+// gunbc.host_converge ConvergeVerdict's arm, which this module never imported -- and an `==` operand
+// carries no expected type to choose between them. Executed: the subject returns the verdict arm
+// for "" and the comparison was false, so the claim could not go green whatever the subject did.
+// A match on a ConvergeVerdict scrutinee is typed by the scrutinee, enumerates the other two arms,
+// and the "512" conjunct is the discriminating red: a verdict function that answered Absent for
+// everything satisfies the first two conjuncts and fails this one.
+fn tasks_verdict_is_absent(v: ConvergeVerdict) -> Bool {
+  match v {
+    VerdictConverged => false
+    Drifted => false
+    VerdictAbsent => true
+  }
+}
+
 test fn witness_tasks_parse_empty_or_junk_is_absent_verdict() -> Bool {
   match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
     Present { value: knob } =>
-      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: ""), knob: knob) == Absent
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "not-a-count"), knob: knob) == Absent
+      tasks_verdict_is_absent(v: host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: ""), knob: knob))
+        && tasks_verdict_is_absent(v: host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "not-a-count"), knob: knob))
+        && !tasks_verdict_is_absent(v: host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "512"), knob: knob))
     Absent => false
   }
 }
@@ -312,3 +329,4 @@ test fn witness_tasks_guard_boundary_equality_refuses() -> Bool {
     && host_converge_slice1_tasks_headroom_refuses(current: 16385, target: 16384)
     && !host_converge_slice1_tasks_headroom_refuses(current: 16383, target: 16384)
 }
+

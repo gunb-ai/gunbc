@@ -23,13 +23,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The two host-control rows pin that the SAME operators on a native i64 operand keep the host
 // token and the bare digit: the decision is keyed on the operand's declaration, not the spelling.
 
-// A kernel integer literal at a v2.std.nat.Nat ARGUMENT boundary elaborates to its Zero/Succ
+// A kernel integer literal at a test.fixture.structural_peano_nat.StructuralNat ARGUMENT boundary elaborates to its Zero/Succ
 // image (std.literal_elaboration PeanoUnfold, the row in gunbc.structural_realization_bindings).
 test fn w_literal_at_peano_argument_boundary_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_arg_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat, nat_add }\nfn probe(n: Nat) -> Nat { nat_add(a: n, b: 2) }\n",
+    "module test.claim.peano_arg_probe\nimport std.types { Bool }\nimport test.fixture.structural_peano_nat { StructuralNat, structural_nat_add }\nfn probe(n: StructuralNat) -> StructuralNat { structural_nat_add(a: n, b: 2) }\n",
     "src/test_claim_peano_arg_probe.rs",
-    ["Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
+    ["StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralZero),\n})"],
     [", 2)"]
   )
 }
@@ -37,9 +37,9 @@ test fn w_literal_at_peano_argument_boundary_emits_its_image() -> Bool {
 // The same at a declared RETURN boundary.
 test fn w_literal_at_peano_return_boundary_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_return_probe\nimport v2.std.nat { Nat }\nfn probe() -> Nat { 2 }\n",
+    "module test.claim.peano_return_probe\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe() -> StructuralNat { 2 }\n",
     "src/test_claim_peano_return_probe.rs",
-    ["Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
+    ["StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralZero),\n})"],
     ["{\n    2\n}"]
   )
 }
@@ -48,9 +48,9 @@ test fn w_literal_at_peano_return_boundary_emits_its_image() -> Bool {
 // and equality on the Peano operand is structural (the emitted enum derives PartialEq).
 test fn w_literal_operand_of_peano_equality_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_literal_eq_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat) -> Bool { a == 3 }\n",
+    "module test.claim.peano_literal_eq_probe\nimport std.types { Bool }\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe(a: StructuralNat) -> Bool { a == 3 }\n",
     "src/test_claim_peano_literal_eq_probe.rs",
-    ["== Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
+    ["== Rc::new(StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralSucc {\n    prev: Rc::new(StructuralNat::StructuralZero),\n})"],
     ["== 3)"]
   )
 }
@@ -58,9 +58,9 @@ test fn w_literal_operand_of_peano_equality_emits_its_image() -> Bool {
 // Zero is the image of 0: the nullary constructor, not a digit.
 test fn w_zero_literal_emits_the_nullary_constructor() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_zero_probe\nimport v2.std.nat { Nat }\nfn probe() -> Nat { 0 }\n",
+    "module test.claim.peano_zero_probe\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe() -> StructuralNat { 0 }\n",
     "src/test_claim_peano_zero_probe.rs",
-    ["Rc::new(Nat::Zero)"],
+    ["Rc::new(StructuralNat::StructuralZero)"],
     ["{\n    0\n}"]
   )
 }
@@ -69,9 +69,9 @@ test fn w_zero_literal_emits_the_nullary_constructor() -> Bool {
 // Ordering (std.operator_realization StructuralComparison), never the host `<`.
 test fn w_ordering_on_peano_operands_calls_the_declared_comparison() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_lt_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Bool { a < b }\n",
+    "module test.claim.peano_lt_probe\nimport std.types { Bool }\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe(a: StructuralNat, b: StructuralNat) -> Bool { a < b }\n",
     "src/test_claim_peano_lt_probe.rs",
-    ["(crate::v2_std_nat::nat_compare(a.clone(), b.clone()) == crate::std_algebra::Ordering::Less)"],
+    ["(crate::test_fixture_structural_peano_nat::structural_nat_compare(a.clone(), b.clone()) == crate::std_algebra::Ordering::Less)"],
     [" < "]
   )
 }
@@ -79,9 +79,9 @@ test fn w_ordering_on_peano_operands_calls_the_declared_comparison() -> Bool {
 // A non-strict ordering negates the opposite variant: `<=` is `!= Greater`.
 test fn w_non_strict_ordering_negates_the_opposite_variant() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_le_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Bool { a <= b }\n",
+    "module test.claim.peano_le_probe\nimport std.types { Bool }\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe(a: StructuralNat, b: StructuralNat) -> Bool { a <= b }\n",
     "src/test_claim_peano_le_probe.rs",
-    ["(crate::v2_std_nat::nat_compare(a.clone(), b.clone()) != crate::std_algebra::Ordering::Greater)"],
+    ["(crate::test_fixture_structural_peano_nat::structural_nat_compare(a.clone(), b.clone()) != crate::std_algebra::Ordering::Greater)"],
     [" <= "]
   )
 }
@@ -91,29 +91,19 @@ test fn w_non_strict_ordering_negates_the_opposite_variant() -> Bool {
 // refuses later under E0369.
 test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.peano_div_probe\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Nat { a / b }\n",
+    "module test.claim.peano_div_probe\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn probe(a: StructuralNat, b: StructuralNat) -> StructuralNat { a / b }\n",
     "src/test_claim_peano_div_probe.rs",
-    ["compile_error!(\"operator realization: host operator `/` on structural operand v2.std.nat.Nat"],
+    ["compile_error!(\"operator realization: host operator `/` on structural operand test.fixture.structural_peano_nat.StructuralNat"],
     [" / "]
   )
 }
 
-// THE BOOL ROW ON THE EMITTED PATH, re-pinned under the uniform kernel precedence
-// (direct_import_export_precedence_note, kernel installation independent of import cardinality):
-// a bare direct import of the kernel spelling `Bool` cannot displace kernel identity, so a kernel
-// true at this boundary emits the host keyword. The pre-precedence expectation (structural
-// constructor) held only by ancestry occupancy -- a single-import module skipped the kernel
-// overlay, so v2.std.logic.Bool won by leak, not by rule. The structural Bool image becomes
-// reachable again when namespace Rule-1 dissolves the union leak; until then this row is the
-// discriminating red that fires if leak-dependent resolution is reintroduced.
-test fn w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword() -> Bool {
-  compile_dag_rust_emit_check(
-    "module test.claim.structural_bool_probe\nimport v2.std.logic { Bool }\nfn probe() -> Bool { true }\nfn probe_false(b: Bool) -> Bool { false }\n",
-    "src/test_claim_structural_bool_probe.rs",
-    ["{\n    true\n}", "{\n    false\n}"],
-    ["Bool::True", "Bool::False"]
-  )
-}
+// w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword is RETIRED as dissolution
+// (DESIGN 4b(4)): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak, and the
+// Bool de-fork deleted that declaration, so the leak it guarded has no declaration to leak from and
+// its red can no longer be written. It is not re-subjected to a user-declared `Bool = True | False`
+// fixture: on this route that is a different class, the local_bool_coproduct_probe specimen, which
+// is tracked on its own. The host control below stays enrolled.
 
 // HOST CONTROL for the Bool row: the prelude std.types Bool realizes natively and keeps the host
 // keyword -- a rule keyed on the spelling `Bool` cannot pass this row and the one above together.

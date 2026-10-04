@@ -1,11 +1,10 @@
 module gunbc.test.claim.body_lowering_rejection_propagation_test
 
-import v2.std.logic { Bool }
+import std.types { List }
 import v2.std.text { String }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, None }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
 import v2.compiler.body_lowering_fold {
   BodyLowered,
   BodyLowering,
@@ -42,7 +41,7 @@ fn emitted_shell(id: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^grammar_production_identity_node_projection },
+        label: Authored { name: ^grammar_production_identity_node_projection },
         target: atom_node(id: id)
       }
     ]

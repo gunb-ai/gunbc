@@ -1,5 +1,6 @@
 module v2.std.cardinality
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import std.termination {
   DescentEvidence,
@@ -8,9 +9,6 @@ import std.termination {
   DescentUnknown,
   descent_evidence_lattice_meet,
   evidence_rank
-}
-import v2.std.collection {
-  List
 }
 import v2.std.optional {
   Absent,
@@ -23,7 +21,7 @@ import v2.std.diagnostic {
   node_locus,
   Unavailable
 }
-import v2.std.nat { Nat, Succ, Zero }
+import std.nat { Nat, Succ, Zero }
 import v2.std.node {
   Arrow,
   Atom,
@@ -38,7 +36,7 @@ import v2.std.node {
   Edge,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Symbol,
@@ -48,7 +46,9 @@ import v2.std.node {
   fold_node,
   loop_behavior_edges_conform,
   loop_bound_measure_target,
-  name_occurrences
+  name_occurrences,
+  LoopBoundEdge,
+  core_occurrences,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -173,7 +173,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
-      let bound_count = name_occurrences(name: ^loop_bound_edge, children: n.children)
+      let bound_count = core_occurrences(marker: LoopBoundEdge, children: n.children)
       if bound_count == 0 {
         Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
       } else if bound_count > 1 {
@@ -217,13 +217,19 @@ fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<Termina
   }
 }
 
+// Every connective is Bounded. A type node is never evaluated, so the only descent it owes is the
+// structural fold over its own finite subtree (structural_node_size_termination_proof). Cardinality
+// is the type connective for how many VALUES inhabit a position (T?, collections); that is a fact
+// about data, not a repetition of evaluation, so it carries no termination obligation. Repetition
+// enters a program only through the Loop behavior (recursion is sugar over Loop, DESIGN §4), and
+// loop_multiplicity remains the one subject that can answer RequiresTerminationProof.
 fn connective_multiplicity(c: Connective) -> Multiplicity {
   match c {
     Atom { identity: _ } => Bounded
     Conj => Bounded
     Disj => Bounded
     Arrow => Bounded
-    Cardinality => RequiresTerminationProof
+    Cardinality => Bounded
     Instantiation => Bounded
   }
 }

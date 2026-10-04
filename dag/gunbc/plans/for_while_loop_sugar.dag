@@ -53,26 +53,28 @@ fn section_2_s0() -> List<MarkdownBlock> {
     p(text: "Be precise about the starting point, because the earlier cuts were not:"),
     ul(items: [
       li(text: "**The shape.** `v2.std.node` `loop_behavior_edges_conform`: at least one positional body child, exactly one `^loop_bound_edge`, at most one `^loop_carrier_edge`. There is no domain, no member binder, no member identity and no result-assembly rule."),
-      li(text: "**The carrier edge means a binder.** `v2.std.node` `loop_carrier_binder_target` reads it, `v2.compiler.fold_lowering` `fold_call_seam_loop` puts the accumulator's binder atom there, and `v2.lens.complexity_accumulator_copy` consumes it as a symbol. It never holds an initial value."),
+      li(text: "**The carrier edge means a binder.** `v2.std.node` `loop_carrier_binder_target` reads it, `v2.compiler.fold_lowering` `fold_recurrence_encoding` puts the accumulator's binder atom there, and `v2.lens.complexity_accumulator_copy` consumes it as a symbol. It never holds an initial value."),
       li(text: "**The only source form is unary.** The grammar is `loop <expr>` (`v2.extdeps.languages.dag` `dag_grammar_loop_expr_expr`); `v2.std.compilers.body_lowering` `lower_loop(value, bound)` puts the expression in the one positional slot and the bound is hard-coded to `dag_loop_measure_node()`. Its Rust realization is `loop { break e; }`: one evaluation, one result. There is no `loop N e` form and no budget."),
       li(text: "**No interpreter executes a `Loop`.** `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop` both reject."),
-      li(text: "**The fold seam is an analysis seam, not an executable fold.** `fold_call_seam_loop` records the step body, the fold-iteration bound and the accumulator binder. It carries neither the list nor `init`."),
+      li(text: "**The fold call lowers to the full fold encoding (S3).** `v2.compiler.fold_lowering` `fold_recurrence_encoding` builds the §2.3 encoding from the call's operands, and `v2.compiler.body_lowering_fold` `body_lower_fold_encoding` fills it from their lowered forms. No interpreter executes it yet (S0's interpreter half)."),
     ]),
     h3(text: "2.2 The one extension: a domain edge"),
     p(text: "Pointwise iteration needs something to iterate. No existing structure instantiates a body once per member: `Cardinality` and `Instantiation` are *type* connectives, not computations. So the choice is between a seventh behavior and one more named edge on `Loop`. A seventh behavior would break the closed vocabulary of DESIGN §4, so the answer is the edge:"),
     ul(items: [
       li(text: "**`^loop_domain_edge`** (new, optional, at most one): its target is the value being iterated. Its presence is what makes a `Loop` iterate members rather than evaluate once."),
+      li(text: "**`^loop_realized_declaration_edge`** (added with S3, optional, at most one): its target is the AUTHORED callee occurrence of a desugared recurrence, such as the `fold` in `fold(xs, init, step)`. Resolve must bind it to the declaration whose recurrence the `Loop` realizes, or refuse at the head (`v2.compiler.resolve` `resolve_realized_declaration`). For the collection `fold`, that is the operation `std.algebra` `collection_fold_shape`, which binds only when nothing in the lookup chain binds the spelling. For `fold_list`, it is the declaration the chain must bind exactly. **Why it exists:** desugaring runs before resolve and is keyed on the callee's spelling. Without this edge, a user's own `fold` would be silently rewritten as the collection operation, and the authored head would be dropped from the tree. It is named for its role, not for fold. `for`, `while` and unary `loop` never carry it, because the language fixes their meaning and they name no declaration."),
     ]),
-    p(text: "Nothing else is added, and no existing edge changes meaning:"),
+    p(text: "Beyond the domain edge, the only addition is the realized-declaration edge. No existing edge changes meaning:"),
     table2(
       header: r2("fact", "where it lives"),
       rows: [
         r2("the domain", "`^loop_domain_edge` → the domain value"),
-        r2("the member binder", "the positional body child is a member template, a function node whose parameter binds the member (the same lambda shape the fold seam already carries as its step)"),
+        r2("the member binder", "the positional body child is a member template, a function node whose parameter binds the member (for a fold, the step itself, as a function value)"),
         r2("member identity", "the member's ordinal in the domain's canonical enumeration. In S1 the only admitted domain is `List<T>`, whose ordinal is its index (§3)"),
         r2("loop-carried state's binder", "`^loop_carrier_edge`, unchanged: a binder, never a value"),
         r2("loop-carried state's initial value", "an enclosing `Bind` that binds the carrier's binder to the initial value; the `Loop` is that `Bind`'s body"),
         r2("the termination measure", "`^loop_bound_edge`, unchanged"),
+        r2("the declaration a desugared recurrence realizes", "`^loop_realized_declaration_edge` → the authored callee occurrence, bound by resolve"),
         r2("the per-loop termination proof", "derived from the node, never stored on it (§5.2)"),
         r2("result assembly", "a rule fixed by which edges are present (next table), not an edge"),
       ]
@@ -83,12 +85,12 @@ fn section_2_s0() -> List<MarkdownBlock> {
       rows: [
         r4("existing unary `loop e`", "bound; no domain; no carrier", "unchanged", "the one value of `e`, as today"),
         r4("`for x in xs { e }`", "domain; bound; no carrier", "`Loop { domain: xs, bound: fold-iteration measure, body: x => e }`", "the list of member results in domain order"),
-        r4("`fold(xs, init, step)`", "domain; bound; carrier", "`Bind { acc := init, body: Loop { domain: xs, carrier: acc, bound, body: (acc, x) => step } }`", "the final carrier value"),
+        r4("`fold(xs, init, step)`", "domain; bound; carrier; realized declaration", "`Bind { acc := init, body: Loop { domain: xs, carrier: acc, bound, realized: fold, body: (acc, x) => step } }`", "the final carrier value"),
         r4("stateful `while`", "bound; carrier; no domain", "`Bind { s := init, body: Loop { carrier: s, bound: measure, body: s => WhileStep } }` (§5)", "the value carried by the `WhileComplete` arm"),
       ]
     ),
-    p(text: "S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning."),
-    p(text: "**The fold seam migrates later, at its root.** Today's seam is the fold encoding with its domain and initial `Bind` missing. Bringing it to the full encoding is a replacement migration (DESIGN §3): slice S3 moves `fold_call_seam_loop` to the full encoding in one change, together with its consumers. The carrier edge keeps its binder meaning, so `v2.lens.complexity_accumulator_copy` is unaffected. Until S3 lands, the seam stays what it is: an analysis seam whose missing edges are this row's stated gap, not a second meaning."),
+    p(text: "S0 is the substrate work those encodings need, done once in the one `Loop` path: admit the domain edge in `loop_behavior_edges_conform` and in every consumer of the loop's edges (the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`), and give the `Loop` interpreter step the three executing rules above in place of its rejection. S0 changes no surface syntax, and the unary `loop` keeps its meaning."),
+    p(text: "**The fold seam migrated at its root (S3).** The old seam was the fold encoding with its domain and initial `Bind` missing. It was replaced in one change by `fold_recurrence_encoding`, with its consumers and no second encoding left: body lowering, the accumulator-copy lens, and resolve's check of the realized declaration. The carrier edge kept its binder meaning. `v2.lens.complexity_accumulator_copy` reads the carrier through `fold_recurrence_loop`, and it analyzes the domain under the enclosing iteration state, because the domain is evaluated once."),
   ]
 }
 
@@ -206,13 +208,13 @@ fn section_9_where() -> List<MarkdownBlock> {
     table2(
       header: r2("piece", "where"),
       rows: [
-        r2("the domain edge, and every consumer of loop edges (S0)", "`v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `edge_contributes_to_cost_fold`"),
+        r2("the domain edge, and every consumer of loop edges (S0)", "`v2.std.node` `loop_behavior_edges_conform` and the loop-edge helpers beside it, the hash canonicalization `canonicalize_loop_labeled`, `loop_edge_contributes_to_iteration_fold`, `cost_edge_role`"),
         r2("executing a `Loop` (S0)", "the `Loop` interpreter step: `v2.extdeps.runtimes.v2_evaluator` `v2_eval_step_loop` and `v2.program` `program_step_loop`, both of which reject today; and the Rust emission of the three rules"),
         r2("keywords `for`, `in`, `while`, `decreases`", "`v2.extdeps.languages.dag`, beside `dag_keyword_lex_rule(^dag_token_kw_loop, ...)`. Grep first: a keyword removes an identifier from every module"),
         r2("one production per form", "`v2.compiler.body_producer_forward`, one `BodyProducerForwardRow` per surface identity (see `body_producer_forward_row_loop_expr`). If its cutover from `body_lowering_fold` has not landed, coordinate with its owner rather than adding arms to the table being deleted"),
         r2("`for` lowering (S1)", "the domain encoding. Not `list_map`, not `fold_call_lowering`"),
         r2("`while` lowering and the proof producer (S2)", "`lower_loop` generalized in `v2.std.compilers.body_lowering`, and the derivation in `v2.std.cardinality` of §5.2"),
-        r2("fold seam migration (S3)", "`v2.compiler.fold_lowering` `fold_call_seam_loop`, with its consumers in the same change"),
+        r2("fold seam migration (S3)", "`v2.compiler.fold_lowering` `fold_recurrence_encoding`, with its consumers in the same change"),
         r2("the two refusals", "typed, located diagnostics where the production is recognized, each naming the alternatives in §6"),
       ]
     ),
@@ -249,7 +251,7 @@ fn section_11_slices() -> List<MarkdownBlock> {
       li(text: "**S0 — the encodings.** The domain edge, the three executing rules in the one `Loop` interpreter, and every loop-edge consumer. Claims: each of the four encodings in §2.3 is admitted by `loop_behavior_edges_conform` and two domain edges are refused; the node hash distinguishes a loop with a domain edge from one without; built directly as nodes (no surface syntax yet), a domain loop yields its member results in index order, a domain-and-carrier loop yields the fold of a non-associative step (subtraction), and a carrier loop with a `WhileStep` body yields its completing value; the unary `loop e` still yields `e`. Mutation controls: evaluating members in reverse fails the order claim, and folding right-to-left fails the fold claim."),
       li(text: "**S1 — `for` over `List<T>`.** Claims: the lowered node has a domain edge and **no** carrier edge, and a mutation that inserts one fails the claim; its values equal a hand-built domain loop's; results and diagnostics are identical under reversed and shuffled member evaluation; the first error is the lowest index; an effectful body and a non-`List` domain are each refused with their own diagnostic."),
       li(text: "**S2 — stateful `while`.** Claims: a `Nat` count-down, an `Int` count-down guarded by `m > 0`, and a halving loop guarded by `n > 1` are admitted, each with a proof from the §5.2 producer; `s + 1`, an unchanged `s`, an `Int` decrement with no guard floor, and a descent on a field other than the measure are each refused with `^cardinality_descent_not_proven`; `loop_multiplicity` and `inferred_facts_descent` return the same proof for the same loop. The mutation control has a real producer to mutate: making the producer answer `Strict` for an unrecognized update must turn the refusal claims red. `while (xs)` and `while (true)` are refused with the alternatives named."),
-      li(text: "**S3 — fold seam migration.** `fold_call_seam_loop` emits the full fold encoding in one change with its consumers; `v2.lens.complexity_accumulator_copy` is unchanged and its claims stay green."),
+      li(text: "**S3 — fold seam migration.** `fold_recurrence_encoding` emits the full fold encoding in one change with its consumers, plus the realized-declaration edge that resolve checks. The claims in `v2.test.claim.fold_encoding` are: every operand at its authored occurrence; each operand's drop turns conservation red; the head binds `std.algebra` `collection_fold_shape`; a user `fold` refuses; `fold_x` never desugars. The claims of `v2.lens.complexity_accumulator_copy` stay green."),
       li(text: "**S4 — `EffectPlanStep.While` conformance** (§8)."),
     ]),
     p(text: "**Out of scope, each gated on a named capability:** law-bearing `reduce` (a carried associativity law covering the full observation contract), `scan` (a consumer), ranges and other domains (a canonical enumeration), effects in `for` (modeled ordering or commutativity evidence), budgeted repetition (S0 and S2, then its own design, §6.2), parallel emission (S1, then its own serial-versus-parallel equality claims), and the service lifecycle (its own design, §6.3)."),

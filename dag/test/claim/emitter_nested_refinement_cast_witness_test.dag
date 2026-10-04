@@ -1,7 +1,7 @@
 module test.claim.emitter_nested_refinement_cast_witness_test
 
 // PERMANENT REGRESSION EVIDENCE FOR REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS
-// (gunbc#10266). `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr
+// (gunbc#10266). `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr
 // where brand("PathSegment")` are three .dag types over ONE host carrier -- all three emit as the
 // target's String -- so a cast between any two of them changes which accepted .dag type the value
 // inhabits and asks the target for NO operation at all. v1.compiler.emit

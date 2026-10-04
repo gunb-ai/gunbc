@@ -10,7 +10,7 @@ import extdeps.github.actions {
 }
 import gunbc.action_use_admission { checkout_action }
 import gunbc.heal_workflow { job_permissions_carry_write }
-import gunbc.heal_publisher_workflow { checkout_step_names_another_subject }
+import gunbc.heal_publisher_workflow { checkout_step_names_another_subject, heal_publisher_only_when_repair_owed, heal_publisher_candidate_has_entries_condition }
 
 // ── WHAT THIS MODULE DELIBERATELY DOES NOT CLAIM ────────────────────────────────────────────
 
@@ -169,4 +169,32 @@ test fn witness_a_checkout_naming_a_ref_is_another_subject() -> Bool {
     && !checkout_step_names_another_subject(step: checkout_with(rows: [
       kv(key: "persist-credentials", value: yaml_bool(b: false))
     ]))
+}
+
+// THE BUILD GATE, OVER SUPPLIED STEPS. An unconditional step gains exactly the consumers' condition,
+// and a step that already carries one keeps it AND gains the gate -- the red is an overwrite, which
+// would silently drop a guard some shared step constructor later adds.
+fn a_bare_run_step(cond: String?) -> Step {
+  RunStep {
+    name: Present { value: "build" },
+    id: none,
+    run: "cargo build",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: cond,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+test fn witness_the_publisher_build_runs_only_when_a_repair_is_owed() -> Bool {
+  let owed = heal_publisher_candidate_has_entries_condition()
+  step_if_condition(s: heal_publisher_only_when_repair_owed(step: a_bare_run_step(cond: none))) == owed
+}
+
+test fn witness_the_build_gate_composes_rather_than_overwrites() -> Bool {
+  let owed = heal_publisher_candidate_has_entries_condition()
+  let gated = step_if_condition(s: heal_publisher_only_when_repair_owed(step: a_bare_run_step(cond: Present { value: "always()" })))
+  gated == join(["(always()) && (", owed, ")"], "") && gated != owed
 }

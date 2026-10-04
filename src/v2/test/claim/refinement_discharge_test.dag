@@ -1,14 +1,15 @@
 module v2.test.claim.refinement_discharge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree, RefinementObligation }
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Conj, Edge, Named, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
+import v2.std.node { ComputationNode, Conj, Edge, Authored, Node, Positional, Symbol, Transform, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -36,9 +37,9 @@ fn rdt_application(body: Node) -> Node {
         target: dag_arrow_with_body_node(
           domain: node_synthetic(
             kind: TypeNode { connective: Conj },
-            children: [Edge { label: Named { name: ^rdt_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
+            children: [binder_edge(name: ^rdt_param_x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))]
           ),
-          return_type_binding: ^dag_binding_type_bool,
+          return_type_binding: ^bool_node_symbol,
           body: body
         )
       },
@@ -58,7 +59,7 @@ fn rdt_false() -> Node {
 // infer's own output over the application, with ONE supplied obligation naming it.
 fn rdt_obligated(body: Node) -> Optional<ObligatedInferredTree> {
   let app = rdt_application(body: body)
-  match infer(tree: app) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       optional_present(value: ObligatedInferredTree {
@@ -124,7 +125,7 @@ fn rdt_unevaluable_application(body: Node) -> Node {
         target: dag_arrow_with_body_node(
           domain: node_synthetic(
             kind: TypeNode { connective: Conj },
-            children: [Edge { label: Named { name: ^rdt_param_x }, target: dag_type_atom_node(identity: ^dag_binding_type_int) }]
+            children: [binder_edge(name: ^rdt_param_x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))]
           ),
           return_type_binding: ^rdt_undenoted_return,
           body: body
@@ -137,7 +138,7 @@ fn rdt_unevaluable_application(body: Node) -> Node {
 
 fn rdt_discharged_unevaluable(body: Node) -> Optional<Outcome<InferredTree>> {
   let app = rdt_unevaluable_application(body: body)
-  match infer(tree: app) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: app)) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: t, diagnostics: _ } =>
       optional_present(value: discharge_refinement_obligations(t: ObligatedInferredTree {
@@ -159,7 +160,7 @@ test fn rdt_an_unevaluable_application_refuses_undischargeable_whatever_its_body
 
 // (2) ZERO OBLIGATIONS: the identity, and the cost path every module takes today.
 test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
-  match infer(tree: rdt_application(body: rdt_true())) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: rdt_application(body: rdt_true()))) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       match discharge_refinement_obligations(t: t) {

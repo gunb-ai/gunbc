@@ -1,6 +1,10 @@
 module gunbc.machine_intake_mtcollins1_boot_artifact
 
 import std.types { NonEmptyStr, String }
+import gunbc.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_posix_accounts { fleet_automation_user }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
 
 // WHICH ARTIFACT MT. COLLINS BOOTS, AS ONE AUTHORITY, because it was previously two and nothing
 // joined them. The fetch module authored a published path ending
@@ -36,3 +40,19 @@ data mtcollins1_boot_export_dir: NonEmptyStr = "/srv/bmc"
 // condition this module was created to end.
 data mtcollins1_diskless_image_name: NonEmptyStr = "ubuntu-24.04.3-live-server-arm64.iso"
 
+
+// THE HOST THAT SERVES mtcollins1_boot_export_dir, AS A FLEET-SSH TARGET: srv2, reached as the fleet's
+// AUTOMATION principal (gunbc.fleet_posix_accounts fleet_automation_user, gunbc-fleet, uid 1001 on
+// srv2), the account that OWNS the export and the one gunbc.machine_intake_boot_image_export_ownership
+// admits as its writer. It was the bootstrap principal (ubuntu), and the first fleet-SSH census publish
+// (fleet-converge run 36613515243) passed both its gates and then could not open its staging file in
+// /srv/bmc: ubuntu may read the export but not write it. Every leg that reads or writes the export from
+// another runner -- the medium readback, the member readback, the census publish -- names this one
+// target. The build is hermetic in its owner and mode (the key determines the bytes), so which account
+// runs it no longer reaches the image; this is a WRITER'S identity, chosen by the export's owner.
+fn mtcollins1_boot_export_host_target() -> SshTarget {
+  SshTarget {
+    endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String) as NonEmptyStr,
+    principal: fleet_automation_user.name,
+  }
+}

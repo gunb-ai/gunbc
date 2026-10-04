@@ -273,7 +273,7 @@ fn w_branded_nonempty_alias_literal_red() -> Bool {
 
 fn w_depth2_wrong_base_type_record_field_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n",
+    "module whereref_depth2_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n",
     "src/whereref_depth2_wrong_base_red.rs",
     [],
     []
@@ -282,7 +282,7 @@ fn w_depth2_wrong_base_type_record_field_red() -> Bool {
 
 fn w_depth2_wrong_base_type_record_field_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n",
+    "module whereref_depth2_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n",
     "src/whereref_depth2_wrong_base_green.rs",
     [],
     []
@@ -291,7 +291,7 @@ fn w_depth2_wrong_base_type_record_field_green() -> Bool {
 
 fn w_depth3_wrong_base_type_record_field_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth3_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n",
+    "module whereref_depth3_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n",
     "src/whereref_depth3_wrong_base_red.rs",
     [],
     []
@@ -300,7 +300,7 @@ fn w_depth3_wrong_base_type_record_field_red() -> Bool {
 
 fn w_depth3_wrong_base_type_record_field_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth3_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n",
+    "module whereref_depth3_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n",
     "src/whereref_depth3_wrong_base_green.rs",
     [],
     []
@@ -309,7 +309,7 @@ fn w_depth3_wrong_base_type_record_field_green() -> Bool {
 
 fn w_depth2_wrong_base_type_call_arg_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_callarg_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n",
+    "module whereref_depth2_callarg_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n",
     "src/whereref_depth2_callarg_red.rs",
     [],
     []
@@ -318,7 +318,7 @@ fn w_depth2_wrong_base_type_call_arg_red() -> Bool {
 
 fn w_depth2_wrong_base_type_call_arg_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_callarg_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n",
+    "module whereref_depth2_callarg_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n",
     "src/whereref_depth2_callarg_green.rs",
     [],
     []
@@ -327,7 +327,7 @@ fn w_depth2_wrong_base_type_call_arg_green() -> Bool {
 
 fn w_depth2_wrong_base_type_data_init_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_data_init_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n",
+    "module whereref_depth2_data_init_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n",
     "src/whereref_depth2_data_init_red.rs",
     [],
     []
@@ -336,7 +336,7 @@ fn w_depth2_wrong_base_type_data_init_red() -> Bool {
 
 fn w_depth2_wrong_base_type_data_init_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_depth2_data_init_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n",
+    "module whereref_depth2_data_init_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n",
     "src/whereref_depth2_data_init_green.rs",
     [],
     []
@@ -573,23 +573,23 @@ test fn where_refinement_depth2_wrong_base_type_data_init_accepts() -> Bool {
 }
 
 test fn where_refinement_depth2_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
-  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n") == 1
-  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
 }
 
 test fn where_refinement_depth3_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
-  depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n") == 1
-  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
 }
 
 test fn where_refinement_depth2_wrong_base_type_call_arg_pins_type_mismatch_cause() -> Bool {
-  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n") == 1
-  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n") == 0
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n") == 0
 }
 
 test fn where_refinement_depth2_wrong_base_type_data_init_pins_type_mismatch_cause() -> Bool {
-  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_red\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n") == 1
-  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_green\ntype S1 = String where non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n") == 0
+  depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n") == 1
+  && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n") == 0
 }
 
 test fn where_refinement_wrong_kind_literal_int_pred_data_init_refuses() -> Bool {

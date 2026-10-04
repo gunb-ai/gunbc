@@ -1,0 +1,5 @@
+module test.fixture.demand_closure.shared
+
+import std.types { Int }
+
+fn demand_closure_shared_value() -> Int { 2 }

@@ -95,6 +95,10 @@ enum RetainedCommands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
+        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
+        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
+        #[arg(long = "unix-socket")]
+        unix_socket: Option<String>,
         /// Release revision this process serves, bound ONCE at startup and immutable for the
         /// process lifetime. Required and validated before the listener binds: `gunbc serve`
         /// compiles its graph once, so the launch argument is the only fact describing what
@@ -423,6 +427,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         function: String,
         host: String,
         port: u16,
+        unix_socket: Option<String>,
         release_revision: String,
         eval_budget_cpu_ms: Option<u64>,
         eval_budget_wall_ms: Option<u64>,
@@ -434,6 +439,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 eval_budget_cpu_ms,
                 eval_budget_wall_ms,
@@ -789,7 +795,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
         RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,
@@ -827,6 +833,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             function,
             host,
             port,
+            unix_socket,
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
@@ -837,6 +844,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 function,
                 host,
                 port,
+                unix_socket,
                 release_revision,
                 cli_run::ServeEvaluationBudget {
                     cpu_limit_ms: eval_budget_cpu_ms,
@@ -1090,7 +1098,22 @@ impl Verdict {
         if let Some(message) = self.message {
             eprintln!("{message}");
         }
-        std::process::exit(self.status);
+        // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
+        // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
+        // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
+        // watcher (run 37102391062): 11.7 s between this line and the process ending under
+        // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
+        // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
+        // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
+        // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            let _ = std::io::stderr().flush();
+        }
+        // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
+        // after this point running.
+        unsafe { libc::_exit(self.status) }
     }
 }
 
@@ -1175,7 +1198,12 @@ fn run_verb(
     // graph differently, so which one answered is a fact the operator of a run is entitled to see
     // without reconstructing it from their own cwd. A selection nobody can observe is how a
     // fall-through becomes indistinguishable from a silent widen.
-    match cli_run::bind_process_workspace_root(source_roots) {
+    let bound = cli_run::pre_entry_phase::timed(
+        "workspace_discovery",
+        cli_run::pre_entry_phase::PhaseScale::Closure,
+        || cli_run::bind_process_workspace_root(source_roots),
+    );
+    match bound {
         Ok((root, basis)) => {
             eprintln!("[workspace-root] {} {}", basis.wire(), root.display());
         }
@@ -1219,7 +1247,14 @@ fn run_verb(
         };
     }
 
-    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+    let resolve_started = std::time::Instant::now();
+    let resolved = cli_run::resolve_entry_graph(source_roots, entry_file);
+    report_pre_entry_phases(
+        resolve_started.elapsed(),
+        source_roots,
+        resolved.as_ref().ok().map(|(_, si)| si.len()),
+    );
+    let (graph, source_indices) = match resolved {
         Ok(resolved) => resolved,
         Err(cause) => {
             return Verdict {
@@ -1299,7 +1334,87 @@ fn run_verb(
     if verdict.status != 0 {
         verdict.message = Some(failures.join("\n"));
     }
+    // THE VERDICT IS DECIDED, SO NOTHING IS FREED. `Verdict::apply` ends the process and the OS
+    // reclaims the loaded corpus whole; dropping it here first walked its Rc/Value graph (~6.6 GB
+    // RSS) AFTER the answer was known. Measured on the mtcollins1 SOL notice watcher, whose step
+    // trap bounds it by its exit (10 s allowance; run 37102391062 went red on it): 27 s from the
+    // decided verdict to process end before this change, 12.9 s with only this forget, ~1.5 s
+    // with the `_exit` in `Verdict::apply` as well. Nothing either value owns does work in Drop:
+    // every effect is performed synchronously during evaluation, and InterpContext holds only
+    // in-memory caches.
+    std::mem::forget(ctx);
+    std::mem::forget(graph);
     verdict
+}
+
+/// Print the pre-entry phase receipt (`cli_run::pre_entry_phase`): the tree-scaled phases
+/// recorded where they ran, then the closure-scaled resolve stages from `ResolveStageNanos`,
+/// then the inclusive resolve window they sit inside. Printed whether resolve succeeded or
+/// refused, because a refusal after minutes of preparation is exactly the run whose cost
+/// the operator most needs attributed.
+fn report_pre_entry_phases(
+    resolve_inclusive: std::time::Duration,
+    source_roots: &[String],
+    closure_files: Option<usize>,
+) {
+    use cli_run::pre_entry_phase::{record, take_lines, PhaseScale};
+    let st = cli_run::resolve_stage_totals();
+    let ns = |n: u128| std::time::Duration::from_nanos(n as u64);
+    for (name, nanos) in [
+        ("closure_load", st.load),
+        ("closure_parse", st.parse),
+        ("closure_resolve", st.resolve),
+        ("closure_normalize", st.normalize),
+        ("closure_typecheck", st.typecheck_compute),
+        ("closure_parent_envs", st.parent_envs),
+        ("closure_reconcile_assembly", st.reconcile_assembly),
+        ("closure_ownership", st.ownership),
+    ] {
+        record(name, PhaseScale::Closure, ns(nanos));
+    }
+    // Three reconcile sub-rows whose INPUT is the pool, not the closure: the whole-pool
+    // qualified fill, and per source root the same-tree bare underlay and its variant base.
+    // They sit inside reconcile but outside every closure row above, so without these lines a
+    // small-closure run reported seconds of tree-scale work as an unexplained gap between the
+    // phase sum and `resolve_entry_graph_inclusive`.
+    for (name, nanos) in [
+        ("reconcile_pool_qualified_fill", st.assembly_pool_fill),
+        (
+            "reconcile_root_bare_underlay",
+            st.assembly_root_symbol_index,
+        ),
+        ("reconcile_root_variant_base", st.assembly_root_variant_base),
+    ] {
+        record(name, PhaseScale::Tree, ns(nanos));
+    }
+    record(
+        "resolve_entry_graph_inclusive",
+        PhaseScale::Closure,
+        resolve_inclusive,
+    );
+    for line in take_lines() {
+        eprintln!("{line}");
+    }
+    // POPULATIONS beside the times, so a reader can tell whether a row moved because its input
+    // grew or because its work per input changed: the indexed pool (every module under every
+    // --source-root) against the files of the entry's resolved closure.
+    let pool_modules = cli_run::pre_entry_phase::pool_module_count(source_roots)
+        .map_or("refused".to_string(), |n| n.to_string());
+    let closure = closure_files.map_or("refused".to_string(), |n| n.to_string());
+    eprintln!("[pre-entry] population pool_modules={pool_modules} closure_files={closure}");
+    // CPU beside wall: a phase whose wall exceeds the process's CPU is waiting, not computing.
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    // SAFETY: getrusage writes a full rusage into the pointer on success, which is checked.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } == 0 {
+        let usage = unsafe { usage.assume_init() };
+        let ms = |t: libc::timeval| t.tv_sec as i64 * 1000 + t.tv_usec as i64 / 1000;
+        eprintln!(
+            "[pre-entry] process_cpu user_ms={} sys_ms={} max_rss_kib={}",
+            ms(usage.ru_utime),
+            ms(usage.ru_stime),
+            usage.ru_maxrss
+        );
+    }
 }
 
 fn run_one_function(

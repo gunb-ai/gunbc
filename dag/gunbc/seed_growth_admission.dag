@@ -2,13 +2,12 @@ module gunbc.seed_growth_admission
 
 import gunbc.evaluation_store_address_census_seed_growth { evaluation_store_address_census_seed_growth_justification }
 import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_growth_justification }
+import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
+import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
-import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
-  persisted_resolved_graph_format_wall_seed_growth_justification,
-  resolved_graph_provider_ctx_reuse_seed_growth_justification
-}
+import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
 import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
@@ -24,9 +23,13 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
   with_authored_string_literals_seed_growth_justification
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
+import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
+import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
-import gunbc.kind_reflection_seed_growth { kind_reflection_seed_growth_justification }
-import gunbc.typed_module_store_seed_growth { typed_module_store_seed_growth_justification }
+import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
+import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
+import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
+import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -35,19 +38,35 @@ import gunbc.declaration_lookup_index_seed_growth { declaration_lookup_index_see
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth_justification }
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
+import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
+import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
 import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.emit_rust_reference_derived_rows_bridge_seed_growth { emit_rust_reference_derived_rows_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
+import gunbc.red_lib_population_seed_growth { red_lib_population_seed_growth_justification }
+import gunbc.interpreter_eval_correctness_seed_growth {
+  match_arm_guard_seed_growth_justification,
+  value_depth_seed_growth_justification,
+  value_drop_binding_adaptation_seed_growth_justification
+}
 import gunbc.interpreter_error_location_seed_growth { interpreter_error_location_seed_growth_justification }
+import gunbc.kernel_grounding_interpreter_seed_growth { kernel_grounding_interpreter_seed_growth_justification }
 import gunbc.regen_digest_spelling_seed_growth { regen_digest_spelling_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
+import gunbc.pool_reading_attribution_seed_growth { pool_reading_attribution_seed_growth_justification }
 import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_growth_justification }
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
+import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
-import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
+import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
+import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
+import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
+import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
+import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.emitted_crate_workspace_seed_growth { emitted_crate_workspace_seed_growth_justification }
 import gunbc.bootstrap_operation_seed_growth {
@@ -64,6 +83,7 @@ import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justi
 import gunbc.dag_artifact_identity_seed_growth { dag_artifact_identity_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_growth_justification }
+import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
 import gunbc.rust_item_host_observation {
@@ -107,15 +127,15 @@ import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_jus
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
+import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
-import std.keyed_roster { path_occurrence_count }
 import std.roster_frontier {
   declaration_ref_display_key,
-  declaration_ref_in_list
 }
 import std.types { Bool, Int, List, String }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.algebra { any, filter, fold_list, length }
 import std.algebra { list_append }
 
@@ -244,8 +264,6 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     claim_scope_fixture_seed_growth_justification,
     evaluation_store_address_census_seed_growth_justification,
-    persisted_resolved_graph_format_wall_seed_growth_justification,
-    resolved_graph_provider_ctx_reuse_seed_growth_justification,
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
@@ -268,24 +286,37 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     ambiguity_ban_seed_growth_justification,
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
+    red_lib_population_seed_growth_justification,
     interpreter_error_location_seed_growth_justification,
+    kernel_grounding_interpreter_seed_growth_justification,
     claim_unwind_seed_growth_justification,
     claim_batch_function_preflight_seed_growth_justification,
     claim_batch_entry_closure_preflight_seed_growth_justification,
     shared_fill_attribution_seed_growth_justification,
+    pool_reading_attribution_seed_growth_justification,
     source_root_eval_driver_seed_growth_justification,
     gen_one_executable_keep_seed_growth_justification,
+    emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
+    native_serve_program_seed_growth_justification,
+    dependency_demand_census_seed_growth_justification,
+    native_route_refusal_summary_seed_growth_justification,
+    native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
-    kind_reflection_seed_growth_justification,
-    typed_module_store_seed_growth_justification,
+    fixture_render_selection_seed_growth_justification,
+    fabric_door_socket_seed_growth_justification,
+    serve_cookie_header_seed_growth_justification,
+    serve_declared_binding_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
     exit_failure_outcome_seed_growth_justification,
     evaluation_budget_falsifier_seed_growth_justification,
+    floor_memory_instrumentation_seed_growth_justification,
+    portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
+    filesystem_link_create_new_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
@@ -303,6 +334,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     authored_string_literal_edge_seed_growth_justification,
     with_authored_string_literals_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
+    keyed_dependency_edge_read_seed_growth_justification,
+    host_crypto_digest_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
     filesystem_create_new_seed_growth_justification,
     required_lane_judgment_seed_growth_justification,
@@ -313,12 +346,20 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     scope_rank_view_seed_growth_justification,
     floor_teardown_attribution_seed_growth_justification,
     primitive_egress_census_seed_growth_justification,
+    operation_requires_query_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
+    type_declaration_use_census_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     unimported_bare_provider_gate_seed_growth_justification,
+    native_cache_root_seed_growth_justification,
     enrolment_dead_band_seed_growth_justification,
-    modeled_operation_realization_seed_growth_justification
+    modeled_operation_realization_seed_growth_justification,
+    observation_file_effect_seed_growth_justification,
+    floor_checker_input_seed_growth_justification,
+    match_arm_guard_seed_growth_justification,
+    value_depth_seed_growth_justification,
+    value_drop_binding_adaptation_seed_growth_justification
   ]
 }
 
@@ -350,22 +391,47 @@ fn seed_growth_roster_declaration_keys() -> List<String> {
     |> map(r => declaration_ref_display_key(ref: r))
 }
 
+// ONE COUNTING PASS PER ROSTER. Both questions are "which keys occur more than once"; asking each key
+// for its count by re-scanning every key was quadratic in the roster (measured 2026-10-01: 7.7M eval
+// steps for the duplicate check alone). The answers -- which keys, in roster order, with their
+// repeats -- are unchanged.
+fn seed_growth_key_counts(keys: List<String>) -> Map<String, Int> {
+  let empty: Map<String, Int> = empty_map()
+  fold_list(xs: keys, empty: empty, cons: fn(acc, key) {
+    map_insert(m: acc, key: key, value: seed_growth_key_count(counts: acc, key: key) + 1)
+  })
+}
+
+fn seed_growth_key_count(counts: Map<String, Int>, key: String) -> Int {
+  match seed_growth_key_count_of(counts: counts, key: key) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn seed_growth_key_count_of(counts: Map<String, Int>, key: String) -> Int? {
+  map_lookup(m: counts, key: key)
+}
+
 fn seed_growth_roster_duplicate_keys() -> List<String> {
   let keys = seed_growth_roster_declaration_keys()
-  filter(xs: keys, predicate: fn(key) { path_occurrence_count(paths: keys, target: key) > 1 })
+  let counts = seed_growth_key_counts(keys: keys)
+  filter(xs: keys, predicate: fn(key) { seed_growth_key_count(counts: counts, key: key) > 1 })
 }
 
 fn seed_growth_roster_has_duplicate_keys() -> Bool {
   let keys = seed_growth_roster_declaration_keys()
+  let counts = seed_growth_key_counts(keys: keys)
   any(
     xs: keys,
-    predicate: fn(key) { path_occurrence_count(paths: keys, target: key) > 1 }
+    predicate: fn(key) { seed_growth_key_count(counts: counts, key: key) > 1 }
   )
 }
 
 fn seed_growth_uncitable_item_keys() -> List<String> {
   [
-    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt"
+    "v1_compiler.cli_run::impl std::fmt::Display for Stage0CargoBinManifestParseRefusal::fmt",
+    "v1_compiler.cli_run::impl std::fmt::Display for FixtureRenderRefusal::fmt"
   ]
 }
 
@@ -376,19 +442,68 @@ fn seed_growth_uncitable_item_keys() -> List<String> {
 // population no longer isolated what a change added. The denominators genuinely differ: staleness
 // is a question about the CURRENT surface, unjustified addition is a question about the CHANGE.
 // gunbc.rust_item_host_observation produces them separately for exactly this reason.
+// THE LIVE POPULATION AS A SET, built once: a per-row scan of the live list was rows x live (10.9M
+// eval steps against the roster itself). Membership keys on an injective spelling of exactly the
+// fields std.decl_ref declaration_ref_eq compares -- module, name, field arm and its argument, each
+// length-prefixed -- so set membership is that equality, not the display key (which two distinct
+// references can share).
+fn seed_growth_decl_identity(r: DeclarationRef) -> String {
+  let field = match r.field {
+    WholeDeclaration => "W"
+    NamedField { field_name: f } => join(["N", to_string(string_length(f as String)), ":", f as String], "")
+    TypeParameter { name: t } => join(["T", to_string(string_length(t as String)), ":", t as String], "")
+  }
+  join([
+    to_string(string_length(r.module_path as String)), ":", r.module_path as String,
+    to_string(string_length(r.decl_name as String)), ":", r.decl_name as String,
+    field,
+  ], "")
+}
+
+fn seed_growth_live_set(live_items: List<DeclarationRef>) -> Map<String, Bool> {
+  let empty: Map<String, Bool> = empty_map()
+  fold_list(xs: live_items, empty: empty, cons: fn(acc, r) { map_insert(m: acc, key: seed_growth_decl_identity(r: r), value: true) })
+}
+
+fn seed_growth_live_has(live: Map<String, Bool>, r: DeclarationRef) -> Bool {
+  match seed_growth_live_lookup(live: live, key: seed_growth_decl_identity(r: r)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn seed_growth_live_lookup(live: Map<String, Bool>, key: String) -> Bool? {
+  map_lookup(m: live, key: key)
+}
+
 fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
-  filter(
-    xs: seed_growth_roster_all_declarations(),
-    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: live_items) }
-  )
+  seed_growth_stale_declarations(live_items: live_items)
     |> map(r => declaration_ref_display_key(ref: r))
 }
 
+// THE ROSTER BINDING IS ONE STEP AND THE KEY RENDERING ANOTHER. The real-roster binding is its own
+// function so a witness can hold it to the COMPLETE roster (every row reported stale against a live
+// population that names none of them) without paying the display-key render of every row, which is
+// the expense and which no completeness assertion inspects.
+fn seed_growth_stale_declarations(live_items: List<DeclarationRef>) -> List<DeclarationRef> {
+  seed_growth_stale_over(roster: seed_growth_roster_all_declarations(), live_items: live_items)
+}
+
+// THE STALENESS RELATION OVER A SUPPLIED ROSTER. A witness of the relation's shape supplies a
+// small roster (DESIGN section 3, a witness discriminates at one interface).
+fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<DeclarationRef> {
+  let live = seed_growth_live_set(live_items: live_items)
+  filter(
+    xs: roster,
+    predicate: fn(r) { !seed_growth_live_has(live: live, r: r) }
+  )
+}
+
 fn seed_growth_unjustified_additions(added: List<DeclarationRef>) -> List<String> {
-  let roster = seed_growth_roster_all_declarations()
+  let roster = seed_growth_live_set(live_items: seed_growth_roster_all_declarations())
   filter(
     xs: added,
-    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: roster) }
+    predicate: fn(r) { !seed_growth_live_has(live: roster, r: r) }
   )
     |> map(r => declaration_ref_display_key(ref: r))
 }

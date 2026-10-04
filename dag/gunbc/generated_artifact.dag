@@ -14,6 +14,7 @@ type GeneratedArtifact
   | FleetConvergeYamlArtifact
   | FleetDesiredAdmissionYamlArtifact
   | MicrovmShakedownYamlArtifact
+  | InstrumentDispatchYamlArtifact
   | HealWorkflowYamlArtifact
   | HealPublisherWorkflowYamlArtifact
   | GitignoreArtifact
@@ -46,6 +47,9 @@ type GeneratedArtifact
   | WholeCorpusCompileMeasuredRootDemandsArtifact
   | ApprovalDeviceVectorsArtifact
   | ApproveIosProjectYmlArtifact
+  | ApproveIosProtocolSwiftArtifact
+  | ApproveIosWireSwiftArtifact
+  | ApproveIosProtocolVectorTestsSwiftArtifact
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
@@ -56,6 +60,9 @@ type GeneratedArtifact
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
 // XcodeProjectGenerator: XcodeGen reads the file on the operator's Mac and writes the Xcode project
 // and the target's Info.plist from it (gunbc.approve_ios_project); neither output is committed.
+// SwiftCompiler: swiftc, driven by xcodebuild on the operator's Mac, compiles the file into the app
+// or its test bundle (gunbc.approve_ios_swift_protocol and its siblings, printed by
+// the Swift grammar rows v2.extdeps.languages.swift.rows).
 type RepoConsumer
   = GitProtocol
   | CargoToolchain
@@ -65,6 +72,7 @@ type RepoConsumer
   | CompilerRunInput
   | CrossLanguageClientTest
   | XcodeProjectGenerator
+  | SwiftCompiler
 
 type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
@@ -167,6 +175,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
     MicrovmShakedownYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "microvm-shakedown.yml" }
+    InstrumentDispatchYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "instrument-dispatch.yml" }
     HealWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal.yml" }
     HealPublisherWorkflowYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "heal-publish.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
@@ -190,6 +199,9 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     WholeCorpusCompileMeasuredRootDemandsArtifact => ArtifactLocation { directory: whole_corpus_compile_demand_projection_directory, name: whole_corpus_compile_demand_projection_name }
     ApprovalDeviceVectorsArtifact => ArtifactLocation { directory: "dag/test/fixture/approval_device_redemption", name: "vectors.json" }
     ApproveIosProjectYmlArtifact => ArtifactLocation { directory: "apps/approve-ios", name: "project.yml" }
+    ApproveIosProtocolSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Protocol.swift" }
+    ApproveIosWireSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/Approve", name: "Wire.swift" }
+    ApproveIosProtocolVectorTestsSwiftArtifact => ArtifactLocation { directory: "apps/approve-ios/ApproveTests", name: "ProtocolVectorTests.swift" }
     Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
     Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
@@ -255,6 +267,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     MicrovmShakedownYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    InstrumentDispatchYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     HealPublisherWorkflowYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -273,6 +286,9 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     WholeCorpusCompileMeasuredRootDemandsArtifact => CommitRequired { consumer: CompilerRunInput }
     ApprovalDeviceVectorsArtifact => CommitRequired { consumer: CrossLanguageClientTest }
     ApproveIosProjectYmlArtifact => CommitRequired { consumer: XcodeProjectGenerator }
+    ApproveIosProtocolSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosWireSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
+    ApproveIosProtocolVectorTestsSwiftArtifact => CommitRequired { consumer: SwiftCompiler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
@@ -310,6 +326,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
     MicrovmShakedownYamlArtifact => match b { MicrovmShakedownYamlArtifact => true  _ => false }
+    InstrumentDispatchYamlArtifact => match b { InstrumentDispatchYamlArtifact => true  _ => false }
     HealWorkflowYamlArtifact => match b { HealWorkflowYamlArtifact => true  _ => false }
     HealPublisherWorkflowYamlArtifact => match b { HealPublisherWorkflowYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
@@ -328,6 +345,9 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     WholeCorpusCompileMeasuredRootDemandsArtifact => match b { WholeCorpusCompileMeasuredRootDemandsArtifact => true  _ => false }
     ApprovalDeviceVectorsArtifact => match b { ApprovalDeviceVectorsArtifact => true  _ => false }
     ApproveIosProjectYmlArtifact => match b { ApproveIosProjectYmlArtifact => true  _ => false }
+    ApproveIosProtocolSwiftArtifact => match b { ApproveIosProtocolSwiftArtifact => true  _ => false }
+    ApproveIosWireSwiftArtifact => match b { ApproveIosWireSwiftArtifact => true  _ => false }
+    ApproveIosProtocolVectorTestsSwiftArtifact => match b { ApproveIosProtocolVectorTestsSwiftArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
@@ -382,6 +402,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     FleetConvergeYamlArtifact => decl_ref(module_path: "gunbc.fleet_converge_workflow", decl_name: "expected_fleet_converge_yml")
     FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
     MicrovmShakedownYamlArtifact => decl_ref(module_path: "gunbc.runner_microvm_shakedown_workflow", decl_name: "expected_microvm_shakedown_yml")
+    InstrumentDispatchYamlArtifact => decl_ref(module_path: "gunbc.instrument_dispatch_workflow", decl_name: "expected_instrument_dispatch_yml")
     HealWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_workflow", decl_name: "expected_heal_workflow_yml")
     HealPublisherWorkflowYamlArtifact => decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "expected_heal_publisher_workflow_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
@@ -400,6 +421,9 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     WholeCorpusCompileMeasuredRootDemandsArtifact => decl_ref(module_path: "gunbc.whole_corpus_compile_demand_projection", decl_name: "expected_whole_corpus_compile_measured_root_demands_json")
     ApprovalDeviceVectorsArtifact => decl_ref(module_path: "gunbc.auth.approval_device_redemption_fixtures", decl_name: "approval_device_vectors_json")
     ApproveIosProjectYmlArtifact => decl_ref(module_path: "gunbc.approve_ios_project", decl_name: "expected_approve_ios_project_yml")
+    ApproveIosProtocolSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol", decl_name: "expected_approve_ios_protocol_swift")
+    ApproveIosWireSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "expected_approve_ios_wire_swift")
+    ApproveIosProtocolVectorTestsSwiftArtifact => decl_ref(module_path: "gunbc.approve_ios_swift_protocol_vector_tests", decl_name: "expected_approve_ios_protocol_vector_tests_swift")
     Stage0CrateLayoutGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_dag")
     Stage0CrateLayoutGeneratedRsArtifact => decl_ref(module_path: "gunbc.stage0_crate_layout_emit", decl_name: "expected_stage0_crate_layout_generated_rs")
     Stage0CratePartitionGeneratedDagArtifact => decl_ref(module_path: "gunbc.stage0_crate_partition_emit", decl_name: "expected_stage0_crate_partition_generated_dag")

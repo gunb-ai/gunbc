@@ -1,7 +1,6 @@
 module v2.workflow.floor_enrolment_dead_band
 
-import v2.std.collection { List }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE ENROLMENT GATE'S DEAD BAND, AND THE EXACT IDENTITIES OBSERVED IN IT (gunbc#11989, side-chat
 // ruling on PR comment 5795659115, after the precedent `gunbc.rung_drop`
@@ -40,6 +39,58 @@ fn app_attest_verifier_enrolment_dead_band_observed_only() -> List<EnrolmentDead
   ]
 }
 
+// THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; side-chat ruling of eager-owl-205, 2026-09-30,
+// msg_658dcf6b): the cases whose CI CPU lies in the band, re-read on gunbc#12800 once the dry KVM observer let them pass. The interrupted-attempt case measured above the line there and is a typed cost-debt admission instead (v2.workflow.floor_cost_debt_admission). Their declared drop is `gunbc.rung_drop`
+// `mtcollins1_boot_matrix_enrolment_dead_band_observed_only`.
+fn mtcollins1_boot_matrix_enrolment_dead_band_observed_only() -> List<EnrolmentDeadBandObservation> {
+  [
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 449 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_healthy_census_completes_and_releases_its_collector",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 433 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_the_handoff_is_the_reported_cause",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 421 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_already_presented_image_is_not_attached_again",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 411 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 374 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_sol_loss_mid_boot_is_reported_before_the_deadline",
+    reason: "the real boot entry end to end over the dry realization, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 381 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted",
+    reason: "the real boot entry end to end over the dry realization through a stop, a replace and a full boot, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) observed 473 ms CPU, strictly above the 302 ms margin and under the 500 ms line" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_readiness_stops_the_handoff",
+    reason: "the real boot entry end to end over the dry realization up to the handoff gate, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36775473983 of gunbc#12800 at b907f7dc0c3 (srv3) observed 303 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 287 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_mount_error_refuses_by_name",
+    reason: "the real boot entry end to end over the dry realization through an accepted start whose row falls back to Stopped and the whole readiness wait, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it sits at the margin as media_that_never_becomes_ready_refuses_before_any_power_action does -- PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor) observed 288 ms CPU, inside the runner envelope below the 302 ms margin (EnrolmentDeadBandWithinRunnerEnvelope), and a slower runner reads it above" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault",
+    reason: "the real boot entry end to end over the dry realization through an accepted start whose row falls back to Stopped and the whole readiness wait, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it sits at the margin as media_that_never_becomes_ready_refuses_before_any_power_action does -- PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor) observed 291 ms CPU, inside the runner envelope below the 302 ms margin (EnrolmentDeadBandWithinRunnerEnvelope), and a slower runner reads it above" as NonEmptyStr,
+  },
+  EnrolmentDeadBandObservation {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.media_that_never_becomes_ready_refuses_before_any_power_action",
+    reason: "the real boot entry end to end over the dry realization through the whole readiness wait, whose cost is gunbc#12434's own SOL polling route run faithfully (the subject gunbc#12423 requires); it straddles the margin between runners at identical eval_steps -- PR required floor run 36783312538 of gunbc#12800 at 8042d175c2a (srv3) observed 320 ms CPU, strictly above the 302 ms margin and under the 500 ms line, and run 36765162766 at 6cac35eb1a6 (srv1) observed 283 ms, inside the runner envelope below the margin (EnrolmentDeadBandWithinRunnerEnvelope)" as NonEmptyStr,
+  },
+  ]
+}
+
 fn enrolment_dead_band_identities() -> List<String> {
-  app_attest_verifier_enrolment_dead_band_observed_only() |> map(o => o.identity)
+  concat(app_attest_verifier_enrolment_dead_band_observed_only(), mtcollins1_boot_matrix_enrolment_dead_band_observed_only()) |> map(o => o.identity)
 }

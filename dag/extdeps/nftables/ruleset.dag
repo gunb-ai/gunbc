@@ -1,5 +1,7 @@
 module extdeps.nftables.ruleset
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, List, Port, FilePath }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_nftables }
@@ -224,7 +226,7 @@ fn nft_chain_wire(family: NftFamily, c: NftChain) -> String {
   ], "")
 }
 
-data nft_program: NonEmptyStr = "nft"
+fn nft_program() -> ProgramIdentity = cataloged_program(invocation: "nft")
 
 // THE LISTING IS THE READBACK, NOT THE FILE WE APPLIED. The kernel holds the ruleset in its own
 // representation and `nft list table` renders that, normalized: a rule written as `ip saddr
@@ -248,7 +250,7 @@ fn nft_list_table_arguments(family: NftFamily, name: NonEmptyStr) -> List<NonEmp
 }
 
 fn nft_list_table_command(family: NftFamily, name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: nft_program, arguments: map(nft_list_table_arguments(family: family, name: name), a => a as String))
+  argv_command(program: nft_program(), arguments: map(nft_list_table_arguments(family: family, name: name), a => a as String))
 }
 
 // THE WHOLE RULESET, EVERY FAMILY AND TABLE. nft(8): `list ruleset` prints the complete active
@@ -263,11 +265,11 @@ data nft_list_ruleset_arguments: List<NonEmptyStr> = ["list", "ruleset"]
 data nft_bin_dir: FilePath = apt_sbin_dir
 
 fn nft_installed_path() -> FilePath {
-  apt_installed_bin_path(bin_dir: nft_bin_dir, binary: nft_program)
+  apt_installed_bin_path(bin_dir: nft_bin_dir, binary: nft_program().invocation)
 }
 
 data nft_cli_tool: CliTool = CliTool {
-  name: nft_program,
+  program: nft_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nftables, bin_dir: nft_bin_dir }],
 }

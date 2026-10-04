@@ -2,7 +2,7 @@ module v2.test.complexity_gate.source_bridged_pipeline_bridge
 
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.diagnostic { Outcome, bind_outcome }
@@ -12,7 +12,7 @@ import v2.std.text { String }
 fn source_bridged_resolved_root(
   source_text: String,
   file: Symbol
-) -> Outcome<Node> {
+) -> Outcome<ResolvedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source_text, file: file, rules: lm.lex),

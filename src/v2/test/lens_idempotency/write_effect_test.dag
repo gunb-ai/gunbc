@@ -14,8 +14,7 @@ import v2.std.dependency {
   DependencyView,
   EffectDependsOn
 }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
@@ -28,7 +27,7 @@ data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 data idempotency_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
   children: [
-    Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
+    Edge { label: Authored { name: ^idempotency_edge_symbol }, target: idempotency_child }
   ],
   occurrence_id: OccurrenceSynthetic
 }

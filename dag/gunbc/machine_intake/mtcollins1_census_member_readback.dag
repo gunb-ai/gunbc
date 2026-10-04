@@ -6,20 +6,26 @@ import std.algebra { trim }
 import v2.std.algebra { filter }
 import std.content_hash { sha256_hex_digest }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.xorriso { xorriso_extract_command }
+import extdeps.tools.xorriso { xorriso_extract_command, xorriso_list_long_command }
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
 import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
-import extdeps.ssh.session { ssh_client_error_exit_status }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
+import gunbc.host_command_binding {
+  CommandHost, FleetSshCommandHost, HostLeg, LegNotDispatched, LegAnswered, HostTransportKind, FleetSshTransport, host_run,
+  ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, scratch_removed, render_scratch_outcome,
+  CreationNotRequested,
+}
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
+import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
@@ -216,7 +222,13 @@ fn census_member_readback_from_readings(
 fn census_member_readback_holds(readback: CensusMemberReadback) -> Bool {
   match readback {
     BootChainIdenticalToStock { stock_iso: _, census_iso: _, kernel: _, initrd: _ } => true
-    _ => false
+    BootChainFirstDifference { stock_iso: _, census_iso: _, member: _, stock: _, census: _ } => false
+    BootChainControlDidNotDiscriminate { grub_digest: _ } => false
+    BootChainIsoNotPinned { side: _, expected: _, observed: _ } => false
+    BootChainUnread { member: _, side: _, reason: _ } => false
+    BootChainMediumNotCensus => false
+    BootChainHostUnreached { reason: _ } => false
+    BootChainWorkspaceUnavailable { reason: _ } => false
   }
 }
 
@@ -254,7 +266,7 @@ fn render_census_member_readback(readback: CensusMemberReadback) -> String {
 //   4. remove that workspace, and report the cleanup outcome BESIDE the readback, never in place of
 //      it: an initiating failure and a cleanup failure are both retained. A creation or removal whose
 //      reply was lost is reported UNCONFIRMED with residue outstanding, never as "never created" or
-//      "not removed" (WorkspaceOutcome).
+//      "not removed" (gunbc.host_command_binding ScratchOutcome).
 // Nothing under /srv/bmc is written.
 
 data census_member_readback_attempt_raw: String = "mtcollins1-census-member-readback"
@@ -265,111 +277,19 @@ data census_member_workspace_prefix: String = "/tmp/gunbc-mtcollins1-census-memb
 
 data census_member_workspace_template: NonEmptyStr = concat(census_member_workspace_prefix, "XXXXXXXX") as NonEmptyStr
 
-// ONE REMOTE LEG AS THE TRANSPORT ANSWERED IT, before any collapse to a RemoteAnswer. Refused means
-// the invocation was never made (gunbc.typed_argv_exec, FleetPrincipalLegRefused); Ran carries what
-// came back. A Ran leg with ssh's client status 255 (extdeps.ssh.session ssh_client_error_exit_status)
-// establishes neither that the remote command ran nor that it did not.
-type RemoteLeg
-  = LegNotDispatched { reason: String }
-  | LegAnswered { exit_code: Int, stdout: String, stderr: String }
-
-fn remote_leg_of(outcome: TypedArgvExecOutcome) -> RemoteLeg {
-  match outcome {
-    TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
-    TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
-  }
-}
-
-// THE WORKSPACE'S WHOLE HISTORY, each arm naming what is established and nothing more.
-//   CreationNotRequested         a gate stopped the attempt before mktemp was issued;
-//   CreationNotDispatched        mktemp was refused by the transport before it was sent;
-//   CreationFailed               mktemp itself reported failure (a non-255 status): nothing was created;
-//   CreationUnconfirmed          mktemp was sent and its result was not established -- ssh's 255, or a
-//                                zero exit whose output is not exactly one path under the prefix. A
-//                                directory MAY remain; whatever came back is retained, and no name that
-//                                was not admitted is ever used to extract or to delete;
-//   Removed / RemovalFailed / RemovalUnconfirmed / RemovalNotDispatched   the acquired workspace's end:
-//                                rm reported success; rm reported failure (the path may remain);
-//                                the reply was lost (removal unconfirmed, NOT proof it remains);
-//                                rm was never sent (the workspace remains).
-// Only Removed lets an attempt hold.
-type WorkspaceOutcome
-  = CreationNotRequested
-  | CreationNotDispatched { reason: String }
-  | CreationFailed { exit_code: Int, stderr: String }
-  | CreationUnconfirmed { exit_code: Int, stdout: String, stderr: String }
-  | Removed { dir: NonEmptyStr }
-  | RemovalFailed { dir: NonEmptyStr, exit_code: Int, stderr: String }
-  | RemovalUnconfirmed { dir: NonEmptyStr, exit_code: Int, stderr: String }
-  | RemovalNotDispatched { dir: NonEmptyStr, reason: String }
-
-type WorkspaceAcquisition
-  = WorkspaceAcquired { dir: NonEmptyStr }
-  | WorkspaceNotAcquired { outcome: WorkspaceOutcome }
-
-fn admitted_workspace_path(stdout: String) -> String? {
-  let dir = trim(s: stdout)
-  if !starts_with(s: dir, prefix: census_member_workspace_prefix) || dir == census_member_workspace_prefix
-      || string_contains(s: dir, pattern: "\n") || string_contains(s: dir, pattern: " ") || string_contains(s: dir, pattern: "/..") {
-    none
-  } else {
-    Present { value: dir }
-  }
-}
-
-fn workspace_acquisition_of(leg: RemoteLeg) -> WorkspaceAcquisition {
-  match leg {
-    LegNotDispatched { reason: r } => WorkspaceNotAcquired { outcome: CreationNotDispatched { reason: r } }
-    LegAnswered { exit_code: c, stdout: o, stderr: e } =>
-      if c == ssh_client_error_exit_status {
-        WorkspaceNotAcquired { outcome: CreationUnconfirmed { exit_code: c, stdout: o, stderr: e } }
-      } else if c != 0 {
-        WorkspaceNotAcquired { outcome: CreationFailed { exit_code: c, stderr: e } }
-      } else {
-        match admitted_workspace_path(stdout: o) {
-          Absent => WorkspaceNotAcquired { outcome: CreationUnconfirmed { exit_code: c, stdout: o, stderr: e } }
-          Present { value: d } => WorkspaceAcquired { dir: d as NonEmptyStr }
-        }
-      }
-  }
-}
-
-fn workspace_removal_of(dir: NonEmptyStr, leg: RemoteLeg) -> WorkspaceOutcome {
-  match leg {
-    LegNotDispatched { reason: r } => RemovalNotDispatched { dir: dir, reason: r }
-    LegAnswered { exit_code: c, stdout: _, stderr: e } =>
-      if c == 0 { Removed { dir: dir } }
-      else if c == ssh_client_error_exit_status { RemovalUnconfirmed { dir: dir, exit_code: c, stderr: e } }
-      else { RemovalFailed { dir: dir, exit_code: c, stderr: e } }
-  }
-}
-
 // THE ATTEMPT: the readback and the workspace's outcome, both retained. It holds only when the boot
 // chain is identical to stock AND this attempt's workspace was removed.
 type CensusMemberReadbackAttempt {
   readback: CensusMemberReadback
-  workspace: WorkspaceOutcome
+  workspace: ScratchOutcome
 }
 
 fn census_member_attempt_holds(attempt: CensusMemberReadbackAttempt) -> Bool {
-  census_member_readback_holds(readback: attempt.readback) && match attempt.workspace {
-    Removed { dir: _ } => true
-    _ => false
-  }
+  census_member_readback_holds(readback: attempt.readback) && scratch_removed(o: attempt.workspace)
 }
 
-fn render_workspace_outcome(w: WorkspaceOutcome) -> String {
-  match w {
-    CreationNotRequested => "workspace=never created: creation was not requested (nothing extracted)\n"
-    CreationNotDispatched { reason: r } => concat("workspace=never created: mktemp was not dispatched (nothing extracted): ", r, "\n")
-    CreationFailed { exit_code: c, stderr: e } => concat("workspace=never created: mktemp reported failure exit=", to_string(c), " ", trim(s: e), " (nothing extracted)\n")
-    CreationUnconfirmed { exit_code: c, stdout: o, stderr: e } =>
-      concat("workspace=CREATION UNCONFIRMED exit=", to_string(c), ": a directory under ", census_member_workspace_prefix, " MAY REMAIN on srv2 (residue outstanding; not removed, nothing extracted); returned stdout=\"", o, "\" stderr=\"", trim(s: e), "\"\n")
-    Removed { dir: d } => concat("workspace=", d as String, " removed\n")
-    RemovalFailed { dir: d, exit_code: c, stderr: e } => concat("workspace=", d as String, " REMOVAL FAILED exit=", to_string(c), " ", trim(s: e), " (the path may remain)\n")
-    RemovalUnconfirmed { dir: d, exit_code: c, stderr: e } => concat("workspace=", d as String, " REMOVAL UNCONFIRMED exit=", to_string(c), " ", trim(s: e), " (the reply was lost; the path may or may not remain)\n")
-    RemovalNotDispatched { dir: d, reason: r } => concat("workspace=", d as String, " NOT REMOVED: rm was not dispatched (residue outstanding): ", r, "\n")
-  }
+fn render_workspace_outcome(w: ScratchOutcome) -> String {
+  render_scratch_outcome(label: "workspace", prefix: census_member_workspace_prefix, o: w)
 }
 
 fn render_census_member_attempt(attempt: CensusMemberReadbackAttempt) -> String {
@@ -379,16 +299,16 @@ fn render_census_member_attempt(attempt: CensusMemberReadbackAttempt) -> String 
 // THE ATTEMPT'S DECISIONS AS ONE FOLD over the legs that were issued, so the consumer-level controls
 // exercise the same composition the producer runs. `readings` is consulted only when a workspace was
 // acquired; `cleanup` is consulted only then too.
-fn census_member_attempt_of(gate: CensusPinGate, creation: RemoteLeg, readings: fn(NonEmptyStr) -> CensusMemberReadings, cleanup: fn(NonEmptyStr) -> RemoteLeg) -> CensusMemberReadbackAttempt {
+fn census_member_attempt_of(kind: HostTransportKind, gate: CensusPinGate, creation: HostLeg, readings: fn(NonEmptyStr) -> CensusMemberReadings, cleanup: fn(NonEmptyStr) -> HostLeg) -> CensusMemberReadbackAttempt {
   match gate {
     PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
     PinsAdmitted { stock_iso: s, census_iso: c } =>
-      match workspace_acquisition_of(leg: creation) {
-        WorkspaceNotAcquired { outcome: o } =>
+      match scratch_acquisition_of(kind: kind, prefix: census_member_workspace_prefix, leg: creation) {
+        ScratchNotAcquired { outcome: o } =>
           CensusMemberReadbackAttempt { readback: BootChainWorkspaceUnavailable { reason: render_workspace_outcome(w: o) }, workspace: o }
-        WorkspaceAcquired { dir: dir } => {
+        ScratchAcquired { dir: dir } => {
           let readback = census_member_verdict(stock_iso: s, census_iso: c, readings: readings(dir))
-          CensusMemberReadbackAttempt { readback: readback, workspace: workspace_removal_of(dir: dir, leg: cleanup(dir)) }
+          CensusMemberReadbackAttempt { readback: readback, workspace: scratch_removal_of(kind: kind, dir: dir, leg: cleanup(dir)) }
         }
       }
   }
@@ -445,38 +365,65 @@ fn iso_reading_of(measure: RemoteAnswer) -> IsoReading {
 }
 
 fn census_member_readback_target() -> SshTarget {
-  SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String) as NonEmptyStr,
-    principal: executor_bootstrap_principal.login,
+  mtcollins1_boot_export_host_target()
+}
+
+// ONE LEG ON ANY HOST, AS THE ANSWER THE READINGS JOIN OVER. A leg that was never dispatched carries no
+// exit code of its own; it is reported with -1 and its reason, so it reads as unread and never as a
+// remote status.
+fn answer_on(host: CommandHost, command: ArgvCommand) -> RemoteAnswer {
+  match host_run(host: host, command: command) {
+    LegNotDispatched { reason: r } => RemoteAnswer { exit_code: -1, stdout: "", stderr: concat("not dispatched: ", r) }
+    LegAnswered { exit_code: c, stdout: o, stderr: e } => RemoteAnswer { exit_code: c, stdout: o, stderr: e }
   }
 }
 
 fn remote(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteAnswer {
-  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)))
+  answer_on(host: FleetSshCommandHost { target: target, context: context }, command: command)
 }
 
-fn read_member_remote(target: SshTarget, context: FleetSshExecutionContext, dir: NonEmptyStr, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
+fn read_member_on(host: CommandHost, dir: NonEmptyStr, iso_path: NonEmptyStr, side: IsoSide, member: CensusIsoMember) -> MemberReading {
   let scratch = member_scratch_path(dir: dir, side: side, member: member)
-  let extract = remote(target: target, context: context, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch))
+  let extract = answer_on(host: host, command: xorriso_extract_command(iso_path: iso_path, iso_internal_path: census_iso_member_path(member: member), destination: scratch))
   match member_reading_after_extract(extract: extract) {
     Present { value: refused } => refused
-    Absent => member_reading_of_measure(measure: remote(target: target, context: context, command: sha256sum_file_command(path: scratch as String)))
+    Absent => member_reading_of_measure(measure: answer_on(host: host, command: sha256sum_file_command(path: scratch as String)))
   }
 }
 
-fn census_member_readings_in(target: SshTarget, context: FleetSshExecutionContext, dir: NonEmptyStr, stock_path: NonEmptyStr, census_path: NonEmptyStr) -> CensusMemberReadings {
+// THE SIX READINGS OF ONE COMPARISON, on any host, into a directory the caller owns. The member readback
+// runs it on srv2 against the served images; the census publish's regression runs it against the image
+// it just rebuilt in its own scratch directory.
+fn census_member_readings_on(host: CommandHost, dir: NonEmptyStr, stock_path: NonEmptyStr, census_path: NonEmptyStr) -> CensusMemberReadings {
   CensusMemberReadings {
-    stock_grub: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: GrubConfig),
-    census_grub: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: GrubConfig),
-    stock_kernel: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: CasperKernel),
-    census_kernel: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: CasperKernel),
-    stock_initrd: read_member_remote(target: target, context: context, dir: dir, iso_path: stock_path, side: StockSide, member: CasperInitrd),
-    census_initrd: read_member_remote(target: target, context: context, dir: dir, iso_path: census_path, side: CensusSide, member: CasperInitrd),
+    stock_grub: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: GrubConfig),
+    census_grub: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: GrubConfig),
+    stock_kernel: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperKernel),
+    census_kernel: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperKernel),
+    stock_initrd: read_member_on(host: host, dir: dir, iso_path: stock_path, side: StockSide, member: CasperInitrd),
+    census_initrd: read_member_on(host: host, dir: dir, iso_path: census_path, side: CensusSide, member: CasperInitrd),
   }
 }
 
-fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> RemoteLeg {
-  remote_leg_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)))
+// THE CENSUS IMAGE'S MAPPED MEMBERS WITH THEIR ROCK RIDGE OWNER, GROUP AND MODE, read-only, as xorriso
+// lists them. Retained verbatim in the receipt: it is the reading that establishes which build user an
+// image's derivation baked in (gunbc.recurring_failure_mode
+// a_derivation_key_that_does_not_pin_bytes_across_build_hosts).
+data census_mapped_member_paths: List<NonEmptyStr> = [install_media_remaster_grub_cfg_on_iso]
+
+data census_mapped_seed_path: NonEmptyStr = concat("/", mtcollins1_census_nocloud_dir as String) as NonEmptyStr
+
+fn census_mapped_attributes_on(host: CommandHost, iso_path: NonEmptyStr) -> String {
+  let listed = answer_on(host: host, command: xorriso_list_long_command(iso_path: iso_path, first_path: census_mapped_seed_path, more_paths: census_mapped_member_paths))
+  if listed.exit_code != 0 {
+    concat("UNREAD: xorriso -lsl exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr))
+  } else {
+    trim(s: listed.stdout)
+  }
+}
+
+fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> HostLeg {
+  host_run(host: FleetSshCommandHost { target: target, context: context }, command: command)
 }
 
 fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackAttempt {
@@ -496,9 +443,10 @@ fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackA
         PinsRefused { readback: r } => CensusMemberReadbackAttempt { readback: r, workspace: CreationNotRequested }
         PinsAdmitted { stock_iso: _, census_iso: _ } =>
           census_member_attempt_of(
+            kind: FleetSshTransport,
             gate: gate,
             creation: remote_leg(target: target, context: context, command: mktemp_directory_command(template: census_member_workspace_template)),
-            readings: dir => census_member_readings_in(target: target, context: context, dir: dir, stock_path: stock_path, census_path: census_path),
+            readings: dir => census_member_readings_on(host: FleetSshCommandHost { target: target, context: context }, dir: dir, stock_path: stock_path, census_path: census_path),
             cleanup: dir => remote_leg(target: target, context: context, command: rm_recursive_force_one_file_system_command(path: dir as String)),
           )
       }
@@ -511,7 +459,8 @@ fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackA
 // verdict. The run exits nonzero unless the chain is identical AND the workspace was removed.
 fn mtcollins1_census_member_readback_wet() -> ProcessExit {
   let attempt = census_member_readback(medium: mtcollins1_boot_medium)
-  let rendered = render_census_member_attempt(attempt: attempt)
+  let attributes = census_member_mapped_attributes(medium: mtcollins1_boot_medium)
+  let rendered = concat(render_census_member_attempt(attempt: attempt), "census_mapped_attributes=\n", attributes, "\n")
   let written = Filesystem.Write(path: census_member_readback_receipt_path, content: rendered)
   if written.success == false {
     exit_failure(reason: concat("mtcollins1 census member readback: the receipt could not be written: ", written.error, "\n", rendered))
@@ -519,5 +468,16 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
     ExitSuccess
   } else {
     exit_failure(reason: concat("mtcollins1 census member readback did not hold:\n", rendered))
+  }
+}
+
+// The pinned census ISO's mapped members as the served image records them. A REPORT beside the
+// verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
+// boot chain matches stock.
+fn census_member_mapped_attributes(medium: MtCollins1BootMedium) -> String {
+  match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
+    FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
+    FleetSshContextReady { context: context, receipt: _ } =>
+      census_mapped_attributes_on(host: FleetSshCommandHost { target: census_member_readback_target(), context: context }, iso_path: mtcollins1_census_medium_served_path(medium: medium))
   }
 }

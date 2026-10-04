@@ -2,16 +2,15 @@ module v2.test.claim.namespace_graft.marker_strip_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge, qualified_name_from_graft_spine }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge, qualified_name_from_graft_spine, dag_surface_edge }
 import v2.std.algebra { fold_list_node }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted }
-import v2.std.logic { Bool }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_strip_provenance_marker
 }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.symbol_index {
   empty_symbol_index,
   symbol_index_lexical_lookup,
@@ -61,12 +60,10 @@ fn ms_pre_graft_module_root(
     kind: TypeNode { connective: Conj },
     children: concat(
       [
-        dag_named_edge(
-          name: ^dag_surface_module_header,
+        dag_surface_edge(edge: ^dag_surface_module_header,
           target: dag_grammar_atom(id: ^dag_surface_module_header)
         ),
-        dag_named_edge(
-          name: ^dag_surface_module_header_qualified_name,
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
           target: ms_qn_spine(segments: qn)
         )
       ],
@@ -84,16 +81,16 @@ data ms_pre_graft_root: Node = ms_pre_graft_module_root(
   qn: ms_module_qn,
   body_edges: [
     Edge {
-      label: Named { name: ^MsPilotType },
+      label: Authored { name: ^MsPilotType },
       target: Node {
         kind: TypeNode { connective: Disj },
         children: [
           Edge {
-            label: Named { name: ^MsYes },
+            label: Authored { name: ^MsYes },
             target: ms_sym_node(sym: ^MsYes)
           },
           Edge {
-            label: Named { name: ^MsNo },
+            label: Authored { name: ^MsNo },
             target: ms_sym_node(sym: ^MsNo)
           }
         ],

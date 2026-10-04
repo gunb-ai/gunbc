@@ -6,7 +6,7 @@ module test.probe.refinement_seam_admission_probe
 // the wall lands (DESIGN 4b(4) -- the probe then becomes the permanent regression control rather
 // than retiring).
 //
-// std.types declares `NonEmptyStr = String where non_empty`. Enforcement lives in
+// std.types declares `NonEmptyStr = String where string_non_empty`. Enforcement lives in
 // v1.compiler.infer where_refinement_mismatch_diags, reached from infer_expr wherever an expected
 // type is threaded -- but where_refinement_diags_for_predicate DECIDES ONLY WHEN THE VALUE IS A
 // LITERAL, and every non-deciding arm emits WhereRefinementUnenforced, whose six reasons are all

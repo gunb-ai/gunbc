@@ -5,8 +5,27 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  DeclarationLocus,
+  InvariantPortLocus,
+  NodeLocus,
+  Outcome,
+  Rejected,
+  SourcePortLocus,
+  Textual,
+  WholeFile,
+  bind_outcome,
+  diagnostics_fatal
+}
+import v2.std.integer { Int }
+import v2.std.parse_refusal_reason {
+  DataValueMissingAfterEq,
+  FnExpressionBodyMissingAfterEq,
+  ParseRefusalReason,
+  parse_refusal_reason_symbol
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.std.node_query { find_arrow_body_child }
@@ -32,13 +51,6 @@ fn g_tokenize_parse(text: String, file: Symbol) -> Outcome<Node> {
           }
         }
       )
-  }
-}
-
-fn g_parse_accepted(text: String, file: Symbol) -> Bool {
-  match g_tokenize_parse(text: text, file: file) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -116,11 +128,56 @@ test fn braced_fn_decl_survives_normalize_holds() -> Bool {
   g_normalize_has_arrow_body(parsed: braced_fn_control_parsed())
 }
 
-test fn empty_eq_fn_decl_refuses_holds() -> Bool {
-  match g_parse_accepted(text: empty_eq_fn_source, file: ^probe_empty_eq) {
-    true => false
-    false => true
+// THE REFUSAL IS THE GRAMMAR'S OWN EXPECTATION, NOT ANY REFUSAL. The fn_decl and data_decl rows
+// wrap the expression after `=` in `Expect` with a variant of the closed parse-stage vocabulary
+// (v2.std.parse_refusal_reason), so the fatal diagnostic must be exactly that reason's identity,
+// located at the `=` token on the parse stage's port. The overlap residue rides in front as an
+// advisory, and `parse_g0_tokens_remain` is what the parse said before the rows carried the label;
+// either one as the fatal reason reds these claims.
+fn g_fatal_at(parsed: Outcome<Node>, reason: ParseRefusalReason, file: Symbol, start: Int, end: Int) -> Bool {
+  match parsed {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      (fatal.reason == parse_refusal_reason_symbol(reason: reason))
+        && match fatal.at {
+          SourcePortLocus { anchor: anchor, file: f, extent: extent } =>
+            (anchor.at == ^parse_stage_locus_port)
+              && (f == file)
+              && match extent {
+                ByteRange { start: s, end: e } => (s == start) && (e == end)
+                WholeFile => false
+              }
+          Textual { file: _, extent: _ } => false
+          NodeLocus { anchor: _ } => false
+          InvariantPortLocus { anchor: _, invariant: _ } => false
+          DeclarationLocus { declaration: _ } => false
+        }
   }
+}
+
+// `=` is bytes 43..44 of empty_eq_fn_source.
+test fn empty_eq_fn_decl_refuses_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: empty_eq_fn_source, file: ^probe_empty_eq),
+    reason: FnExpressionBodyMissingAfterEq,
+    file: ^probe_empty_eq,
+    start: 43,
+    end: 44
+  )
+}
+
+data empty_eq_data_source: String = "module probe.empty_data\n\ndata x: Int =\n"
+
+// `=` is bytes 37..38 of empty_eq_data_source.
+test fn empty_eq_data_decl_refuses_holds() -> Bool {
+  g_fatal_at(
+    parsed: g_tokenize_parse(text: empty_eq_data_source, file: ^probe_empty_data),
+    reason: DataValueMissingAfterEq,
+    file: ^probe_empty_data,
+    start: 37,
+    end: 38
+  )
 }
 
 test fn expression_bodied_fn_decl_survives_normalize_holds() -> Bool {

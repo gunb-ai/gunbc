@@ -1,5 +1,6 @@
 module v2.lens.reference_derived_residency_reading
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import gunbc.namespace_reference_derived_residency_qualification {
@@ -7,6 +8,7 @@ import gunbc.namespace_reference_derived_residency_qualification {
   CarrierReadability,
   CarrierTypeRecognized,
   CarrierTypeUnrecognized,
+  CarrierMemberNotABinder,
   CarrierPayloadGrain,
   IdentityDigestPerKey,
   KeyedBySingleSubject,
@@ -16,10 +18,9 @@ import gunbc.namespace_reference_derived_residency_qualification {
 }
 import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.node_query { member_edge_type_node }
 import v2.std.node {
   Arrow,
   Atom,
@@ -32,6 +33,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_subtree_nodes,
+  Authored, StructuralLabel,
+  symbol_intern_lexeme,
 }
 
 
@@ -151,7 +154,11 @@ fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
           Present { value: _ } => acc
           Absent =>
             match edge.label {
-              Named { name: _ } => first_unrecognised_atom(target: edge.target)
+              Authored { name: _ } => match member_edge_type_node(e: edge) {
+                Present { value: t } => first_unrecognised_atom(target: t)
+                Absent => acc
+              }
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
         }
@@ -160,10 +167,48 @@ fn decl_first_unrecognised_atom(decl: Node) -> Optional<Symbol> {
   }
 }
 
+// A Named member that is not a binder is read first: the carrier declares no type for it, and that
+// refuses the whole reading rather than letting the remaining fields decide it.
+fn decl_first_member_not_a_binder(decl: Node) -> Optional<Symbol> {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: optional_absent(), f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Positional => acc
+              StructuralLabel { label: _ } => acc
+              Authored { name: nm } =>
+                match member_edge_type_node(e: edge) {
+                  Present { value: _ } => acc
+                  Absent => optional_present(value: nm)
+                }
+            }
+        }
+      })
+    ComputationNode { behavior: _ } => optional_absent()
+  }
+}
+
+// A member's type on the grain and population axes. A member that is not a binder shows nothing on them
+// because the reading as a whole already refuses through its readability (CarrierMemberNotABinder), so
+// these axes are never consumed for it.
+fn residency_member_type_shows(e: Edge, shows: fn(Node) -> Bool) -> Bool {
+  match member_edge_type_node(e: e) {
+    Present { value: t } => shows(t)
+    Absent => false
+  }
+}
+
 fn carrier_readability_of(decl: Node) -> CarrierReadability {
-  match decl_first_unrecognised_atom(decl: decl) {
-    Absent => CarrierTypeRecognized
-    Present { value: id } => CarrierTypeUnrecognized { spelling: id }
+  match decl_first_member_not_a_binder(decl: decl) {
+    Present { value: member } => CarrierMemberNotABinder { member: member }
+    Absent =>
+      match decl_first_unrecognised_atom(decl: decl) {
+        Absent => CarrierTypeRecognized
+        Present { value: id } => CarrierTypeUnrecognized { spelling: id }
+      }
   }
 }
 
@@ -190,7 +235,8 @@ fn decl_has_keyed_population_field(decl: Node) -> Bool {
     TypeNode { connective: _ } =>
       fold(decl.children, init: false, f: fn(acc, edge) {
         match edge.label {
-          Named { name: _ } => acc || type_expr_is_keyed_population(target: edge.target)
+          Authored { name: _ } => acc || residency_member_type_shows(e: edge, shows: fn(t) { type_expr_is_keyed_population(target: t) })
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
       })
@@ -203,7 +249,8 @@ fn decl_has_syntax_field(decl: Node) -> Bool {
     TypeNode { connective: _ } =>
       fold(decl.children, init: false, f: fn(acc, edge) {
         match edge.label {
-          Named { name: _ } => acc || type_expr_holds_syntax(target: edge.target)
+          Authored { name: _ } => acc || residency_member_type_shows(e: edge, shows: fn(t) { type_expr_holds_syntax(target: t) })
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
       })

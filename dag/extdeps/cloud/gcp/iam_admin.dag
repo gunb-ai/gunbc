@@ -9,6 +9,7 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -91,6 +92,7 @@ service gcp.IamAdmin {
   }
 
   operation GetProjectRole {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr }
     output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool?, outcome: RestOutcome }
     readonly
@@ -106,6 +108,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateProjectRole {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr, title: NonEmptyStr, permissions: List<String> }
     output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool?, outcome: RestOutcome }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/roles",
@@ -121,6 +124,7 @@ service gcp.IamAdmin {
   }
 
   operation GetWorkloadIdentityPoolIamPolicy {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
     readonly
@@ -137,6 +141,7 @@ service gcp.IamAdmin {
   }
 
   operation SetWorkloadIdentityPoolIamPolicy {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, policy: GcpPolicy }
     output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int?, outcome: RestOutcome }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:setIamPolicy", body: { policy: policy } }
@@ -153,6 +158,7 @@ service gcp.IamAdmin {
   }
 
   operation TestServiceAccountIamPermissions {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, service_account: ServiceAccountEmail, permissions: List<String> }
     output { permissions: List<String>?, outcome: RestOutcome }
     readonly
@@ -167,6 +173,7 @@ service gcp.IamAdmin {
   }
 
   operation TestWorkloadIdentityPoolIamPermissions {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, permissions: List<String> }
     output { permissions: List<String>?, outcome: RestOutcome }
     readonly
@@ -181,6 +188,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateServiceAccount {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -210,6 +218,7 @@ service gcp.IamAdmin {
   }
 
   operation GetServiceAccountIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -235,6 +244,7 @@ service gcp.IamAdmin {
   }
 
   operation GetServiceAccount {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
     output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
     readonly
@@ -253,6 +263,7 @@ service gcp.IamAdmin {
   }
 
   operation SetServiceAccountIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -279,6 +290,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateWorkloadIdentityPool {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -305,6 +317,7 @@ service gcp.IamAdmin {
   }
 
   operation CreateWorkloadIdentityPoolProvider {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -338,6 +351,7 @@ service gcp.IamAdmin {
   }
 
   operation GetWorkloadIdentityPool {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { pool_name: String from "name", display_name: String? from "displayName", disabled: Bool?, state: String?, outcome: RestOutcome }
     readonly
@@ -356,6 +370,7 @@ service gcp.IamAdmin {
   }
 
   operation ListWorkloadIdentityPoolProviders {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
     output { providers: List<WifProviderWire>? from "workloadIdentityPoolProviders", outcome: RestOutcome }
     readonly

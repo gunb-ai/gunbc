@@ -1,5 +1,23 @@
 module gunbc.srv3_os_install_actuate
 
+// This module used to resolve every cross-module name through the bare channel. Pinning
+// `Filesystem` (the login-body write below) declares an import, and a module that declares
+// imports has its bare channel off -- so every provider name it reads is imported here
+// explicitly, each from the module the floor's UnimportedBareProvider refusals named as its
+// declarer. Filesystem itself is filesystem_io's service Write (input {path, content}, output
+// success/error), which is the operation the login-body write means; std.resources also declares
+// a Filesystem (a capability resource whose write returns {written}) and is transitively in
+// reach, so the bare read would have picked a declarer by scope precedence, which nothing in
+// this source authorizes.
+import std.process { ProcessExit, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
+import gunbc.nbd_proxy_virtual_media_install { ActuatorPlanRefused, srv3_os_install_actuator_plan_standing }
+import gunbc.seeded_install_media_publish { SeededImageResolution }
+import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_body_path }
+import gunbc.srv3_bmc_credential_resolve { BmcCredentialAccessUpsertRequired, BmcCredentialFetchRefused, BmcCredentialMaterialized, BmcCredentialResolution, CredentialResolutionRefused, UseFactoryCredential, UseRotatedSecretRef, bmcweb_login_body_content, materialize_bmc_login_password, observe_and_resolve_srv3_bmc_credential, srv3_os_install_actuate_credential_intent }
+import gunbc.srv3_host_effect_apply { srv3_apply_to_process_exit, srv3_bmcweb_session_login_apply, srv3_bmcweb_token_extract_apply, srv3_nbd_proxy_serve_apply }
+
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."

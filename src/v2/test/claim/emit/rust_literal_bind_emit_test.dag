@@ -49,10 +49,9 @@ import v2.std.diagnostic {
   bind_outcome,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Node, TypeNode }
 import v2.std.witness { Violates, Witness }
-import v2.std.algebra { free_monoid_type_node }
+import v2.std.algebra_structure_signature { free_monoid_type_node }
 import v2.std.compilers.target_model { char_kernel_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

@@ -1,9 +1,9 @@
 module v2.std.collection
 
-import std.algebra { FreeMonoid, PointwisePower }
-import std.primitives { empty_map_contract, lookup_contract, map_insert_contract, PrimitiveContract }
+import std.algebra { PointwisePower }
+import std.primitives { empty_map_contract, get_contract, lookup_contract, map_insert_contract, PrimitiveContract }
 import v2.std.algebra { fold_list, is_empty }
-import std.types { Set, Map }
+import std.types { List, Set, Map }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -36,20 +36,16 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   witness_from_optional(opt: opt, absent: optional_absent_unwrap_diagnostic())
 }
 
-type List<T> = std.algebra.FreeMonoid<T>
-
 data empty_map_host_binding: PrimitiveContract = empty_map_contract
 data map_insert_host_binding: PrimitiveContract = map_insert_contract
 data map_lookup_host_binding: PrimitiveContract = lookup_contract
+data list_at_host_binding: PrimitiveContract = get_contract
 
 type IndexedLookup<T> {
   index: Int
   value: Witness<T>
 }
 
-type ListAtLookup<T>
-  = ListAtMissing { remaining: Int }
-  | ListAtFound { value: T }
 fn empty_map_primitive_delegate<K, V>() -> Map<K, V> {
   empty_map_primitive_delegate()
 }
@@ -101,7 +97,28 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
     }
   ).value
 }
+// THE INDEXED READ IS THE `get` PRIMITIVE, PROJECTED TOTAL. `std.primitives` `get_contract` already
+// declares its cost -- constant work on an ephemeral carrier, `log n` on the persistent one this List
+// is -- so the read inhabits that contract rather than minting a second indexed read. The projection
+// is total in the same way `map_lookup` is: an index outside the list is an answer (`Absent`), never a
+// sentinel. The body was a fold from the head, O(index) per read, so a caller walking positions paid
+// the quadratic the lexer cursor exists to remove.
+fn list_at_primitive_delegate<T>(xs: List<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
 fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
+
+// THE MODELED REFERENCE FOR THE NATIVE KERNEL, and its only consumer is the equivalence witness
+// `gunbc.primitive_egress` owes the `get` row: the same fixture through this fold and through the
+// realized `list_at_optional`, equal answers in and out of range. It is not a second indexed read
+// for callers -- it is O(index) and nothing in production reaches it.
+type ListAtLookup<T>
+  = ListAtMissing { remaining: Int }
+  | ListAtFound { value: T }
+
+fn list_at_reference<T>(xs: List<T>, index: Int) -> Optional<T> {
   match fold_list(
     xs: xs,
     empty: ListAtMissing { remaining: index },

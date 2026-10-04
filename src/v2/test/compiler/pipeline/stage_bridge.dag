@@ -1,11 +1,12 @@
 module v2.test.compiler.pipeline.stage_bridge
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.infer { InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
-import v2.compiler.resolve { resolve }
+import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.translate { translate }
 import v2.extdeps.languages.dag {
@@ -25,7 +26,6 @@ import v2.std.optional {
 }
 import v2.std.compilers.lexing { TokenStream, token_stream_all }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Behavior,
@@ -51,14 +51,18 @@ import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => pipeline_find_arrow_in_module(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => pipeline_find_arrow_in_module_children(root: root)
+    ComputationNode { behavior: _ } => pipeline_find_arrow_in_module_children(root: root)
   }
+}
+
+fn pipeline_find_arrow_in_module_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => pipeline_find_arrow_in_module(root: e.target)
+    }
+  })
 }
 
 fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
@@ -69,7 +73,7 @@ fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
             ComputationNode { behavior: b } => b == wanted
-            _ => false
+            TypeNode { connective: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
@@ -117,7 +121,7 @@ fn pipeline_normalize_source(source: String, file: Symbol) -> Outcome<Normalized
   )
 }
 
-fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
+fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<ResolvedTree> {
   bind_outcome(
     o: pipeline_normalize_source(source: source, file: file),
     f: fn(normalized) {
@@ -128,8 +132,8 @@ fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
 
 fn pipeline_inferred_arrow_from_resolved(resolved: Node) -> Outcome<InferredTree> {
   match pipeline_find_arrow_in_module(root: resolved) {
-    Present { value: arrow } => infer_and_discharge(tree: arrow)
-    Absent => infer_and_discharge(tree: resolved)
+    Present { value: arrow } => infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: arrow))
+    Absent => infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: resolved))
   }
 }
 
@@ -137,7 +141,7 @@ fn pipeline_inferred_source(source: String, file: Symbol) -> Outcome<InferredTre
   bind_outcome(
     o: pipeline_resolved_source(source: source, file: file),
     f: fn(resolved) {
-      pipeline_inferred_arrow_from_resolved(resolved: resolved)
+      pipeline_inferred_arrow_from_resolved(resolved: resolved.root)
     }
   )
 }
@@ -292,7 +296,7 @@ fn pipeline_match_corpus_resolve_relationship_holds() -> Bool {
     file: ^pipeline_corpus_match_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
-      pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
+      pipeline_arrow_body_has_behavior(root: tree.root, wanted: Match)
     Rejected { diagnostics: _ } => false
   }
 }

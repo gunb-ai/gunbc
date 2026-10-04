@@ -148,9 +148,11 @@ fn exempt_cause_of(obs: ResidualSlotObservation) -> ReapRefusalCause? {
   match residual_reap_action(obs: obs) {
     ReapRefused { cause: c } => match c {
       RefusalUnitActive => none
-      _ => Present { value: c }
+      RefusalBuildCacheServerOccupant { unit: _ } => Present { value: c }
     }
-    _ => none
+    NoActionNeeded => none
+    RemoveOverrideOnly => none
+    KillOccupantAndRemoveOverride => none
   }
 }
 

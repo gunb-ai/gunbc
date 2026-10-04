@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_registration_labels {
-  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance {
@@ -14,9 +14,7 @@ import gunbc.build_cache_instance {
   RunnerSlotIdentity,
   ProcessIdentity,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_broker_progress_watchdog {
   RunnerRemoteRegistration,
   RunnerRemoteOnline,
@@ -599,9 +597,10 @@ fn plan_slot_connectivity_action(
 // A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
 // fails the postcondition rather than accepting whatever the successor registered with.
 fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
-  match runner_registration_labels(host: slot.host) {
-    RegistrationLabelsResolved { labels: want } => runner_label_sets_equal(a: observed, b: want)
-    RegistrationLabelsRefused { host: _, cause: _ } => false
+  match runner_slot_labels_conform(slot: slot, observed: observed) {
+    RegistrationLabelsConform => true
+    RegistrationLabelsDiverge => false
+    RegistrationLabelsUnjudged { host: _, cause: _ } => false
   }
 }
 

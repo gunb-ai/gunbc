@@ -60,7 +60,7 @@ data health_pool_files: List<String> = [
 
 data health_fixture_module: String = "test.fixture.health_read_only.mutation_probe"
 
-data health_fixture_files: List<String> = ["dag/test/fixture/health_read_only/mutation_probe.dag"]
+data health_fixture_files: List<String> = ["fixtures/health_read_only/mutation_probe.dag"]
 
 data health_fixture_closure: List<String> = ["test.fixture.health_read_only.mutation_probe"]
 

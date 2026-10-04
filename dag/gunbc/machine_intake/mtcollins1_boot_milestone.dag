@@ -103,14 +103,14 @@ fn numa_node_cpus_line(line: String) -> NumaNodeCpus? {
     if count(head) != 2 { none } else {
       match parse_int(s: join(head.skip(n: 1), "")) {
         Present { value: n } => Present { value: NumaNodeCpus { node: n, cpus: count(tail) } }
-        _ => none
+        Absent => none
       }
     }
   }
 }
 
 fn numa_nodes(out: List<String>) -> List<NumaNodeCpus> {
-  flat_map(out, l => match numa_node_cpus_line(line: l) { Present { value: n } => [n]  _ => [] })
+  flat_map(out, l => match numa_node_cpus_line(line: l) { Present { value: n } => [n]  Absent => [] })
 }
 
 fn numa_nodes_text(nodes: List<NumaNodeCpus>) -> String {

@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -107,6 +108,7 @@ service tcgplayer.Catalog {
   }
 
   operation SearchProducts {
+    requires Network
     input {
       bearer_token: Secret
       product_name: String
@@ -135,6 +137,7 @@ service tcgplayer.Catalog {
   }
 
   operation GetProductSkus {
+    requires Network
     input {
       bearer_token: Secret
       product_id: Int
@@ -156,6 +159,7 @@ service tcgplayer.Catalog {
   }
 
   operation GetCategoryConditions {
+    requires Network
     input {
       bearer_token: Secret
       category_id: Int

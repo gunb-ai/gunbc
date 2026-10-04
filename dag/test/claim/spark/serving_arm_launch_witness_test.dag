@@ -1,7 +1,9 @@
 module test.claim.spark.serving_arm_launch_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.nat { Nat }
+import v2.std.optional { Present, Absent }
 import std.measure { token_count_value }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire }
 import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping }
@@ -9,17 +11,25 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOverInterface }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
-  ServingLaunchProfile, glm_native_concurrent_profile,
+  ServingLaunchProfile, ServingCheckpoint, glm_native_concurrent_profile,
   ArmIntent, ArmNormalServing, ArmBoundedExperiment,
-  GunbcSparkrunVllmDs4Gb10,
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  GunbcSparkrunVllmDs4Gb10, DeepseekV41FlashDba1be0a,
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, SingleSparkTp1,
   glm_native_initial_profile, serving_checkpoint_row, serving_runtime_row,
 }
 import gunbc.spark.serving_arm_launch {
   ArmNode, ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
-  plan_arm_launch, plan_arm_launch_for, arm_node, arm_container_spec, glm_native_arm_container,
+  plan_arm_launch, plan_arm_launch_for, plan_arm_launch_under_memory_fit, arm_node, arm_container_spec, glm_native_arm_container,
+}
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.arm_memory_fit {
+  arm_memory_fit_subject_for_launch,
+  arm_memory_fit_verdict,
+  arm_memory_launch_gate,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
 }
 
 // THE FIXTURE IS THE REAL GROUP B ARM, because the property under test is a property of THIS
@@ -195,6 +205,123 @@ test fn w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_ans
        != plan_refusal_cause(p: plan_unrun_subject(intent: ArmBoundedExperiment))
 }
 
+// ── THE MEASURED ARM REFUSES NORMAL SERVING AT THE MEMORY WALL, WITH THE MISSING TERMS NAMED ────
+//
+// THE PAIR THAT MAKES THE WALL VISIBLE. The render rows above plan the same tuple as a bounded
+// experiment and pass; this row asks for normal serving on the measured subject -- the Group B arm
+// WITH its execution receipt, the tuple that served 2026-09-13 -- and must refuse at the memory
+// wall, because no memory receipt exists for any term but the checkpoint's own bytes. Before the
+// wall, this tuple planned normal serving on the weights-only heuristic; the crash loop
+// since 2026-09-18 is that plan running. The CONTROL is the same call through the ungated
+// planner (plan_arm_launch_for), which plans normal serving for this receipted subject -- so the
+// refusal here is the wall's, not an execution wall's.
+fn plan_measured_subject(intent: ArmIntent) -> ArmLaunchPlan {
+  plan_arm_launch_under_memory_fit(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: FabricGroupB,
+    intent: intent,
+    profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>,
+    container: glm_native_arm_container,
+    promotion_receipts: no_promotion_receipts,
+  )
+}
+
+test fn w_the_measured_arm_refuses_normal_serving_at_the_memory_wall() -> Bool {
+  match plan_measured_subject(intent: ArmNormalServing) {
+    ArmLaunchRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "UNESTABLISHED")
+        && string_contains(s: c as String, pattern: "kv-cache")
+        && string_contains(s: c as String, pattern: "foreign-residency")
+    ArmLaunchPlanned { lines: _, master: _ } => false
+  }
+    && (match plan_measured_subject(intent: ArmBoundedExperiment) {
+      ArmLaunchRefused { cause: _ } => false
+      ArmLaunchPlanned { lines: ls, master: _ } => length(ls) == 4
+    })
+    && (match plan_arm_launch_for(
+      checkpoint: Glm53NativeFp8,
+      runtime: GunbcGlm53NopeDerivedGb10,
+      topology: FourSparkTp4,
+      group: FabricGroupB,
+      intent: ArmNormalServing,
+      profile: glm_native_initial_profile,
+      deployment_env: [] as List<DockerEnvAssignment>,
+      container: glm_native_arm_container,
+    ) {
+      ArmLaunchRefused { cause: _ } => false
+      ArmLaunchPlanned { lines: ls, master: _ } => length(ls) == 4
+    })
+}
+
+// ── A REFUSED FIT REFUSES THE EXPERIMENT TOO — tp1/tp2 ARE NOT ADMISSIBLE AS EXPERIMENTS ────────
+//
+// THE BLOCKER'S CONTROL. A single-rank topology cannot hold this checkpoint under ANY reading
+// (the aggregate argument proves it before any per-rank term), so a bounded experiment there
+// measures nothing a service could use: the gate must refuse it, not admit the shape because the
+// word "experiment" used to bypass the fit. Asked of the proof and the gate directly, because on
+// the planner the aggregate screen (gunbc.spark.serving_arm serving_arm_admits_under) and the
+// roster refuse tp1 first -- a planner-level row would go green on THEIR refusal and say nothing
+// about this one.
+test fn w_a_refused_fit_refuses_the_bounded_experiment_at_the_wall() -> Bool {
+  match arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: SingleSparkTp1,
+    profile: glm_native_initial_profile,
+  ) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } => {
+      let verdict = arm_memory_fit_verdict(subject: subject)
+      (match verdict {
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => true
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitUnestablished { obligations: _ } => false
+      })
+        && (match arm_memory_launch_gate(intent: ArmBoundedExperiment, verdict: verdict, experiment: none) {
+          Present { value: c } => string_contains(s: c as String, pattern: "even a bounded experiment refuses")
+          Absent => false
+        })
+    }
+  }
+}
+
+// ── THE RESTORATION PROFILE'S VERDICT IS CARRIED BY THE PROOF, NOT BY A POOL READING ────────────
+//
+// The proof's verdict for the Group B restoration profile is FitUnestablished and the obligations
+// NAME the missing bounds -- the KV layout derivation, the component receipts, the host reserve --
+// which is the repair program, not "run it and see"; the verdict row is what tells the operator what
+// has to exist BEFORE an execution receipt can mean the arm is safe to serve on.
+// THE RESTORATION PROFILE, unwrapped through the plain carrier the resolver seam can type (the
+// sole-constructor payload's produced identity is erased at the cross-module Present seam).
+fn w_restoration_profile() -> ServingLaunchProfile {
+  match group_b_restoration_executable() {
+    Present { value: executable } => executable.profile
+    Absent => glm_native_initial_profile
+  }
+}
+
+test fn w_the_serving_profiles_verdict_is_unestablished_with_named_obligations() -> Bool {
+  match arm_memory_fit_subject_for_launch(
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    profile: w_restoration_profile(),
+  ) {
+    ArmMemorySubjectRefused { cause: _ } => false
+    ArmMemorySubjectReady { subject: subject } =>
+      match arm_memory_fit_verdict(subject: subject) {
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => false
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
+        ArmMemoryFitUnestablished { obligations: os } =>
+          length(os) > 0
+            && any(os, o => string_contains(s: o as String, pattern: "kv-cache"))
+            && any(os, o => string_contains(s: o as String, pattern: "activation-workspace"))
+            && any(os, o => string_contains(s: o as String, pattern: "host-os-control-reserve"))
+      }
+  }
+}
+
 // ── THE UTILISATION REACHES THE ARGV AT FULL PRECISION, AND IT COMES FROM THE PROFILE ─────────
 //
 // TWO DEFECTS IN ONE ROW, BOTH FOUND AGAINST THE LIVE ARM. This module carried its own
@@ -241,4 +368,25 @@ fn planned_experiment_lines(profile: ServingLaunchProfile, f: fn(List<ArmNodeLau
     ArmLaunchRefused { cause: _ } => false
     ArmLaunchPlanned { lines: ls, master: _ } => f(ls)
   }
+}
+
+// THE CHECKPOINT AND ITS LAUNCH POLICY ARE ONE PAIRING. A profile carries the checkpoint its policy
+// row names (gunbc.spark.serving_arm ModelLaunchPolicy), so the GLM profile planned for an arm
+// assigned another checkpoint refuses at the seam rather than launching that checkpoint with GLM's KV,
+// indexer, Engram and modality choices. The control is the same call at GLM's own checkpoint, which
+// plans; with the join deleted both would plan and this row goes red.
+fn w_plan_with_checkpoint_for_glm_profile(c: ServingCheckpoint) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: c, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, group: FabricGroupB,
+    intent: ArmBoundedExperiment, profile: glm_native_initial_profile,
+    deployment_env: [] as List<DockerEnvAssignment>, container: glm_native_arm_container,
+  )
+}
+
+test fn w_a_profile_from_another_checkpoints_policy_refuses_at_the_launch_seam() -> Bool {
+  string_contains(s: plan_refusal_cause(p: w_plan_with_checkpoint_for_glm_profile(c: DeepseekV41FlashDba1be0a)), pattern: "another checkpoint")
+    && (match w_plan_with_checkpoint_for_glm_profile(c: Glm53NativeFp8) {
+      ArmLaunchPlanned { lines: _, master: _ } => true
+      ArmLaunchRefused { cause: _ } => false
+    })
 }

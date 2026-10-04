@@ -67,7 +67,7 @@ fn fixture_history_load() -> RoadmapAcceptanceEventHistoryLoad {
   )
 }
 
-fn namespace_occurrence_transport_receipt(live: List<RoadmapAcceptanceReceipt>) -> RoadmapAcceptanceReceipt {
+fn namespace_occurrence_transport_receipt(live: List<RoadmapAcceptanceReceipt>) -> RoadmapAcceptanceReceipt? {
   first(live |> filter(r => r.node == nid(s: "namespace-occurrence-transport")))
 }
 
@@ -172,23 +172,27 @@ test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
       match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
         LiveAcceptanceReceiptsReplayed { live: prior_live } => {
-          let receipt = namespace_occurrence_transport_receipt(live: prior_live)
-          let wrong = RoadmapAcceptanceReceipt {
-            node: receipt.node,
-            criteria_digest: receipt.criteria_digest,
-            red_control: receipt.red_control,
-            handback: receipt.handback,
-            accepted_by: receipt.accepted_by,
-            accepted_on: "1970-01-01" as NonEmptyStr,
+          match namespace_occurrence_transport_receipt(live: prior_live) {
+            Absent => false
+            Present { value: receipt } => {
+              let wrong = RoadmapAcceptanceReceipt {
+                node: receipt.node,
+                criteria_digest: receipt.criteria_digest,
+                red_control: receipt.red_control,
+                handback: receipt.handback,
+                accepted_by: receipt.accepted_by,
+                accepted_on: "1970-01-01" as NonEmptyStr,
+              }
+              let history = concat(
+                prior,
+                [exact_revocation_for(receipt: wrong)],
+              )
+              !acceptance_history_integrity_holds(
+                history: history,
+                prior_history: [],
+              )
+            }
           }
-          let history = concat(
-            prior,
-            [exact_revocation_for(receipt: wrong)],
-          )
-          !acceptance_history_integrity_holds(
-            history: history,
-            prior_history: [],
-          )
         }
       }
   }
@@ -201,15 +205,19 @@ test fn witness_revocation_while_exact_receipt_live_refuses() -> Bool {
       match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
         LiveAcceptanceReceiptsReplayed { live: prior_live } => {
-          let receipt = namespace_occurrence_transport_receipt(live: prior_live)
-          let history = concat(
-            history_without_namespace_occurrence_transport(history: prior),
-            [exact_revocation_for(receipt: receipt)],
-          )
-          !acceptance_history_integrity_holds(
-            history: history,
-            prior_history: [],
-          )
+          match namespace_occurrence_transport_receipt(live: prior_live) {
+            Absent => false
+            Present { value: receipt } => {
+              let history = concat(
+                history_without_namespace_occurrence_transport(history: prior),
+                [exact_revocation_for(receipt: receipt)],
+              )
+              !acceptance_history_integrity_holds(
+                history: history,
+                prior_history: [],
+              )
+            }
+          }
         }
       }
   }
@@ -222,13 +230,17 @@ test fn witness_duplicate_revocations_refuse() -> Bool {
       match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
         LiveAcceptanceReceiptsReplayed { live: prior_live } => {
-          let receipt = namespace_occurrence_transport_receipt(live: prior_live)
-          let revoke = exact_revocation_for(receipt: receipt)
-          let history = concat(prior, [revoke, revoke])
-          !acceptance_history_integrity_holds(
-            history: history,
-            prior_history: [],
-          )
+          match namespace_occurrence_transport_receipt(live: prior_live) {
+            Absent => false
+            Present { value: receipt } => {
+              let revoke = exact_revocation_for(receipt: receipt)
+              let history = concat(prior, [revoke, revoke])
+              !acceptance_history_integrity_holds(
+                history: history,
+                prior_history: [],
+              )
+            }
+          }
         }
       }
   }
@@ -245,33 +257,38 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
             |> filter(n => n.node == nid(s: "namespace-occurrence-transport"))
           count(victims) == 1
             && all(victims, n => {
-              let receipt = namespace_occurrence_transport_receipt(live: prior_live)
-              let wrong_digest = first(
-                prior_live
-                  |> filter(r => r.node != receipt.node),
-              ).criteria_digest
-              let planted = RoadmapAcceptanceReceipt {
-                node: receipt.node,
-                criteria_digest: wrong_digest,
-                red_control: receipt.red_control,
-                handback: receipt.handback,
-                accepted_by: receipt.accepted_by,
-                accepted_on: receipt.accepted_on,
-              }
-              let history = prior |> map(e =>
-                match e {
-                  AcceptanceRecorded { receipt: r } =>
-                    if r.node == receipt.node {
-                      AcceptanceRecorded { receipt: planted }
-                    } else {
-                      e
+              match namespace_occurrence_transport_receipt(live: prior_live) {
+                Absent => false
+                Present { value: receipt } => {
+                  match first(prior_live |> filter(r => r.node != receipt.node)) {
+                    Absent => false
+                    Present { value: other } => {
+                      let planted = RoadmapAcceptanceReceipt {
+                        node: receipt.node,
+                        criteria_digest: other.criteria_digest,
+                        red_control: receipt.red_control,
+                        handback: receipt.handback,
+                        accepted_by: receipt.accepted_by,
+                        accepted_on: receipt.accepted_on,
+                      }
+                      let history = prior |> map(e =>
+                        match e {
+                          AcceptanceRecorded { receipt: r } =>
+                            if r.node == receipt.node {
+                              AcceptanceRecorded { receipt: planted }
+                            } else {
+                              e
+                            }
+                          AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => e
+                        }
+                      )
+                      match project_live_acceptance_receipts(history: history) {
+                        LiveAcceptanceReceiptsReplayRefused => false
+                        LiveAcceptanceReceiptsReplayed { live: live } => !node_accepted(receipts: live, rn: n)
+                      }
                     }
-                  AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => e
+                  }
                 }
-              )
-              match project_live_acceptance_receipts(history: history) {
-                LiveAcceptanceReceiptsReplayRefused => false
-                LiveAcceptanceReceiptsReplayed { live: live } => !node_accepted(receipts: live, rn: n)
               }
             })
         }
@@ -286,20 +303,25 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
       match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
         LiveAcceptanceReceiptsReplayed { live: prior_live } => {
-          let history = history_with_exact_revocation_for_namespace_occurrence_transport(
-            history: prior,
-            receipt: namespace_occurrence_transport_receipt(live: prior_live),
-          )
-          acceptance_history_integrity_holds(
-            history: history,
-            prior_history: prior,
-          )
-            && acceptance_history_extends_prior(prior: prior, current: history)
-            && match project_live_acceptance_receipts(history: history) {
-              LiveAcceptanceReceiptsReplayRefused => false
-              LiveAcceptanceReceiptsReplayed { live: live } =>
-                !(live |> any(r => r.node == nid(s: "namespace-occurrence-transport")))
+          match namespace_occurrence_transport_receipt(live: prior_live) {
+            Absent => false
+            Present { value: receipt } => {
+              let history = history_with_exact_revocation_for_namespace_occurrence_transport(
+                history: prior,
+                receipt: receipt,
+              )
+              acceptance_history_integrity_holds(
+                history: history,
+                prior_history: prior,
+              )
+                && acceptance_history_extends_prior(prior: prior, current: history)
+                && match project_live_acceptance_receipts(history: history) {
+                  LiveAcceptanceReceiptsReplayRefused => false
+                  LiveAcceptanceReceiptsReplayed { live: live } =>
+                    !(live |> any(r => r.node == nid(s: "namespace-occurrence-transport")))
+                }
             }
+          }
         }
       }
   }
@@ -461,7 +483,12 @@ test fn witness_unreadable_merge_base_carrier_parse_refuses_prior_observation() 
   }
 }
 
-test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> Bool {
+// THE CONJUNCTION SPLIT (DESIGN section 3): one claim carried two independent cases of the same
+// producer through one budget — the refused shape over an unreadable carrier and the projected
+// shape over a valid one — so roadmap_authority_projection executed twice per frame and both
+// bills landed on one identity. Each case is now its own claim at its own boundary; the producer
+// still executes exactly once per claim, and the file's coverage is unchanged.
+test fn witness_unreadable_carrier_refuses_with_a_located_detail() -> Bool {
   let history = load_roadmap_acceptance_event_history_from_carrier_text(
     text: unreadable_carrier_text_fixture,
   )
@@ -470,33 +497,36 @@ test fn witness_missing_carrier_prevents_silent_empty_authority_projection() -> 
       string_contains(s: detail, pattern: "line 1:")
     RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => false
   }
-    && match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
-      RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
-      RoadmapAuthorityProjectionRefused { detail: _ } => false
-    }
 }
 
-test fn witness_dispatch_never_presents_empty_frontier_on_authority_refusal() -> Bool {
-  let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
-  let projected = RoadmapAuthorityProjected {
-    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
-    accepted: [],
-    withheld: [],
+test fn witness_valid_carrier_projects_a_nonempty_document() -> Bool {
+  match roadmap_authority_projection(history: load_roadmap_acceptance_event_history_from_carrier_text(text: receipt_continuity_acceptance_carrier_fixture_text)) {
+    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } => count(doc_all_nodes(doc: doc)) > 0
+    RoadmapAuthorityProjectionRefused { detail: _ } => false
   }
+}
+
+// SPLIT THE SAME WAY (DESIGN section 3): the refusal arm and the projected arm are independent
+// cases of roadmap_dispatch_file_content_for_projection over planted fixtures; one claim paid both
+// renders per frame. Two claims, one render each, coverage unchanged.
+test fn witness_dispatch_refusal_arm_hides_the_brief_template() -> Bool {
+  let refused = RoadmapAuthorityProjectionRefused { detail: "fixture planted projection refusal" }
   let refused_dispatch = roadmap_dispatch_file_content_for_projection(proj: refused)
   string_contains(s: refused_dispatch, pattern: "fixture planted projection refusal")
     && string_contains(s: refused_dispatch, pattern: "\"refused\": true")
     && !string_contains(s: refused_dispatch, pattern: "\"brief_template\": ")
-    && match projected {
-      RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } => {
-        let dispatch = roadmap_dispatch_file_content_for_projection(proj: projected)
-        string_contains(s: dispatch, pattern: "\"brief_template\": ")
-          && string_contains(s: dispatch, pattern: "\"dispatch\": ")
-          && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
-          && !string_contains(s: dispatch, pattern: "\"refused\": true")
-      }
-      RoadmapAuthorityProjectionRefused { detail: _ } => false
-    }
+}
+
+test fn witness_dispatch_projected_arm_presents_the_dispatch_schema() -> Bool {
+  let dispatch = roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjected {
+    doc: RoadmapDocument { preamble: [], lead_lanes: [], sections: [] },
+    accepted: [],
+    withheld: [],
+  })
+  string_contains(s: dispatch, pattern: "\"brief_template\": ")
+    && string_contains(s: dispatch, pattern: "\"dispatch\": ")
+    && string_contains(s: dispatch, pattern: "\"schema\": \"roadmap-dispatch/v2\"")
+    && !string_contains(s: dispatch, pattern: "\"refused\": true")
 }
 
 // A receipt built here rather than projected from the carrier fixture, so the discriminating pair

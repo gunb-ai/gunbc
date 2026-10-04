@@ -10,7 +10,20 @@ import std.types { NonEmptyStr, list_length }
 import std.logic { Bool }
 import std.integer { Int }
 import v2.std.algebra { fold_list }
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import v2.std.subject_evidence { EvidenceInstrumentRefused, EvidenceSubjectCompleted, SubjectEvidence }
+import tools.emitted_crate_harness_manifest {
+  derive_harness_manifest_in_place,
+  harness_manifest_derived,
+  WitnessBinTarget,
+  SeedAbsent
+}
+import tools.host_prelude {
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  WitnessBinReady,
+  WitnessBinRefused,
+  WitnessBinRefusal
+}
 
 // Seed-unavailable behavioral receipt for dag/std/logic.dag (Control (b), LocalRepoWetLane).
 // The emitted candidate STILL EXECUTES SUCCESSFULLY when no seed implementation is
@@ -71,7 +84,7 @@ fn slbu_repo_path(root: String, rel: String) -> String {
 // failure is separately typed as slb_stage_incomplete through the `staged` conjunction, so the
 // conflation is unreachable on the real path: writes_ok is a sequencing dependency, not a second
 // error arm. The scan must run AFTER the Cargo.toml and main.rs writes because what it scans must
-// be the tree that cargo builds (not an intermediate emit-only tree). By consuming cargo_toml.success
+// be the tree that cargo builds (not an intermediate emit-only tree). By consuming cargo_toml
 // && main_rs.success, the scan cannot be evaluated until both writes have completed -- reordering
 // the block so the scan precedes either write would need a variable that is not yet bound at that
 // point (a compile-time refusal in this substrate, since let bindings are evaluated in declaration
@@ -110,33 +123,13 @@ fn slbu_check_no_seed_crate_refs(src_dir: String, writes_ok: Bool) -> Bool {
 // false (fail-closed). The stronger half is the manifest: no v1-compiler dependency means seed
 // linkage is structurally impossible at link time.
 //
-// ADMITTED DEBT: this Cargo.toml is HAND-AUTHORED as literal TOML text, duplicating
-// dependency names and versions that the real emitter owns. It is a parallel authority
-// that will drift from the emitter's dependency list. DISSOLVES WHEN the emitter
-// produces its own Cargo.toml from the modeled dependency declaration, at which point
-// this hand-authored string should be replaced by a reference to the emitted manifest
-// and all version-duplication drift sites become structurally impossible.
-fn slbu_cargo_toml(root: String) -> String {
-  concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n",
-    "[features]\ntext_lookup_work_counter = []\n\n",
-    "[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n",
-    "[dependencies]\n",
-    "im = { version = \"15.1\", features = [\"serde\"] }\n",
-    "serde = { version = \"1\", features = [\"derive\", \"rc\"] }\n",
-    "serde_json = \"1\"\n",
-    "stacker = \"0.1\"\n",
-    "clap = { version = \"4\", features = [\"derive\"] }\n",
-    "lazy_static = \"1\"\n",
-    "unicode-ident = \"1\"\n",
-    "unicode-properties = { version = \"0.1\", features = [\"emoji\"] }\n",
-    "# v1-compiler deliberately ABSENT -- seed crate not available at build time\n"
-  )
-}
-
+// THE MANIFEST IS DERIVED, NOT AUTHORED: tools.emitted_crate_harness_manifest appends the witness
+// target to the Cargo.toml the emission wrote, with SeedAbsent linkage, so the dependency set is
+// the emitted crate's own and no table names v1-compiler.
+//
 // The ordering between the Cargo.toml and main.rs writes and the v1_compiler:: scan
 // is enforced structurally rather than by line order: the scan consumes writes_ok, which
-// is cargo_toml.success && main_rs.success, so the scan cannot be evaluated until both
+// is cargo_toml && main_rs.success, so the scan cannot be evaluated until both
 // writes have completed. Reordering the scan above either write would require referencing
 // a variable that is not yet bound at that point (a compile-time refusal, since let bindings
 // are evaluated in declaration order and a forward reference is unbound in this substrate).
@@ -148,13 +141,25 @@ fn slbu_cargo_toml(root: String) -> String {
 // Measured (probes let_is_eager_when_unused): let is eager; cleanups fire at the binding
 // regardless of verdict. Cleanup always runs. Residual: this depends on EAGER LET, which
 // no declared property of the substrate guarantees (gunbc#10647, pending).
-fn slbu_seed_unavailable_receipt() -> Bool {
+// The compiler binary is gated FIRST and typed: a gunbc that could not be made Ready is an
+// EvidenceInstrumentRefused carrying its WitnessBinRefusal, never a false that reads like the
+// emitted candidate depending on the seed.
+fn slbu_seed_unavailable_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
   let root = git.Inspect.Toplevel()
-  let logic_read = Filesystem.Read(path: slbu_repo_path(root: root.path, rel: slbu_logic_source_rel))
+  match witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: b, path: p, reason: r } =>
+      EvidenceInstrumentRefused { cause: WitnessBinRefusal { bin_name: b, path: p, reason: r } }
+    WitnessBinReady { path: gunbc_bin } =>
+      EvidenceSubjectCompleted { outcome: slbu_seed_unavailable_run(root: root.path, gunbc_bin: gunbc_bin) }
+  }
+}
 
-  let stage_root = shell.Mkdir.Parents(path: concat(root.path, "/target/wet-stage-seed-unavail"))
+fn slbu_seed_unavailable_run(root: String, gunbc_bin: String) -> Bool {
+  let logic_read = Filesystem.Read(path: slbu_repo_path(root: root, rel: slbu_logic_source_rel))
+
+  let stage_root = shell.Mkdir.Parents(path: concat(root, "/target/wet-stage-seed-unavail"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
-    template: concat(root.path, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
+    template: concat(root, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
   )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(
@@ -163,13 +168,11 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   )
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
 
   let emitted_src_dir = concat(out_dir.path, "/src")
 
   let emit = gunbc.WitnessBin.Run(
-    workdir: root.path,
+    workdir: root,
     bin_path: gunbc_bin,
     args: [
       "compile",
@@ -181,9 +184,8 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     ]
   )
 
-  let cargo_toml = Filesystem.Write(
-    path: concat(out_dir.path, "/Cargo.toml"),
-    content: slbu_cargo_toml(root: root.path)
+  let cargo_toml = harness_manifest_derived(
+    derivation: derive_harness_manifest_in_place(crate_dir: out_dir.path, target: WitnessBinTarget, linkage: SeedAbsent)
   )
 
   let main_rs = Filesystem.Write(
@@ -191,7 +193,7 @@ fn slbu_seed_unavailable_receipt() -> Bool {
     content: slbu_driver_main_source
   )
 
-  let no_seed_crate_refs = slbu_check_no_seed_crate_refs(src_dir: emitted_src_dir, writes_ok: cargo_toml.success && main_rs.success)
+  let no_seed_crate_refs = slbu_check_no_seed_crate_refs(src_dir: emitted_src_dir, writes_ok: cargo_toml && main_rs.success)
 
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
@@ -206,8 +208,8 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let staged = logic_read.success
     && stage_root.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
-    && out_dir.success && gunbc_built && emit.success
-    && cargo_toml.success && main_rs.success
+    && out_dir.success && emit.success
+    && cargo_toml && main_rs.success
 
   let verdict = staged
     && no_seed_crate_refs
@@ -220,8 +222,4 @@ fn slbu_seed_unavailable_receipt() -> Bool {
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path).success
 
   verdict && cleanup_out && cleanup_src
-}
-
-fn slbu_seed_unavailable_receipt_holds() -> Bool {
-  slbu_seed_unavailable_receipt()
 }

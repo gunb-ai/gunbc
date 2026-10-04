@@ -171,15 +171,13 @@ fn read_unified_cgroup_membership(content: String) -> ProcPidCgroupMembershipRec
     MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
     NoMalformedLine =>
       let paths = proc_self_cgroup_unified_hierarchy_paths(content: content)
-      if list_length(items: paths) == 0 {
-        MembershipMissing
-      } else if list_length(items: paths) == 1 {
-        CurrentCgroupObserved { relative_path: paths.first() }
-      } else {
-        MembershipAmbiguous {
-          first: paths.first(),
-          second: paths.skip(n: 1).first(),
-        }
+      match paths.first() {
+        Absent => MembershipMissing
+        Present { value: first } =>
+          match paths.skip(n: 1).first() {
+            Absent => CurrentCgroupObserved { relative_path: first }
+            Present { value: second } => MembershipAmbiguous { first: first, second: second }
+          }
       }
   }
 }
@@ -265,15 +263,13 @@ fn read_unified_cgroup_membership_drift_sketch(content: String) -> ProcPidCgroup
     MalformedFound { cause: cause } => MembershipMalformed { cause: cause }
     NoMalformedLine =>
       let paths = proc_self_cgroup_unified_hierarchy_paths_drift_sketch(content: content)
-      if list_length(items: paths) == 0 {
-        MembershipMissing
-      } else if list_length(items: paths) == 1 {
-        CurrentCgroupObserved { relative_path: paths.first() }
-      } else {
-        MembershipAmbiguous {
-          first: paths.first(),
-          second: paths.skip(n: 1).first(),
-        }
+      match paths.first() {
+        Absent => MembershipMissing
+        Present { value: first } =>
+          match paths.skip(n: 1).first() {
+            Absent => CurrentCgroupObserved { relative_path: first }
+            Present { value: second } => MembershipAmbiguous { first: first, second: second }
+          }
       }
   }
 }

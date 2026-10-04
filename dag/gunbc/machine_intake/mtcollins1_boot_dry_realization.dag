@@ -1,0 +1,730 @@
+module gunbc.machine_intake_mtcollins1_boot_dry_realization
+
+import extdeps.tools.gnu_coreutils { readlink_command }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { Second, second, second_count }
+import std.algebra { trim }
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep,
+  OperationObserved, OperationHarnessFault, ShellObserved, FileObserved,
+  virtual_delay_binding, operation_input_text,
+}
+import gunbc.bmc_model { BmcWorld, bmc_advance, bmc_with_sol_session, bmc_power_is_on }
+import gunbc.bmc_dry_realization { bmc_bindings, megarac_bindings, bmc_ipmi_operation, sleep_delay_seconds_operation }
+import gunbc.megarac_media_model { MegaRacMediaWorld, megarac_media_advance }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings, fs_with_file, fs_file, fs_write, content_bytes, fs_without_file }
+import extdeps.transports.file { FileOperationSucceeded }
+import gunbc.process_environment_model { ModeledVariable, environment_binding }
+import gunbc.host_command_model { ModeledInvocation, exact_invocation_binding, local_command_words, shell_exec_run_argv_operation }
+import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.exec.command { env_prefixed_command }
+import extdeps.tools.env { EnvSet }
+import extdeps.ssh.openssh_client_commands { ssh_add_list_identities_command }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_sol_activate_preamble }
+import extdeps.bmc.ipmi { ipmitool_sol_operational_banner }
+import gunbc.machine_intake_sol_hold { sol_hold_exit_record_prefix }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_sol_notice_ready_suffix, mtcollins1_sol_notice_watcher_path, mtcollins1_sol_notice_token_env }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint }
+import gunbc.remote_host_model { ModeledRemoteHost, remote_host_binding }
+import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings, wall_clock_unix }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { millisecond }
+import v2.std.operation_argv { InputText, InputTextList }
+import gunbc.machine_intake_mtcollins1_kvm_still {
+  KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
+  KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
+  KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
+  KvmJournalRefused, KvmNoFrame,
+}
+
+// THE DRY REALIZATION OF ONE mtcollins1 BOOT ATTEMPT'S WHOLE EFFECT DEMAND. The scenario world
+// composes the one BMC model with what the worker running the attempt has around it: its filesystem
+// (credential file, unit-hold store, SOL pid and capture files, /proc), its processes, its process
+// environment, its SSH agent, the hosts it reaches over SSH, its clocks, and the host's console. Every
+// transition belongs to its own model; this module places them side by side, lifts their bindings into
+// the composite state, and owns only the handlers whose effect spans two of them (a collector the BMC
+// session feeds and the worker's filesystem records). The real entry --
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_wet_on_srv1 -- runs unchanged over it.
+type MtCollins1BootWorld {
+  bmc: BmcWorld
+  fs: ModeledFilesystem
+  environment: List<ModeledVariable>
+  agent: ModeledSshAgent
+  remote_hosts: List<ModeledRemoteHost>
+  clock: ModeledWallClock
+  worker: ModeledWorker
+  console: ModeledHostConsole
+  media: MegaRacMediaWorld
+  screen: ModeledKvmViewer
+}
+
+// THE WORKER'S SSH AGENT: whether it holds the fleet automation key. Its listing follows
+// `ssh-add -l`: one `<bits> <fingerprint> <comment> (<type>)` line per identity, exit 0; and with no
+// identities, "The agent has no identities." on stdout with exit 1 (ssh-add(1)).
+type ModeledSshAgent {
+  socket: String
+  holds_fleet_key: Bool
+}
+
+fn agent_listing(agent: ModeledSshAgent) -> ShellExchangeObservation {
+  if agent.holds_fleet_key {
+    ShellProcessExited { exit_code: 0, stdout: join(["256 ", fleet_automation_ssh_key_fingerprint, " fleet-automation@gunbc (ED25519)\n"], ""), stderr: "" }
+  } else {
+    ShellProcessExited { exit_code: 1, stdout: "The agent has no identities.\n", stderr: "" }
+  }
+}
+
+// THE WORKER'S PROCESSES: the SOL collector the attempt starts, and the notice watcher the boot step
+// starts before the entry runs. A live process is visible the way the production observers read it
+// (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_collector_observe, sol_observer_refusal_of):
+// /proc/<pid>/stat, whose field 22 is the start time the hold publishes as "<pid> <starttime>", and
+// /proc/<pid>/cmdline. An exited process has neither. The model writes cmdline with spaces where Linux
+// writes NULs; the production reader asks only whether it contains `ipmitool`, which both answer alike.
+// diagnostic_path is where the hold sends the process's stderr and its exit record (empty: none).
+type ModeledProcess {
+  pid: Int
+  start_time: Int
+  comm: String
+  cmdline: String
+  capture_path: String
+  diagnostic_path: String
+  alive: Bool
+}
+
+type ModeledWorker {
+  next_pid: Int
+  processes: List<ModeledProcess>
+  uptime_at_origin: Int
+}
+
+// THE HOST'S CONSOLE: what the machine prints on its serial line, each line at an offset from the
+// start of the boot. A line reaches a capture only while the BMC's SOL session is open and a live
+// collector appends it; a line printed while nobody is listening is lost, as it is on the real unit.
+// emitted counts the lines of the current boot already printed.
+type TimedConsoleLine {
+  after: Second
+  text: String
+}
+
+type ModeledHostConsole {
+  lines: List<TimedConsoleLine>
+  emitted: Int
+  boot: Second?
+}
+
+fn with_bmc(w: MtCollins1BootWorld, bmc: BmcWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+}
+
+fn with_fs(w: MtCollins1BootWorld, fs: ModeledFilesystem) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }
+}
+
+fn with_worker(w: MtCollins1BootWorld, worker: ModeledWorker) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: worker, console: w.console, media: w.media, screen: w.screen }
+}
+
+fn with_console(w: MtCollins1BootWorld, console: ModeledHostConsole) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: console, media: w.media, screen: w.screen }
+}
+
+fn with_media(w: MtCollins1BootWorld, media: MegaRacMediaWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: media, screen: w.screen }
+}
+
+fn appended(fs: ModeledFilesystem, path: String, text: String) -> ModeledFilesystem {
+  match fs_file(fs: fs, path: path) {
+    Present { value: f } => fs_with_file(fs: fs, path: path, content: concat(f.content, text))
+    Absent => fs_with_file(fs: fs, path: path, content: text)
+  }
+}
+
+fn proc_cmdline_path(pid: Int) -> String {
+  join(["/proc/", to_string(pid), "/cmdline"], "")
+}
+
+// THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
+// one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
+// under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
+// read from these (gunbc.managed_host_unit_hold self_process_identity) and a
+// successor observes the holder through them (holder_process_liveness), so a worker that starts writes
+// both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
+// directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid
+// namespace is the target of the /proc/self/ns/pid link, which the model stores as that path's text
+// and answers to `readlink /proc/self/ns/pid` (readlink_answer); the kernel refuses to read the link
+// itself, and production only ever readlinks it.
+data proc_boot_id_file: String = "/proc/sys/kernel/random/boot_id"
+
+fn proc_stat_path(pid: Int) -> String {
+  join(["/proc/", to_string(pid), "/stat"], "")
+}
+
+// THE BOOT WORKER'S OWN PROCESS, rendered by proc_stat_line like every other modeled process, and
+// additionally as /proc/self/stat because it is the reader.
+fn worker_process(pid: Int, start_ticks: Int) -> ModeledProcess {
+  ModeledProcess { pid: pid, start_time: start_ticks, comm: "gunbc", cmdline: "gunbc", capture_path: "", diagnostic_path: "", alive: true }
+}
+
+data proc_self_pid_namespace_link: String = "/proc/self/ns/pid"
+
+fn worker_process_started(fs: ModeledFilesystem, boot_id: String, pid_namespace: String, pid: Int, start_ticks: Int) -> ModeledFilesystem {
+  let line = proc_stat_line(p: worker_process(pid: pid, start_ticks: start_ticks))
+  let with_ns = fs_with_file(fs: fs, path: proc_self_pid_namespace_link, content: pid_namespace)
+  fs_with_file(fs: fs_with_file(fs: fs_with_file(fs: with_ns, path: proc_boot_id_file, content: concat(boot_id, "\n")), path: "/proc/self/stat", content: line), path: proc_stat_path(pid: pid), content: line)
+}
+
+// readlink(1): the link's target and a newline on stdout, exit 0; for a missing link, exit 1.
+fn readlink_answer(w: MtCollins1BootWorld, path: String) -> ShellExchangeObservation {
+  match fs_file(fs: w.fs, path: path) {
+    Present { value: f } => ShellProcessExited { exit_code: 0, stdout: concat(f.content, "\n"), stderr: "" }
+    Absent => ShellProcessExited { exit_code: 1, stdout: "", stderr: "" }
+  }
+}
+
+// The kernel removes a dead process's /proc directory; the killed worker was also the reader.
+fn worker_process_killed(fs: ModeledFilesystem, pid: Int) -> ModeledFilesystem {
+  fs_without_file(fs: fs_without_file(fs: fs, path: proc_stat_path(pid: pid)), path: "/proc/self/stat")
+}
+
+// proc(5) stat: "<pid> (<comm>) <state> ..." with the start time at field 22, which is word 19 of what
+// follows the comm -- the position the production reader (proc_stat_after_comm) takes it from. The
+// fields the readers do not consult are zero.
+fn proc_stat_line(p: ModeledProcess) -> String {
+  join([to_string(p.pid), " (", p.comm, ") S ", join(map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18], _i => "0"), " "), " ", to_string(p.start_time), " 0\n"], "")
+}
+
+// The published identity, as gunbc.machine_intake.sol_hold's supervisor writes it: "<pid> <starttime>".
+fn process_identity(p: ModeledProcess) -> String {
+  join([to_string(p.pid), " ", to_string(p.start_time), "\n"], "")
+}
+
+// Start times in clock ticks since the worker booted (USER_HZ 100), so a later process has a later one.
+fn start_ticks(w: MtCollins1BootWorld, now: Second) -> Int {
+  (w.worker.uptime_at_origin + (second_count(s: now) as Int)) * 100
+}
+
+fn process_visible(fs: ModeledFilesystem, p: ModeledProcess) -> ModeledFilesystem {
+  fs_with_file(fs: fs_with_file(fs: fs, path: proc_stat_path(pid: p.pid), content: proc_stat_line(p: p)), path: proc_cmdline_path(pid: p.pid), content: p.cmdline)
+}
+
+// A PROCESS EXITS: its /proc entry goes, and the hold's supervisor records the exit in the process's
+// diagnostic file (sol_hold_exit_record_prefix). The one transition every way a process ends uses --
+// a deactivate, the controller dropping the session, a release.
+fn process_gone(fs: ModeledFilesystem, p: ModeledProcess) -> ModeledFilesystem {
+  let without = fs_without_file(fs: fs_without_file(fs: fs, path: proc_stat_path(pid: p.pid)), path: proc_cmdline_path(pid: p.pid))
+  if p.diagnostic_path == "" { without } else { appended(fs: without, path: p.diagnostic_path, text: concat(sol_hold_exit_record_prefix, "0\n")) }
+}
+
+fn process_dead(p: ModeledProcess) -> ModeledProcess {
+  ModeledProcess { pid: p.pid, start_time: p.start_time, comm: p.comm, cmdline: p.cmdline, capture_path: p.capture_path, diagnostic_path: p.diagnostic_path, alive: false }
+}
+
+fn exit_processes(w: MtCollins1BootWorld, ending: fn(ModeledProcess) -> Bool) -> MtCollins1BootWorld {
+  let fs = fold(filter(w.worker.processes, p => p.alive && ending(p)), init: w.fs, f: fn(acc, p) { process_gone(fs: acc, p: p) })
+  let processes = map(w.worker.processes, p => if p.alive && ending(p) { process_dead(p: p) } else { p })
+  with_worker(w: with_fs(w: w, fs: fs), worker: ModeledWorker { next_pid: w.worker.next_pid, processes: processes, uptime_at_origin: w.worker.uptime_at_origin })
+}
+
+fn is_collector(p: ModeledProcess) -> Bool {
+  p.comm == "ipmitool"
+}
+
+fn live_collectors(w: MtCollins1BootWorld) -> List<ModeledProcess> {
+  filter(w.worker.processes, p => p.alive && is_collector(p: p))
+}
+
+fn started(w: MtCollins1BootWorld, p: ModeledProcess, fs: ModeledFilesystem) -> MtCollins1BootWorld {
+  with_worker(w: with_fs(w: w, fs: if p.alive { process_visible(fs: fs, p: p) } else { fs }), worker: ModeledWorker { next_pid: p.pid + 1, processes: list_append(w.worker.processes, p), uptime_at_origin: w.worker.uptime_at_origin })
+}
+
+// THE NOTICE WATCHER the boot step starts before the entry (gunbc.ci_spec): its token in the
+// environment, its readiness file holding that token, and its record naming a live process -- what
+// gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_await_observer requires before any BMC
+// contact. It is scenario state because the entry does not start it.
+fn with_notice_watcher(w: MtCollins1BootWorld, capture_path: String, token: String) -> MtCollins1BootWorld {
+  let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: second(count: 0)), comm: "bash", cmdline: "bash -c gunbc-sol-notice-watch", capture_path: capture_path, diagnostic_path: "", alive: true }
+  let fs = fs_with_file(fs: fs_with_file(fs: w.fs, path: concat(capture_path, mtcollins1_sol_notice_ready_suffix), content: concat(token, "\n")), path: mtcollins1_sol_notice_watcher_path(capture_path: capture_path), content: process_identity(p: p))
+  let env = list_append(w.environment, ModeledVariable { name: mtcollins1_sol_notice_token_env as String, value: token })
+  started(w: MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen }, p: p, fs: fs)
+}
+
+fn exited_step<S>(state: S, stdout: String, exit_code: Int) -> OperationStep<S> {
+  OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: exit_code, stdout: stdout, stderr: "" } }, state: state, elapsed: second(count: 1) }
+}
+
+// `ipmitool sdr dump <file>` writes the controller's SDR repository to the named local file; the
+// production code checks only that it succeeded and later reads through the file. The model writes a
+// placeholder of the dump into the worker's filesystem, so a later read through it finds a file.
+fn sdr_dump_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "sdr_cache_file") {
+    Absent => OperationHarnessFault { reason: "sdr dump was dispatched without a cache file" as NonEmptyStr }
+    Present { value: path } => {
+      let written = fs_write(fs: w.fs, path: path, content: "<modeled sdr repository dump>", create_new: false)
+      exited_step(state: with_fs(w: w, fs: written.fs), stdout: join(["Dumping Sensor Data Repository to '", path, "'\n"], ""), exit_code: 0)
+    }
+  }
+}
+
+// gunbc.machine_intake.sol_hold ActivateHeld: the hold starts `ipmitool ... sol activate` in the
+// background with its stdout appended to the capture and its stderr to the client diagnostic file,
+// publishes "<pid> <starttime>" to the pid file, and exits 0 once the job exists. On activation the
+// client prints the grounded preamble (extdeps.bmc.ipmitool_observed_output
+// ipmitool_sol_activate_preamble): its banner line on stdout, the rest on stderr. If the controller's
+// session is already held, the client prints the refusal on stderr and exits at once, and the
+// supervisor records that exit -- but the hold has already succeeded and published the pid.
+fn sol_activate_held_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "capture_path") {
+    Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a capture path" as NonEmptyStr }
+    Present { value: capture } => match operation_input_text(invocation: call.invocation, name: "pid_path") {
+      Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a pid path" as NonEmptyStr }
+      Present { value: pid_path } => match operation_input_text(invocation: call.invocation, name: "client_diagnostic_path") {
+        Absent => OperationHarnessFault { reason: "ActivateHeld was dispatched without a client diagnostic path" as NonEmptyStr }
+        Present { value: diag } => {
+          let program = match operation_input_text(invocation: call.invocation, name: "ipmitool") { Present { value: p } => p Absent => "ipmitool" }
+          let already = w.bmc.sol_session_open
+          let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: call.now), comm: "ipmitool", cmdline: concat(program, " -H bmc -I lanplus sol activate"), capture_path: capture, diagnostic_path: diag, alive: !already }
+          let published = fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs
+          let preamble = filter(split(s: ipmitool_sol_activate_preamble, delimiter: "\n"), l => l != "")
+          let banner = join(map(filter(preamble, l => string_contains(s: l, pattern: ipmitool_sol_operational_banner)), l => concat(l, "\n")), "")
+          let stderr = join(map(filter(preamble, l => !string_contains(s: l, pattern: ipmitool_sol_operational_banner)), l => concat(l, "\n")), "")
+          let fs = if already { appended(fs: published, path: diag, text: concat("Info: SOL payload already active on another session\n", concat(sol_hold_exit_record_prefix, "1\n"))) }
+                   else { appended(fs: appended(fs: published, path: capture, text: banner), path: diag, text: stderr) }
+          let bmc = if already { w.bmc } else { bmc_with_sol_session(world: w.bmc, open: true) }
+          exited_step(state: with_bmc(w: started(w: w, p: p, fs: fs), bmc: bmc), stdout: "", exit_code: 0)
+        }
+      }
+    }
+  }
+}
+
+// `ipmitool sol deactivate` ends the controller's SOL session, and a collector attached to it loses
+// its session and exits. Its pid file and activation receipt stay: removing them is the production
+// release's retirement, not the controller's.
+fn sol_deactivate_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  exited_step(state: with_bmc(w: exit_processes(w: w, ending: is_collector), bmc: bmc_with_sol_session(world: w.bmc, open: false)), stdout: "", exit_code: 0)
+}
+
+// gunbc.machine_intake.sol_hold ReleaseHeld: stops the process the pid file names only while that
+// "<pid> <starttime>" is a live instance with that start time (sol_hold_owned_condition), and succeeds
+// once it is gone; a record naming no live instance has nothing to stop and also succeeds.
+fn sol_release_held_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "pid_path") {
+    Absent => OperationHarnessFault { reason: "ReleaseHeld was dispatched without a pid path" as NonEmptyStr }
+    Present { value: pid_path } => match fs_file(fs: w.fs, path: pid_path) {
+      Absent => exited_step(state: w, stdout: "", exit_code: 0)
+      Present { value: record } => {
+        let named = trim(s: record.content)
+        exited_step(state: exit_processes(w: w, ending: fn(p) { trim(s: process_identity(p: p)) == named }), stdout: "", exit_code: 0)
+      }
+    }
+  }
+}
+
+// Master Write-Read toward the SMpro. The retained attempt of 2026-09-27 (run 36335369059,
+// mtcollins1-boot-diagnostics.txt sha256 eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c) recorded
+// every probe refused with completion code 0xff, and no successful exchange is retained, so that is the
+// grounded answer the model gives. The production code records SMpro passes and never gates on them.
+fn smpro_refused_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0xff): Unspecified error\n" } },
+    state: w,
+    elapsed: second(count: 1),
+  }
+}
+
+// /proc/uptime: the worker's seconds since its own boot, `<seconds>.<hundredths> <idle>` and one newline
+// (proc(5)), read over the file transport since gunbc#12636, so the record keeps its final newline.
+data linux_procfs_read_uptime_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/linux/procfs.dag",
+  service: "linux.Procfs",
+  operation: "ReadUptime",
+}
+
+fn uptime_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  let up = w.worker.uptime_at_origin + (second_count(s: call.now) as Int)
+  let record = join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
+  OperationObserved {
+    observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } },
+    state: w,
+    elapsed: second(count: 0),
+  }
+}
+
+// THE CONSOLE ADVANCES WITH TIME. After the BMC's own events fire, every console line of the current
+// boot whose offset has passed is printed; it reaches each live collector's capture only if the SOL
+// session is open. A new boot restarts the console from its first line.
+fn console_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
+  if count(w.console.lines) == 0 { w } else { console_advance_booted(w: w, now: now) }
+}
+
+fn console_advance_booted(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
+  match w.bmc.host_booted_at {
+    Absent => w
+    Present { value: booted } => {
+      let fresh = match w.console.boot { Present { value: b } => second_count(s: b) != second_count(s: booted) Absent => true }
+      let console = if fresh { ModeledHostConsole { lines: w.console.lines, emitted: 0, boot: Present { value: booted } } } else { w.console }
+      if !fresh && console.emitted >= count(console.lines) { w } else {
+      let elapsed = (second_count(s: now) as Int) - (second_count(s: booted) as Int)
+      let due = filter(console.lines.skip(n: console.emitted), l => (second_count(s: l.after) as Int) <= elapsed)
+      let printed = concat_text(lines: due)
+      let listening = w.bmc.sol_session_open && bmc_power_is_on(world: w.bmc)
+      let fs = if listening { fold(live_collectors(w: w), init: w.fs, f: fn(acc, p) { appended(fs: acc, path: p.capture_path, text: printed) }) } else { w.fs }
+      with_console(w: with_fs(w: w, fs: fs), console: ModeledHostConsole { lines: console.lines, emitted: console.emitted + count(due), boot: console.boot })
+      }
+    }
+  }
+}
+
+fn concat_text(lines: List<TimedConsoleLine>) -> String {
+  join(map(lines, l => concat(l.text, "\n")), "")
+}
+
+// A COLLECTOR LIVES ONLY WHILE ITS SESSION DOES. When the controller's SOL session ends -- on its own
+// or by a deactivate -- the `ipmitool sol activate` client loses its session and exits, so its /proc
+// entry disappears; its pid file stays, since nothing in the realization removes it.
+fn collectors_follow_session(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
+  if w.bmc.sol_session_open || count(live_collectors(w: w)) == 0 { w } else { exit_processes(w: w, ending: is_collector) }
+}
+
+// Time only changes the world when something is scheduled -- a BMC event, a connecting or withdrawing
+// presentation -- or when the console has lines left to print; otherwise the world is returned as it
+// is, rather than rebuilt on every dispatch.
+fn boot_world_idle(w: MtCollins1BootWorld) -> Bool {
+  count(w.bmc.pending) == 0
+    && (match w.media.cd.ready_at { Absent => true Present { value: _ } => false })
+    && (match w.media.withdraw_at { Absent => true Present { value: _ } => false })
+}
+
+fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
+  let stepped = if boot_world_idle(w: w) { w } else { with_media(w: with_bmc(w: w, bmc: bmc_advance(world: w.bmc, now: now)), media: megarac_media_advance(world: w.media, now: now)) }
+  kvm_observers_advance(w: console_advance(w: collectors_follow_session(w: stepped), now: now), now: now)
+}
+
+// THE BMC KVM VIEWER AND THE OBSERVER HELD AGAINST IT (gunbc#12492: the boot's handoff is admitted
+// only while the observer it started is established). The observer is the process
+// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_mtcollins1_kvm_still
+// kvm_observer_launch_in's node command. The model starts it the way the launch does -- a live process
+// in /proc, its "<pid> <start>" record at the pid path -- and writes its journal ONLY through
+// kvm_journal_line, the writer the production parser is the inverse of, so the dry observer cannot
+// speak a grammar the boot does not read. A line kvm_journal_line refuses is a harness fault, never a
+// line written anyway.
+//
+// What it answers, as the observer script does once the viewer's /kvm socket delivers a frame: the
+// connection lines, then established with the quoted host:port the base URL names, the viewer
+// session, the attempt and the generation; then, while it lives, one still per trigger file (the
+// script's 'trigger:'+name reason) and, on the stop file, stop-requested, the session release, the
+// browser close and stopped, after which the process has exited. It takes no periodic still: the
+// boot's attempt ends well inside mtcollins1_kvm_observer_cadence's first period in every scenario
+// the matrix runs, and a longer one reports the gap through kvm_still_gaps as the real journal would.
+//
+// A still's bytes are one fixed modeled frame, and its digest is supplied beside it (the precedent is
+// gunbc.remote_host_model ModeledRemoteFile.sha256): sha256sum answers that digest for exactly those
+// bytes, reports a missing file as sha256sum does, and refuses as a harness fault for any other bytes
+// rather than inventing a digest.
+type ModeledKvmViewer {
+  session: String
+  still_bytes: String
+  still_sha256: String
+  observers: List<ModeledKvmObserver>
+}
+
+type ModeledKvmObserver {
+  pid: Int
+  dir: String
+  seq: Int
+  seen_files: Int
+}
+
+// printf '%s' '<modeled kvm still jpeg>' | sha256sum
+fn healthy_kvm_viewer() -> ModeledKvmViewer {
+  ModeledKvmViewer { session: "7", still_bytes: "<modeled kvm still jpeg>", still_sha256: "550277e71ddf7d978137c4bd140a9b5cfda25500b365a7375fb91db8790f584c", observers: [] }
+}
+
+fn with_screen(w: MtCollins1BootWorld, screen: ModeledKvmViewer) -> MtCollins1BootWorld {
+  MtCollins1BootWorld { bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: screen }
+}
+
+data kvm_observer_generation: String = "1"
+
+// The observer script writes Date.now() and its toISOString(); the model's wall clock is whole seconds.
+fn kvm_instant(w: MtCollins1BootWorld, now: Second) -> KvmInstant? {
+  let unix = wall_clock_unix(clock: w.clock, now: now)
+  match checked_int_to_nat(n: unix * 1000) {
+    Present { value: ms } => Present { value: KvmInstant { since_epoch: millisecond(count: ms), iso: concat(join(split(s: iso8601_utc_text(unix: unix), delimiter: "Z"), ""), ".000Z") } }
+    Absent => none
+  }
+}
+
+// The journal lines for these events, or the first event kvm_journal_line refuses to write.
+type KvmModeledLines
+  = KvmModeledRendered { text: String }
+  | KvmModeledRefused { event_word: String, would_write: String }
+
+fn kvm_lines(events: List<KvmJournalEvent>) -> KvmModeledLines {
+  fold(events, init: KvmModeledRendered { text: "" }, f: fn(acc, e) {
+    match acc {
+      KvmModeledRendered { text: t } => match kvm_journal_line(event: e) {
+        KvmJournalRendered { line: l } => KvmModeledRendered { text: concat(t, concat(l, "\n")) }
+        KvmJournalRenderRefused { event_word: word, would_write: line } => KvmModeledRefused { event_word: word, would_write: line }
+      }
+      refused => refused
+    }
+  })
+}
+
+fn operation_input_list(call: OperationCall, name: String) -> List<String>? {
+  fold(call.invocation.bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if b.name == name { match b.value { InputTextList { items: xs } => Present { value: xs } InputText { text: _ } => none } } else { none }
+    }
+  })
+}
+
+// kvm_observer_launch_in's operands end the node command: base URL, user, credential path, dir,
+// attempt, cadence, frame wait, periodic limit, playwright module, viewer feature-list path.
+data kvm_observer_operand_count: Int = 10
+
+// THE VIEWER READS ITS FEATURE LIST UNGUARDED (KVM probe run 36788605665): the healthy viewer reaches
+// established only when the feature-list operand names a file the launch wrote; without one the vendor's
+// viewer throws in its KVM view's initialize() and never opens /kvm, which the observer journals as a
+// refusal for want of a frame.
+data kvm_observer_features_operand: Int = 9
+
+fn kvm_operand(command: List<String>, i: Int) -> String {
+  match command.skip(n: count(command) - kvm_observer_operand_count + i).first() { Present { value: v } => v Absent => "" }
+}
+
+fn url_host(base_url: String) -> String {
+  match split(s: base_url, delimiter: "://").skip(n: 1).first() {
+    Present { value: rest } => match split(s: rest, delimiter: "/").first() { Present { value: h } => h Absent => "" }
+    Absent => ""
+  }
+}
+
+// gunbc.owned_process LaunchOwned: starts the command detached, publishes "<pid> <starttime>" to the
+// pid path, and exits 0. The observer it starts reaches established at once in the healthy viewer.
+fn owned_launch_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "pid_path") {
+    Absent => OperationHarnessFault { reason: "LaunchOwned was dispatched without a pid path" as NonEmptyStr }
+    Present { value: pid_path } => match operation_input_list(call: call, name: "command") {
+      Absent => OperationHarnessFault { reason: "LaunchOwned was dispatched without a command" as NonEmptyStr }
+      Present { value: command } =>
+        if count(command) < kvm_observer_operand_count { OperationHarnessFault { reason: "LaunchOwned's command is not the KVM observer's; the dry worker models no other owned process" as NonEmptyStr } }
+        else { match kvm_instant(w: w, now: call.now) {
+          Absent => OperationHarnessFault { reason: "the modeled wall clock reads before the epoch" as NonEmptyStr }
+          Present { value: at } => {
+            let dir = kvm_operand(command: command, i: 3)
+            let p = ModeledProcess { pid: w.worker.next_pid, start_time: start_ticks(w: w, now: call.now), comm: "node", cmdline: join(command, " "), capture_path: "", diagnostic_path: "", alive: true }
+            let features = kvm_operand(command: command, i: kvm_observer_features_operand)
+            let seeded = features != "" && match fs_file(fs: w.fs, path: features) { Present { value: _ } => true  Absent => false }
+            let journal = if seeded {
+              kvm_lines(events: [
+                KvmJournalConnectionRequested { at: at },
+                KvmJournalConnectionOpen { at: at, gen: kvm_observer_generation },
+                KvmJournalEstablished { at: at, host: concat("\"", concat(url_host(base_url: kvm_operand(command: command, i: 0)), "\"")), session: w.screen.session, attempt: kvm_operand(command: command, i: 4), gen: kvm_observer_generation },
+              ])
+            } else {
+              kvm_lines(events: [KvmJournalRefused { at: at, refusal: KvmNoFrame { detail: "\"the viewer was opened without its feature list\"" } }])
+            }
+            match journal {
+              KvmModeledRefused { event_word: word, would_write: line } => OperationHarnessFault { reason: concat("kvm_journal_line refused the modeled ", concat(word, concat(" line: ", line))) as NonEmptyStr }
+              KvmModeledRendered { text: t } => {
+                let fs = appended(fs: fs_write(fs: w.fs, path: pid_path, content: process_identity(p: p), create_new: false).fs, path: concat(dir, "/journal"), text: t)
+                let screen = ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: list_append(w.screen.observers, ModeledKvmObserver { pid: p.pid, dir: dir, seq: 0, seen_files: 0 }) }
+                exited_step(state: with_screen(w: started(w: w, p: p, fs: fs), screen: screen), stdout: "", exit_code: 0)
+              }
+            }
+          }
+        } }
+    }
+  }
+}
+
+fn kvm_observer_alive(w: MtCollins1BootWorld, o: ModeledKvmObserver) -> Bool {
+  !all(w.worker.processes, p => !(p.alive && p.pid == o.pid))
+}
+
+// THE OBSERVER'S LOOP, one pass per advance, in the script's order: the stop file ends it; otherwise
+// each trigger file, in name order, is consumed and answered with a still.
+fn kvm_observers_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
+  if count(w.screen.observers) == 0 { w } else {
+    fold(w.screen.observers, init: w, f: fn(acc, o) { if kvm_observer_alive(w: acc, o: o) { kvm_observer_pass(w: acc, o: o, now: now) } else { acc } })
+  }
+}
+
+// A stop request and a trigger each arrive as a NEW file in the observer's directory, so a pass whose
+// filesystem holds the same number of files as the last pass looked at has nothing to answer: nearly
+// every dispatch of a boot is that pass, and it neither scans the files nor takes an instant. A pass
+// that does look records the count it left behind.
+fn kvm_observer_pass(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
+  let n = count(w.fs.files)
+  if n == o.seen_files { w } else {
+    let answered = kvm_observer_look(w: w, o: o, now: now)
+    with_kvm_seen(w: answered, pid: o.pid, seen: count(answered.fs.files))
+  }
+}
+
+fn with_kvm_seen(w: MtCollins1BootWorld, pid: Int, seen: Int) -> MtCollins1BootWorld {
+  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: o.seq, seen_files: seen } } else { o }) })
+}
+
+// The instant is taken only when a line is written.
+fn kvm_observer_look(w: MtCollins1BootWorld, o: ModeledKvmObserver, now: Second) -> MtCollins1BootWorld {
+  match fs_file(fs: w.fs, path: concat(o.dir, "/stop")) {
+    Present { value: _ } => match kvm_instant(w: w, now: now) {
+      Present { value: at } => kvm_observer_stopped(w: w, o: o, at: at)
+      Absent => w
+    }
+    Absent => {
+      let triggers = kvm_trigger_files(w: w, o: o)
+      if count(triggers) == 0 { w } else {
+        match kvm_instant(w: w, now: now) {
+          Present { value: at } => kvm_observer_answer_triggers(w: w, o: o, at: at, triggers: triggers)
+          Absent => w
+        }
+      }
+    }
+  }
+}
+
+fn kvm_journal_appended(w: MtCollins1BootWorld, o: ModeledKvmObserver, events: List<KvmJournalEvent>) -> MtCollins1BootWorld {
+  match kvm_lines(events: events) {
+    KvmModeledRendered { text: t } => with_fs(w: w, fs: appended(fs: w.fs, path: concat(o.dir, "/journal"), text: t))
+    KvmModeledRefused { event_word: _, would_write: _ } => w
+  }
+}
+
+fn kvm_observer_stopped(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant) -> MtCollins1BootWorld {
+  let journalled = kvm_journal_appended(w: w, o: o, events: [
+    KvmJournalStopRequested { at: at, by: "stop-file" },
+    KvmJournalSessionRelease { at: at, result: "released" },
+    KvmJournalBrowserClose { at: at, result: "closed" },
+    KvmJournalStopped { at: at, session: "released", browser: "closed" },
+  ])
+  exit_processes(w: journalled, ending: fn(p) { p.pid == o.pid })
+}
+
+fn kvm_trigger_files(w: MtCollins1BootWorld, o: ModeledKvmObserver) -> List<String> {
+  map(filter(w.fs.files, f => starts_with(s: f.path, prefix: concat(o.dir, "/trigger-"))), f => f.path).sort_by(p => p)
+}
+
+fn kvm_observer_answer_triggers(w: MtCollins1BootWorld, o: ModeledKvmObserver, at: KvmInstant, triggers: List<String>) -> MtCollins1BootWorld {
+  if count(triggers) == 0 { w } else {
+    let answered = fold(triggers, init: w, f: fn(acc, path) {
+      let seq = kvm_observer_seq(w: acc, pid: o.pid) + 1
+      let file = concat("still-", concat(to_string(seq), ".jpg"))
+      let name = join(split(s: path, delimiter: concat(o.dir, "/trigger-")), "")
+      let consumed = with_fs(w: acc, fs: fs_with_file(fs: fs_without_file(fs: acc.fs, path: path), path: concat(o.dir, concat("/", file)), content: acc.screen.still_bytes))
+      with_kvm_seq(w: kvm_journal_appended(w: consumed, o: o, events: [KvmJournalStill { at: at, seq: to_string(seq), reason: concat("trigger:", name), file: file, gen: kvm_observer_generation }]), pid: o.pid, seq: seq)
+    })
+    answered
+  }
+}
+
+fn kvm_observer_seq(w: MtCollins1BootWorld, pid: Int) -> Int {
+  fold(w.screen.observers, init: 0, f: fn(acc, o) { if o.pid == pid { o.seq } else { acc } })
+}
+
+fn with_kvm_seq(w: MtCollins1BootWorld, pid: Int, seq: Int) -> MtCollins1BootWorld {
+  with_screen(w: w, screen: ModeledKvmViewer { session: w.screen.session, still_bytes: w.screen.still_bytes, still_sha256: w.screen.still_sha256, observers: map(w.screen.observers, o => if o.pid == pid { ModeledKvmObserver { pid: o.pid, dir: o.dir, seq: seq, seen_files: o.seen_files } } else { o }) })
+}
+
+data owned_process_launch_operation: OperationRef = OperationRef {
+  path: "dag/gunbc/owned_process.dag",
+  service: "gunbc.owned_process.launch",
+  operation: "LaunchOwned",
+}
+
+data sha256sum_digest_file_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/sha256sum.dag",
+  service: "sha256sum.Sha256",
+  operation: "DigestFile",
+}
+
+// sha256sum(1): "<digest>  <path>" and exit 0; a missing file is "No such file or directory", exit 1.
+fn digest_file_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match operation_input_text(invocation: call.invocation, name: "path") {
+    Absent => OperationHarnessFault { reason: "DigestFile was dispatched without a path" as NonEmptyStr }
+    Present { value: path } => match fs_file(fs: w.fs, path: path) {
+      Absent => OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: concat("sha256sum: ", concat(path, ": No such file or directory\n")) } }, state: w, elapsed: second(count: 0) }
+      Present { value: f } =>
+        if f.content == w.screen.still_bytes { exited_step(state: w, stdout: concat(w.screen.still_sha256, concat("  ", concat(path, "\n"))), exit_code: 0) }
+        else { OperationHarnessFault { reason: concat("no digest is modeled for the bytes of ", path) as NonEmptyStr } }
+    }
+  }
+}
+
+data sol_hold_activate_held_operation: OperationRef = OperationRef {
+  path: "dag/gunbc/machine_intake/sol_hold.dag",
+  service: "gunbc.machine_intake.sol_hold",
+  operation: "ActivateHeld",
+}
+
+// `hostname -s` on the worker: the entry is mtcollins1_boot_wet_on_srv1, so the worker it models is
+// srv1, printed as hostname(1) prints the short name, with one newline.
+data os_hostname_read_short_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/hostname.dag",
+  service: "os.Hostname",
+  operation: "ReadShort",
+}
+
+data dry_worker_short_hostname: String = "srv1"
+
+// The runner's working directory, where the boot step runs: its checkout. Relative paths the route
+// uses (the observer's artifacts directory, the retained target files) resolve against it.
+data dry_worker_checkout: String = "/home/runner/work/gunbc/gunbc"
+
+fn hostname_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(dry_worker_short_hostname, "\n"), stderr: "" } },
+    state: w,
+    elapsed: second(count: 0),
+  }
+}
+
+data sol_hold_release_held_operation: OperationRef = OperationRef {
+  path: "dag/gunbc/machine_intake/sol_hold.dag",
+  service: "gunbc.machine_intake.sol_hold",
+  operation: "ReleaseHeld",
+}
+
+fn mtcollins1_boot_dry_realization(identity: NonEmptyStr, initial: MtCollins1BootWorld, epoch: Second) -> OperationRealization<MtCollins1BootWorld> {
+  let bmc = concat(bmc_bindings(get: fn(w) { w.bmc }, put: with_bmc), megarac_bindings(get: fn(w) { w.media }, put: with_media))
+  let files = filesystem_bindings(get: fn(w) { w.fs }, put: with_fs, cwd: fn(w) { dry_worker_checkout })
+  let local_commands = exact_invocation_binding(at: shell_exec_run_argv_operation, inputs: ["program", "arguments"], table: [
+    ModeledInvocation {
+      words: local_command_words(command: env_prefixed_command(bindings: [EnvSet { name: "SSH_AUTH_SOCK", value: initial.agent.socket }], command: ssh_add_list_identities_command())),
+      answer: fn(w) { agent_listing(agent: w.agent) },
+    },
+    ModeledInvocation {
+      words: local_command_words(command: readlink_command(path: proc_self_pid_namespace_link)),
+      answer: fn(w) { readlink_answer(w: w, path: proc_self_pid_namespace_link) },
+    },
+  ])
+  let spanning = [
+    OperationBinding { at: bmc_ipmi_operation(operation: "SdrDumpAuthenticated"), handler: sdr_dump_handler },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SolDeactivate"), handler: sol_deactivate_handler },
+    OperationBinding { at: bmc_ipmi_operation(operation: "MasterWriteReadAuthenticated"), handler: smpro_refused_handler },
+    OperationBinding { at: sol_hold_activate_held_operation, handler: sol_activate_held_handler },
+    OperationBinding { at: sol_hold_release_held_operation, handler: sol_release_held_handler },
+    OperationBinding { at: linux_procfs_read_uptime_operation, handler: uptime_handler },
+    OperationBinding { at: os_hostname_read_short_operation, handler: hostname_handler },
+    OperationBinding { at: owned_process_launch_operation, handler: owned_launch_handler },
+    OperationBinding { at: sha256sum_digest_file_operation, handler: digest_file_handler },
+  ]
+  OperationRealization {
+    identity: identity,
+    initial: initial,
+    epoch: epoch,
+    bindings: concat(concat(concat(concat(bmc, files), wall_clock_bindings(get: fn(w) { w.clock })), spanning), [
+      environment_binding(get: fn(w) { w.environment }),
+      virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds"),
+      local_commands,
+      remote_host_binding(get: fn(w) { w.remote_hosts }),
+    ]),
+    advance: boot_advance,
+  }
+}

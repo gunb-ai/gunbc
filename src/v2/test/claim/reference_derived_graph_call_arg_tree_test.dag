@@ -1,6 +1,6 @@
 module v2.test.claim.reference_derived_graph_call_arg_tree
 
-import std.types { Int }
+import std.types { Int, List }
 import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
@@ -16,7 +16,6 @@ import v2.lens.module_graph {
 }
 import v2.std.algebra { length }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -29,7 +28,6 @@ import v2.std.diagnostic {
   outcome_accepted
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Node }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -133,8 +131,13 @@ test fn call_argument_only_reference_is_missing_from_parse_tree_today_holds() ->
   ca_parse_call_arg_edge_count() == 0
 }
 
-test fn call_argument_only_reference_is_missing_from_normalized_tree_today_holds() -> Bool {
-  ca_normalized_call_arg_edge_count() == 0
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): a call argument's value is lowered whole as a value and its
+// named label conserved on the application (body_lowering_fold body_lower_call_arg_edge), so the
+// qualified mention inside `sink(x: ...)` reaches the normalized tree and the collector derives the
+// edge. Permanent control; its parse-tree twin above still holds (the parse tree never carries a
+// reference edge).
+test fn call_argument_only_reference_is_present_in_normalized_tree_holds() -> Bool {
+  ca_normalized_call_arg_edge_count() > 0
 }
 
 test fn type_position_only_is_missing_from_parse_tree_today_holds() -> Bool {

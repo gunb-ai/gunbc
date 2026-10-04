@@ -7,6 +7,7 @@ import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTran
 import tools.self_host_behavioral_equivalence_take { no_verdict_cause }
 import tools.host_prelude { WitnessBinReady, WitnessBinRefused, WitnessBinArtifactAbsent, WitnessBinBuildFailed }
 import tools.self_host_curated_seed_linked_harness {
+  HandDriverFile,
   CsslReceiptOutcome,
   CsslBehaviorHeld,
   CsslBehaviorDiverged,
@@ -28,7 +29,7 @@ import gunbc.self_host_behavioral_equivalence_receipt {
   behavioral_equivalence_standing,
   current_behavioral_equivalence_standing,
 }
-import gunbc.compiler_frontend_program_interlock { SelfHostBehavioralEquivalenceReestablished }
+import gunbc.compiler_frontend_program_interlock { SelfHostEmittedContractsHeld }
 import gunbc.compiler_frontend_program_status {
   ClassClear,
   ClassOutstanding,
@@ -46,8 +47,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reads the persisted series through the same standing, and is no longer NotDerivable.
 
 data fixture_roster: List<ModuleBehavioralTransportConfig> = [
-  ModuleBehavioralTransportConfig { module_path: "a.dag", driver_rel: "a_main.rs", pass_marker: "A: PASS", claim_runs: [] },
-  ModuleBehavioralTransportConfig { module_path: "b.dag", driver_rel: "b_main.rs", pass_marker: "B: PASS", claim_runs: [] },
+  ModuleBehavioralTransportConfig { module_path: "a.dag", driver: HandDriverFile { driver_rel: "a_main.rs" }, pass_marker: "A: PASS", claim_runs: [] },
+  ModuleBehavioralTransportConfig { module_path: "b.dag", driver: HandDriverFile { driver_rel: "b_main.rs" }, pass_marker: "B: PASS", claim_runs: [] },
 ]
 
 fn row(module_path: String, verdict: BehavioralRowVerdict) -> BehavioralEquivalenceRow {
@@ -149,6 +150,31 @@ test fn a_non_increasing_sequence_refuses_the_series() -> Bool {
   }
 }
 
+fn foreign_instrument(sequence: Int) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    sequence: sequence,
+    main_sha: all_held(sequence: sequence).main_sha,
+    instrument: "//gunbc/instruments:self-host" as NonEmptyStr,
+    observed_at: all_held(sequence: sequence).observed_at,
+    rows: all_held(sequence: sequence).rows
+  }
+}
+
+// The red is a receipt whose rows all hold: without the instrument check it would read Clear.
+test fn a_receipt_from_another_instrument_refuses_the_series() -> Bool {
+  let forged = match standing(series: [foreign_instrument(sequence: 1)]) {
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => true
+    BehavioralEquivalenceSeriesEmpty => false
+    BehavioralEquivalenceLatest { latest: _, outstanding: _ } => false
+  }
+  let genuine = match standing(series: [all_held(sequence: 1)]) {
+    BehavioralEquivalenceLatest { latest: _, outstanding } => count(outstanding) == 0
+    BehavioralEquivalenceSeriesEmpty => false
+    BehavioralEquivalenceSeriesInvalid { reason: _ } => false
+  }
+  forged && genuine
+}
+
 // The real route: the interlock milestone reads the persisted series through the same standing.
 // A latest receipt yields Clear or Outstanding by its outstanding set; an empty or refused series is
 // NO OBSERVATION and stays NotDerivable -- never Outstanding, which would report an unmeasured
@@ -163,7 +189,7 @@ fn class_of_series(s: BehavioralEquivalenceStanding) -> String {
 }
 
 test fn the_milestone_derives_from_the_persisted_series() -> Bool {
-  standing_class_label(c: standing_class(s: milestone_status(m: SelfHostBehavioralEquivalenceReestablished)))
+  standing_class_label(c: standing_class(s: milestone_status(m: SelfHostEmittedContractsHeld)))
     == class_of_series(s: current_behavioral_equivalence_standing())
 }
 

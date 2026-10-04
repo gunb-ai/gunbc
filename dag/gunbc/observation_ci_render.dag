@@ -612,6 +612,42 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
   }
 }
 
+// FILESYSTEM HOST-EFFECT PROJECTION (the [file] retirement). The subject is the NAMED INTENT —
+// `Filesystem.Write`, `Filesystem.Read` — exactly the spelling extdeps.filesystem.filesystem_io
+// publishes in its operation roster and its mock corpus `operation_key`, so the intent vocabulary
+// is the operation authority's and this renderer coins nothing. The OPERAND is a separate
+// argument rather than a subject segment, and that is a measured decision, not a preference: no
+// segment in std.observation names a filesystem path (the path-shaped segments are entry
+// source_path, module_path, and the two identity segments), and `ci_subject_detail_text` renders
+// at most ONE of module/phase, so folding the path into the subject would have silently dropped
+// either the path or the intent. THE OPERAND IS NEVER DROPPED, because the pre-attempt trace is
+// load-bearing: gunbc.roadmap_dispatch_actuator records a measured incident (srv1, 2026-08-19)
+// where twelve publication receipts wrote into a directory that did not exist, and the
+// `[file] write <path>` line emitted BEFORE the attempt made every one of them log exactly like a
+// success. A projection that rendered "started Filesystem.Write" with no path would restore that
+// defect in the observation vocabulary.
+//
+// THE PAYLOAD CLAUSE ARRIVES ALREADY RENDERED, AND THAT IS THE ONE-STATE RULE. `clause` is the
+// parenthetical body -- "" for a path-only operation, "N bytes" or "N bytes, mode M" for a write --
+// so this renderer never holds a count beside a boolean that could disagree with it (DESIGN section
+// 5: a flag pair admitting `known = true, count = 0` is unwritable when the sum supplies the text).
+// gunbc.observation_seed_render derives it from the FileEffectPayload sum.
+
+fn ci_file_effect_line(event: ObservationEvent, operand: NonEmptyStr, clause: String) -> RenderedLine {
+  let presentation = observation_presentation(c: observation_event_class(event: event))
+  let subject = ci_subject_leaf_text(subject: event.subject)
+  let detail = if clause == "" { "" } else { concat(" (", concat(clause, ")")) }
+  match event.transition {
+    Begin =>
+      RenderedLine {
+        glyph: presentation.glyph,
+        text: concat("started ", concat(subject, concat(" ", concat(operand, detail)))),
+        attention: Ambient
+      }
+    _ => ci_event_line_at_attention(event: event, attention: Ambient)
+  }
+}
+
 data observation_ci_render_disposition: Disposition = Terminal {
   reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
 }
@@ -896,6 +932,7 @@ type CiWitnessRuntimeCause
   | WitnessCauseTypeError
   | WitnessCauseCrossRepresentationEquality
   | WitnessCauseStringRealizationStraddle
+  | WitnessCauseVariantRealizationRefused
   | WitnessCausePoolRootContributesNothing
   | WitnessCausePatternMatchFailure
   | WitnessCauseDivisionByZero
@@ -925,6 +962,7 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseTypeError => "type-error"
     WitnessCauseCrossRepresentationEquality => "cross-representation-equality"
     WitnessCauseStringRealizationStraddle => "string-realization-straddle"
+    WitnessCauseVariantRealizationRefused => "variant-realization-refused"
     WitnessCausePoolRootContributesNothing => "pool-root-contributes-nothing"
     WitnessCausePatternMatchFailure => "pattern-match-failure"
     WitnessCauseDivisionByZero => "division-by-zero"

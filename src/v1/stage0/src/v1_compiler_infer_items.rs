@@ -176,8 +176,8 @@ pub struct TypedGraph {
 pub struct ResolvedGraph {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
 pub fn inferred_to_outputs(

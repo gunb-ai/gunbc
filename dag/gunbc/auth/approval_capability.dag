@@ -5,7 +5,7 @@ import std.decimal { decimal_digit_char }
 import std.logic { Bool }
 import std.scoped_authorization { AttemptIdentity }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
-import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe }
+import std.encoding { base64_encode, base64_octets, base64_decode_canonical, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
   MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
@@ -167,7 +167,7 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
 // The tag travels as base64url (RFC 4648 §5, std.encoding UrlSafe, padded as that encoder emits)
 // because it rides in a URL path; the bound implementation speaks hex. The transcoding is the
 // existing codecs composed, and capability_tag_hex below is its only inverse, so a link has one tag
-// spelling: a b64url string that does not re-encode to itself is refused rather than normalized.
+// spelling: a non-canonical b64url string is refused rather than normalized.
 //
 // Issuance refuses rather than minting something that cannot verify:
 //   key id disagreement -- claims naming key A signed under key B is a link verify_capability
@@ -219,19 +219,21 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
 // tag is not the one canonical base64url spelling of some octet string. Absent is the verifier's
 // MacTagMismatch -- a malformed tag authenticates nothing, and saying which malformation would help
 // only a prober.
+//
+// ONE SPELLING, BY CONSTRUCTION RATHER THAN A SECOND ENCODING. This used to decode and then re-encode
+// the octets to compare against what was presented -- a second encoding standing where the decoder's
+// own canonicality should have been. std.encoding base64_decode_canonical refuses non-zero pad bits
+// (RFC 4648 §3.5) and any padding but the encoder's (base64_padding_after), so the spelling is the
+// encoder's by construction, with one authority for both in std.encoding.
 fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   let presented = capability.tag_b64url as String
-  match base64_decode(s: presented, variant: UrlSafe) {
+  match base64_decode_canonical(s: presented, variant: UrlSafe) {
     Absent => none
     Present { value: octets } =>
       match base64_octets(values: octets) {
         QualifiedOctetsRefused { observed: _ } => none
         QualifiedOctetsReady { value: qualified } =>
-          if base64_encode(octets: qualified, variant: UrlSafe) != presented || octets == [] {
-            none
-          } else {
-            Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr }
-          }
+          if octets == [] { none } else { Present { value: base16_encode_lower(octets: qualified) as NonEmptyStr } }
       }
   }
 }
@@ -417,7 +419,11 @@ fn verify_capability(
       } else {
         verify_authenticated_claims(claims: c, expectation: expectation, observed_at: observed_at)
       }
-    _ => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMismatch { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyUnknown { key_id: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacKeyRetired { key_id: _, retired_at: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacSuiteMismatch { expected: _, key_suite: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => CapabilityRefused { cause: CapabilityMacRefused { verification: mac_result } }
   }
 }
 

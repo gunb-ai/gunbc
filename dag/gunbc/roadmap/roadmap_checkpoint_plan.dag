@@ -1,0 +1,221 @@
+module gunbc.roadmap.roadmap_checkpoint_plan
+
+import std.types { String, Int, List, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChainLink,
+  AlignmentResolvedChain,
+  AlignmentLevel,
+  RootPrinciplesLevel,
+  ProjectIntentLevel,
+  TaskContractLevel,
+  AlignmentVerdict,
+  Aligned,
+  Misaligned,
+  ExtremelyMisaligned,
+  CatastrophicallyMisaligned,
+  RoutedConflict,
+  AlignmentCadenceState,
+  AlignmentCheckpointIdentity,
+  alignment_checkpoint_identity_digest,
+  alignment_chain_fingerprint,
+  alignment_levels,
+}
+
+// ------------------------------------------------------------------------------------------------
+// The checkpoint-probe plan (review 5358022153, lane C): the PURE checkpoint-subject/probe-
+// obligation planner. This module makes NO model calls, NO filesystem or process effects, and NO
+// verdicts -- its output is the obligation population a durable scheduler executes later. One
+// checkpoint identity, one resolved chain, one cadence state in; the answer out is either the
+// derived obligations or a typed refusal, never a partial population and never a silent [].
+// ------------------------------------------------------------------------------------------------
+
+// THE PER-LEVEL PROBE SUBJECT, homogeneous across the ladder: the principles level, one project
+// intent level (carrying its chain link), or the task contract level (carrying its chain link).
+// ProbePrinciples carries no payload because its contract text IS the chain's root DeclarationRef
+// pointer; the obligation key preimage carries the ref's module and decl as strings, so the
+// subject stays a pointer answerable to the live authority instead of a copied excerpt.
+type AlignmentProbeLevel
+  = ProbePrinciples
+  | ProbeProject { link: AlignmentChainLink }
+  | ProbeTask { link: AlignmentChainLink }
+
+// THE OBLIGATION, one per level of the chain under one checkpoint. obligation_key is a content
+// digest over (checkpoint identity digest + level identity), so re-deriving the plan after a
+// crash under the same checkpoint identity yields byte-identical keys and the scheduler can key
+// its durable records on them. outstanding_guidance carries the prior verdict's recorded payload
+// for the level -- the direction, reason, or conflict the cadence state holds -- so a probe
+// starts from what the last check actually found; an ALIGNED level, or one the state has not
+// reached, carries no guidance.
+type AlignmentProbeObligation {
+  checkpoint: AlignmentCheckpointIdentity
+  level: AlignmentProbeLevel
+  obligation_key: String
+  outstanding_guidance: List<String>
+}
+
+// THE PREIMAGE FIELD ENCODING IS LENGTH-PREFIXED, never separator-joined (review 5358022153, the
+// same law as gunbc.harness.harness_prompt_context prompt_field_enc): a field containing the
+// separator cannot manufacture another field sequence's preimage, and every semantic field --
+// checkpoint digest, level kind, level subjects -- participates.
+fn probe_plan_field_enc(s: String) -> String {
+  join([to_string(value: string_length(s: s)), ":", s], "")
+}
+
+// THE VERDICT'S RECORDED PAYLOAD, extracted for guidance: the named direction, the named reason,
+// or the named conflict -- "" for ALIGNED, which records that nothing is outstanding.
+fn probe_plan_verdict_detail(v: AlignmentVerdict) -> String {
+  match v {
+    Aligned => ""
+    Misaligned { direction } => direction
+    ExtremelyMisaligned { direction } => direction
+    CatastrophicallyMisaligned { reason } => reason
+    RoutedConflict { conflict } => conflict
+  }
+}
+
+// THE STATE'S VERDICT AT ONE LEAF-DISTANCE INDEX, the convention alignment_state_interval and
+// alignment_levels_due already read: index 0 is the task contract (leaf distance 0), counting up
+// the ladder. A state authored before a level existed has no verdict there -- Absent reads as no
+// recorded guidance, never a fabricated verdict.
+fn probe_plan_verdict_at(items: List<AlignmentVerdict>, index: Int) -> AlignmentVerdict? {
+  if index < 0 {
+    none
+  } else {
+    let found = fold(
+      items,
+      init: { seen: 0, hit: false, value: Aligned },
+      f: fn(acc, item) {
+        if acc.hit {
+          acc
+        } else if acc.seen == index {
+          { seen: acc.seen + 1, hit: true, value: item }
+        } else {
+          { seen: acc.seen + 1, hit: false, value: Aligned }
+        }
+      },
+    )
+    if found.hit {
+      Present { value: found.value }
+    } else {
+      none
+    }
+  }
+}
+
+// THE OUTSTANDING GUIDANCE for one level: the recorded verdict's payload when there is one and it
+// names something to answer; [] for ALIGNED (nothing outstanding) and for a level the state has
+// not reached. The empty list is the honest shape of "the last check found nothing": a probe that
+// starts clean starts from no standing readings, never from a fabricated concern.
+fn probe_plan_outstanding_guidance(verdict: AlignmentVerdict?) -> List<String> {
+  match verdict {
+    Absent => {
+      let empty = [] as List<String>
+      empty
+    }
+    Present { value: v } => {
+      let detail = probe_plan_verdict_detail(v: v)
+      if detail == "" {
+        let empty = [] as List<String>
+        empty
+      } else {
+        [detail]
+      }
+    }
+  }
+}
+
+// THE OBLIGATION KEY binds one obligation to its checkpoint identity and its level identity: the
+// checkpoint identity digest is the digest of the lineage/epoch/ordinal/fingerprint/tip/subject
+// preimage, and the level identity is the probe kind plus the level's named subject -- the link's
+// node_id for a project or task level, the root pointer's module and decl (the ref as strings,
+// per the ladder's pointer-not-excerpt law) for the principles level. The tag begins the preimage
+// and every field is length-prefixed, so the atom's NonEmptyStr input is grounded and no field's
+// content can collide with another field's.
+fn probe_plan_obligation_key(checkpoint_digest: String, level: AlignmentProbeLevel, root_module: String, root_decl: String) -> String {
+  let kind = match level {
+    ProbePrinciples => "principles"
+    ProbeProject { link: _ } => "project"
+    ProbeTask { link: _ } => "task"
+  }
+  let subject_a = match level {
+    ProbePrinciples => root_module
+    ProbeProject { link } => link.node_id
+    ProbeTask { link } => link.node_id
+  }
+  let subject_b = match level {
+    ProbePrinciples => root_decl
+    ProbeProject { link: _ } => ""
+    ProbeTask { link: _ } => ""
+  }
+  content_hash_atom(value: join([
+    "30:checkpoint-probe-obligation/v1",
+    probe_plan_field_enc(s: checkpoint_digest),
+    probe_plan_field_enc(s: kind),
+    probe_plan_field_enc(s: subject_a),
+    probe_plan_field_enc(s: subject_b),
+  ], "") as NonEmptyStr).digest as String
+}
+
+// THE PLAN, typed because a moved chain must not derive obligations under a stale checkpoint:
+// Derived carries the checkpoint's identity digest -- the idempotency root the scheduler keys on
+// -- and the root-to-leaf obligation population; Refused carries the reason and NOTHING else.
+// There is no empty plan and no partial population a consumer could misread as "nothing to probe".
+type CheckpointProbePlan
+  = ProbePlanDerived { checkpoint_digest: String, obligations: List<AlignmentProbeObligation> }
+  | ProbePlanRefused { detail: String }
+
+// THE DERIVATION, pure and total over its three inputs. The fingerprint gate comes FIRST: the
+// checkpoint names the chain fingerprint it was minted under, and if the resolved chain's current
+// fingerprint has moved -- a rewired edge, a retitled row, any carried-field edit -- the plan
+// refuses rather than minting obligations a stale checkpoint would later execute. The gate
+// passing, every level of alignment_levels(chain), ROOT TO LEAF in the ladder's reading order,
+// becomes one obligation: RootPrinciplesLevel -> ProbePrinciples, ProjectIntentLevel ->
+// ProbeProject, TaskContractLevel -> ProbeTask, each keyed over the checkpoint digest and its
+// level identity, each carrying the cadence state's recorded verdict payload at the level's LEAF
+// DISTANCE ((count(levels) - 1) - position, the convention alignment_levels_due reads: index 0
+// is the task contract). The derivation is deterministic in (checkpoint, chain, state), which is
+// exactly what makes the keys re-derivable after a crash.
+fn checkpoint_probe_obligations(
+  checkpoint: AlignmentCheckpointIdentity,
+  chain: AlignmentResolvedChain,
+  state: AlignmentCadenceState,
+) -> CheckpointProbePlan {
+  let current_fingerprint = alignment_chain_fingerprint(chain: chain)
+  if checkpoint.chain_fingerprint != current_fingerprint {
+    ProbePlanRefused {
+      detail: join([
+        "checkpoint chain_fingerprint ", checkpoint.chain_fingerprint,
+        " does not match the resolved chain's current fingerprint ", current_fingerprint,
+        "; the chain moved after the checkpoint was minted, and a moved chain must not derive obligations under a stale checkpoint",
+      ], ""),
+    }
+  } else {
+    let levels = alignment_levels(chain: chain)
+    let total = count(levels)
+    let checkpoint_digest = alignment_checkpoint_identity_digest(id: checkpoint)
+    let root_module = chain.root.module_path as String
+    let root_decl = chain.root.decl_name as String
+    let derived = fold(
+      levels,
+      init: { obligations: [] as List<AlignmentProbeObligation>, position: 0 },
+      f: fn(acc, level) {
+        let probe_level = match level {
+          RootPrinciplesLevel => ProbePrinciples
+          ProjectIntentLevel { link } => ProbeProject { link: link }
+          TaskContractLevel { link } => ProbeTask { link: link }
+        }
+        let leaf_distance = total - 1 - acc.position
+        let verdict = probe_plan_verdict_at(items: state.last_verdicts, index: leaf_distance)
+        let obligation = AlignmentProbeObligation {
+          checkpoint: checkpoint,
+          level: probe_level,
+          obligation_key: probe_plan_obligation_key(checkpoint_digest: checkpoint_digest, level: probe_level, root_module: root_module, root_decl: root_decl),
+          outstanding_guidance: probe_plan_outstanding_guidance(verdict: verdict),
+        }
+        { obligations: concat(acc.obligations, [obligation]), position: acc.position + 1 }
+      },
+    )
+    ProbePlanDerived { checkpoint_digest: checkpoint_digest, obligations: derived.obligations }
+  }
+}

@@ -18,7 +18,6 @@ pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_measure::Millisecond;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, List, Port};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -736,6 +735,15 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliOptionRow {
+    field: "unix_socket".to_string(),
+    long: "unix-socket".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: std::option::Option::None,
+}),
+    arity: CliOptionArity::CliAtMostOne,
+    doc: Rc::new(vec!["Listen on this unix socket INSTEAD of --host/--port. Each request's".to_string(), "kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "release_revision".to_string(),

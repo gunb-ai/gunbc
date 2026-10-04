@@ -244,7 +244,7 @@ test fn the_container_env_declares_the_usage_stats_reporter_off() -> Bool {
 test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_config() -> Bool {
   w_realized(f: fn(h, _ws) {
     let a = h.create.arguments
-    (h.create.program as String) == "/usr/bin/docker"
+    (h.create.program.invocation as String) == "/usr/bin/docker"
       && any(a, x => x == "gunbc-spark-pair-runtime:ray-2.58.0")
       && string_contains(s: gunbc_spark_pair_runtime_dockerfile(), pattern: join(["FROM aidendle94/sparkrun-vllm-ds4-gb10@sha256:", sparkrun_vllm_ds4_gb10_digest_sha256_hex as String, "\nRUN /opt/env/bin/python3 -m pip install --no-cache-dir ray[default]==2.58.0\n"], ""))
       && any(a, x => x == "--network") && any(a, x => x == "--ipc") && any(a, x => x == "memlock=-1:-1")

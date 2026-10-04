@@ -12,12 +12,12 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
   declaration_reference_path_optional,
+  parameter_reference_path_optional,
   qualified_name_owning_module
 }
 
@@ -99,6 +99,9 @@ fn reference_closure_diagnostic(reason: Symbol, at: Node) -> Diagnostic {
 // read `v2.std.node.Node` as `std.node.Node` too and attribute an edge to a module the reference
 // never named.
 
+// A PARAMETER REFERENCE PULLS NO MODULE. It names a binder of the declaration it sits in
+// (v2.std.qualified_name parameter_reference_node), so its path's owner is that declaration's own
+// module, never a neighbour; it is answered here and its spine is not descended.
 fn reference_closure_declaring_paths(
   n: Node,
   acc: FreeMonoid<QualifiedName>
@@ -106,9 +109,13 @@ fn reference_closure_declaring_paths(
   match declaration_reference_path_optional(node: n) {
     Present { value: path } => list_snoc_item(xs: acc, item: path)
     Absent =>
-      fold(n.children, init: acc, f: fn(a, e) {
-        reference_closure_declaring_paths(n: e.target, acc: a)
-      })
+      match parameter_reference_path_optional(node: n) {
+        Present { value: _ } => acc
+        Absent =>
+          fold(n.children, init: acc, f: fn(a, e) {
+            reference_closure_declaring_paths(n: e.target, acc: a)
+          })
+      }
   }
 }
 

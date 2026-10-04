@@ -8,7 +8,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.ampere { ampere_altra_avl_authority, ampere_altra_avl_current_issue }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
 import extdeps.memory.training {
   LrdimmDataBufferMrep,
@@ -276,7 +276,9 @@ fn part_implication(
           ) {
             PartImplicatedByFailingStep { step: s2, standing: st2 } =>
               PartImplicatedByFailingStep { step: s2, standing: st2 }
-            _ => PartSampleQualificationRequired { step: s, standing: st }
+            PartNotImplicated => PartSampleQualificationRequired { step: s, standing: st }
+            PartEvidenceUnresolved { step: _ } => PartSampleQualificationRequired { step: s, standing: st }
+            PartSampleQualificationRequired { step: _, standing: _ } => PartSampleQualificationRequired { step: s, standing: st }
           }
         PartEvidenceUnresolved { step: s } =>
           match implication_for_step(

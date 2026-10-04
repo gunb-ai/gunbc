@@ -1,5 +1,6 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
+import v2.std.algebra { any }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }
@@ -16,11 +17,11 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 import product.fabric.work { Work, ExecutionRequirements, TrustDomainRef }
 import product.fabric.sanitation { CellId }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }
-import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
+import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
 import gunbc.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
@@ -34,7 +35,7 @@ import gunbc.runner_attempt_launch {
   reservation_agreement,
 }
 import gunbc.runner_microvm_slot_unit {
-  microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
+  microvm_slot_unit_file, microvm_slot_unit_text, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
   microvm_controller_slice_memory_max,
 }
@@ -44,6 +45,7 @@ import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registrat
 import gunbc.fabric_required_build_cell { ReservationUnreadable, ReservationPayloadUndecodable }
 import std.durable_compare_and_set { CasUnreadableReadRefused }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
+import gunbc.runner_jit_mint { MicroVmJitSlot }
 import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched, DispatchRefusedCellNotOwned }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome, JitConfigMinted }
 import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
@@ -292,7 +294,7 @@ fn delivered_mint() -> Bool {
     Present { value: a } =>
       match jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: "") {
         JitConfigMinted { config: c, runner_id: id } =>
-          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { attempt: a, credential: c, runner_id: id } }) == Present { value: 4242 }
+          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: a }, credential: c, runner_id: id } }) == Present { value: 4242 }
         _ => false
       }
   }
@@ -354,4 +356,11 @@ test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool {
   })
   string_contains(s: unreadable, pattern: "No such file or directory")
     && string_contains(s: undecodable, pattern: "not a hold payload")
+}
+
+// Launch directives are captured as inert credentials, never interpreted as root environment.
+test fn workspace_launch_directive_uses_the_optional_credential_store() -> Bool {
+  let unit = microvm_slot_unit_text(release_dir: "/opt/release", timeout_stop_sec: "60")
+  string_contains(s: unit, pattern: "LoadCredential=workspace-launch:gunbc-workspace-%i")
+    && !string_contains(s: unit, pattern: "EnvironmentFile=")
 }

@@ -23,7 +23,7 @@ import extdeps.virtualization.firecracker {
 import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.work { Work, TrustDomainRef }
 import product.fabric.sanitation { CellId }
-import gunbc.fabric_witness_run { gunbc_internal_fleet_trust_domain }
+import gunbc.floor_demand { gunbc_internal_fleet_trust_domain }
 import gunbc.fabric_required_build_cell { RequiredBuildCellSnapshot }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_microvm_attempt_bounds { runner_attempt_vmm_deadline, runner_attempt_vmm_kill_grace }
@@ -42,7 +42,7 @@ import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
 import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialBoundToAttempt,
 }
-import gunbc.runner_jit_mint { jit_runner_name_for }
+import gunbc.runner_jit_mint { jit_runner_name_for, JitSlot, MicroVmJitSlot }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
@@ -160,7 +160,7 @@ type AttemptGround
 type JitDeviceRefusal
   = JitMintNotReceived { performance: JitMintPerformance }
   | JitCredentialNotDelivered { delivery: JitCredentialDelivery }
-  | JitCredentialBoundToDifferentAttempt { bound_to: MicroVmAttempt }
+  | JitCredentialBoundToDifferentAttempt { bound_to: JitSlot }
   | JitCredentialBelowFloor { bytes: ByteSize }
   | JitCredentialAboveCeiling { bytes: ByteSize }
   | JitMintAdmissionAxisNotRequired
@@ -207,10 +207,10 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
   match mint {
     JitMintReceived { delivery: delivery } =>
       match delivery {
-        JitCredentialBoundToAttempt { attempt: bound, credential: c, runner_id: id } =>
+        JitCredentialBoundToAttempt { slot: bound, credential: c, runner_id: id } =>
           if !host_mint_admission_is_required() {
             JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
-          } else if bound != attempt {
+          } else if bound != MicroVmJitSlot { attempt: attempt } {
             JitCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: bound } }
           } else if !measure_le(a: jit_config_byte_floor, b: jit_credential_bytes(credential: c)) {
             JitCredentialRefused { refusal: JitCredentialBelowFloor { bytes: jit_credential_bytes(credential: c) } }
@@ -246,7 +246,7 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
 // The file is inside the chroot of exactly one attempt. The guest sees it as a read-only drive
 // (gunbc.runner_microvm JitConfigOnReadOnlyDrive) and never sees the host path, the App key, the
 // JWT or the installation token, none of which this carrier holds.
-type JitDeviceStaging {
+type BootstrapDeviceStaging {
   host_path: String
   create: ArgvCommand
   content: String
@@ -260,9 +260,9 @@ fn jit_device_install_mode() -> NonEmptyStr {
   concat("0", jit_device_mode_digits as String) as NonEmptyStr
 }
 
-fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> JitDeviceStaging {
+fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> BootstrapDeviceStaging {
   let host_path = join([jail_root, jail_jit_path as String], "")
-  JitDeviceStaging {
+  BootstrapDeviceStaging {
     host_path: host_path,
     create: install_empty_file_command(
       path: host_path,
@@ -329,7 +329,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
 // the unproduced layer.
 //
 // THE ARM IS SELECTED BY THE WORK'S TRUST DOMAIN AS A TYPED FACT, NOT BY A FLAG: a Work whose
-// requirements.trust_domain is not gunbc.fabric_witness_run gunbc_internal_fleet_trust_domain
+// requirements.trust_domain is not gunbc.floor_demand gunbc_internal_fleet_trust_domain
 // refuses with ReservationArmRequiresInternalFleetTrust, so the untrusted-CI route -- which the
 // migration plan keeps grant disagreement for -- cannot reach this arm by construction. The
 // witness carries the control.
@@ -357,6 +357,7 @@ type ReservationAuthorization
 type LaunchAuthorization
   = LaunchAuthorizedByGrant { authorization: GrantAuthorization }
   | LaunchAuthorizedByReservation { authorization: ReservationAuthorization }
+  | LaunchAuthorizedByWorkspaceReservation { work: FabricIdentity<NonEmptyStr, WorkKey>, generation: Int }
 
 // THE AGREEMENT IS A PURE FOLD OVER THE RESERVED FACTS, so a witness can drive every refusal with
 // supplied values (the snapshot is sole_constructor and only its wet producer can build one); the
@@ -430,15 +431,28 @@ fn plan_attempt_launch_reservation_authorized(
   }
 }
 
+type AttemptLaunchPayload
+  = GitHubLaunchPayload { runner_name: JitRunnerName, registration_id: Int, device: BootstrapDeviceStaging }
+  | WorkspaceLaunchPayload { bootstrap_identity: NonEmptyStr, device: BootstrapDeviceStaging }
+
+fn launch_payload_device(payload: AttemptLaunchPayload) -> BootstrapDeviceStaging {
+  match payload {
+    GitHubLaunchPayload { runner_name: _, registration_id: _, device: d } => d
+    WorkspaceLaunchPayload { bootstrap_identity: _, device: d } => d
+  }
+}
+
 type AttemptLaunchPlan
   = LaunchRefusedUnauthorized { authorization: LaunchAuthorization }
   | LaunchRefusedJitCredential { refusal: JitDeviceRefusal }
   | LaunchRefusedPriorResources
+  | LaunchWithdrawn { reason: String }
   | LaunchAuthorized {
       authorization: LaunchAuthorization
-      jit_runner_name: JitRunnerName
-      jit_registration_id: Int
-      jit_device: JitDeviceStaging
+      payload: AttemptLaunchPayload
+      workspace_grant: ByteSize
+      runtime_properties: List<SystemdRunProperty>
+      lease_expires_unix: Int?
       tap_device: NonEmptyStr
       guest_ip_boot_arg: String
       slice: SystemdRunProperty
@@ -589,9 +603,10 @@ fn plan_authorized_steps(
   )
   LaunchAuthorized {
     authorization: authorization,
-    jit_runner_name: admitted.runner_name,
-    jit_registration_id: admitted.registration_id,
-    jit_device: jit_device_staging(jail_root: jail_root, admitted: admitted),
+    payload: GitHubLaunchPayload { runner_name: admitted.runner_name, registration_id: admitted.registration_id, device: jit_device_staging(jail_root: jail_root, admitted: admitted) },
+    workspace_grant: mebibyte_to_byte_size(m: shape.workspace),
+    runtime_properties: [],
+    lease_expires_unix: none,
     tap_device: net.tap_device,
     guest_ip_boot_arg: runner_slot_guest_network_boot_args(net: net),
     slice: runner_microvm_attempt_slice_property(attempt: attempt),
@@ -648,9 +663,10 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
   match plan {
     LaunchAuthorized {
       authorization: _,
-      jit_runner_name: _,
-      jit_registration_id: _,
-      jit_device: _,
+      payload: _,
+      workspace_grant: _,
+      runtime_properties: _,
+      lease_expires_unix: _,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -667,6 +683,7 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
     } => 1
     LaunchRefusedUnauthorized { authorization: _ } => 0
     LaunchRefusedJitCredential { refusal: _ } => 0
+    LaunchWithdrawn { reason: _ } => 0
     LaunchRefusedPriorResources => 0
   }
 }
@@ -679,41 +696,41 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
 // whole sectors of the contract it expects). A stat that itself failed is its own refusal carrying
 // its stderr -- not a mismatch of an empty reading (review 68502). A device that fails readback is
 // a refusal: the caller must not launch over it.
-type JitDeviceStagingStep
-  = JitDeviceCreateStep
-  | JitDeviceWriteStep
-  | JitDeviceReadbackStep
+type BootstrapDeviceStagingStep
+  = BootstrapDeviceCreateStep
+  | BootstrapDeviceWriteStep
+  | BootstrapDeviceReadbackStep
 
-type JitDeviceStagingOutcome
-  = JitDeviceStaged { host_path: String }
-  | JitDeviceStagingRefused { step: JitDeviceStagingStep, detail: String }
+type BootstrapDeviceStagingOutcome
+  = BootstrapDeviceStaged { host_path: String }
+  | BootstrapDeviceStagingRefused { step: BootstrapDeviceStagingStep, detail: String }
 
-fn jit_device_fact(name: String, reading: StatFieldReading, expected: String) -> JitDeviceStagingOutcome? {
+fn bootstrap_device_fact(name: String, reading: StatFieldReading, expected: String) -> BootstrapDeviceStagingOutcome? {
   match reading {
     StatFieldUnread { detail: d } =>
-      Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " unread: ", d], "") } }
+      Present { value: BootstrapDeviceStagingRefused { step: BootstrapDeviceReadbackStep, detail: join([name, " unread: ", d], "") } }
     StatFieldRead { value: v } =>
       if v == expected {
         none
       } else {
-        Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join([name, " is ", v, ", expected ", expected], "") } }
+        Present { value: BootstrapDeviceStagingRefused { step: BootstrapDeviceReadbackStep, detail: join([name, " is ", v, ", expected ", expected], "") } }
       }
   }
 }
 
-fn jit_device_readback(
+fn bootstrap_device_readback(
   uid: StatFieldReading,
   mode: StatFieldReading,
   size: StatFieldReading,
   content: String,
-) -> JitDeviceStagingOutcome? {
-  match jit_device_fact(name: "owner uid", reading: uid, expected: to_string(attempt_unprivileged_uid)) {
+) -> BootstrapDeviceStagingOutcome? {
+  match bootstrap_device_fact(name: "owner uid", reading: uid, expected: to_string(attempt_unprivileged_uid)) {
     Present { value: r } => Present { value: r }
     Absent =>
-      match jit_device_fact(name: "mode", reading: mode, expected: jit_device_mode_digits as String) {
+      match bootstrap_device_fact(name: "mode", reading: mode, expected: jit_device_mode_digits as String) {
         Present { value: r } => Present { value: r }
         Absent =>
-          jit_device_fact(
+          bootstrap_device_fact(
             name: "size",
             reading: size,
             expected: to_string(byte_size_count(b: jit_drive_utf8_size(text: content))),
@@ -722,27 +739,27 @@ fn jit_device_readback(
   }
 }
 
-fn stage_jit_device(device: JitDeviceStaging) -> JitDeviceStagingOutcome
+fn stage_bootstrap_device(device: BootstrapDeviceStaging) -> BootstrapDeviceStagingOutcome
 {
   match run_shell_command_capture(command: device.create, transport: LocalExec) {
     ProcessRefused { exit_code: _, stderr: e } =>
-      JitDeviceStagingRefused { step: JitDeviceCreateStep, detail: trim(s: e) }
+      BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: trim(s: e) }
     _ => {
       let wrote = Filesystem.Write(path: device.host_path, content: device.content)
       if wrote.success == false {
-        JitDeviceStagingRefused { step: JitDeviceWriteStep, detail: device.host_path }
+        BootstrapDeviceStagingRefused { step: BootstrapDeviceWriteStep, detail: device.host_path }
       } else {
         let uid_outcome = run_shell_command_capture(command: stat_owner_uid_command(path: device.host_path), transport: LocalExec)
         let mode_outcome = run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)
         let size_outcome = run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)
-        match jit_device_readback(
+        match bootstrap_device_readback(
           uid: stat_field_reading(outcome: uid_outcome),
           mode: stat_field_reading(outcome: mode_outcome),
           size: stat_field_reading(outcome: size_outcome),
           content: device.content,
         ) {
           Present { value: refused } => refused
-          Absent => JitDeviceStaged { host_path: device.host_path }
+          Absent => BootstrapDeviceStaged { host_path: device.host_path }
         }
       }
     }
@@ -805,6 +822,10 @@ fn runner_attempt_workspace_bytes() -> ByteSize {
 // THE ORDER IS CAUSAL: a failed create makes the format's exit meaningless, and a failed format
 // makes the superblock reading meaningless, so the earliest failure is the one reported.
 fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) -> WorkspaceStanding {
+  workspace_standing_for_grant(obs: obs, planned_path: planned_path, expected_bytes: runner_attempt_workspace_bytes())
+}
+
+fn workspace_standing_for_grant(obs: WorkspaceStagingObservation, planned_path: String, expected_bytes: ByteSize) -> WorkspaceStanding {
   if obs.create_exit != 0 {
     WorkspaceCreateFailed { exit: obs.create_exit }
   } else if obs.format_exit != 0 {
@@ -817,8 +838,8 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
           WorkspaceReadbackOfDifferentImage { read: read, planned: planned_path }
         } else if !m {
           WorkspaceNotExtFilesystem
-        } else if byte_size_count(b: b) != byte_size_count(b: runner_attempt_workspace_bytes()) {
-          WorkspaceSizeMismatch { observed: b, expected: runner_attempt_workspace_bytes() }
+        } else if byte_size_count(b: b) != byte_size_count(b: expected_bytes) {
+          WorkspaceSizeMismatch { observed: b, expected: expected_bytes }
         } else {
           WorkspaceReady
         }
@@ -923,8 +944,8 @@ fn jail_rootfs_destination(jail_root: String) -> String {
 // capability: the same jailer command sits in plain sight on AttemptLaunchPlan's
 // LaunchAuthorized arm, which is not sole_constructor, so a caller holding the plan
 // already has the capability this receipt was described as gating.
-// SECOND, the gate accepts CALLER-AUTHORED positive outcomes: a JitDeviceStaged value is
-// constructible without stage_jit_device ever running -- this module's own witnesses construct one
+// SECOND, the gate accepts CALLER-AUTHORED positive outcomes: a BootstrapDeviceStaged value is
+// constructible without stage_bootstrap_device ever running -- this module's own witnesses construct one
 // to drive the foreign-device case -- so a sealed receipt proves the gate was CALLED with
 // positive-shaped arguments, not that the host effects and their readbacks occurred.
 //
@@ -934,16 +955,19 @@ fn jail_rootfs_destination(jail_root: String) -> String {
 // device had failed. The premises are made inseparable here instead.
 type AttemptStagingReceipt sole_constructor {
   jailer: ArgvCommand
-  jit_device_path: String
+  runtime_properties: List<SystemdRunProperty>
+  lease_expires_unix: Int?
+  bootstrap_device_path: String
   workspace_path: String
 }
 
 type AttemptStagingVerdict
   = StagingAdmitsJailer { receipt: AttemptStagingReceipt }
   | StagingRefusedJailMaterial { standing: JailMaterialStanding }
-  | StagingRefusedJitDevice { outcome: JitDeviceStagingOutcome }
-  | StagingRefusedForeignJitDevice { staged_path: String, planned_path: String }
+  | StagingRefusedBootstrapDevice { outcome: BootstrapDeviceStagingOutcome }
+  | StagingRefusedForeignBootstrapDevice { staged_path: String, planned_path: String }
   | StagingRefusedWorkspace { standing: WorkspaceStanding }
+  | StagingRefusedVmConfiguration { detail: String }
   | StagingNotAuthorized
 
 // THE ONLY ROUTE TO THE JAILER COMMAND AFTER STAGING, AND IT CONSUMES BOTH STAGINGS. A refused plan
@@ -961,15 +985,16 @@ type AttemptStagingVerdict
 fn attempt_staging_verdict(
   plan: AttemptLaunchPlan,
   jail: JailMaterialStaging,
-  jit: JitDeviceStagingOutcome,
+  jit: BootstrapDeviceStagingOutcome,
   workspace: WorkspaceStagingObservation,
 ) -> AttemptStagingVerdict {
   match plan {
     LaunchAuthorized {
       authorization: _,
-      jit_runner_name: _,
-      jit_registration_id: _,
-      jit_device: device,
+      payload: payload,
+      workspace_grant: workspace_grant,
+      runtime_properties: properties,
+      lease_expires_unix: expires,
       tap_device: _,
       guest_ip_boot_arg: _,
       slice: _,
@@ -985,46 +1010,55 @@ fn attempt_staging_verdict(
       jailer: j,
     } =>
       match jail_material_standing(obs: jail) {
-        JailMaterialReady => attempt_staging_after_jail(device: device, planned: planned, jailer: j, jit: jit, workspace: workspace)
+        JailMaterialReady => attempt_staging_after_jail(device: launch_payload_device(payload: payload), planned: planned, jailer: j, jit: jit, workspace: workspace, expected_bytes: workspace_grant, runtime_properties: properties, lease_expires_unix: expires)
         refused_material => StagingRefusedJailMaterial { standing: refused_material }
       }
     LaunchRefusedUnauthorized { authorization: _ } => StagingNotAuthorized
     LaunchRefusedJitCredential { refusal: _ } => StagingNotAuthorized
+    LaunchWithdrawn { reason: _ } => StagingNotAuthorized
     LaunchRefusedPriorResources => StagingNotAuthorized
   }
 }
 
 fn attempt_staging_after_jail(
-  device: JitDeviceStaging,
+  device: BootstrapDeviceStaging,
   planned: String,
   jailer: ArgvCommand,
-  jit: JitDeviceStagingOutcome,
+  jit: BootstrapDeviceStagingOutcome,
   workspace: WorkspaceStagingObservation,
+  expected_bytes: ByteSize,
+  runtime_properties: List<SystemdRunProperty>,
+  lease_expires_unix: Int?,
 ) -> AttemptStagingVerdict {
   match jit {
-    JitDeviceStagingRefused { step: _, detail: _ } => StagingRefusedJitDevice { outcome: jit }
-    JitDeviceStaged { host_path: staged } =>
+    BootstrapDeviceStagingRefused { step: _, detail: _ } => StagingRefusedBootstrapDevice { outcome: jit }
+    BootstrapDeviceStaged { host_path: staged } =>
       if staged != device.host_path {
-        StagingRefusedForeignJitDevice { staged_path: staged, planned_path: device.host_path }
+        StagingRefusedForeignBootstrapDevice { staged_path: staged, planned_path: device.host_path }
       } else {
-        attempt_staging_after_jit(staged: staged, planned: planned, jailer: jailer, workspace: workspace)
+        attempt_staging_after_bootstrap(staged: staged, planned: planned, jailer: jailer, workspace: workspace, expected_bytes: expected_bytes, runtime_properties: runtime_properties, lease_expires_unix: lease_expires_unix)
       }
   }
 }
 
-fn attempt_staging_after_jit(
+fn attempt_staging_after_bootstrap(
   staged: String,
   planned: String,
   jailer: ArgvCommand,
   workspace: WorkspaceStagingObservation,
+  expected_bytes: ByteSize,
+  runtime_properties: List<SystemdRunProperty>,
+  lease_expires_unix: Int?,
 ) -> AttemptStagingVerdict {
-  let s = workspace_standing(obs: workspace, planned_path: planned)
+  let s = workspace_standing_for_grant(obs: workspace, planned_path: planned, expected_bytes: expected_bytes)
   match s {
     WorkspaceReady =>
       StagingAdmitsJailer {
         receipt: AttemptStagingReceipt {
           jailer: jailer,
-          jit_device_path: staged,
+          runtime_properties: runtime_properties,
+          lease_expires_unix: lease_expires_unix,
+          bootstrap_device_path: staged,
           workspace_path: planned,
         },
       }

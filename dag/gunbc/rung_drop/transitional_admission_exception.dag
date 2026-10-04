@@ -17,7 +17,6 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
 data transitional_admission_exception_identities: List<String> = [
   "dag/test/claim/method_arg_declared_contract_witness_test.dag::w_method_arg_infers_against_declared_contract_not_element_type_test",
-  "src/v2/test/claim/manual/english_emit_add_test.dag::english_emit_add_ingest_round_trip_holds",
   "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag::legacy_test_behavior_unclassified_frontier_is_zero",
   "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag::observation_emit_frontier_is_zero",
   "dag/test/claim/long/g2_data_reference_under_selection_witness_test.dag::specimen_classifies_as_runtime_read",

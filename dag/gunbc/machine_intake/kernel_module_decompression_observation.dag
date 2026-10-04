@@ -171,8 +171,8 @@ fn later_driver(lines: List<StampedLine>, after_index: Int, module_name: String)
 fn kernel_module_decompression_observation(lines: List<String>) -> KernelModuleDecompressionObservation {
   let stamped_lines = map(lines, raw => stamped(raw: raw))
   let refusal_readings = map(stamped_lines, l => refusal_line_reading(l: l))
-  let refusals = flat_map(refusal_readings, r => match r { RefusalLineParsed { refusal: x } => [x] _ => [] })
-  let unparsed_refusals = flat_map(refusal_readings, r => match r { RefusalLineUnparsed { record: x } => [x] _ => [] })
+  let refusals = flat_map(refusal_readings, r => match r { RefusalLineParsed { refusal: x } => [x] NotARefusalLine => [] RefusalLineUnparsed { record: _ } => [] })
+  let unparsed_refusals = flat_map(refusal_readings, r => match r { RefusalLineUnparsed { record: x } => [x] NotARefusalLine => [] RefusalLineParsed { refusal: _ } => [] })
   let insert_readings = map(stamped_lines, l => insert_line_reading(l: l))
   let insert_failures = flat_map(enumerate(insert_readings), ir => match ir.second {
     InsertLineParsed { at: a, loader: w, path: p, error: e } =>
@@ -181,9 +181,10 @@ fn kernel_module_decompression_observation(lines: List<String>) -> KernelModuleD
         module_name: module_name_of_path(path: p as String),
         later: later_driver(lines: stamped_lines, after_index: ir.first, module_name: module_name_of_path(path: p as String)),
       }]
-    _ => []
+    NotAnInsertLine => []
+    InsertLineUnparsed { record: _ } => []
   })
-  let unparsed_inserts = flat_map(insert_readings, r => match r { InsertLineUnparsed { record: x } => [x] _ => [] })
+  let unparsed_inserts = flat_map(insert_readings, r => match r { InsertLineUnparsed { record: x } => [x] NotAnInsertLine => [] InsertLineParsed { at: _, loader: _, path: _, error: _ } => [] })
   if count(refusals) == 0 && count(unparsed_refusals) == 0 {
     NoRefusalRecorded { insert_failures: insert_failures, unparsed_insert_records: unparsed_inserts }
   } else {
@@ -252,9 +253,3 @@ fn kernel_module_decompression_text(o: KernelModuleDecompressionObservation) -> 
   }
 }
 
-fn kernel_module_decompression_findings(o: KernelModuleDecompressionObservation) -> List<String> {
-  match o {
-    NoRefusalRecorded { insert_failures: _, unparsed_insert_records: _ } => []
-    RefusalRecorded { refusals: _, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: _ } => [kernel_module_decompression_text(o: o)]
-  }
-}

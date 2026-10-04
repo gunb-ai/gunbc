@@ -1,5 +1,6 @@
 module v2.test.manual.branch_infer_if_then_else
 
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import v2.compiler.infer {
   infer,
 }
@@ -15,7 +16,6 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.verification {
   BoolWitness,
@@ -35,7 +35,7 @@ fn branch_infer_arm_mismatch_body() -> Node {
 }
 
 test fn branch_infer_bool_cond_accepts_holds() -> Bool {
-  match infer(tree: dag_pick_if_body_fixture) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: dag_pick_if_body_fixture)) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false
   }
@@ -47,7 +47,7 @@ test fn branch_infer_bool_cond_accepts_holds() -> Bool {
 // remains covered by branch_infer_test using two genuinely derived operand types.
 
 test fn branch_infer_underived_arm_refuses_before_mismatch_holds() -> Bool {
-  match infer(tree: branch_infer_arm_mismatch_body()) {
+  match infer(tree: claim_resolved_tree_without_declarations(root: branch_infer_arm_mismatch_body())) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived
   }

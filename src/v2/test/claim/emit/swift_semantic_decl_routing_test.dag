@@ -5,10 +5,11 @@ import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.swift { swift_target_model }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.arrow_signature { anonymous_signature_arrow }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -17,21 +18,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // exact text; each wrong golden differs in one fact the rows decide (member order, punctuation), so
 // a row that emitted plausible-but-wrong Swift reds here rather than passing a substring check.
 
-data swift_point_golden: String = "struct Point: Equatable, Sendable { let x: Int; let y: Int }"
+data swift_point_golden: String = "struct Point: Equatable, Sendable { let x: Int32; let y: Int32 }"
 
-data swift_point_wrong_golden: String = "struct Point: Equatable, Sendable { let y: Int; let x: Int }"
+data swift_point_wrong_golden: String = "struct Point: Equatable, Sendable { let y: Int32; let x: Int32 }"
 
 data swift_bool_golden: String = "enum Bool: Equatable, Sendable { case True, False }"
 
 data swift_bool_wrong_golden: String = "enum Bool: Equatable, Sendable { case False, True }"
 
-data swift_answer_golden: String = "enum Answer: Equatable, Sendable { case Yes(n: Int), No(code: Int) }"
+data swift_answer_golden: String = "enum Answer: Equatable, Sendable { case Yes(n: Int32), No(code: Int32) }"
 
-data swift_answer_rust_shaped_golden: String = "enum Answer: Equatable, Sendable { case Yes { n: Int }, No { code: Int } }"
+data swift_answer_rust_shaped_golden: String = "enum Answer: Equatable, Sendable { case Yes { n: Int32 }, No { code: Int32 } }"
 
 data swift_pair_golden: String = "struct Pair<K: Equatable & Sendable, V: Equatable & Sendable>: Equatable, Sendable { let key: K; let value: V }"
 
-data swift_wire_decode_golden: String = "enum WireDecode<T: Equatable & Sendable>: Equatable, Sendable { case WireDecoded(value: T), WireRefused(at: NonEmptyStr, cause: NonEmptyStr) }"
+data swift_wire_decode_golden: String = "enum WireDecode<T: Equatable & Sendable>: Equatable, Sendable { case WireDecoded(value: T), WireRefused(at: Int32, cause: Int32) }"
 
 fn sdr_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
@@ -42,22 +43,22 @@ fn sdr_atom_type(name: Symbol) -> Node {
 }
 
 fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_atom_type(name: type_name) }
+  binder_edge(name: name, type_node: sdr_atom_type(name: type_name))
 }
 
 fn sdr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdr_empty_conj() }
 }
 
 fn sdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
   Edge {
-    label: Named { name: name },
+    label: Authored { name: name },
     target: Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
   }
 }
 
 fn sdr_emit_text(name: Symbol, params: List<Symbol>, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: params, node: node, target: swift_target_model()) {
+  match emit_semantic_type_decl(name: name, params: params, node: node, target: swift_target_model(), realization_host: swift_target_model()) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -73,7 +74,7 @@ fn sdr_emits(name: Symbol, params: List<Symbol>, node: Node, golden: String) -> 
 fn sdr_point_record() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ sdr_field_edge(name: ^x, type_name: ^Int), sdr_field_edge(name: ^y, type_name: ^Int) ],
+    children: [ sdr_field_edge(name: ^x, type_name: ^dag_binding_type_int), sdr_field_edge(name: ^y, type_name: ^dag_binding_type_int) ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -90,8 +91,8 @@ fn sdr_answer_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      sdr_variant_edge_payload(name: ^Yes, fields: [ sdr_field_edge(name: ^n, type_name: ^Int) ]),
-      sdr_variant_edge_payload(name: ^No, fields: [ sdr_field_edge(name: ^code, type_name: ^Int) ])
+      sdr_variant_edge_payload(name: ^Yes, fields: [ sdr_field_edge(name: ^n, type_name: ^dag_binding_type_int) ]),
+      sdr_variant_edge_payload(name: ^No, fields: [ sdr_field_edge(name: ^code, type_name: ^dag_binding_type_int) ])
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -114,7 +115,7 @@ fn sdr_wire_decode_coproduct() -> Node {
       sdr_variant_edge_payload(name: ^WireDecoded, fields: [ sdr_field_edge(name: ^value, type_name: ^T) ]),
       sdr_variant_edge_payload(
         name: ^WireRefused,
-        fields: [ sdr_field_edge(name: ^at, type_name: ^NonEmptyStr), sdr_field_edge(name: ^cause, type_name: ^NonEmptyStr) ]
+        fields: [ sdr_field_edge(name: ^at, type_name: ^dag_binding_type_int), sdr_field_edge(name: ^cause, type_name: ^dag_binding_type_int) ]
       )
     ],
     occurrence_id: OccurrenceSynthetic
@@ -122,11 +123,7 @@ fn sdr_wire_decode_coproduct() -> Node {
 }
 
 fn sdr_arrow_type() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
-    occurrence_id: OccurrenceSynthetic
-  }
+  anonymous_signature_arrow(domain_types: [sdr_atom_type(name: ^Int)], codomain: sdr_atom_type(name: ^Int), source: sdr_atom_type(name: ^Int))
 }
 
 test fn swift_record_emits_a_struct_with_let_members_holds() -> Bool {

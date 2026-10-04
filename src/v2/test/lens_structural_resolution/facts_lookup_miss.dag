@@ -1,6 +1,14 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
+
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+
+import v2.std.dependency { DependencyView }
+
+import v2.std.node { Authored }
 import v2.std.collection { Map, optional_absent, optional_present }
 import v2.std.optional { Optional, Absent, Present }
+import v2.std.dependency { BindsTo, ClassifiedDependencyView, DependencyView }
+import v2.test.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim, lens_structural_resolution_actual }
 
 
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
@@ -18,7 +26,7 @@ data sr_lookup_use: Node = sr_lookup_claim_atom(s: ^sr_lookup_use_symbol)
 data sr_lookup_decl: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
+    Edge { label: Authored { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -79,7 +87,7 @@ fn facts_lookup_miss_claim_holds() -> Bool {
     Holds { value: actual } =>
       fact_eq(a: actual, b: facts_lookup_miss_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

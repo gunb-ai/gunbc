@@ -17,6 +17,7 @@ import extdeps.systemd.unit_file {
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import std.algebra { Cons, Empty }
 
 // WHETHER A DISTRIBUTED SERVING ARM IS PARTICIPATING, WHICH ITS SUPERVISOR CANNOT ANSWER.
 //

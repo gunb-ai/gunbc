@@ -47,19 +47,26 @@ fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
     Binary => match b {
       Binary => Binary
       Unknown => Binary
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Latin1 => ASCII
+      Text => ASCII
     }
     UTF8 => match b {
       Unknown => UTF8
       Text => UTF8
       UTF8 => UTF8
-      _ => ASCII
+      ASCII => ASCII
+      Latin1 => ASCII
+      Binary => ASCII
     }
     Latin1 => match b {
       Unknown => Latin1
       Text => Latin1
       Latin1 => Latin1
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Binary => ASCII
     }
     Text => match b {
       Unknown => Text
@@ -80,7 +87,9 @@ fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
       Binary => Binary
       ASCII => Binary
       Unknown => Unknown
-      _ => Unknown
+      UTF8 => Unknown
+      Latin1 => Unknown
+      Text => Unknown
     }
     UTF8 => match b {
       ASCII => UTF8
@@ -281,6 +290,13 @@ fn base64_encode_step_optional(st: Base64EncodeState?, octet: Int, alphabet: Str
   }
 }
 
+// THE PADDING AFTER A FINAL GROUP OF N SEXTETS, the one statement of it: the encoder emits exactly
+// this, and base64_decode_canonical admits exactly this, so a consumer that needs one spelling per
+// value reads it from here rather than restating the encoder's table.
+fn base64_padding_after(values_in_final_group: Int) -> String {
+  if values_in_final_group == 2 { "==" } else if values_in_final_group == 3 { "=" } else { "" }
+}
+
 fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
   match st.buf {
     EncEmpty => Present { value: st.out }
@@ -296,7 +312,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
                 Present { value: c0 } =>
                   match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 12) {
                     Absent => none
-                    Present { value: c1 } => Present { value: concat(st.out, c0, c1, "==") }
+                    Present { value: c1 } => Present { value: concat(st.out, c0, c1, base64_padding_after(values_in_final_group: 2)) }
                   }
               }
           }
@@ -316,7 +332,7 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
                     Present { value: c1 } =>
                       match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 6) {
                         Absent => none
-                        Present { value: c2 } => Present { value: concat(st.out, c0, c1, c2, "=") }
+                        Present { value: c2 } => Present { value: concat(st.out, c0, c1, c2, base64_padding_after(values_in_final_group: 3)) }
                       }
                   }
               }
@@ -430,41 +446,13 @@ type Base64DecodeState {
 // 32-bit group and the group's low three octets ARE the answer, so word_to_octets replaces the
 // previous (n / 65536) % 256 ladder outright. The leading octet is dropped rather than masked away
 // because it is the zero octet base64_group_of_octets put there.
+// THE FOUR SEXTETS OCCUPY DISJOINT BIT RANGES (18, 12, 6, 0; each below 2^6, as base64_char_value
+// produces them), so their OR is their weighted sum and the group is ONE word_of_int. The earlier
+// placement built four words and folded three word_or over all 32 bit places per group -- the
+// dominant per-character cost of every base64 decode (~860 eval steps per character, measured
+// 2026-10-01) for an answer a single range-checked construction states.
 fn base64_group_of_sextets(a: Int, b: Int, c: Int, v: Int) -> WordResult {
-  match base64_place_sextet(value: a, offset: 18) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: wa } =>
-      match base64_place_sextet(value: b, offset: 12) {
-        WordRefused { cause: cause } => WordRefused { cause: cause }
-        WordReady { word: wb } =>
-          match base64_place_sextet(value: c, offset: 6) {
-            WordRefused { cause: cause } => WordRefused { cause: cause }
-            WordReady { word: wc } =>
-              match base64_place_sextet(value: v, offset: 0) {
-                WordRefused { cause: cause } => WordRefused { cause: cause }
-                WordReady { word: wv } => base64_or_all(a: wa, b: wb, c: wc, d: wv)
-              }
-          }
-      }
-  }
-}
-
-fn base64_place_sextet(value: Int, offset: Int) -> WordResult {
-  match word_of_int(width: Width32, value: value) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: w } => word_shift_left(a: w, amount: offset)
-  }
-}
-
-fn base64_or_all(a: Word, b: Word, c: Word, d: Word) -> WordResult {
-  match word_or(a: a, b: b) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: ab } =>
-      match word_or(a: ab, b: c) {
-        WordRefused { cause: cause } => WordRefused { cause: cause }
-        WordReady { word: abc } => word_or(a: abc, b: d)
-      }
-  }
+  word_of_int(width: Width32, value: a * 262144 + b * 4096 + c * 64 + v)
 }
 
 fn base64_group_octet_values(group: Word) -> List<Int>? {
@@ -498,27 +486,32 @@ fn base64_decode_step_optional(st: Base64DecodeState?, v: Int) -> Base64DecodeSt
   }
 }
 
+// CANONICAL DECODING (RFC 4648 §3.5): a final partial group carries pad bits -- the low 4 bits of the
+// second sextet when one octet remains, the low 2 bits of the third when two do -- which a conforming
+// encoder sets to zero. They are discarded, so a decoder that ignores them admits several spellings of
+// one octet string ("Zg==" and "Zh==" both read as "f"), and every consumer that needs one spelling
+// per value has to re-encode to find out which it was handed (gunbc.auth.approval_capability
+// capability_tag_hex does, until d0_store_operation_wall PR 4 deletes that re-encode on top of this).
+// Non-zero pad bits are therefore refused here, once, for every consumer: the spelling is canonical by
+// construction rather than by a second encoding.
 fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
   match st.buf {
     DecEmpty => Present { value: st.out }
     DecOne { v0: _ } => none
     DecTwo { v0: a, v1: b } =>
-      match base64_group_of_sextets(a: a, b: b, c: 0, v: 0) {
-        WordRefused { cause: _ } => none
-        WordReady { word: group } =>
-          match base64_group_octet_values(group: group) {
-            Absent => none
-            Present { value: octets } => Present { value: concat(st.out, octets.take(n: 1)) }
-          }
-      }
+      if b % 16 != 0 { none } else { base64_decode_final_octets(out: st.out, a: a, b: b, c: 0, keep: 1) }
     DecThree { v0: a, v1: b, v2: c } =>
-      match base64_group_of_sextets(a: a, b: b, c: c, v: 0) {
-        WordRefused { cause: _ } => none
-        WordReady { word: group } =>
-          match base64_group_octet_values(group: group) {
-            Absent => none
-            Present { value: octets } => Present { value: concat(st.out, octets.take(n: 2)) }
-          }
+      if c % 4 != 0 { none } else { base64_decode_final_octets(out: st.out, a: a, b: b, c: c, keep: 2) }
+  }
+}
+
+fn base64_decode_final_octets(out: List<Int>, a: Int, b: Int, c: Int, keep: Int) -> List<Int>? {
+  match base64_group_of_sextets(a: a, b: b, c: c, v: 0) {
+    WordRefused { cause: _ } => none
+    WordReady { word: group } =>
+      match base64_group_octet_values(group: group) {
+        Absent => none
+        Present { value: octets } => Present { value: concat(out, octets.take(n: keep)) }
       }
   }
 }
@@ -537,6 +530,21 @@ fn base64_decode_values(vals: List<Int>) -> List<Int>? {
     Absent => none
     Present { value: s } => base64_decode_flush(st: s)
   }
+}
+
+// CANONICAL DECODING WITH CANONICAL PADDING: the same decode, admitting only the padding
+// base64_padding_after says the encoder emits for this many values. base64_decode stays lenient about
+// padding for its existing consumers; a consumer that needs exactly one spelling per value (an
+// authenticated tag) reads this instead of re-encoding to find out.
+fn base64_decode_canonical(s: String, variant: Base64Variant) -> List<Int>? {
+  let total = string_length(s)
+  let pads = base64_trailing_pad_count(s: s, i: total, n: 0)
+  if pads != string_length(base64_padding_after(values_in_final_group: (total - pads) % 4)) { none }
+  else { base64_decode(s: s, variant: variant) }
+}
+
+fn base64_trailing_pad_count(s: String, i: Int, n: Int) -> Int {
+  if i <= 0 { n } else if char_at(s, i - 1) == "=" { base64_trailing_pad_count(s: s, i: i - 1, n: n + 1) } else { n }
 }
 
 fn base64_decode(s: String, variant: Base64Variant) -> List<Int>? {
@@ -647,7 +655,10 @@ fn utf8_admit_octet(d: Utf8DecodeState, b: Int) -> Utf8DecodeState {
 fn utf8_decode_octets(octets: List<Int>) -> List<Int>? {
   match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
-    _ => none
+    Utf8NeedOne { out: _, length: _, acc: _ } => none
+    Utf8NeedTwo { out: _, length: _, acc: _ } => none
+    Utf8NeedThree { out: _, acc: _ } => none
+    Utf8Refused => none
   }
 }
 

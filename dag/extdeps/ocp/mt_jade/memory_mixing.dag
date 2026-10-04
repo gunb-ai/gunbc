@@ -137,20 +137,20 @@ data mt_jade_mixed_dimm_support_table: List<MtJadeMixedDimmSupportCell> = concat
 
 fn mt_jade_dimm_mixing_axis_eq(a: MtJadeDimmMixingAxis, b: MtJadeDimmMixingAxis) -> Bool {
   match a {
-    DifferentRcd => match b { DifferentRcd => true, _ => false }
-    DifferentDramDies => match b { DifferentDramDies => true, _ => false }
-    MixingX4AndX8 => match b { MixingX4AndX8 => true, _ => false }
-    DifferentDensity => match b { DifferentDensity => true, _ => false }
-    DifferentSpeed => match b { DifferentSpeed => true, _ => false }
-    DifferentVendor => match b { DifferentVendor => true, _ => false }
-    Mixing1rAnd2r => match b { Mixing1rAnd2r => true, _ => false }
+    DifferentRcd => match b { DifferentRcd => true, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
+    DifferentDramDies => match b { DifferentRcd => false, DifferentDramDies => true, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
+    MixingX4AndX8 => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => true, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
+    DifferentDensity => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => true, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => false }
+    DifferentSpeed => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => true, DifferentVendor => false, Mixing1rAnd2r => false }
+    DifferentVendor => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => true, Mixing1rAnd2r => false }
+    Mixing1rAnd2r => match b { DifferentRcd => false, DifferentDramDies => false, MixingX4AndX8 => false, DifferentDensity => false, DifferentSpeed => false, DifferentVendor => false, Mixing1rAnd2r => true }
   }
 }
 
 fn mt_jade_dimm_mixing_placement_eq(a: MtJadeDimmMixingPlacement, b: MtJadeDimmMixingPlacement) -> Bool {
   match a {
-    DifferentChannel => match b { DifferentChannel => true, _ => false }
-    SameChannel => match b { SameChannel => true, _ => false }
+    DifferentChannel => match b { DifferentChannel => true, SameChannel => false }
+    SameChannel => match b { DifferentChannel => false, SameChannel => true }
   }
 }
 

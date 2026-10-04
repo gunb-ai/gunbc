@@ -1,0 +1,126 @@
+module v2.test.claim.body_lowering_unrecognised_lowered_shape
+
+import v2.compiler.body_lowering_fold {
+  OperandRefAbsent,
+  OperandRefLowered,
+  OperandRefRead,
+  OperandRefRefused,
+  body_lower_find_core_substrate_passes_unrecognised,
+  body_lower_fold,
+  body_lower_operand_ref_read
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, node_locus }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Authored,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.node_query { field_projection_node }
+import v2.std.optional { Absent, Present }
+
+// The subject is the refusal body lowering gives a lowered shape no reader recognises
+// (v2.compiler.body_lowering_fold body_lower_is_unrecognised_lowered_shape), so the inputs are
+// SUPPLIED at that boundary (DESIGN section 3): a producer-shaped node no producer emits today, beside
+// the shapes that must still pass. The route pairing -- that real producers' outputs still lower whole
+// on the real stages -- is held by the enrolled claims over real text:
+// v2.test.claim.namespace_xl0.value_position_whole_read
+// a_field_projection_on_a_call_result_in_an_operand_lowers_whole and
+// v2.test.claim.namespace_xl0.reference_conservation_admission
+// a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds.
+
+fn ulsh_leaf() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^ulsh_leaf } }, children: [])
+}
+
+// A Conj under a label no grammar production and no lowering emits: lowered-shaped (no grammar
+// projection edge) and outside the allowlist.
+fn ulsh_unknown_shape() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Authored { name: ^ulsh_probe_edge }, target: ulsh_leaf() }]
+  )
+}
+
+// The same unknown shape wrapping a recognised node: the first-match descendant search would answer
+// the Transform inside it, a part for the whole.
+fn ulsh_unknown_over_transform() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Authored { name: ^ulsh_probe_edge },
+        target: node_synthetic(
+          kind: ComputationNode { behavior: Transform },
+          children: [Edge { label: Positional, target: ulsh_leaf() }]
+        )
+      }
+    ]
+  )
+}
+
+fn ulsh_raw_sequence() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^grammar_sequence_left_node_projection }, target: ulsh_leaf() },
+      Edge { label: Authored { name: ^grammar_sequence_right_node_projection }, target: ulsh_leaf() }
+    ]
+  )
+}
+
+fn ulsh_refused_unrecognised(o: Outcome<Node>) -> Bool {
+  match o {
+    Rejected { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED if the fold re-reads the shape (the re-lower fallback restored) or refuses it for another reason.
+test fn an_unrecognised_lowered_shape_refuses_at_the_fold() -> Bool {
+  ulsh_refused_unrecognised(o: body_lower_fold(node: ulsh_unknown_shape()))
+}
+
+// The refusal is located at the unrecognised node itself, not at the recognised node inside it.
+test fn the_refusal_is_located_at_the_unrecognised_node() -> Bool {
+  let outer = ulsh_unknown_over_transform()
+  match body_lower_fold(node: outer) {
+    Rejected { diagnostics: d } => d.head.at == node_locus(node: outer)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn an_unrecognised_lowered_shape_refuses_at_the_operand_reader() -> Bool {
+  match body_lower_operand_ref_read(node: ulsh_unknown_shape()) {
+    OperandRefRefused { diagnostics: d } => d.head.reason == ^body_lowering_reason_unrecognised_lowered_shape
+    OperandRefLowered { lowered: _ } => false
+    OperandRefAbsent => false
+  }
+}
+
+test fn the_descendant_search_does_not_answer_a_part_of_an_unrecognised_shape() -> Bool {
+  match body_lower_find_core_substrate_passes_unrecognised(root: ulsh_unknown_over_transform()) {
+    Present { value: passed } => passed == ulsh_unknown_over_transform()
+    Absent => false
+  }
+}
+
+// POSITIVE CONTROLS: a known producer shape passes whole, and raw parse is never mistaken for output.
+test fn a_field_projection_still_lowers_whole() -> Bool {
+  let projection = field_projection_node(base: ulsh_leaf(), field: ulsh_leaf(), source: ulsh_leaf())
+  match body_lower_fold(node: projection) {
+    Accepted { value: v, diagnostics: _ } => v == projection
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a_raw_parse_sequence_is_not_an_unrecognised_lowered_shape() -> Bool {
+  !ulsh_refused_unrecognised(o: body_lower_fold(node: ulsh_raw_sequence()))
+}

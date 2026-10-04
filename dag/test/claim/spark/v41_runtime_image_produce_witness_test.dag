@@ -2,7 +2,7 @@ module test.claim.spark.v41_runtime_image_produce_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.container.oci.digest { parse_oci_content_digest_wire }
-import extdeps.flashinfer.flashinfer { flashinfer_0_6_18_post1_wheels }
+import extdeps.flashinfer.flashinfer { flashinfer_0_7_1rc1_wheels }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.v41_runtime_image_probe { V41ProbeRead, V41ProbeRefused }
 import gunbc.spark.v41_runtime_image_converge {
@@ -59,11 +59,12 @@ test fn the_wheel_verification_line_says_which_way_it_went() -> Bool {
 // THE VERIFY SCRIPT COMPARES EVERY WHEEL TO THE DIGEST THE CANDIDATE KEYS, and fetching without
 // comparing would establish nothing -- so the digest and the `sha256sum -c -` are asserted together.
 test fn every_fetched_wheel_is_compared_to_its_keyed_digest() -> Bool {
-  let s = v41_wheel_verify_script(wheels: flashinfer_0_6_18_post1_wheels)
+  let s = v41_wheel_verify_script(wheels: flashinfer_0_7_1rc1_wheels)
   s.contains("set -e\n")
-    && s.contains("adb6d2952b47131138e108bd2999b1fe18b71f1a4c0b2684f168753db9563991")
-    && s.contains("bbacb5b8bbf429e43bf2740bb45551d981f41d0462842e36ee6fb3e3452763ab")
-    && s.contains("860ec5ce11a1d686bde04dbef4bedee15c39e3ec5e10adccb186dfee2e4113f2")
+    && s.contains("17b7a2d47a153456f056f9f4d309ac13a0a7bfccbec852f562f120f36146edd9")
+    && s.contains("a900e973695798581d60d5297fee3c9bee8d1f1e6211303af7c0171481446a34")
+    && s.contains("https://github.com/flashinfer-ai/flashinfer/releases/download/v0.7.1rc1/flashinfer_jit_cache_sm121a-0.7.1rc1+cu130-cp39-abi3-manylinux_2_28_aarch64.whl")
+    && !s.contains("v0.6.18.post1")
     && s.contains("| sha256sum -c -")
 }
 

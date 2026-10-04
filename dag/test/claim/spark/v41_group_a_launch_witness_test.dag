@@ -26,8 +26,11 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
-import gunbc.spark.serving_arm { gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, deepseek_v41_measurement_profile, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
+import gunbc.spark.serving_arm { deepseek_v41_launch_policy, gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
 import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused }
+import gunbc.spark.serving_capacity_intent {
+  uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
 import gunbc.spark.v41_group_a_launch {
   V41GroupALaunchInputs, V41HostOccupancy, v41_dry_run_occupancy,
   V41GroupALaunchPlan, V41GroupALaunchPlanned, V41GroupALaunchUnestablished, V41GroupALaunchRefused,
@@ -38,6 +41,7 @@ import gunbc.spark.v41_group_a_launch {
   v41_group_a_launch_admission, v41_group_a_dry_run_report,
   v41_group_a_container_name, v41_engram_manifest_env_name, v41_engram_touch_receipt_env_name,
   v41_engram_manifest_dir, v41_engram_touch_receipt_dir,
+  v41_sm120_selftest_argv, v41_sm120_selftest_module, v41_engine_model_path,
 }
 
 // ── THE FIXTURES ARE SUPPLIED AT THE LAUNCH'S OWN INTERFACE ────────────────────────────────────
@@ -155,6 +159,41 @@ test fn w_the_plan_is_four_mp_ranks_with_the_v41_engine_flags() -> Bool {
   })
 }
 
+// THE LAUNCH SERVES TEXT ONLY ON EVERY RANK. The vision variant widens prefill sliding-window rows to
+// 1152, for which FlashInfer's SM120 DSv4 kernel has no specialization; --language-model-only alone
+// leaves that width, and the vision_n_layers override is what returns it to 128.
+test fn w_every_rank_serves_text_only_with_the_vision_layers_overridden_away() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4
+      && all(ls, l =>
+        argv_has(argv: l.engine_argv, word: "--language-model-only")
+          && argv_pair_is(argv: l.engine_argv, flag: "--hf-overrides.vision_n_layers", value: "0"))
+  })
+}
+
+// THE SM120 GATE RUNS THE RANK'S OWN ARGV IN THE RANK'S OWN IMAGE. The self-test parses exactly the words
+// the container will hand `vllm serve`, so the gate's argv must end with that rank's engine argv
+// unchanged, run the overlay's module in the planned image, and mount the checkpoint read-only where
+// the engine argv's model path names it.
+test fn w_the_sm120_gate_runs_each_ranks_engine_argv_in_its_image() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let ls = planned_lines(p: p)
+    length(ls) == 4
+      && all(ls, l => match v41_engine_model_path(l: l) {
+        Absent => false
+        Present { value: model_path } => {
+          let argv = v41_sm120_selftest_argv(l: l, model_path: model_path)
+          argv_pair_is(argv: argv, flag: "-v", value: join([l.host_model_path as String, ":", model_path, ":ro"], ""))
+            && argv_pair_is(argv: argv, flag: "-m", value: v41_sm120_selftest_module)
+            && argv_has(argv: argv, word: l.image_reference as String)
+            && argv_has(argv: argv, word: "--rm")
+            && join(argv, argv_frame).ends_with(suffix: join(concat([v41_sm120_selftest_module], l.engine_argv), argv_frame))
+        }
+      })
+  })
+}
+
 // THE FILE-BACKED ENGRAM PATH REACHES THE CONTAINER: both variables, the store mounted read-only at its
 // own path, the manifest directory read-only, the receipt directory writable -- and the container is
 // named for this arm, never the V4 pair's gunbc-spark-pair.
@@ -188,6 +227,25 @@ test fn w_the_units_render_under_names_no_other_arm_uses() -> Bool {
   })
 }
 
+// THE UNITS ARE THE EXPERIMENT THE WALL ADMITTED: every rank renders bounded -- no restart, a finite
+// RuntimeMaxSec, one start, no [Install] -- because the plan and the render read one intent row
+// (gunbc.spark.v41_group_a_launch v41_group_a_intent). A persistent render (Restart=always, WantedBy)
+// of a launch admitted only as an experiment is the defect this row goes red on.
+test fn w_every_v41_unit_renders_as_the_bounded_experiment_it_was_admitted_as() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let rs = v41_group_a_unit_renders(p: p)
+    length(rs) == 4 && all(rs, r => match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
+      GlmNativeUnitRendered { unit_name: _, text: t } =>
+        string_contains(s: t, pattern: "RuntimeMaxSec=")
+          && string_contains(s: t, pattern: "Restart=no")
+          && string_contains(s: t, pattern: "StartLimitBurst=1")
+          && !string_contains(s: t, pattern: "Restart=always")
+          && !string_contains(s: t, pattern: "WantedBy=")
+    })
+  })
+}
+
 // ── REFUSALS, EACH ASSERTING ITS REASON ───────────────────────────────────────────────────────
 
 // WITH NO REGISTRY READING INSIDE THE PRODUCED IMAGE, THE ARM WALL REFUSES -- and it is the arm wall's
@@ -216,13 +274,18 @@ test fn w_the_engram_page_cache_allowance_is_charged_to_the_pool() -> Bool {
       Present { value: p } => match v41_serving_runtime(held: p, registry_reading: Present { value: w_registry() }) {
         Absent => false
         Present { value: r } => {
-          let half = deepseek_v41_measurement_profile(
-            max_model_len: token_count(count: 262144), max_num_seqs: 16, max_num_batched_tokens: token_count(count: 8192),
-            gpu_memory_basis_points: basis_point(count: 5000), prefix_caching: PrefixCachingExplicit { enabled: false },
-            serve_port: 30000, served_alias: "witness" as NonEmptyStr)
-          match serving_arm_admits_under(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4, profile: Present { value: half }) {
-            ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "GiB declared page-cache allowance")
-            ServingArmAdmitted => false
+          match uniform_cold_seats(each: token_count(count: 262144), seats: 16, max_batched_tokens: token_count(count: 8192)) {
+            ServingCapacityIntentRefused { cause: _ } => false
+            ServingCapacityIntentAdmitted { intent: i } => {
+              let half = profile_for_envelope(
+                envelope: envelope_at_cold_floor(cold: i), policy: deepseek_v41_launch_policy,
+                decided_gpu_memory_basis_points: basis_point(count: 5000),
+                serve_port: 30000, served_alias: "witness" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: false })
+              match serving_arm_admits_under(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4, profile: Present { value: half }) {
+                ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "GiB declared page-cache allowance")
+                ServingArmAdmitted => false
+              }
+            }
           }
         }
       }

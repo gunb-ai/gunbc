@@ -11,7 +11,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_in_list }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_in_list, TypeParameter }
 import std.types { NonEmptyStr, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.git
@@ -827,11 +827,12 @@ fn commit_writer_blob_classification_refusals(
         ),
         items: match artifact.artifact.kind {
           TestClaimArtifact => []
-          _ => commit_writer_text_marker_refusals(
-            path: blob.path,
-            text: text,
-            grammar: marker_grammar,
-          )
+          SourceFile => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          GeneratedSource => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          ProjectionArtifact => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          Stage0Candidate => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          CorePackage => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
+          WitnessBundle => commit_writer_text_marker_refusals(path: blob.path, text: text, grammar: marker_grammar)
         },
       )
     CommitWriterBlobNonTextUnclaimed => []
@@ -1413,19 +1414,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/lens/non_fold_residue_test.dag",
-      check_fns: [
-        "non_fold_residue_no_unrostered_or_stale",
-        "non_fold_residue_synthetic_unrostered_red_control_holds",
-        "non_fold_residue_wildcard_red_fixture_control_holds"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "dag/test/claim/keyed_roster_witness_test.dag",
       check_fns: [
         "keyed_roster_two_branch_union_disjoint_keys_admits",
@@ -1565,10 +1553,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       check_fns: [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",
-        "floor_index_build_reds_without_reference_provider",
-        "floor_typecheck_store_share_is_shared_by_reference",
-        "floor_typecheck_store_has_plural_readers",
-        "floor_typecheck_store_reds_without_reference_provider"
+        "floor_index_build_reds_without_reference_provider"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -1684,8 +1669,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       check_fns: [
-        "ingested_classical_not_resolves_holds",
         "ingested_classical_not_arrow_has_match_holds",
+        "ingested_classical_not_arrow_has_match_rejected_producer_refuses_holds",
         "ingested_classical_not_canonical_emit_accepts_holds",
         "ingested_classical_not_staging_emit_accepts_holds",
         "ingested_classical_not_emit_accepts_holds",
@@ -2482,6 +2467,7 @@ fn declaration_field_is_whole(field: DeclField) -> Bool {
   match field {
     WholeDeclaration => true
     NamedField { field_name: _ } => false
+    TypeParameter { name: _ } => false
   }
 }
 
@@ -2817,9 +2803,16 @@ fn project_enrollment_witness_demands(
           if demand_rows_match_roster(roster: roster, rows: rows) {
             DemandQualified { rows: rows }
           } else {
-            DemandIncomplete {
-              check: roster.first().check,
-              cause: "projected demand check set does not equal input roster" as NonEmptyStr
+            match roster.first() {
+              Present { value: head } =>
+                DemandIncomplete {
+                  check: head.check,
+                  cause: "projected demand check set does not equal input roster" as NonEmptyStr
+                }
+              Absent =>
+                DemandRosterAmbiguous {
+                  cause: "projected demand check set does not equal input roster" as NonEmptyStr
+                }
             }
           }
     }
@@ -2904,7 +2897,8 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
   fold(roster, init: [], f: fn(acc, row) {
     match row.check {
       CommitCargoFmtCheck => concat(acc, [LocalTidyCargoFmtCheck])
-      _ => acc
+      CommitSpecGate { gate: _ } => acc
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
     }
   })
 }

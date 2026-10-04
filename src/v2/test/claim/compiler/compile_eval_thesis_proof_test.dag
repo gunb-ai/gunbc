@@ -30,7 +30,7 @@ import v2.std.runtime {
   RuntimeValueNodeUnrepresentable,
   runtime_value_node_projection
 }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations, claim_inferred_facts_from_nodes }
 import v2.std.witness { Holds }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -111,7 +111,7 @@ test fn compile_eval_bool_reaches_node_value_holds() -> Bool {
 
 test fn compile_eval_bool_via_compile_entry_refuses_underived_holds() -> Bool {
   match compile(
-    source: v2_eval_bool_literal_pin,
+    source: claim_resolved_tree_without_declarations(root: v2_eval_bool_literal_pin),
     mode: Eval { runtime: v2_eval_bool_literal_pin }
   ) {
     Rejected { diagnostics: d } => d.head.reason == ^infer_grounding_not_derived

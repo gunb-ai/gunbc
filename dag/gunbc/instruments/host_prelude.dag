@@ -10,9 +10,6 @@ import gunbc.cli_invoke { source_root_transport_argv }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ci_release_bins { release_bin_is_enrolled }
 import std.logic { Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/gunbc/instruments transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14). This module no longer has a shell path at all: toolchain_provision_shell_exec was its last one, and it is deleted. Its three callers in tools.emit_host_transport now run shell.Exec.Run directly, because they need the script's STDOUT -- the byte count and probe marker they compare in-substrate -- and a helper returning only Bool is exactly the collapse those call sites exist to undo."
 
@@ -55,6 +52,17 @@ type WitnessBinReadiness
   = WitnessBinReady { path: String }
   | WitnessBinRefused { bin_name: String, path: String, reason: WitnessBinRefusalReason }
 
+// THE REFUSAL AS A CARRIED VALUE, for receipts whose own outcome is a std.subject_evidence
+// SubjectEvidence: the refused arm becomes EvidenceInstrumentRefused { cause: WitnessBinRefusal },
+// so a receipt that could not run its binary is a located instrument refusal and never a
+// behavioral false. Each caller builds it only inside its match on a WitnessBinRefused arm, so its
+// fields are that arm's, never a second observation.
+type WitnessBinRefusal {
+  bin_name: String
+  path: String
+  reason: WitnessBinRefusalReason
+}
+
 // The three probes below are annotated OutcomeIsData (operator ruling 2026-07-25). A non-zero exit
 // from `test -f`/`-x`/`-s` here means SUBJECT ABSENT — an answer, not a fault — and it is ambient
 // in BOTH of this helper's contexts: the production readiness path (witness_bin_run_if_ready,
@@ -92,6 +100,25 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
   }
 }
 
+// The ONE rendering of a refusal for callers whose own outcome carries its cause as text
+// (tools.emission_entry_instrument EmissionSubjectUnestablished, tools.opaque_realization_census
+// OpaqueCensusUnestablished). It names the bin, the path it was looked for at, and the arm, so a
+// reader of that cause can tell an unbuilt binary from a failed build from a zero-byte stub.
+
+fn witness_bin_refusal_reason_name(reason: WitnessBinRefusalReason) -> String {
+  match reason {
+    WitnessBinNotEnrolled => "not-enrolled"
+    WitnessBinBuildFailed => "build-failed"
+    WitnessBinArtifactAbsent => "artifact-absent"
+    WitnessBinArtifactNotExecutable => "artifact-not-executable"
+    WitnessBinArtifactEmpty => "artifact-empty"
+  }
+}
+
+fn witness_bin_refusal_cause(bin_name: String, path: String, reason: WitnessBinRefusalReason) -> String {
+  concat("witness binary ", concat(bin_name, concat(" refused (", concat(witness_bin_refusal_reason_name(reason: reason), concat(") at ", path)))))
+}
+
 // Enrollment wall first (gunbc.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name
 // refuses as WitnessBinNotEnrolled and never reaches cargo.Build — that is the construction close
 // of the mid-floor cold-monolith absorption the release-bins pack exists to bound (roster
@@ -127,26 +154,6 @@ fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> WitnessBinRe
       }
     }
   }
-}
-
-// witness_bin_ready is a LOSSY projection of witness_bin_ensure_built_typed: it discards the
-// located WitnessBinRefused and answers Bool. Its consumers are whatever imports it (git grep
-// witness_bin_ready), never a list written here -- the list that used to sit here went stale.
-// The four gate transports and build_step_transport match the typed value directly.
-
-data witness_bin_ready_lossy_projection_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "tools.host_prelude",
-    decl_name: "witness_bin_ensure_built_typed",
-    field: WholeDeclaration
-  }
-}
-
-data witness_bin_ready_lossy_projection_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: no module imports tools.host_prelude witness_bin_ready -- every importer matches witness_bin_ensure_built_typed and carries the WitnessBinRefused reason into its own typed outcome (e.g. EmissionSubjectUnestablished / OpaqueCensusUnestablished cause) -- then delete witness_bin_ready and this row. Staged, parent-approved 2026-07-19.")
-
-fn witness_bin_ready(root: String, bin: WitnessBin) -> Bool {
-  witness_bin_readiness_is_ready(readiness: witness_bin_ensure_built_typed(root: root, bin: bin))
 }
 
 // witness_bin_ready_seed is the fold IDENTITY for 'nothing has refused yet', not a claim that a

@@ -115,6 +115,7 @@ fn approval_broker_ntfy_runtime_observe_operation_at(locus: HelperLocus, revisio
   let dir = helper_locus_dir(locus: locus, revision: revision)
   RunGunbcEntryAs {
     run_as: approval_ntfy_runtime_observe_run_as(),
+    workspace_root: dir as NonEmptyStr,
     binary: join([dir, "/", gunbc_release_bin_name], "") as NonEmptyStr,
     source_roots: map(approval_broker_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
     entry: join([dir, "/", approval_ntfy_runtime_observe_entry_rel as String], "") as NonEmptyStr,

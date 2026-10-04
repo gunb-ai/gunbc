@@ -109,6 +109,7 @@ import gunbc.fabric_storage_file_store {
   fabric_storage_file_get,
   fabric_storage_file_put,
 }
+import std.algebra { trim }
 
 // WHAT THIS DOES AND DOES NOT REPLACE, AND THE SECOND ROUTE IT WOULD OTHERWISE BE.
 //

@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.seed_admits_a_keyword_as_a_pattern_binder
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data seed_admits_a_keyword_as_a_pattern_binder: RecurringFailureMode = RecurringFailureMode {
+  identity: "seed_admits_a_keyword_as_a_pattern_binder" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a pattern binder spelled with a language keyword -- `Present { value: loop } =>`, where `loop` is ^dag_token_kw_loop, the keyword of the `loop <expr>` form -- is ACCEPTED by the v1 seed parser and REFUSED by the v2 parser (the grammar v2.extdeps.languages.dag declares and the native route compiles). The seed is the lenient side: a keyword cannot be an identifier, so the source is invalid and the native refusal is correct.",
+    "HARM: a module the seed runs green is refused WHOLE by the native route as parse_g0_tokens_remain, a file-level refusal with no locus in the census row ('whole file'), so every declaration and claim in it leaves the native index. The refusal names no keyword, so it reads as a native parser gap rather than invalid source, and the file joins the parse_g0 population (71 files at merge base 81d292e9db on gunbc#12550) with no cause attached.",
+    "SPECIMENS (gunbc#12550): v2.test.claim.fold_encoding and v2.test.claim.fold_lowering, located by a v2 parse probe at dcfc5e9293 at bytes 4901..4905 and 8209..8213 respectively, both `Present { value: loop }`. fold_lowering_test carried the same binder at merge base, which is its standing native refusal there. The binders were renamed at ab3e75b15b and the same probe reports both files PARSED. The rename is the correct repair, not a workaround: the source was invalid.",
+    "DISCRIMINATOR: the v2 parse probe (v2.compiler.reference_conservation_admission conservation_subject_of_text(..).parsed on the file's live text) refuses the keyword-binder spelling with a byte-range locus at the keyword and accepts the renamed spelling; the seed runs both.",
+    "SCOPE STILL OPEN, NOT A CLAIMED SPECIMEN: field access with a keyword name -- `interpretation.loop` in v2.compiler.eval and `a.loop` in v2.std.runtime -- is the same seed leniency at a different grammar position, but both files already refuse natively for an unrelated reason (body_lowering_reason_caret_symbol_not_lowered), so whether the keyword after a dot also refuses is masked there and is not asserted here.",
+    "RUNG FOUND AT AND CURRENT RUNG: mechanically preventable on the native route, whose parser refuses the spelling; the seed side is outside the wall. v1 is semantics-frozen (gunbc.v1_maintenance_standing v1_seed_standing), so the seed leniency is recorded, not patched.",
+    "CEILING AND NEXT-RUNG TRIGGER: structurally impossible once no v2 source is admitted through the seed parser alone -- the native parse is the one grammar every module must pass. The capability that retires the leniency's reach is the native route qualifying the corpus it parses, so a keyword binder refuses at a gate every PR runs rather than only in a census.",
+    "SECOND SHAPE (N7-1, gunbc#13028): a fn PARAMETER spelled `loop` and then READ as a value -- `fn infer_loop_member_role(loop: Node)` with `loop.kind`, `loop: loop`, `at: loop` in its body. The v2 parser admits the declaration (`fn f(loop: Int) -> Int { 1 }` parses) and refuses every value use with parse_g0_tokens_remain, so the whole of v2.compiler.infer became a native file refusal while every seed-interpreted control stayed green. Found by bisecting the file's new items through v2.compiler.parse parse_module_prepared under the seed: exactly the three items that read `loop` refused. The same root as the pattern-binder shape -- the seed lexes a keyword as an identifier -- reached through a binding position the pattern-binder repair does not cover.",
+  ],
+  evidence: [],
+}

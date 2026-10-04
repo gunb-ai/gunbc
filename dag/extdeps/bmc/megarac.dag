@@ -2,7 +2,6 @@ module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
-import std.string_type { String }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
@@ -15,6 +14,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
+import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_string, serialize_json_array }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -364,6 +365,55 @@ fn megarac_served_ui_surface_standing(
   }
 }
 
+// SCREEN CAPTURE SURFACES AT 0.32. Read-only probe 2026-09-27 of the bundles served at
+// https://192.168.1.228/source.min.js (gzip, sha256 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3)
+// and /viewer.min.js (sha256 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17).
+// THERE IS NO SERVER-SIDE ON-DEMAND STILL. The H5 viewer's "Capture Screen" is captureScreen():
+// document.getElementById("kvm").toDataURL("image/jpeg") saved as CaptureScreen.jpeg. That is a canvas
+// the browser painted by decoding the AST2100 stream from wss://<bmc>/kvm (session token from
+// /api/kvm/token), so a still exists only where a KVM client is running. The firmware itself
+// keeps two retained screens: the last BSOD JPEG (feature CAPTURE_BSOD_JPEG, GET
+// /api/settings/download_image), and framebuffer recordings made by FramebufferRecorder when an
+// armed /api/settings/video/triggers event fires (chassis power on/off/reset, lpc reset, watchdog,
+// critical/non-critical/non-recoverable, fan state, or a date_time schedule), listed at
+// /api/logs/video with bytes at /api/logs/video-data?file=. No IPMI OEM capture command appears
+// in either bundle.
+type MegaRacScreenCaptureRoute
+  = KvmClientCanvasJpeg
+  | LastBsodJpeg
+  | TriggeredFramebufferRecording
+  | ServerSideOnDemandStill
+
+type MegaRacScreenCaptureStanding
+  = ScreenCaptureServedOnDemand
+  | ScreenCaptureEventRetainedOnly
+  | ScreenCaptureClientSideOnly
+  | ScreenCaptureAbsent
+
+fn megarac_screen_capture_standing_at_0_32(route: MegaRacScreenCaptureRoute) -> MegaRacScreenCaptureStanding {
+  match route {
+    KvmClientCanvasJpeg => ScreenCaptureClientSideOnly
+    LastBsodJpeg => ScreenCaptureEventRetainedOnly
+    TriggeredFramebufferRecording => ScreenCaptureEventRetainedOnly
+    ServerSideOnDemandStill => ScreenCaptureAbsent
+  }
+}
+
+type MegaRacScreenCaptureLookup
+  = ScreenCaptureFactKnown { firmware: BmcFirmwareReleaseIdentity, standing: MegaRacScreenCaptureStanding }
+  | ScreenCaptureFirmwareUncatalogued { firmware: BmcFirmwareReleaseIdentity }
+
+fn megarac_screen_capture_standing(
+  firmware: BmcFirmwareReleaseIdentity,
+  route: MegaRacScreenCaptureRoute,
+) -> MegaRacScreenCaptureLookup {
+  if bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32) {
+    ScreenCaptureFactKnown { firmware: firmware, standing: megarac_screen_capture_standing_at_0_32(route: route) }
+  } else {
+    ScreenCaptureFirmwareUncatalogued { firmware: firmware }
+  }
+}
+
 // EVENT LOG SHAPE. The web log and ipmitool are two layouts. GenID1/GenID2 on the standard-event
 // template are manufacturer bytes; they have no Sender constructor. Ampere's published producer
 // layout for those manufacturer bytes is extdeps.ampere.oem_sel.
@@ -379,6 +429,47 @@ type MegaRacEventLogLayout
 data megarac_web_event_log_layout: MegaRacEventLogLayout = MegaRacWebEventLogOemEmptySelData
 
 data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPreserved
+
+// THE WEB SESSION AND KVM VIEWER WIRE, AS THE 0.32 UI READS IT. Recovered from the bundles served at
+// https://192.168.1.228 on 2026-09-27 (source.min.js, gzip sha256
+// 5029fae278f7fc8f4dd4ad5eb8e4457e49fa25d4d0158d4bf9fbab09f57d4bf3; viewer.min.js sha256
+// 8bdfbb72c6449eaf64ab232a413abe257c2eec5af5d46fbe960c14534fab3e17):
+// - POST /api/session (form fields username, password) answers JSON; the login handler treats
+//   `ok === 0` as success and reads CSRFToken, privilege, extendedpriv and racsession_id from it, then
+//   sends X-CSRFTOKEN on every later request.
+// - GET /api/settings/services answers a JSON list of service rows; the KVM launcher finds the row
+//   whose service_name is "kvm" and opens viewer.html only when its viewer_count is 0.
+// - DELETE /api/session (X-CSRFTOKEN) ends the session (the viewer's own logout).
+// - The H5 viewer opens a WebSocket at /kvm (subprotocols binary, base64) and paints canvas#kvm.
+// A REFUSED LOGIN'S BODY AND STATUS ON 0.32 HAVE NOT BEEN CAPTURED, so this module states none: what
+// the UI establishes is only that a reply without ok === 0 is not a session. A simulated controller's
+// refusal is its renderer's choice (gunbc.bmc_megarac_web_adapter), never this upstream's.
+// These are the fields the UI reads, not the whole reply: a reply may carry more.
+data megarac_kvm_websocket_path: NonEmptyStr = "/kvm"
+
+type MegaRacLoginSession {
+  csrf_token: String
+  privilege: Int
+  extended_privilege: Int
+  racsession_id: Int
+}
+
+fn megarac_login_session_json(session: MegaRacLoginSession) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "ok", value: json_int(n: 0)),
+    json_kv(key: "CSRFToken", value: json_string(s: session.csrf_token)),
+    json_kv(key: "privilege", value: json_int(n: session.privilege)),
+    json_kv(key: "extendedpriv", value: json_int(n: session.extended_privilege)),
+    json_kv(key: "racsession_id", value: json_int(n: session.racsession_id)),
+  ])
+}
+
+fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
+  json_array(elements: [json_object(members: [
+    json_kv(key: "service_name", value: json_string(s: "kvm")),
+    json_kv(key: "viewer_count", value: json_int(n: viewer_count)),
+  ])])
+}
 
 // THE OPERATIONS ABOVE ARE A DESCRIPTION; THESE ARE THE OPERATIONS. megarac_api_operations records
 // paths and contract notes and carries no transport, so nothing in this repository could invoke the
@@ -425,6 +516,7 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 service megarac.Media {
 
   operation OpenSession {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -437,6 +529,7 @@ service megarac.Media {
   }
 
   operation ProbeSessionOnMediaRoute {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -450,6 +543,7 @@ service megarac.Media {
   }
 
   operation GetMediaGeneral {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -463,6 +557,7 @@ service megarac.Media {
   }
 
   operation GetRemoteImages {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -476,6 +571,7 @@ service megarac.Media {
   }
 
   operation GetRemoteConfigurations {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -489,6 +585,7 @@ service megarac.Media {
   }
 
   operation StartMedia {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
@@ -501,6 +598,7 @@ service megarac.Media {
   }
 
   operation StopMedia {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
@@ -513,6 +611,7 @@ service megarac.Media {
   }
 
   operation CloseSession {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -521,6 +620,44 @@ service megarac.Media {
     exit {
       0 => Unit
       nonzero => String "megarac session DELETE failed"
+    }
+  }
+}
+
+// THE VALUE THE SP-X UI STORES AS sessionStorage "features": JSON.stringify of its project-configurations
+// collection, an array of {"feature": NAME} objects; the viewer's KVM view reads it with unguarded
+// indexOf calls. Which names a given build carries is an OBSERVATION this repository made of that
+// build's served bundle, so it is a receipt in the observing layer
+// (gunbc.machine_intake_megarac_ui_features megarac_ui_features_0_32_receipt), not a fact owned here.
+fn megarac_ui_features_json(names: List<NonEmptyStr>) -> String {
+  serialize_json_array(elements: map(names, n => json_object(members: [json_kv(key: "feature", value: json_string(s: n as String))])))
+}
+
+// THE FIRMWARE'S OWN UI BUNDLE, SERVED AT A FIXED PATH. The SP-X web UI is one minified bundle the
+// login page loads before any session exists, so the GET carries no cookie and no token and opens no
+// session to release. The codes this module cites as "recovered from source.min.js" (start-media's
+// 13410/13460, the served api/ surface, the KVM wire) were read from these bytes; the operation is the
+// route that re-reads them instead of a hand-run probe.
+//
+// THE BYTES ARE WRITTEN AS SERVED. `Accept-Encoding: gzip` without --compressed asks for the encoding
+// the 2026-09-27 read recorded (gzip) and leaves it undecoded, so a digest of dest_file is a digest of
+// the served bytes, comparable with that read. stdout carries only the write-out: the HTTP status and
+// the byte count, space-separated on one line.
+data megarac_ui_bundle_path: NonEmptyStr = "/source.min.js"
+
+service megarac.Ui {
+
+  operation GetServedBundle {
+    requires Network
+    input { bmc_host: NonEmptyStr, bundle_path: NonEmptyStr, dest_file: NonEmptyStr, max_time: NonEmptyStr }
+    output { writeout: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--max-time", "{max_time}", "-H", "Accept-Encoding: gzip", "-o", "{dest_file}", "-w", "%\{http_code} %\{size_download}", "https://{bmc_host}{bundle_path}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac UI bundle GET failed"
     }
   }
 }

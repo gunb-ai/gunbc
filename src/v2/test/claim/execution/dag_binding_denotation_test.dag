@@ -17,7 +17,7 @@ import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int, integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { bool_node }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 
@@ -146,5 +146,5 @@ test fn dag_binding_denotation_declares_no_denotation_for_operand_bindings_holds
 
 test fn dag_binding_denotation_rows_point_at_std_authorities_holds() -> Bool {
   (dag_binding_denotation(sym: dag_int_type_binding()) == Present { value: integer_int_type_node() })
-    && (dag_binding_denotation(sym: ^dag_binding_type_bool) == Present { value: bool_node() })
+    && (dag_binding_denotation(sym: ^bool_node_symbol) == Present { value: bool_node() })
 }

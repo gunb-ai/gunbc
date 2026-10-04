@@ -1,13 +1,13 @@
 module test.claim.enrolment_margin_seed_mirror_witness_test
 
+import std.types { List }
 import extdeps.filesystem.filesystem_io
 import std.measure { millisecond }
-import v2.std.collection { List }
 import v2.workflow.floor_enrolment_margin {
   EnrolmentMarginStanding,
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored, EnrolmentBoundWithoutCeiling,
   EnrolmentNotMeasured, EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
-  EnrolmentRosterGroundStale, EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround,
+  EnrolmentRosterGroundStale, EnrolmentRosterGroundWithinRunnerEnvelope, EnrolmentDeadBandStale, EnrolmentDeadBandWrongGround, EnrolmentDeadBandWithinRunnerEnvelope,
   EnrolmentExpensivenessDeadBand, EnrolmentCostAbsent,
   enrolment_margin_standing_name, enrolment_margin_blocking_cause,
 }
@@ -38,9 +38,11 @@ fn every_arm() -> List<EnrolmentMarginStanding> {
     EnrolmentNotMeasured { witness_identity: "x", cause: "x" },
     EnrolmentOutsideThisRunsExecution { witness_identity: "x", disposition: "x" },
     EnrolmentExpensivenessDeclared { witness_identity: "x", ground: EnrolmentExpensivenessDeadBand, reading: EnrolmentCostAbsent { witness_identity: "x", cause: "x" } },
-    EnrolmentRosterGroundStale { witness_identity: "x", observed_cpu_ms: m, line_ms: m },
-    EnrolmentDeadBandStale { witness_identity: "x", observed_cpu_ms: m, budget_ms: m },
+    EnrolmentRosterGroundStale { witness_identity: "x", observed_cpu_ms: m, line_ms: m, envelope_floor_ms: m },
+    EnrolmentRosterGroundWithinRunnerEnvelope { witness_identity: "x", observed_cpu_ms: m, line_ms: m, envelope_floor_ms: m },
+    EnrolmentDeadBandStale { witness_identity: "x", observed_cpu_ms: m, budget_ms: m, envelope_floor_ms: m },
     EnrolmentDeadBandWrongGround { witness_identity: "x", observed_cpu_ms: m, line_ms: m },
+    EnrolmentDeadBandWithinRunnerEnvelope { witness_identity: "x", observed_cpu_ms: m, budget_ms: m, envelope_floor_ms: m },
   ]
 }
 

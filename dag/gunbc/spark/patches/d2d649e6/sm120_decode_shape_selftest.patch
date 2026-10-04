@@ -1,0 +1,160 @@
+diff --git a/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py b/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py
+new file mode 100644
+index 0000000..85fafdb
+--- /dev/null
++++ b/vllm/models/deepseek_v4_1/nvidia/sm120_decode_shape_selftest.py
+@@ -0,0 +1,154 @@
++"""SM120 sparse-MLA decode-shape self-test for DeepSeek V4.1.
++
++Calls FlashInfer's DSv4 sparse-MLA entry point -- the one
++vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse.DeepseekV4FlashInferSM120Attention calls -- at every
++shape a rank of the given launch puts through FlashInfer's standalone decode kernel, i.e. every call
++with at most 64 query tokens: decode and short prefill chunks, for sliding-window-only layers and for
++each compressed layer kind, at 1, 8 and 64 query tokens.
++
++THE ARGUMENTS ARE THE RANK'S OWN. The command line is exactly the engine argv the launch hands
++`vllm serve` (model path first), parsed by vLLM's own serve parser
++(vllm.entrypoints.launchers.cli_args.make_arg_parser) and turned into the ModelConfig the engine would
++build. So the self-test sees what the rank sees -- the hf_overrides, the modality limits, the tensor
++parallel degree -- and nothing is restated here.
++
++EVERY FIGURE THAT DECIDES THE KERNEL IS READ FROM THE INSTALLED TREE, never assumed:
++  * the SWA cache's tokens per page: DeepseekV4FlashInferSM120Attention.swa_block_size (the gunbc
++    overlay sm120_swa_page_block_size.patch); on the unpatched tree the class has no such attribute and
++    DeepseekV4Attention.__init__ passes the literal block_size=32, which is read from its source;
++  * the prefill window width: sliding_window + vision_max_n_token when vision_n_layers > 0
++    (vllm/v1/attention/backends/mla/sparse_swa.py prefill_index_width), over the launch's hf_config;
++  * the local query heads: num_attention_heads / tensor_parallel_size, padded by the class's own
++    get_padded_num_q_heads;
++  * the compressed pools' tokens per page: the attention backend's kernel block size
++    (DeepseekV4FlashInferMLASparseBackend.get_supported_kernel_block_sizes) over each compress ratio in
++    the config's compress_ratios, as _forward_decode computes it;
++  * the extra segment width: the config's index_topk;
++  * the packed bytes per token: flashinfer.mla._sparse_mla_sm120._BPT_DSV4.
++
++The RED it exists for (attempt 13, 2026-10-01): "SM120 sparse-MLA has no decode kernel for this
++shape: num_tokens=8, num_heads=16, topk=1152, d_qk=512, page_block_size=32, model_type=1,
++extra_topk=0".
++
++Created by the gunbc overlay member sm120_decode_shape_selftest.patch, which applies alone to the
++unpatched tree, so the same module is the RED there and the control after the page member. Run inside
++the image with a GPU and the checkpoint mounted where the argv says:
++  python3 -m vllm.models.deepseek_v4_1.nvidia.sm120_decode_shape_selftest <the rank's engine argv>
++Exit 0 and a last line "SELFTEST PASS": every case ran. Exit 1: a case was refused.
++"""
++
++import inspect
++import sys
++
++import torch
++
++D_QK = 512
++QUERY_TOKEN_COUNTS = (1, 8)
++
++
++def engine_config(argv):
++    from vllm.engine.arg_utils import AsyncEngineArgs
++    from vllm.entrypoints.launchers.cli_args import make_arg_parser
++    from vllm.utils.argparse_utils import FlexibleArgumentParser
++
++    ns = make_arg_parser(FlexibleArgumentParser()).parse_args(argv)
++    if getattr(ns, "model_tag", None):
++        ns.model = ns.model_tag
++    args = AsyncEngineArgs.from_cli_args(ns)
++    return args.create_model_config(), int(args.tensor_parallel_size)
++
++
++def swa_page_tokens():
++    from vllm.models.deepseek_v4_1.attention import DeepseekV4Attention
++    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import (
++        DeepseekV4FlashInferSM120Attention,
++    )
++
++    value = getattr(DeepseekV4FlashInferSM120Attention, "swa_block_size", None)
++    if value is not None:
++        return int(value), "DeepseekV4FlashInferSM120Attention.swa_block_size"
++    if "block_size=32," not in inspect.getsource(DeepseekV4Attention.__init__):
++        raise SystemExit("unrecognised vLLM tree: no swa_block_size and no block_size=32 literal")
++    return 32, "DeepseekV4Attention.__init__ literal block_size=32 (unpatched)"
++
++
++def run_case(name, tokens, heads, bpt, page_tokens, width, extra_page_tokens, extra_width):
++    from flashinfer.decode import trtllm_batch_decode_sparse_mla_dsv4
++    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import (
++        _get_flashinfer_dsv4_workspace,
++    )
++
++    dev = torch.device("cuda")
++    pages = (width + page_tokens - 1) // page_tokens + 1
++    swa = torch.zeros(pages, page_tokens, 1, bpt, dtype=torch.uint8, device=dev)
++    q = torch.randn(tokens, heads, D_QK, dtype=torch.bfloat16, device=dev)
++    idx = (torch.arange(width, dtype=torch.int32, device=dev) % (pages * page_tokens)).repeat(tokens, 1)
++    lens = torch.full((tokens,), width, dtype=torch.int32, device=dev)
++    extra = dict(compressed_kv_cache=None, extra_sparse_indices=None, extra_sparse_topk_lens=None)
++    if extra_width:
++        cpages = (extra_width + extra_page_tokens - 1) // extra_page_tokens + 1
++        extra = dict(
++            compressed_kv_cache=torch.zeros(cpages, extra_page_tokens, 1, bpt, dtype=torch.uint8, device=dev),
++            extra_sparse_indices=(torch.arange(extra_width, dtype=torch.int32, device=dev) % (cpages * extra_page_tokens)).repeat(tokens, 1).view(tokens, 1, -1),
++            extra_sparse_topk_lens=torch.full((tokens,), extra_width, dtype=torch.int32, device=dev),
++        )
++    shape = (f"num_tokens={tokens} heads={heads} topk={width} page={page_tokens} "
++             f"extra_topk={extra_width} extra_page={extra_page_tokens if extra_width else 0}")
++    try:
++        out = trtllm_batch_decode_sparse_mla_dsv4(
++            query=q,
++            swa_kv_cache=swa,
++            workspace_buffer=_get_flashinfer_dsv4_workspace(dev),
++            sparse_indices=idx,
++            bmm1_scale=D_QK ** -0.5,
++            kv_layout="NHD",
++            swa_topk_lens=lens,
++            **extra,
++        )
++        torch.cuda.synchronize()
++    except Exception as e:
++        print(f"REFUSED  {name}: {shape}: {type(e).__name__}: {e}")
++        return False
++    if not torch.isfinite(out.float()).all():
++        print(f"REFUSED  {name}: {shape}: non-finite output")
++        return False
++    print(f"RAN      {name}: {shape}")
++    return True
++
++
++def main() -> int:
++    import flashinfer.mla._sparse_mla_sm120 as fi_sm120
++    from vllm.models.deepseek_v4_1.nvidia.flashinfer_sparse import (
++        DeepseekV4FlashInferMLASparseBackend,
++        DeepseekV4FlashInferSM120Attention,
++    )
++
++    model_config, tp = engine_config(sys.argv[1:])
++    cfg = model_config.hf_config
++    page, page_src = swa_page_tokens()
++    window = int(cfg.sliding_window)
++    image = int(getattr(cfg, "vision_max_n_token", 0)) if int(getattr(cfg, "vision_n_layers", 0) or 0) > 0 else 0
++    prefill_width = window + image
++    index_topk = int(cfg.index_topk)
++    heads = DeepseekV4FlashInferSM120Attention.get_padded_num_q_heads(int(cfg.num_attention_heads) // tp)
++    kernel_block = int(DeepseekV4FlashInferMLASparseBackend.get_supported_kernel_block_sizes()[0])
++    ratios = sorted({int(r) for r in (getattr(cfg, "compress_ratios", None) or []) if int(r) > 0})
++    bpt = int(fi_sm120._BPT_DSV4)
++    max_tokens = int(fi_sm120._DECODE_MAX_TOKENS)
++    print(f"swa page tokens = {page} ({page_src})")
++    print(f"tp = {tp}, local heads = {heads}, window = {window}, max_image_tokens = {image}, "
++          f"prefill width = {prefill_width}, index_topk = {index_topk}, compress ratios = {ratios}, "
++          f"kernel block = {kernel_block}, bytes/token = {bpt}, decode max tokens = {max_tokens}")
++
++    ok = []
++    for tokens in sorted(set(QUERY_TOKEN_COUNTS) | {max_tokens}):
++        for stage, width in (("decode", window), ("prefill-chunk", prefill_width)):
++            ok.append(run_case(f"{stage} swa-only", tokens, heads, bpt, page, width, 0, 0))
++            for r in ratios:
++                ok.append(run_case(f"{stage} compressed ratio {r}", tokens, heads, bpt, page, width, kernel_block // r, index_topk))
++    print("SELFTEST", "PASS" if all(ok) else "FAIL")
++    return 0 if all(ok) else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())

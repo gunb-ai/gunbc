@@ -1,0 +1,20 @@
+module fixture.closure.rustc_local_bool_coproduct_probe
+
+// A STANDING RED, NOT A CONTROL: a module-local coproduct spelled with a kernel type name. The front
+// end ACCEPTS it, but kernel names are never overridden in type position, so every `Bool` in a
+// signature renders the kernel `bool` while the arms render the local `enum Bool` -- rustc E0308
+// (gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target, the 2026-09-28
+// kernel-name-shadowing receipt). Either the checker refuses the shadowing declaration or the
+// emitter keeps one referent; until then this file is the executable specimen.
+type Bool = True | False
+
+fn local_negate(a: Bool) -> Bool {
+  match a {
+    True => False
+    False => True
+  }
+}
+
+fn local_top() -> Bool {
+  True
+}

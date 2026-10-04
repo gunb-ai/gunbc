@@ -1,6 +1,6 @@
 module extdeps.github.app
 
-import std.types { NonEmptyStr, String, Bool, Int, List, Map, Secret }
+import std.types { NonEmptyStr, String, Bool, Int, List, Map, Secret, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.credentials { EnvVar }
 import std.dissolution { unbound_dissolution }
@@ -36,6 +36,7 @@ import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.algebra { fold_list }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -541,6 +542,7 @@ fn hook_tls_eq(a: GitHubAppHookTlsVerification, b: GitHubAppHookTlsVerification)
 // and never evidence of health; preserving that distinction is the consumer's duty.
 service github.CliAppRegistration {
   operation GetAppRegistrationJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -561,6 +563,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookDeliveriesJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -581,6 +584,7 @@ service github.CliAppRegistration {
   }
 
   operation GetAppHookConfigJson {
+    requires Network
     input {
       jwt_header_file: String
     }
@@ -705,7 +709,26 @@ fn permission_axis_admitted_accesses(axis: GitHubPermissionAxis) -> AxisAccessAd
       AxisAdmitsExactly { set: GitHubAccessReadOnly, authority: app_permissions_citation }
     WorkflowsAxis =>
       AxisAdmitsExactly { set: GitHubAccessWriteOnly, authority: app_permissions_citation }
-    _ => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ActionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ArtifactMetadataAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AttestationsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ChecksAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    CodeQualityAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ContentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DeploymentsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    DiscussionsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IdTokenAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    IssuesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    ModelsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PackagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PagesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    PullRequestsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    RepositoryProjectsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    SecurityEventsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    StatusesAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    VulnerabilityAlertsAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    AdministrationAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
+    OrganizationSelfHostedRunnersAxis => AxisAccessesUnread { read_obligation: permission_axis_level_read_obligation }
   }
 }
 
@@ -1417,6 +1440,7 @@ service github.AppManifests {
   }
 
   operation ConvertManifestCode {
+    requires Network
     input {
       code: String
     }
@@ -1446,6 +1470,7 @@ service github.AppPublicRegistry {
   }
 
   operation GetApp {
+    requires Network
     input {
       auth_token: Secret
       app_slug: String
@@ -1490,6 +1515,7 @@ service github.AppInstallations {
   }
 
   operation ListInstallations {
+    requires Network
     input {
       auth_token: Secret
       per_page: Int = default_per_page
@@ -1675,6 +1701,7 @@ service github.AppInstallationAccessTokens {
   }
 
   operation Create {
+    requires Network
     input {
       app_jwt: Secret
       installation_id: Int
@@ -1710,6 +1737,7 @@ service github.AuthenticatedApp {
   }
 
   operation GetAuthenticatedApp {
+    requires Network
     input {
       app_jwt: Secret
     }
@@ -1731,6 +1759,7 @@ service github.AuthenticatedApp {
   }
 
   operation GetAppInstallation {
+    requires Network
     input {
       app_jwt: Secret
       installation_id: Int

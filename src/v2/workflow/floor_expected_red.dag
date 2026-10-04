@@ -1,7 +1,7 @@
 module v2.workflow.floor_expected_red
 
-import v2.std.algebra { Cons, Empty, filter, list_flat_map }
-import v2.std.collection { List }
+import std.types { List }
+import v2.std.algebra { Cons, Empty, list_flat_map }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
@@ -362,15 +362,20 @@ fn floor_expected_red_chunk_03() -> List<String> {
 }
 
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.non_fold_residue_witness.non_fold_residue_clean_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } } }
+     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance_test.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
 }
 
-// shell-typed-invocation's acceptance oracle: red until the USB gadget setup renders as described
-// operations (test.claim.shell.shell_typed_invocation_witness_test carries the reason). Its previous
-// home, test.claim.shell_to_dag_stub_witness_test, was deleted while the node's contract still named
-// it, so the first dispatched attempt (2026-09-06) could not be verified at all.
+// shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):
+// the USB gadget setup now acts through typed commands -- each ConfigfsOp maps to an ArgvCommand
+// minted through a cited builder, to a typed attribute write, or to a typed refusal -- and the
+// assembled shell script is deleted, so the witness GREENS and this row left the roster by the
+// roster's own removal path: the counted un-quarantine, not a silent pass. Per DESIGN section
+// 4b(4) the greened probe itself does NOT retire; it stays enrolled as the permanent regression
+// control, now gating green instead of held red. Its previous home,
+// test.claim.shell_to_dag_stub_witness_test, was deleted while the node's contract still named it,
+// so the first dispatched attempt (2026-09-06) could not be verified at all.
 fn floor_expected_red_chunk_05() -> List<String> {
-  Cons { head: "test.claim.shell.shell_typed_invocation_witness_test.usb_gadget_setup_emits_no_shell_control_word", tail: Empty {} }
+  Empty {}
 }
 
 fn floor_expected_red_chunk_06() -> List<String> {
@@ -431,14 +436,6 @@ fn floor_expected_red_chunk_09() -> List<String> {
 
 fn floor_expected_red_chunk_10() -> List<String> {
    Empty {}
-}
-
-fn floor_expected_red_chunk_11() -> List<String> {
-    Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } }
-}
-
-fn floor_expected_red_chunk_12() -> List<String> {
-  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Empty {} } }
 }
 
 // Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is permanent
@@ -673,10 +670,11 @@ fn floor_expected_red_chunk_20() -> List<String> {
 // them as reds instead of as assertions of today's behaviour, which would be a change detector
 // pointing the wrong way.
 //
-// THE THREE ROWS STAY ENROLLED HERE AS THE AUTHORED REDS THEY ARE. Their home currently declares
-// ReadsLiveTree and is declined before execution, so floor_expected_red_is_live excludes them from
-// the live roster until that decline is removed. Keeping identity and temporary liveness separate
-// preserves the enrolment and gives the coupling below one mechanism rather than two accounts.
+// THE THREE ROWS STAY ENROLLED HERE AS THE AUTHORED REDS THEY ARE. Their home's former
+// ReadsLiveTree decline dissolved with DeclinedLiveTree — the is_live arm that excluded them went
+// with it — so the rows now execute and are held as the authored reds they are. Keeping identity
+// and temporary liveness separate preserves the enrolment and gives the coupling below one
+// mechanism rather than two accounts.
 //
 // The partition of the 164 and the measurements behind this family are
 // docs/plans/receipts/floor-runtime-error-partition-2026-08-23/.
@@ -1077,6 +1075,23 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // argued: the repair that arrived greened exactly one of the seven and left six red, which is the
 // partial repair this split was authored to make visible.
 //
+// FOUR MORE RETIRED, TWO REMAIN (gunbc#12441). v1.compiler.infer_types
+// nominal_coproduct_applied_argument_conflict compares the argument vector of two applications of
+// ONE declared coproduct constructor. On the regenerated seed the argument rows at positions zero,
+// one and two and the carried-in-a-field row PASSED, and are removed below. The distinct-head row
+// and the nested-argument row stayed red, as the arm's contract predicts: it requires one
+// constructor, and it fails open on a nested argument. So the repair that arrived is again the
+// partial one this split exists to expose. Class and receipt:
+// gunbc.recurring_failure_mode.generic_coproduct_argument_unjudged_at_declared_return.
+//
+// A THIRD ROW IS ADDED, AND IT IS THE REPAIR'S OWN DECLARED LIMIT. The arm treats a produced Unit
+// argument as unestablished, because the seed's call-site generic solve answers Unit for a
+// parameter it did not solve. So a GENUINE Result<Unit> returned where Result<Alpha> is declared is
+// admitted too. w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused
+// holds that as a known red. DISSOLVE-ON for that row alone: call-site generic solving answers an
+// unsolved type parameter as UNSOLVED rather than as Unit, sufficient for the arm to delete its Unit
+// exit.
+//
 // DISSOLVE-ON: the declared-return expected-type comparison rejecting every STILL-ENROLLED mismatch
 // -- the same-head same-arity applications at argument positions zero, one and two plus the enrolled
 // nested argument-one case, together with the distinct-head pair. The plain-record pair is no longer
@@ -1087,19 +1102,130 @@ fn floor_expected_red_chunk_interpreter_first_optional_divergence() -> List<Stri
 // which reds the build and names itself for removal -- measured, on the plain-record row, above. The witness itself is permanent under
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
-  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused", tail: Empty {} } } } } } }
+  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_genuine_unit_argument_of_a_two_arm_coproduct_at_a_declared_return_is_refused", tail: Empty {} } } }
 }
 
 // The disjoint-chain floor hole, enrolled red because the defect is LIVE rather than new.
 // Class, mechanism, attribution and capability-grain trigger:
 // gunbc.recurring_failure_mode.absence_classifier_default_bucket.
 fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
+}
+
+// SHELL-DAG-CRON-ENTRY-LINE-BUILDER'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the same
+// admission shape as chunk_05 (shell-typed-invocation's oracle): the roadmap node's acceptance
+// witness is planted and enrolled BEFORE dispatch, so launch admission can pin a red oracle and
+// the dispatched worker is forbidden to edit it. Five identities from
+// dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness_test.dag: the four
+// adversarial-field arms (schedule/command/log_path/tag each planting a shell control word into
+// gunbc.tools.cron_tag build_cron_entry_line) and the acceptance conjunction that feeds the
+// node's execution contract. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
+// module's two positive controls pass on the same run, and today's string concat interpolates
+// every hazard raw into the crontab line. The worker rebinds the builder onto the typed
+// cron-entry intent; when the arms pass, this roster's self-emptying arm names them for removal,
+// and the witnesses stay as permanent regression controls (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness_test.adversarial_tag_field_renders_no_shell_control_word", tail: Empty {} } } } }
+}
+
+// SHELL-DAG-FLOOR-PEAK-CALIBRATION-ROWS' ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
+// chunk above states the admission shape. Three identities from
+// dag/test/claim/shell/shell_dag_floor_peak_calibration_rows_witness_test.dag: the two red arms
+// over the pre-calibration surface (the echo reset row's 2>/dev/null swallow) and the acceptance
+// conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the module's two
+// positive controls pass on the same run. The worker rebinds the ci_floor_peak_*_command rows to
+// typed filesystem observation leaves; when the arms pass, this roster's self-emptying arm names
+// them for removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_surface_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_floor_peak_calibration_rows_witness_test.pre_calibration_reset_is_not_a_swallowed_echo", tail: Empty {} } }
+}
+
+// SHELL-DAG-CI-FMT-GATE-LINE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry chunk
+// above states the admission shape. Two identities from
+// dag/test/claim/shell/shell_dag_ci_fmt_gate_line_witness_test.dag: the red arm (the hand-spelled
+// `"$CARGO_BIN"` indirection the typed cargo.Build.Fmt operation has no spelling for) and the
+// acceptance conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
+// module's two positive controls pass on the same run. The worker rebinds ci_fmt_gate_line onto
+// the typed cargo operation; when the arm passes, this roster's self-emptying arm names it for
+// removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_ci_fmt_gate_line() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_ci_fmt_gate_line_witness_test.gate_line_is_not_a_hand_spelled_shell_indirection", tail: Empty {} }
+}
+
+// SHELL-DAG-CI-DEPLOY-INVOKE-PRELUDE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
+// chunk above states the admission shape. Three identities from
+// dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness_test.dag: the two red arms over
+// the rendered invoke (the ROOT prelude's `|| pwd` absorbing fallback and 2>/dev/null swallow) and
+// the acceptance conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
+// module's two positive controls pass on the same run. The worker binds the toplevel read to typed
+// git.Core.ShowToplevel with a nonzero-refuse arm; when the arms pass, this roster's self-emptying
+// arm names them for removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_deploy_invoke_prelude_witness_test.deploy_invoke_prelude_has_no_pwd_fallback", tail: Empty {} } }
+}
+
+// SHELL-DAG-CI-HEAL-REGEN-INVOKE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
+// chunk above states the admission shape. Three identities from
+// dag/test/claim/shell/shell_dag_ci_heal_regen_invoke_witness_test.dag: the two red arms over the
+// rendered invoke (the ROOT prelude's `|| pwd` absorbing fallback and 2>/dev/null swallow) and the
+// acceptance conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
+// module's two positive controls pass on the same run. The worker consumes the SAME typed
+// git.Core.ShowToplevel authority as shell-dag-ci-deploy-invoke-prelude; when the arms pass, this
+// roster's self-emptying arm names them for removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_has_no_pwd_fallback", tail: Empty {} } }
+}
+
+// SHELL-DAG-COMPILE-POOL-SLICE-INSTALL'S ACCEPTANCE ORACLE: WITHDRAWN. The chunk named the two
+// red-by-design arms over the rendered install body of compile_pool_slice_install_body -- the
+// benign body's `set -euo pipefail` opener and an adversarial slice unit name carrying a command
+// separator. The body is deleted and the install is a typed staging fold
+// (compile_pool_slice_install_staging over run_argv_over_host_effect_transport), so the arms green
+// at the same names in the same file and the transition red -> green happened in the diff that
+// deleted the body. A listing whose claim was that the probes fail does not outlive its red
+// (DESIGN 4b(4)): the probes stay enrolled as permanent regression controls; the listing is
+// withdrawn in that same motion, and the roadmap contract still binds the file's four function
+// names, so the node's acceptance surface is unchanged.
+
+// SHELL-DAG-CODEX-APP-SERVER-TRIP-SCRIPT'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
+// cron-entry chunk above states the admission shape. Four identities from
+// dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness_test.dag: the three red arms
+// over the rendered trip surface (shell control words, the literal stdio sentinels, an adversarial
+// codex_home) and the acceptance conjunction. Each reaches its subject and answers Bool(false) on
+// BEHAVIOR — the module's positive control passes on the same run. The worker realizes the trip as
+// a typed ArgvCommand with the payload on stdin and separate stream capture; when the arms pass,
+// this roster's self-emptying arm names them for removal (DESIGN 4b(4)). gunbc#12973 landed the
+// typed argv realization on main; with the witness re-pointed at it, the control-word and sentinel
+// arms pass and leave this chunk. The adversarial codex_home arm still answers false: the
+// separator travels as argv data, but the rendered surface text still contains it.
+fn floor_expected_red_chunk_shell_dag_codex_app_server_trip_script() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness_test.adversarial_codex_home_renders_no_shell_control_word", tail: Empty {} }
+}
+
+// SHELL-DAG-LIVE-DEPLOY-INSTALL-OWNED'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
+// chunk above states the admission shape. Two identities from
+// dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness_test.dag: the red arm (an
+// install path carrying a command separator, rendered into the privileged install line) and the
+// acceptance conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
+// module's two positive controls pass on the same run. The worker realizes the install-owned
+// leaves as a typed filesystem write plus a typed ownership effect; when the arm passes, this
+// roster's self-emptying arm names it for removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_live_deploy_install_owned_witness_test.adversarial_install_path_renders_no_shell_control_word", tail: Empty {} }
+}
+
+// SHELL-DAG-LIVE-DEPLOY-RESTART-TAILSCALE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
+// cron-entry chunk above states the admission shape. Two identities from
+// dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness_test.dag: the red arm (the
+// tree-sync restart step's diagnosis appended as shell text — a `||` fallback arm with `;`
+// separators) and the acceptance conjunction. Each reaches its subject and answers Bool(false) on
+// BEHAVIOR — the module's three positive controls pass on the same run. The worker rebinds both
+// steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
+// self-emptying arm names it for removal (DESIGN 4b(4)).
+fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
+  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness_test.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
@@ -1124,20 +1250,6 @@ fn floor_expected_red_chunk_loaded_carrier_body_receipt() -> List<String> {
   Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Empty {} }
 }
 
-// THE FOLD SEAM LOOP DROPS ITS COLLECTION AND INIT OPERANDS. Enrolled for gunbc#12210's fn-literal
-// lowering (adhoc-9d86ad93-96c sweep, srv1, neat-boar-16, 289eb51b3a); #12210 retired its data-record
-// sibling. The row then refused at resolve (resolve_reason_unbound_symbol at `fold`) because a
-// POSITIONAL fold step -- `fold(x, 0, fn(acc, _) { acc })` -- never lowered, leaving `fold` an
-// ordinary call. MQ-1 reads the step by the position std.algebra collection_fold_shape declares, so
-// it now lowers exactly as the named form does, and both forms refuse at the SAME earlier point:
-// normalize's reference conservation, conservation_reason_dropped_reference, because
-// v2.compiler.fold_lowering fold_call_seam_loop builds Loop(body, bound, carrier) and carries neither
-// the iterated collection nor init. OWNER: MQ-5 (gentle-koi-724 lane).
-// TRIGGER: the fold seam Loop carries collection and init, conserved. DISSOLVE-ON: the row PASSING.
-fn floor_expected_red_chunk_fold_seam_loop_drops_operands() -> List<String> {
-  Cons { head: "v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness.wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds", tail: Empty {} }
-}
-
 // ONE IDENTITY ENROLLED 2026-09-26, red on main and FIRST SELECTED by an unrelated edit. The
 // refinement-obligation carrier cut (deep-bee-18) had to edit this claim's file because infer's
 // return type changed, and that edit pulled the claim into the floor's changed-population selection
@@ -1154,44 +1266,43 @@ fn floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded() -> List<String>
   Cons { head: "v2.test.manual.ingest_bridge.ingest_identity_coercion_accepts_source_present_in_authored_roster", tail: Empty {} }
 }
 
-fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_fold_seam_loop_drops_operands(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } }  }
+// TWO IDENTITIES ENROLLED 2026-10-01, AUTHORED red: the controls for top-down CHECKING MODE in
+// v2.compiler.infer. Each hands infer a generic record construct whose type its field values cannot
+// fix -- a phantom parameter (`Ph<T> { n: Int }`), or one that occurs only inside a field whose own
+// value is a construct only the context can type (`Two<T> { a: Ph<T>, b: T }`) -- at a position that
+// DECLARES the instantiation (`data p: Ph<Bool> = ...`). infer is a bottom-up fold, so the construct's
+// row decides before its expected type is known, and both answer the wrong way today: the phantom
+// and the nested construct are accepted with a counted obligation where they should be decided.
+// The discriminating refusal (`b: 3` at a declared Two<Bool> is accepted where it should refuse at
+// the value) is NOT enrolled here: while red it runs the whole member and exceeds the floor's
+// new-witness budget. Checking mode enrolls it green, per docs/plans/infer-checking-mode-plan.md.
+//
+// TRIGGER, the capability and not an artifact: checking mode carries a declared position's expected
+// type INTO the construct's row before that row decides -- infer's gather run as
+// v2.std.node fold_node_topdown, whose child_context hands each child the type its parent expects --
+// so the construct forms R<instances> itself. Sufficient for both to pass unchanged and for the refusal to be enrolled green. Owner:
+// smart-newt-725, sequenced after eager-newt-412's site-keyed facts store (branch
+// eager-newt-412/facts-site-key), which makes a child's site addressable from its parent and keeps
+// one fact per site; checking mode must deliver the expected type before a row decides, never
+// revise a fact after it. The plan is docs/plans/infer-checking-mode-plan.md. A consumer-side
+// re-judgment that made these pass without checking mode was built and withdrawn (gunbc#12935):
+// it was a second route checking mode would have deleted.
+fn floor_expected_red_chunk_infer_checking_mode() -> List<String> {
+  Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test.etr_a_phantom_binder_is_fixed_by_the_declared_type_holds", tail: Cons { head: "v2.test.claim.compiler.infer_expected_type_record_instantiation_witness_test.etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds", tail: Empty {} } }
 }
 
-// Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import closure in
-// v2.test.lens_mock_totality. The historical chunk rows stay for provenance; the now-green family
-// is excluded from the live expected-red roster.
-//
+fn floor_expected_red_chunks() -> List<List<String>> {
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
 // The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run
 // 32721781133 executed all three and observed the enrolled compile-acceptance holes. The former
 // exclusions dissolved with DeclinedLiveTree in the same change, as their coupling required.
-fn floor_expected_red_is_live(name: String) -> Bool {
-  !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.diagnostic_mock_totality.diagnostic_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.filesystem_mock_totality.filesystem_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.gcp_mock_totality.gcp_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.github_mock_totality.github_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.git_mock_totality.git_mock_omitted_show_tree_is_red_holds"
-    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.http_pilot_mock_totality.http_pilot_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.llm_mock_totality.llm_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
-    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds")
-}
-
+//
+// Mock-totality's 21 stale-quarantined rows (the former chunks 11 and 12) were DELETED on
+// 2026-10-01: v2.test.lens_mock_totality's explicit-import closure had turned the whole family
+// green, so the rows asserted nothing. The floor_expected_red_is_live filter that excluded them
+// dissolved in the same change, and the roster is again the plain fold over the chunks.
 fn floor_expected_red_roster() -> List<String> {
-  filter(
-    xs: list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk }),
-    predicate: floor_expected_red_is_live
-  )
+  list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk })
 }

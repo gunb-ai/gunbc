@@ -1,6 +1,6 @@
 module v1.compiler.emit
 
-import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
+import std.occurrence_identity { OccurrenceSynthetic, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceId, NodeOccurrenceIdentity, occurrence_id_eq }
 
 import std.coercion { TypeRealizationDecision }
 
@@ -189,7 +189,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
         let base_is_fn = match b.expr_data {
           ExprVar { binding_kind: bk } => match bk {
             Present { value: MatchBoundBinding } => false
-            Present { value: VariantValueBinding { parent_enum: _ } } => false
+            Present { value: VariantValueBinding { parent_enum: _, parent_identity: _ } } => false
             _ => true
           }
           _ => false
@@ -1140,6 +1140,7 @@ type FileVerb
   | FileWriteOwnerOnly
   | FileWriteCreateNew
   | FileWriteCreateNewWithMode
+  | FileLinkCreateNew
   | FileDelete
   | FileList
 
@@ -1238,6 +1239,7 @@ fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineInd
       else if v == file_transport_verb_list { FileList }
       else if v == file_transport_verb_write_create_new { FileWriteCreateNew }
       else if v == file_transport_verb_write_create_new_with_mode { FileWriteCreateNewWithMode }
+      else if v == file_transport_verb_link_create_new { FileLinkCreateNew }
       else { FileWriteOwnerOnly }
     Absent =>
       if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { FileWrite }
@@ -2514,6 +2516,7 @@ type FileEmissionRefusal
   | FilePathNotStaticallyRenderable
   | FileWriteMissingContentInput { verb: String }
   | FileWriteMissingModeInput { verb: String }
+  | FileLinkMissingSourceInput { verb: String }
   | FileOutputKeyNotModeled { key: String }
   | FileOutputShapeNotModeled
 
@@ -2524,7 +2527,7 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
         "' has no file realization handler, so no operation carrying `transport file` is emitted for it")
     FileVerbNotModeled { verb: v } =>
       concat("file transport verb '", v,
-        "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only, write_create_new and write_create_new_with_mode, and an absent verb means write when the operation declares a `content` input and read otherwise")
+        "' is not a modeled action -- the modeled verbs are delete, list, write_owner_only, write_create_new, write_create_new_with_mode and link_create_new, and an absent verb means write when the operation declares a `content` input and read otherwise")
     FilePathNotStaticallyRenderable =>
       "the file transport `path:` must be a string literal or a string interpolation over the operation inputs; no other expression shape has a rendering"
     FileWriteMissingContentInput { verb: v } =>
@@ -2533,6 +2536,9 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
     FileWriteMissingModeInput { verb: v } =>
       concat("file transport verb '", v,
         "' publishes with a declared mode, and the operation declares no `mode` input -- the mode is the caller's modeled fact, never a value the emitter may invent")
+    FileLinkMissingSourceInput { verb: v } =>
+      concat("file transport verb '", v,
+        "' links an existing file under a new name, and the operation declares no `source` input -- the file being linked is an input to the operation, never a path the emitter may invent")
     FileOutputKeyNotModeled { key: k } =>
       concat("file transport output key '", k,
         "' has no modeled channel -- the modeled channels are write_success, read_success, delete_success, list_success, success, bytes_written, bytes, byte_count, path, error, content and entries")
@@ -2542,6 +2548,7 @@ fn file_emission_refusal_fact(refusal: FileEmissionRefusal) -> String {
 }
 
 data file_transport_verb_delete: String = "delete"
+data file_transport_verb_link_create_new: String = "link_create_new"
 data file_transport_verb_list: String = "list"
 data file_transport_verb_write_owner_only: String = "write_owner_only"
 
@@ -2624,6 +2631,9 @@ fn file_emission_verb_refusal(op_node: Node, verb: String?, source_indices: Map<
       } else if v == file_transport_verb_write_owner_only || v == file_transport_verb_write_create_new {
         if file_operation_has_content_input(op_node: op_node, source_indices: source_indices) { none }
         else { Present { value: FileWriteMissingContentInput { verb: v } } }
+      } else if v == file_transport_verb_link_create_new {
+        if file_operation_has_input(op_node: op_node, name: "source", source_indices: source_indices) { none }
+        else { Present { value: FileLinkMissingSourceInput { verb: v } } }
       } else if v == file_transport_verb_write_create_new_with_mode {
         if !file_operation_has_content_input(op_node: op_node, source_indices: source_indices) {
           Present { value: FileWriteMissingContentInput { verb: v } }
@@ -2914,7 +2924,7 @@ fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
 }
 
 // WHY AN ACCEPTED CAST CAN HAVE NOTHING FOR THE HOST TO DO, AND WHY THAT IS DECIDED ON STRUCTURE.
-// `type NonEmptyStr = String where non_empty` and `type PathSegment = NonEmptyStr where
+// `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr where
 // brand("PathSegment")` are three .dag types over ONE host carrier: each of them emits as the
 // target's String. A source cast between any two of them changes which accepted .dag type the value
 // inhabits and asks the target for no operation whatsoever, so the emission is the operand
@@ -3010,6 +3020,7 @@ fn occurrence_identity_id(identity: NodeOccurrenceIdentity) -> OccurrenceId? {
   match identity {
     OccurrenceMinted { id: id } => Present { value: id }
     OccurrenceProjected { id: id, caused_by: _ } => Present { value: id }
+    OccurrencePending { caused_by: _ } => none
     OccurrenceSynthetic => none
   }
 }
@@ -3595,7 +3606,7 @@ fn emit_unified_pattern(pattern: MatchPattern, target: RenderTarget, source_indi
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: target)
     LitPattern { value: v } => emit_literal(value: v, target: target)
-    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: _ } =>
       emit_unified_variant_pattern(name: n, parent_enum: pe, field_bindings: fbs, target: target, source_indices: source_indices)
     Wildcard => "_"
   }
@@ -3673,7 +3684,7 @@ fn emit_arm_guard(arm: Node, target: RenderTarget, render_guard_expr: fn(Node) -
 
 fn emit_go_match_arm_bindings(arm: Node, indent_level: Int, source_indices: Map<String, NewlineIndex>) -> String {
   match arm_pattern(n: arm) {
-    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
       if fbs |> count == 0 { "" } else {
         fbs |> map(fb => concat(make_indent(level: indent_level), emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), " := __gunbcMatch.", emit_export_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Go), "\n")) |> join(separator: "")
       }

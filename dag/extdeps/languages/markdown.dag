@@ -633,11 +633,17 @@ type InlineSplitResult
 fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
   let parts = split(s: text, delimiter: delim)
   if parts.length() >= 3 {
-    let before = parts.first()
     let tail = parts.skip(n: 1)
-    let inner = tail.first()
     let after = join(tail.skip(n: 1), delim)
-    FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
+    match parts.first() {
+      Present { value: before } =>
+        match tail.first() {
+          Present { value: inner } =>
+            FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
+          Absent => NoSplit
+        }
+      Absent => NoSplit
+    }
   } else {
     NoSplit
   }

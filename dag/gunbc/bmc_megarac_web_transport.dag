@@ -1,0 +1,143 @@
+module gunbc.bmc_megarac_web_transport
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.algebra { trim }
+import std.measure { second }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import gunbc.owned_process {
+  OwnedProcessStanding, OwnedRunning, OwnedGone, OwnedForeign, OwnedNotRecorded, OwnedRelease,
+  owned_process_standing, owned_process_release, owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line,
+}
+
+// A LOOPBACK MegaRAC WEB CONTROLLER FOR THE KVM OBSERVER'S FAILURE CONTROLS, SERVING gunbc.bmc_model.
+// It serves the transition table gunbc.bmc_megarac_web_adapter megarac_web_transition_table derives
+// from the model: every actual request is keyed by what it carries -- the submitted credentials, the
+// X-CSRFTOKEN header, the /kvm token -- against the CURRENT world; the row's answer is sent and the
+// world advances to the row's; a request the table does not hold is refused as unmodeled (599), never
+// answered from a guess. The stream is closed whenever the world the model reaches says it is not
+// open (logout, the controller's own close), and scheduled events fire at their instant on the
+// transport's clock. It holds no BMC decision of its own: the only branching it does is the lookup.
+//
+// The stand-in viewer page is narrower than the vendor's: a canvas#kvm painted from the /kvm stream
+// once a frame arrives, drawn from a cross-origin image when the world's canvas_readable flag is false.
+// The stand-in viewer reads sessionStorage.features.indexOf(...) UNGUARDED before it opens /kvm, as the
+// served viewer.min.js does (crawl run 36787375313): a viewer opened without the feature list throws and
+// never connects, which is what KVM probe run 36788605665 did on the hardware.
+// The stand-in root page replaces itself on DOMContentLoaded and the transport logs that it was served:
+// the shape that destroyed the observer's in-page login on fleet-converge run 36721915217. An observer
+// that loads "/" and then evaluates in it fails here exactly as it did there.
+//
+// ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_d5eebfff,
+// default-approved on recommendation A, 2026-09-28 -- not an explicit operator ruling.
+data megarac_web_transport_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.bmc_megarac_web_transport",
+    decl_name: "megarac_web_transport_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data megarac_web_transport_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.bmc_megarac_web_transport megarac_web_transport_script -- the loopback HTTP+WebSocket transport is a node -e string that enforces a model-derived transition table. RETIRED BY THE CAPABILITY: gunbc serve WebSocket support SUFFICIENT TO SERVE THE gunbc.bmc_model KVM STREAM -- accept the /kvm upgrade, hold the connection across requests, deliver frames, and close it when a model transition leaves the stream closed, with every HTTP and upgrade request decoded, answered by the gunbc.bmc_model transition and encoded in .dag per request. HTTP-only serve support does not retire it. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
+
+data megarac_web_transport_script: String = "const http=require('http');const crypto=require('crypto');const fs=require('fs');const [tablePath,logPath]=process.argv.slice(1);function log(m)\{fs.appendFileSync(logPath,Date.now()+' pid='+process.pid+' '+m+'\\n')}const T=JSON.parse(fs.readFileSync(tablePath,'utf8'));let current=T.initial;const canvasReadable=T.canvas_readable===true;const kvmPath=T.kvm_path;function key(op,args)\{return JSON.stringify([op].concat(args))}const rows=new Map();const advances=new Set();for(const r of T.rows)\{const k=r.from+'\\u0000'+key(r.request.op,r.request.args);if(rows.has(k))\{log('refused: duplicate table row '+JSON.stringify(k));process.exit(3)}rows.set(k,\{status:r.status,stream:r.stream_open?'open':'none',to:r.to,body:r.body});if(r.request.op==='advance')advances.add(+r.request.args[0])}let selfStart='unknown';try\{const st=fs.readFileSync('/proc/self/stat','utf8');selfStart=st.slice(st.lastIndexOf(')')+2).split(' ')[19]}catch(e)\{}let socket=null;function apply(k)\{const r=rows.get(current+'\\u0000'+k);if(!r)\{log('unmodeled state='+JSON.stringify(current)+' request='+k);return null} log('transition request='+k+' status='+r.status+' to='+JSON.stringify(r.to));current=r.to; if(socket&&r.stream!=='open')\{log('stream closed by the model');const s=socket;socket=null;s.destroy()}return r}const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==','base64');const img=http.createServer((q,r)=>\{r.writeHead(200,\{'Content-Type':'image/png'});r.end(png)});function viewer()\{const port2=img.address().port;const taint=canvasReadable?'':\"const i=new Image();i.onload=()=>x.drawImage(i,0,0);i.src='http://localhost:\"+port2+\"/x.png';\"; return \"<!doctype html><canvas id=\\\"kvm\\\" width=\\\"1\\\" height=\\\"1\\\"></canvas><script>const c=document.getElementById('kvm');const x=c.getContext('2d');sessionStorage.features.indexOf('KVM_SESSION_RECONNECT');const ws=new WebSocket('ws://'+location.host+'\"+kvmPath+\"?token='+encodeURIComponent(sessionStorage.getItem('garc')||''));ws.onmessage=()=>\{c.width=800;c.height=600;x.fillStyle='#036';x.fillRect(0,0,800,600);\"+taint+\"};</script>\"}function refuse(r,key)\{r.writeHead(599,\{'Content-Type':'text/plain'});r.end('unmodeled request: '+key)}function answer(r,key)\{const t=apply(key);if(!t)return refuse(r,key);r.writeHead(t.status,\{'Content-Type':'application/json'});r.end(t.body)}const s=http.createServer((q,r)=>\{let body='';q.on('data',d=>body+=d);q.on('end',()=>\{ if(q.url==='/')\{log('spa-root served');r.writeHead(200,\{'Content-Type':'text/html'});r.end(\"<!doctype html><script>document.addEventListener('DOMContentLoaded',()=>location.replace('/login.html'))</script>\");return} if(q.url==='/login.html')\{r.writeHead(200,\{'Content-Type':'text/html'});r.end('<!doctype html>');return} if(q.url==='/viewer.html')\{r.writeHead(200,\{'Content-Type':'text/html'});r.end(viewer());return} if(q.url==='/api/session'&&q.method==='POST')\{const p=new URLSearchParams(body);return answer(r,key('login',[p.get('username')||'',p.get('password')||'']))} if(q.url==='/api/session'&&q.method==='DELETE')\{return answer(r,key('logout',[q.headers['x-csrftoken']||'']))} if(q.url==='/api/settings/services')\{return answer(r,key('services',[]))} r.writeHead(404);r.end()})});s.on('upgrade',(q,sock)=>\{const u=new URL(q.url,'http://x');if(u.pathname!==kvmPath)\{sock.destroy();return} const t=apply(key('connect',[u.searchParams.get('token')||'']));if(!t||t.status!==101)\{log('kvm refused');sock.destroy();return} const k=crypto.createHash('sha1').update(q.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64'); sock.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: '+k+'\\r\\n\\r\\n'); sock.write(Buffer.from([0x81,0x05,0x66,0x72,0x61,0x6d,0x65]));socket=sock;log('kvm-open');sock.on('close',()=>\{if(socket===sock)socket=null})});const started=Date.now();for(const a of advances)\{setTimeout(()=>apply(key('advance',[String(a)])),a*1000)}img.listen(0,'127.0.0.1',()=>s.listen(0,'127.0.0.1',()=>log('listening start='+selfStart+' port='+s.address().port)));"
+
+// WHETHER THE TRANSPORT IS SERVING, AND IF NOT WHY. Readiness is bound to the whole launch INSTANCE:
+// only a listening line carrying BOTH the pid and the start time the owned launch recorded counts, so a
+// stale line from an earlier process -- even one the kernel gave the same pid -- never reads as ready.
+type MegaRacWebTransportCause
+  = TransportLaunchRefused { detail: String }
+  | TransportPidUnpublished
+  | TransportCleanupUnresolved { line: String }
+  | TransportExitedBeforeReady { exit_line: String }
+  | TransportReadinessForeign { lines: List<String> }
+  | TransportReadinessUnobserved { standing: OwnedProcessStanding }
+
+type MegaRacWebTransportStart
+  = TransportServing { port: String, pid: String }
+  | TransportNotServing { cause: MegaRacWebTransportCause }
+
+fn lines_of(text: String) -> List<String> {
+  filter(split(s: text, delimiter: "\n"), l => l != "")
+}
+
+fn listening_port(line: String) -> String {
+  match split(s: line, delimiter: " port=").skip(n: 1).first() {
+    Present { value: p } => trim(s: p)
+    Absent => ""
+  }
+}
+
+// ONE READINESS OBSERVATION, pure over what was read.
+fn megarac_web_transport_readiness(standing: OwnedProcessStanding, out: String, events: String) -> MegaRacWebTransportStart? {
+  let listening: List<String> = filter(lines_of(text: events), l => string_contains(s: l, pattern: " listening start="))
+  let exit_lines: List<String> = filter(lines_of(text: out), l => string_contains(s: l, pattern: owned_process_exit_prefix))
+  if string_contains(s: out, pattern: owned_process_unpublished_survived_line) {
+    Present { value: TransportNotServing { cause: TransportCleanupUnresolved { line: owned_process_unpublished_survived_line } } }
+  } else if string_contains(s: out, pattern: owned_process_unpublished_line) {
+    Present { value: TransportNotServing { cause: TransportPidUnpublished } }
+  } else {
+    match standing {
+      OwnedRunning { pid: p, start_time: st } => {
+        let mine: List<String> = filter(listening, l => string_contains(s: l, pattern: concat(" pid=", concat(p, concat(" listening start=", concat(st, " port="))))))
+        match mine.first() {
+          Present { value: l } => Present { value: TransportServing { port: listening_port(line: l), pid: p } }
+          Absent => none
+        }
+      }
+      _ =>
+        match exit_lines.first() {
+          Present { value: l } => Present { value: TransportNotServing { cause: TransportExitedBeforeReady { exit_line: l } } }
+          Absent => none
+        }
+    }
+  }
+}
+
+fn megarac_web_transport_await(pid_path: String, out_path: String, log_path: String, remaining: Int) -> MegaRacWebTransportStart {
+  let standing = owned_process_standing(pid_path: pid_path)
+  let out = Filesystem.Read(path: out_path)
+  let events = Filesystem.Read(path: log_path)
+  match megarac_web_transport_readiness(standing: standing, out: if out.success { out.content } else { "" }, events: if events.success { events.content } else { "" }) {
+    Present { value: answer } => answer
+    Absent =>
+      if remaining <= 0 {
+        let listening: List<String> = filter(lines_of(text: if events.success { events.content } else { "" }), l => string_contains(s: l, pattern: " listening start="))
+        if count(listening) > 0 { TransportNotServing { cause: TransportReadinessForeign { lines: listening } } }
+        else { TransportNotServing { cause: TransportReadinessUnobserved { standing: standing } } }
+      } else {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+        megarac_web_transport_await(pid_path: pid_path, out_path: out_path, log_path: log_path, remaining: remaining - 1)
+      }
+  }
+}
+
+data megarac_web_transport_ready_polls: Int = 10
+
+// SERVE a table from a directory the caller owns, under the node binary it names (the declared runner
+// toolchain's). The launch is gunbc.owned_process's; readiness is awaited and typed.
+fn megarac_web_transport_serve(dir: String, table: String, node_binary: String) -> MegaRacWebTransportStart {
+  let pid_path = concat(dir, "/transport.pid")
+  let out_path = concat(dir, "/transport.out")
+  let log_path = concat(dir, "/transport.log")
+  let table_path = concat(dir, "/table.json")
+  let wrote = Filesystem.Write(path: table_path, content: table)
+  if !wrote.success { return TransportNotServing { cause: TransportLaunchRefused { detail: concat("the table could not be written: ", wrote.error) } } }
+  let launched = gunbc.owned_process.launch.LaunchOwned(
+    pid_path: pid_path as NonEmptyStr,
+    log_path: out_path as NonEmptyStr,
+    command: [node_binary, "-e", megarac_web_transport_script, table_path, log_path],
+  )
+  if !launched.success { return TransportNotServing { cause: TransportLaunchRefused { detail: trim(s: launched.transport_stderr) } } }
+  megarac_web_transport_await(pid_path: pid_path, out_path: out_path, log_path: log_path, remaining: megarac_web_transport_ready_polls)
+}
+
+fn megarac_web_transport_stop(dir: String) -> OwnedRelease {
+  owned_process_release(pid_path: concat(dir, "/transport.pid"))
+}

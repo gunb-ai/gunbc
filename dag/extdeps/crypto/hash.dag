@@ -1,7 +1,8 @@
 module extdeps.crypto.hash
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, Bool, List, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import v2.std.algebra { skip }
 import std.content_hash {
@@ -94,6 +95,7 @@ fn sha512_digest_content_hash(digest: Digest) -> ContentHash? {
 // transport row can be read from the operation itself.
 service crypto.Sha256Sum {
   operation File {
+    requires none
     input { path: String }
     output {
       line: String from "stdout"
@@ -112,14 +114,14 @@ service crypto.Sha256Sum {
   }
 }
 
-data sha256sum_program: NonEmptyStr = "sha256sum"
+fn sha256sum_program() -> ProgramIdentity = cataloged_program(invocation: "sha256sum")
 
 fn sha256sum_argv(path: String) -> List<String> {
-  [sha256sum_program as String, "--", path]
+  [sha256sum_program().invocation as String, "--", path]
 }
 
 fn sha256sum_file_command(path: String) -> ArgvCommand {
-  argv_command(program: sha256sum_program, arguments: skip(xs: sha256sum_argv(path: path), n: 1))
+  argv_command(program: sha256sum_program(), arguments: skip(xs: sha256sum_argv(path: path), n: 1))
 }
 
 // The first field of the output line, admitted only at the digest's exact length.

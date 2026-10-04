@@ -1,0 +1,138 @@
+module gunbc.interpreter_eval_correctness_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// SEED-GROWTH RECEIPTS FOR TWO SEED-INTERPRETER CORRECTNESS REPAIRS, admitted under
+// gunbc.v1_maintenance_standing v1_seed_standing: the seed interpreter decides every claim verdict
+// today, so a silent wrong answer there is silent wrongness in the v2 self-host program's evidence,
+// and the repair can only live where the evaluation happens. THE POPULATION IS DERIVED, AND HOW IS
+// STATED: tools.rust_item_census_instrument census was run on both changes (BuildBuddy, in a
+// self-made memory cgroup, origin/main merge base) and REFUSED both as unattributed -- "changed line
+// at HEAD falls outside every scanned item" in src/v1/stage0/src/v1_interpreter.rs, and for gunbc#12886
+// also "not readable at item grain" in src/bin/interp_recorded_fixture_witness.rs -- so the items
+// below are the changed items read from each change's diff, each confirmed to contain a changed
+// line. Impl blocks and impl methods are listed in prose because std.decl_ref cannot name them
+// (gunbc.rust_item_host_observation ItemDeclarationRefUncitable).
+data match_arm_guard_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_match", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "InterpError", field: WholeDeclaration },
+  ],
+  reason: "gunbc#12814. v1_interpreter eval_match never read arm_guard, so a guarded arm ran whatever its guard said while emitted Rust honoured it (gunbc.recurring_failure_mode interpreter_ignores_match_arm_guards). eval_match now evaluates the guard in the arm's bindings, falls through on false, and refuses a non-Bool with the new InterpError variant MatchGuardNotBool. UNCITABLE, also changed: impl fmt::Display for InterpError (fmt) and impl WitnessRuntimeCause (of_interp_error) in v1_compiler.cli_run, which classifies the new variant as type-error. The evaluation of a match is the seed interpreter's own act, so no .dag authority can host the repair.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete with the seed interpreter itself: when claims are evaluated on the emitted path rather than by v1_interpreter (the v1-interpreter-quarantine then v1-interpreter-delete lanes), this Rust has no evaluator left to correct and goes with the file. It has no earlier trigger, because the interpreter's evaluation semantics have no .dag authority that an earlier move could migrate into.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs eval_match, InterpError; src/v1/stage0/src/cli_run.rs WitnessRuntimeCause::of_interp_error",
+}
+
+data value_depth_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "Value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_depth_guarded", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "detach_owned_children", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "serde_json_read_depth_limit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "JsonNestingClaim", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "claim_json_nesting", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "json_container_depth", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "account_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "bind_argv_expr", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_representation_numeric_straddle", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "free_monoid_symbol_value_to_dotted_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "json_to_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "match_pattern", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "portable_value_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "push_shell_argv_tokens", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_fast_eq", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_from_portable_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_hash", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_depth_walker_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "DEPTH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "fresh_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "deep_chain", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "deep_list", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_variant_chain_drops", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_list_drops", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_shared_deep_chain_drops_once_per_owner", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "deep_values_compare", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_value_renders", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_free_monoid_renders_dotted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_value_hashes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_value_is_accounted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_value_round_trips_through_the_portable_form", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_deep_value_is_refused_at_the_json_boundary_not_killed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_depth_walker_tests", decl_name: "a_value_at_the_read_limit_encodes_and_reads_back", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.recorded_fixture", decl_name: "FixtureError", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.recorded_fixture", decl_name: "value_to_fixture_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.recorded_fixture", decl_name: "fixture_nesting", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.recorded_fixture", decl_name: "value_to_fixture_json_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.recorded_fixture", decl_name: "value_from_fixture_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "free_monoid_symbol_value_to_dotted_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "collect_node_values", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "value_to_wire_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serialize_variant_to_wire_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serialize_untagged_variant", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "collect_node_values_depth_tests", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.collect_node_values_depth_tests", decl_name: "a_deep_chain_is_walked_for_node_values", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "hoist_call_arg_string_literal_edges", field: WholeDeclaration },
+  ],
+  reason: "gunbc#12886. Native recursion over a VALUE's depth (which no call limit counts) killed the interpreter with rc=134 and no location (gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit). Added: value_depth_guarded, the one guard every recursive walker over a Value runs under; detach_owned_children, the worklist behind an iterative Drop; the JSON-depth refusal (serde_json_read_depth_limit, claim_json_nesting, JsonNestingClaim, json_container_depth, and the fixture codec's fixture_nesting and value_to_fixture_json_shape with the FixtureError variant); and the deep-value test modules. Changed: every walker now guarded, and Value's derive (Debug is hand-written under the guard). UNCITABLE, also added or changed: impl Drop for Value, impl fmt::Debug for Value, impl Drop for JsonNestingClaim, impl PartialEq for Value (eq), impl fmt::Display for Value (fmt), impl fmt::Display for FixtureError (fmt), the thread_local JSON_ENCODE_NESTING, and the census unguarded_recursive_value_walkers in src/v1/stage0/build.rs, which no rust_source_namespace_rows prefix claims. The value representation and its traversals are the seed interpreter's host data structure, so no .dag authority can host the repair.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete with the seed interpreter itself: when claims are evaluated on the emitted path rather than by v1_interpreter (the v1-interpreter-quarantine then v1-interpreter-delete lanes), this Rust has no evaluator left to correct and goes with the file. It has no earlier trigger, because the interpreter's evaluation semantics have no .dag authority that an earlier move could migrate into. Its own next rung is recorded on the failure-mode row: one generic iterative Value traversal through which every walker is expressed.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs, recorded_fixture.rs, cli_run.rs, coproduct_reflection.rs, build.rs",
+}
+
+data value_drop_binding_adaptation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "attach_transport_outcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_cast", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_filesystem_read_builtin", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "expect_str_list_flex", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "find_service_config_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "operation_input_binding_entry", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "resolve_env_var_token", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "rest_exchange_selection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "value_as_host_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.cross_claim_memo_tests", decl_name: "cross_claim_memo_key_hashes_a_map_arg_with_a_free_monoid_list_key_under_held_borrow", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.cross_claim_memo_tests", decl_name: "cross_claim_memo_key_hashes_a_map_arg_with_string_keys_without_panicking", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.cross_claim_memo_tests", decl_name: "cross_claim_memo_survives_a_fresh_consuming_context", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.map_shell_outputs_optional_stream_tests", decl_name: "map_optional_stream_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.push_hash_extension_tests", decl_name: "inserted_map_hash_is_the_full_fold_under_insert_and_overwrite", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.push_hash_extension_tests", decl_name: "map_finalizer_inverse_recovers_the_sum", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.push_hash_extension_tests", decl_name: "pushed_list_hash_is_the_full_fold_and_is_demand_gated", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.sorted_map_keys_order_tests", decl_name: "interpreted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.sorted_map_keys_order_tests", decl_name: "order_is_independent_of_insertion_order_in_both_realizations", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_str_rc_semantic_parity_tests", decl_name: "canon_key_map_lookup_uses_content_equality", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.value_str_rc_semantic_parity_tests", decl_name: "set_membership_uses_decoded_string_content", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "project_roadmap_acceptance_event_history_from_authority_text_inner", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "render_batch_summary_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_witness_verdict_diagnostic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "project_witness_cost_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.live_read_carrier_home_roster_drift_gate_tests", decl_name: "dag_carrier_home_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.effect_reach_host_sink_markers_drift_gate_tests", decl_name: "dag_host_sink_callee_symbols", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.heartbeat_tests", decl_name: "run_seed_heartbeat_line", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "lookup_fold_outcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "wire_content_hash_to_hex", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_required_string", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "run_claim_failure_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier", decl_name: "handback_to_json", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.test_module_hygiene_bridge", decl_name: "test_decl_names_from_content", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.witness_gates", decl_name: "witness_cost_clock_nanos", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "expect_pool_roots", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection.parse_only_uppercase_variant_regression_tests", decl_name: "first_child_target", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.pre_push", decl_name: "eval_fmt_recipe", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.pre_push", decl_name: "load_zero_sha", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "partition_rebuild_actuation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "population_admission_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "render_affected_set_bound", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "render_round_cost_receipt", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "render_scope_selection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.interp_recorded_fixture_witness", decl_name: "hermetic_without_fixture_store_still_uses_mock_response_for_rest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler_tests.decl_facts_dimensionless_projection_test", decl_name: "eval_decl_facts_explicit_import_resolves_unique_variant_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler_tests.field_of_fractions_construction_test", decl_name: "field_of_fractions_pair_stays_boxed_record_not_native_collapse", field: WholeDeclaration },
+  ],
+  reason: "gunbc#12886, the mechanical half. Implementing Drop on Value makes moving a field out of a Value a compile error (E0509), so every site that destructured an owned Value by move now binds by reference -- the compiler's own `ref` suggestion applied at each site, plus three hand fixes. No behaviour changes at these sites; they are listed because the admission policy covers every modified hand item, and an adaptation forced by another change is still a modification. UNCITABLE, also changed the same way: impl ScopedRunObservation (timing_receipt) and impl UnimportedBareProviderRosterReading (identity). ALREADY JUSTIFIED BY THEIR OWN ROWS, and so not repeated here because the roster cites each declaration once: portable_value_eq, portable_value_from_ctx_at, portable_value_size_bytes, admit_modeled_realization, file_result_of_observation, file_effect_trace_tests (render, file_mode_octal_agrees_with_the_posix_authority_over_the_admitted_range), required_regen_host (admit_candidate_generation_from_model, admit_stage_execution_from_model, convergence_plan_from_model, regen_generation_role_population, regen_round_cost_tests live_module_mirrors_have_owners_and_removed_shell_owner_refuses) and data_initializer_identity with_authored_string_literals -- each also carries this change's guard or ref-binding edit.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Leaves with the iterative Drop it adapts to, and therefore with the seed interpreter: Delete with the seed interpreter itself: when claims are evaluated on the emitted path rather than by v1_interpreter (the v1-interpreter-quarantine then v1-interpreter-delete lanes), this Rust has no evaluator left to correct and goes with the file. It has no earlier trigger, because the interpreter's evaluation semantics have no .dag authority that an earlier move could migrate into.",
+  current_boundary: "src/v1/stage0/src (v1_interpreter, cli_run and its submodules, coproduct_reflection, data_initializer_identity, pre_push, required_regen_host, bin/interp_recorded_fixture_witness); src/v1/tests/src (two tests)",
+}

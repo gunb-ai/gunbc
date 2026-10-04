@@ -3,8 +3,12 @@ module gunbc.generated_artifact_emit
 
 import gunbc.auth.approval_device_redemption_fixtures { approval_device_vectors_json }
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
+import gunbc.approve_ios_swift_protocol { expected_approve_ios_protocol_swift }
+import v2.extdeps.languages.swift.rows { SwiftRowEmitted, SwiftRowEmissionRefused }
+import gunbc.approve_ios_swift_wire { expected_approve_ios_wire_swift }
+import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }
 import product.printed_chassis.cadquery_realization { CouponProgramGeneration, CouponProgramGenerated, CouponProgramRefused, expected_coupon_cadquery_program }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, Stage0LinkedPartitionCratesArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, ReleaseLocusSeedConstantsGeneratedRsArtifact, FileTransportRealizationGeneratedRsArtifact, Fci1BoundedExecutionContextArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact, ApproveIosProjectYmlArtifact, ApproveIosProtocolSwiftArtifact, ApproveIosWireSwiftArtifact, ApproveIosProtocolVectorTestsSwiftArtifact, artifact_path, artifact_commit_policy, CommitRequired, NotCommitted, GitProtocol, CargoToolchain, GithubActionsWorkflow, ProjectDocumentation, HostReconciler, CompilerRunInput, CrossLanguageClientTest, XcodeProjectGenerator, SwiftCompiler }
 import gunbc.generated_artifact_registry { committed_generated_artifacts, heal_regenerated_after_provisional_merge_paths }
 import gunbc.whole_corpus_compile_demand_projection { expected_whole_corpus_compile_measured_root_demands_json }
 import gunbc.generated_workflow_provenance {
@@ -15,6 +19,7 @@ import gunbc.generated_workflow_provenance {
 import gunbc.fleet_converge_workflow { expected_fleet_converge_yml, FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused }
 import gunbc.fleet_desired_admission_workflow { expected_fleet_desired_yml, FleetDesiredGenerationOutcome, FleetDesiredGenerated, FleetDesiredGenerationRefused }
 import gunbc.runner_microvm_shakedown_workflow { expected_microvm_shakedown_yml, MicrovmShakedownWorkflowGenerated, MicrovmShakedownWorkflowGenerationRefused }
+import gunbc.instrument_dispatch_workflow { expected_instrument_dispatch_yml, InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused }
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.witness_floor_workflow { WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused }
@@ -93,6 +98,10 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
       MicrovmShakedownWorkflowGenerated { content } => artifact_generated(content: content)
       MicrovmShakedownWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
     }
+    InstrumentDispatchYamlArtifact => match expected_instrument_dispatch_yml() {
+      InstrumentDispatchWorkflowGenerated { content } => artifact_generated(content: content)
+      InstrumentDispatchWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
+    }
     HealWorkflowYamlArtifact => match expected_heal_workflow_yml() {
       HealWorkflowGenerated { content } => artifact_generated(content: content)
       HealWorkflowGenerationRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -121,6 +130,18 @@ fn artifact_generate_unadorned(a: GeneratedArtifact) -> ArtifactGenerationOutcom
     RunnerDeployArtifact => artifact_generated(content: expected_runner_deploy_manifest())
     WholeCorpusCompileMeasuredRootDemandsArtifact => artifact_generated(content: expected_whole_corpus_compile_measured_root_demands_json())
     ApprovalDeviceVectorsArtifact => artifact_generated(content: approval_device_vectors_json())
+    ApproveIosProtocolSwiftArtifact => match expected_approve_ios_protocol_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+    ApproveIosWireSwiftArtifact => match expected_approve_ios_wire_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
+    ApproveIosProtocolVectorTestsSwiftArtifact => match expected_approve_ios_protocol_vector_tests_swift() {
+      SwiftRowEmitted { source } => artifact_generated(content: source)
+      SwiftRowEmissionRefused { reason } => ArtifactGenerationRefused { reason: reason as String }
+    }
     ApproveIosProjectYmlArtifact => match expected_approve_ios_project_yml() {
       ApproveIosProjectGenerated { content } => artifact_generated(content: content)
       ApproveIosProjectRefused { reason } => ArtifactGenerationRefused { reason: reason }
@@ -217,6 +238,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       CommitRequired { consumer: CompilerRunInput } => generated
       CommitRequired { consumer: CrossLanguageClientTest } => generated
       CommitRequired { consumer: XcodeProjectGenerator } => generated
+      CommitRequired { consumer: SwiftCompiler } => generated
       NotCommitted => generated
     }
   }
@@ -238,6 +260,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     MicrovmShakedownYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    InstrumentDispatchYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     HealPublisherWorkflowYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
@@ -256,6 +279,9 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     WholeCorpusCompileMeasuredRootDemandsArtifact => true
     ApprovalDeviceVectorsArtifact => true
     ApproveIosProjectYmlArtifact => true
+    ApproveIosProtocolSwiftArtifact => true
+    ApproveIosWireSwiftArtifact => true
+    ApproveIosProtocolVectorTestsSwiftArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true

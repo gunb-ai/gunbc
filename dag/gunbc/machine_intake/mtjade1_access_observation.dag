@@ -4,23 +4,279 @@ import gunbc.machine_intake_bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyUnobserved,
 }
+import gunbc.machine_intake_mtjade1_factory_network {
+  ObservedBmcNetwork,
+  BmcNetworkUnobserved,
+  BmcNetworkObservedStatic,
+  BmcNetworkObservedDhcpLease,
+  mtjade1_bmc_observed_network,
+}
+import extdeps.network.mac { Eui48Address }
+import extdeps.numeric.base16 { hex_digit_char_upper }
+import std.integer { UInt8 }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonFieldRead,
+  FieldAbsent,
+  FieldMalformed,
+  FieldRead,
+  parse_json_document,
+  json_document_gap_text,
+  json_field,
+  json_field_string,
+  json_field_value,
+}
+import v2.std.optional { Present, Absent }
+import gunbc.machine_intake_bmc_firmware_family_discriminator {
+  ManagerIdentityObservation,
+  discriminate_family,
+  family_standing_from_discrimination,
+}
 import gunbc.machine_intake_subject {
   BoardSerialAbsent,
   UnitKeyRefused,
   UnitKeyStanding,
 }
+import std.types { List, NonEmptyStr, String }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 
-// MT. JADE UNIT 1 BMC ACCESS, AND NOTHING HERE IS A LIVE READING. The operator has AC and a BMC
-// in standby; this module does not invent a host, serial, firmware family, or BaseboardModel arm.
+// MT. JADE UNIT 1 BMC ACCESS. The BMC firmware family below is read from a committed capture (2026-10-03); this
+// module still does not invent a host, serial, or BaseboardModel arm.
 // Identity stays on extdeps.ocp.mt_jade until a FRU/SMBIOS join is captured. There is no
 // UnitIdentityInputs row, because that type requires a host and we do not have one. The standing
 // is the same UnitKeyStanding bind_unit_key returns for an empty observation list
 // (BoardSerialAbsent) — not a Jade-only one-arm type (review 67792).
 
-data mtjade1_firmware_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
-  discriminator: "Wiwynn SV328R / OCP Mt. Jade cites MegaRAC or OpenBMC. This unit has no bound mc-info, Redfish Manager, or OEM fingerprint capture.",
+// THE FAMILY IS DISCRIMINATED, 2026-10-03, FROM THE COMMITTED CAPTURE AND NOTHING ELSE. The operator
+// cabled the unit's single rear port (the GSG's BMC Ethernet Management port; the host has no NIC);
+// the controller answered on its factory static 10.0.7.2 and accepted the factory admin account
+// read-only, and the body of GET /redfish/v1/Managers/Self was committed verbatim at the path below.
+// That FILE is the reading: read_mtjade1_recorded_manager_identity reads it, checks its sha256
+// against the digest recorded at capture time, decodes the root Manager fields and Oem keys, and
+// BINDS the response to this unit through Oem.Amp.FruInformation.BoardExtra, which must equal the
+// link address of mtjade1_bmc_observed_network (the MAC srv1 saw ARPing from 10.0.7.2). Only a
+// capture that passes all three reaches discriminate_family; any other is FamilyUnobserved naming
+// the gap, so a drifted file, a re-typed field or another host's AMI Manager cannot stand as this
+// unit's family. Operator notes from the same session, NOT consumed and NOT discriminators: IPMI
+// mc info manufacturer 52538 (Ampere Computing), product 0x0082, firmware 2.11; FwInfo FW_DESC
+// "JADE LTS_SPX12.3", FW_VERSION 2.11.104000 (Aug 20 2021); kernel 5.2.8-ami; hostname
+// AMI70E28495336B; sshd "OpenSSH_7.9p1 Debian-10+deb10u2". The ASF presence pong's IANA 36465 is the
+// DCMI Forum and discriminates nothing.
+data mtjade1_redfish_manager_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-redfish-manager-self-2026-10-03.json"
+
+data mtjade1_redfish_manager_capture_sha256: NonEmptyStr = "9888b0d065547861cdb5560fbb6fe62a5728acd9834685f3f4cd406f9123d4df"
+
+// EVERY WAY A RECORDED CAPTURE FAILS TO BECOME THIS UNIT'S OBSERVATION, each its own arm so the
+// FamilyUnobserved it turns into says which gap to close.
+type RecordedManagerCaptureGap
+  = CaptureUnreadable { error: String }
+  | CaptureDigestMismatch { expected: NonEmptyStr, observed: String }
+  | CaptureJsonUnreadable { gap: String }
+  | CaptureFieldUnread { field: NonEmptyStr, cause: String }
+  | CaptureSubjectLinkUnobserved
+  | CaptureBoundToAnotherLink { board_extra: String }
+
+type RecordedManagerDecode
+  = RecordedManagerDecoded { observation: ManagerIdentityObservation }
+  | RecordedManagerRefused { gap: RecordedManagerCaptureGap }
+
+// THE HISTORICAL READ RECEIPT: which unit, through which observed network (address and link), which
+// resource, which committed bytes under which digest, and what those bytes decoded to.
+type RecordedManagerIdentityObservation {
+  subject: NonEmptyStr
+  endpoint: ObservedBmcNetwork
+  resource: NonEmptyStr
+  capture_path: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  decoded: RecordedManagerDecode
+}
+
+fn capture_gap_text(gap: RecordedManagerCaptureGap) -> NonEmptyStr {
+  match gap {
+    CaptureUnreadable { error: e } => join(["the recorded Manager capture could not be read: ", e], "") as NonEmptyStr
+    CaptureDigestMismatch { expected: x, observed: o } => join(["the recorded Manager capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
+    CaptureJsonUnreadable { gap: g } => join(["the recorded Manager capture is not one JSON document: ", g], "") as NonEmptyStr
+    CaptureFieldUnread { field: f, cause: c } => join(["the recorded Manager capture does not carry ", f as String, ": ", c], "") as NonEmptyStr
+    CaptureSubjectLinkUnobserved => "the subject unit has no observed BMC link address to bind the capture to"
+    CaptureBoundToAnotherLink { board_extra: b } => join(["the recorded Manager capture names BoardExtra ", b, ", which is not this unit's observed BMC link"], "") as NonEmptyStr
+  }
+}
+
+fn field_unread(field: NonEmptyStr, cause: String) -> RecordedManagerDecode {
+  RecordedManagerRefused { gap: CaptureFieldUnread { field: field, cause: cause } }
+}
+
+fn read_cause(r: JsonFieldRead<T>) -> String {
+  match r {
+    FieldAbsent => "absent"
+    FieldMalformed { cause: c } => c
+    FieldRead { value: _ } => "read"
+  }
+}
+
+fn observed_bmc_link(network: ObservedBmcNetwork) -> Eui48Address? {
+  match network {
+    BmcNetworkObservedStatic { address: _, prefix: _, gateway: _, link: l, basis: _ } => Present { value: l }
+    BmcNetworkObservedDhcpLease { address: _, prefix: _, basis: _ } => none
+    BmcNetworkUnobserved { discriminator: _ } => none
+  }
+}
+
+fn oem_member_keys(oem: JsonValue) -> List<String> {
+  match oem {
+    JsonObject { members: ms } => map(ms, m => m.key)
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+// THE BINDING: Oem.Amp.FruInformation.BoardExtra is the MAC the Ampere FRU carries for this board,
+// and it must name the same link srv1 observed. It is compared EXACTLY against the observed link
+// rendered in the spelling this field carries on the wire -- six uppercase hex pairs joined by
+// colons -- rather than parsed, because extdeps.network.mac parse_mac_address admits only the
+// lowercase canonical spelling and refuses this one by design. Any other spelling, or another
+// address, refuses as CaptureBoundToAnotherLink: nothing here normalizes what the capture said.
+fn board_extra_octet(v: UInt8) -> String {
+  concat(hex_digit_char_upper(d: v / 16), hex_digit_char_upper(d: v % 16))
+}
+
+fn board_extra_spelling(link: Eui48Address) -> String {
+  join([
+    board_extra_octet(v: link.octet1),
+    board_extra_octet(v: link.octet2),
+    board_extra_octet(v: link.octet3),
+    board_extra_octet(v: link.octet4),
+    board_extra_octet(v: link.octet5),
+    board_extra_octet(v: link.octet6),
+  ], ":")
+}
+
+fn bind_board_extra(root: JsonValue, oem: JsonValue, network: ObservedBmcNetwork) -> RecordedManagerDecode {
+  let amp = json_field(obj: oem, key: "Amp")
+  match json_field_value(r: amp) {
+    Absent => field_unread(field: "Oem.Amp", cause: read_cause(r: amp))
+    Present { value: amp_v } => {
+      let fru = json_field(obj: amp_v, key: "FruInformation")
+      match json_field_value(r: fru) {
+        Absent => field_unread(field: "Oem.Amp.FruInformation", cause: read_cause(r: fru))
+        Present { value: fru_v } => {
+          let extra = json_field_string(obj: fru_v, key: "BoardExtra")
+          match json_field_value(r: extra) {
+            Absent => field_unread(field: "Oem.Amp.FruInformation.BoardExtra", cause: read_cause(r: extra))
+            Present { value: text } =>
+              match observed_bmc_link(network: network) {
+                Absent => RecordedManagerRefused { gap: CaptureSubjectLinkUnobserved }
+                Present { value: link } =>
+                  if text == board_extra_spelling(link: link) {
+                    decode_manager_fields(root: root, oem: oem)
+                  } else {
+                    RecordedManagerRefused { gap: CaptureBoundToAnotherLink { board_extra: text } }
+                  }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn decode_manager_fields(root: JsonValue, oem: JsonValue) -> RecordedManagerDecode {
+  let id = json_field_string(obj: root, key: "Id")
+  let fw = json_field_string(obj: root, key: "FirmwareVersion")
+  let model = json_field_string(obj: root, key: "Model")
+  match json_field_value(r: id) {
+    Absent => field_unread(field: "Id", cause: read_cause(r: id))
+    Present { value: id_s } =>
+      if id_s == "" {
+        field_unread(field: "Id", cause: "empty")
+      } else {
+        match json_field_value(r: fw) {
+          Absent => field_unread(field: "FirmwareVersion", cause: read_cause(r: fw))
+          Present { value: fw_s } =>
+            match json_field_value(r: model) {
+              Absent => field_unread(field: "Model", cause: read_cause(r: model))
+              Present { value: model_s } =>
+                RecordedManagerDecoded {
+                  observation: ManagerIdentityObservation {
+                    manager_id: id_s as NonEmptyStr,
+                    firmware_version: fw_s,
+                    model: model_s,
+                    oem_keys: oem_member_keys(oem: oem),
+                  },
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE PURE HALF OF THE READ: digest first (bytes are what was recorded), then one JSON document,
+// then the root Oem object, then the subject binding, then the identity fields.
+fn decode_recorded_manager_capture(
+  content: String,
+  expected_sha256: NonEmptyStr,
+  network: ObservedBmcNetwork,
+) -> RecordedManagerDecode {
+  let observed = sha256_hex_of_text(text: content)
+  let expected: String = expected_sha256
+  if observed != expected {
+    RecordedManagerRefused { gap: CaptureDigestMismatch { expected: expected_sha256, observed: observed } }
+  } else {
+    match parse_json_document(s: content) {
+      JsonDocumentUnreadable { gap: g } => RecordedManagerRefused { gap: CaptureJsonUnreadable { gap: json_document_gap_text(gap: g) } }
+      JsonDocumentParsed { value: root } => {
+        let oem = json_field(obj: root, key: "Oem")
+        match json_field_value(r: oem) {
+          Absent => field_unread(field: "Oem", cause: read_cause(r: oem))
+          Present { value: oem_v } => bind_board_extra(root: root, oem: oem_v, network: network)
+        }
+      }
+    }
+  }
+}
+
+fn read_mtjade1_recorded_manager_identity() -> RecordedManagerIdentityObservation uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: mtjade1_redfish_manager_capture_path as String)
+  let decoded = match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => RecordedManagerRefused { gap: CaptureUnreadable { error: e } }
+    FilesystemReadSucceeded { content: text } =>
+      decode_recorded_manager_capture(
+        content: text,
+        expected_sha256: mtjade1_redfish_manager_capture_sha256,
+        network: mtjade1_bmc_observed_network,
+      )
+  }
+  RecordedManagerIdentityObservation {
+    subject: "mtjade1",
+    endpoint: mtjade1_bmc_observed_network,
+    resource: "/redfish/v1/Managers/Self",
+    capture_path: mtjade1_redfish_manager_capture_path,
+    capture_sha256: mtjade1_redfish_manager_capture_sha256,
+    decoded: decoded,
+  }
+}
+
+fn recorded_manager_family_standing(decoded: RecordedManagerDecode) -> BmcFirmwareFamilyStanding {
+  match decoded {
+    RecordedManagerDecoded { observation: o } => family_standing_from_discrimination(discrimination: discriminate_family(observation: o))
+    RecordedManagerRefused { gap: g } => FamilyUnobserved { discriminator: capture_gap_text(gap: g) }
+  }
+}
+
+fn mtjade1_firmware_family_standing() -> BmcFirmwareFamilyStanding uses fs: std.resources.Filesystem {
+  recorded_manager_family_standing(decoded: read_mtjade1_recorded_manager_identity().decoded)
 }
 
 data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {

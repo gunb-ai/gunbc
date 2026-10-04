@@ -21,7 +21,6 @@ import v2.std.diagnostic {
 }
 import v2.std.host_run { HostLogicalRun }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
 import v2.test.manual.connective_anchors { stub_empty_conj }
@@ -55,7 +54,10 @@ fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<S
               f: fn(rv) { runtime_value_signed_i32_le_as_int(value: rv) }
             )
           )
-        _ => Rejected {
+        Accepted { value: _, diagnostics: _ } => Rejected {
+          diagnostics: diagnostics_singleton(d: emit_host_exit_not_ok_diagnostic())
+        }
+        Rejected { diagnostics: _ } => Rejected {
           diagnostics: diagnostics_singleton(d: emit_host_exit_not_ok_diagnostic())
         }
       }

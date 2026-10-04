@@ -16,8 +16,8 @@ import gunbc.compute.host_capacity {
 }
 
 // WET CONTROLS FOR THE HOST'S COMPUTE MEMORY POOL. Every reservation below is a real append to a
-// real event log on a real temporary directory, decided against a real reading of this machine's
-// /proc/meminfo. Nothing here is a fixture standing in for the store: the linearization being
+// real event log on a real temporary directory. The host's memory reading is SUPPLIED to the ledger
+// cells (reserve_with_room) and observed for real by one relation claim. Nothing here is a fixture standing in for the store: the linearization being
 // asserted is the one gunbc.compute.work_provider_local runs.
 //
 // THE SUBJECT IS SUPPLIED AND THE JOIN THAT PRODUCES ONE IS ASSERTED SEPARATELY (DESIGN 3, the
@@ -49,6 +49,19 @@ data one_gibibyte_in_kibibytes: Int = 1048576
 // calls fresh_root() owes a chunk_21 row, and one that does not must not have one.
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_compute_capacity.XXXXXX").path
+}
+
+// THE HOST'S MEMORY READING IS SUPPLIED TO EVERY LEDGER CELL (DESIGN 3, a witness discriminates at
+// one interface; gunbc.recurring_failure_mode wet_witness_keyed_to_the_runner_not_its_subject). The
+// ledger cells are about linearization over the event log, not about this machine's headroom, and
+// through compute_reserve_on their verdict depended on the runner having the requests free at that
+// instant: a busy fleet runner answered ComputeHostBelowFloor and the cell was red by assignment.
+// The reading below backs every request these cells make, so only the ledger can decide them. The
+// real observation route is kept by the_real_reservation_route_admits_exactly_what_the_reading_backs.
+data supplied_host: Kibibyte = kibibyte(count: 67108864)
+
+fn reserve_with_room(subject: ComputeCapacitySubject, reference: NonEmptyStr) -> ComputeReservation {
+  compute_reserve_against(subject: subject, reference: reference, term_seconds: 60, total: supplied_host, available: supplied_host)
 }
 
 fn subject_at(root: String, appropriation_kib: Int, request_kib: Int) -> ComputeCapacitySubject {
@@ -130,13 +143,13 @@ fn standing_committed(s: ComputeCapacityStanding) -> Int {
 // property of the store.
 test fn competing_reservations_cannot_over_reserve_and_a_release_returns_the_capacity() -> Bool {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
-  let first = compute_reserve_on(subject: subject, reference: "wet-first" as NonEmptyStr, term_seconds: 60)
-  let second = compute_reserve_on(subject: subject, reference: "wet-second" as NonEmptyStr, term_seconds: 60)
-  let full = compute_reserve_on(subject: subject, reference: "wet-third" as NonEmptyStr, term_seconds: 60)
+  let first = reserve_with_room(subject: subject, reference: "wet-first" as NonEmptyStr)
+  let second = reserve_with_room(subject: subject, reference: "wet-second" as NonEmptyStr)
+  let full = reserve_with_room(subject: subject, reference: "wet-third" as NonEmptyStr)
   let at_capacity = compute_capacity_standing_on(subject: subject)
   let back = compute_release(reservation: first, reason: "witness completion" as NonEmptyStr)
   let after_release = compute_capacity_standing_on(subject: subject)
-  let readmitted = compute_reserve_on(subject: subject, reference: "wet-fourth" as NonEmptyStr, term_seconds: 60)
+  let readmitted = reserve_with_room(subject: subject, reference: "wet-fourth" as NonEmptyStr)
   reserved_amount(r: first) == one_gibibyte_in_kibibytes
     && reserved_amount(r: second) == one_gibibyte_in_kibibytes
     && is_capacity_full(r: full)
@@ -217,9 +230,9 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
 // answer: if this cell ever reports ComputeCapacityFull again, the conflation is back.
 test fn a_reused_reference_is_a_ledger_refusal_and_never_reported_as_a_full_pool() -> Bool {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 4, request_kib: one_gibibyte_in_kibibytes)
-  let first = compute_reserve_on(subject: subject, reference: "wet-same-reference" as NonEmptyStr, term_seconds: 60)
-  let again = compute_reserve_on(subject: subject, reference: "wet-same-reference" as NonEmptyStr, term_seconds: 60)
-  let other = compute_reserve_on(subject: subject, reference: "wet-other-reference" as NonEmptyStr, term_seconds: 60)
+  let first = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
+  let again = reserve_with_room(subject: subject, reference: "wet-same-reference" as NonEmptyStr)
+  let other = reserve_with_room(subject: subject, reference: "wet-other-reference" as NonEmptyStr)
   reserved_amount(r: first) == one_gibibyte_in_kibibytes
     && is_ledger_refusal(r: again)
     && !is_capacity_full(r: again)
@@ -279,7 +292,7 @@ test fn the_real_observation_reads_this_machine() -> Bool {
 // would show the committed figure moving, and it does not.
 test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -> Bool {
   let subject = subject_at(root: fresh_root(), appropriation_kib: one_gibibyte_in_kibibytes * 2, request_kib: one_gibibyte_in_kibibytes)
-  let held = compute_reserve_on(subject: subject, reference: "wet-double" as NonEmptyStr, term_seconds: 60)
+  let held = reserve_with_room(subject: subject, reference: "wet-double" as NonEmptyStr)
   let while_held = compute_capacity_standing_on(subject: subject)
   let first = compute_release(reservation: held, reason: "the producer finished" as NonEmptyStr)
   let after_first = compute_capacity_standing_on(subject: subject)
@@ -292,4 +305,36 @@ test fn releasing_one_seat_twice_is_not_a_ledger_failure_and_charges_nothing() -
     && nothing_to_release(r: second)
     && !release_refused(r: second)
     && standing_committed(s: after_second) == 0
+}
+
+// THE PAIRING OBLIGATION FOR THE SUPPLIED READING ABOVE: compute_reserve_on is the route production
+// takes, observing this machine and deciding against that observation. Its verdict is asserted as a
+// RELATION to the reading, never as a fixed arm, so it holds on every runner: the request is one
+// mebibyte, and it is admitted exactly when the host reports at least that free, and otherwise
+// refused below the floor or as unobserved -- never reported as a full pool, since the ledger is
+// empty and its appropriation is twice the request.
+test fn the_real_reservation_route_admits_exactly_what_the_reading_backs() -> Bool {
+  let subject = subject_at(root: fresh_root(), appropriation_kib: 2048, request_kib: 1024)
+  let reading = observe_host_memory()
+  let reserved = compute_reserve_on(subject: subject, reference: "wet-live-route" as NonEmptyStr, term_seconds: 60)
+  match reading {
+    HostMemoryUnobserved { detail: _ } =>
+      match reserved {
+        ComputeReservationRefused { detail: d } => string_contains(s: d, pattern: "could not be observed")
+        ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+        ComputeCapacityFull { wire: _ } => false
+        ComputeHostBelowFloor { requested: _, available: _ } => false
+      }
+    HostMemoryObserved { total: _, available: available } =>
+      if kibibyte_count(k: available) >= 1024 {
+        reserved_amount(r: reserved) == 1024
+      } else {
+        match reserved {
+          ComputeHostBelowFloor { requested: rq, available: _ } => kibibyte_count(k: rq) == 1024
+          ComputeReserved { grant: _, partition: _, amount: _, store: _ } => false
+          ComputeCapacityFull { wire: _ } => false
+          ComputeReservationRefused { detail: _ } => false
+        }
+      }
+  }
 }

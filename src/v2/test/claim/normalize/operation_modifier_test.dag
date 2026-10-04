@@ -1,0 +1,125 @@
+module v2.test.claim.normalize.operation_modifier
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.std.diagnostic { Accepted, ByteRange, Locus, WholeFile, NodeLocus, Rejected, Textual, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.optional { Absent, Present }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { List }
+import v2.std.node { Arrow, ArrowEffectClaimsEdge, ArrowExecutionModeClaimEdge, Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, core_edge_target_lookup, Found, symbol_intern_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN OPERATION'S MODIFIERS LOWER ONTO ITS ARROW'S CONTRACT EDGES (XL-2 PR2c-i;
+// v2.compiler.body_lowering_fold body_lower_operation_modifier). `readonly` and `idempotent` are effect
+// claims on the core ArrowEffectClaimsEdge, `hermetic` the execution-mode claim on
+// ArrowExecutionModeClaimEdge, each projected through v2.std.arrow_contract. The module normalizes
+// on the full route, and the lowered Arrow carries all three. A modifier declared twice refuses at the
+// second as body_lowering_reason_operation_modifier_repeated. Each outcome is computed ONCE as a
+// nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share, and each claim reads it.
+
+data all_modifiers_source: String = "module m\n\nservice S {\n  operation Op {\n    readonly\n    idempotent\n    hermetic\n  }\n}\n"
+data repeated_modifier_source: String = "module m\n\nservice S {\n  operation Op {\n    readonly\n    readonly\n  }\n}\n"
+
+fn om_arrow_carries(n: Node, effects: List<Symbol>, mode: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } =>
+      om_effects_carried(children: n.children, effects: effects) && om_mode_carried(children: n.children, mode: mode)
+    _ => false
+  }
+}
+
+fn om_effects_carried(children: List<Edge>, effects: List<Symbol>) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowEffectClaimsEdge) {
+    Found { target: claims } =>
+      fold(effects, init: true, f: fn(acc, l) { acc && om_has_named(children: claims.children, name: l) })
+    _ => false
+  }
+}
+
+fn om_mode_carried(children: List<Edge>, mode: Symbol) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowExecutionModeClaimEdge) {
+    Found { target: m } =>
+      match m.kind {
+        TypeNode { connective: Atom { identity: id } } => id == mode
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn om_has_named(children: List<Edge>, name: Symbol) -> Bool {
+  fold(children, init: false, f: fn(acc, e) { acc || om_edge_named(e: e, name: name) })
+}
+
+fn om_edge_named(e: Edge, name: Symbol) -> Bool {
+  match e.label {
+    Authored { name: n } => n == name
+    _ => false
+  }
+}
+
+fn om_tree_has_claimed_arrow(n: Node) -> Bool {
+  om_arrow_carries(n: n, effects: [symbol_intern_lexeme(lexeme: "readonly"), symbol_intern_lexeme(lexeme: "idempotent")], mode: symbol_intern_lexeme(lexeme: "hermetic"))
+    || fold(n.children, init: false, f: fn(found, e) { found || om_tree_has_claimed_arrow(n: e.target) })
+}
+
+fn om_all_modifiers_lowered() -> Bool {
+  match conservation_subject_of_text(path: "probe_operation_modifier.dag", text: all_modifiers_source).normalized {
+    Accepted { value: tree, diagnostics: _ } => om_tree_has_claimed_arrow(n: tree.root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE REFUSAL IS LOCATED AT THE SECOND MODIFIER, not the first: the two `readonly` lines are the same
+// text, so only position tells them apart. The fatal's node resolves through the parse's span index
+// (v2.std.provenance span_index_textual_locus_optional) to a byte range, which must start inside the
+// second keyword -- bytes [56, 64) of repeated_modifier_source -- and so not inside the first, [43, 51).
+fn om_repeated_modifier_refused() -> Bool {
+  let subject = conservation_subject_of_text(path: "probe_operation_modifier.dag", text: repeated_modifier_source)
+  match subject.normalized {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      (diagnostics_fatal_reason(d: d) == ^body_lowering_reason_operation_modifier_repeated)
+        && match subject.parsed {
+             Accepted { value: artifact, diagnostics: _ } =>
+               om_locus_starts_within(index: artifact.span_index, at: diagnostics_fatal(d: d).at, start: 56, end: 64)
+             Rejected { diagnostics: _ } => false
+           }
+  }
+}
+
+fn om_textual_starts_within(locus: Locus, start: Int, end: Int) -> Bool {
+  match locus {
+    Textual { file: _, extent: extent } =>
+      match extent {
+        ByteRange { start: s, end: _ } => (s >= start) && (s < end)
+        WholeFile => false
+      }
+    _ => false
+  }
+}
+
+fn om_locus_starts_within(index: SpanIndex, at: Locus, start: Int, end: Int) -> Bool {
+  match at {
+    NodeLocus { anchor: a } =>
+      match node_occurrence_id_optional(node: a.at) {
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: index, id: id) {
+            Present { value: locus } => om_textual_starts_within(locus: locus, start: start, end: end)
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+test fn an_operations_modifiers_lower_onto_its_contract_edges_holds() -> Bool {
+  om_all_modifiers_lowered()
+}
+
+test fn a_repeated_modifier_refuses_at_the_second_holds() -> Bool {
+  om_repeated_modifier_refused()
+}

@@ -65,34 +65,8 @@
     unused_mut
 )]
 
-use crate::v1_interpreter::{self, str_value, ExecutionMode, InterpContext, Value};
+use crate::v1_interpreter::{self, str_value, InterpContext, Value};
 use std::rc::Rc;
-
-/// The grammar's path RELATIVE TO A SOURCE ROOT, not to the process working directory.
-///
-/// The first spelling here was `src/v2/workflow/…`, which is what the entry looks like from the
-/// workspace root — and it refused for every caller whose CWD was anywhere else, naming the file
-/// it could not find. That refusal was correct and located, which is how the mismatch was read in
-/// one pass rather than debugged; the repair is to stop encoding the caller's CWD in a constant.
-/// Joining each declared root and taking the one that exists ties the lookup to the roots the
-/// caller already supplied.
-const TERMINAL_LEDGER_WIRE_ENTRY_UNDER_ROOT: &str = "workflow/floor_terminal_ledger_wire.dag";
-
-fn ledger_wire_entry(source_roots: &[String]) -> Result<String, String> {
-    source_roots
-        .iter()
-        .map(|root| std::path::Path::new(root).join(TERMINAL_LEDGER_WIRE_ENTRY_UNDER_ROOT))
-        .find(|candidate| candidate.is_file())
-        .map(|found| found.to_string_lossy().into_owned())
-        .ok_or_else(|| {
-            format!(
-                "TERMINAL-LEDGER REFUSAL cause=WireAuthorityAbsent \
-                 entry={TERMINAL_LEDGER_WIRE_ENTRY_UNDER_ROOT} roots={roots:?} — the ledger's \
-                 grammar is not under any declared source root, so no evidence can be rendered.",
-                roots = source_roots
-            )
-        })
-}
 
 /// The published artifact, and the name a refused run leaves instead.
 ///
@@ -125,38 +99,9 @@ pub enum LedgerPublication {
     },
 }
 
-fn build_ledger_wire_ctx(source_roots: &[String]) -> Result<InterpContext, String> {
-    // THE CONTEXT IS BUILT HERE RATHER THAN HELD ACROSS THE FOLD, and that is a decision about
-    // FAILURE MODE, not about magnitude.
-    //
-    // `run_required_floor` drops its `hermetic` frame before the fold, under a measured note: the
-    // frame held a folded 10,114-site manifest and its caches, the runner throttles at
-    // `memory.high`, and the last run sat within ~1MB of the watermark. Holding a resolved context
-    // across the fold instead would pay this cost in MEMORY on a run already at the line — and in
-    // a shared cgroup the kernel kills the largest task, which can be someone else's work, for
-    // reasons that say nothing about any witness. Building it here pays in TIME instead:
-    // deterministic, attributable, and it degrades by being slow rather than by being killed.
-    //
-    // The corpus walk and parse are NOT re-paid: `run_required_floor` warms the shared
-    // `MultiEntryIndex` during preparation precisely so no single claim pays for it, and this
-    // resolve goes through that same shared index. What remains is this entry closure's typecheck.
-    // The caller prints the measured wall time on every run rather than trusting this paragraph.
-    let entry = ledger_wire_entry(source_roots)?;
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!(
-                "TERMINAL-LEDGER REFUSAL cause=WireAuthorityUnresolved entry={entry} detail={e} \
-                 — the ledger's grammar could not be resolved, so no evidence can be rendered \
-                 and the run is not green."
-            )
-        })?;
-    Ok(super::make_eval_context(
-        &graph,
-        indices,
-        ExecutionMode::Hermetic,
-    ))
-}
+/// The module whose `render_terminal_ledger` renders the ledger. The floor evaluates it in a frame
+/// of its prepared subject (it is a runtime authority seed of that subject).
+pub const TERMINAL_LEDGER_WIRE_MODULE: &str = "v2.workflow.floor_terminal_ledger_wire";
 
 fn row_values(ctx: &InterpContext, rows: &[SeedLedgerRow]) -> Vec<Value> {
     rows.iter()
@@ -215,7 +160,7 @@ fn publish_atomically(path: &str, text: &str) -> Result<usize, String> {
 /// The floor passes the published constants; the tests below pass per-test paths, which is also
 /// what stops four tests racing on one file and reading each other's bytes.
 pub fn publish_terminal_ledger(
-    source_roots: &[String],
+    ctx: &InterpContext,
     repository_snapshot_wire: &str,
     prepared_subject_digest: &str,
     ledger_path: &str,
@@ -223,8 +168,6 @@ pub fn publish_terminal_ledger(
     rows: &[SeedLedgerRow],
 ) -> Result<LedgerPublication, String> {
     let started = std::time::Instant::now();
-    let ctx = build_ledger_wire_ctx(source_roots)?;
-    let resolved_ms = started.elapsed().as_millis();
     let args = vec![
         (
             Some("repository_snapshot".to_string()),
@@ -236,11 +179,11 @@ pub fn publish_terminal_ledger(
         ),
         (
             Some("rows".to_string()),
-            Value::List(Rc::new(row_values(&ctx, rows).into())),
+            Value::List(Rc::new(row_values(ctx, rows).into())),
         ),
     ];
-    let rendered = v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::run_in_context_with_args(&ctx, "render_ledger_from_seed", &args, false)
+    let rendered = v1_interpreter::with_active_context(ctx, || {
+        v1_interpreter::run_in_context_with_args(ctx, "render_ledger_from_seed", &args, false)
     })
     .map_err(|e| {
         format!(
@@ -248,7 +191,7 @@ pub fn publish_terminal_ledger(
              produce a render, so there is no evidence for this run."
         )
     })?;
-    let outcome = read_render(&ctx, &rendered)?;
+    let outcome = read_render(ctx, &rendered)?;
     let published = match outcome {
         Render::Text(text) => {
             let bytes = publish_atomically(ledger_path, &text)?;
@@ -273,8 +216,7 @@ pub fn publish_terminal_ledger(
     // THE COST IS PRINTED, NOT ASSERTED. An asserted cost is a claim in a PR body that decays; a
     // printed one is an instrument, so whoever wants it removed can see what removing it buys.
     eprintln!(
-        "[floor-phase] phase=terminal-ledger-publish state=completed resolve_ms={} total_ms={} rows={}",
-        resolved_ms,
+        "[floor-phase] phase=terminal-ledger-publish state=completed render_ms={} rows={}",
         started.elapsed().as_millis(),
         rows.len()
     );
@@ -386,6 +328,27 @@ mod terminal_ledger_publish_law {
     /// entry it could not find, which is how the environment mismatch was visible in one read
     /// rather than debugged. Production keeps its CWD-relative roots like every other call site;
     /// it is the test's environment that differs, so it is the test that adapts.
+    /// THE PRODUCTION ROUTE, over the smallest subject that holds it: a prepared subject seeded by
+    /// the wire module alone, framed exactly as the floor frames it (`floor_authority_frame`). There
+    /// is no second way to obtain a ledger context, so these tests exercise the one the floor takes.
+    fn ledger_frame() -> InterpContext {
+        let roots = roots();
+        let corpus = crate::cli_run::read_source_corpus_once(&roots);
+        let index = crate::cli_run::process_shared_index(&roots);
+        let seeds = [TERMINAL_LEDGER_WIRE_MODULE.to_string()];
+        let (prepared, _) = crate::cli_run::prepare_repository_from_corpus(
+            &corpus,
+            &crate::cli_run::required_floor_runner::floor_prepared_subject_exclusions(),
+            Some((&index, &[], &seeds)),
+        )
+        .expect("the wire grammar's closure prepares");
+        crate::cli_run::required_floor_runner::floor_authority_frame(
+            &prepared,
+            TERMINAL_LEDGER_WIRE_MODULE,
+        )
+        .expect("the wire module frames in its own subject")
+    }
+
     fn roots() -> Vec<String> {
         let root = super::super::workspace_root();
         vec![
@@ -422,7 +385,7 @@ mod terminal_ledger_publish_law {
             row("test.claim.b.holds", "returned-true", "passed"),
         ];
         let published = publish_terminal_ledger(
-            &roots(),
+            &ledger_frame(),
             "1234567890abcdef1234567890abcdef12345678",
             "0123456789abcdef",
             &test_path("honest"),
@@ -460,7 +423,7 @@ mod terminal_ledger_publish_law {
     fn an_unpublished_run_is_shaped_as_unbound_rather_than_carrying_a_fake_commit() {
         let rows = vec![row("test.claim.a.holds", "returned-true", "passed")];
         let published = publish_terminal_ledger(
-            &roots(),
+            &ledger_frame(),
             "unpublished",
             "0123456789abcdef",
             &test_path("unpublished"),
@@ -491,7 +454,7 @@ mod terminal_ledger_publish_law {
             row("test.claim.b.holds", "returned-true", "failed"),
         ];
         let published = publish_terminal_ledger(
-            &roots(),
+            &ledger_frame(),
             "1234567890abcdef1234567890abcdef12345678",
             "0123456789abcdef",
             &test_path("disagree"),
@@ -580,7 +543,7 @@ mod terminal_ledger_publish_law {
             row("test.claim.gate", "exit-failure", "failed"),
         ];
         let published = publish_terminal_ledger(
-            &roots(),
+            &ledger_frame(),
             "1234567890abcdef1234567890abcdef12345678",
             "0123456789abcdef",
             &test_path("tags"),

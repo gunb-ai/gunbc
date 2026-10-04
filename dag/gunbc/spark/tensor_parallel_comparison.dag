@@ -134,7 +134,8 @@ fn topology_arm_subject(degree: Nat, ranks: Nat, ceiling: TokenCount, budget: To
       max_num_seqs: Absent,
       kv_cache_dtype: Absent,
       speculative: Absent,
-      collective_transport: Absent
+      collective_transport: Absent,
+      indexer_kv_dtype: none, scheduler_admission: none, launch_profile_key: none
     ),
     believed: join(["the arm declares tensor_parallel_size ", to_string(degree),
                     "; a degree no ServingTopology carries leaves the topology axis absent rather than resolved to the nearest one"], "") as NonEmptyStr,

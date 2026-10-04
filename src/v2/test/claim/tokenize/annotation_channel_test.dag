@@ -2,7 +2,7 @@ module v2.test.tokenize.annotation_channel
 
 import v2.std.node { symbol_lexeme }
 import v2.std.text { String }
-import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { fold_list, length }
 import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import v2.std.compilers.lexing {
@@ -47,7 +47,8 @@ fn test_rules() -> LexRuleSet {
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
       TokenRule { token_class: ^ident, pattern: OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } } }
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -84,6 +85,7 @@ test fn annotation_rule_routes_to_the_annotation_arm() -> Bool {
   match lex_try_rule(rule: AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() }, source: "// hi") {
     LexRuleAnnotation { class: c, lexeme: _, remaining: _ } => c == ^line_comment
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+    LexRuleModalToken { class: _, lexeme: _, remaining: _, transition: _ } => false
     LexRuleTrivia { lexeme: _, remaining: _ } => false
     LexRuleNoMatch => false
   }
@@ -123,7 +125,7 @@ test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
   match lex_walk_artifact(
     source: "a",
     file: ^probe,
-    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ], modes: [] }
   ) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => true
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
@@ -155,7 +157,8 @@ fn line_spanning_rules(token_text: String) -> LexRuleSet {
     rules: [
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TokenRule { token_class: ^spanning, pattern: LiteralPattern { text: token_text } }
-    ]
+    ],
+    modes: []
   }
 }
 

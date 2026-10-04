@@ -1,6 +1,7 @@
 module v2.test.manual.find_witness_distinct_node_zip_fold
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.coercion {
   CoercionCandidateSet,
   Exact,
@@ -71,27 +72,12 @@ fn distinct_wrong_leaf() -> Node {
 }
 }
 fn distinct_source_add_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [distinct_source_leaf(), distinct_source_leaf()], codomain: distinct_source_leaf(), source: distinct_source_leaf())
 }
 fn distinct_target_add_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() }
-    ],
-    occurrence_id: OccurrenceSynthetic
+  anonymous_signature_arrow(domain_types: [distinct_target_leaf(), distinct_target_leaf()], codomain: distinct_target_leaf(), source: distinct_target_leaf())
 }
-}
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
 fn distinct_wrong_arity_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -102,6 +88,7 @@ fn distinct_wrong_arity_node() -> Node {
     occurrence_id: OccurrenceSynthetic
 }
 }
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
 fn distinct_wrong_subtree_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -114,24 +101,10 @@ fn distinct_wrong_subtree_node() -> Node {
 }
 }
 fn distinct_source_nested_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: distinct_source_add_node() },
-      Edge { label: Positional, target: distinct_source_leaf() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [distinct_source_add_node()], codomain: distinct_source_leaf(), source: distinct_source_leaf())
 }
 fn distinct_target_nested_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: distinct_target_add_node() },
-      Edge { label: Positional, target: distinct_target_leaf() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [distinct_target_add_node()], codomain: distinct_target_leaf(), source: distinct_target_leaf())
 }
 fn distinct_closedness() -> StructuralPropertyWitness {
   StructuralPropertyWitness {

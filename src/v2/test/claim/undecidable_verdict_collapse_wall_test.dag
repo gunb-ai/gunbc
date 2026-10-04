@@ -18,7 +18,6 @@ import std.algebra { Empty }
 import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node {
   Conj,
@@ -26,7 +25,10 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  MatchArmBodyEdge,
+  MatchArmPatternEdge,
+  core_edge,
 }
 import v2.std.witness { Witness }
 
@@ -72,8 +74,7 @@ fn collapsing_arm_with_payload() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^match_arm_pattern,
+      core_edge(marker: MatchArmPatternEdge,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
@@ -89,8 +90,7 @@ fn collapsing_arm_with_payload() -> Node {
           occurrence_id: OccurrenceSynthetic
         }
       ),
-      dag_named_edge(
-        name: ^match_arm_body,
+      core_edge(marker: MatchArmBodyEdge,
         target: dag_type_atom_node(identity: ^dag_token_kw_false)
       )
     ],

@@ -6,7 +6,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import gunbc.command_runner { run_shell_command_observe }
 import gunbc.cli_wire { CliWireResponse, CliWireUnprintable, CliWirePrintable }
-import gunbc.auth.approval_device_routes { issue_device_enrolment_code }
+import gunbc.auth.approval_device_enrolment_code { issue_device_enrolment_code }
 import gunbc.auth.approval_device_redemption { approval_device_store_root }
 import gunbc.auth.approval_ntfy_runtime_observe {
   approval_ntfy_runtime_observe, ntfy_runtime_observe_decode,
@@ -21,8 +21,7 @@ import gunbc.auth.approval_ntfy_runtime_observe {
 // passes is never installed, so the one read that can bind the process -- the per-release helper at
 // /opt/gunbc/approval-broker-helpers/<revision> -- cannot run on any host, and the verdict over
 // every reading is refusal: a failed or inactive unit, any runtime gap, or that failed helper read.
-// So the claim holds on ANY host: the verb refuses before any code is minted and the store root is
-// never created. Forcing the verdict (the verb proceeding without its
+// So the claim holds on ANY host: the verb refuses before any code is minted and creates no store root. Forcing the verdict (the verb proceeding without its
 // reading) reds it: it then goes on to the clock, the entropy and the store. Every refusal arm is
 // witnessed hermetically over supplied readings in
 // test.claim.approval_ntfy_access_readback_witness_test; this is the one claim that runs the real
@@ -33,15 +32,23 @@ fn path_exists(path: String) -> Bool {
   run_shell_command_observe(command: posix_sh_program_command(script: "test -e '" + path + "'\n"), transport: LocalExec).exit_code == 0
 }
 
+//
+// THE STORE'S EXISTENCE IS COMPARED, NOT ASSUMED ABSENT. This claim once required that the store root
+// not exist on the runner. That premise came from the host, not the subject, and srv1 falsified it on
+// 2026-09-29: the root was created there by hand for the first issued code, and the broker install now
+// ensures it (gunbc.auth.approval_device_redemption approval_device_store_directory). The claim went red
+// on srv1-09 (#12614 floor run 36562259065) while the verb behaved correctly. The subject is that the
+// verb refuses before minting and creates nothing. So it asserts the refusal, and that the call leaves
+// the store's existence as it found it. That holds on a host with a store and on one without, and a
+// verb that went on to the store still reds it on a host without one.
 test fn the_root_refuses_before_minting_on_this_host_by_real_execution() -> Bool {
   let before = path_exists(path: approval_device_store_root as String)
   let r = issue_device_enrolment_code(revision: never_installed_revision)
-  !before
-    && (match r {
+  (match r {
       CliWireUnprintable { cause: c } => string_contains(s: c as String, pattern: "refused before any code was minted")
       _ => false
     })
-    && !path_exists(path: approval_device_store_root as String)
+    && path_exists(path: approval_device_store_root as String) == before
 }
 
 // THE HELPER'S REAL OUTPUT READS THROUGH THE REAL CODEC. The helper entry

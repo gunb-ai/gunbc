@@ -1,7 +1,6 @@
 module extdeps.shell.exec
 
 import std.types { Int, Bool, NonEmptyStr, Unit }
-import std.string_type { String }
 import v2.std.compilers.cli_surface { ProcessArgvExpansion }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -114,8 +113,25 @@ data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
 // ShellSpawnRefused the streams are absent. A sibling row rather than a field added to RunArgv,
 // because adding it there would hand every existing RunArgv caller empty streams on a spawn
 // failure where today its evaluation stops.
+
+// RunArgvStdin completes the family Run / RunArgv / RunArgvOutcome along the one axis they
+// vary on: whether the child receives stdin. Run is argv-fixed [bash, -s] with the payload on
+// stdin (the heredoc path); RunArgv takes a caller-named program and argument vector but no
+// stdin; this row is the missing cell -- the SAME direct-exec shape with a stdin payload. The
+// survey that located the gap (2026-10-01, before minting): the argv-plus-stdin shape already
+// exists tree-wide only as TOOL-FIXED rows -- jq.Process.RunWithStdin (program fixed "jq"),
+// ssh.Session.ExecPortableWordsWithStdin (program fixed "ssh"), git.Plumbing.HashObjectWriteStdin
+// (program fixed "git") -- each a different service owning its own tool. None admits a
+// caller-named program, so a runtime whose executable arrives as projected data (the bundled
+// Codex native binary) had no typed route and fell back to the retained heredoc; that fallback
+// is what this row retires. Same output triple and no-success-field discipline as RunArgv (a
+// nonzero exit is DATA, decoded by the caller's policy), same transport grammar the seed's
+// dispatch_shell already realizes generically (it reads declared argv children and pipes a
+// declared stdin payload; no seed-side change).
+
 service shell.Exec {
   operation Run {
+    requires opaque
     input { script: TransportScript }
 
     output {
@@ -136,6 +152,7 @@ service shell.Exec {
   }
 
   operation RunArgv {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
     output {
@@ -153,8 +170,29 @@ service shell.Exec {
       nonzero => Unit
     }
   }
+  operation RunArgvStdin {
+    requires opaque
+    input { program: NonEmptyStr, arguments: ProcessArgvExpansion, stdin_payload: String }
+
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: [program, arguments]
+      stdin: stdin_payload
+    }
+
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+  }
 
   operation RunArgvOutcome {
+    requires opaque
     input { program: NonEmptyStr, arguments: ProcessArgvExpansion }
 
     output {
@@ -175,6 +213,7 @@ service shell.Exec {
   }
 
   operation Check {
+    requires opaque
     input { command: TransportScript }
     output { exists: Bool from "exit_success" }
     readonly

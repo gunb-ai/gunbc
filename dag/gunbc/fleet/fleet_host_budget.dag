@@ -80,6 +80,7 @@ import gunbc.oomd_install {
   OomdGroundingThresholds,
   gunbc_oomd_fleet_evidence,
   gunbc_oomd_sessions_policy,
+  gunbc_oomd_sessions_pressure_limit,
 }
 
 // Only the space axis is a fact here: mib_per_job is the declared per-job memory envelope this
@@ -144,7 +145,7 @@ fn gunbc_fleet_oomd_evidence_for(host: HostIdentity) -> OomdEnforcementEvidence 
       gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds {
         per_session_cap: ceiling,
         parent_slice_cap: session_reservation_bytes(host: host),
-        pressure_limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit,
+        pressure_limit: gunbc_oomd_sessions_pressure_limit,
         pressure_action: gunbc_oomd_sessions_policy.managed_oom_memory_pressure,
       })
   }

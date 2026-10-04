@@ -1,0 +1,40 @@
+module gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_dag_emit_round_trip_rows }
+
+// DECLARED 4b(3) DROP (gunbc#12878, 2026-10-01). The DECLARATION lives here; the POPULATION's
+// authority is `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_dag_emit_round_trip_rows`.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIM ITSELF IS UNTOUCHED. The identity is still planned,
+// executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
+// overrun is reported under this drop rather than refusing. The budget is not raised.
+//
+// WHY A DROP AND NOT A SUPPLIED TREE. DESIGN section 3's witness rule lets every other dag-emit claim
+// supply its input only while ONE claim still runs the real path, and this claim is that one: the
+// floor's only execution of ingest -> emit -> re-ingest over dag_grammar_root. Supplying the tree
+// here would remove the last execution of the real path. Its cost is two real parses, which is what
+// a round trip is.
+data dag_emit_round_trip_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_dag_emit_round_trip_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_dag_emit_round_trip_rows; measured by "), m.measured_by))
+
+data dag_emit_round_trip_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "dag_emit_round_trip_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the one claim that runs the dag target's real ingest -> emit -> re-ingest path: it still executes, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-01",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a real-route dag parse whose per-token cost lets two parses of a one-line module fit the new-witness budget",
+    },
+    population: dag_emit_round_trip_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: a real-route parse of the dag surface language (v2.compiler.parse parse_module_prepared over v2.compiler.program_assembly dag_prepared_grammar) is cheap enough that this identity, still running two real parses and the emit, measures under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. The parser's prepared choice plan (gunbc#11422) is one contributor to that capability and does not satisfy it on its own. WHAT IT MUST BE SUFFICIENT FOR: this identity measuring under the budget on the acceptance path. Deleting the identity, supplying its tree, or relocating it to a home that does not execute it does not satisfy this trigger.",
+  }
+}

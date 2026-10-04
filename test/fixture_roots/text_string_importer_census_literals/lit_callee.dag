@@ -1,0 +1,10 @@
+module fixture.tsil.lit_callee
+type Box {
+  label: String
+}
+fn take(t: String) -> Int {
+  1
+}
+fn take_s(t: FreeMonoid<Char>) -> Int {
+  1
+}

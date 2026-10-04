@@ -1,14 +1,15 @@
 module v2.test.name_resolve.arrow_domain_is_first_positional
 
-import v2.compiler.resolve { add_arrow_domain_named_params, arrow_domain_has_named_bindings }
+import v2.compiler.resolve { arrow_domain_frame_binders, arrow_domain_has_named_bindings }
+import v2.std.arrow_signature { declared_signature }
 import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.collection { empty_map, map_lookup }
+import v2.std.collection { map_lookup }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node_query { binder_edge }
 
 // AN ARROW'S DOMAIN IS ITS FIRST POSITIONAL CHILD, NOT ITS FIRST CHILD (v2.std.node
 // arrow_first_positional_target). Every producer on main happens to place the domain first, so reading
@@ -26,20 +27,18 @@ fn adf_leaf(sym: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
+// Deliberately hand-built shape with no producer: a named edge ahead of the domain. It carries the
+// domain's declared order (A4: a domain that binds a name owes one), so the only unusual thing about it
+// is the leading named edge this claim discriminates.
 fn adf_named_first_arrow() -> Node {
+  let signature = declared_signature(params: [binder_edge(name: ^x, type_node: adf_leaf(sym: ^Int))], source: adf_leaf(sym: ^Int))
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Named { name: ^adf_leading_named_edge }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [Edge { label: Named { name: ^x }, target: adf_leaf(sym: ^Int) }],
-          occurrence_id: OccurrenceSynthetic
-        }
-      },
-      Edge { label: Positional, target: adf_leaf(sym: ^Int) }
+      Edge { label: Authored { name: ^adf_leading_named_edge }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      signature.domain,
+      Edge { label: Positional, target: adf_leaf(sym: ^Int) },
+      signature.order
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -48,7 +47,7 @@ fn adf_named_first_arrow() -> Node {
 test fn arrow_domain_is_first_positional_in_resolve_holds() -> Bool {
   let arrow = adf_named_first_arrow()
   arrow_domain_has_named_bindings(n: arrow)
-    && match map_lookup(m: add_arrow_domain_named_params(n: arrow, acc: empty_map()), key: ^x) {
+    && match map_lookup(m: arrow_domain_frame_binders(n: arrow).locals, key: ^x) {
       Present { value: _ } => true
       Absent => false
     }

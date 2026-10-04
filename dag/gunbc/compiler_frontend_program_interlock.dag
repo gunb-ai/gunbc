@@ -31,7 +31,7 @@ type ProgramMilestone
   | NamespaceFixForwardComplete
   | NamespaceGrammarRetired
   | SelfHostCorpusEmitsCleanly
-  | SelfHostBehavioralEquivalenceReestablished
+  | SelfHostEmittedContractsHeld
   | SelfHostEmitterProducesEveryRetainedArtifact
   | SelfHostSuccessorPromotionAdmitted
   | SelfHostNativeRouteRequiredLane
@@ -62,7 +62,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
     NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
-    SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
+    SelfHostEmittedContractsHeld => "self-host: every rostered emitted module holds its own .dag contract when driven on a discriminating corpus -- the seed is a regression oracle, never the specification (DESIGN section 7); a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
     SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
     SelfHostSuccessorPromotionAdmitted => "self-host: a v2-built compiler has been admitted as a valid SUCCESSOR -- admit_promotion returns promoted for a real candidate, not merely that the procedure exists" as NonEmptyStr
     SelfHostNativeRouteRequiredLane => "self-host: the native route is a required lane, promoted through the C6 discriminating matrix, retiring gunbc.rung_drop v2_native_route_off_the_merge_path" as NonEmptyStr
@@ -75,20 +75,20 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // confirmed to exist at src/v2/compiler/self_host/promotion_admission.dag `admit_promotion`).
 // Nothing in this graph required that a v2-BUILT COMPILER EVER BE ADMITTED AS A VALID SUCCESSOR
 // before the seed is retired. The three conditions in front of S6 were about the emitted TEXT --
-// that it compiles, that it behaves like the seed, that the emitter can produce every artifact.
+// that it compiles, that it holds its own contracts, that the emitter can produce every artifact.
 // None of them asks whether the thing that text becomes can itself go on producing compilers.
 //
-// WHY THAT IS NOT COVERED BY EQUIVALENCE. Behavioral equivalence is measured on a discriminating
+// WHY THAT IS NOT COVERED BY THE CONTRACT RECEIPTS. Contract-holding is measured on a discriminating
 // corpus; promotion admission consumes a candidate carrying a build receipt, a generation
-// provenance receipt and a discriminating fault receipt, and it can REFUSE on grounds equivalence
-// never examines. Deleting the seed on equivalence alone authorises an irreversible step on
+// provenance receipt and a discriminating fault receipt, and it can REFUSE on grounds the contract
+// receipts never examine. Deleting the seed on contract receipts alone authorises an irreversible step on
 // strictly weaker conditions than the mechanism this repository already built to guard it -- and
 // an unused admission procedure is exactly the inert mechanism DESIGN section 6 calls coverage by
 // illusion.
 //
 // ITS PREREQUISITES ARE THE TWO THINGS A CANDIDATE CANNOT BE BUILT WITHOUT: the corpus must emit
 // Rust that compiles, and the emitter must produce every retained artifact -- a candidate missing
-// the CLI entry point is not a successor compiler. Behavioral equivalence is deliberately NOT
+// the CLI entry point is not a successor compiler. Contract-holding is deliberately NOT
 // repeated here, because it is already carried on S6 and this file's own rule is that prerequisites
 // are direct edges and the closure is derived.
 //
@@ -220,7 +220,11 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
 // The plan draws the distinction this repair turns on, and it is why these are
 // TWO milestones rather than one: a rustc-clean corpus permits S6 to be PLANNED,
 // it does not AUTHORIZE it. Compiling is a property of the emitted text;
-// equivalence is a property of what that text DOES. Fusing them would have been
+// holding its contract is a property of what that text DOES. (Restated
+// 2026-10-02: the second milestone was "behavioral equivalence to the seed"
+// and is now SelfHostEmittedContractsHeld -- v2 is held to its own contracts,
+// with the seed as a regression oracle, never as the specification; DESIGN
+// section 7.) Fusing them would have been
 // this file's characteristic defect committed while repairing its mirror image.
 //
 // That a reviewer found this by joining the carrier to the plan is evidence FOR
@@ -296,11 +300,11 @@ fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
     NamespaceFixForwardComplete => [NamespaceFirstSemanticWave, SelfHostSeedRetirement]
     NamespaceGrammarRetired => [NamespaceFixForwardComplete]
     SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
-    SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
+    SelfHostEmittedContractsHeld => [SelfHostCorpusEmitsCleanly]
     SelfHostEmitterProducesEveryRetainedArtifact => []
     SelfHostSuccessorPromotionAdmitted => [SelfHostCorpusEmitsCleanly, SelfHostEmitterProducesEveryRetainedArtifact]
     SelfHostNativeRouteRequiredLane => []
-    SelfHostSeedRetirement => [SelfHostNativeRouteRequiredLane, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
+    SelfHostSeedRetirement => [SelfHostNativeRouteRequiredLane, SelfHostEmittedContractsHeld, SelfHostEmitterProducesEveryRetainedArtifact, SelfHostSuccessorPromotionAdmitted]
   }
 }
 

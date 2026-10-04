@@ -1,0 +1,312 @@
+module v2.test.claim.body_lowering.caret_symbol_value_lowering
+
+import std.types { List }
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, dag_symbol_literal_name_optional }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { length }
+import v2.std.collection { list_at_optional }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+// A CARET SYMBOL IN VALUE POSITION LOWERS TO A SYMBOL LITERAL CARRYING ITS NAME.
+//
+// THE SUBJECT IS normalize over one declaration's source, the producers called directly
+// (tokenize -> parse -> normalize). On main b1b7aea9aa7 all ten value positions below normalized
+// ACCEPTED with the caret lowered to a bare `^dag_token_caret` and its symbol gone (two symbols, one
+// node); MQ-1 PR-1 made each refuse at the `^` as body_lowering_reason_caret_symbol_not_lowered.
+// MQ-1 PR-2 lowers it: dag_grammar_caret_symbol_expr lexeme-stamps the name, and
+// v2.compiler.body_lowering_fold body_lower_caret_symbol_literal_optional builds
+// v2.extdeps.languages.dag dag_symbol_literal_node -- the caret atom carrying the name terminal as
+// its one named payload (std.syntax LitSymbol). Each position must lower ACCEPTED with EXACTLY the
+// authored payloads, in source order, and with NO bare `^` atom left: a payload-dropping lowering
+// answers the same caret atom for every symbol and reds on the payload list; the PR-1 fallback reds
+// on the verdict; the pre-PR-1 first-atom fallback reds on the bare-caret count.
+//
+// THE if-CONDITION SPECIMEN is v2.std.compilers.target_model ordering_predicate_from_wire_symbol,
+// trimmed to its first two arms: the declaration whose two conditions lowered to one node. Its two
+// conditions must now carry DIFFERENT payloads. Its control is the same declaration with int
+// literals in place of the carets.
+//
+// THE BARE OPERAND AND THE DISJUNCTION keep every operand in order: `binding == ^grammar_free_name_slot`
+// (v2.std.grammar formal_binding_is_free_name_slot) and v2.std.compilers.target_model
+// target_model_bundle_core_keep_edge's `n == ^a || n == ^b`. Each node that holds a symbol literal
+// as a positional operand is read as its operand row -- an atom's identity, a symbol literal's
+// payload -- and the row must end with the left operand then the symbol.
+data caret_if_condition_source: String = "module chunk\n\nfn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {\n  if id == ^ordering_predicate_is_less {\n    optional_present(value: IsLess)\n  } else {\n    if id == ^ordering_predicate_is_less_or_equal {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data caret_keep_edge_source: String = "module chunk\n\nfn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {\n  match edge.label {\n    Named { name: n } =>\n      match n == ^target_model_edge_atom_realizations\n        || n == ^target_model_edge_signature_realizations {\n        true => acc\n        false => list_snoc_item(xs: acc, item: edge)\n      }\n    Positional => list_snoc_item(xs: acc, item: edge)\n  }\n}\n"
+
+data int_if_condition_control_source: String = "module chunk\n\nfn ordering_predicate_from_wire_int(id: Int) -> Optional<OrderingPredicate> {\n  if id == 1 {\n    optional_present(value: IsLess)\n  } else {\n    if id == 2 {\n      optional_present(value: IsLessOrEqual)\n    } else {\n      optional_absent()\n    }\n  }\n}\n"
+
+data caret_bare_operand_source: String = "module chunk\n\nfn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {\n  binding == ^grammar_free_name_slot\n}\n"
+
+data caret_named_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(s: ^pos_named_argument)\n}\n"
+
+data caret_positional_argument_source: String = "module chunk\n\nfn g(s: Symbol) -> Symbol { s }\n\nfn f() -> Symbol {\n  g(^pos_positional_argument)\n}\n"
+
+data caret_let_value_source: String = "module chunk\n\nfn f() -> Symbol {\n  let s = ^pos_let_value\n  s\n}\n"
+
+data caret_whole_body_source: String = "module chunk\n\nfn f() -> Symbol {\n  ^pos_whole_body\n}\n"
+
+data caret_data_initializer_source: String = "module chunk\n\ndata d: Symbol = ^pos_data_initializer\n"
+
+data caret_field_initializer_source: String = "module chunk\n\ntype R { s: Symbol }\n\nfn f() -> R {\n  R { s: ^pos_field_initializer }\n}\n"
+
+data caret_match_arm_body_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  match b {\n    true => ^pos_match_arm_body\n    false => ^pos_match_arm_body_two\n  }\n}\n"
+
+data caret_match_scrutinee_source: String = "module chunk\n\nfn f() -> Bool {\n  match ^pos_match_scrutinee {\n    _ => true\n  }\n}\n"
+
+data caret_if_branch_value_source: String = "module chunk\n\nfn f(b: Bool) -> Symbol {\n  if b { ^pos_if_branch_value } else { ^pos_if_branch_value_two }\n}\n"
+
+data caret_list_item_source: String = "module chunk\n\nfn f() -> List<Symbol> {\n  [^pos_list_item]\n}\n"
+
+// The normalize verdict: ACCEPTED or the refusal's cause, the symbol-literal payloads in preorder,
+// the count of `^` atoms that carry no payload, and the operand rows of every node with a
+// symbol-literal positional operand.
+type CaretLoweringVerdict {
+  outcome: Symbol
+  payloads: List<Symbol>
+  bare_carets: Int
+  operand_rows: List<List<Symbol>>
+}
+
+fn csv_node_tag(n: Node) -> Symbol {
+  match dag_symbol_literal_name_optional(node: n) {
+    Present { value: name } =>
+      match node_atom_identity_optional(node: name) {
+        Present { value: id } => id
+        Absent => ^csv_payload_not_an_atom
+      }
+    Absent =>
+      match node_atom_identity_optional(node: n) {
+        Present { value: id } => id
+        Absent => ^csv_operand_not_an_atom
+      }
+  }
+}
+
+fn csv_is_symbol_literal(n: Node) -> Bool {
+  match dag_symbol_literal_name_optional(node: n) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn csv_is_bare_caret(n: Node) -> Bool {
+  match node_atom_identity_optional(node: n) {
+    Present { value: id } => (id == ^dag_token_caret) && !csv_is_symbol_literal(n: n)
+    Absent => false
+  }
+}
+
+// Every reader below is plain recursion over the preorder node list, with no `fn` argument: this
+// witness is about carets, and a lambda call argument is a separate native-lowering frontier.
+fn csv_payloads(nodes: List<Node>) -> List<Symbol> {
+  match nodes {
+    Empty => []
+    Cons { head: n, tail: rest } =>
+      if csv_is_symbol_literal(n: n) {
+        concat([csv_node_tag(n: n)], csv_payloads(nodes: rest))
+      } else {
+        csv_payloads(nodes: rest)
+      }
+  }
+}
+
+fn csv_bare_caret_count(nodes: List<Node>) -> Int {
+  match nodes {
+    Empty => 0
+    Cons { head: n, tail: rest } =>
+      if csv_is_bare_caret(n: n) { 1 + csv_bare_caret_count(nodes: rest) } else { csv_bare_caret_count(nodes: rest) }
+  }
+}
+
+fn csv_any_symbol_literal(operands: List<Node>) -> Bool {
+  match operands {
+    Empty => false
+    Cons { head: o, tail: rest } => csv_is_symbol_literal(n: o) || csv_any_symbol_literal(operands: rest)
+  }
+}
+
+fn csv_tags(operands: List<Node>) -> List<Symbol> {
+  match operands {
+    Empty => []
+    Cons { head: o, tail: rest } => concat([csv_node_tag(n: o)], csv_tags(operands: rest))
+  }
+}
+
+fn csv_operand_rows(nodes: List<Node>) -> List<List<Symbol>> {
+  match nodes {
+    Empty => []
+    Cons { head: n, tail: rest } =>
+      if csv_any_symbol_literal(operands: node_positional_child_targets(node: n)) {
+        concat([csv_tags(operands: node_positional_child_targets(node: n))], csv_operand_rows(nodes: rest))
+      } else {
+        csv_operand_rows(nodes: rest)
+      }
+  }
+}
+
+fn csv_lowered_verdict(tree: Node) -> CaretLoweringVerdict {
+  let nodes = node_subtree_nodes(root: tree)
+  CaretLoweringVerdict {
+    outcome: ^csv_accepted,
+    payloads: csv_payloads(nodes: nodes),
+    bare_carets: csv_bare_caret_count(nodes: nodes),
+    operand_rows: csv_operand_rows(nodes: nodes)
+  }
+}
+
+fn csv_marker(marker: Symbol) -> CaretLoweringVerdict {
+  CaretLoweringVerdict { outcome: marker, payloads: [], bare_carets: 0, operand_rows: [] }
+}
+
+fn csv_normalize_verdict(src: String) -> CaretLoweringVerdict {
+  let lm = dag_language_model()
+  match tokenize(text: src, file: ^caret_symbol_value_lowering_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => csv_marker(marker: ^csv_tokenize_refused)
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => csv_marker(marker: ^csv_parse_refused)
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => csv_marker(marker: diagnostics_fatal_reason(d: d))
+            Accepted { value: normalized, diagnostics: _ } => csv_lowered_verdict(tree: normalized.root)
+          }
+      }
+  }
+}
+
+// ONE PRODUCER, EVERY VERDICT. Each fixture's normalize is a full front-end run, so the verdicts
+// are computed once here and each claim reads its own field; the producer is pure over this
+// module's data and is enrolled warm in v2.workflow.floor_pure_producer_share.
+type CaretLoweringVerdicts {
+  if_condition: CaretLoweringVerdict
+  keep_edge: CaretLoweringVerdict
+  int_control: CaretLoweringVerdict
+  bare_operand: CaretLoweringVerdict
+  named_argument: CaretLoweringVerdict
+  positional_argument: CaretLoweringVerdict
+  let_value: CaretLoweringVerdict
+  whole_body: CaretLoweringVerdict
+  data_initializer: CaretLoweringVerdict
+  field_initializer: CaretLoweringVerdict
+  match_arm_body: CaretLoweringVerdict
+  match_scrutinee: CaretLoweringVerdict
+  if_branch_value: CaretLoweringVerdict
+  list_item: CaretLoweringVerdict
+}
+
+fn csv_verdicts() -> CaretLoweringVerdicts {
+  CaretLoweringVerdicts {
+    if_condition: csv_normalize_verdict(src: caret_if_condition_source),
+    keep_edge: csv_normalize_verdict(src: caret_keep_edge_source),
+    int_control: csv_normalize_verdict(src: int_if_condition_control_source),
+    bare_operand: csv_normalize_verdict(src: caret_bare_operand_source),
+    named_argument: csv_normalize_verdict(src: caret_named_argument_source),
+    positional_argument: csv_normalize_verdict(src: caret_positional_argument_source),
+    let_value: csv_normalize_verdict(src: caret_let_value_source),
+    whole_body: csv_normalize_verdict(src: caret_whole_body_source),
+    data_initializer: csv_normalize_verdict(src: caret_data_initializer_source),
+    field_initializer: csv_normalize_verdict(src: caret_field_initializer_source),
+    match_arm_body: csv_normalize_verdict(src: caret_match_arm_body_source),
+    match_scrutinee: csv_normalize_verdict(src: caret_match_scrutinee_source),
+    if_branch_value: csv_normalize_verdict(src: caret_if_branch_value_source),
+    list_item: csv_normalize_verdict(src: caret_list_item_source)
+  }
+}
+
+fn lowers_to(v: CaretLoweringVerdict, payloads: List<Symbol>) -> Bool {
+  (v.outcome == ^csv_accepted) && (v.payloads == payloads) && (v.bare_carets == 0)
+}
+
+// Some operand row ends with `left` then the symbol literal `sym`.
+fn row_ends_with_pair(row: List<Symbol>, left: Symbol, sym: Symbol) -> Bool {
+  match list_at_optional(xs: row, index: length(xs: row) - 2) {
+    Present { value: l } =>
+      (l == left) && match list_at_optional(xs: row, index: length(xs: row) - 1) {
+        Present { value: r } => r == sym
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn rows_hold_pair(rows: List<List<Symbol>>, left: Symbol, sym: Symbol) -> Bool {
+  match rows {
+    Empty => false
+    Cons { head: row, tail: rest } => row_ends_with_pair(row: row, left: left, sym: sym) || rows_hold_pair(rows: rest, left: left, sym: sym)
+  }
+}
+
+fn has_operand_pair(v: CaretLoweringVerdict, left: Symbol, sym: Symbol) -> Bool {
+  rows_hold_pair(rows: v.operand_rows, left: left, sym: sym)
+}
+
+test fn a_caret_symbol_if_condition_pair_lowers_to_two_different_payloads() -> Bool {
+  lowers_to(v: csv_verdicts().if_condition, payloads: [^ordering_predicate_is_less, ^ordering_predicate_is_less_or_equal])
+    && has_operand_pair(v: csv_verdicts().if_condition, left: ^id, sym: ^ordering_predicate_is_less)
+    && has_operand_pair(v: csv_verdicts().if_condition, left: ^id, sym: ^ordering_predicate_is_less_or_equal)
+}
+
+test fn an_int_literal_if_condition_still_normalizes() -> Bool {
+  lowers_to(v: csv_verdicts().int_control, payloads: [])
+}
+
+test fn a_bare_caret_operand_lowers_with_its_left_operand_first() -> Bool {
+  lowers_to(v: csv_verdicts().bare_operand, payloads: [^grammar_free_name_slot])
+    && has_operand_pair(v: csv_verdicts().bare_operand, left: ^binding, sym: ^grammar_free_name_slot)
+}
+
+test fn a_caret_symbol_disjunction_lowers_every_operand_in_order() -> Bool {
+  lowers_to(v: csv_verdicts().keep_edge, payloads: [^target_model_edge_atom_realizations, ^target_model_edge_signature_realizations])
+    && has_operand_pair(v: csv_verdicts().keep_edge, left: ^n, sym: ^target_model_edge_atom_realizations)
+    && has_operand_pair(v: csv_verdicts().keep_edge, left: ^n, sym: ^target_model_edge_signature_realizations)
+}
+
+test fn a_caret_symbol_named_argument_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().named_argument, payloads: [^pos_named_argument])
+}
+
+test fn a_caret_symbol_positional_argument_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().positional_argument, payloads: [^pos_positional_argument])
+}
+
+test fn a_caret_symbol_let_value_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().let_value, payloads: [^pos_let_value])
+}
+
+test fn a_caret_symbol_whole_body_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().whole_body, payloads: [^pos_whole_body])
+}
+
+test fn a_caret_symbol_data_initializer_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().data_initializer, payloads: [^pos_data_initializer])
+}
+
+test fn a_caret_symbol_field_initializer_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().field_initializer, payloads: [^pos_field_initializer])
+}
+
+test fn a_caret_symbol_match_arm_body_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().match_arm_body, payloads: [^pos_match_arm_body, ^pos_match_arm_body_two])
+}
+
+test fn a_caret_symbol_match_scrutinee_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().match_scrutinee, payloads: [^pos_match_scrutinee])
+}
+
+test fn a_caret_symbol_if_branch_value_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().if_branch_value, payloads: [^pos_if_branch_value, ^pos_if_branch_value_two])
+}
+
+test fn a_caret_symbol_list_item_lowers_to_its_symbol() -> Bool {
+  lowers_to(v: csv_verdicts().list_item, payloads: [^pos_list_item])
+}

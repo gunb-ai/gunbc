@@ -1,7 +1,8 @@
 module extdeps.tools.sleep
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -16,8 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn sleep_program() -> ProgramIdentity = cataloged_program(invocation: "sleep")
+
 data sleep_cli_tool: CliTool = CliTool {
-  name: "sleep",
+  program: sleep_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -59,12 +62,13 @@ fn sleep_seconds_argv(duration: Second) -> SleepArgvRendering {
   if seconds <= 0 {
     SleepDurationRefused { duration: duration }
   } else {
-    SleepArgv { words: [sleep_cli_tool.name, to_string(seconds)] }
+    SleepArgv { words: [sleep_cli_tool.program.invocation, to_string(seconds)] }
   }
 }
 
 service sleep.Delay {
   operation Seconds {
+    requires none
     input { seconds: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sleep", "{seconds}"] }

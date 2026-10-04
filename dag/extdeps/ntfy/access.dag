@@ -1,5 +1,7 @@
 module extdeps.ntfy.access
 
+import extdeps.exec.program { uncataloged_program }
+
 import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
@@ -35,7 +37,7 @@ data ntfy_access_upstream_version: String = "v2.28.0"
 // (cmd/access.go execUserAccess -> showAllAccess). The binary and the server config are the
 // caller's -- which install, which server -- so they are parameters, never literals here.
 fn ntfy_access_list_command(binary: NonEmptyStr, config: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: binary, arguments: ["access", "--config", config as String])
+  argv_command(program: uncataloged_program(invocation: binary), arguments: ["access", "--config", config as String])
 }
 
 // user/types.go Everyone: the anonymous principal's row name.

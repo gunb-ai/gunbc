@@ -1,7 +1,7 @@
 module test.claim.approve_ios_project_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,
   YamlKeyLookup, YamlKeyPresent, YamlKeyAbsent, yaml_lookup, kv, yaml_string, yaml_mapping, yaml_sequence
@@ -10,7 +10,10 @@ import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml }
 import extdeps.apple.xcode { XcodeRelease, xcode_26_6, xcode_release_text }
 import extdeps.xcodegen.project_spec { xcodegen_last_upgrade_check }
 import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequiredLane, approve_ios_build_unexecuted_frontier }
-import gunbc.approve_ios_project { expected_approve_ios_project_yml, ApproveIosProjectGenerated, ApproveIosProjectRefused }
+import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
+import gunbc.fleet_host_identity { operator_host_srv1 }
+import gunbc.auth.approval_ntfy_publish { approval_ntfy_serve_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,6 +35,17 @@ fn is_string(v: YamlValue, path: List<String>, expected: String) -> Bool {
   at(v: v, path: path) == YamlKeyPresent { value: YamlString { value: expected } }
 }
 
+// The server host is a VALUE in the spec, never an xcconfig substitution: a `$(...)` there is the
+// operator-typed second authority this projection replaced.
+fn server_host_path() -> List<String> { ["targets", "Approve", "info", "properties", "ApproveServerHost"] }
+
+fn carries_a_literal_server_host(v: YamlValue) -> Bool {
+  match at(v: v, path: server_host_path()) {
+    YamlKeyPresent { value: YamlString { value: h } } => (h != "") && !string_contains(s: h, pattern: "$(")
+    _ => false
+  }
+}
+
 fn no_infoplist_key_settings(v: YamlValue) -> Bool {
   match at(v: v, path: ["targets", "Approve", "settings", "base"]) {
     YamlKeyPresent { value: YamlMapping { entries: es } } => all(es, e => !starts_with(s: e.key, prefix: "INFOPLIST_KEY_"))
@@ -50,7 +64,7 @@ fn project_carries_required_content(v: YamlValue) -> Bool {
       YamlString { value: "UIInterfaceOrientationPortrait" }, YamlString { value: "UIInterfaceOrientationPortraitUpsideDown" },
       YamlString { value: "UIInterfaceOrientationLandscapeLeft" }, YamlString { value: "UIInterfaceOrientationLandscapeRight" }
     ] } })
-    && is_string(v: v, path: concat(props, ["ApproveServerHost"]), expected: "$(APPROVE_SERVER_HOST)")
+    && carries_a_literal_server_host(v: v)
     && is_string(v: v, path: concat(props, ["ApproveApnsEnvironment"]), expected: "$(APNS_ENVIRONMENT)")
     && is_string(v: v, path: ["targets", "Approve", "settings", "base", "PRODUCT_BUNDLE_IDENTIFIER"], expected: "ai.gunb.approve")
     && is_string(v: v, path: ["settings", "base", "SWIFT_VERSION"], expected: "5.10")
@@ -133,7 +147,7 @@ data orientations: YamlKeyValue = kv(key: "UISupportedInterfaceOrientations", va
 ]))
 data apns: YamlKeyValue = kv(key: "ApproveApnsEnvironment", value: yaml_string(s: "$(APNS_ENVIRONMENT)"))
 data swift_version: YamlKeyValue = kv(key: "SWIFT_VERSION", value: yaml_string(s: "5.10"))
-data host: YamlKeyValue = kv(key: "ApproveServerHost", value: yaml_string(s: "$(APPROVE_SERVER_HOST)"))
+data host: YamlKeyValue = kv(key: "ApproveServerHost", value: yaml_string(s: "srv1.supplied.example"))
 data bundle_id: YamlKeyValue = kv(key: "PRODUCT_BUNDLE_IDENTIFIER", value: yaml_string(s: "ai.gunb.approve"))
 
 test fn witness_a_complete_supplied_document_is_admitted() -> Bool {
@@ -202,4 +216,59 @@ test fn red_an_omitted_or_substituted_bundle_identifier_is_refused() -> Bool {
 test fn red_an_omitted_or_substituted_swift_version_is_refused() -> Bool {
   !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: []))
     && !project_carries_required_content(v: supplied_full(properties: all_properties, approve_settings: [bundle_id], xcode_version: "26.6", tests_settings: [tests_infoplist], swift_version: [kv(key: "SWIFT_VERSION", value: yaml_string(s: "6.0"))]))
+}
+
+test fn red_an_omitted_or_xcconfig_substituted_server_host_is_refused() -> Bool {
+  !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+    && !project_carries_required_content(v: supplied(properties: [launch, face_id, display, orientations, modes, kv(key: "ApproveServerHost", value: yaml_string(s: "$(APPROVE_SERVER_HOST)")), apns], approve_settings: [bundle_id], xcode_version: "26.6"))
+}
+
+// ── The server host is the broker's, read back from the generated bytes ───────────────────────
+fn generated_server_host(g: ApproveIosProjectGeneration) -> String? {
+  match g {
+    ApproveIosProjectRefused { reason: _ } => none
+    ApproveIosProjectGenerated { content: t } => match ingest_yaml_source(src: t) {
+      IngestedYaml { value: v } => match at(v: v, path: server_host_path()) {
+        YamlKeyPresent { value: YamlString { value: h } } => Present { value: h }
+        _ => none
+      }
+      _ => none
+    }
+  }
+}
+
+// The host the app dials and the base the approval links are issued against are one address:
+// https:// plus the projected host IS gunbc.auth.approval_broker_endpoint approval_broker_base_url.
+test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
+  match generated_server_host(g: expected_approve_ios_project_yml()) {
+    Present { value: h } => concat("https://", h) == (approval_broker_base_url() as String)
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CLAIM: the tailnet domain row decides the generated host. A different domain
+// yields that domain's host and not the committed one.
+test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool {
+  match generated_server_host(g: approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: none)) {
+    Present { value: h } => (h == join([operator_host_srv1 as String, ".other-tailnet.example"], ""))
+      && (concat("https://", h) != (approval_broker_base_url() as String))
+    Absent => false
+  }
+}
+
+// An undeclared tailnet domain projects the unroutable RFC 2606 host, never a plausible one.
+test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
+  match generated_server_host(g: approve_ios_project_yml_from(domain: none, port: none)) {
+    Present { value: h } => string_contains(s: h, pattern: ".invalid") && !string_contains(s: h, pattern: operator_host_srv1 as String)
+    Absent => false
+  }
+}
+
+// ServerConfig carries no port, so a broker published off the default TLS listener refuses the
+// projection rather than emitting a host the app would dial on 443.
+test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
+  match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: approval_ntfy_serve_port }) {
+    ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: to_string(approval_ntfy_serve_port))
+    ApproveIosProjectGenerated { content: _ } => false
+  }
 }

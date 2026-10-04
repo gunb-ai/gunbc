@@ -1,5 +1,7 @@
 module extdeps.languages.bash.invocation
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { String, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -17,7 +19,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.languages.bash.invocation",
-      decl_name: "bash_program_name",
+      decl_name: "bash_program",
       field: WholeDeclaration
     }
   },
@@ -38,18 +40,18 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
-data bash_program_name: NonEmptyStr = "bash"
+fn bash_program() -> ProgramIdentity = uncataloged_program(invocation: "bash")
 
 // Same residual-class standing as the POSIX sibling: the script TEXT is modeling debt owned by the
 // shell -> dag lane, and this builder is not a route for spelling a program's argv inside a string.
 // One call site at the seal: gunbc.fleet_converge_plan_cli's locked apply script.
 fn bash_program_command(script: String) -> ArgvCommand {
-  argv_command(program: bash_program_name, arguments: ["-c", script])
+  argv_command(program: bash_program(), arguments: ["-c", script])
 }
 
 // A SCRIPT FILE IS NOT A SCRIPT STRING. `bash <path>` reads the program from a file, so nothing
 // about the text passes through this repository's own quoting at all -- which is why this form has
 // no residual-class standing beside the one above: there is no embedded program here, only a path.
 fn bash_script_argv(script_path: String) -> List<String> {
-  [bash_program_name as String, script_path]
+  [bash_program().invocation as String, script_path]
 }

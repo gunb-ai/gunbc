@@ -53,10 +53,12 @@ fn runtime_body_required_check_census_in(registry: List<RuntimeFunction>, census
             )) { ExitSuccess } else {
               ExitFailure { code: 1, reason: "runtime-body mutation control refused the wrong bridge population" }
             }
-          _ => ExitFailure { code: 1, reason: "runtime-body mutation control did not refuse the missing map_insert body" }
+          PrimitiveRuntimeBodiesComplete => ExitFailure { code: 1, reason: "runtime-body mutation control did not refuse the missing map_insert body" }
+          PrimitiveRuntimeBodiesUnreadable { line: _, detail: _ } => ExitFailure { code: 1, reason: "runtime-body mutation control did not refuse the missing map_insert body" }
         }
       }
     }
-    _ => runtime_body_check_exit(check: standing)
+    PrimitiveRuntimeBodiesMissing { violations: _ } => runtime_body_check_exit(check: standing)
+    PrimitiveRuntimeBodiesUnreadable { line: _, detail: _ } => runtime_body_check_exit(check: standing)
   }
 }

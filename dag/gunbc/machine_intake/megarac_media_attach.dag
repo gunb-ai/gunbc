@@ -6,6 +6,7 @@ import std.content_hash { content_hash_of_value }
 import std.measure { Second, second, second_count }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.megarac
+import gunbc.machine_intake_megarac_ui_features { MegaRacRmediaStatus, RmediaStatusNamed, RmediaStatusOutsideTable, RmediaStatusTableUnread, megarac_rmedia_status_of_wire }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_name_digest_prefix }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -128,6 +129,7 @@ type MegaRacAttachOutcome
   | MegaRacMediaStateUnestablished { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_ready: CdErrorReading, general_at_ready: MegaRacRawRead }
   | MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: CdErrorReading, reason: NonEmptyStr }
   | MegaRacReadinessRefused { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, cd_at_refusal: CdErrorReading }
+  | MegaRacPresentationStopped { image_name: NonEmptyStr, route: MegaRacAttachRoute, look: ReadinessLook, looks: Int, cd_before_any_write: CdErrorReading, stop: MegaRacRmediaStatus, class: MegaRacStopReasonClass, general_at_refusal: MegaRacRawRead }
   | MegaRacReadinessClockUnreadable { image_name: NonEmptyStr, route: MegaRacAttachRoute, detail: String }
   | MegaRacReadinessClockIncoherent { image_name: NonEmptyStr, route: MegaRacAttachRoute, opened_at: EpochMs, previous: EpochMs?, look: ReadinessLook, looks: Int }
   | MegaRacConfigurationsUnreadable { detail: String }
@@ -140,6 +142,7 @@ type MegaRacAttachOutcome
   | MegaRacImageListingEmpty
   | MegaRacImageListingUnparseable { detail: String }
   | MegaRacImageNotEnumerated { image_name: NonEmptyStr }
+  | MegaRacImageOfferedAmbiguously { image_name: NonEmptyStr, image_indices: List<String> }
   | MegaRacForeignImagePresented { image_name: String, configurations: String }
   | MegaRacSeveralImagesPresented { configurations: String }
   | MegaRacStaleDetachNotAdmitted { stale_image: String, reason: NonEmptyStr }
@@ -147,6 +150,7 @@ type MegaRacAttachOutcome
   | MegaRacRedirectionUncatalogued { image_name: String, wire: Int, configurations: String }
   | MegaRacRefreshClockUnreadable { detail: String, detach: MegaRacDetachEvidence }
   | MegaRacListingUnparseableAfterDetach { detail: String, detach: MegaRacDetachEvidence }
+  | MegaRacOfferedAmbiguouslyAfterDetach { image_name: NonEmptyStr, image_indices: List<String>, detach: MegaRacDetachEvidence }
   | MegaRacNotEnumeratedAfterRefresh { image_name: NonEmptyStr, detach: MegaRacDetachEvidence, standing: RemoteMediaMountStanding }
 
 // THREE INDICES, THREE CONCEPTS, NEVER JOINED. image_list_index is the image's position in
@@ -282,35 +286,80 @@ type ShareBindingStanding
   | ShareMismatch { observed: MegaRacObservedShare }
   | ShareUnreadable { detail: String }
 
-// THE CD ERROR CODE IS ITS OWN OBSERVATION, AND WHILE ITS MEANING IS UNRESOLVED A NONZERO VALUE
-// WITHHOLDS (operator decision on gunbc#12425, option A). settings/media/general carries
-// cd_error_code beside the presentation rows. On 2026-09-27 it read 0 at ~15:40Z, 16 after boot run
-// 36330382023, and STILL 16 at 18:37Z although the re-attached image then read redirection_status 1
-// with session_index 0. Whether it is a latched last error, a live fault, or both, is not known: its
-// producer, what sets it, what clears it and its scope are unestablished. So a nonzero or unread
-// code is a KNOWLEDGE refusal -- this attempt cannot establish the media state -- not a verdict that
-// the controller is broken, and nothing here writes merely to make it read 0.
-//
-// THE NEXT ATTEMPT IS THE EXPERIMENT, and every step keeps its receipt. With a nonzero code before
-// any write and a detach admitted (live hold, power observed off), the recovery action is a fresh
-// presentation: the presented image -- the desired one included -- is stopped and read back, the
-// code is re-read, the image is attached fresh, and the code is read again at readiness. The
-// baseline (MegaRacMediaBaseline), the code after the stop and at readiness, and the boot's own data-
-// delivery evidence (the census markers of the actuation) are what later decide the permanent
-// policy. Whether the settings' 16 and the row's redirection_status 16 are one fact is NOT asserted.
+// THE CD ERROR CODE IS THE VENDOR'S LAST-STOP REASON, AND THE VENDOR'S OWN UI SAYS WHEN IT MEANS
+// ANYTHING (operator-approved 2026-10-01, superseding the knowledge refusal of gunbc#12425 option A and
+// the held "census END marker decides delivery" design of msg_abc42f62 for every code the table names).
+// settings/media/general carries cd_error_code beside mount_cd. The SP-X UI bundle this firmware serves
+// (source.min.js sha256 5029fae2..., extdeps.bmc.megarac megarac_rmedia_status_0_32) reads it in exactly
+// one place, the single-image rmedia view, and only as `0==mount_cd && 1<=code<=17`, rendering
+// "Stopped" + the code's name; while the medium is started or starting it never consults the code, and
+// in the stopped state it leaves Start enabled whatever the code is. So the code is a LATCHED reason
+// for the last stop, not a live fault: boot run 36721915217 read 16 before any write, after its own
+// stop and at readiness, while the configurations row read Started with session_index 0.
+// Hence three readings, each a different fact:
+//   CdErrorNone          -- 0;
+//   CdErrorStopReason    -- a code the build's table names, with the class below;
+//   CdErrorUncatalogued  -- a code outside the table, a build with no table, or a named code this
+//                           policy has not classified.
+// Where the vendor does not consult the code -- the image Started or connecting -- every read code is
+// recorded and none withholds. Where it does -- nothing presented -- a named reason is refused or
+// attached past BY NAME, and an uncatalogued code stays a knowledge refusal. An UNREAD code is never a
+// reading, and withholds everywhere.
 type MegaRacCdErrorCode
   = CdErrorNone
+  | CdErrorStopReason { status: MegaRacRmediaStatus, class: MegaRacStopReasonClass }
   | CdErrorUncatalogued { wire: Int }
 
-fn megarac_cd_error_code_of_wire(wire: Int) -> MegaRacCdErrorCode {
-  if wire == 0 { CdErrorNone } else { CdErrorUncatalogued { wire: wire } }
+// WHETHER A STOP REASON SAYS THE CONTROLLER FAILED TO PRESENT, FROM THE VENDOR'S NAME FOR IT. The table
+// is the vendor's (derived, never typed here); the class is this repository's reading of each name, and
+// is keyed by code so that a table row this function does not name stays unclassified and refuses.
+//   NO FAULT -- the stop was asked for, or is the end of a presentation rather than a failure of one:
+//     1  Connection Accepted      the redirection's own acceptance status; it names no failure.
+//     7  Media Detach Stage       the medium was being detached, which is what a stop request does.
+//     15 Mount Cancelled By User  an operator stopped it.
+//     16 Device Ejected           the HOST ejected the virtual device (an OS or installer eject), or the
+//                                 stop of a presentation ejected it; the controller presented, and the
+//                                 consumer let go. Boot run 36721915217's stop of the stale image left
+//                                 exactly this code.
+//   PRESENTATION FAILURE -- the controller could not present, or lost, the medium:
+//     2  Connection Denied, 3 Login Failed, 4 MAX Session Reached, 5 Permission Denied: the share or the
+//        redirection refused this presentation;
+//     6  Unknown Error: the vendor's own catch-all for a failure it could not name;
+//     8  All device instances are occupied: no virtual device was free to present on;
+//     9  Unable to Connect, 14 Connection Lost: the share was unreachable, or stopped answering;
+//     10 Invalid Image, 11 Mount Error, 12 Unable to Open: the image could not be mounted or read;
+//     13 Media License Expired: the controller refuses remote media altogether;
+//     17 Session Terminated: the session ended under the medium with no stop requested.
+type MegaRacStopReasonClass
+  = StopReasonNoFault
+  | StopReasonPresentationFailure
+
+fn megarac_stop_reason_class(status: MegaRacRmediaStatus) -> MegaRacStopReasonClass? {
+  let c = status.code
+  if c == 1 || c == 7 || c == 15 || c == 16 { Present { value: StopReasonNoFault } }
+  else if (c >= 2 && c <= 6) || (c >= 8 && c <= 14) || c == 17 { Present { value: StopReasonPresentationFailure } }
+  else { none }
+}
+
+fn megarac_cd_error_code_of_wire(firmware: BmcFirmwareReleaseIdentity, wire: Int) -> MegaRacCdErrorCode {
+  if wire == 0 { CdErrorNone } else {
+    match megarac_rmedia_status_of_wire(firmware: firmware, wire: wire) {
+      RmediaStatusNamed { status: st } =>
+        match megarac_stop_reason_class(status: st) {
+          Present { value: k } => CdErrorStopReason { status: st, class: k }
+          Absent => CdErrorUncatalogued { wire: wire }
+        }
+      RmediaStatusOutsideTable { firmware: _, wire: _ } => CdErrorUncatalogued { wire: wire }
+      RmediaStatusTableUnread { firmware: _, wire: _ } => CdErrorUncatalogued { wire: wire }
+    }
+  }
 }
 
 type CdErrorReading
   = CdErrorRead { code: MegaRacCdErrorCode }
   | CdErrorUnread { detail: String }
 
-fn cd_error_reading(body: String) -> CdErrorReading {
+fn cd_error_reading(body: String, firmware: BmcFirmwareReleaseIdentity) -> CdErrorReading {
   match parse_json_document(s: body) {
     JsonDocumentUnreadable { gap: _ } => CdErrorUnread { detail: body }
     JsonDocumentParsed { value: v } =>
@@ -319,7 +368,7 @@ fn cd_error_reading(body: String) -> CdErrorReading {
         Present { value: w } =>
           match parse_int(s: w) {
             Absent => CdErrorUnread { detail: concat("cd_error_code is not an integer: ", w) }
-            Present { value: n } => CdErrorRead { code: megarac_cd_error_code_of_wire(wire: n) }
+            Present { value: n } => CdErrorRead { code: megarac_cd_error_code_of_wire(firmware: firmware, wire: n) }
           }
       }
   }
@@ -368,9 +417,15 @@ fn json_string_member(doc: JsonValue, key: String) -> String? {
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: s } => Present { value: s }
-        _ => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -379,9 +434,15 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
     JsonMemberFound { value: v } =>
       match v {
         JsonNumber { lexeme: n } => Present { value: n }
-        _ => none
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
       }
-    _ => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -392,11 +453,14 @@ fn json_number_member(doc: JsonValue, key: String) -> String? {
 // Only then is the name counted, and a count above one is ambiguous. Unrelated optional members are
 // not required. A listing that names the image twice is ambiguous
 // and refuses (side-chat review 5331991982): taking the first match would let the controller's
-// enumeration order choose which file is attached.
+// enumeration order choose which file is attached. The ambiguity carries every matching row's
+// image_index -- the identities the refusal is about -- so it is reported as what it is, a
+// well-formed listing offering one name twice, and never folded into an unreadable document; a
+// matching row with no numeric image_index is an unread member, exactly as on the unique arm.
 type ImageIndexLookup
   = ImageIndexUnique { image_index: String }
   | ImageIndexAbsent
-  | ImageIndexAmbiguous { count: Int }
+  | ImageIndexAmbiguous { image_indices: List<String> }
   | ImageIndexUnreadable
 
 fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageIndexLookup {
@@ -405,8 +469,11 @@ fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageInde
     ImageIndexUnreadable
   } else {
     let named = elements |> filter(e => match json_string_member(doc: e, key: "image_name") { Present { value: n } => n == image_name  Absent => false })
-    if (named |> count) > 1 {
-      ImageIndexAmbiguous { count: named |> count }
+    let indices = named |> flat_map(e => match json_number_member(doc: e, key: "image_index") { Present { value: idx } => [idx]  Absent => [] })
+    if (indices |> count) < (named |> count) {
+      ImageIndexUnreadable
+    } else if (named |> count) > 1 {
+      ImageIndexAmbiguous { image_indices: indices }
     } else {
       match named.first() {
         Absent => ImageIndexAbsent
@@ -423,7 +490,11 @@ fn image_index_named(elements: List<JsonValue>, image_name: String) -> ImageInde
 fn images_array_elements(doc: JsonValue) -> List<JsonValue>? {
   match doc {
     JsonArray { elements: es } => Present { value: es }
-    _ => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -570,6 +641,7 @@ fn megarac_attach_remote_image(
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_observe_presentation"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_stale_power_off"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -783,8 +855,8 @@ fn megarac_raw_general(bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_toke
   MegaRacRawRead { answered: g.success, body: g.body, observed_at: megarac_clock_at() }
 }
 
-fn cd_error_of_raw(r: MegaRacRawRead) -> CdErrorReading {
-  if r.answered { cd_error_reading(body: r.body) } else { CdErrorUnread { detail: r.body } }
+fn cd_error_of_raw(r: MegaRacRawRead, firmware: BmcFirmwareReleaseIdentity) -> CdErrorReading {
+  if r.answered { cd_error_reading(body: r.body, firmware: firmware) } else { CdErrorUnread { detail: r.body } }
 }
 
 type MegaRacMediaBaseline {
@@ -820,7 +892,7 @@ fn megarac_converge_from_baseline(
     ShareMismatch { observed: o } => return MegaRacShareMismatch { expected: policy.share, observed: o }
     ShareBound => none
   }
-  let cd_before = cd_error_reading(body: general)
+  let cd_before = cd_error_reading(body: general, firmware: firmware)
   if configurations_read == false {
     return MegaRacConfigurationsUnreadable { detail: configurations }
   }
@@ -899,6 +971,7 @@ fn megarac_attach_from_listing(
     ImagesListingUnparseable { detail: d } => MegaRacImageListingUnparseable { detail: d }
     ImagesListingEmpty => MegaRacImageListingEmpty
     ImagesListingLacks => MegaRacImageNotEnumerated { image_name: image_name }
+    ImagesListingOffersAmbiguously { image_indices: ids } => MegaRacImageOfferedAmbiguously { image_name: image_name, image_indices: ids }
     ImagesListingOffers { image_index: idx } =>
       megarac_start_then_readiness(
         bmc_host: bmc_host,
@@ -965,7 +1038,7 @@ fn megarac_detach_then_attach(
     command: megarac_write_answer(exit_code: stopped.exit_code, body: stopped.body, stderr: stopped.stderr),
     readback_read: after.success,
     readback: after.body,
-    cd_after_stop: cd_error_of_raw(r: general_after),
+    cd_after_stop: cd_error_of_raw(r: general_after, firmware: firmware),
     general_after_stop: general_after,
   }
   return match detach_verdict(evidence: evidence, image_name: image_name, firmware: firmware, replaceable_seeded_stem: policy.replaceable_seeded_stem) {
@@ -998,13 +1071,19 @@ fn detach_verdict(
   if evidence.readback_read == false {
     DetachNotEstablished { reason: "the configurations read-back after stop-media failed, so the stop is unestablished whatever stop-media answered" }
   } else {
+    let still_presenting = DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
     match presented_convergence(
       presented: presented_media(body: evidence.readback, image_name: image_name, firmware: firmware),
       image_name: image_name,
       replaceable_seeded_stem: replaceable_seeded_stem,
     ) {
       ConvergeNothingPresented => DetachEstablished
-      _ => DetachNotEstablished { reason: "the configurations read-back after stop-media still presents an image, or cannot be read as presenting nothing" }
+      ConvergeUnreadable { detail: _ } => still_presenting
+      ConvergeUncatalogued { image_name: _, wire: _ } => still_presenting
+      ConvergeDesiredPresented { row: _ } => still_presenting
+      ConvergeStalePresented { row: _ } => still_presenting
+      ConvergeForeignPresented { image_name: _ } => still_presenting
+      ConvergeSeveralPresented => still_presenting
     }
   }
 }
@@ -1043,6 +1122,7 @@ fn megarac_enumerate_then_attach(
       ) {
         EnumerationClockUnreadable { detail: d } => MegaRacRefreshClockUnreadable { detail: d, detach: detach }
         EnumerationUnparseable { detail: d } => MegaRacListingUnparseableAfterDetach { detail: d, detach: detach }
+        EnumerationAmbiguous { image_indices: ids } => MegaRacOfferedAmbiguouslyAfterDetach { image_name: image_name, image_indices: ids, detach: detach }
         NotEnumeratedAfterRefresh { standing: st } => MegaRacNotEnumeratedAfterRefresh { image_name: image_name, detach: detach, standing: st }
         EnumeratedAfterRefresh { image_index: idx } =>
           megarac_start_then_readiness(
@@ -1118,6 +1198,7 @@ type EnumerationAfterRefresh
   = EnumeratedAfterRefresh { image_index: String }
   | NotEnumeratedAfterRefresh { standing: RemoteMediaMountStanding }
   | EnumerationUnparseable { detail: String }
+  | EnumerationAmbiguous { image_indices: List<String> }
   | EnumerationClockUnreadable { detail: String }
 
 // A LISTING THAT REFUSES IS PENDING, A LISTING THAT PARSES AND LACKS THE NAME IS ABSENT, AND BOTH
@@ -1144,38 +1225,61 @@ fn megarac_await_enumeration(
   let reading = if images.success { images_listing_reading(body: images.body, image_name: image_name) } else { ImagesListingLacks }
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: d } => EnumerationClockUnreadable { detail: d }
-    ClockUnixMillisObserved { millis: now } =>
-      match reading {
-        ImagesListingUnparseable { detail: d } => EnumerationUnparseable { detail: d }
-        _ => {
-          let evidence = content_hash_of_value(value: concat("megarac-remote-images:", images.body) as NonEmptyStr)
-          let seen = observations.append(RemoteMediaListingObservation {
-            observed_at: now,
-            listing: images_listing_presence(reading: reading),
-            raw_response: evidence,
-          })
-          let standing = mount_standing_as_of(
+    ClockUnixMillisObserved { millis: now } => {
+      let step = match reading {
+        ImagesListingUnparseable { detail: d } => ListedEnumerationDone { result: EnumerationUnparseable { detail: d } }
+        ImagesListingOffersAmbiguously { image_indices: ids } => ListedEnumerationDone { result: EnumerationAmbiguous { image_indices: ids } }
+        ImagesListingEmpty => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingLacks => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+        ImagesListingOffers { image_index: _ } => megarac_listed_enumeration_step(body: images.body, reading: reading, now: now, window: window, observations: observations, remaining: remaining)
+      }
+      match step {
+        ListedEnumerationDone { result: r } => r
+        ListedEnumerationLookAgain { observations: seen } => {
+          let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
+          megarac_await_enumeration(
+            bmc_host: bmc_host,
+            cookie_jar: cookie_jar,
+            csrf_token: csrf_token,
+            image_name: image_name,
             window: window,
             observations: seen,
-            boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+            remaining: remaining - 1,
           )
-          match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
-            EnumerationDecided { result: r } => r
-            EnumerationLookAgain => {
-              let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_refresh_poll_interval)
-              megarac_await_enumeration(
-                bmc_host: bmc_host,
-                cookie_jar: cookie_jar,
-                csrf_token: csrf_token,
-                image_name: image_name,
-                window: window,
-                observations: seen,
-                remaining: remaining - 1,
-              )
-            }
-          }
         }
       }
+    }
+  }
+}
+
+// One look's conclusion for a listing that parsed: the loop's self tail-call stays in
+// megarac_await_enumeration, which matches this step exhaustively.
+type ListedEnumerationStep
+  = ListedEnumerationDone { result: EnumerationAfterRefresh }
+  | ListedEnumerationLookAgain { observations: List<RemoteMediaListingObservation> }
+
+fn megarac_listed_enumeration_step(
+  body: String,
+  reading: ImagesListingReading,
+  now: EpochMs,
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+  remaining: Int,
+) -> ListedEnumerationStep {
+  let evidence = content_hash_of_value(value: concat("megarac-remote-images:", body) as NonEmptyStr)
+  let seen = observations.append(RemoteMediaListingObservation {
+    observed_at: now,
+    listing: images_listing_presence(reading: reading),
+    raw_response: evidence,
+  })
+  let standing = mount_standing_as_of(
+    window: window,
+    observations: seen,
+    boundary: MountEvaluationBoundary { observed_through: now, clock_evidence: evidence },
+  )
+  return match enumeration_decision(standing: standing, reading: reading, remaining: remaining) {
+    EnumerationDecided { result: r } => ListedEnumerationDone { result: r }
+    EnumerationLookAgain => ListedEnumerationLookAgain { observations: seen }
   }
 }
 
@@ -1191,7 +1295,10 @@ fn enumeration_decision(standing: RemoteMediaMountStanding, reading: ImagesListi
     MountEstablished { established_at: _, establishing_evidence: _ } =>
       match reading {
         ImagesListingOffers { image_index: idx } => EnumerationDecided { result: EnumeratedAfterRefresh { image_index: idx } }
-        _ => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingUnparseable { detail: _ } => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingEmpty => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingLacks => EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } }
+        ImagesListingOffersAmbiguously { image_indices: ids } => EnumerationDecided { result: EnumerationAmbiguous { image_indices: ids } }
       }
     MountRequested { window: _ } =>
       if remaining > 1 { EnumerationLookAgain } else { EnumerationDecided { result: NotEnumeratedAfterRefresh { standing: standing } } }
@@ -1209,6 +1316,7 @@ type ImagesListingReading
   | ImagesListingEmpty
   | ImagesListingLacks
   | ImagesListingOffers { image_index: String }
+  | ImagesListingOffersAmbiguously { image_indices: List<String> }
 
 fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListingReading {
   match parse_json_document(s: body) {
@@ -1223,7 +1331,7 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
             match image_index_named(elements: elements, image_name: image_name as String) {
               ImageIndexAbsent => ImagesListingLacks
               ImageIndexUnique { image_index: idx } => ImagesListingOffers { image_index: idx }
-              ImageIndexAmbiguous { count: _ } => ImagesListingUnparseable { detail: concat("the listing names the image more than once, so its index is ambiguous: ", body) }
+              ImageIndexAmbiguous { image_indices: ids } => ImagesListingOffersAmbiguously { image_indices: ids }
               ImageIndexUnreadable => ImagesListingUnparseable { detail: concat("the listing has a row without one readable string image_name, or names the image without a numeric image_index: ", body) }
             }
           }
@@ -1231,10 +1339,15 @@ fn images_listing_reading(body: String, image_name: NonEmptyStr) -> ImagesListin
   }
 }
 
+// A name offered twice IS listed; the await loop refuses on the ambiguity before any look reaches the
+// mount standing, so this arm states presence and decides nothing.
 fn images_listing_presence(reading: ImagesListingReading) -> RemoteMediaListing {
   match reading {
     ImagesListingOffers { image_index: _ } => MediaImageListed
-    _ => MediaImageAbsentFromListing
+    ImagesListingUnparseable { detail: _ } => MediaImageAbsentFromListing
+    ImagesListingEmpty => MediaImageAbsentFromListing
+    ImagesListingLacks => MediaImageAbsentFromListing
+    ImagesListingOffersAmbiguously { image_indices: _ } => MediaImageListed
   }
 }
 
@@ -1306,26 +1419,35 @@ fn configuration_row_reading(
                         match status {
                           RedirectionStopped => ConfigurationRowIdle
                           RedirectionWireUncatalogued { wire: w } => ConfigurationRowUncatalogued { image_name: name, wire: w }
-                          _ =>
-                            if name == "" {
-                              ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
-                            } else {
-                              ConfigurationRowPresenting {
-                                row: PresentingRow {
-                                  image_name: name,
-                                  media_index: json_number_member(doc: row, key: "media_index"),
-                                  session_index: json_number_member(doc: row, key: "session_index"),
-                                  redirection_wire: wire,
-                                  redirection: status,
-                                },
-                              }
-                            }
+                          RedirectionStartedConnectionAccepted => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
+                          RedirectionConnecting => configuration_row_presenting_reading(row: row, name: name, wire: wire, status: status)
                         }
                     }
                   }
               }
           }
       }
+  }
+}
+
+fn configuration_row_presenting_reading(
+  row: JsonValue,
+  name: String,
+  wire: Int,
+  status: MegaRacRedirectionStatus,
+) -> ConfigurationRowReading {
+  if name == "" {
+    ConfigurationRowUnreadable { detail: "a CD row is presenting but names no image" }
+  } else {
+    ConfigurationRowPresenting {
+      row: PresentingRow {
+        image_name: name,
+        media_index: json_number_member(doc: row, key: "media_index"),
+        session_index: json_number_member(doc: row, key: "session_index"),
+        redirection_wire: wire,
+        redirection: status,
+      },
+    }
   }
 }
 
@@ -1428,13 +1550,12 @@ type ConvergenceStep
   | ConvergeStepAttachFromListing
 
 // THE DECISION, PURE, so every control is a supplied configurations reading rather than a
-// controller. THE CODE'S DISPOSITION IS EXPLICIT ON EVERY ROUTE (side-chat review 5331991982): only
-// an OBSERVED nonzero code enters the fresh-presentation experiment, and only under the admission; an
-// UNREAD code is a knowledge refusal that never withdraws a presentation (the desired one goes to the
-// no-write readiness fold, which re-reads the code and withholds if it is still unread); a clean code
-// is the ordinary route. The admission is read only on the arm that would write destructively: a host that is
-// on with the desired image presented makes no write, and goes to the readiness fold like any other
-// presentation.
+// controller. THE CODE'S DISPOSITION IS EXPLICIT ON EVERY ROUTE (side-chat review 5331991982), and
+// follows the vendor's UI: the desired image presented (Started or connecting) goes to the no-write
+// readiness fold whatever the code reads, because the vendor does not consult it then; nothing
+// presented is attached on a clean code or a named stop reason (the vendor's stopped view leaves Start
+// enabled), and on a code outside the table only under the fresh-presentation admission; an UNREAD
+// code never licenses a write. The admission is read only on the arms that would write.
 fn megarac_convergence_step(
   convergence: PresentedConvergence,
   detach: MegaRacDetachAdmission,
@@ -1446,20 +1567,11 @@ fn megarac_convergence_step(
     ConvergeUncatalogued { image_name: n, wire: w } => ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: configurations } }
     ConvergeForeignPresented { image_name: n } => ConvergeStepRefuse { outcome: MegaRacForeignImagePresented { image_name: n, configurations: configurations } }
     ConvergeSeveralPresented => ConvergeStepRefuse { outcome: MegaRacSeveralImagesPresented { configurations: configurations } }
-    ConvergeDesiredPresented { row: r } =>
-      match cd_before {
-        CdErrorRead { code: CdErrorNone } => ConvergeStepAwaitReadiness
-        CdErrorUnread { detail: _ } => ConvergeStepAwaitReadiness
-        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } =>
-          match detach {
-            MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
-            MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: concat("the desired image is presented with a nonzero cd_error_code and the fresh-presentation recovery was not admitted: ", why as String)) }
-          }
-      }
+    ConvergeDesiredPresented { row: _ } => ConvergeStepAwaitReadiness
     ConvergeStalePresented { row: r } =>
       match cd_before {
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, and an unknown media state never licenses withdrawing a presentation") }
-        _ =>
+        CdErrorRead { code: _ } =>
           match detach {
             MegaRacDetachAdmitted => ConvergeStepDetachStale { row: r }
             MegaRacDetachNotAdmitted { reason: why } => ConvergeStepRefuse { outcome: MegaRacStaleDetachNotAdmitted { stale_image: r.image_name, reason: why } }
@@ -1468,6 +1580,7 @@ fn megarac_convergence_step(
     ConvergeNothingPresented =>
       match cd_before {
         CdErrorRead { code: CdErrorNone } => ConvergeStepAttachFromListing
+        CdErrorRead { code: CdErrorStopReason { status: _, class: _ } } => ConvergeStepAttachFromListing
         CdErrorUnread { detail: _ } => ConvergeStepRefuse { outcome: unestablished_before_write(cd_before: cd_before, reason: "cd_error_code could not be read, so this attempt cannot establish the media state it would attach into") }
         CdErrorRead { code: CdErrorUncatalogued { wire: _ } } =>
           match detach {
@@ -1605,7 +1718,9 @@ fn attach_readiness(
               match r.redirection {
                 RedirectionStartedConnectionAccepted =>
                   if presenting_session_bound(row: r) { ReadinessStarted { row: r } } else { ReadinessStartedUnbound { row: r } }
-                _ => ReadinessConnecting { row: r }
+                RedirectionStopped => ReadinessConnecting { row: r }
+                RedirectionConnecting => ReadinessConnecting { row: r }
+                RedirectionWireUncatalogued { wire: _ } => ReadinessConnecting { row: r }
               }
           }
         }
@@ -1633,7 +1748,10 @@ fn readiness_standing(look: ReadinessLook, phase: ReadinessPhase) -> ReadinessSt
         ReadinessAfterStart => ReadinessPending
         ReadinessOfPresented => ReadinessRefusedAt { look: look }
       }
-    _ => ReadinessRefusedAt { look: look }
+    ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => ReadinessRefusedAt { look: look }
+    ReadinessMalformed { detail: _ } => ReadinessRefusedAt { look: look }
+    ReadinessDuplicate { configurations: _ } => ReadinessRefusedAt { look: look }
+    ReadinessWrongPresentation { image_name: _, configurations: _ } => ReadinessRefusedAt { look: look }
   }
 }
 
@@ -1784,6 +1902,35 @@ fn megarac_readiness_outcome(
 
 // THE CODE IS READ AT THE END OF THE WAIT WHATEVER THE WAIT ANSWERED, so a refusal carries the code
 // that stood beside the unhealthy presentation, and a ready presentation carries it as historical.
+// A STOPPED PRESENTATION WITH A NAMED REASON: the look found nothing presented (the row was stopped,
+// or cleared) and the code reads a reason the build's table names. That is the one state in which the
+// vendor's UI reads the code at all, and it reads it as "Stopped - <name>", so the refusal carries the
+// name and its class instead of a timeout. Any other look, or any other code, is not this state.
+type StopReasonReading {
+  status: MegaRacRmediaStatus
+  class: MegaRacStopReasonClass
+}
+
+fn stopped_with_reason(look: ReadinessLook, cd: CdErrorReading) -> StopReasonReading? {
+  match look.reading {
+    ReadinessNotPresented { configurations: _ } =>
+      match cd {
+        CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => Present { value: StopReasonReading { status: st, class: k } }
+        CdErrorRead { code: CdErrorNone } => none
+        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => none
+        CdErrorUnread { detail: _ } => none
+      }
+    ReadinessStarted { row: _ } => none
+    ReadinessConnecting { row: _ } => none
+    ReadinessStartedUnbound { row: _ } => none
+    ReadinessUnanswered { detail: _ } => none
+    ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => none
+    ReadinessMalformed { detail: _ } => none
+    ReadinessDuplicate { configurations: _ } => none
+    ReadinessWrongPresentation { image_name: _, configurations: _ } => none
+  }
+}
+
 // PURE: the wait's answer as the attach outcome. Only a Started look reaches MegaRacPresentationReady,
 // and the evidence is read from that look's row, so the record a boot is gated on is the row that
 // satisfied the policy.
@@ -1795,17 +1942,28 @@ fn readiness_wait_outcome(
   cd_before: CdErrorReading,
   general_at_end: MegaRacRawRead,
 ) -> MegaRacAttachOutcome {
-  let cd_at_end = cd_error_of_raw(r: general_at_end)
+  let cd_at_end = cd_error_of_raw(r: general_at_end, firmware: firmware)
   match wait {
     ReadinessWaitClockUnreadable { detail: d } => MegaRacReadinessClockUnreadable { image_name: image_name, route: route, detail: d }
     ReadinessWaitClockIncoherent { opened_at: o, previous: p, look: l, looks: n } => MegaRacReadinessClockIncoherent { image_name: image_name, route: route, opened_at: o, previous: p, look: l, looks: n }
-    ReadinessWaitClosed { last: l, deadline: d, looks: n } => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitRefused { look: l, looks: n } => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
-    ReadinessWaitReady { look: l, looks: n } =>
+    ReadinessWaitClosed { last: l, deadline: d, looks: n } =>
+      match stopped_with_reason(look: l, cd: cd_at_end) {
+        Present { value: st } => MegaRacPresentationStopped { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, stop: st.status, class: st.class, general_at_refusal: general_at_end }
+        Absent => MegaRacReadinessTimedOut { image_name: image_name, route: route, last: l, deadline: d, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+      }
+    ReadinessWaitRefused { look: l, looks: n } =>
+      match stopped_with_reason(look: l, cd: cd_at_end) {
+        Present { value: st } => MegaRacPresentationStopped { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, stop: st.status, class: st.class, general_at_refusal: general_at_end }
+        Absent => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+      }
+    ReadinessWaitReady { look: l, looks: n } => {
+      let not_ready = MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+      let state_unestablished = MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
       match l.reading {
         ReadinessStarted { row: r } =>
           match cd_at_end {
-            CdErrorRead { code: CdErrorNone } =>
+            CdErrorUnread { detail: _ } => state_unestablished
+            CdErrorRead { code: _ } =>
           MegaRacPresentationReady {
             route: route,
             evidence: MegaRacPresentationEvidence {
@@ -1821,10 +1979,17 @@ fn readiness_wait_outcome(
               general_at_ready: general_at_end,
             },
           }
-            _ => MegaRacMediaStateUnestablished { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_ready: cd_at_end, general_at_ready: general_at_end }
           }
-        _ => MegaRacReadinessRefused { image_name: image_name, route: route, look: l, looks: n, cd_before_any_write: cd_before, cd_at_refusal: cd_at_end }
+        ReadinessConnecting { row: _ } => not_ready
+        ReadinessStartedUnbound { row: _ } => not_ready
+        ReadinessNotPresented { configurations: _ } => not_ready
+        ReadinessUnanswered { detail: _ } => not_ready
+        ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => not_ready
+        ReadinessMalformed { detail: _ } => not_ready
+        ReadinessDuplicate { configurations: _ } => not_ready
+        ReadinessWrongPresentation { image_name: _, configurations: _ } => not_ready
       }
+    }
   }
 }
 
@@ -1854,18 +2019,18 @@ fn megarac_observe_with_token(
   return MegaRacPresentationObserved {
     share: if general.answered { share_binding_standing(body: general.body, expected: share) } else { ShareUnreadable { detail: general.body } },
     readiness: attach_readiness(answered: configurations.answered, body: configurations.body, image_name: image_name, firmware: firmware),
-    cd_error: cd_error_of_raw(r: general),
+    cd_error: cd_error_of_raw(r: general, firmware: firmware),
     general: general,
     configurations: configurations,
   }
 }
 
-// FOUR ANSWERS, BECAUSE THEY ARE FOUR DIFFERENT FACTS (side-chat review 5331738657). Affirmed:
-// the look was taken and the medium is not being served (a withdrawn or non-Started row, a share
-// mismatch). Unobserved: the look itself failed (session, transport, an unread member), which says
-// nothing about the medium. Unestablished: the look was taken and the medium looked healthy, but the
-// general settings carry a nonzero cd_error_code whose meaning is unresolved, so this attempt cannot
-// establish the media state (operator decision, option A: a knowledge refusal, not a BMC verdict).
+// THREE ANSWERS, BECAUSE THEY ARE DIFFERENT FACTS (side-chat review 5331738657). Affirmed: the look
+// was taken and the medium is not being served (a withdrawn or non-Started row, a share mismatch; a
+// stopped row beside a cd_error_code the build's table names says which stop it was). Unobserved: the
+// look itself failed (session, transport, an unread member, an unread cd_error_code), which says
+// nothing about the medium. A read cd_error_code beside a Started row is the last stop's latched
+// reason, which the vendor's UI does not consult while started, so it does not withhold.
 // And the look's own session must be released: a ready medium observed through a session the
 // controller still holds is a cleanup obligation unmet, exactly as at the initial gate. Only
 // PresentationStillReady admits a handoff; each other answer withholds and says which it was.
@@ -1873,7 +2038,6 @@ type PresentationStillServed
   = PresentationStillReady
   | PresentationReadyButSessionHeld { held: SessionRelease }
   | PresentationNoLongerReady { reason: NonEmptyStr }
-  | PresentationStateUnestablished { cd_error: CdErrorReading }
   | PresentationUnobserved { reason: NonEmptyStr }
 
 fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillServed {
@@ -1882,24 +2046,71 @@ fn presentation_still_served(result: MegaRacAttachResult) -> PresentationStillSe
       match sh {
         ShareUnreadable { detail: _ } => PresentationUnobserved { reason: "the general settings could not be read" }
         ShareMismatch { observed: _ } => PresentationNoLongerReady { reason: "the controller's share no longer matches this unit's boot share" }
-        ShareBound =>
+        ShareBound => {
+          let no_longer_ready = PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
           match r {
             ReadinessUnanswered { detail: _ } => PresentationUnobserved { reason: "the configurations read was not answered" }
             ReadinessMalformed { detail: _ } => PresentationUnobserved { reason: "the configurations document could not be read" }
             ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => PresentationUnobserved { reason: "a configurations row carries an uncatalogued status" }
             ReadinessStarted { row: _ } =>
               match cd {
-                CdErrorRead { code: CdErrorNone } =>
+                CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
+                CdErrorRead { code: _ } =>
                   match result.session_release {
                     SessionReleased => PresentationStillReady
                     other => PresentationReadyButSessionHeld { held: other }
                   }
-                CdErrorUnread { detail: _ } => PresentationUnobserved { reason: "cd_error_code could not be read" }
-                other => PresentationStateUnestablished { cd_error: other }
               }
-            _ => PresentationNoLongerReady { reason: "the configurations row is no longer Started with a bound session" }
+            ReadinessConnecting { row: _ } => no_longer_ready
+            ReadinessStartedUnbound { row: _ } => no_longer_ready
+            ReadinessNotPresented { configurations: _ } =>
+              match cd {
+                CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => PresentationNoLongerReady { reason: concat("the configurations row no longer presents the image: ", stop_reason_text(status: st, class: k)) as NonEmptyStr }
+                _ => no_longer_ready
+              }
+            ReadinessDuplicate { configurations: _ } => no_longer_ready
+            ReadinessWrongPresentation { image_name: _, configurations: _ } => no_longer_ready
           }
+        }
       }
-    _ => PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
+    MegaRacPresentationReady { route: _, evidence: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessTimedOut { image_name: _, route: _, last: _, deadline: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablished { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_ready: _, general_at_ready: _ } => presentation_unobserved_before_presentation()
+    MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessRefused { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, cd_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacPresentationStopped { image_name: _, route: _, look: _, looks: _, cd_before_any_write: _, stop: _, class: _, general_at_refusal: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockUnreadable { image_name: _, route: _, detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacReadinessClockIncoherent { image_name: _, route: _, opened_at: _, previous: _, look: _, looks: _ } => presentation_unobserved_before_presentation()
+    MegaRacConfigurationsUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareMismatch { expected: _, observed: _ } => presentation_unobserved_before_presentation()
+    MegaRacShareUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionRefused { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacSessionTokenUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImagesUnreadable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageListingEmpty => presentation_unobserved_before_presentation()
+    MegaRacImageListingUnparseable { detail: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageNotEnumerated { image_name: _ } => presentation_unobserved_before_presentation()
+    MegaRacImageOfferedAmbiguously { image_name: _, image_indices: _ } => presentation_unobserved_before_presentation()
+    MegaRacForeignImagePresented { image_name: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacSeveralImagesPresented { configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachNotAdmitted { stale_image: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacStaleDetachUnconfirmed { detach: _, reason: _ } => presentation_unobserved_before_presentation()
+    MegaRacRedirectionUncatalogued { image_name: _, wire: _, configurations: _ } => presentation_unobserved_before_presentation()
+    MegaRacRefreshClockUnreadable { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacListingUnparseableAfterDetach { detail: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacOfferedAmbiguouslyAfterDetach { image_name: _, image_indices: _, detach: _ } => presentation_unobserved_before_presentation()
+    MegaRacNotEnumeratedAfterRefresh { image_name: _, detach: _, standing: _ } => presentation_unobserved_before_presentation()
   }
+}
+
+fn presentation_unobserved_before_presentation() -> PresentationStillServed {
+  PresentationUnobserved { reason: "the presentation could not be observed (the session was refused or its token unreadable)" }
+}
+
+// THE VENDOR'S OWN RENDERING, "Stopped - <name>", with the code and this repository's class beside it.
+fn stop_reason_text(status: MegaRacRmediaStatus, class: MegaRacStopReasonClass) -> String {
+  join(["Stopped - ", status.name as String, " (cd_error_code ", to_string(status.code), "; ", match class {
+    StopReasonNoFault => "no fault: the stop was asked for, or the consumer let the medium go"
+    StopReasonPresentationFailure => "a presentation failure: the controller could not present, or lost, the medium"
+  }, ")"], "")
 }

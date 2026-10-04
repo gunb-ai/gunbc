@@ -2,6 +2,7 @@ module v2.test.name_resolve.admission_fail_closed
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.name_resolve {
+  ResolutionContext,
   Admission,
   AdmissionAccepted,
   AdmissionRejected,
@@ -11,7 +12,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   admit_import_entry,
   resolution_context,
-  resolve_with_admission_context_policy,
+  resolve_in_context,
   resolve_with_admission,
   resolve_with_admission_policy,
   subject_module_root_for_name,
@@ -19,12 +20,13 @@ import v2.compiler.name_resolve {
   validate_module_roots
 }
 import v2.std.declaration_marker { test_marker_channel_empty }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_record_declarations}
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_language_model_surface_empty_prelude,
-  dag_named_edge
+  dag_named_edge,
+  dag_surface_edge,
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, fold_list_node }
@@ -41,8 +43,7 @@ import v2.std.diagnostic {
   non_empty_diagnostics_eq
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -76,19 +77,17 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: export_sym },
+        label: Authored { name: export_sym },
         target: Node {
           kind: TypeNode {
-            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+            connective: Atom { identity: ^dag_token_ident }
           },
           children: [],
           occurrence_id: OccurrenceSynthetic
@@ -127,7 +126,7 @@ fn fc_with_roots(
 }
 
 fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), record_declarations: no_record_declarations(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: n, diagnostics: None)
 }
 
 fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
@@ -148,12 +147,10 @@ fn fc_malformed_subject_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: ^fc_malformed_seg)
       ),
       Edge {
@@ -285,16 +282,14 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      dag_surface_edge(edge: ^dag_surface_module_header,
         target: dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: seg)
       ),
       Edge {
-        label: Named { name: use_sym },
+        label: Authored { name: use_sym },
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
@@ -386,22 +381,22 @@ fn fc_shared_validation_refusal_preserved(roots: FreeMonoid<NormalizedTree>) -> 
     Rejected { diagnostics: expected } =>
       let context = resolution_context(
         lm: dag_language_model_surface_empty_prelude(),
-        roots: roots
+        roots: roots,
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: ImportScoped
       )
       fold_list(
         xs: [^fc_dup_seg, ^fc_missing_seg],
         empty: true,
         cons: fn(preserved, subject) {
-          preserved && match resolve_with_admission_context_policy(
+          preserved && match resolve_in_context(
             context: context,
             admission: Admission {
               subject: ResolutionSubject { name: fc_qn(seg: subject) },
               imports: Empty
-            },
-            index: source_root_index_empty(),
-            active_roots: Empty,
-            policy: ImportScoped
-          ) {
+            }
+          ).resolved {
             Accepted { value: _, diagnostics: _ } => false
             Rejected { diagnostics: actual } =>
               non_empty_diagnostics_eq(a: expected, b: actual)
@@ -451,22 +446,22 @@ test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_locat
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let context = resolution_context(
       lm: dag_language_model_surface_empty_prelude(),
-      roots: roots
+      roots: roots,
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
     )
     let accepted = fold_list(
       xs: [^fc_subject_a_seg, ^fc_subject_b_seg],
       empty: true,
       cons: fn(ok, subject) {
-        ok && match resolve_with_admission_context_policy(
+        ok && match resolve_in_context(
           context: context,
           admission: Admission {
             subject: ResolutionSubject { name: fc_qn(seg: subject) },
             imports: [Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible }]
-          },
-          index: source_root_index_empty(),
-          active_roots: Empty,
-          policy: ImportScoped
-        ) {
+          }
+        ).resolved {
           Accepted { value: _, diagnostics: d } => diagnostics_eq(a: d, b: None)
           Rejected { diagnostics: _ } => false
         }
@@ -476,21 +471,103 @@ test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_locat
     accepted && match module_root_find(roots: roots, name: missing) {
       Accepted { value: _, diagnostics: _ } => false
       Rejected { diagnostics: expected } =>
-        match resolve_with_admission_context_policy(
+        match resolve_in_context(
           context: context,
           admission: Admission {
             subject: ResolutionSubject { name: missing },
             imports: Empty
-          },
-          index: source_root_index_empty(),
-          active_roots: Empty,
-          policy: ImportScoped
-        ) {
+          }
+        ).resolved {
           Accepted { value: _, diagnostics: _ } => false
           Rejected { diagnostics: actual } =>
             non_empty_diagnostics_eq(a: expected, b: actual)
         }
     }
+  })
+}
+
+// ── THE MODULE NAMESPACE PROVIDER: at most once per context, refusals stored, no silent reuse ──
+// (v2.compiler.name_resolve ResolutionContext namespaces; docs/plans/declaration-body-resolution-provider.md
+// P1, control C5). Every claim threads the context a resolution returns into the next one, which is
+// the discipline the native loops follow.
+
+fn fc_provider_context(roots: FreeMonoid<NormalizedTree>) -> Outcome<ResolutionContext> {
+  resolution_context(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: roots,
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
+  )
+}
+
+fn fc_provider_admission(seg: Symbol) -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: fc_qn(seg: seg) },
+    imports: [Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible }]
+  }
+}
+
+fn fc_namespaces_built(context: Outcome<ResolutionContext>) -> Int {
+  match context {
+    Accepted { value: shared, diagnostics: _ } => shared.namespaces_built
+    Rejected { diagnostics: _ } => 0 - 1
+  }
+}
+
+// AT MOST ONCE: subject a, then a again, then b, over one threaded context, builds two namespaces --
+// the second demand for a is served the stored value. RED if a demand for a module already in the
+// provider builds again (three), which is the rebuild this provider exists to remove; and the served
+// resolution is the same tree the first one produced.
+test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool {
+  fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
+    let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
+    let again = resolve_in_context(context: first.context, admission: fc_provider_admission(seg: ^fc_subject_a_seg))
+    let other = resolve_in_context(context: again.context, admission: fc_provider_admission(seg: ^fc_subject_b_seg))
+    (fc_namespaces_built(context: first.context) == 1)
+      && (fc_namespaces_built(context: again.context) == 1)
+      && (fc_namespaces_built(context: other.context) == 2)
+      && match first.resolved {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: a1, diagnostics: _ } =>
+          match again.resolved {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: a2, diagnostics: _ } => a1.root == a2.root
+          }
+      }
+  })
+}
+
+// A DEMAND UNDER A DIFFERENT ADMISSION REFUSES, located at the subject, and neither serves nor
+// overwrites the stored namespace: the same subject asked with no imports after being produced with
+// one import is a different input, so the provider's key would be incomplete if it answered.
+test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool {
+  fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
+    let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
+    let conflicting = resolve_in_context(
+      context: first.context,
+      admission: Admission { subject: ResolutionSubject { name: fc_qn(seg: ^fc_subject_a_seg) }, imports: Empty }
+    )
+    (fc_namespaces_built(context: conflicting.context) == 1)
+      && match conflicting.resolved {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == ^resolve_reason_namespace_provider_admission_conflict
+      }
+  })
+}
+
+// A MODULE OUTSIDE THE INGEST REFUSES AT THE PROVIDER, and the refusal is stored like any other
+// production: a second demand is served it without a second build.
+test fn namespace_provider_refuses_a_module_outside_the_ingest_once() -> Bool {
+  fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
+    let missing = Admission { subject: ResolutionSubject { name: fc_qn(seg: ^fc_missing_seg) }, imports: Empty }
+    let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: missing)
+    let again = resolve_in_context(context: first.context, admission: missing)
+    (fc_namespaces_built(context: again.context) == 1)
+      && match again.resolved {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+      }
   })
 }
 

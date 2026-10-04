@@ -10,7 +10,7 @@ import std.measure { Second, second }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import extdeps.exec.command { argv_words }
-import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_6_18_post1_wheel_url }
+import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_1rc1_wheel_url }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -131,7 +131,7 @@ fn v41_wheel_verify_script(wheels: List<FlashInferWheel>) -> String {
     "set -e\n",
     fold(wheels, init: "", f: (acc, w) => join([
       acc,
-      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_6_18_post1_wheel_url(w: w) as String, "\n",
+      "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_1rc1_wheel_url(w: w) as String, "\n",
       "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
     ], "")),
   ], "")
@@ -496,8 +496,8 @@ fn v41_runtime_image_produce_ci_wet() -> ProcessExit
 // serving and the Engram differential both have to run in THE image the production admitted. The
 // row stores the differential reads live on srv5, the image was produced on srv8, and serving
 // later needs it on all four Group A hosts -- so the image moves, by the one transport the fleet
-// models for images (gunbc.spark.vllm_runtime_image_build distribute_vllm_image: save, scp through
-// the executor, load, readback), and this entry supplies what that fold needs and nothing else.
+// models for images (gunbc.spark.vllm_runtime_image_build distribute_vllm_image: save into the
+// source's fabric blob root, pull over the fabric rail, load, readback), and this entry supplies what that fold needs and nothing else.
 //
 // THE SUBJECT IS THE PRODUCTION RECEIPT, NOT A TAG. What the production run established is a
 // configuration digest on a host, and that is the whole identity this row carries: the observed
@@ -558,8 +558,8 @@ fn v41_produced_image_subject(p: V41ProducedImageHeld) -> VllmImageDistributionS
 }
 
 // WHAT THIS MODE DOES TO A HOST, handed to the host-effect claim on both ends: the source writes a
-// tar of the image's size into /tmp and the target writes one there and then loads it. Two hours
-// bounds a ~30 GB save, two scp legs and a load on the management LAN; an unreleased claim reads
+// tar of the image's size into its fabric blob root and serves it on the rail, and the target pulls
+// it into its own and then loads it. Two hours bounds a ~30 GB save, a rail pull and a load; an unreleased claim reads
 // OVERDUE after it and still fences until the host is observed quiet. The residue a crashed run
 // leaves is the digest-named tar, which every leg carries on its command line.
 data v41_image_distribution_host_purpose: NonEmptyStr = "a runtime image distribution, which saves or loads the produced image through a digest-named staging tar" as NonEmptyStr
@@ -587,7 +587,7 @@ fn v41_distribute_to(target_host: HostIdentity, p: V41ProducedImageHeld) -> Proc
     attempt_raw: v41_distribution_attempt_raw,
     identity_file_name: "gunbc-v41-runtime-image-distribute-admin-password" as NonEmptyStr,
     use: fn(target, context, ctx) {
-      let dist = distribute_vllm_image(source_ctx: ctx, source_endpoint: target.endpoint, image: image, targets: [target_host])
+      let dist = distribute_vllm_image(source_ctx: ctx, image: image, targets: [target_host])
       SparkBuildHostWork {
         receipt: vllm_image_distribution_wire(dist: dist),
         converged: vllm_image_distribution_succeeded(dist: dist),

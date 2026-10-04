@@ -13,10 +13,13 @@ import gunbc.target_binding {
   BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   FloorMemoryQualificationProducer,
+  TypedGraphExclusiveBytesProducer,
+  TypedGraphExclusiveBytesFloorSubjectProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
+  NativeServeProgramProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -47,6 +50,8 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
+  V2NativeCensusProducer, ResolveRefusalReading, TypeDeclarationUseReading,
+  DependencyDemandCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -101,6 +106,25 @@ fn floor_memory_qualification_label() -> Label {
   Label {
     package: instruments_package()
     target: TargetName { name: "floor-memory-qualification" }
+  }
+}
+
+// THE TYPED GRAPH'S BYTES BY CLASS, LEAVE-ONE-OUT: what removing each class would save, which the
+// floor's sequential attribution cannot say (a late class is credited nodes it shared). A different
+// observation from floor-memory-qualification's demand verdict, over its own subject.
+fn typed_graph_exclusive_bytes_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "typed-graph-exclusive-bytes" }
+  }
+}
+
+// THE SAME OBSERVATION AT THE FLOOR'S OWN PREPARED SUBJECT: a second closure size, so the class's
+// scaling is measured rather than inferred. Its own label because it is its own subject.
+fn typed_graph_exclusive_bytes_floor_subject_label() -> Label {
+  Label {
+    package: instruments_package()
+    target: TargetName { name: "typed-graph-exclusive-bytes-floor-subject" }
   }
 }
 
@@ -220,6 +244,33 @@ fn v2_native_frontier_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-frontier" } }
 }
 
+// THE NATIVE CENSUS INSTRUMENT: the emitted compiler's `census-resolve` verb over the self-host
+// corpus, every front-end and resolve refusal GROUPED BY THE FATAL REASON
+// (v2.compiler.compile native_census_cause_groups_add) with the head kept as a member field. An
+// import cascade is collapsed to its root (census C): each cascaded module is one member under the
+// root's reason, and the roots are ranked by closure fan-out (native_census_roots_ranked). It is
+// THE route to that census: the binary's `census` / `census-resolve` verbs remain only as this row's
+// realization and are not a second documented peer route, which is the --self-host precedent this
+// file states for `//gunbc/instruments:self-host` (DESIGN section 3, Building & checks).
+// IT IS A REPORT, AND ITS VERDICT SAYS ONLY THAT: a census that completed is held, and a run that
+// printed no complete terminal is the subject unreached. It has NO did-not-hold arm on purpose. A
+// partition check (members summed over groups == rows reported) was tried and withdrawn in review
+// 74324: every row reaches a group through the same call that counts it, so its red was not
+// authorable in a real run -- a decoration by DESIGN section 4b. The grouping's discriminating red
+// lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
+fn v2_native_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
+}
+
+// THE NOMINAL-TYPE PLAN'S M0 (docs/plans/nominal-type-declaration-plan.md section 2): every type
+// declaration and every `as` site of `dag` + `src/v2`, classified off the RESOLVED and INFERRED trees
+// by the native census-infer walk, with its fixture and unindexed-module controls run first.
+// `gunbc test //gunbc/instruments:type-declaration-use-census`. A report: its numbers are a receipt and
+// are not transcribed into committed prose (DESIGN section 6).
+fn type_declaration_use_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "type-declaration-use-census" } }
+}
+
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
 // closure, `v2.workflow.emitted_crate_workspace` `emitted_workspace_plan` partitions it into crate
 // rows from the derived module DAG, the emission's returned edges and the transitive unit
@@ -269,6 +320,71 @@ fn native_app_attest_label() -> Label {
 
 fn native_app_attest_entry() -> String {
   "dag/gunbc/instruments/native_app_attest.dag"
+}
+
+// THE DAG TARGET'S REAL-GRAMMAR ROUND TRIPS: ingest -> emit by reading dag_grammar_root backward ->
+// re-ingest, per construct, executed natively by the NativeClaimDriver program
+// gunbc.instruments.dag_emit_real_grammar_round_trips. Its roster is the population of the declared
+// drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
+// route that still runs them; run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
+// port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
+// judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
+// read back through gunbc.serve_liveness observe_serve_liveness -- plus a launch with a branch name
+// for a release, which must refuse before binding. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-serve`.
+fn native_serve_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve" } }
+}
+
+fn native_serve_entry() -> String {
+  "dag/gunbc/instruments/native_serve_fixture.dag"
+}
+
+fn native_serve_binding() -> TargetBinding {
+  TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() } }
+}
+
+fn dag_emit_real_grammar_round_trips_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "dag-emit-real-grammar-round-trips" } }
+}
+
+fn dag_emit_real_grammar_round_trips_entry() -> String {
+  "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag"
+}
+
+// THE MATERIALIZATION STORE CLOSURE, EMITTED, BUILT UNDER CARGO AND RUN: the NativeClaimDriver
+// program gunbc.instruments.native_materialization_store_closure, whose closure contains
+// extdeps.realization.materialization_store_local. Its cargo compilation discriminates two emitter
+// classes of accepted source that emitted Rust rustc refused -- item bounds missing from
+// hand-written impl and fn headers (class A), and an optional-returning lambda unwrapped inside its
+// own body (class C) -- so for those two the BUILD is a verdict, not only the cases. The cases over
+// the five representation-local simplifications (class B, specimens of gunbc.rung_drop
+// text_boundary_identity_wall) are behavioral controls of the simplified functions: restoring an
+// unnecessary identified crossing may unfold or refuse at source acceptance and is not guaranteed
+// to fail this build. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-materialization-store-closure`.
+fn native_materialization_store_closure_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-materialization-store-closure" } }
+}
+
+fn native_materialization_store_closure_entry() -> String {
+  "dag/gunbc/instruments/native_materialization_store_closure.dag"
+}
+
+// THE NATIVE EMISSION CONTROLS: one carrier per Rust-emitter rule, emitted, built and run by the
+// NativeClaimDriver program gunbc.instruments.native_emission_controls. It is the executing evidence
+// that a rule's emission is a compilable program with the right answers -- the half a textual
+// witness over the emitted header cannot establish. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-emission-controls`.
+fn native_emission_controls_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-emission-controls" } }
+}
+
+fn native_emission_controls_entry() -> String {
+  "dag/gunbc/instruments/native_emission_controls.dag"
 }
 
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
@@ -328,11 +444,21 @@ fn bare_reference_channel_outcome_label() -> Label {
 // SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
 // tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
 // gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
-// SelfHostBehavioralEquivalenceReestablished derives from the latest persisted receipt. Deliberately
+// SelfHostEmittedContractsHeld derives from the latest persisted receipt. Deliberately
 // not nightly and not per pull request, so this label is on no lane.
 // `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`.
 fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
+}
+
+// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.compile native_demand_census_output, the emitted compiler's
+// `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
+// the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
+// Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
+// head as part of its evidence rather than citing an earlier run.
+// `gunbc test //gunbc/instruments:dependency-demand-census`.
+fn dependency_demand_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
 }
 
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
@@ -415,6 +541,10 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
 }
 
+fn dependency_demand_census_binding() -> TargetBinding {
+  TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+}
+
 fn emitted_crate_workspace_binding() -> TargetBinding {
   TargetBinding { target: emitted_crate_workspace_label() producer: EmittedCrateWorkspaceProducer {} }
 }
@@ -429,6 +559,26 @@ fn v2_native_cli_binding() -> TargetBinding {
 
 fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
+}
+
+fn native_emission_controls_binding() -> TargetBinding {
+  TargetBinding { target: native_emission_controls_label() producer: NativeClaimProgramProducer { entry: native_emission_controls_entry() } }
+}
+
+fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
+  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
+}
+
+fn native_materialization_store_closure_binding() -> TargetBinding {
+  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() } }
+}
+
+fn type_declaration_use_census_binding() -> TargetBinding {
+  TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
+}
+
+fn v2_native_census_binding() -> TargetBinding {
+  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer { reading: ResolveRefusalReading } }
 }
 
 fn v2_native_frontier_binding() -> TargetBinding {
@@ -482,6 +632,20 @@ fn floor_memory_qualification_binding() -> TargetBinding {
   TargetBinding {
     target: floor_memory_qualification_label()
     producer: FloorMemoryQualificationProducer {}
+  }
+}
+
+fn typed_graph_exclusive_bytes_binding() -> TargetBinding {
+  TargetBinding {
+    target: typed_graph_exclusive_bytes_label()
+    producer: TypedGraphExclusiveBytesProducer {}
+  }
+}
+
+fn typed_graph_exclusive_bytes_floor_subject_binding() -> TargetBinding {
+  TargetBinding {
+    target: typed_graph_exclusive_bytes_floor_subject_label()
+    producer: TypedGraphExclusiveBytesFloorSubjectProducer {}
   }
 }
 
@@ -557,14 +721,16 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), type_declaration_use_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
-    primitive_egress_census_seed_label(), floor_memory_qualification_label(),
+    primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), native_app_attest_label()
+    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
+    native_materialization_store_closure_label(),
+    native_emission_controls_label(), native_serve_label()
   ]
 }
 
@@ -572,14 +738,16 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), type_declaration_use_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
-    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(),
+    primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), native_app_attest_binding()
+    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_materialization_store_closure_binding(),
+    native_emission_controls_binding(), native_serve_binding()
   ]
 }
 

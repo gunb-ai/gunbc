@@ -238,14 +238,18 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
             match (match lines.skip(n: 1).first() { Absent => none  Present { value: wire_field } => parse_gate_roster_hash_wire(line: wire_field) }) {
               Absent => none
               Present { value: gate_roster_hash } =>
-                Present {
-                  value: MergeAdmissionReceipt {
-                    pr_number: wire_pr_number_from_lines(lines: lines),
-                    head_sha: lines.skip(n: 3).first(),
-                    base_tree_hash: base_tree_hash,
-                    gate_roster_hash: gate_roster_hash,
-                    conclusion: conclusion,
-                  }
+                match lines.skip(n: 3).first() {
+                  Absent => none
+                  Present { value: head_sha } =>
+                    Present {
+                      value: MergeAdmissionReceipt {
+                        pr_number: wire_pr_number_from_lines(lines: lines),
+                        head_sha: head_sha,
+                        base_tree_hash: base_tree_hash,
+                        gate_roster_hash: gate_roster_hash,
+                        conclusion: conclusion,
+                      }
+                    }
                 }
             }
           Absent => none

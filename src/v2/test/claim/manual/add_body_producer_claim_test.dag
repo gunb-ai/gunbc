@@ -5,19 +5,20 @@ import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body
 }
 import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
   ComputationNode,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
   TypeNode,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  core_edge_label,
 }
 import v2.std.node_query { find_arrow_body_child }
 
@@ -72,6 +73,7 @@ test fn add_body_operand_order_differs() -> Bool {
   canonical != swapped
 }
 
+// Deliberately hand-built shape with no producer: the retired positional-types Arrow [T1..Tn, U] (Program P).
 fn add_body_arrow_with_atom_body_rejects() -> Bool {
   let arrow = node_synthetic(
     kind: TypeNode { connective: Arrow },
@@ -98,7 +100,7 @@ fn add_body_arrow_with_atom_body_rejects() -> Bool {
         )
       },
       Edge {
-        label: Named { name: ^arrow_body_edge },
+        label: core_edge_label(marker: ArrowBodyEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Atom { identity: ^add_body_producer_fail } },
           children: []

@@ -1,5 +1,6 @@
 module v2.test.materialize.materialize_witness
 
+import std.types { List }
 import v2.std.materialize {
   materialize_redundant_computation_count,
   materialize_has_duplicate_computation,
@@ -8,7 +9,7 @@ import v2.std.materialize {
   distinct_hashes,
   hashes_contain
 }
-import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
+import v2.std.node { Node, Edge, Authored, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
 import std.realization_schedule {
   RealizationPlan,
   Runnable,
@@ -17,8 +18,6 @@ import std.realization_schedule {
   runnable_resource_profile_negligible
 }
 import std.content_hash { Fnv1a64 }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -31,8 +30,8 @@ fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^left }, target: a },
-      Edge { label: Named { name: ^right }, target: b }
+      Edge { label: Authored { name: ^left }, target: a },
+      Edge { label: Authored { name: ^right }, target: b }
     ]
   )
 }

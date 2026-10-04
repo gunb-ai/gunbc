@@ -15,9 +15,8 @@ import std.goal_assessment {
 import extdeps.uri {
   Uri,
   UriScheme,
-  Http,
-  Https,
   uri_from_wire,
+  uri_scheme_is_http,
   uri_scheme_wire
 }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonBool, JsonNull, JsonArray, JsonObject }
@@ -127,9 +126,18 @@ type HookConfigDecode
 
 fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
   match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: JsonString { value } } =>
-      if value == "" { none } else { Present { value: value as NonEmptyStr } }
-    _ => none
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: value } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -158,13 +166,14 @@ fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
     Absent => HookUrlRefused {
       reason: concat("app hook config url is not an absolute URL with a modeled scheme and an authority: ", raw as String) as NonEmptyStr
     }
-    Present { value: url } => match url.scheme {
-      Https => HookUrlDecoded { url: url }
-      Http => HookUrlDecoded { url: url }
-      _ => HookUrlRefused {
-        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+    Present { value: url } =>
+      if uri_scheme_is_http(s: url.scheme) {
+        HookUrlDecoded { url: url }
+      } else {
+        HookUrlRefused {
+          reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
+        }
       }
-    }
   }
 }
 
@@ -275,8 +284,18 @@ fn render_registration_read_refusal(cause: RegistrationReadRefusal) -> String {
 
 fn json_member_int(v: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: v, key: key) {
-    JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
-    _ => none
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: lexeme } => parse_int(s: lexeme as String)
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -286,7 +305,11 @@ fn decode_permission_access(v: JsonValue) -> GitHubAppPermissionAccess? {
       if value == "read" { Present { value: AppAccessRead } }
       else if value == "write" { Present { value: AppAccessWrite } }
       else { none }
-    _ => none
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
   }
 }
 
@@ -296,26 +319,34 @@ fn decode_permission_access(v: JsonValue) -> GitHubAppPermissionAccess? {
 fn decode_registration_permissions(doc: JsonValue) -> List<ObservedGitHubPermission>? {
   match json_object_unique_member(v: doc, key: "permissions") {
     JsonMemberAbsent => Present { value: [] }
-    JsonMemberFound { value: JsonObject { members } } => {
-      let decoded = map(members, m => match decode_permission_access(v: m.value) {
-        Absent => none
-        Present { value: access } => Present {
-          value: ObservedGitHubPermission {
-            name: ObservedGitHubPermissionName { wire_name: m.key as NonEmptyStr },
-            access: access
+    JsonMemberFound { value: found } => match found {
+      JsonObject { members } => {
+        let decoded = map(members, m => match decode_permission_access(v: m.value) {
+          Absent => none
+          Present { value: access } => Present {
+            value: ObservedGitHubPermission {
+              name: ObservedGitHubPermissionName { wire_name: m.key as NonEmptyStr },
+              access: access
+            }
           }
+        })
+        if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+          none
+        } else {
+          Present { value: flat_map(decoded, d => match d {
+            Present { value } => [value]
+            Absent => []
+          }) }
         }
-      })
-      if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
-        none
-      } else {
-        Present { value: flat_map(decoded, d => match d {
-          Present { value } => [value]
-          Absent => []
-        }) }
       }
+      JsonNull => none
+      JsonBool { value: _ } => none
+      JsonNumber { lexeme: _ } => none
+      JsonString { value: _ } => none
+      JsonArray { elements: _ } => none
     }
-    _ => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 

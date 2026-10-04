@@ -48,6 +48,7 @@ import gunbc.machine_intake_mtjade1_factory_network {
   mtjade1_bmc_observed_network,
   mtjade1_bmc_address,
   mtjade1_factory_bmc_network_standing,
+  mtjade1_current_bmc_network_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -253,10 +254,15 @@ test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool {
       expectation: mt_jade_gsg_bmc_network_expectation,
       observed: BmcNetworkObservedDhcpLease {
         address: mtjade1_bmc_address,
-        prefix: 29,
+        prefix: 24,
         basis: "fixture: a lease the router did issue",
       },
     ) {
+      FactoryNetworkMatchesDocument { expectation: _ } => true
+      FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
+      FactoryNetworkUnobserved { discriminator: _ } => false
+    }
+    && match mtjade1_current_bmc_network_standing {
       FactoryNetworkMatchesDocument { expectation: _ } => true
       FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => false
       FactoryNetworkUnobserved { discriminator: _ } => false

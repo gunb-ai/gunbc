@@ -1,5 +1,6 @@
 module v2.extdeps.languages.swift_decl
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.grammar {
@@ -19,12 +20,11 @@ import v2.std.compilers.semantic_decl_emission {
   semantic_decl_lex_whitespace_trivia_row,
   semantic_decl_serialize_profile_bundle
 }
-import v2.std.collection { List }
 import std.algebra { list_append }
 import v2.std.node {
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -61,7 +61,7 @@ data swift_decl_primitive_spelling_frontier: DissolutionCondition = unbound_diss
 )
 
 fn swift_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn swift_decl_type_expr_productions() -> List<FormalProduction> {

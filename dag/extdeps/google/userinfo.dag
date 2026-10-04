@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.transports.rest { RestOutcome }
 import extdeps.ietf.http_semantics { GET }
 import extdeps.cloud.gcp.errors { GcpOAuth2ErrorShape }
+import std.resources { Network }
 
 // Flat wire projection of OIDC standard claims. Claim semantics remain in extdeps.auth.oidc.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,6 +22,7 @@ type GoogleUserInfoWire {
 service google.OidcUserInfo {
   config { endpoint: "https://openidconnect.googleapis.com", auth: Bearer, auth_input: access_token }
   operation Get {
+    requires Network
     input { access_token: Secret }
     output { subject: String from "sub", email: Email?, email_verified: Bool?, outcome: RestOutcome }
     readonly

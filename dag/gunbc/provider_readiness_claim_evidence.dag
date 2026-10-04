@@ -261,14 +261,9 @@ fn provider_login_status_inference(
         probe: provider_login_status_probe,
         reason: "login-status operation result was not classified",
       )
-    _ =>
-      provider_observation_insufficient(
-        fact: observed_fact,
-        claim: claim,
-        inference_rule: "provider-login-status-records-credential-only",
-        probe: provider_login_status_probe,
-        reason: "a live-request observation is not a login-status observation",
-      )
+    ProviderLiveModelResponseReceived { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-login-status-records-credential-only", probe: provider_login_status_probe, reason: "a live-request observation is not a login-status observation")
+    ProviderLiveRefreshRefused { reason: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-login-status-records-credential-only", probe: provider_login_status_probe, reason: "a live-request observation is not a login-status observation")
+    ProviderLiveRequestRefused { reason: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-login-status-records-credential-only", probe: provider_login_status_probe, reason: "a live-request observation is not a login-status observation")
   }
 }
 
@@ -296,14 +291,11 @@ fn provider_live_request_failed_inference(
           reason: "live-request refusal does not belong to this provider attempt",
         )
       }
-    _ =>
-      provider_observation_insufficient(
-        fact: observed_fact,
-        claim: claim,
-        inference_rule: "provider-live-request-refresh-refusal",
-        probe: provider_live_request_probe,
-        reason: "operation result is not a live refresh refusal",
-      )
+    ProviderLoginCredentialRecorded { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-refresh-refusal", probe: provider_live_request_probe, reason: "operation result is not a live refresh refusal")
+    ProviderLoginCredentialAbsent { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-refresh-refusal", probe: provider_live_request_probe, reason: "operation result is not a live refresh refusal")
+    ProviderLoginStatusUnrecognized { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-refresh-refusal", probe: provider_live_request_probe, reason: "operation result is not a live refresh refusal")
+    ProviderLiveModelResponseReceived { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-refresh-refusal", probe: provider_live_request_probe, reason: "operation result is not a live refresh refusal")
+    ProviderLiveRequestRefused { reason: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-refresh-refusal", probe: provider_live_request_probe, reason: "operation result is not a live refresh refusal")
   }
 }
 
@@ -331,14 +323,11 @@ fn provider_live_request_succeeded_inference(
           reason: "live-request fact does not belong to this provider attempt or did not authenticate",
         )
       }
-    _ =>
-      provider_observation_insufficient(
-        fact: observed_fact,
-        claim: claim,
-        inference_rule: "provider-live-request-succeeded",
-        probe: provider_live_request_probe,
-        reason: "operation result is not a live model response",
-      )
+    ProviderLoginCredentialRecorded { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-succeeded", probe: provider_live_request_probe, reason: "operation result is not a live model response")
+    ProviderLoginCredentialAbsent { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-succeeded", probe: provider_live_request_probe, reason: "operation result is not a live model response")
+    ProviderLoginStatusUnrecognized { response: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-succeeded", probe: provider_live_request_probe, reason: "operation result is not a live model response")
+    ProviderLiveRefreshRefused { reason: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-succeeded", probe: provider_live_request_probe, reason: "operation result is not a live model response")
+    ProviderLiveRequestRefused { reason: _ } => provider_observation_insufficient(fact: observed_fact, claim: claim, inference_rule: "provider-live-request-succeeded", probe: provider_live_request_probe, reason: "operation result is not a live model response")
   }
 }
 
@@ -400,7 +389,15 @@ fn provider_readiness_fidelity_claim(
     ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
     ProviderAuthenticated => fidelity.losses.length() == 0
     ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
-    _ => false
+    ProviderReadinessUnobserved { reason: _ } => false
+    ProviderExecutableMissing => false
+    ProviderVersionDrift { observed: _, expected: _ } => false
+    ProviderSetupRequired => false
+    ProviderCredentialsAbsent => false
+    ProviderAccessTokenExpired => false
+    ProviderQuotaExhausted => false
+    ProviderRateLimited => false
+    ProviderRequestRefused { reason: _ } => false
   }
 }
 
@@ -448,7 +445,9 @@ fn provider_readiness_link_relation(
           bound: link.fact.value.bound,
         )
         && link.fidelity.boundary == ProviderAuthenticated
-    _ => false
+    ProviderLoginCredentialAbsent { response: _ } => false
+    ProviderLoginStatusUnrecognized { response: _ } => false
+    ProviderLiveRequestRefused { reason: _ } => false
   }
 }
 

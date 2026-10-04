@@ -1,5 +1,7 @@
 module v2.compiler.resolution_provenance
 
+import std.types { List }
+
 import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
@@ -7,11 +9,11 @@ import v2.std.algebra {
   contains,
   fold_list,
   is_empty,
-  length
+  length,
+  list_map,
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, EdgeLabel, label_sort_key }
 import v2.std.optional {
   Absent,
   Optional,
@@ -49,9 +51,20 @@ import v2.extdeps.languages.dag { qualified_name_from_module_node }
 // One fact, two resolvers, is the fork DESIGN section 3 names; this module's answers are the second.
 // It is kept, frozen, until its consumers read the resolved tree -- the row below is the trigger.
 
+// WHERE A MENTION SITS is the chain of edge labels above it, structural and authored, so a reader
+// asking whether a mention sits inside a grammar production (v2.lens.module_graph
+// site_is_import_syntax_mention) matches the production's arm rather than a spelling an authored
+// name could share. Lexical lookup reads the chain as a name path (reference_site_scope_path).
 type ReferenceSite {
-  position: QualifiedName
+  position: List<EdgeLabel>
   spelling: QualifiedName
+}
+
+// The position read as a name path for lexical scope lookup: each label contributes the Symbol it
+// is canonically ordered by. This is a SCOPE PATH, not an identity: no reader decides what a label
+// IS from it.
+fn reference_site_scope_path(site: ReferenceSite) -> QualifiedName {
+  list_map(xs: site.position, f: fn(label) { label_sort_key(label: label) })
 }
 
 type ResolutionProvenance
@@ -137,7 +150,7 @@ fn resolve_reference_provenance(
       Present { value: name } =>
         match symbol_index_lexical_lookup(
           index: index,
-          position: site.position,
+          position: reference_site_scope_path(site: site),
           name: name
         ) {
           LexicalHit { node: _, path: path } =>

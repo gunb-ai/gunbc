@@ -31,7 +31,6 @@ import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
-import v2.std.logic { Bool }
 import std.types { Int, List, String }
 import std.algebra { Cons, Empty }
 

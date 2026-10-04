@@ -15,6 +15,7 @@ import extdeps.apt {
 import extdeps.version.semver { SemVerVersion }
 import extdeps.tailscale.serve {
   tailscale_scoped_removal_capability,
+  tailscale_serve_unix_target,
   TailscaleServeEndpoint,
   TailscaleServeMount,
   ServeRootMount,
@@ -29,8 +30,8 @@ import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
-  operator_host_srv1,
 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
@@ -40,7 +41,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_listen_port }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric_storage_placed_on, fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -50,7 +51,8 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
-import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_confirm_front_door }
+import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
@@ -103,6 +105,7 @@ type OwnedArtifactKind =
   | PublicationHelperTimerUnit
   | FabricStorageServeUnit
   | FabricStorageServeMapping
+  | ApprovalBrokerFrontDoor
 
 type EnsuredDependencyKind =
     TailscalePackage
@@ -207,6 +210,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     PublicationHelperTimerUnit => TeardownActs
     FabricStorageServeUnit => TeardownActs
     FabricStorageServeMapping => TeardownActs
+    ApprovalBrokerFrontDoor => TeardownActs
   }
 }
 
@@ -443,7 +447,13 @@ fn gunbc_repository_convergence_slice_unit_path() -> NonEmptyStr {
 // steps are CONSTRUCTED from it -- a non-owning apply produces an empty list, so there is nothing to
 // skip and nothing to get wrong.
 fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
-  (spec.instance_id as String) == (gunbc_approval_broker_owning_instance as String)
+  instance_owns_the_host_approval_broker(instance_id: spec.instance_id)
+}
+
+// THE ONE OWNERSHIP COMPARISON, read by the spec-level predicate above and by the front-door member,
+// which is built before a spec exists and so holds only the instance.
+fn instance_owns_the_host_approval_broker(instance_id: NonEmptyStr) -> Bool {
+  (instance_id as String) == (gunbc_approval_broker_owning_instance as String)
 }
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
@@ -639,7 +649,7 @@ fn deployment_fabric_storage_serve_endpoint() -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: fabric_storage_https_port,
     mount: ServeRootMount,
-    backend: to_string(fabric_storage_listen_port) as NonEmptyStr,
+    backend: tailscale_serve_unix_target(path: fabric_storage_door_socket()),
   }
 }
 
@@ -1026,7 +1036,45 @@ fn deployment_owned_steps(
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
     },
-  ], deployment_fabric_storage_steps(instance: instance, names: names))
+  ], concat(
+    deployment_fabric_storage_steps(instance: instance, names: names),
+    deployment_approval_broker_front_door_steps(instance: instance),
+  ))
+}
+
+// THE BROKER'S TAILNET EXPOSURE IS ONE OWNED MEMBER OF THE DEPLOYMENT THAT OWNS THE BROKER, and its
+// presence is DERIVED from the cutover's routing row rather than decided here. The public contract
+// (gunbc.auth.approval_broker_endpoint, the front door) mounts /approve and /approvals on the
+// roadmap's own https listener, so every path the phone uses -- the approval links AND the device
+// routes under /approve/device/ -- reaches the broker through the host name the app already names
+// (approve_ios_project reads the same tailnet base). gunbc.auth.approval_broker_cutover
+// approval_front_door_mounts_installed says whether the mounts exist at all, so the member appears
+// exactly when the posture routes the approval paths to the broker, and a retract of the posture
+// removes it through the ordinary membership reconcile.
+//
+// BEFORE THIS MEMBER THE STAGE-4 ARGV HAD NO PRODUCTION CONSUMER: the cutover declared the two
+// mounts as a value and nothing on the deploy path installed them, so the split moved the device
+// routes to a process no request could reach (the enrolment 404, 2026-09-30).
+//
+// One member, two mappings: its identity is the /approve mount's route key and its apply and
+// teardown realize every endpoint approval_broker_front_door_endpoints returns, the way
+// GunbcSourceTree's one member owns its sync unit and env file. It is emitted only by the instance
+// that owns the host's broker (instance_owns_the_host_approval_broker).
+fn deployment_approval_broker_front_door_endpoints() -> List<TailscaleServeEndpoint> {
+  approval_broker_front_door_endpoints(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)
+}
+
+fn deployment_approval_broker_front_door_steps(instance: HostDashboardInstance) -> List<DeploymentArtifactStep> {
+  if instance_owns_the_host_approval_broker(instance_id: instance.instance_id) && approval_front_door_mounts_installed() {
+    [
+      DeploymentArtifactStep {
+        kind: ApprovalBrokerFrontDoor,
+        path: tailscale_serve_route_member_path(endpoint: approval_broker_confirm_front_door(https_port: tailscale_default_https_port, backend_port: approval_broker_listen_port)),
+      },
+    ]
+  } else {
+    []
+  }
 }
 
 // The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart

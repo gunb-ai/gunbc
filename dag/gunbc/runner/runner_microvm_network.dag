@@ -1,6 +1,6 @@
 module gunbc.runner_microvm_network
 
-import std.types { String, NonEmptyStr, Bool, Int, List, Port }
+import std.types { String, NonEmptyStr, Bool, Int, List, Port, brand }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
@@ -10,7 +10,7 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, re
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal, runner_slot_instance_name }
 import product.placement_supply { HostIdentity }
-import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
+import gunbc.runner_microvm_network_shape { RunnerMicroVmNetworking, GuestNetworkTap }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit, SystemdRestartUnit,
   SystemdDaemonReload, SystemdEnableUnit, ReadNftTable, EnsureOwnedDirectory,

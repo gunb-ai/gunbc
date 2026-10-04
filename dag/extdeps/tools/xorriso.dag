@@ -1,7 +1,8 @@
 module extdeps.tools.xorriso
 
-import std.types { NonEmptyStr, Unit }
-import std.string_type { String }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
+import std.types { Int, List, NonEmptyStr, Unit }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -18,27 +19,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data xorriso_pinned_version: VersionConstraint = ">= 1.5"
 
+fn xorriso_program() -> ProgramIdentity = cataloged_program(invocation: "xorriso")
+
 data xorriso_cli_tool: CliTool = CliTool {
-  name: "xorriso",
+  program: xorriso_program(),
   min_version: Present { value: xorriso_pinned_version },
   installable_via: [SourceApt { package: package_xorriso, bin_dir: apt_bin_dir }],
 }
 
 service xorriso.Iso {
-  operation ExtractTree {
-    input { iso_path: NonEmptyStr, destination: NonEmptyStr }
-    output { success: Bool from "exit_success" }
-    readonly
-    transport shell {
-      argv: ["xorriso", "-osirrox", "on", "-indev", "{iso_path}", "-extract", "/", "{destination}"]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "xorriso -extract / failed"
-    }
-  }
-
   operation BuildIso {
+    requires none
     input { volume_id: NonEmptyStr, output_path: NonEmptyStr, source_dir: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell {
@@ -50,27 +41,7 @@ service xorriso.Iso {
     }
   }
 
-  operation ReplayBuildPinnedDates {
-    input {
-      stock_iso_path: NonEmptyStr,
-      output_path: NonEmptyStr,
-      volume_id: NonEmptyStr,
-      volume_uuid: NonEmptyStr,
-      file_date: NonEmptyStr,
-      map_one_source: NonEmptyStr,
-      map_one_iso_path: NonEmptyStr,
-      map_two_source: NonEmptyStr,
-      map_two_iso_path: NonEmptyStr,
-    }
-    output { success: Bool from "exit_success" }
-    transport shell {
-      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-map", "{map_one_source}", "{map_one_iso_path}", "-map", "{map_two_source}", "{map_two_iso_path}", "-volume_date", "uuid", "{volume_uuid}", "-volume_date", "all_file_dates", "{file_date}", "-commit"]
-    }
-    exit {
-      0 => Unit "ORDER IS LOAD-BEARING: xorriso executes left to right and -volume_date all_file_dates applies to the files then in the image, so both date commands follow the -map commands -- issued before them, the freshly mapped files would keep the build instant. -volume_date uuid fixes the volume dates and the medium's UUID"
-      nonzero => String "xorriso -boot_image any replay build failed"
-    }
-  }
+
 }
 
 // ONE ISO MEMBER COPIED OUT TO ONE DESTINATION PATH, read-only on the ISO: `xorriso -osirrox on
@@ -81,5 +52,99 @@ service xorriso.Iso {
 // rather than kept as a second copy (DESIGN §3). A local consumer binds this builder to its local
 // transport; it does not re-author the word list.
 fn xorriso_extract_command(iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: xorriso_cli_tool.name, arguments: ["-osirrox", "on", "-indev", iso_path as String, "-extract", iso_internal_path as String, destination as String])
+  argv_command(program: xorriso_program(), arguments: ["-osirrox", "on", "-indev", iso_path as String, "-extract", iso_internal_path as String, destination as String])
+}
+
+// THE WHOLE TREE COPIED OUT: `xorriso -osirrox on -indev ISO -extract / DEST`.
+fn xorriso_extract_tree_command(iso_path: NonEmptyStr, destination: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: xorriso_program(), arguments: ["-osirrox", "on", "-indev", iso_path as String, "-extract", "/", destination as String])
+}
+
+// THE PINNED-DATES REPLAY BUILD. ORDER IS LOAD-BEARING: xorriso executes left to right and
+// -volume_date all_file_dates applies to the files then in the image, so both date commands follow
+// the -map commands -- issued before them, the freshly mapped files would keep the build instant.
+// -volume_date uuid fixes the volume dates and the medium's UUID. `-boot_image any replay` keeps the
+// stock medium's El Torito / ESP boot structure. These two builders are the ONLY spelling of the
+// extract-tree and replay invocations: the local ExtractTree and ReplayBuildPinnedDates operations
+// were deleted when their one consumer (extdeps.provisioning.ubuntu_seeded_install_media_remaster)
+// moved to a host binding that runs these argvs locally or over fleet SSH.
+// XORRISO'S PATH-LIST COMMANDS, TYPED SO THE TERMINATOR CANNOT BE FORGOTTEN. -chown_r, -chgrp_r and
+// -chmod take `iso_rr_path [***]`: a LIST of paths ended by the word `--` (xorriso(1) "Manipulating
+// ISO files"). Without the terminator the list runs on and swallows every following argument --
+// -volume_date, even -commit -- as a path, and xorriso does nothing and says nothing: the image is
+// never written (measured 2026-09-29, session zesty-newt-134, a replay whose pin commands lacked `--`
+// produced no output file). So a path-list command is not spelled as loose words anywhere; it is this
+// type, and xorriso_path_list_words always closes it. The mode is OCTAL and non-recursive: xorriso
+// 1.5.6's mode parser refuses chmod(1)'s symbolic `X` and comma forms ("Unrecognizable or faulty
+// permission mode 'u=rwX,go=rX'", a SORRY that returns 32), and one octal applied recursively would
+// give directories a file's mode. So each path is named with the mode it gets.
+type XorrisoPathListVerb
+  = XorrisoChownRecursive { uid: Int }
+  | XorrisoChgrpRecursive { gid: Int }
+  | XorrisoChmod { octal_mode: NonEmptyStr }
+
+type XorrisoPathListCommand {
+  verb: XorrisoPathListVerb
+  first_path: NonEmptyStr
+  more_paths: List<NonEmptyStr>
+}
+
+data xorriso_path_list_terminator: NonEmptyStr = "--"
+
+fn xorriso_path_list_words(command: XorrisoPathListCommand) -> List<String> {
+  concat(
+    match command.verb {
+      XorrisoChownRecursive { uid: u } => ["-chown_r", to_string(u)]
+      XorrisoChgrpRecursive { gid: g } => ["-chgrp_r", to_string(g)]
+      XorrisoChmod { octal_mode: m } => ["-chmod", m as String]
+    },
+    concat(concat([command.first_path as String], map(command.more_paths, p => p as String)), [xorriso_path_list_terminator as String]),
+  )
+}
+
+// THE PINNED-DATES REPLAY BUILD, now also pinning the Rock Ridge attributes of what it maps.
+// ORDER IS LOAD-BEARING: xorriso executes left to right. The -map commands add the members; the
+// attribute pins then set owner, group and mode on exactly those members (before them they would
+// name paths not yet in the image); the date commands follow so -volume_date all_file_dates applies
+// to files then in the image, freshly mapped ones included; -commit is last. -volume_date uuid fixes
+// the volume dates and the medium's UUID. `-boot_image any replay` keeps the stock medium's El Torito
+// / ESP boot structure.
+fn xorriso_replay_build_pinned_dates_command(
+  stock_iso_path: NonEmptyStr,
+  output_path: NonEmptyStr,
+  volume_id: NonEmptyStr,
+  volume_uuid: NonEmptyStr,
+  file_date: NonEmptyStr,
+  map_one_source: NonEmptyStr,
+  map_one_iso_path: NonEmptyStr,
+  map_two_source: NonEmptyStr,
+  map_two_iso_path: NonEmptyStr,
+  attribute_pins: List<XorrisoPathListCommand>,
+) -> ArgvCommand {
+  argv_command(program: xorriso_program(), arguments: concat(
+    [
+      "-indev", stock_iso_path as String, "-outdev", output_path as String,
+      "-boot_image", "any", "replay", "-volid", volume_id as String,
+      "-map", map_one_source as String, map_one_iso_path as String,
+      "-map", map_two_source as String, map_two_iso_path as String,
+    ],
+    concat(
+      flat_map(attribute_pins, p => xorriso_path_list_words(command: p)),
+      [
+        "-volume_date", "uuid", volume_uuid as String,
+        "-volume_date", "all_file_dates", file_date as String,
+        "-commit",
+      ],
+    ),
+  ))
+}
+
+// READ-ONLY LONG LISTING of ISO paths with their Rock Ridge owner, group and mode: `xorriso -indev ISO
+// -lsl PATH... --`. -lsl is a path-list command like the pins above, so it is closed by the same
+// terminator by construction.
+fn xorriso_list_long_command(iso_path: NonEmptyStr, first_path: NonEmptyStr, more_paths: List<NonEmptyStr>) -> ArgvCommand {
+  argv_command(program: xorriso_program(), arguments: concat(
+    ["-indev", iso_path as String, "-lsl", first_path as String],
+    concat(map(more_paths, p => p as String), [xorriso_path_list_terminator as String]),
+  ))
 }

@@ -1,6 +1,6 @@
 module gunbc.auth.approval_ntfy_deployment
 
-import std.types { NonEmptyStr, String, Int, Port }
+import std.types { NonEmptyStr, String, Port }
 import std.logic { Bool }
 import std.human_intervention {
   HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision,
@@ -8,8 +8,6 @@ import std.human_intervention {
   InterventionCompletionEvidence, NoDischargeSiteModeled,
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
-import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import gunbc.executor_privileged_operation {
@@ -17,10 +15,8 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
-import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import extdeps.ietf.http_semantics { POST }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -51,7 +47,28 @@ data approval_ntfy_config_file_name: NonEmptyStr = "server.yml"
 data approval_ntfy_config_path: NonEmptyStr = join([approval_ntfy_config_dir as String, "/", approval_ntfy_config_file_name as String], "") as NonEmptyStr
 // The server's auth database, under its state root. Declared so the config's auth-file is checked
 // against it and so the one elevated stat of it is an exact sudoers argv rather than a pattern.
-data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/user.db"], "") as NonEmptyStr
+//
+// IT STAYS A DECLARATION, NOT A VALUE READ FROM THE CONFIG, because both of its consumers need a path
+// fixed before the read. The stat runs through `sudo -n` at an exact argv that an operator-installed
+// sudoers line must name, and a path taken from the config at runtime could only be covered by a
+// pattern grant. The readback then refuses unless the running config names exactly this path, so the
+// config is checked rather than trusted.
+//
+// THE FILE NAME WAS A GUESS, AND srv1 FALSIFIED IT. It read `user.db`. The server srv1 runs was
+// installed with `auth-file: /var/lib/gunbc-ntfy/auth.db` in /etc/gunbc-ntfy/server.yml, and that file
+// exists while user.db does not. proud-deer-538 read this on 2026-09-29 running
+// issue_device_enrolment_code by hand against release 02568b3046, and the readback refused before
+// minting. The name is now the observed one, and it changes the exact stat argv that this module's
+// human step asks the operator to grant.
+//
+// THAT GRANT DOES NOT EXIST ON srv1 TODAY, and the stat still runs. proud-deer-538 read srv1 on
+// 2026-09-29: sudoers.d holds only the broker-helpers grant, and the stat of auth.db succeeds under
+// the operator account's own broader sudo. The narrow, exact-argv grant this module asks for is
+// therefore an unmet posture, not a failing read. The earlier refusal was the missing user.db, not a
+// missing grant. Nothing installs this server or that grant from the model yet
+// (gunbc.auth.approval_ntfy_converge names the server as outside its roster). This row becomes that
+// installer's destination when one exists, and the grant becomes its sudoers member.
+data approval_ntfy_auth_file_path: NonEmptyStr = join([approval_ntfy_state_root as String, "/auth.db"], "") as NonEmptyStr
 data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 
 // THE TWO ntfy USERS THE ACCESS LIST MAY NAME, declared so the ACL readback
@@ -60,11 +77,33 @@ data approval_ntfy_unit_name: NonEmptyStr = "gunbc-ntfy.service"
 // only WRITE the topic; the operator is the phone's sign-in and may only READ it. A server whose
 // users carry other names reads back as a deviation and enrolment-code issuance refuses -- loudly,
 // never by guessing which user is which.
-data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-approval-publisher"
-data approval_ntfy_operator_user: NonEmptyStr = "gunbc-approval-operator"
-// The packaged server's CLI (the upstream .deb installs /usr/bin/ntfy). Absolute because it runs
-// under sudo as the server's principal; an absent binary is a failed readback, which refuses.
-data approval_ntfy_binary_path: NonEmptyStr = "/usr/bin/ntfy"
+//
+// THE NAMES ARE THE ONES srv1's SERVER CARRIES, AND THE PREVIOUS ONES WERE NEVER CREATED. They read
+// gunbc-approval-publisher and gunbc-approval-operator, names chosen here that no step on the host
+// used. The live `ntfy access` that proud-deer-538 read on srv1 on 2026-09-29, running
+// issue_device_enrolment_code by hand, lists publisher `gunbc-broker` (write-only on the topic) and
+// operator `briansrls` (read-only), with anonymous access denied. Those accounts already carry the
+// broker's publisher token and the operator's phone subscription, so the declaration follows them
+// rather than asking for both credentials to be minted again. These stay declarations: the readback
+// compares the live list against them and refuses any other shape. Nothing creates these users from
+// the model yet. The ntfy installation vertical owns that, and these rows become its contract.
+data approval_ntfy_publisher_user: NonEmptyStr = "gunbc-broker"
+data approval_ntfy_operator_user: NonEmptyStr = "briansrls"
+// THE SERVER BINARY THE HOST ACTUALLY RUNS. Absolute because it runs under sudo as the server's
+// principal; an absent binary is a failed readback, which refuses. The readback compares the running
+// process's executable against THIS row, and that comparison is only a check because the row is not
+// read from the host it checks: deriving it from the unit's ExecStart would admit a swapped unit.
+//
+// THE PREVIOUS VALUE WAS A BET ABOUT THE PACKAGING, and the host falsified it. It read "/usr/bin/ntfy"
+// on the ground that the upstream .deb installs there. But no model member installs this binary
+// (gunbc.auth.approval_ntfy_converge names it as outside its roster), and srv1's server was installed
+// 2026-09-07 at /usr/local/bin/ntfy. gunbc-ntfy.service ExecStart names that path, as read on the host
+// by proud-deer-538 on 2026-09-28 while running issue_device_enrolment_code by hand. The readback then
+// refused before minting by stat-ing a path the server does not run. So the row is the observed install,
+// and it stays a declaration: an install moved elsewhere refuses loudly here until the row moves with
+// it, which is the intended wall. Its dissolution is an installer member that places the binary, at
+// which point this row is that member's destination rather than a transcription of the host.
+data approval_ntfy_binary_path: NonEmptyStr = "/usr/local/bin/ntfy"
 
 // LOOPBACK, AND THAT IS THE SECURITY BOUNDARY RATHER THAN A DEFAULT. The server binds 127.0.0.1
 // and reaches the tailnet only through tailscale serve, which is what makes the tailnet identity
@@ -342,142 +381,3 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
     ],
   }
 }
-
-
-// ── The publish binding: transport and address, in the layer that owns them ──────────────────
-// DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
-// never a fact about the dependency" -- so the REST binding and the server address live here,
-// with the deployment they belong to, rather than in extdeps.ntfy where they would narrow that
-// module to this one fleet.
-//
-// This is also what makes a second deployment additive: another server is another binding beside
-// this one, and extdeps.ntfy does not change.
-//
-// ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
-// Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
-// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
-// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
-// this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
-// which is admissible only with its trigger stated, so it is stated here.
-//
-// CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
-// the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
-// every arm of the fold plus every intervention property is exercised by
-// test.claim.ntfy_publish_outcome_witness_test and
-// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
-// witness is not a production consumer and this note does not claim it is.
-//
-// THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
-// AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
-// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
-// it rather than answering 501, which it does today. Until that lands, nothing in production has a
-// reason to publish, and manufacturing an intermediate caller would only move the danglingness up
-// one level rather than remove it.
-//
-// If that consumer does not land, THIS BINDING IS THE THING TO DELETE. It is not infrastructure
-// worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
-// it carries nothing.
-
-// THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
-// literal. An earlier revision wrote "https://srv1.tailecbe08.ts.net:8443" here, which re-minted
-// two facts the corpus owns elsewhere -- the tailnet domain at gunbc.fleet_intent_network
-// `fleet_intent_network.tailnet_domain`, and srv1's identity at `operator_host_srv1`. Relocating
-// the binding out of extdeps fixed the LAYER; it left the DUPLICATION, which is §3's nicknaming
-// under a different roof. Renaming the tailnet or the host would have left this string stale while
-// every modeled consumer moved.
-//
-// The address a CLIENT dials is a different fact from the address the SERVER listens on
-// (approval_ntfy_listen_address, held to loopback by policy); tailscale serve is what joins them,
-// and each is asserted for its own job.
-//
-// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
-// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
-// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
-// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
-// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
-// arm is witnessed so it is not merely asserted.
-//
-// ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES ON srv1: the port is the parameter,
-// because that is the only fact that differs between the ntfy address and the roadmap server's
-// (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
-// default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
-fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
-  match domain {
-    Present { value: d } =>
-      join([
-        "https://",
-        operator_host_srv1 as String,
-        ".",
-        d as String,
-        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
-      ], "") as NonEmptyStr
-    Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
-  }
-}
-
-fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: domain, port: Present { value: approval_ntfy_serve_port })
-}
-
-// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
-// :443 already carries the dashboard, so the approval server takes its own.
-data approval_ntfy_serve_port: Port = 8443
-
-data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
-
-// THE HERMETIC PUBLISH IS THE DECODED-200 SHAPE AND NOTHING ELSE: mock_response publishes one
-// result, so the hermetic arm is a published message whose id is the fixture's identity -- a live
-// ntfy id is a random 12-character string and cannot be this spelling. It exists so that a claim
-// can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
-// approval_request_submission must fail a control, not only an annotation.
-data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
-data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
-
-service ntfy.Publish {
-  config {
-    endpoint: approval_ntfy_base_url
-    auth: Bearer
-    auth_input: access_token
-  }
-
-  operation PublishMessage {
-    input {
-      access_token: Secret
-      topic: NtfyTopic
-      title: NonEmptyStr
-      body: NonEmptyStr
-      priority: Int
-      click: NonEmptyStr
-      cache: NonEmptyStr
-    }
-    output {
-      message_id: String from "id"
-      outcome: RestOutcome
-    }
-    transport rest {
-      method: POST,
-      path: "/",
-      headers: {
-        "Cache": cache
-      },
-      body: {
-        topic: topic,
-        message: body,
-        title: title,
-        priority: priority,
-        click: click
-      }
-    }
-    response {
-      200 => NtfyPublishReceipt
-      401 => NtfyErrorShape
-      403 => NtfyErrorShape
-      429 => NtfyErrorShape
-      5xx => NtfyErrorShape
-    }
-    mock_response {
-      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
-    }
-  }
-}
-

@@ -27,8 +27,25 @@ import v2.workflow.product_receipt {
   product_receipt_identity_chain_intact
 }
 import v2.std.algebra { Empty, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
+import extdeps.filesystem.filesystem_io {
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+}
+import v2.workflow.product_receipt {
+  ManifestUnobservable,
+  ProducerUnobservable,
+  ProducerReportedNoArtifact,
+  ManifestNotProduced,
+  boundary_refusal_cause_label,
+}
+import v2.workflow.product_receipt_stage {
+  ManifestFileObservation,
+  manifest_file_observation_of,
+  manifest_boundary1_standing,
+  manifest_boundary2_consumed,
+}
 
 // Every fixture below is CONSTRUCTED, never a live run, because this file
 // tests the receipt ALGEBRA -- the question "does this shape of evidence
@@ -246,4 +263,140 @@ test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> B
     reason: "unsupported_mock_expression"
   )
   (length(xs: tally) == 2) && (diagnostic_tally_total(tally: tally) == 3)
+}
+
+// ---- THE MANIFEST OBSERVATION (v2.workflow.product_receipt_stage) ----
+//
+// The wet stage executes Filesystem.List and Filesystem.Read against the transaction's manifest
+// path; these claims hold the boundary decisions that consume what they reported. Observations are
+// built through the filesystem observation fold over authored channel values. What they do not
+// establish is that the host emits those bytes for a real transaction directory -- that is
+// transport coverage outside the hermetic fold.
+//
+// THE TWO RED CELLS ARE THE DEFECT AS FOUND. Before the observation fold, an unreadable manifest
+// answered `ArtifactIdentityAbsent { ProducerReportedNoArtifact }` -- attributing to the producer
+// a report it never made -- and boundary 1 read its standing straight off `manifest_read.success`.
+fn manifest_observation(
+  listing_success: Bool,
+  entries: String,
+  listing_error: String,
+  read_success: Bool,
+  content: String,
+  read_error: String
+) -> ManifestFileObservation {
+  manifest_file_observation_of(o: filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/txn/manifest",
+      success: listing_success,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: "host_source_root_ingest_manifest.dag",
+    path: "/txn/manifest/host_source_root_ingest_manifest.dag",
+    read: filesystem_read_outcome(content: content, success: read_success, error: read_error)
+  ))
+}
+
+fn boundary1_refusal_cause_text(o: ManifestFileObservation) -> String {
+  match manifest_boundary1_standing(o: o) {
+    BoundaryRefused { cause: c } => boundary_refusal_cause_label(cause: c)
+    _ => "not-refused"
+  }
+}
+
+// RED: a manifest that is LISTED and cannot be read is neither produced nor absent; it refuses
+// with its cause, and the consumed identity is unobservable -- never the producer's report.
+test fn an_unreadable_but_listed_manifest_is_unobservable_not_producer_reported() -> Bool {
+  let o = manifest_observation(
+    listing_success: true,
+    entries: "host_source_root_ingest_manifest.dag\n",
+    listing_error: "",
+    read_success: false,
+    content: "",
+    read_error: "Permission denied (os error 13)"
+  )
+  string_contains(s: boundary1_refusal_cause_text(o: o), pattern: "could not be observed")
+    && match manifest_boundary2_consumed(o: o) {
+      ArtifactIdentityAbsent { cause: ProducerUnobservable { cause: c } } =>
+        string_contains(s: c, pattern: "Permission denied")
+      _ => false
+    }
+}
+
+// RED, second arm: a manifest directory that cannot be listed establishes nothing.
+test fn an_unlistable_manifest_directory_refuses_instead_of_reporting() -> Bool {
+  string_contains(
+    s: boundary1_refusal_cause_text(o: manifest_observation(
+      listing_success: false,
+      entries: "",
+      listing_error: "Permission denied (os error 13)",
+      read_success: false,
+      content: "",
+      read_error: "Permission denied (os error 13)"
+    )),
+    pattern: "could not be observed",
+  )
+}
+
+// RED, third arm: a successful read cannot rescue a listing that does not name the manifest --
+// the two observations describe different instants, and the disagreement refuses.
+test fn a_successful_read_does_not_rescue_an_unlisted_manifest() -> Bool {
+  string_contains(
+    s: boundary1_refusal_cause_text(o: manifest_observation(
+      listing_success: true,
+      entries: "unrelated.txt\n",
+      listing_error: "",
+      read_success: true,
+      content: "manifest-bytes",
+      read_error: ""
+    )),
+    pattern: "could not be observed",
+  )
+}
+
+// POSITIVE CONTROL, absence arm: the manifest the listing does not name is the only route to
+// ProducerReportedNoArtifact, which the established absence finally justifies.
+test fn an_absent_manifest_still_reports_the_producer_none() -> Bool {
+  let o = manifest_observation(
+    listing_success: true,
+    entries: "unrelated.txt\n",
+    listing_error: "",
+    read_success: false,
+    content: "",
+    read_error: "No such file or directory (os error 2)"
+  )
+  match manifest_boundary1_standing(o: o) {
+    BoundaryRefused { cause: ManifestNotProduced } =>
+      match manifest_boundary2_consumed(o: o) {
+        ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL, observed arm: bytes in hand complete boundary 1 and carry a known identity.
+test fn an_observed_manifest_completes_boundary_1() -> Bool {
+  match manifest_boundary1_standing(o: manifest_observation(
+    listing_success: true,
+    entries: "host_source_root_ingest_manifest.dag\n",
+    listing_error: "",
+    read_success: true,
+    content: "manifest-bytes",
+    read_error: ""
+  )) {
+    BoundaryCompleted =>
+      match manifest_boundary2_consumed(o: manifest_observation(
+        listing_success: true,
+        entries: "host_source_root_ingest_manifest.dag\n",
+        listing_error: "",
+        read_success: true,
+        content: "manifest-bytes",
+        read_error: ""
+      )) {
+        ArtifactIdentityKnown { digest: _, file_count: files } => files == 1
+        _ => false
+      }
+    _ => false
+  }
 }

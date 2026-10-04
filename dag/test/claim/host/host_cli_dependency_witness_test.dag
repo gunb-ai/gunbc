@@ -5,7 +5,7 @@ import v2.std.optional { Absent, Present }
 import std.types { Bool, String, NonEmptyStr }
 import extdeps.tools { install_hint }
 import extdeps.tools.sshpass { sshpass_cli_tool }
-import extdeps.exec.command { sshpass_binary_name }
+import extdeps.exec.command { sshpass_program }
 import gunbc.host_cli_dependency {
   password_session_host_cli_requirements,
   host_dependency_absent_wire,
@@ -27,7 +27,7 @@ data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wi
 // to get it. Whether THIS runner has it is a wet question and lives in the wet witness; asserting
 // it here would be a claim about the runner, not about the enrollment.
 test fn password_session_enrollment_names_the_execed_binary() -> Bool {
-  sshpass_cli_tool.name == sshpass_binary_name
+  sshpass_cli_tool.program.invocation == sshpass_program().invocation
     && install_hint(sources: sshpass_cli_tool.installable_via).contains("apt install sshpass")
 }
 
@@ -35,7 +35,7 @@ test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
   fold_list(
     xs: password_session_host_cli_requirements,
     empty: false,
-    cons: fn(acc, t) { acc || t.name == sshpass_cli_tool.name },
+    cons: fn(acc, t) { acc || t.program.invocation == sshpass_cli_tool.program.invocation },
   )
 }
 

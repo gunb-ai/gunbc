@@ -1,5 +1,7 @@
 module extdeps.tools.conntrack
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { String, NonEmptyStr, List, FilePath }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_sbin_dir, apt_installed_bin_path, package_conntrack }
@@ -31,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // tracking table. Only deleting and listing flows by an original-tuple address are modeled. For a
 // masqueraded guest the original tuple carries the guest's own address -- the translated address
 // appears only on the reply tuple, so filtering on it would miss every flow a guest opened.
-data conntrack_program: NonEmptyStr = "conntrack"
+fn conntrack_program() -> ProgramIdentity = cataloged_program(invocation: "conntrack")
 
 // A FLOW HAS TWO ADDRESSES IN ITS ORIGINAL TUPLE AND conntrack(8) FILTERS EACH SEPARATELY: `-s` is
 // the original source, `-d` the original destination. A guest that opened a flow is its original
@@ -53,13 +55,13 @@ fn conntrack_original_address_flag(f: ConntrackOriginalAddress) -> String {
 // is not a success signal a caller may gate on. The deletion's outcome is established by the list
 // that follows it, never by this command's exit.
 fn conntrack_delete_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: ["-D", conntrack_original_address_flag(f: filter), address])
+  argv_command(program: conntrack_program(), arguments: ["-D", conntrack_original_address_flag(f: filter), address])
 }
 
 // `-L` prints one line per flow on stdout and a summary on stderr, so the count of stdout lines is
 // the number of surviving flows and an empty stdout with exit zero is the empty reading.
 fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: ["-L", conntrack_original_address_flag(f: filter), address])
+  argv_command(program: conntrack_program(), arguments: ["-L", conntrack_original_address_flag(f: filter), address])
 }
 
 // THE EXPECTATION TABLE, WHOLE. Expectations are the related-flow entries a conntrack helper creates
@@ -73,7 +75,7 @@ fn conntrack_list_command(filter: ConntrackOriginalAddress, address: String) -> 
 data conntrack_list_expectations_arguments: List<NonEmptyStr> = ["-L", "expect"]
 
 fn conntrack_list_expectations_command() -> ArgvCommand {
-  argv_command(program: conntrack_program, arguments: map(conntrack_list_expectations_arguments, a => a as String))
+  argv_command(program: conntrack_program(), arguments: map(conntrack_list_expectations_arguments, a => a as String))
 }
 
 // WHERE conntrack IS INSTALLED IS STATED ONCE, HERE. Ubuntu noble ships it in the `conntrack` package
@@ -82,11 +84,11 @@ fn conntrack_list_expectations_command() -> ArgvCommand {
 data conntrack_bin_dir: FilePath = apt_sbin_dir
 
 fn conntrack_installed_path() -> FilePath {
-  apt_installed_bin_path(bin_dir: conntrack_bin_dir, binary: conntrack_program)
+  apt_installed_bin_path(bin_dir: conntrack_bin_dir, binary: conntrack_program().invocation)
 }
 
 data conntrack_cli_tool: CliTool = CliTool {
-  name: conntrack_program,
+  program: conntrack_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_conntrack, bin_dir: conntrack_bin_dir }],
 }

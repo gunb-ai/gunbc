@@ -50,7 +50,12 @@ fn cose_integer_of(v: CborValue) -> Int? {
   match v {
     CborUnsigned { value: n } => Present { value: n }
     CborNegative { value: n } => Present { value: n }
-    _ => none
+    CborByteString { octets: _ } => none
+    CborTextString { text: _ } => none
+    CborArray { items: _ } => none
+    CborMap { entries: _ } => none
+    CborTagged { tag: _, item: _ } => none
+    CborSimple { value: _ } => none
   }
 }
 
@@ -78,7 +83,13 @@ fn cose_key_label(key: CborValue, label: Int) -> CoseLabelLookup {
         }
       }
     }
-    _ => CoseKeyNotAMap
+    CborUnsigned { value: _ } => CoseKeyNotAMap
+    CborNegative { value: _ } => CoseKeyNotAMap
+    CborByteString { octets: _ } => CoseKeyNotAMap
+    CborTextString { text: _ } => CoseKeyNotAMap
+    CborArray { items: _ } => CoseKeyNotAMap
+    CborTagged { tag: _, item: _ } => CoseKeyNotAMap
+    CborSimple { value: _ } => CoseKeyNotAMap
   }
 }
 

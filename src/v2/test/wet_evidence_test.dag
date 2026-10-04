@@ -1,5 +1,6 @@
 module v2.test.wet_evidence
 
+import std.types { List }
 import v2.workflow.wet_evidence {
   WetRoute, LocalRepoCoResidentRoute, SelfHostTransportedRoute,
   WetRouteAntecedent, LocalRepoAfterHermeticRouteGap, SelfHostAfterDirectWetDecline,
@@ -8,13 +9,14 @@ import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement, SelfHostTransportedRequirement,
   wet_antecedent_of_requirement, wet_binding_of_requirement, wet_route_of_requirement,
   WetScheduledClaim, WetTerminalRow,
+  WetTerminal, WetClaimAttempted, WetPremiseUnmetBeforeAttempt, RunnerBrowserToolchainReadyForJobUser,
   WetEvidenceRefusal,
   WetTerminalMissing, WetTerminalDuplicated, WetTerminalUnscheduled,
   WetTerminalForeignEntry, WetTerminalForeignFunction, WetTerminalVerdictNotExpected,
   WetTerminalForeignRoute,
   WetBindingPreparedSubjectDiffers, WetBindingSemanticSubjectDiffers,
   WetBindingExecutorContractDiffers, WetBindingRelationMismatch,
-  WetCrossRouteIdentityOverlap,
+  WetCrossRouteIdentityOverlap, WetTerminalHostPremiseUnmet,
   WetEvidenceValidation, WetEvidenceAdmitted, WetEvidenceRefused,
   wet_evidence_validate, wet_evidence_admits, wet_cross_route_overlap_causes
 }
@@ -30,8 +32,6 @@ import v2.workflow.required_floor {
   ClaimPreemptionReachability, CooperativelyPollable
 }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 fn alpha_identity() -> WitnessIdentity {
@@ -73,7 +73,7 @@ fn terminal_alpha(route: WetRoute, binding: WetEvidenceBinding, terminal: ClaimA
     identity: alpha_identity(),
     observed_entry: "dag/test/claim/fixture_test.dag",
     observed_function: "alpha_holds",
-    terminal: terminal,
+    terminal: WetClaimAttempted { attempt: terminal },
     binding: binding
   }
 }
@@ -103,6 +103,7 @@ fn cause_tag(c: WetEvidenceRefusal) -> String {
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => "semantic-subject-differs"
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => "executor-contract-differs"
     WetBindingRelationMismatch { identity: _ } => "relation-mismatch"
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => "host-premise-unmet"
     WetCrossRouteIdentityOverlap { identity: _ } => "cross-route-overlap"
   }
 }
@@ -129,6 +130,7 @@ fn is_prepared_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
     WetBindingRelationMismatch { identity: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -146,6 +148,7 @@ fn is_semantic_subject_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
     WetBindingRelationMismatch { identity: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -163,6 +166,7 @@ fn is_executor_contract_differs(c: WetEvidenceRefusal) -> Bool {
     WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingRelationMismatch { identity: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -180,6 +184,7 @@ fn is_relation_mismatch(c: WetEvidenceRefusal) -> Bool {
     WetBindingPreparedSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -424,7 +429,7 @@ test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool {
       identity: alpha_identity(),
       observed_entry: "dag/test/claim/OTHER_test.dag",
       observed_function: "alpha_holds",
-      terminal: passed(),
+      terminal: WetClaimAttempted { attempt: passed() },
       binding: binding
     }
   ]
@@ -434,7 +439,7 @@ test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool {
       identity: alpha_identity(),
       observed_entry: "dag/test/claim/fixture_test.dag",
       observed_function: "some_other_function",
-      terminal: passed(),
+      terminal: WetClaimAttempted { attempt: passed() },
       binding: binding
     }
   ]
@@ -459,7 +464,7 @@ fn terminal_at(entry: String, function: String) -> WetTerminalRow {
     identity: alpha_identity(),
     observed_entry: entry,
     observed_function: function,
-    terminal: passed(),
+    terminal: WetClaimAttempted { attempt: passed() },
     binding: co_resident_binding(subject: "tree-aaaa")
   }
 }
@@ -478,6 +483,7 @@ fn is_foreign_entry(c: WetEvidenceRefusal) -> Bool {
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
     WetBindingRelationMismatch { identity: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -496,6 +502,7 @@ fn is_foreign_function(c: WetEvidenceRefusal) -> Bool {
     WetBindingSemanticSubjectDiffers { identity: _, observed: _, required: _ } => false
     WetBindingExecutorContractDiffers { identity: _, observed: _, required: _ } => false
     WetBindingRelationMismatch { identity: _ } => false
+    WetTerminalHostPremiseUnmet { identity: _, premise: _, words: _ } => false
     WetCrossRouteIdentityOverlap { identity: _ } => false
   }
 }
@@ -526,4 +533,51 @@ test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
       row: terminal_at(entry: "dag/test/claim/fixture_test.dag", function: "beta_holds"),
       p: fn(c) { is_foreign_entry(c: c) }
     )
+}
+
+// THE HOST-PREMISE ARM, DISCRIMINATED FROM THE VERDICT ARM. Same scheduled row, same route, binding,
+// entry and function; the only difference is what the executor did. A claim never invoked because its
+// declared premise read back unmet refuses as `WetTerminalHostPremiseUnmet` -- naming the premise and
+// carrying the authority's words, which name the path -- and NOT as `WetTerminalVerdictNotExpected`.
+// The positive control is the premise-met run that then FAILED: that one is the subject's red and
+// still reads as verdict-not-expected. Neither admits: the premise arm is a refusal, never a skip.
+test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as_the_verdict() -> Bool {
+  let binding = co_resident_binding(subject: "s")
+  let requirement = co_resident_requirement(subject: "s")
+  let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
+  let words = "tree /home/ghrunner/.local/share/gunbc-browser-toolchain/abc absent"
+  let unmet = wet_evidence_validate(
+    scheduled: scheduled,
+    terminals: [
+      WetTerminalRow {
+        route: LocalRepoCoResidentRoute {},
+        identity: alpha_identity(),
+        observed_entry: "dag/test/claim/fixture_test.dag",
+        observed_function: "alpha_holds",
+        terminal: WetPremiseUnmetBeforeAttempt { premise: RunnerBrowserToolchainReadyForJobUser {}, words: words },
+        binding: binding
+      }
+    ],
+    requirement: requirement
+  )
+  let met_then_failed = wet_evidence_validate(
+    scheduled: scheduled,
+    terminals: [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: binding, terminal: Returned { observation: ObservedVerdict { holds: false } })],
+    requirement: requirement
+  )
+  let carries_words = match first(causes_of(v: unmet)) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        WetTerminalHostPremiseUnmet { identity: i, premise: p, words: w } =>
+          i == "test.claim.fixture.alpha_holds" && w == words
+            && match p { RunnerBrowserToolchainReadyForJobUser => true }
+        _ => false
+      }
+  }
+  sole_cause_tag(v: unmet) == "host-premise-unmet"
+    && carries_words
+    && sole_cause_tag(v: met_then_failed) == "verdict-not-expected"
+    && !wet_evidence_admits(v: unmet)
+    && !wet_evidence_admits(v: met_then_failed)
 }

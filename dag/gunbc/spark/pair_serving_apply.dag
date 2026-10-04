@@ -3,10 +3,12 @@ module gunbc.spark.pair_serving_apply
 import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, EpochSecs }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.algebra { trim }
+import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
+import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -71,7 +73,7 @@ fn script_word(w: String) -> String {
 }
 
 fn argv_line(cmd: ArgvCommand) -> String {
-  join(map(concat([cmd.program as String], cmd.arguments), w => script_word(w: w)), " ")
+  join(map(concat([cmd.program.invocation as String], cmd.arguments), w => script_word(w: w)), " ")
 }
 
 fn unit_render_text(u: SparkPairUnitRender) -> String? {
@@ -242,15 +244,43 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
   })
 }
 
+// ── "COULD NOT REACH" IS NOT "RAN AND FAILED" ─────────────────────────────────────────────────
+//
+// THE CONFLATION THIS ARM ENDS (fleet-converge run 36918167575, 2026-10-01). Every leg's non-zero
+// return became SparkPairHostApplyFailed, so `ssh: connect to host 192.168.1.232 port 22: Connection
+// timed out` -- a leg whose script never started -- was the same value as a preflight that ran and
+// refused. A caller could therefore not retry the one without retrying the other, and the native
+// arm aborted four hosts over one Wi-Fi blip.
+//
+// THE DISCRIMINATOR IS IN-BAND, NOT ssh's EXIT AND NOT ITS STDERR. extdeps.ssh.session
+// ssh_client_error_exit_status says why 255 alone does not establish that nothing ran, and
+// gunbc.command_runner ssh_exit_255_conflation_dissolution rejects stderr-sniffing and names the
+// richer source: the remote side reporting its own status on stdout. So every privileged script is
+// wrapped (spark_pair_leg_payload) to print a began-line before its first effect and its own exit
+// after its last, and the reading is three-valued over that:
+//
+//   exit line present           -> the script RAN; its own exit decides Applied or Failed.
+//   began line, no exit line    -> it RAN and the reply was lost: Failed, and NEVER retried.
+//   neither, ssh exited 255     -> no remote shell reported beginning: Unreached, retry-eligible.
+//
+// THE RESIDUE IS STATED, NOT HIDDEN. A connection lost after the shell started but before its
+// began-line crossed the wire also reads Unreached. That is why a caller that retries Unreached owes
+// IDEMPOTENT legs (gunbc.spark.native_serving_apply reads before it writes in every stage), and why
+// this module does not retry anything itself.
+data spark_pair_leg_began_word: String = "gunbc-privileged-leg-began"
+data spark_pair_leg_exit_prefix: String = "gunbc-privileged-leg-exit="
+
 type SparkPairHostApplyOutcome
   = SparkPairHostApplied { host: HostIdentity, detail: String, standing: ServingStanding }
   | SparkPairHostApplyFailed { host: HostIdentity, cause: String }
+  | SparkPairHostUnreached { host: HostIdentity, cause: String }
 
 fn spark_pair_host_apply_outcome_line(o: SparkPairHostApplyOutcome) -> String {
   match o {
     SparkPairHostApplied { host: h, detail: d, standing: s } =>
       join(["  ", h as String, "  applied  ", d, "  ", serving_standing_wire(s: s)], "")
     SparkPairHostApplyFailed { host: h, cause: c } => join(["  ", h as String, "  FAILED  ", c], "")
+    SparkPairHostUnreached { host: h, cause: c } => join(["  ", h as String, "  UNREACHED (no remote shell reported beginning; the script did not report running)  ", c], "")
   }
 }
 
@@ -258,6 +288,72 @@ fn spark_pair_host_applied(o: SparkPairHostApplyOutcome) -> Bool {
   match o {
     SparkPairHostApplied { host: _, detail: _, standing: _ } => true
     SparkPairHostApplyFailed { host: _, cause: _ } => false
+    SparkPairHostUnreached { host: _, cause: _ } => false
+  }
+}
+
+fn spark_pair_host_unreached(o: SparkPairHostApplyOutcome) -> Bool {
+  match o {
+    SparkPairHostApplied { host: _, detail: _, standing: _ } => false
+    SparkPairHostApplyFailed { host: _, cause: _ } => false
+    SparkPairHostUnreached { host: _, cause: _ } => true
+  }
+}
+
+// THE WRAPPER. The script runs in a subshell so its own `exit` ends the subshell and the outer shell
+// still reports it; the outer exit then mirrors it so ssh's own status keeps its meaning too.
+fn spark_pair_leg_payload(script: String) -> String {
+  join([
+    "echo ", spark_pair_leg_began_word, "\n",
+    "(\n", script, "\n)\n",
+    "gunbc_leg_rc=$?\n",
+    "echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc\n",
+    "exit $gunbc_leg_rc\n",
+  ], "")
+}
+
+fn spark_pair_leg_lines(stdout: String) -> List<String> {
+  map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
+}
+
+fn spark_pair_leg_reported_exit(stdout: String) -> Int? {
+  match first(filter(spark_pair_leg_lines(stdout: stdout), l => starts_with(s: l, prefix: spark_pair_leg_exit_prefix))) {
+    Absent => none
+    Present { value: l } => parse_int(s: substring(s: l, start: length(spark_pair_leg_exit_prefix), end: length(l)))
+  }
+}
+
+fn spark_pair_leg_reported_began(stdout: String) -> Bool {
+  length(filter(spark_pair_leg_lines(stdout: stdout), l => l == spark_pair_leg_began_word)) > 0
+}
+
+// THE SCRIPT'S OWN OUTPUT, WITHOUT THE WRAPPER'S TWO LINES, so readers of `detail` see what they saw
+// before the wrapper existed.
+fn spark_pair_leg_script_stdout(stdout: String) -> String {
+  trim(s: join(filter(spark_pair_leg_lines(stdout: stdout), l => l != spark_pair_leg_began_word && !starts_with(s: l, prefix: spark_pair_leg_exit_prefix)), "\n"))
+}
+
+// THE READING, PURE OVER ONE SESSION RESULT so a witness supplies the result at this boundary.
+fn spark_pair_leg_outcome_of(host: HostIdentity, wire: String, r: SshSessionExecResult) -> SparkPairHostApplyOutcome {
+  match spark_pair_leg_reported_exit(stdout: r.stdout) {
+    Present { value: code } =>
+      if code == 0 {
+        SparkPairHostApplied {
+          host: host,
+          detail: join([wire, " ", spark_pair_leg_script_stdout(stdout: r.stdout)], ""),
+          standing: serving_standing(attempts: []),
+        }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " script-exit=", to_string(code), " stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      }
+    Absent =>
+      if spark_pair_leg_reported_began(stdout: r.stdout) {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the script BEGAN and its exit never arrived (ssh exit=", to_string(r.exit_code), "), so it ran to an unknown point and is not retried: stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
+      } else if r.exit_code == ssh_client_error_exit_status {
+        SparkPairHostUnreached { host: host, cause: join([wire, " ssh exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+      } else {
+        SparkPairHostApplyFailed { host: host, cause: join([wire, " the privileged shell never began (exit=", to_string(r.exit_code), ", not ssh's own 255, so the session was established and something before the script refused) stderr=", trim(s: r.stderr)], "") }
+      }
   }
 }
 
@@ -292,21 +388,13 @@ fn spark_pair_privileged_leg(trust: FleetOpenSshTrustPolicy, path: SparkReachPat
               principal: fleet_bootstrap_principal_login(),
             },
             words: words,
-            stdin_payload: join([admin_credential as String, "\n", plan.script, "\n"], ""),
+            stdin_payload: join([admin_credential as String, "\n", spark_pair_leg_payload(script: plan.script), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: admin_credential_file },
           ) {
             FleetPrincipalLegRefused { cause: why } =>
               SparkPairHostApplyFailed { host: plan.host, cause: why as String }
             FleetPrincipalLegRan { session: _, result: r } =>
-              if r.success {
-                SparkPairHostApplied {
-                  host: plan.host,
-                  detail: join([spark_reach_path_wire(p: path), " ", trim(s: r.stdout)], ""),
-                  standing: serving_standing(attempts: []),
-                }
-              } else {
-                SparkPairHostApplyFailed { host: plan.host, cause: join([spark_reach_path_wire(p: path), " exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
-              }
+              spark_pair_leg_outcome_of(host: plan.host, wire: spark_reach_path_wire(p: path), r: r)
           }
       }
   }

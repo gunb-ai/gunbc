@@ -1,13 +1,11 @@
 module v2.workflow.floor_eval_step_cost_drop
 
 import v2.std.algebra { any, count_where, list_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
-// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Eight independently declared, bounded
+// THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Nine independently declared, bounded
 // populations share one membership test (`floor_eval_step_cost_drop_members` / `_holds`), one list
 // per drop, each list's `gunbc.rung_drop` declaration named beside it:
 //   - `floor_eval_step_cost_drop_rows`: the live roadmap projection readers
@@ -25,7 +23,17 @@ import std.types { NonEmptyStr }
 //   - `floor_eval_step_cost_drop_span_program_rows`: the byte-span program inhabitance claim
 //     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
 //   - `floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows`: the python->typescript
-//     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`).
+//     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`);
+//   - `floor_eval_step_cost_drop_boot_matrix_rows`: the mtcollins1 boot acceptance matrix
+//     (`mtcollins1_boot_matrix_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_dark_install_render_rows`: the first reader of the broker dark-install
+//     script (`live_deploy_dark_install_render_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_build_job_membership_rows`: the one claim that runs the real fleet
+//     build-job step list (`fleet_build_job_membership_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_dag_emit_round_trip_rows`: the one real-route round trip of the dag
+//     target's emit (`dag_emit_round_trip_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_approval_intent_digest_rows`: the one real-path claim of each
+//     approval-request constructor (`approval_intent_digest_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -69,14 +77,6 @@ data floor_eval_step_cost_drop_rows: List<EvalStepCostDropMeasurement> = [
     identity: "test.claim.roadmap_program_view_live_corpus_receipt.live_roadmap_program_view_corpus_projection_receipt" as NonEmptyStr,
     measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
   },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal" as NonEmptyStr,
-    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.roadmap_receipt_continuity_acceptance.witness_missing_carrier_prevents_silent_empty_authority_projection" as NonEmptyStr,
-    measured_by: "required floor run 34854812903, artifact required-floor-claim-cost; pre-existing unchanged identity first measured under the gunbc#11195 new-witness tier" as NonEmptyStr,
-  },
 ]
 
 // SECOND DROP, SAME MEMBERSHIP TEST. These two identities string-inspect the production apply
@@ -100,8 +100,8 @@ data floor_eval_step_cost_drop_apply_render_rows: List<EvalStepCostDropMeasureme
 // THIRD DROP, SAME MEMBERSHIP TEST. One identity: the live control gunbc.rung_drop
 // roadmap_sizing_authored_to_derived names as the ONE claim that executes the live roadmap
 // authority and refuses. It is on its OWN list because this module's rule is that growing a
-// drop's list is a new drop -- the roadmap four above may only shrink, and this identity is not
-// one of them.
+// drop's list is a new drop -- the roadmap list above may only shrink, and this identity is not
+// on it.
 //
 // WHY IT IS NOT MOVED OR WEAKENED INSTEAD. Weakening it would delete the pairing obligation's
 // last execution of the real path (DESIGN section 3). Moving it to the long home would stop it
@@ -225,6 +225,17 @@ data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasureme
   },
 ]
 
+data floor_eval_step_cost_drop_approval_intent_digest_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.auth.approved_secret_grants_witness_test.the_real_request_digests_its_intent_and_admits_only_that_revision" as NonEmptyStr,
+    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.auth.approved_secret_grants secret_grants_approval_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision" as NonEmptyStr,
+    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.fabric_storage_state_provision fabric_state_provision_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
+  },
+]
+
 data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "v2.test.long.inhabitant_neutralization_e2e_witness.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds" as NonEmptyStr,
@@ -232,8 +243,165 @@ data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalS
   },
 ]
 
+// THE mtcollins1 BOOT ACCEPTANCE MATRIX (gunbc#12533; `gunbc.rung_drop`
+// `mtcollins1_boot_matrix_new_witness_eval_step_cost`). Each member runs the real boot entry end to
+// end over the dry operation realization, which is the subject #12423 requires: rows from
+// gunbc#12533 and gunbc#12556, then four from gunbc#12555 and the two toolchain arms from gunbc#12800 (NotReady, Unresolved: the entry up to the handoff gate) -- the interrupted-attempt cases (recovered, live holder,
+// unobservable holder, other pid namespace), which run the entry TWICE, the killed run up to
+// StartMedia and then the next run over the world it left, so they exceed the budget although each
+// run alone stops early. The cases whose own subject stops before the boot's long loops and runs
+// once -- the held unit, the SOL acquire -- measure under the budget and are not
+// members.
+data floor_eval_step_cost_drop_boot_matrix_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_host_that_never_prints_a_census_refuses_at_the_deadline" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=248288 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_healthy_census_completes_and_releases_its_collector" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=237233 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_already_presented_image_is_not_attached_again" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=215502 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.media_that_never_becomes_ready_refuses_before_any_power_action" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=140940 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_readiness_stops_the_handoff" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=146038 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_presentation_lost_after_the_handoff_is_the_reported_cause" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=204469 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_sol_loss_mid_boot_is_reported_before_the_deadline" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=202126 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_two_socket_answer_is_a_truthful_topology_refusal" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=194599 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_listing_that_names_the_image_twice_starts_nothing" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=122748 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.the_right_filename_on_the_wrong_share_refuses_before_any_power_action" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=116804 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=276996 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_live_holder_still_blocks_the_next_attempt" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=102436 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_unobservable_holder_is_refused_not_recovered" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=102525 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_successor_in_another_pid_namespace_refuses_rather_than_recovering" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=102114 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=262400 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_appearing_with_readiness_is_recorded_and_booted" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=255253 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through readiness and a full boot" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=250207 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through a stop of a stale image, a replace and a full boot" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=242216 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through readiness and a full boot" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=138564 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_wall_clock_jumping_forward_during_readiness_closes_the_window" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=137976 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_uncatalogued_cd_error_with_the_host_on_writes_nothing" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=137261 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, up to the pre-write refusal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_mount_error_refuses_by_name" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=162614 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through an accepted start whose row falls back to Stopped, up to the readiness refusal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault" as NonEmptyStr,
+    measured_by: "PR required floor run 36846505084 of gunbc#12889 at 0b436b6 (job floor), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=161874 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, through an accepted start whose row falls back to Stopped, up to the readiness refusal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_foreign_presented_image_is_not_stopped" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=118325 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication), the [over-cost] line for this identity: planned_as_changed_witness, verdict pass, eval_steps=112482 against the 72,300 new-witness budget (eval_steps are host-independent); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, now including the dry KVM observer's launch and journal" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test.an_unresolved_toolchain_starts_no_observer_and_no_power_action" as NonEmptyStr,
+    measured_by: "claim_batch --entry dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix_test.dag --functions an_unresolved_toolchain_starts_no_observer_and_no_power_action, over gunbc#12800 at 6cac35eb1a6, 2026-09-30: PASS, eval_steps=102990 against the 72,300 new-witness budget (eval_steps are host-independent; PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6 (job floor, cancelled after adjudication) printed no eval-step line for it before its cancel); the billed work is the real boot entry executed end to end in the seed interpreter over the dry realization, up to the handoff gate's refusal" as NonEmptyStr,
+  },
+]
+
+// NINTH DROP, SAME MEMBERSHIP TEST, OPERATOR-ADMITTED (2026-09-29, relayed by proud-deer-538). One
+// identity: whichever test.claim.live_deploy.emit claim first reads witness_approval_broker_dark_script_text
+// is billed a marginal the generic bash emit path's per-step overhead causes (bundle lookup,
+// grounding, translate, fidelity decode, token fold; jolly-bee-43's #12576 findings). Inherited
+// from main and unchanged by gunbc#12482, which only re-planned the claim because
+// deployment_spec_srv1 changed.
+data floor_eval_step_cost_drop_dark_install_render_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.live_deploy.emit.the_receipt_command_substitutes_the_digest_rather_than_splicing_it" as NonEmptyStr,
+    measured_by: "gunbc#12482 required floor run 36490489535 (job 109157637341), floor-shared-fill line for this identity: planned_as_changed_witness, verdict pass, marginal eval_steps over the new-witness budget with the script render's fill netted separately; the same marginal lands on whichever claim reads the script first (gunbc#12482 floor runs at e8d4fed9bd and c81cc22ff0 billed it to two other identities)" as NonEmptyStr,
+  },
+]
+
+// TENTH DROP, SAME MEMBERSHIP TEST, OPERATOR-ADMITTED (eager-owl-205, 2026-09-30, on gunbc#12800,
+// escalation msg_00eaf0e6). One identity: the ONLY claim that runs the real build-job producer,
+// gunbc.fleet_converge_workflow fleet_converge_build_job_own_steps, to hold that the reset-observer
+// dispatch admission is one of its steps. The admission step itself is cheap; the bill is the
+// construction of the sibling release-bins steps, which the claim never inspects and which
+// gunbc.fleet_workflow_steps builds whole whenever the list is demanded. The cost PREDATES
+// gunbc#12800: it was paid before gunbc#12437 and first re-adjudicated when that change touched the
+// claim. The step's content is held by its own claim under the budget, with no drop.
+data floor_eval_step_cost_drop_build_job_membership_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.workflow_dispatch_input_witness.the_build_job_carries_the_reset_observer_dispatch_admission" as NonEmptyStr,
+    measured_by: "PR required floor run 36765162766 of gunbc#12800 at 6cac35eb1a6, floor-shared-fill line for this identity: verdict pass, marginal_eval_steps=155333 with the shared fill netted separately, against the 72,300 new-witness budget. The same claim read marginal_eval_steps=174583 on run 36743802719 at ec1b8190320, when gunbc#12437's job-gate equality built the whole host-reset-return job inside it; splitting that equality into its own claim removed about 19k, so the ~155k is the cost the claim carried before gunbc#12437, not one this change introduced" as NonEmptyStr,
+  },
+]
+
+// THE DAG EMIT ROUND TRIP (gunbc#12878; `gunbc.rung_drop`
+// `dag_emit_round_trip_new_witness_eval_step_cost`). One identity: the only floor execution of the
+// real ingest -> emit -> re-ingest path for the dag target. A round trip is two real parses by
+// construction, and one parse of even this one-line module is about half the budget, so the bill
+// is the parser's per-token cost paid twice, not the emit. Every other dag-emit claim supplies its
+// input and measures under the budget (v2.test.execution.dag_emit_interface).
+data floor_eval_step_cost_drop_dag_emit_round_trip_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "v2.test.execution.dag_grammar_backward_round_trip.a_data_declaration_round_trips_holds" as NonEmptyStr,
+    measured_by: "gunbc#12878, required floor run 36844213690 (D0-ADJUDICATE BLOCKING line for this identity: verdict pass, over the new-witness budget), re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/execution/dag_grammar_backward_round_trip_test.dag --function a_data_declaration_round_trips_holds. The billed work is two real parses (ingest and re-ingest) of a one-line data declaration" as NonEmptyStr,
+  },
+]
+
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

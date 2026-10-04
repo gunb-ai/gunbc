@@ -1,6 +1,7 @@
 module v2.compiler.ingested_fixture_arrows
 
 import v2.compiler.staged_front_end { front_end_run_outcome, run_front_end }
+import v2.compiler.resolve { ResolvedTree }
 import v2.std.optional {
   Absent,
   Optional,
@@ -23,7 +24,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -50,8 +51,8 @@ data ingested_pick_swapped_arms_module_source: String = "module m\n\nfn pick() -
 data ingested_loop_module_source: String = "module m\n\nfn one() -> Int { loop 1 }\n"
 data ingested_loop_wrong_value_module_source: String = "module m\n\nfn one() -> Int { loop 2 }\n"
 
-data ingested_bind_module_source: String = "module m\n\nfn one() -> Int { let x = 1 in x }\n"
-data ingested_bind_wrong_value_module_source: String = "module m\n\nfn one() -> Int { let x = 2 in x }\n"
+data ingested_bind_module_source: String = "module m\n\nfn one() -> Int {\n  let x = 1\n  x\n}\n"
+data ingested_bind_wrong_value_module_source: String = "module m\n\nfn one() -> Int {\n  let x = 2\n  x\n}\n"
 
 data ingested_match_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 data ingested_match_swapped_arms_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"
@@ -87,7 +88,7 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
 // second route, and has no order of its own to drift from the one it projects — which is the whole
 // reason the front end moved rather than being copied (DESIGN section 3).
 
-fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<Node> {
+fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<ResolvedTree> {
   front_end_run_outcome(run: run_front_end(source: source, file: file))
 }
 
@@ -95,7 +96,7 @@ fn ingested_arrow_from_source(source: String, file: Symbol) -> Outcome<Node> {
   bind_outcome(
     o: ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
-      match ingested_find_arrow_in_module(root: resolved) {
+      match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } =>
           if well_formed(n: arrow) {
             outcome_accepted(value: arrow)
@@ -111,7 +112,7 @@ fn ingested_arrow_from_source(source: String, file: Symbol) -> Outcome<Node> {
           outcome_rejected(
             d: ingested_fixture_diagnostic(
               reason: ^ingested_fixture_reason_arrow_missing,
-              n: resolved
+              n: resolved.root
             )
           )
       }
@@ -219,7 +220,7 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
           kind: TypeNode { connective: Conj },
           children: [
             Edge {
-              label: Named { name: fn_name },
+              label: Authored { name: fn_name },
               target: arrow_with_body
             }
           ]

@@ -33,6 +33,8 @@ import std.realization_reconcile { reconciliation_converged, Converged, NotConve
 import std.types { String, Bool, List }
 import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdGrantListProbeShape }
 import extdeps.sudo.nopasswd_execute_probe_check_op { sudo_nopasswd_grant_list_shell_condition }
+import v2.workflow.bash_emit { bash_emit_negation }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { any, length }
 
@@ -234,15 +236,18 @@ test fn witness_non_preamble_effect_gate_keeps_the_full_roster() -> Bool {
 // fail-closed probe in the text following the install line, and none in the text before it.
 test fn witness_full_roster_probed_after_the_dropin_install_and_refuses_on_miss() -> Bool {
   let sh = deploy_sudoers_install_shell(access: ci_deploy_srv1_access)
-  let halves = split(s: sh, delimiter: concat(" -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ", gunbc_deploy_sudoers_dropin as String))
+  let halves = split(s: sh, delimiter: concat(" '-m' '0440' \"$_gunbc_stage\"'/gunbc-deploy.sudoers' '", concat(gunbc_deploy_sudoers_dropin as String, "'")))
   let before = halves.first()
   let after = halves.skip(n: 1).first()
   length(xs: halves) == 2
     && !any(ci_deploy_srv1_access.privileged_commands, c =>
       !string_contains(s: after, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String)))
         || string_contains(s: before, pattern: concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", c.grant.command_path as String))))
-    && string_contains(s: after, pattern: "if ! 'sudo' '-n' '/usr/bin/cp' '--version' >/dev/null 2>&1; then echo")
-    && string_contains(s: after, pattern: concat("if ! ", sudo_nopasswd_grant_list_shell_condition(probe: fleet_tailscale_binary_path as SudoNopasswdGrantListProbeShape)))
+    && string_contains(s: after, pattern: concat("if ! 'sudo' '-n' '/usr/bin/cp' '--version' >/dev/null 2>&1; then 'echo' '", concat(deploy_sudoers_post_install_refusal_prefix, concat(" ", concat(fleet_cp_binary_path as String, "' >&2; exit 1; fi\n")))))
+    && match bash_emit_negation(inner: sudo_nopasswd_grant_list_shell_condition(probe: fleet_tailscale_binary_path as SudoNopasswdGrantListProbeShape)) {
+      Accepted { value: negated, diagnostics: _ } => string_contains(s: after, pattern: concat("if ", concat(negated, "; then 'echo'")))
+      Rejected { diagnostics: _ } => false
+    }
     && string_contains(s: after, pattern: "exit 1; fi")
 }
 

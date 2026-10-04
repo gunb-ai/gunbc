@@ -14,7 +14,7 @@ module test.claim.scm_commit_closure_witness
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
 import v2.std.algebra { non_empty_to_list }
-import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -117,7 +117,7 @@ fn child_node() -> Node {
 fn parent_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only_child }, target: child_node() }],
+    children: [Edge { label: Authored { name: ^only_child }, target: child_node() }],
   )
 }
 
@@ -228,8 +228,8 @@ fn closure_two_child_parent_node() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^alpha }, target: closure_alpha_child_node() },
-      Edge { label: Named { name: ^beta }, target: closure_beta_child_node() },
+      Edge { label: Authored { name: ^alpha }, target: closure_alpha_child_node() },
+      Edge { label: Authored { name: ^beta }, target: closure_beta_child_node() },
     ],
   )
 }
@@ -642,7 +642,7 @@ fn closure_over_an_occupied_locator() -> OccupiedFixture {
         store: with_file,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+          StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
         ],
       ) {
         LocatorCollision { identity: _, existing: _, incoming: _ } =>
@@ -785,8 +785,8 @@ fn insert_two_named(store: ObjectStore, first_label: Symbol, first: SemanticNode
     store: store,
     kind: TypeNode { connective: Conj },
     children: [
-      StoredEdge { label: Named { name: first_label }, target: first },
-      StoredEdge { label: Named { name: second_label }, target: second },
+      StoredEdge { label: Authored { name: first_label }, target: first },
+      StoredEdge { label: Authored { name: second_label }, target: second },
     ],
   )
 }
@@ -1270,7 +1270,7 @@ fn closure_over_a_manifest_locator() -> OccupiedFixture {
     store: inventory.store,
     kind: TypeNode { connective: Conj },
     children: [
-      StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: inventory.manifest } },
+      StoredEdge { label: Authored { name: ^only_child }, target: SemanticNodeTarget { locator: inventory.manifest } },
     ],
   ) {
     LocatorCollision { identity: _, existing: _, incoming: _ } =>

@@ -12,10 +12,9 @@ import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation,
   ContractNotAgentWork,
 }
-import gunbc.roadmap_focus { roadmap_dependency_graph }
 import gunbc.roadmap_status { line_ticket }
 import gunbc.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
-import std.graph { reverse_adjacency, dfs_collect_component, SccComponentAcc }
+import std.graph { GraphEdge, CallGraph, reverse_adjacency, dfs_collect_component, SccComponentAcc }
 
 // THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived
 // model that answers, for one program, what are we doing / where are we exactly / how much remains
@@ -43,13 +42,25 @@ import std.graph { reverse_adjacency, dfs_collect_component, SccComponentAcc }
 // gunbc.roadmap_presentation rather than inside it because the two project different subjects —
 // roadmap_presentation decides how one workspace row renders (lifecycle, activity, disclosure),
 // this module decides what one PROGRAM looks like across its whole dependency graph. It consumes
-// the same upstream authorities (roadmap_model receipts, roadmap_status tickets, roadmap_focus's
-// graph fold, v1_deletion_plan finish lines) and mints nothing those modules already own:
+// the same upstream authorities (roadmap_model receipts, roadmap_status tickets, the dependency graph fold
+// graph fold, which now lives here, v1_deletion_plan finish lines) and mints nothing those modules already own:
 // ObligationState deliberately does NOT replace WorkLifecycle or WorkScheduling — lifecycle
 // narrates one row's review journey (PRs merged, awaiting acceptance), ObligationState narrates a
 // node's position in the program's dependency algebra (accepted / held / contract-missing /
 // workable), and the in-flight overlay mirrors the lifecycle-x-activity split roadmap_presentation
 // already established rather than fusing state planes into one enum.
+
+// The roadmap's dependency relation as a call graph (parent -> child), for the reachability folds
+// below. It lived beside the page's focus filter until that filter was deleted (2026-09-30); this
+// module is its only consumer.
+fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges |> map(e => GraphEdge {
+      caller: e.parent as String,
+      callee: e.child as String,
+    }),
+  }
+}
 
 type V1ConvergenceFront
   = NamespacePDeriveFront
@@ -94,8 +105,8 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
     ConvergenceFrontSpec {
       front: NamespacePDeriveFront,
       name: "Namespace / P-derive",
-      purpose: "Names resolve from one containment authority and P-derive binds source slots on it, producing the receipt the emitter fixed point consumes.",
-      gates: [ "pderive-error-movement-receipt" as RoadmapNodeId ],
+      purpose: "Names resolve from one containment authority and P-derive binds source slots on it, which the v2 emitter consumes to derive supplemental bounds in one place.",
+      gates: [ "pderive-v2-emitter-consumer" as RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: V2GenerationFront,
@@ -111,9 +122,9 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
     },
     ConvergenceFrontSpec {
       front: MaterializationCutoverFront,
-      name: "Materialization, verification, cutover",
-      purpose: "Exact prior results are reusable, verification reads the ledger, and the CI floor cuts over to the new path.",
-      gates: [ "v1-ci-floor-cutover" as RoadmapNodeId ],
+      name: "Native route admission",
+      purpose: "The native-frontier ratchet gates every landing and the native route is admitted as the production semantic route, absorbing the former CI-floor cutover and verification-ledger rows.",
+      gates: [ "native-production-admission" as RoadmapNodeId ],
     },
     ConvergenceFrontSpec {
       front: TestMigrationTailFront,

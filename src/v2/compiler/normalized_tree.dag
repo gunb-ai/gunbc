@@ -2,19 +2,29 @@ module v2.compiler.normalized_tree
 
 import v2.compiler.body_lowering_fold {
   BodyLoweredTree,
+  DeclaredTypeKind,
+  DeclaredTypeModifiers,
+  declared_record_names,
+  declared_resource_names,
   wrapper_retention_diagnostic
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
   diagnostics_singleton,
   Diagnostics,
+  node_locus,
   Outcome,
   Rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  UserInputBoundary,
+  Unavailable
 }
+import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 
@@ -40,14 +50,15 @@ import v2.std.namespace_alias { AliasBindingRow, ModuleBindingSource }
 // shape a where-alias rehome writes and the shape the graft builds for a module spine, so after
 // normalize a record is indistinguishable from either -- and the pattern-binder classifier must
 // tell a record (a constructor) from a module (not one). The fact is read where it is still held,
-// by the same predicate the rehome uses, and carried here as the leaf names this module declares
-// as records; the symbol-index fill qualifies each by this module's own name, so the key the index
+// by the same predicate the rehome uses, and carried here as the kind of each such declaration
+// (records among them); the symbol-index fill qualifies each by this module's own name, so the key the index
 // holds is a declaring path, never a bare spelling.
 type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  record_declarations: FreeMonoid<Symbol>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
 }
 
 // THE RETENTION DOOR (MQ-4). A shell the body lowering could not lower is a typed variant of its result
@@ -102,22 +113,118 @@ fn no_record_declarations() -> FreeMonoid<Symbol> {
   Empty
 }
 
+// THE OCCURRENCE WALL. Within one admitted tree an occurrence names ONE node. Two refusals, each
+// located at the node that breaks it:
+//   * a node still OccurrencePending -- a lowering image was closed and never allocated, so its
+//     member has a cause and no id. Normalization allocates every pending member before admission,
+//     so reaching here means a tree was assembled outside that route.
+//   * a minted id carried by a second, STRUCTURALLY DIFFERENT node -- a lowering built several nodes
+//     from one source and its builder did not close the image (v2.std.node close_lowered_image). The
+//     allocation pass never repairs this: it converts only pending members, so a forgotten close
+//     stays visible here.
+// A structurally identical node reached at two positions is one node shared, not two nodes: a
+// function type's Arrow carries its codomain value twice, and both positions are the same authored
+// type. So a repeated id is compared structurally (v2.std.node content_hash, which ignores
+// occurrences) -- and ONLY a repeated id: the walk records the first node per id and hashes the two
+// nodes when a second one arrives, so an admission with no repeats pays one pre-order walk and no
+// hashing. The refusal names the first offending node in pre-order.
+fn occurrence_wall_refusal(root: Node) -> Optional<Diagnostic> {
+  occurrence_wall_walk(node: root, state: OccurrenceWallState { first: empty_map(), refusal: Absent }).refusal
+}
+
+type OccurrenceWallState {
+  first: Map<Int, Node>
+  refusal: Optional<Diagnostic>
+}
+
+fn occurrence_wall_walk(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
+  match state.refusal {
+    Present { value: _ } => state
+    Absent =>
+      let here = occurrence_wall_check(node: node, state: state)
+      fold(node.children, init: here, f: (acc, e) => occurrence_wall_walk(node: e.target, state: acc))
+  }
+}
+
+fn occurrence_wall_check(node: Node, state: OccurrenceWallState) -> OccurrenceWallState {
+  match node.occurrence_id {
+    OccurrencePending { caused_by: _ } =>
+      OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_pending_occurrence_survived, n: node) } }
+    OccurrenceMinted { id: id } =>
+      match map_lookup(m: state.first, key: id.value) {
+        Present { value: first } =>
+          if content_hash(n: first).digest == content_hash(n: node).digest {
+            state
+          } else {
+            OccurrenceWallState { first: state.first, refusal: Present { value: occurrence_wall_diagnostic(reason: ^normalize_reason_minted_occurrence_duplicated, n: node) } }
+          }
+        Absent => OccurrenceWallState { first: map_insert(m: state.first, key: id.value, value: node), refusal: Absent }
+      }
+    OccurrenceProjected { id: _, caused_by: _ } => state
+    OccurrenceSynthetic => state
+  }
+}
+
+fn occurrence_wall_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// A hand-built root carries no declaration kinds, for the same reason it carries no record names.
+fn no_type_declaration_kinds() -> FreeMonoid<DeclaredTypeKind> {
+  Empty
+}
+
+// A hand-built root carries no declaration modifiers either: it has no parse to read the slot from.
+fn no_type_declaration_modifiers() -> FreeMonoid<DeclaredTypeModifiers> {
+  Empty
+}
+
+// THE KIND OF EACH PLAIN-CONJ TYPE THIS MODULE DECLARES, read at normalize by
+// v2.compiler.body_lowering_fold body_lower_type_decl_declared_kind_optional: after lowering, a record,
+// a where-refinement and a payload-bearing single variant share one shape. One list of one coproduct,
+// so a declaration has one kind or none; the symbol-index fill reads its record projection
+// (normalized_tree_record_declarations) and emission reads the whole (v2.compiler.emit_produced
+// emit_module_member). A caller holding no parse passes no_type_declaration_kinds().
 fn admit_normalized_tree(
   root: Node,
   test_markers: TestMarkerChannel,
   import_bindings: FreeMonoid<AliasBindingRow>,
-  record_declarations: FreeMonoid<Symbol>,
+  type_declaration_kinds: FreeMonoid<DeclaredTypeKind>,
+  type_declaration_modifiers: FreeMonoid<DeclaredTypeModifiers>,
   diagnostics: Diagnostics
 ) -> Outcome<NormalizedTree> {
-  Accepted {
-    value: NormalizedTree {
-      root: root,
-      test_markers: test_markers,
-      import_bindings: import_bindings,
-      record_declarations: record_declarations
-    },
-    diagnostics: diagnostics
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: NormalizedTree {
+          root: root,
+          test_markers: test_markers,
+          import_bindings: import_bindings,
+          type_declaration_kinds: type_declaration_kinds,
+          type_declaration_modifiers: type_declaration_modifiers
+        },
+        diagnostics: diagnostics
+      }
   }
+}
+
+fn normalized_tree_record_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_record_names(kinds: t.type_declaration_kinds)
+}
+
+fn normalized_tree_resource_declarations(t: NormalizedTree) -> FreeMonoid<Symbol> {
+  declared_resource_names(kinds: t.type_declaration_kinds)
+}
+
+// A hand-built root declares no resources this carrier can see, as it declares no records.
+fn no_resource_declarations() -> FreeMonoid<Symbol> {
+  Empty
 }
 
 // A MODULE OUTSIDE THE COMPILED CLOSURE, AT CENSUS GRADE (v2.compiler.normalize normalize_census):
@@ -140,6 +247,7 @@ type CensusTree sole_constructor {
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
   record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
 }
 
 // The census route refuses retention through admit_retention_free exactly as the full route does
@@ -152,15 +260,22 @@ fn admit_census_tree(
   root: Node,
   import_bindings: FreeMonoid<AliasBindingRow>,
   record_declarations: FreeMonoid<Symbol>,
+  resource_declarations: FreeMonoid<Symbol>,
   diagnostics: Diagnostics
 ) -> Outcome<CensusTree> {
-  Accepted {
-    value: CensusTree {
-      root: root,
-      import_bindings: import_bindings,
-      record_declarations: record_declarations
-    },
-    diagnostics: diagnostics
+  match occurrence_wall_refusal(root: root) {
+    Present { value: d } =>
+      Rejected { diagnostics: rejected_with_pending(pending: diagnostics, rejected: diagnostics_singleton(d: d)) }
+    Absent =>
+      Accepted {
+        value: CensusTree {
+          root: root,
+          import_bindings: import_bindings,
+          record_declarations: record_declarations,
+          resource_declarations: resource_declarations
+        },
+        diagnostics: diagnostics
+      }
   }
 }
 
@@ -170,8 +285,16 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
   ModuleBindingSource {
     root: t.root,
     import_bindings: t.import_bindings,
-    record_declarations: t.record_declarations
+    record_declarations: t.record_declarations,
+    resource_declarations: t.resource_declarations
   }
+}
+
+// Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
+// which attributes a resolve refusal to an import target the context refused at ingest.
+fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
+  tree.import_bindings
 }
 
 // Projection out of the sealed carrier for the symbol-index fill, which needs both halves of what a
@@ -189,7 +312,8 @@ fn normalized_tree_roots_to_binding_sources(
         item: ModuleBindingSource {
           root: tree.root,
           import_bindings: tree.import_bindings,
-          record_declarations: tree.record_declarations
+          record_declarations: normalized_tree_record_declarations(t: tree),
+          resource_declarations: normalized_tree_resource_declarations(t: tree)
         }
       )
     }
@@ -231,7 +355,8 @@ fn admit_unmarked_normalized_roots(
             root: root,
             test_markers: test_marker_channel_empty(),
             import_bindings: no_import_bindings(),
-            record_declarations: no_record_declarations()
+            type_declaration_kinds: no_type_declaration_kinds(),
+            type_declaration_modifiers: no_type_declaration_modifiers()
           }
         )
       }

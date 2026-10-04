@@ -1,7 +1,7 @@
 module product.fabric.contention
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.algebra { BoundedLattice, Ordering }
+import std.algebra { BoundedLattice, Cons, Empty, Ordering }
 import extdeps.currency.currency { CurrencyCode }
 import std.measure {
   MoneyAmountMicro, money_amount_micro, money_amount_micro_count,

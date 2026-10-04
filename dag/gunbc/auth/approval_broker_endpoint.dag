@@ -5,10 +5,9 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
-import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -36,6 +35,10 @@ data approval_broker_decide_path_template: NonEmptyStr = approval_broker_confirm
 data approval_broker_submit_path: NonEmptyStr = "/approvals"
 
 data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalation_id\}"
+
+// THE STORE RECEIPT ROUTE is a member route of the same escalation (gunbc.auth.approval_store_receipt):
+// a POST authenticated by the submission key, never the public status GET.
+data approval_broker_store_receipt_path_template: NonEmptyStr = join([approval_broker_status_path_template as String, "/store-receipt"], "") as NonEmptyStr
 
 // THE SIX DEVICE ROUTES' TEMPLATES, spelled from gunbc.auth.approval_device_wire's paths (the app's
 // authority) rather than re-typed here: the two suffixed routes take one ParamToken segment, the
@@ -96,7 +99,7 @@ data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 // run that files and polls over the loopback approval client (the GCP IAM converge job) has to run
 // there.
 fn approval_broker_host_identity() -> NonEmptyStr {
-  srv1_live_dashboard_instance().host_identity
+  srv1_dashboard_host_identity
 }
 
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
@@ -149,24 +152,33 @@ fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmpt
 // because a bare `serve --bg <port>` binds the ROOT mount and silently rebinds whatever was there.
 // These two endpoints differ from the roadmap's in mount path, so they add mappings rather than
 // replacing one -- which is exactly the collision the endpoint key exists to make expressible.
-fn approval_broker_backend(port: Port) -> NonEmptyStr {
-  to_string(port) as NonEmptyStr
-}
-
-fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+// THE BACKEND CARRIES ITS MOUNT PATH, because a --set-path mount STRIPS the prefix before proxying.
+// Observed on srv1 2026-09-30 13:37Z through the stage-5 probe (gunbc.auth.approval_broker_cutover
+// ProbeRouteClasses): with backend `8085`, every route class reached the broker and was answered
+// `approval-broker/broker/no-route-matched` -- the broker saw /<rest> for /approve/<rest>. tailscale
+// appends the stripped remainder to the backend URL's own path, so a backend of
+// http://127.0.0.1:8085/approve presents /approve/<rest>: the public path and the broker's route
+// table agree without the broker learning a second spelling of its own routes.
+//
+// ONE VALUE, TWO PROJECTIONS (review 73232): the mount and the backend path must be equal or every
+// route class misses, so both are derived here from the one mount path a front door names, never
+// typed twice.
+fn approval_broker_front_door(https_port: Port, backend_port: Port, mount_path: NonEmptyStr) -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: https_port,
-    mount: ServeSetPath { path: "/approve" as NonEmptyStr },
-    backend: approval_broker_backend(port: backend_port),
+    mount: ServeSetPath { path: mount_path },
+    backend: join([approval_broker_loopback_base_url(port: backend_port) as String, mount_path as String], "") as NonEmptyStr,
   }
+}
+
+data approval_broker_confirm_mount_path: NonEmptyStr = "/approve" as NonEmptyStr
+
+fn approval_broker_confirm_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
+  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_confirm_mount_path)
 }
 
 fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> TailscaleServeEndpoint {
-  TailscaleServeEndpoint {
-    https_port: https_port,
-    mount: ServeSetPath { path: approval_broker_submit_path },
-    backend: approval_broker_backend(port: backend_port),
-  }
+  approval_broker_front_door(https_port: https_port, backend_port: backend_port, mount_path: approval_broker_submit_path)
 }
 
 // ── WHAT THIS MODULE DOES NOT KNOW, SAID SO IT CAN BE SETTLED RATHER THAN ASSUMED ────────────
@@ -198,8 +210,12 @@ fn approval_broker_status_front_door(https_port: Port, backend_port: Port) -> Ta
 // The plan refuses at that stage with the cause named; the repair is then a modeled one (a broker
 // route table mounted at the stripped prefix, or a root mount on a second https listener), never an
 // edit made under an outage.
+// SETTLED BY THE PROBE, NOT BY A READ: the strip was observed (see approval_broker_front_door), so the
+// bet this row carried is closed by construction there -- the backend now names the mount path -- and
+// the row keeps its read obligation only for the upstream documentation, which still does not state
+// the rewrite. The stage-5 probe remains the executing evidence.
 data approval_broker_front_door_path_preservation: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Whether `tailscale serve --set-path=/approve --https=443 <backend>` presents `/approve/<rest>` or `/<rest>` to the backend. Close it by reading tailscale.com/kb/1242 on set-path backend rewriting, or by the ProbeRouteClasses front-door probe in gunbc.auth.approval_broker_cutover (the fifth stage), which discriminates it against the broker before the roadmap routes are removed: a body marked approval-broker/no-route-matched on a path the broker routes IS the strip, and gunbc.auth.approval_broker_marker is what makes that readable." as NonEmptyStr,
+  read_obligation: "OBSERVED on srv1 2026-09-30: `tailscale serve --set-path=/approve --https=443 <backend>` presents `/<rest>` (prefix STRIPPED) to the backend -- the stage-5 ProbeRouteClasses probe got approval-broker/broker/no-route-matched on every route class. approval_broker_front_door now derives the backend URL's path from the mount path. Remaining obligation: cite tailscale.com/kb/1242 (or the serve CLI reference) for the strip-and-append behaviour, which the documentation read so far does not state." as NonEmptyStr,
 }
 
 // ── The link base ────────────────────────────────────────────────────────────────────────────
@@ -213,6 +229,21 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 // without anyone touching either end. So the base is re-derived here, from the broker's own front
 // door, and the byte-identity is a consequence of the front door rather than a coincidence two
 // modules maintain separately.
+//
+// THE PUBLIC PORT IS A ROW, Absent meaning the default TLS listener (no `:port` suffix), so the two
+// readers of the public address -- the link base here and the approvals app's build config
+// (gunbc.approve_ios_project) -- read one port rather than each assuming 443.
+data approval_broker_public_port: Port? = none
+
+fn approval_broker_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: approval_broker_host_identity(), domain: domain, port: approval_broker_public_port)
+}
+
 fn approval_broker_base_url() -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: fleet_intent_network.tailnet_domain, port: none)
+  approval_broker_base_url_from(domain: fleet_tailnet_domain)
+}
+
+// THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
+fn approval_broker_public_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_host_from(host: approval_broker_host_identity(), domain: domain)
 }

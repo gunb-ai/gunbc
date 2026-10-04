@@ -1,5 +1,6 @@
 module v2.test.claim.declaring_identity_spelling.production_ingest
 
+import std.types { List }
 import v2.compiler.declaring_identity_spelling_census {
   DeclaringIdentitySpellingCensus,
   spelling_census_from_ingest
@@ -12,7 +13,8 @@ import v2.compiler.resolution_provenance {
   ProvenanceOwnerless,
   ProvenanceResolved,
   ProvenanceUnbound,
-  resolve_reference_provenance
+  resolve_reference_provenance,
+  reference_site_scope_path,
 }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
@@ -23,8 +25,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name {
@@ -328,7 +328,7 @@ fn marker_site_fill_lookup_is_present(roots: FreeMonoid<ModuleBindingSource>) ->
             Present { value: name } =>
               match symbol_index_lookup(
                 index: index,
-                qualified_path: qualified_name_snoc(qn: site.position, segment: name)
+                qualified_path: qualified_name_snoc(qn: reference_site_scope_path(site: site), segment: name)
               ) {
                 Present { value: _ } => true
                 Absent => false
@@ -440,11 +440,17 @@ test fn matched_user_type_position_mention_reaches_the_census_today() -> Bool {
   }
 }
 
-test fn matched_imported_kernel_type_position_is_absent_from_the_census_today() -> Bool {
+// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "is absent today", found RED on main (measured at
+// c2ab4458d2 and abcb48293f) with nothing having re-stated it -- the imported kernel type `Bool` in
+// parameter-type position now reaches the census as one authored spelling, beside `value_only`.
+// Attributed (read from source, not bisected) to gunbc#12598, which reads the param binder role
+// through body lowering's readers, so a parameter type reaches the census by the route every other
+// type position takes. Permanent control: deleting that route makes it red.
+test fn matched_imported_kernel_type_position_reaches_the_census_holds() -> Bool {
   match matched_census() {
     Present { value: census } =>
       authored_is(census: census, spelling: "value_only")
-        && !authored_is(census: census, spelling: "Bool")
+        && authored_is(census: census, spelling: "Bool")
     Absent => false
   }
 }
@@ -494,15 +500,22 @@ test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
   }
 }
 
-// QUALIFIED field type. Still absent, and now for ONE reason rather than two:
-// qualification no longer hides a mention (the two rows above reach), so what is
-// left is field position -- the record declaration is not grafted into the
-// containment tree at all. The discriminator is field_vs_parameter.
-test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
+// QUALIFIED field type, no call. THIS ROW WAS ENROLLED AS "IS ABSENT TODAY" AND WAS FOUND RED ON
+// MAIN (14d58480c9, 2026-09-29) WITH NOTHING HAVING RE-STATED IT: the mention reaches the census as
+// one authored spelling, the way the parameter-type row beside it does. Attributed by stage on these
+// fixtures: the parse holds the token, the normalized tree holds the whole qualified spine, and
+// v2.compiler.reference_site_collector collect_reference_sites emits exactly one site for it. The
+// gap the row recorded -- a record declaration not grafted -- closed when
+// v2.compiler.namespace_graft began Naming every type_decl unit and body lowering declared record
+// fields through body_lower_field_decl_block_payload, whose field type is read by the same
+// body_lower_type_expr_lowered_optional a parameter type is. So this is now a conserved control:
+// deleting that route makes it red. LocalParam is the positive control, as above; whether the
+// mention BINDS is the second fact the rows above leave to their own trigger.
+test fn a_qualified_field_type_mention_reaches_the_census_holds() -> Bool {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
-        && !authored_is(census: census, spelling: qualified_field_type_spelling)
+        && authored_is(census: census, spelling: qualified_field_type_spelling)
     Absent => false
   }
 }

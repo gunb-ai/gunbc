@@ -54,9 +54,6 @@ pub mod std_error_primitives;
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_magnitude.rs"]
-pub mod std_magnitude;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
 #[rustfmt::skip]
@@ -99,6 +96,9 @@ pub mod extdeps_uri;
 #[path = "../../stage0/src/extdeps_external_authority.rs"]
 pub mod extdeps_external_authority;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_posix_clock_gettime.rs"]
+pub mod extdeps_posix_clock_gettime;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_ietf_http_semantics.rs"]
 pub mod extdeps_ietf_http_semantics;
 #[rustfmt::skip]
@@ -128,6 +128,9 @@ pub mod std_occurrence_identity;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_source_annotation.rs"]
 pub mod std_source_annotation;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_kernel_type_name.rs"]
+pub mod std_kernel_type_name;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_target_representation.rs"]
 pub mod std_target_representation;

@@ -114,6 +114,9 @@ fn node_occurrence_ids(node: &Node, ids: &mut Vec<i64>, synthetic_count: &mut us
         NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
             panic!("authored parser returned a projected occurrence")
         }
+        NodeOccurrenceIdentity::OccurrencePending { .. } => {
+            panic!("authored parser returned a pending occurrence")
+        }
     }
     for child in node.children.iter() {
         node_occurrence_ids(child, ids, synthetic_count);

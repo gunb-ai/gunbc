@@ -40,6 +40,12 @@ import gunbc.spark.pair_serving_authority_log {
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
   authority_eq,
 }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.spark.standing_host_effect_recover { standing_host_effect_recover_over }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowOnMain, StandingGrantRowNotOnMain }
+import gunbc.spark.host_effect_quiescence { ClaimantAbandoned }
+import gunbc.spark.pair_serving_authority_log { live_claim_on, LiveClaimFound, LiveClaimAbsent, LiveClaimUnread }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -537,6 +543,48 @@ test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_abo
                       && (match placement_abort(store: store, preparation: prep, reason: "wrongly assumed stranded" as String, provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1014) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("consumed by authority event")  _ => false })
                       && (match placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: prep), actor: "operator" as NonEmptyStr, at: 1015) { PlacementFinalizedAt { preparation: _, id: _ } => true  _ => false })
                       && (match host_effect_admit(store: store, host: srv, purpose: "a build after the finalization" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1016) { HostEffectClaimed { id: _ } => true  _ => false })
+                  _ => false
+                })
+      }
+    })
+  })
+}
+
+// (6) THE STANDING RECOVERY ON THE REAL STORE (side-chat review of #13102): a claim lands on a released
+// Group A host; recovery with the row NOT on main refuses and touches nothing; with the row on main but the
+// claim's residue still running, the fresh quiescence read -- taken after the claim was selected, against
+// that claim's process pattern -- keeps it live; with the host quiet the claim is released, and the release
+// is read back absent. A second recovery then finds no unreleased claim.
+fn alr_residue_leg(argv: List<String>) -> ArgvRun {
+  ArgvRan { exit_code: 0, stdout: "4242 /srv/build/witness", stderr: "" }
+}
+
+fn alr_exit_ok(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => true  _ => false }
+}
+
+test fn a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let store = alr_witness_layout(dir: dir)
+      let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+      let srv = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+          alr_witness_remote_ready(dir: dir)
+            && (match pair_serving_authority_transition(store: store, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
+            && (match admit_unplaced_host_over(raw: srv as String, purpose: "a witness build" as NonEmptyStr, term: second(count: 100), residue: alr_residue(pattern: "/srv/build"), store: store, executor: "executor-1" as NonEmptyStr, at: 1001) {
+                  SparkHostAdmitted { host: _, claim: Present { value: handle } } => {
+                    let off_main = !alr_exit_ok(e: standing_host_effect_recover_over(host: srv, standing: ClaimantAbandoned, run_id: "1" as NonEmptyStr, row: StandingGrantRowNotOnMain { cause: "witness" }, run: fn(argv) { alr_quiet_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1002))
+                    let still_live_1 = match live_claim_on(store: store, host: srv, claim: handle.claim) { LiveClaimFound { record: _ } => true  _ => false }
+                    let residue_held = !alr_exit_ok(e: standing_host_effect_recover_over(host: srv, standing: ClaimantAbandoned, run_id: "1" as NonEmptyStr, row: StandingGrantRowOnMain, run: fn(argv) { alr_residue_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1003))
+                    let still_live_2 = match live_claim_on(store: store, host: srv, claim: handle.claim) { LiveClaimFound { record: _ } => true  _ => false }
+                    let recovered = alr_exit_ok(e: standing_host_effect_recover_over(host: srv, standing: ClaimantAbandoned, run_id: "1" as NonEmptyStr, row: StandingGrantRowOnMain, run: fn(argv) { alr_quiet_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1004))
+                    let gone = match live_claim_on(store: store, host: srv, claim: handle.claim) { LiveClaimAbsent => true  _ => false }
+                    let nothing_left = !alr_exit_ok(e: standing_host_effect_recover_over(host: srv, standing: ClaimantAbandoned, run_id: "1" as NonEmptyStr, row: StandingGrantRowOnMain, run: fn(argv) { alr_quiet_leg(argv: argv) }, store: store, executor: "executor-1" as NonEmptyStr, at: 1005))
+                    off_main && still_live_1 && residue_held && still_live_2 && recovered && gone && nothing_left
+                  }
                   _ => false
                 })
       }

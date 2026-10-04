@@ -13,6 +13,8 @@ type WitnessCase = (&'static str, fn(&ModuleIndex));
 
 const SERVICE_AUTH_BEARER_NO_SOURCE: &str = r#"module auth_unwired_t1
 
+import std.types { AuthScheme, Bearer }
+
 service test.Svc {
   config {
     endpoint: "https://unreachable.invalid.example"
@@ -48,6 +50,8 @@ fn probe() -> String {
 // difference is the whole discrimination — a literal-endpoint case cannot express it,
 // which is why every existing case here passed while the class was broken.
 const SERVICE_ENDPOINT_BY_REFERENCE: &str = r#"module auth_unwired_t8
+
+import std.types { AuthScheme, Bearer }
 
 data svc_base: String = "https://unreachable.invalid.example"
 
@@ -162,6 +166,8 @@ fn probe() -> String {
 
 const SERVICE_AUTH_INPUT_NOT_PROVIDED: &str = r#"module auth_unwired_t2
 
+import std.types { AuthScheme, Bearer }
+
 service test.Svc {
   config {
     endpoint: "https://unreachable.invalid.example"
@@ -190,6 +196,8 @@ fn probe() -> String {
 // Dual-declare: both auth_input (caller-supplied) and auth_source (env-var fallback) declared.
 // Used by the two fallback-regression witnesses below.
 const SERVICE_DUAL_DECLARE: &str = r#"module auth_unwired_t4
+
+import std.types { AuthScheme, Bearer }
 
 service test.Svc {
   config {
@@ -355,12 +363,16 @@ fn resolve_imports_transitively(
     sources
 }
 
+// A hard error is what the diagnostic disposition authority says blocks the interpreter;
+// advisory-gate diagnostics in the imported closure are not this witness's subject.
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
+        .filter(|d| {
+            v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+        })
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),

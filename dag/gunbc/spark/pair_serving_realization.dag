@@ -336,8 +336,8 @@ fn exec_word_is_plain(w: String) -> Bool {
 }
 
 fn exec_line(cmd: ArgvCommand) -> NonEmptyStr? {
-  if exec_word_is_plain(w: cmd.program as String) && all(cmd.arguments, w => exec_word_is_plain(w: w)) {
-    Present { value: join(concat([cmd.program as String], cmd.arguments), " ") as NonEmptyStr }
+  if exec_word_is_plain(w: cmd.program.invocation as String) && all(cmd.arguments, w => exec_word_is_plain(w: w)) {
+    Present { value: join(concat([cmd.program.invocation as String], cmd.arguments), " ") as NonEmptyStr }
   } else {
     none
   }

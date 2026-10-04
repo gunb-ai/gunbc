@@ -1,0 +1,109 @@
+module extdeps.tools.rsync
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { any }
+
+// rsync, AS ITS UPSTREAM DOCUMENTS IT: the client (rsync(1)) and the daemon with its configuration
+// file (rsyncd.conf(5)). This module carries what rsync IS -- its argv shapes, its configuration
+// grammar, its exit statuses -- and no policy about which directory a fleet serves or which hosts
+// may pull; those are the caller's (DESIGN section 3: interface, realization and policy are three
+// facts).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.samba.org/pub/rsync/rsync.1"
+  }
+}
+
+data rsyncd_conf_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.samba.org/pub/rsync/rsyncd.conf.5"
+  }
+}
+
+// rsyncd.conf(5): "rsync daemon listens on TCP port 873 by default" (the IANA `rsync` service).
+data rsync_daemon_default_port: Nat = 873
+
+// ── THE DAEMON'S CONFIGURATION: ONE READ-ONLY MODULE ───────────────────────────────────────────
+//
+// rsyncd.conf(5) is an INI-style file of `[module]` sections with `name = value` parameters. Only
+// the parameters a read-only export needs are modeled; each is rsyncd.conf(5)'s own name.
+//   path       the directory the module exports
+//   read only  yes: a client may not upload into the module
+//   list       no: the module is not listed to an anonymous `rsync host::` query
+//   use chroot no: chroot needs the daemon to start as root AND the path to be a chroot-able root;
+//              refusing it keeps the module's meaning the same under either start identity
+//   uid / gid  the identity the daemon assumes for file access in this module
+type RsyncReadOnlyModule {
+  name: NonEmptyStr
+  path: NonEmptyStr
+  uid: NonEmptyStr
+  gid: NonEmptyStr
+}
+
+fn rsyncd_conf_text(module: RsyncReadOnlyModule) -> String {
+  join([
+    "[", module.name as String, "]\n",
+    "path = ", module.path as String, "\n",
+    "read only = yes\n",
+    "list = no\n",
+    "use chroot = no\n",
+    "uid = ", module.uid as String, "\n",
+    "gid = ", module.gid as String, "\n",
+  ], "")
+}
+
+// THE DAEMON IN THE FOREGROUND, bound to ONE address. rsync(1) DAEMON OPTIONS: `--daemon` runs as a
+// daemon, `--no-detach` keeps it in the foreground (so a supervisor such as a systemd unit owns its
+// lifetime), `--address` binds the listening socket to that address only, `--port` overrides 873,
+// `--config` names the rsyncd.conf to read.
+fn rsync_daemon_foreground_argv(address: NonEmptyStr, port: Nat, config_path: NonEmptyStr) -> List<String> {
+  [
+    "rsync", "--daemon", "--no-detach",
+    join(["--address=", address as String], ""),
+    join(["--port=", to_string(port)], ""),
+    join(["--config=", config_path as String], ""),
+  ]
+}
+
+// THE `rsync://` URL OF ONE PATH INSIDE A DAEMON MODULE: rsync(1) "rsync://[USER@]HOST[:PORT]/SRC".
+fn rsync_daemon_url(host: NonEmptyStr, port: Nat, module: NonEmptyStr, path_in_module: NonEmptyStr) -> NonEmptyStr {
+  join(["rsync://", host as String, ":", to_string(port), "/", module as String, "/", path_in_module as String], "") as NonEmptyStr
+}
+
+// ONE FILE PULLED FROM A DAEMON. rsync(1): `--partial` keeps a partially transferred file instead of
+// deleting it, so an interrupted pull is resumed from it by the next one (the delta algorithm uses
+// it as the basis); `--timeout` is the I/O timeout in seconds, after which a stalled transfer EXITS
+// (status 30) rather than hanging; `--whole-file` sends the file without the delta algorithm, which
+// is rsync's own default for local copies and the right one for a fresh destination over a fast
+// link -- it is NOT passed here, because the delta against a kept partial is exactly what makes the
+// retry cheap.
+fn rsync_pull_file_argv(source_url: NonEmptyStr, destination: NonEmptyStr, io_timeout_seconds: Nat) -> List<String> {
+  [
+    "rsync", "--partial",
+    join(["--timeout=", to_string(io_timeout_seconds)], ""),
+    source_url as String,
+    destination as String,
+  ]
+}
+
+// ── EXIT STATUSES: WHICH ONES ARE THE NETWORK ─────────────────────────────────────────────────
+//
+// rsync(1) EXIT VALUES. The ones that say the far side could not be reached or the stream was lost:
+//   5  error starting client-server protocol
+//   10 error in socket I/O
+//   12 error in rsync protocol data stream
+//   30 timeout in data send/receive
+//   35 timeout waiting for daemon connection
+// Every other non-zero status (1 syntax, 3 file selection, 23 partial transfer due to error -- which
+// includes "no such file" in the module -- and so on) is the far side ANSWERING, so a caller must not
+// read it as reachability.
+data rsync_unreachable_exit_statuses: List<String> = ["5", "10", "12", "30", "35"]
+
+fn rsync_exit_status_is_unreachable(status: String) -> Bool {
+  any(rsync_unreachable_exit_statuses, s => s == status)
+}

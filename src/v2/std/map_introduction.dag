@@ -1,0 +1,151 @@
+module v2.std.map_introduction
+
+import std.algebra { list_snoc_item }
+import std.types { List, Map, String }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import v2.std.optional { Absent, Optional, Present, optional_absent }
+import v2.std.integer { Int }
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.node { Authored, ComputationNode, Edge, MapLiteralEntriesEdge, Node, Positional, Symbol, Transform, node_with_occurrence_id }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, construct_node, core_child_lookup }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node }
+
+// THE MAP-LITERAL INTRODUCTION, ONE AUTHORITY FOR ITS PATHS, ITS CONSTRUCTOR AND ITS KEY LAW
+// (docs/plans/map-literal-introduction-design.md). A map literal `{ "k": v, .. }` under an authored
+// `Map<K, V>` is elaborated by v2.compiler.resolve's map arm into ONE ordinary call,
+//
+//   std.algebra.map_from_entries(entries: [std.algebra.MapIntroductionEntry { key: "k", value: v }, ..])
+//
+// whose head names the std.algebra declaration exactly as v2.std.list_introduction names
+// std.algebra.FreeMonoid. It is a call, not a head with entries as positional children, so infer,
+// eval and emit type, evaluate and realize it through the routes they already have for calls, list
+// literals and constructs -- no reader arm is added downstream, which is why this module carries no
+// reader. The declaration lives in std.algebra, below std.types, because std.types' own map
+// literals elaborate to it (an import cycle otherwise).
+
+// A STRING-KEYED BRACE, as body lowering records it. Each item is first an edge labelled
+// CoreEdgeLabel MapLiteralEntryEdge targeting a tag-elided `{ key, value }` construct; once the brace is
+// known to be all string keys, lowering collapses those items into ONE edge labelled
+// CoreEdgeLabel MapLiteralEntriesEdge whose target is a list literal of the pairs -- one edge, because a
+// construct's named edges must be distinct (v2.std.node well_formed). Lowering records the key's
+// KIND and chooses nothing; resolve's map arm reads the list.
+// THE AUTHORED PAIRS OF A STRING-KEYED BRACE, read totally through the one named-child lookup
+// (v2.std.node_query named_child_lookup): no entries edge, exactly one carrying a list literal of
+// pairs, or a malformed carrier (two entries edges, or one that is not a list literal) -- which the
+// map arm refuses rather than reading as empty.
+type MapLiteralEntries
+  = MapLiteralEntriesNone
+  | MapLiteralEntriesPresent { pairs: List<Node> }
+  | MapLiteralEntriesMalformed
+
+fn map_literal_entries(n: Node) -> MapLiteralEntries {
+  match core_child_lookup(root: n, marker: MapLiteralEntriesEdge) {
+    NamedChildMissing => MapLiteralEntriesNone
+    NamedChildAmbiguous => MapLiteralEntriesMalformed
+    NamedChildFound { target: t } =>
+      match list_introduction_elements_optional(node: t) {
+        Present { value: pairs } => MapLiteralEntriesPresent { pairs: pairs }
+        Absent => MapLiteralEntriesMalformed
+      }
+  }
+}
+
+fn map_introduction_head_path() -> QualifiedName {
+  [^std, ^algebra, ^map_from_entries]
+}
+
+fn map_introduction_entry_path() -> QualifiedName {
+  [^std, ^algebra, ^MapIntroductionEntry]
+}
+
+// THE EXPECTED HEADS A MAP LITERAL ELABORATES UNDER, BY DECLARATION IDENTITY: the std.types alias a
+// source writes and the carrier it names. Matching a resolved path against this list is identity,
+// not alias unfolding; any other head is not a map expectation.
+fn map_introduction_expected_head_is_map(path: QualifiedName) -> Bool {
+  path == [^std, ^types, ^Map] || path == [^std, ^algebra, ^FinitelySupportedFunction]
+}
+
+// THE KEY LAW: the first repeated key, in authored order, as a VALUE -- never a hole, never
+// last-wins. `keys` are the entries' keys already reduced to the key type's declared equality (for
+// string-literal keys, the decoded text that gunbc#12759's decoder supplies),
+// so equal elements are equal keys. One pass over a map from key to its first index: linear.
+type MapIntroductionKeys
+  = MapIntroductionKeysDistinct
+  | MapIntroductionKeyRepeated { first_index: Int, second_index: Int }
+
+type MapIntroductionKeyScan {
+  index: Int
+  seen: Map<String, Int>
+  verdict: MapIntroductionKeys
+}
+
+fn map_introduction_duplicate_key(keys: List<String>) -> MapIntroductionKeys {
+  fold(keys, init: MapIntroductionKeyScan { index: 0, seen: empty_map(), verdict: MapIntroductionKeysDistinct }, f: fn(acc, key) {
+    match acc.verdict {
+      MapIntroductionKeyRepeated { first_index: _, second_index: _ } => acc
+      MapIntroductionKeysDistinct =>
+        match map_lookup(m: acc.seen, key: key) {
+          Present { value: first } =>
+            MapIntroductionKeyScan {
+              index: acc.index + 1,
+              seen: acc.seen,
+              verdict: MapIntroductionKeyRepeated { first_index: first, second_index: acc.index }
+            }
+          Absent =>
+            MapIntroductionKeyScan {
+              index: acc.index + 1,
+              seen: map_insert(m: acc.seen, key: key, value: acc.index),
+              verdict: MapIntroductionKeysDistinct
+            }
+        }
+    }
+  }).verdict
+}
+
+// One authored entry, its key and value already resolved.
+type MapIntroductionEntryNodes {
+  key: Node
+  value: Node
+  source: Node
+}
+
+// The entries argument: the list introduction in its RESOLVED form, its head the declaration
+// reference to v2.std.list_introduction's path (the form resolve leaves an authored `[..]` in and
+// infer mints for FreeMonoid), since this node is built inside resolve's output.
+fn map_introduction_resolved_list(elements: List<Node>, source: Node) -> Node {
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: fold(
+      elements,
+      init: [Edge { label: Positional, target: declaration_reference_node(qn: list_introduction_head_path(), occurrence_id: source.occurrence_id) }],
+      f: fn(acc, element) { list_snoc_item(xs: acc, item: Edge { label: Positional, target: element }) }
+    ),
+    occurrence_id: source.occurrence_id
+  )
+}
+
+// THE CONSTRUCTOR: the call above, with the head and entry tag written as declaration references
+// (the resolved form), located at the literal.
+fn lower_map_introduction(entries: List<MapIntroductionEntryNodes>, source: Node) -> Node {
+  let entry_nodes = fold(entries, init: [], f: fn(acc, e) {
+    list_snoc_item(
+      xs: acc,
+      item: construct_node(
+        reference: declaration_reference_node(qn: map_introduction_entry_path(), occurrence_id: e.source.occurrence_id),
+        field_edges: [
+          Edge { label: Authored { name: ^key }, target: e.key },
+          Edge { label: Authored { name: ^value }, target: e.value }
+        ],
+        source: e.source
+      )
+    )
+  })
+  node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: map_introduction_head_path(), occurrence_id: source.occurrence_id) },
+      Edge { label: Authored { name: ^entries }, target: map_introduction_resolved_list(elements: entry_nodes, source: source) }
+    ],
+    occurrence_id: source.occurrence_id
+  )
+}

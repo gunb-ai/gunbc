@@ -193,7 +193,7 @@ fn host_reach_identity_probe_receipt_for(host: HostIdentity) -> HostReachIdentit
   fold(host_reach_identity_probe_receipts, init: none, f: fn(acc, r) {
     match acc {
       Present { value: _ } => acc
-      _ => if r.host == host { Present { value: r } } else { none }
+      Absent => if r.host == host { Present { value: r } } else { none }
     }
   })
 }
@@ -213,7 +213,7 @@ fn classify_reach_probe_wire_with_expectation(
     ProbeHostKeyUnenrolled { transport_diagnostic: obs } =>
       match expected_fingerprint {
         Present { value: e } => ProbeHostKeyMismatch { expected_fingerprint: e, observed_fingerprint: obs }
-        _ => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
+        Absent => ProbeHostKeyUnenrolled { transport_diagnostic: obs }
       }
     other => other
   }
@@ -264,7 +264,7 @@ fn reach_verdict_from_outcome(o: ReachProbeOutcome) -> ObservationVerdict {
 fn observe_reach_secrets_network(host: HostIdentity) -> ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: reach_verdict_from_outcome(o: r.outcome) }
-    _ => none
+    Absent => none
   }
 }
 
@@ -302,7 +302,7 @@ fn identity_verdict_from_outcome(host: HostIdentity, requested_principal: String
 fn observe_host_identity_converge(host: HostIdentity) -> ObservationVerdict? {
   match host_reach_identity_probe_receipt_for(host: host) {
     Present { value: r } => Present { value: identity_verdict_from_outcome(host: host, requested_principal: r.requested_principal, o: r.outcome) }
-    _ => none
+    Absent => none
   }
 }
 

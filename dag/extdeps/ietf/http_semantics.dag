@@ -3,6 +3,7 @@ module extdeps.ietf.http_semantics
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.types { Int }
 
 // RFC 9110 (HTTP Semantics, June 2022; obsoletes RFC 7231) section 9 METHODS, plus PATCH from
 // RFC 5789 -- the one home of the request-method set. It was declared twice before this module: std.types HttpMethod with
@@ -28,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps.ietf.http_semantics.extdeps_external_authority_anchor,
-  further_citations: [rfc5789_patch_authority]
+  further_citations: [rfc5789_patch_authority, rfc9110_status_codes_authority]
 }
 
 // PATCH is not an RFC 9110 method: it is defined by RFC 5789, which is why it is cited separately.
@@ -53,3 +54,34 @@ type HttpMethod
   | OPTIONS
   | TRACE
   | PATCH
+
+// RFC 9110 section 15 STATUS CODE CLASSES: "The first digit of the status code defines the class of
+// response." Five classes, in the RFC's order. A status code itself is std.types HttpStatus (the
+// 100-599 range); this is the class a code falls in, which is what a service declaration's `5xx`
+// response arm names (XL-2 PR3a, extdeps.transports.rest RestResponseStatus). It is the IETF fact,
+// so it lives beside HttpMethod rather than in the transport that first reads it.
+data rfc9110_status_codes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-15"
+  }
+}
+
+type HttpStatusClass
+  = Informational
+  | Successful
+  | Redirection
+  | ClientError
+  | ServerError
+
+// The class's leading digit, the spelling `1xx`..`5xx` names (RFC 9110 section 15).
+fn http_status_class_digit(class: HttpStatusClass) -> Int {
+  match class {
+    Informational => 1
+    Successful => 2
+    Redirection => 3
+    ClientError => 4
+    ServerError => 5
+  }
+}
+

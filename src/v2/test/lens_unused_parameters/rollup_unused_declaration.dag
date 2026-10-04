@@ -9,8 +9,7 @@ import v2.lens.unused_parameters {
   unused_parameters_witness
 }
 import v2.std.dependency { Contains, DependencyView }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Holds, Witness }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
@@ -23,7 +22,7 @@ data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 data rollup_function: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rollup_function_symbol } },
   children: [
-    Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
+    Edge { label: Authored { name: ^rollup_edge_symbol }, target: rollup_parameter }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -69,7 +68,7 @@ fn unused_parameters_rollup_claim_holds() -> Bool {
   match unused_parameters_rollup_claim.actual {
     Holds { value: actual } =>
       unused_parameters_fact_eq(a: actual, b: unused_parameters_rollup_claim.expected)
-    _ => false
+    Violates { diagnostic: _ } => false
   }
 }
 

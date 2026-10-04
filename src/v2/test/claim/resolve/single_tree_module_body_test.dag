@@ -1,0 +1,105 @@
+module v2.test.claim.resolve.single_tree_module_body
+
+import std.algebra { Cons, Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.compiler.resolve { build_program_namespace }
+import v2.extdeps.languages.dag { dag_language_model, dag_surface_edge }
+import v2.std.collection { map_lookup }
+import v2.std.declaration_marker { test_marker_channel_empty }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_spine_node }
+import v2.std.node_query { binder_edge }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.resolve build_program_namespace, the single-tree namespace, over SUPPLIED
+// emit-shaped module roots: the module header on the root, and the declarations as the root's own
+// named edges. Such a root has no grafted body, so its bindings are the root's named edges and
+// nothing below them. A record declaration named like a module-path segment must never be read as
+// the module body: its fields are not module bindings (review 5343957887 on #12549).
+//
+// RED BEFORE (b55b8a7): the body was found by walking the module path's NAMES, and a missing step
+// restarted the walk at the root. `module m.t` with a root-level record `t` missed `m`, restarted,
+// found `t`, and bound the record's field `leaked`. `module t` with a record `t` found it at once.
+// Source text cannot author these roots, because normalize always emits a well-formed graft, so the
+// trees are supplied here. The grafted route is exercised by v2.test.claim.body_let_annotation
+// bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration.
+
+fn stmb_atom(id: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn stmb_named(name: Symbol, target: Node) -> Edge {
+  Edge { label: Authored { name: name }, target: target }
+}
+
+fn stmb_record_t() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [binder_edge(name: ^leaked, type_node: stmb_atom(id: ^Int))],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn stmb_emit_shaped_root(module_qn: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_surface_edge(edge: ^dag_surface_module_header, target: stmb_atom(id: ^dag_surface_module)),
+      dag_surface_edge(edge: ^dag_surface_module_header_qualified_name, target: qualified_name_spine_node(qn: module_qn, occurrence_id: OccurrenceSynthetic)),
+      stmb_named(name: ^t, target: stmb_record_t())
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+type StmbBinds
+  = StmbNotAdmitted
+  | StmbBindings { leaked: Bool, t: Bool }
+
+fn stmb_binds(root: Node) -> StmbBinds {
+  match admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), test_markers: test_marker_channel_empty(), root: root, diagnostics: None) {
+    Rejected { diagnostics: _ } => StmbNotAdmitted
+    Accepted { value: tree, diagnostics: _ } => {
+      let ns = build_program_namespace(tree: tree, lm: dag_language_model())
+      StmbBindings {
+        leaked: match map_lookup(m: ns.bindings, key: ^leaked) {
+          Present { value: _ } => true
+          Absent => false
+        },
+        t: match map_lookup(m: ns.bindings, key: ^t) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      }
+    }
+  }
+}
+
+fn stmb_prefix_miss_suffix_hit() -> StmbBinds {
+  stmb_binds(root: stmb_emit_shaped_root(module_qn: Cons { head: ^m, tail: Cons { head: ^t, tail: Empty } }))
+}
+
+fn stmb_flat_header_name_collision() -> StmbBinds {
+  stmb_binds(root: stmb_emit_shaped_root(module_qn: Cons { head: ^t, tail: Empty }))
+}
+
+// RED BEFORE: the record `t` was selected as the body, so `leaked` was bound. The declaration `t`
+// itself is still bound from the root, which is the positive half: root harvesting keeps working.
+test fn a_record_matching_the_path_suffix_is_not_a_module_body_holds() -> Bool {
+  match stmb_prefix_miss_suffix_hit() {
+    StmbNotAdmitted => false
+    StmbBindings { leaked: leaked, t: t } => !leaked && t
+  }
+}
+
+test fn a_record_named_like_a_flat_module_is_not_its_body_holds() -> Bool {
+  match stmb_flat_header_name_collision() {
+    StmbNotAdmitted => false
+    StmbBindings { leaked: leaked, t: t } => !leaked && t
+  }
+}

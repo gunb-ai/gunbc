@@ -246,7 +246,7 @@ data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
 
 data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-drain]" as NonEmptyStr,
-  producer: seed_producer(decl_name: "emit_floor_drain_receipt"),
+  producer: seed_producer_in(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "typed_module_cache_cap_derivation"),
   consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,
@@ -268,9 +268,8 @@ data file_trace_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[file]" as NonEmptyStr,
   producer: seed_producer_in(module_path: "v1_compiler.v1_interpreter", decl_name: "dispatch_file"),
   consumption: unresolved_after_in_repo_search(),
-  disposition: CountedFrontierSite {
-    reason: "Filesystem transport host-effect traces — sibling of the shell-echo class, still raw-tagged" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "same named-intent ObservationEvent path as shell (Filesystem.Read/Write/…) once shell grain is proven")
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_file_effect_line (seed seed_file_effect_begin_line; mirror render_file_effect_begin_line_mirror; subject is the NAMED INTENT from extdeps.filesystem.filesystem_io's own operation roster -- Filesystem.Write / Read / List / Delete / WriteOwnerOnly / WriteCreateNew / WriteCreateNewWithMode -- and the PATH is carried as the operand beside it, never folded into the subject). MIGRATED 2026-09-29, and the migration's first slice: all seven emit sites live in one function, v1_interpreter dispatch_file. THE OPERAND IS NOT DECORATION. gunbc.roadmap_dispatch_actuator records the measured incident this line's shape carries (srv1, 2026-08-19): twelve publication receipts wrote into a directory that did not exist, and because `[file] write <path>` fired BEFORE the attempt every one of them logged exactly like a success. A projection rendering `started Filesystem.Write` with no path would restore that defect in the observation vocabulary, so ci_file_effect_line takes the operand as a required argument rather than an optional one. Two further measured decisions: no segment in std.observation names a filesystem path, and ci_subject_detail_text renders at most ONE of module/phase, so folding the path into the subject would have silently dropped either the path or the intent; and the transition is Begin-only because the seed emits before the effect and holds no elapsed, so the line reports what the effect is ABOUT. A path-only operation OMITS the byte clause rather than rendering a cause -- there is no payload by construction, and a fabricated `unreadable` would claim a measurement nobody attempted (observation law 2). The reader question stays what the consumption field carries -- no in-repo parser was found for the raw shape, and this cut did not survey readers outside the tree" as NonEmptyStr
   }
 }
 
@@ -359,8 +358,14 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
 
 // Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live
 // tag family born after the initial snapshot must appear on the roster (operator finding 3, run
-// 30142403230). The frontier families are floor-drain, receipt, file, resolve-split, assembly-split
-// and witness-row-cost. THE COUNT IS DELIBERATELY NOT WRITTEN HERE: observation_emit_frontier_count
+// 30142403230). THE FRONTIER FAMILIES ARE NOT ENUMERATED HERE ANY MORE, and that is this note's own
+// rule applied to the last place it had not been: the sentence that stood here named six families
+// (floor-drain, receipt, file, resolve-split, assembly-split, witness-row-cost) and went false on
+// 2026-09-29 when [file] migrated, exactly as the note below predicts for a hand-maintained
+// enumeration -- and it was already false when written, because floor-claim-memory had been a
+// frontier row since 2026-08-26 and was not in the list. observation_emit_roster names them and
+// observation_emit_frontier_count folds it; the count is deliberately not written here either.
+// THE COUNT IS DELIBERATELY NOT WRITTEN HERE: observation_emit_frontier_count
 // folds the roster, so it is the only authority for how many there are, and a number recited beside
 // an enumeration is a second account of a population this module already computes. TWO CORRECTIONS
 // LANDED HERE ON 2026-08-22, in opposite directions, and both are recorded because each was nearly

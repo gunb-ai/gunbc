@@ -1,5 +1,6 @@
 module gunbc.heal_publisher_workflow
 
+
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { list_map }
@@ -13,7 +14,8 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueMax, CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse,
   RunnerSpec, HostedRunner, RunnerLabel, Ubuntu2404Arm
 }
-import gunbc.action_use_admission { checkout_action, download_artifact_action, google_auth_action }
+import gunbc.action_use_admission {
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason, checkout_action, download_artifact_action, google_auth_action }
 import extdeps.github.action_release { ActionRelease, action_release_same_producer }
 import gunbc.roadmap_execution_contract { CargoCapability, RustcCapability, RustfmtCapability, RustupCapability }
 import gunbc.workflow_capability_closure {
@@ -221,11 +223,11 @@ fn heal_publisher_candidate_directory_env_row() -> YamlKeyValue {
   kv(key: heal_publication_candidate_directory_env as String, value: yaml_string(s: heal_publisher_candidate_directory))
 }
 
-// THE CREDENTIAL-FREE GATE, AND THE ONE STEP HERE THAT IS NEVER CONDITIONAL. It reads the event, the
-// candidate and the forge with the job's own read-only token, and refuses before anything can be
-// minted. It runs unconditionally because a MISSING manifest is its subject: the triggering run
-// concluded success, so a candidate was owed, and a job that skipped this step on a missing file
-// would report the same quiet green for "nothing drifted" and "the candidate never arrived".
+// THE CREDENTIAL-FREE GATE. It reads the event, the candidate and the forge with the job's own
+// read-only token, and refuses before anything can be minted. It runs only when the candidate names
+// paths: since gunbc#11791 the question "did the triggering run seal a candidate at all" is the
+// probe step's (heal_publisher_candidate_probe_step), which separates absence from a failed read,
+// so a clean tree and a lost candidate no longer share one quiet green here.
 fn heal_publisher_admit_step() -> Step {
   heal_publisher_gated(
     step_name: "Admit the candidate against this checkout's policy, with no publication credential",
@@ -278,6 +280,31 @@ fn heal_publisher_publish_step() -> Step {
   )
 }
 
+
+// THE PUBLISHER'S TOOLCHAIN AND BUILD RUN ONLY WHEN A REPAIR IS OWED (operator, 2026-09-29). The
+// binary they produce has exactly two consumers, the admit and publish steps, and both are gated on
+// heal_publisher_candidate_has_entries_condition. Building it unconditionally spent ~5.5 minutes of
+// a GitHub-hosted runner on every pull request's witnesses completion to produce a binary nothing
+// then ran -- the ordinary case, since most runs seal an empty candidate -- and in a hosted pool of
+// 20 that cost is what queued real repairs for hours. The gate is the consumers' own condition, so
+// the build cannot be skipped on a run whose candidate a consumer would read.
+fn heal_publisher_only_when_repair_owed(step: Step) -> Step {
+  let owed = heal_publisher_candidate_has_entries_condition()
+  match step {
+    RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+      RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: w, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
+    UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: c, continue_on_error: co, timeout_minutes: t } =>
+      UsesStep { name: n, id: i, uses: u, with: wi, env: e, if_condition: Present { value: heal_publisher_condition_and(existing: c, owed: owed) }, continue_on_error: co, timeout_minutes: t }
+  }
+}
+
+fn heal_publisher_condition_and(existing: String?, owed: String) -> String {
+  match existing {
+    Present { value: c } => join(["(", c, ") && (", owed, ")"], "")
+    Absent => owed
+  }
+}
+
 type HealPublisherBoundStep {
   step: Step
   role: StepCapabilityRole
@@ -302,22 +329,22 @@ fn heal_publisher_bound_steps() -> List<HealPublisherBoundStep> {
       step_name: "Download the candidate the triggering heal run produced",
     },
     HealPublisherBoundStep {
-      step: toolchain_home_isolation_step(),
+      step: heal_publisher_only_when_repair_owed(step: toolchain_home_isolation_step()),
       role: capability_neutral,
       step_name: "Isolate toolchain homes",
     },
     HealPublisherBoundStep {
-      step: witness_floor_toolchain_step(),
+      step: heal_publisher_only_when_repair_owed(step: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     HealPublisherBoundStep {
-      step: toolchain_pin_rustup_default_step(),
+      step: heal_publisher_only_when_repair_owed(step: toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     HealPublisherBoundStep {
-      step: witness_floor_build_step(step_name: heal_publisher_build_step_name, build_script: repo_self_build_command(bins: heal_publisher_required_bins)),
+      step: heal_publisher_only_when_repair_owed(step: witness_floor_build_step(step_name: heal_publisher_build_step_name, build_script: repo_self_build_command(bins: heal_publisher_required_bins))),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: heal_publisher_build_step_name,
     },
@@ -443,7 +470,11 @@ data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publi
 data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
 
 fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow) {
+  match admit_workflow_checkout_refs(workflow: heal_publisher_workflow, declared: []) {
+    WorkflowCheckoutRefsRefused { refusals: crs } =>
+      HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }
+    WorkflowCheckoutRefsAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: heal_publisher_workflow) {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       HealPublisherWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
@@ -457,5 +488,6 @@ fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutc
           YamlEmitRefused { path: p, reason: r } => HealPublisherWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.heal_publisher_workflow", path: p, reason: r) }
         }
       }
+  }
   }
 }

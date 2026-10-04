@@ -1,0 +1,151 @@
+module v2.std.arrow_contract
+
+import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
+import std.types { List }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Found,
+  Authored,
+  ArrowEffectClaimsEdge,
+  ArrowExecutionModeClaimEdge,
+  ArrowResourceRequirementsEdge,
+  Node,
+  Positional,
+  StructuralLabel,
+  Symbol,
+  TypeNode,
+  all_names_distinct,
+  core_edge_target_lookup,
+  symbol_intern_lexeme
+}
+
+// THE VOCABULARY OF AN ARROW'S CONTRACT EDGES (the resource-requirements edge's vocabulary is the open
+// set of declared resources, checked at resolution; see arrow_resource_requirements_edge_target_reads) (XL-2 PR2a; docs/plans/arrow-contract-edges.md).
+// v2.std.node owns the edges' structure (at most one each, never a binder). This module checks their
+// TARGETS against the vocabularies' homes: std.effects EffectClaim for ArrowEffectClaimsEdge and
+// std.execution_mode ExecutionMode for ArrowExecutionModeClaimEdge. Each label is the PROJECTION
+// of one home variant, spelled once below as an exhaustive match, so a variant added to a home cannot
+// be lowered or admitted without a spelling here. The spelling is the surface keyword the grammar
+// admits (v2.extdeps.languages.dag dag_grammar_op_modifier_expr), so lowering and this check agree.
+
+fn effect_claim_label(claim: EffectClaim) -> Symbol {
+  match claim {
+    ReadonlyClaim => symbol_intern_lexeme(lexeme: "readonly")
+    IdempotentClaim => symbol_intern_lexeme(lexeme: "idempotent")
+  }
+}
+
+// Only Hermetic is a claimable mode: `hermetic` declares that an operation is admissible on the
+// hermetic route, and no surface spelling claims Wet or Record. The match is exhaustive, so a mode
+// added to std.execution_mode must be decided here, claimable or not.
+// The one spelling of the claimable mode's label: the projection of std.execution_mode Hermetic, read by
+// execution_mode_claims_label and by the lowering that emits the claim.
+fn hermetic_claim_label() -> Symbol {
+  symbol_intern_lexeme(lexeme: "hermetic")
+}
+
+fn execution_mode_claims_label(mode: ExecutionMode, label: Symbol) -> Bool {
+  match mode {
+    Hermetic => label == hermetic_claim_label()
+    Wet => false
+    Record => false
+  }
+}
+
+// THE ADMISSION OF A LABEL, and the one place a home's variants are listed by hand: the language has
+// no fold over a closed coproduct's constructors, so a label is admitted by comparing it to each
+// claimable variant's projection. No decoded variant is produced, because nothing here consumes one;
+// PR2c's lowering projects variants to labels, never the reverse. A variant missing here is refused,
+// never admitted, so the residue fails closed. BOUNDED: two effect claims and one claimable mode
+// (execution_mode_claims_label already decides that Wet and Record claim no label). OWNER: XL-2.
+// TRIGGER: a language capability to enumerate a closed coproduct's constructors; this list is then
+// derived from the projections and deleted.
+fn effect_claim_label_is_admitted(label: Symbol) -> Bool {
+  (label == effect_claim_label(claim: ReadonlyClaim)) || (label == effect_claim_label(claim: IdempotentClaim))
+}
+
+fn execution_mode_claim_label_is_admitted(label: Symbol) -> Bool {
+  execution_mode_claims_label(mode: Hermetic, label: label)
+}
+
+// A self-named childless Atom: the Atom's identity is the label that reaches it.
+fn arrow_contract_atom_is_self_named(label: Symbol, target: Node) -> Bool {
+  match target.kind {
+    TypeNode { connective: Atom { identity: id } } => (id == label) && (count(target.children) == 0)
+    _ => false
+  }
+}
+
+fn arrow_effect_claim_edge_conforms(e: Edge) -> Bool {
+  match e.label {
+    Positional => false
+    StructuralLabel { label: _ } => false
+    Authored { name: sym } => effect_claim_label_is_admitted(label: sym) && arrow_contract_atom_is_self_named(label: sym, target: e.target)
+  }
+}
+
+// The effect-claims target: a NONEMPTY Conj of self-named Atoms, each an EffectClaim's label, no claim
+// twice. Nonempty because "no claims" has exactly one representation, the absent edge: an edge to an
+// empty Conj would be a second identity for the same fact.
+fn arrow_effect_claims_target_conforms(claims: Node) -> Bool {
+  match claims.kind {
+    TypeNode { connective: Conj } =>
+      (count(claims.children) > 0)
+        && all_names_distinct(children: claims.children)
+        && fold(claims.children, init: true, f: fn(acc, c) { acc && arrow_effect_claim_edge_conforms(e: c) })
+    _ => false
+  }
+}
+
+// The execution-mode target: one childless Atom whose identity is an ExecutionMode's label.
+fn arrow_execution_mode_claim_target_conforms(mode: Node) -> Bool {
+  match mode.kind {
+    TypeNode { connective: Atom { identity: id } } => execution_mode_claim_label_is_admitted(label: id) && (count(mode.children) == 0)
+    _ => false
+  }
+}
+
+// Every contract edge an Arrow carries reads in its home vocabulary. How many of each it may carry is
+// v2.std.node arrow_signature_edges_conform's fact; a second edge refuses there.
+fn arrow_contract_conforms(children: List<Edge>) -> Bool {
+  arrow_effect_claims_edge_target_reads(children: children)
+    && arrow_execution_mode_edge_target_reads(children: children)
+    && arrow_resource_requirements_edge_target_reads(children: children)
+}
+
+// The resource-requirements target before resolution, one of THREE declared states (D13 ruling B): a
+// NONEMPTY Conj of resource references, whose members the Conj discipline holds named and distinct;
+// the childless Atom ^requirements_declared_none (`requires none`); or the childless Atom
+// ^requirements_opaque (`requires opaque`). An ABSENT edge is not a fourth state of this target: it is
+// an undeclared operation, which D13 step (b) reads as Undecided. Whether each
+// member names a declared resource, and whether two spellings name one, are facts of resolution
+// (v2.compiler.resolve), not of this pre-resolve wall.
+fn arrow_resource_requirements_edge_target_reads(children: List<Edge>) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowResourceRequirementsEdge) {
+    Found { target: requirements } =>
+      match requirements.kind {
+        TypeNode { connective: Conj } => count(requirements.children) > 0
+        TypeNode { connective: Atom { identity: id } } =>
+          ((id == ^requirements_declared_none) || (id == ^requirements_opaque)) && (count(requirements.children) == 0)
+        _ => false
+      }
+    _ => true
+  }
+}
+
+fn arrow_effect_claims_edge_target_reads(children: List<Edge>) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowEffectClaimsEdge) {
+    Found { target: claims } => arrow_effect_claims_target_conforms(claims: claims)
+    _ => true
+  }
+}
+
+fn arrow_execution_mode_edge_target_reads(children: List<Edge>) -> Bool {
+  match core_edge_target_lookup(children: children, marker: ArrowExecutionModeClaimEdge) {
+    Found { target: mode } => arrow_execution_mode_claim_target_conforms(mode: mode)
+    _ => true
+  }
+}

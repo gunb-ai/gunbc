@@ -25,7 +25,7 @@ data unbacked_execution_claim: RecurringFailureMode = RecurringFailureMode {
 
     "ORIGIN 2, THE CITED SYMBOL DIED WHILE ITS CONTENT SURVIVED AS AN ANNOTATION, and this one has a corpus-wide producer: `v1_compiler.cli_run` twice cited `floor_component_resource_checkpoint_note` and `floor_component_phase_journal_scaffold_note`, which were real `data …: String` declarations in `gunbc.floor_component_receipt` until the 2026-08-30 prose-bankruptcy sweep (gunbc#9752) converted module-scope commentary rows into §4c annotations corpus-wide.",
 
-    "§4c makes an annotation uncitable by construction — `v1_compiler.cli_run` `annotation_erased_scan_text` feeds the semantic passes, so annotation text is not present in the tree the citation harvester walks.",
+    "§4c makes an annotation uncitable by construction — the parser routes annotations through their own lexical channel (`v1.compiler.parse` `parse`), so annotation text is not present in the tree the citation harvester walks.",
 
     "**THE CONSEQUENCE IS THE OPPOSITE OF THE ONE THIS ROW FIRST DREW, AND THE CORRECTION IS THE INSTRUCTIVE PART.** The first revision reasoned that the sweep therefore broke every citation of a converted row, making the population the sweep's own diff.",
 

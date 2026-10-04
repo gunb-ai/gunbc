@@ -1,0 +1,40 @@
+module gunbc.roadmap_fleet_components
+
+import std.types { String, List, Int }
+import product.placement_supply { HostIdentity }
+import extdeps.google.issue_tracker { Component }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
+import gunbc.spark.fabric_switch_observed { fabric_group_of_host, fabric_group_wire }
+
+// Tracker component identifiers are existing external identities, retained across this move.
+// Host names come from fleet identity; serving placement comes from the fleet's observed group
+// relation, never a second group/host table under Google's interface model.
+type FleetComponentBinding { id: Int, host: HostIdentity }
+data fleet_component_bindings: List<FleetComponentBinding> = [
+  FleetComponentBinding { id: 1, host: operator_host_srv1 },
+  FleetComponentBinding { id: 2, host: operator_host_srv2 },
+  FleetComponentBinding { id: 3, host: operator_host_srv3 },
+  FleetComponentBinding { id: 4, host: operator_host_srv4 },
+  FleetComponentBinding { id: 5, host: operator_host_srv5 },
+  FleetComponentBinding { id: 6, host: operator_host_srv6 },
+  FleetComponentBinding { id: 7, host: operator_host_srv7 },
+  FleetComponentBinding { id: 8, host: operator_host_srv8 },
+  FleetComponentBinding { id: 9, host: operator_host_srv9 },
+  FleetComponentBinding { id: 10, host: operator_host_srv10 },
+  FleetComponentBinding { id: 11, host: operator_host_srv11 },
+  FleetComponentBinding { id: 12, host: operator_host_srv12 },
+]
+
+data fleet_component_hosts: List<Component> = map(fleet_component_bindings, b => Component { id: b.id, path: [b.host as String] })
+
+fn fleet_component_serving_arms() -> List<Component> {
+  flat_map(fleet_component_bindings, b => match fabric_group_of_host(host: b.host) {
+    Absent => []
+    Present { value: group } => [Component { id: 100 + b.id, path: [b.host as String, "serving", fabric_group_wire(g: group) as String] }]
+  })
+}
+
+fn fleet_components() -> List<Component> { concat(fleet_component_hosts, fleet_component_serving_arms()) }
+fn spark_host_component_paths() -> List<String> {
+  flat_map(fleet_component_bindings, b => match fabric_group_of_host(host: b.host) { Absent => [] Present { value: _ } => [b.host as String] })
+}

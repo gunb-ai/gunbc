@@ -1,5 +1,6 @@
 module v2.test.manual.add_body_value_expression_fold_typescript
 
+import std.types { List }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body,
@@ -12,7 +13,6 @@ import v2.extdeps.languages.typescript {
   ts_binding_spellings,
   ts_add_declared_inhabitants_root,
   ts_selection_policy_node,
-  ts_serialize_source_node,
   ts_source_text_authority,
   ts_target_model,
   ts_translation_rules_node,
@@ -21,7 +21,6 @@ import v2.extdeps.languages.typescript {
 }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -30,12 +29,11 @@ import v2.std.diagnostic {
   bind_outcome,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -70,7 +68,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn add_body_fold_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn add_body_fold_add_operator_row_minus() -> Node {
@@ -103,10 +101,6 @@ fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
       add_body_fold_named_edge(
         name: ^target_model_edge_translation_rules,
         target: ts_translation_rules_node()
-      ),
-      add_body_fold_named_edge(
-        name: ^target_model_edge_serialize_source,
-        target: ts_serialize_source_node()
       ),
       add_body_fold_named_edge(
         name: ^target_model_edge_value_expression_projection,

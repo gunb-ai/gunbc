@@ -6,6 +6,7 @@ import std.disposition { Disposition, Terminal }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.transports.shell { ShellOutcome }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,6 +53,7 @@ data organization_self_hosted_runner_get_citation: ExternalAuthority = ExternalA
 // spawn that later failed.
 service github.CliOrgSelfHostedRunners {
   operation ListOrgRunnersPage {
+    requires Network
     input {
       target: NonEmptyStr
     }
@@ -68,6 +70,7 @@ service github.CliOrgSelfHostedRunners {
   }
 
   operation GetOrgRunner {
+    requires Network
     input {
       org: NonEmptyStr
       runner_id: Int

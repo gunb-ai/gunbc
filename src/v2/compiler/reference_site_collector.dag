@@ -1,32 +1,36 @@
 module v2.compiler.reference_site_collector
 
+import std.types { List }
+
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.algebra { fold_list, is_empty, list_map }
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  EdgeLabel,
+  StructuralLabel,
 }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,
-  qualified_name_snoc
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.extdeps.languages.dag {
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
+  dag_node_is_string_literal_atom,
+  dag_symbol_literal_name_optional,
   dag_surface_module_header_metadata_edge,
-  namespace_graft_spine_segment_edge_optional,
+  namespace_graft_spine_body_optional,
   qualified_name_from_module_node
 }
 
@@ -73,11 +77,11 @@ import v2.extdeps.languages.dag {
 // to its first atom, so the spine this walk already folds (qualified_name_from_node) was never
 // constructed from source. Now that body_lower_dotted_reference_optional constructs it, this walk
 // emits one site per chain with the full spelling -- v2.test.claim.namespace_xl0
-// call_argument_mention_survival is the enrolled receipt. It is NOT yet the single authority at
-// class grain: a qualified FIELD type never reaches this tree because the graft drops the
-// declaration (the parse-tree lens still sees it -- v2.test.claim.namespace_xl0
-// qualified_site_enumerator_differential measures the disagreement), and a dotted CALLEE is the
-// call class. The lens's dissolution stays pending on those two frontiers.
+// call_argument_mention_survival is the enrolled receipt. Since declaration grafting a qualified
+// FIELD type reaches this tree too, and so do a dotted callee and a qualified call argument --
+// the parse-tree lens missed those (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential).
+// On that measurement the lens's parse walker was retired and this collector is the single authority
+// for reference sites.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
 // declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
 // Named { name } edges and indexes edge.target as the declaration), so a declared name never
@@ -102,8 +106,8 @@ import v2.extdeps.languages.dag {
 
 // SPINE UNWRAPPING IS A MODULE-BOUNDARY MOVE AND IS DONE ONCE, AT THE ROOT, IN
 // module_reference_sites BELOW. It used to run on EVERY node, which was wrong for a reason worth
-// stating: namespace_graft_spine_segment_edge_optional recognises ANY single named edge targeting a
-// Conj, not specifically a module-prefix spine segment, so applying it recursively silently dropped
+// stating: namespace_graft_spine_segment_edge_optional once recognised ANY single named edge targeting
+// a Conj, not specifically a module-prefix spine segment, so applying it recursively silently dropped
 // ordinary nested declaration and field labels from the position while continuing to walk -- which
 // yields a mention recorded at a containment chain it does not sit at, and therefore resolved
 // against the wrong lexical scope. A mislocated mention is worse than a missing one: it is a
@@ -141,19 +145,27 @@ import v2.extdeps.languages.dag {
 // rule as symbol_index_fill_containment_edge and export admission.
 fn reference_sites_in_edge(
   acc: ReferenceSiteCollection,
-  position: QualifiedName,
+  position: List<EdgeLabel>,
   edge: Edge
 ) -> ReferenceSiteCollection {
   match edge.label {
-    Named { name: sym } =>
-      if dag_surface_module_header_metadata_edge(name: sym) {
-        acc
-      } else if sym == ^grammar_production_identity_node_projection {
+    Authored { name: sym } =>
+      if sym == ^grammar_production_identity_node_projection {
         acc
       } else {
         reference_sites_in_node(
           acc: acc,
-          position: qualified_name_snoc(qn: position, segment: sym),
+          position: list_snoc_item(xs: position, item: edge.label),
+          node: edge.target
+        )
+      }
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
+        acc
+      } else {
+        reference_sites_in_node(
+          acc: acc,
+          position: list_snoc_item(xs: position, item: edge.label),
           node: edge.target
         )
       }
@@ -168,7 +180,7 @@ fn reference_sites_in_edge(
 
 fn reference_sites_in_children(
   acc: ReferenceSiteCollection,
-  position: QualifiedName,
+  position: List<EdgeLabel>,
   node: Node
 ) -> ReferenceSiteCollection {
   fold(node.children, init: acc, f: fn(inner, edge) {
@@ -204,7 +216,7 @@ fn collection_snoc_site(
 // asks about.
 fn reference_sites_in_node(
   acc: ReferenceSiteCollection,
-  position: QualifiedName,
+  position: List<EdgeLabel>,
   node: Node
 ) -> ReferenceSiteCollection {
   match qualified_name_from_node(root: node) {
@@ -224,9 +236,14 @@ fn reference_sites_in_node(
     Rejected { diagnostics: _ } =>
       match node.kind {
         TypeNode { connective: Atom { identity: sym } } =>
+          match dag_symbol_literal_name_optional(node: node) {
+            Present { value: _ } => acc
+            Absent =>
           if dag_node_is_int_literal_atom(node: node) {
             acc
           } else if dag_node_is_float_literal_atom(node: node) {
+            acc
+          } else if dag_node_is_string_literal_atom(node: node) {
             acc
           } else {
             collection_snoc_site(
@@ -236,6 +253,7 @@ fn reference_sites_in_node(
                 spelling: Cons { head: sym, tail: Empty }
               }
             )
+          }
           }
         _ =>
           reference_sites_in_children(
@@ -299,24 +317,15 @@ fn reference_site_collection_is_total(collection: ReferenceSiteCollection) -> Bo
 // `a.b.c.b.c`. A mislocated mention is a fabricated plausible answer (DESIGN section 5), and it
 // changes which lexical scope the resolver walks, so it is worse than an absent one.
 //
-// THE COUNT IS DERIVED, NOT GUESSED. It is the length of the module qualified name this same walk
-// already resolved from the header -- the identical value the spine was folded from -- rather than
-// "keep unwrapping while the shape matches". That distinction is load-bearing:
-// namespace_graft_spine_segment_edge_optional recognises ANY single named edge targeting a Conj, so
-// a shape-driven loop would happily eat a genuine one-declaration module body. Consuming the count
-// makes over-unwrapping unwritable rather than merely unlikely.
-fn module_spine_unwrapped(root: Node, segments_remaining: Int) -> Node {
-  if segments_remaining <= 0 {
-    root
-  } else {
-    match namespace_graft_spine_segment_edge_optional(node: root) {
-      Present { value: spine_edge } =>
-        module_spine_unwrapped(
-          root: spine_edge.target,
-          segments_remaining: segments_remaining - 1
-        )
-      Absent => root
-    }
+// THE SPINE ENDS WHERE THE PRODUCER MARKED IT. v2.extdeps.languages.dag
+// namespace_graft_spine_body_optional descends the single-Named-Conj chain only when it ends at the
+// body namespace_graft_build_body_conj stamped, so neither a one-declaration module body nor a
+// declaration that happens to have that shape is eaten. The segment count this walk used to consume
+// was derived from the qualified name read off the same shape, which is circular for a grafted root.
+fn module_spine_unwrapped(root: Node) -> Node {
+  match namespace_graft_spine_body_optional(node: root) {
+    Present { value: body } => body
+    Absent => root
   }
 }
 
@@ -328,11 +337,8 @@ fn module_reference_sites(
     Accepted { value: module_qn, diagnostics: _ } =>
       reference_sites_in_node(
         acc: acc,
-        position: module_qn,
-        node: module_spine_unwrapped(
-          root: root,
-          segments_remaining: length(xs: module_qn)
-        )
+        position: list_map(xs: module_qn, f: fn(segment) { Authored { name: segment } }),
+        node: module_spine_unwrapped(root: root)
       )
     Rejected { diagnostics: _ } =>
       ReferenceSiteCollection {

@@ -4,12 +4,12 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_sshpass }
-import extdeps.exec.command { sshpass_authority, sshpass_binary_name }
+import extdeps.exec.command { sshpass_authority, sshpass_program }
 
 // THE TOOL ROW FOR SSHPASS, and its one job is to make the binary this repository EXECS and the
 // binary gunbc.host_cli_dependency PROBES FOR the same declaration. Everything that runs sshpass
-// mints its program word from sshpass_binary_name (extdeps.exec.command, and the fixed argv of
-// ssh.PasswordFileSsh / ssh.PasswordSsh); the enrollment observes PATH for sshpass_cli_tool.name,
+// mints its program word from sshpass_program (extdeps.exec.command, and the fixed argv of
+// ssh.PasswordFileSsh / ssh.PasswordSsh); the enrollment observes PATH for sshpass_cli_tool.program,
 // which binds that same row -- so the two cannot drift apart into a probe that passes while the
 // exec fails.
 //
@@ -31,7 +31,7 @@ import extdeps.exec.command { sshpass_authority, sshpass_binary_name }
 data extdeps_external_authority_anchor: ExternalAuthority = sshpass_authority
 
 data sshpass_cli_tool: CliTool = CliTool {
-  name: sshpass_binary_name,
+  program: sshpass_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_sshpass, bin_dir: apt_bin_dir }],
 }

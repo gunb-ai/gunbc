@@ -20,7 +20,7 @@ test fn subject_names_the_selected_medium() -> Bool {
   let s = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   s.image_name == mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium)
     && s.image_sha256 == mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium)
-    && (s.image_name as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-30ca88d43f891399.iso"
+    && (s.image_name as String) == "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso"
     && s.machine as String == "mtcollins1"
     && s.execution_revision as String == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     && s.selection.architecture == Aarch64

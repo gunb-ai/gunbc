@@ -10,11 +10,15 @@ import std.measure {
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic {
-  CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
+  CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results, nat_magnitude,
 }
 import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import product.fabric.envelope { MemoryRequirement, StorageRequirement }
+import product.fabric.envelope { MemoryRequirement, StorageRequirement, ResourceEnvelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.work {
+  ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
+}
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
 
@@ -280,6 +284,7 @@ type FloorSeam
   | SeamNominalSubjectSeeds
   | SeamPrepareClosureResolve
   | SeamPreparedSubjectWarm
+  | SeamBareReferenceEdgeIndexWarm
   | SeamPublication
   | SeamStrictPreparation
   | SeamPublishedMockProjection
@@ -327,6 +332,7 @@ data floor_seam_tokens: List<FloorSeamToken> = [
   FloorSeamToken { token: "nominal-subject-seeds", seam: SeamNominalSubjectSeeds },
   FloorSeamToken { token: "prepare-closure-resolve", seam: SeamPrepareClosureResolve },
   FloorSeamToken { token: "prepared-subject-warm", seam: SeamPreparedSubjectWarm },
+  FloorSeamToken { token: "bare-reference-edge-index-warm", seam: SeamBareReferenceEdgeIndexWarm },
   FloorSeamToken { token: "publication", seam: SeamPublication },
   FloorSeamToken { token: "strict-preparation", seam: SeamStrictPreparation },
   FloorSeamToken { token: "published-mock-projection", seam: SeamPublishedMockProjection },
@@ -632,6 +638,7 @@ fn receipt_peak_seam(r: FloorHeldSetReceipt) -> PeakSeamAttribution {
         SeamNominalSubjectSeeds => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPrepareClosureResolve => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPreparedSubjectWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
+        SeamBareReferenceEdgeIndexWarm => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPublication => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamStrictPreparation => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
         SeamPublishedMockProjection => PeakAttributedTo { seam: b.seam, beat: b.beat, bytes: v }
@@ -1563,3 +1570,301 @@ data gunbc_floor_job_wall_receipt_2026_09_19: FloorJobWallReceipt = FloorJobWall
   build_step_wall: second(count: 198),
   sccache_reachable: true,
 }
+
+// THE HELD SET BY PHASE, DERIVED FROM A RUN'S OWN BEATS RATHER THAN TRANSCRIBED INTO A RECEIPT.
+// Every receipt above was a hand transcription of one job log, so a phase's share of the demand
+// could be read only by someone willing to transcribe a run. The heartbeat already prints what a
+// per-phase reading needs -- one beat at every seam (`floor_seam`) and one on each watchdog tick,
+// each naming the seam it was taken in -- so the attribution is a fold over those lines, run by
+// the instrument that ran the floor (`//gunbc/instruments:floor-memory-qualification`).
+//
+// THE HOST TRANSCRIBES, THIS FOLD DECIDES. A reading is the beat line's fields as primitives:
+// the interpreter admits no constructed measure across the boundary and has no string parsing, so
+// the host splits a `transition:A>B` seam into its two tokens and reads each counter as an integer,
+// and everything that says what a reading MEANS -- which arm a token is, what the held set is,
+// where a phase begins -- is decided here, through `floor_seam_of_token` and `beat_held_set`, the
+// same two authorities every receipt in this module is read through.
+//
+// A PHASE IS OPENED BY ITS SEAM BEAT, NOT BY A CHANGE OF SEAM NAME. The seam beat is taken at the
+// boundary, so it is the phase's ENTRY held set -- what the phase inherited -- and every watchdog
+// beat that follows until the next seam beat is inside the phase. The phase's PEAK is the largest
+// held set over its own beats, and what a phase LEFT RESIDENT is the next phase's entry: the fold
+// states entry and peak and leaves retained to the reader of the ordered list, because it is the
+// next row's field and not a second quantity.
+// THE PRIMITIVE BOUNDARY IS DECLARED DEBT, NOT A MODELING CHOICE: every counter below is a byte
+// count or an event rate carried on bare Int only because the host cannot construct a std.measure
+// value as an argument, the same boundary gunbc.floor_memory_demand
+// qualify_floor_memory_from_readings states. The lift happens once, in floor_beat_of_reading,
+// after floor_reading_has_negative_counter has refused any count below zero -- nat_magnitude alone
+// would turn a sign bug into a plausible positive byte count.
+data floor_beat_reading_primitive_boundary: DissolutionCondition = unbound_dissolution(description: "dissolve-on: feature:interpreter-constructed-measure-arguments -- FloorBeatReading carries its byte counters and stall rate as Int because run_in_context_with_args admits only primitives. DISSOLVES WHEN the interpreter's argument surface admits a constructed std.measure value (ByteSize, EventsPerMinute) from the host, at which point these fields become ByteSize / EventsPerMinute, the negative-count refusal moves to the host reader that knows the unit, and nat_magnitude leaves floor_beat_of_reading; the same trigger dissolves qualify_floor_memory_from_readings' primitive signature.")
+
+type FloorBeatReading {
+  beat: Int
+  opens_phase: Bool
+  seam_before: String
+  seam_after: String
+  stall_per_min: Int?
+  swap_bytes: Int?
+  charge: Int
+  anon: Int
+  file: Int
+  shmem: Int
+  unevictable: Int
+  slab_unreclaimable: Int
+  slab_reclaimable: Int
+  kernel_stack: Int
+  pagetables: Int
+  percpu: Int
+  sock: Int
+  file_dirty: Int
+}
+
+type FloorPhaseHeldSet {
+  seam: FloorSeam
+  opened_at: Int
+  entry: HeldSetPeak
+  peak: HeldSetPeak
+}
+
+// A TOKEN NO ROW NAMES REFUSES THE ATTRIBUTION rather than being read as a neighbouring arm or
+// skipped: a phase whose beats were dropped would report a smaller peak than it held.
+type FloorPhaseAttribution
+  = FloorPhasesAttributed { phases: List<FloorPhaseHeldSet> }
+  | FloorPhaseSeamUnknown { beat: Int, token: String }
+  | FloorPhaseReadingNegative { beat: Int }
+
+type FloorPhaseFold
+  = PhaseFoldRunning { closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet? }
+  | PhaseFoldRefused { beat: Int, token: String }
+  | PhaseFoldNegative { beat: Int }
+
+// THE SLOT'S OWN SPELLINGS FIRST: `none` is the unset slot and `unreadable` a poisoned lock, both
+// printed by the heartbeat and neither a row of floor_seam_tokens.
+fn floor_seam_of_spelling(spelling: String) -> FloorSeam? {
+  if spelling == "none" {
+    Present { value: SeamNotYetEntered }
+  } else if spelling == "unreadable" {
+    Present { value: SeamUnreadable }
+  } else {
+    floor_seam_of_token(token: spelling)
+  }
+}
+
+fn floor_seam_of_reading(r: FloorBeatReading) -> FloorSeam? {
+  if r.seam_before == r.seam_after {
+    floor_seam_of_spelling(spelling: r.seam_before)
+  } else {
+    Present { value: SeamMovedDuringSample { before: r.seam_before as NonEmptyStr, after: r.seam_after as NonEmptyStr } }
+  }
+}
+
+// AN UNREAD STALL OR SWAP IS ABSENT, NOT A VALUE BESIDE A FLAG: the heartbeat prints `na` where it
+// could not read, and a Bool-plus-Int pair would let a reading carry a number that means nothing.
+fn optional_count_is_negative(v: Int?) -> Bool {
+  match v {
+    Present { value: n } => n < 0
+    Absent => false
+  }
+}
+
+// A NEGATIVE COUNT IS A MALFORMED READ, NOT A SMALL ONE: the kernel documents every counter here as
+// non-negative, so a reading below zero refuses rather than reaching nat_magnitude.
+fn floor_reading_has_negative_counter(r: FloorBeatReading) -> Bool {
+  optional_count_is_negative(v: r.stall_per_min) || optional_count_is_negative(v: r.swap_bytes) || r.charge < 0 || r.anon < 0 || r.file < 0 || r.shmem < 0
+    || r.unevictable < 0 || r.slab_unreclaimable < 0 || r.slab_reclaimable < 0 || r.kernel_stack < 0
+    || r.pagetables < 0 || r.percpu < 0 || r.sock < 0 || r.file_dirty < 0
+}
+
+fn floor_beat_of_reading(r: FloorBeatReading, seam: FloorSeam) -> FloorMemoryStatBeat {
+  FloorMemoryStatBeat {
+    beat: r.beat,
+    seam: seam,
+    charge: byte_size(count: nat_magnitude(a: r.charge)),
+    anon: byte_size(count: nat_magnitude(a: r.anon)),
+    file: byte_size(count: nat_magnitude(a: r.file)),
+    shmem: byte_size(count: nat_magnitude(a: r.shmem)),
+    unevictable: byte_size(count: nat_magnitude(a: r.unevictable)),
+    slab_unreclaimable: byte_size(count: nat_magnitude(a: r.slab_unreclaimable)),
+    slab_reclaimable: byte_size(count: nat_magnitude(a: r.slab_reclaimable)),
+    kernel_stack: byte_size(count: nat_magnitude(a: r.kernel_stack)),
+    pagetables: byte_size(count: nat_magnitude(a: r.pagetables)),
+    percpu: byte_size(count: nat_magnitude(a: r.percpu)),
+    sock: byte_size(count: nat_magnitude(a: r.sock)),
+    file_dirty: byte_size(count: nat_magnitude(a: r.file_dirty)),
+    stall: match r.stall_per_min {
+      Present { value: n } => StallRead { rate: events_per_minute(count: nat_magnitude(a: n)) }
+      Absent => StallUnread
+    },
+    swap: match r.swap_bytes {
+      Present { value: n } => SwapRead { bytes: byte_size(count: nat_magnitude(a: n)) }
+      Absent => SwapUnread
+    },
+  }
+}
+
+fn floor_phase_opened_by(b: FloorMemoryStatBeat) -> FloorPhaseHeldSet {
+  FloorPhaseHeldSet {
+    seam: b.seam,
+    opened_at: b.beat,
+    entry: held_set_peak_step(acc: HeldSetPeakNoBeats, b: b),
+    peak: held_set_peak_step(acc: HeldSetPeakNoBeats, b: b),
+  }
+}
+
+fn floor_phase_closed(closed: List<FloorPhaseHeldSet>, open: FloorPhaseHeldSet?) -> List<FloorPhaseHeldSet> {
+  match open {
+    Present { value: p } => concat(closed, [p])
+    Absent => closed
+  }
+}
+
+fn floor_phase_step(acc: FloorPhaseFold, r: FloorBeatReading) -> FloorPhaseFold {
+  match acc {
+    PhaseFoldRefused { beat: n, token: t } => PhaseFoldRefused { beat: n, token: t }
+    PhaseFoldNegative { beat: n } => PhaseFoldNegative { beat: n }
+    PhaseFoldRunning { closed: closed, open: open } =>
+      if floor_reading_has_negative_counter(r: r) { PhaseFoldNegative { beat: r.beat } } else {
+      match floor_seam_of_reading(r: r) {
+        Absent => PhaseFoldRefused { beat: r.beat, token: r.seam_before }
+        Present { value: seam } =>
+          if r.opens_phase {
+            PhaseFoldRunning {
+              closed: floor_phase_closed(closed: closed, open: open),
+              open: Present { value: floor_phase_opened_by(b: floor_beat_of_reading(r: r, seam: seam)) },
+            }
+          } else {
+            match open {
+              Absent => PhaseFoldRunning { closed: closed, open: Present { value: floor_phase_opened_by(b: floor_beat_of_reading(r: r, seam: seam)) } }
+              Present { value: p } => PhaseFoldRunning {
+                closed: closed,
+                open: Present { value: FloorPhaseHeldSet {
+                  seam: p.seam,
+                  opened_at: p.opened_at,
+                  entry: p.entry,
+                  peak: held_set_peak_step(acc: p.peak, b: floor_beat_of_reading(r: r, seam: seam)),
+                } },
+              }
+            }
+          }
+      }
+      }
+  }
+}
+
+fn floor_phase_attribution(readings: List<FloorBeatReading>) -> FloorPhaseAttribution {
+  match fold(readings, init: PhaseFoldRunning { closed: [], open: none }, f: (acc, r) => floor_phase_step(acc: acc, r: r)) {
+    PhaseFoldRefused { beat: n, token: t } => FloorPhaseSeamUnknown { beat: n, token: t }
+    PhaseFoldNegative { beat: n } => FloorPhaseReadingNegative { beat: n }
+    PhaseFoldRunning { closed: closed, open: open } => FloorPhasesAttributed { phases: floor_phase_closed(closed: closed, open: open) }
+  }
+}
+
+// Moved here from gunbc.fabric_witness_run (gunbc#12788): the floor's execution demand is a fact
+// about floor demand. Each declaration below keeps its own rationale.
+//
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it runs today on slots providing none of the
+// isolation guarantees -- a reused writable root by design, the host's process namespace, and
+// /home/ghrunner shared across every slot. Declaring a requirement the floor does not have would
+// invent a gap: the run modeled as ineligible for the executor it has been green on for months.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER: the floor asks for no tenancy
+// guarantee. The gap this model expresses belongs to CUSTOMER work -- see product.fabric.isolation
+// tenant_workload_isolation_requirement and the witness measuring today's slots against it.
+//
+// CONSUMPTION STATUS: the fold that reads this (floor_offer_fungibility -> offer_fungibility_for)
+// has NO production consumer, like its siblings ShapeNotCovered and CapabilitiesNotOffered. It is
+// the modeled decision the broker will consume, not a live wall; calling it enforcement would be
+// the rung inflation recorded on gunbc.fabric_witness_run floor_work_contract (whose leading block covers affordability and the module's other unconsumed functions). NEXT-RUNG TRIGGER is the same: a broker
+// fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// THE FLEET'S OWN TRUST DOMAIN, AS A ROW RATHER THAN A LITERAL, because a second consumer now
+// decides on it: gunbc.runner_attempt_launch admits the reservation-authorized planner arm only for
+// a Work whose trust_domain IS this row -- the untrusted-CI route carries another domain and cannot
+// reach that arm by construction. Two spellings of the domain would let the two drift apart and
+// the selection silently widen or narrow.
+data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
+
+// OUR FLOOR IS arm64. THE CLASS IS NOT.
+//
+// This function previously spelled the architecture INSIDE a capability tag --
+// "gunbc.capabilities.linux-aarch64-rust-toolchain" -- making an accident of our supply look like
+// a property of the execution class. Ampere is what we stock; the product must serve x86 and arm
+// at the lowest cost, and rented x86 is an anticipated supplier. A class that names its
+// architecture cannot admit one it did not -- the GitHub-vocabulary argument one layer over. So
+// the tag below names the toolchain and NOT the machine.
+//
+// WHY NO Architecture VALUE IS DECLARED HERE YET. Matching a declared architecture needs the OFFER
+// to carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm that reads
+// it land together. An earlier revision declared `floor_architecture() -> Architecture = Aarch64`
+// anyway, with ZERO consumers; v2.lens.inert_carrier caught it on CI as an unrostered inert
+// carrier -- in the same commit whose message refused to add an unread field to SupplierOffer by
+// citing review 53848's declared-but-nothing-derives-it defect. Refusing the defect on one side of
+// a module boundary and authoring it on the other is the same defect.
+//
+// So the architecture decision lives in prose and in the recut plan until it has a consumer: a
+// decision recorded is not a carrier modeled, and minting it early buys only a row that lies about
+// being load-bearing.
+//
+// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
+// class exists to protect: our own scheduler, reconciliation, admission and
+// receipt work, which must never be satisfied by capacity sanctioned for
+// customer execution. Declared on the side we ORIGINATE, so no supplier can
+// author it and the refusal is decided at admission rather than after ranking.
+//
+// THE ENVELOPE STATES MEMORY AND NOTHING ELSE, AND EACH ABSENCE HAS A REASON.
+//
+// Memory was unstated while the runner cells were sized to this very Work's
+// demand (gunbc.runner_slot_allocation, the 2026-09-12 ruling) -- the cell knew
+// what the floor needed and the floor's own Work did not say, so a microVM guest
+// sized for it had nothing to read. It now reads gunbc.floor_demand: the
+// resident held-set lower bound derived from raw memory.stat beats on the host
+// slot, and NOTHING while that is unmeasured -- a cgroup peak charges reclaimable
+// cache, so it is a ceiling rather than a demand, and stating it here would size
+// every consumer to a bet. The guest's cache allowance is the guest shape's own
+// fact (gunbc.runner_microvm), not this Work's. Stating memory has a
+// consequence on the offer side that is the point rather than a cost: an offer
+// that does not state memory no longer covers this Work (product.fabric.supply
+// MemoryNotOffered), so every offer that claims to run the floor must say how
+// much memory it runs it in.
+//
+// Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
+// floor_storage_demand and consumed there by the microVM shape's
+// workspace fit and the cold-build receipt plan, but NOT placed on this
+// envelope yet. product.fabric.supply compares no storage axis, so a stated
+// requirement here would be silently unchecked -- the fail-open absence of
+// observation the envelope exists to prevent -- and adding the axis to the
+// fold would make every host-slot offer refuse, because a shared host slot has
+// no storage number to offer (gunbc.runner_slot_allocation: disk admits
+// nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
+// the floor runs on, at which point the axis joins the fold and this field
+// reads floor_storage_demand.
+//
+// Architecture is unstated because the Work does not require one: the job
+// builds what it runs, and the aarch64 the fleet provides is a fact about the
+// fleet's labels rather than about this Work. Stating it would refuse an x86
+// offer for a reason the Work does not have (DESIGN 4d, over-prohibition).
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: ResourceEnvelope {
+        cpu: none,
+        gpu: none,
+        memory: floor_memory_requirement(),
+        storage: none,
+        network: none,
+      },
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: gunbc_internal_fleet_trust_domain,
+    isolation: floor_isolation_requirement(),
+  }
+}
+

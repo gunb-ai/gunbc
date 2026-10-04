@@ -1,14 +1,18 @@
 module test.claim.spark.v41_capacity_measurement_witness
 
+import gunbc.spark.serving_performance_subject { ServingSubjectKey, serving_subject_key, serving_performance_subject }
+import gunbc.spark.serving_arm { DeepseekV41FlashDba1be0a, GunbcSparkrunVllmDs4Gb10 }
+
 import v2.std.algebra { filter }
 import v2.std.collection { list_at_optional }
+import std.staircase { StaircaseStopped, StaircaseCompleted }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, token_count, millisecond, microsecond, microsecond_count,
   milli_tokens_per_second, concurrent_request_hundredths, basis_point, basis_point_count, token_count_value,
 }
-import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_of_value }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.container.oci.digest { OciSha256Digest }
@@ -33,12 +37,11 @@ import gunbc.spark.v41_capacity_measurement {
   V41ProbeCell, V41ProbeReading, V41ProbeRankReading, ProbeWarm, TouchCounterUnavailable, EngramLookupObserved,
   v41_touch_counter_frontier, v41_judge_probe, ProbeRefused, ProbeWorkingSetResident, ProbeWorkingSetFaulted,
   V41CapacityPolicy, PolicyOperatorSigned, PolicyProposed, V41TtftGate, v41_capacity_policy, V41StaircaseStepReading, v41_run_staircase,
-  V41PolicyStanding, StaircaseStopped, StaircaseCompleted, StaircaseRefused, StopKvPreemption, StopReadingMissing,
+  V41PolicyStanding, V41StaircaseRun, V41StaircasePolicyUnsigned, V41StaircaseRan, StopKvPreemption, StopReadingMissing,
   StopSuperlinearRefault, StopPsiFullSustained, StopNvmeLatency, StopSloBreach, V41ResidencyPhase,
   V41Capacity, CapacityAt, CapacityBelowFirstStep, CapacityRefused, v41_capacity_wire,
   v41_kv_admission_capacity, v41_engram_resident_capacity, v41_sla_capacity, v41_capacity_report,
-  V41CapacityReport, V41MeasurementServe, V41ProductionServe, v41_serving_admission,
-  MeasurementServeAdmitted, ProductionAdmitted, ProductionRefused,
+  V41CapacityReport, v41_calibration_receipt, V41CalibrationProjected, V41CalibrationRefused,
   v41_capacity_measurement_plan_text, v41_measurement_ranks, v41_engram_resident_bets, V41RankStartupReceipt, RankStartupAdmitted, RankStartupRefused, v41_admit_rank_startup, ExtensionLoaded, ExtensionImportFailed, ExtensionUnobserved, v41_engram_arm_of, v41_engram_arm_bindings, v41_judge_engram_resident_bet, v41_after_requests_resident, PointBetObserved, PointBetUnreadable, v41_measurement_launch_shape,
 }
 
@@ -383,9 +386,8 @@ fn w_step_ttft(c: Nat, ttft: Nat) -> V41StaircaseStepReading {
 
 test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool {
   match v41_run_staircase(policy: PolicyProposed { proposal: w_policy(gate_context: 32768), reasons: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: map([1, 2, 4, 6, 8, 12, 16], c => w_step(c: c, preemptions: 0))) {
-    StaircaseRefused { cause: _ } => true
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseStopped { last_sustained: _, stop: _ } => false
+    V41StaircasePolicyUnsigned { cause: _ } => true
+    V41StaircaseRan { outcome: _ } => false
   }
 }
 
@@ -396,14 +398,16 @@ test fn the_staircase_refuses_while_the_policy_is_an_unsigned_proposal() -> Bool
 test fn the_signed_policy_records_ttft_at_262k_without_stopping_on_it() -> Bool {
   let steps = map([1, 2, 4, 6, 8, 12, 16], c => w_step_ttft(c: c, ttft: 120000))
   let signed = match v41_run_staircase(policy: v41_capacity_policy, run_id: "run-1" as NonEmptyStr, steps: steps) {
-    StaircaseCompleted { last_sustained: l } => l == 16
-    StaircaseStopped { last_sustained: _, stop: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: l } } => l == 16
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   let covering = match v41_run_staircase(policy: PolicyOperatorSigned { policy: w_policy(gate_context: 262144), ruling: "fixture" as NonEmptyStr }, run_id: "run-1" as NonEmptyStr, steps: steps) {
-    StaircaseStopped { last_sustained: l, stop: st } => match l { Absent => true  Present { value: _ } => false } && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: l, stop: st } } => match l { Absent => true  Present { value: _ } => false } && match st { StopSloBreach { concurrency: c, which: w, observed: _ } => c == 1 && (w as String) == "ttft"  StopKvPreemption { concurrency: _, preemptions: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopReadingMissing { concurrency: _, cause: _ } => false }
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   signed && covering
 }
@@ -412,9 +416,10 @@ test fn the_staircase_stops_at_the_first_kv_preemption() -> Bool {
   let steps = [w_step(c: 1, preemptions: 0), w_step(c: 2, preemptions: 0), w_step(c: 4, preemptions: 0), w_step(c: 6, preemptions: 0), w_step(c: 8, preemptions: 3), w_step(c: 12, preemptions: 9)]
   let o = v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps)
   let stopped_at_8 = match o {
-    StaircaseStopped { last_sustained: _, stop: s } => match s { StopKvPreemption { concurrency: c, preemptions: p } => c == 8 && p == 3  StopReadingMissing { concurrency: _, cause: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopSloBreach { concurrency: _, which: _, observed: _ } => false }
-    StaircaseCompleted { last_sustained: _ } => false
-    StaircaseRefused { cause: _ } => false
+    V41StaircaseRan { outcome: StaircaseStopped { last_sustained: _, stop: s } } => match s { StopKvPreemption { concurrency: c, preemptions: p } => c == 8 && p == 3  StopReadingMissing { concurrency: _, cause: _ } => false  StopSuperlinearRefault { concurrency: _, per_request: _, previous_per_request: _ } => false  StopPsiFullSustained { concurrency: _, stalled: _, window: _ } => false  StopNvmeLatency { concurrency: _, mean_read_await: _ } => false  StopSloBreach { concurrency: _, which: _, observed: _ } => false }
+    V41StaircaseRan { outcome: StaircaseCompleted { last_sustained: _ } } => false
+    V41StaircaseRan { outcome: StaircaseRefused { refusal: _ } } => false
+    V41StaircasePolicyUnsigned { cause: _ } => false
   }
   stopped_at_8 && v41_capacity_wire(c: v41_sla_capacity(o: o)) == "x6"
 }
@@ -424,36 +429,25 @@ test fn a_hole_in_the_staircase_refuses_the_sla_capacity_above_it() -> Bool {
   contains(v41_capacity_wire(c: v41_sla_capacity(o: v41_run_staircase(policy: w_signed(), run_id: "run-1" as NonEmptyStr, steps: steps))), "a reading is missing at x2")
 }
 
-// ── the production gate ──
+// ── the report as V4.1's workload calibration (production admission is gunbc.spark.serving_promotion) ──
 
-test fn the_measurement_serve_is_admitted_and_production_refuses_without_a_report() -> Bool {
-  let m = match v41_serving_admission(realization: V41MeasurementServe { run_id: "run-1" as NonEmptyStr }, report: none) {
-    MeasurementServeAdmitted { run_id: _ } => true
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-    ProductionRefused { cause: _ } => false
+test fn the_report_projects_the_minimum_of_three_capacities_and_leaves_unobserved_counts_absent() -> Bool {
+  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
+  match v41_calibration_receipt(report: all, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
+    V41CalibrationRefused { cause: _ } => false
+    V41CalibrationProjected { receipt: r } =>
+      r.sustained_concurrency == 4
+        && (match r.preemptions { Absent => true  Present { value: _ } => false })
+        && (match r.accepted_turns { Absent => true  Present { value: _ } => false })
   }
-  let p = match v41_serving_admission(realization: V41ProductionServe, report: none) {
-    ProductionRefused { cause: _ } => true
-    MeasurementServeAdmitted { run_id: _ } => false
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-  }
-  m && p
 }
 
-test fn production_admits_the_minimum_of_three_capacities_and_refuses_on_any_refusal() -> Bool {
-  let all = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, engram_resident: CapacityAt { concurrency: 4 }, sla_sustainable: CapacityAt { concurrency: 8 }, indexer_kernel: ExtensionLoaded }
-  let admitted = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: all }) {
-    ProductionAdmitted { run_id: _, concurrency: c } => c == 4
-    ProductionRefused { cause: _ } => false
-    MeasurementServeAdmitted { run_id: _ } => false
-  }
+test fn a_refused_capacity_refuses_the_projection_and_names_it() -> Bool {
   let today = V41CapacityReport { run_id: "run-1" as NonEmptyStr, kv_admission: CapacityAt { concurrency: 6 }, sla_sustainable: CapacityAt { concurrency: 8 }, engram_resident: CapacityRefused { cause: "the distinct-touch counter is unavailable" as NonEmptyStr }, indexer_kernel: ExtensionLoaded }
-  let refused = match v41_serving_admission(realization: V41ProductionServe, report: Present { value: today }) {
-    ProductionRefused { cause: c } => contains(c as String, "Engram resident")
-    ProductionAdmitted { run_id: _, concurrency: _ } => false
-    MeasurementServeAdmitted { run_id: _ } => false
+  match v41_calibration_receipt(report: today, subject_key: w_v41_key(), trace_digest: content_hash_of_value(value: "fixture-trace" as NonEmptyStr)) {
+    V41CalibrationRefused { cause: c } => contains(c as String, "Engram resident")
+    V41CalibrationProjected { receipt: _ } => false
   }
-  admitted && refused
 }
 
 test fn the_dry_run_plan_renders_the_derived_thresholds_and_the_open_preconditions() -> Bool {
@@ -560,4 +554,15 @@ test fn arm_b_is_the_production_image() -> Bool {
     Present { value: arm } => match arm { EngramFileBackedReleased => true  EngramUpstreamPinned => false }
     Absent => false
   }
+}
+
+// THE PROJECTION'S SUBJECT IS SUPPLIED: the claim is about how the report becomes a receipt, not about
+// which subject V4.1 launches, so a fixture subject keys it.
+fn w_v41_key() -> ServingSubjectKey {
+  serving_subject_key(s: serving_performance_subject(
+    checkpoint: DeepseekV41FlashDba1be0a, checkpoint_revision: Absent, runtime: GunbcSparkrunVllmDs4Gb10,
+    runtime_image_reference: "fixture@sha256:0" as NonEmptyStr, topology: Absent, rank_population: Absent,
+    context_ceiling: Absent, max_num_batched_tokens: token_count(count: 8192), max_num_seqs: Absent,
+    kv_cache_dtype: Absent, speculative: Absent, collective_transport: Absent, indexer_kv_dtype: Absent,
+    scheduler_admission: Absent, launch_profile_key: Absent))
 }

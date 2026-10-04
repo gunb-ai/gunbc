@@ -1,5 +1,6 @@
 module v2.compiler.occurrence_role
 
+import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.occurrence_identity {
   CallableOccurrence,
@@ -9,6 +10,7 @@ import std.occurrence_identity {
   OccurrenceCategory,
   OccurrenceId,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceRole,
   OccurrenceSynthetic,
@@ -16,7 +18,16 @@ import std.occurrence_identity {
   TypeOccurrence
 }
 import v2.compiler.parse { ParseArtifact }
-import v2.compiler.body_lowering_fold { body_lower_deep_unwrap_optional, body_lower_param_binding_atom_optional }
+import v2.compiler.body_lowering_fold {
+  body_lower_deep_unwrap_optional,
+  body_lower_field_decl_block_binder_atoms,
+  body_lower_generic_params_binder_atoms,
+  body_lower_io_block_binder_atoms,
+  body_lower_let_in_key_binding_atom_optional,
+  body_lower_param_binding_atom_optional,
+  body_lower_param_list_binder_atoms
+}
+import v2.compiler.fold_lowering { ArrowLambdaValue, FnLiteralValue, FunctionValueKind, function_value_parts_optional }
 import v2.extdeps.languages.dag {
   dag_grammar_root,
   dag_named_arg_name_node_optional,
@@ -24,13 +35,12 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_map, list_snoc_item }
 import v2.std.integer { Int }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, GrammarRoot, node_atom_identity_optional, StampBinding, StampClass, StampLexeme, fold_grammar_expr }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.optional { Absent, Optional, Present }
 
@@ -87,6 +97,12 @@ type NameReader
   | ReadFieldInitLabel
   | ReadNamedArgLabel
   | ReadFieldPatternName
+  | ReadParamListBinders
+  | ReadFieldDeclBinders
+  | ReadGenericParamBinders
+  | ReadLetBinder
+  | ReadFunctionValueBinders { kind: FunctionValueKind }
+  | ReadIoFieldBinders
 
 type NameProductionDisposition
   = NamesAreReferences
@@ -132,8 +148,25 @@ fn read_kw_then_ident(captured: Node) -> NameRead {
 }
 
 // `name: value` in a record literal: the field label.
+// A STRING-KEYED INIT NAMES NO FIELD: its key is a literal, not a FieldOccurrence, and the choice's
+// string alternative is its own production (^dag_surface_field_init_string_key), whose value's names
+// are read as references by that production's own row. So that alternative lawfully has no name here,
+// as a positional argument has none below.
 fn read_field_init_label(captured: Node) -> NameRead {
-  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+  let item = body_lower_deep_unwrap_optional(node: captured)
+  match parse_production_emitted_identity_optional(node: item) {
+    Present { value: id } =>
+      if id == ^dag_surface_field_init_string_key {
+        NoNameHere
+      } else {
+        read_field_init_name_label(item: item)
+      }
+    Absent => read_field_init_name_label(item: item)
+  }
+}
+
+fn read_field_init_name_label(item: Node) -> NameRead {
+  match sugar_sequence_pair_optional(node: item) {
     Absent => NameReadRefused
     Present { value: pair } => one_name(atom: body_lower_param_binding_atom_optional(node: pair.left))
   }
@@ -149,13 +182,33 @@ fn read_named_arg_label(captured: Node) -> NameRead {
 }
 
 // A field pattern is `name: pattern` (the label) or the shorthand `name`, where the one token is
-// both the label and a new binder. Both are outside the XL-2 population; the shorthand is recorded
-// as the declaration it also is.
+// both the label and a new binder; both are recorded as the declaration the name is. The grammar
+// left-factors the two (v2.extdeps.languages.dag dag_grammar_field_pattern_expr), so the capture is
+// always `(name, optional(: pattern))` and the name is the pair's left; a capture that is no pair
+// is not a field pattern this reader knows, and refuses.
 fn read_field_pattern_name(captured: Node) -> NameRead {
-  let unwrapped = body_lower_deep_unwrap_optional(node: captured)
-  match sugar_sequence_pair_optional(node: unwrapped) {
-    Absent => one_name(atom: body_lower_param_binding_atom_optional(node: unwrapped))
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
+    Absent => NameReadRefused
     Present { value: pair } => one_name(atom: body_lower_param_binding_atom_optional(node: pair.left))
+  }
+}
+
+// A binder LIST: every binder of the production, or a refusal where the lowering reader refuses the
+// list. An empty list (`()`) is a lawful read of no names.
+fn many_names(atoms: Optional<List<Node>>) -> NameRead {
+  match atoms {
+    Present { value: xs } => NamesFound { atoms: xs }
+    Absent => NameReadRefused
+  }
+}
+
+// `fn(a, b) { .. }` and `p => ..` / `(a, b) => ..`: the binders v2.compiler.fold_lowering
+// function_value_parts_optional reads, which body lowering's function-value producer lowers through.
+// Each binder carries the token it was read from.
+fn read_function_value_binders(captured: Node, kind: FunctionValueKind) -> NameRead {
+  match function_value_parts_optional(captured: captured, kind: kind) {
+    Absent => NameReadRefused
+    Present { value: parts } => NamesFound { atoms: list_map(xs: parts.binders, f: fn(b) { b.at }) }
   }
 }
 
@@ -165,9 +218,24 @@ fn read_names(reader: NameReader, captured: Node) -> NameRead {
     ReadFieldInitLabel => read_field_init_label(captured: captured)
     ReadNamedArgLabel => read_named_arg_label(captured: captured)
     ReadFieldPatternName => read_field_pattern_name(captured: captured)
+    ReadParamListBinders => many_names(atoms: body_lower_param_list_binder_atoms(param_list: captured))
+    ReadFieldDeclBinders => many_names(atoms: body_lower_field_decl_block_binder_atoms(captured: captured))
+    ReadGenericParamBinders => many_names(atoms: body_lower_generic_params_binder_atoms(generic_params: captured))
+    ReadLetBinder => one_name(atom: body_lower_let_in_key_binding_atom_optional(captured: captured))
+    ReadFunctionValueBinders { kind: kind } => read_function_value_binders(captured: captured, kind: kind)
+    ReadIoFieldBinders => many_names(atoms: body_lower_io_block_binder_atoms(captured: captured))
   }
 }
 
+// `operation name { .. }`: body lowering reads the name with the kw-then-ident decoder
+// (body_lower_operation), and lowers it to a callable edge of the service.
+// `resource Name { .. }` declares a type-position name (a fn's `uses fs: Filesystem` names it as a
+// type) and `capability name { .. }` declares a callable of that resource, read as an operation is.
+// A resource property's value (`kind: Capability`) is a marker word the lowering projects onto
+// std.resource_contract ResourceKind / ResourceMode, never a name resolution looks up.
+// `uses net: Network`: each entry binds the resource name the fn body refers to. Its shape is
+// `name: T [(cfg)]`, the `name: value` pair ReadFieldInitLabel's decoder reads, so it is read by that
+// decoder, and the binder is a declaration.
 fn dag_name_production_rows() -> List<NameProductionRow> {
   [
     name_row(production: ^dag_production_fn_decl, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
@@ -175,6 +243,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_type_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_alias_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
     name_row(production: ^dag_production_field_init, disposition: NameRoleRead { role: ReferenceRole, category: FieldOccurrence, reader: ReadFieldInitLabel }),
+    name_row(production: ^dag_production_field_init_string_key, disposition: NamesAreReferences),
     name_row(production: ^dag_production_arg, disposition: NameRoleRead { role: ReferenceRole, category: LexicalValueOccurrence, reader: ReadNamedArgLabel }),
     name_row(production: ^dag_production_field_pattern, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldPatternName }),
     name_row(production: ^dag_production_test_fn_decl, disposition: NamesAreMarkers),
@@ -183,17 +252,21 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_primary_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_postfix_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_where_predicate, disposition: NamesAreReferences),
-    name_row(production: ^dag_production_status_pattern, disposition: NamesAreReferences),
-    name_row(production: ^dag_production_param_list, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_field_decl_block, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_generic_params, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_let_expr, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_fn_literal, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_operation, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_transport, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_input_block, disposition: NameRoleNotYetRead),
-    name_row(production: ^dag_production_output_block, disposition: NameRoleNotYetRead)
+    name_row(production: ^dag_production_status_pattern_name, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_param_list, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadParamListBinders }),
+    name_row(production: ^dag_production_field_decl_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldDeclBinders }),
+    name_row(production: ^dag_production_generic_params, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadGenericParamBinders }),
+    name_row(production: ^dag_production_let_expr, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadLetBinder }),
+    name_row(production: ^dag_production_fn_literal, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: FnLiteralValue } }),
+    name_row(production: ^dag_production_arrow_lambda, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFunctionValueBinders { kind: ArrowLambdaValue } }),
+    name_row(production: ^dag_production_operation, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_input_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_output_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadIoFieldBinders }),
+    name_row(production: ^dag_production_resource_decl, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_resource_kind, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_resource_mode, disposition: NamesAreMarkers),
+    name_row(production: ^dag_production_capability, disposition: NameRoleRead { role: DeclarationRole, category: CallableOccurrence, reader: ReadKwThenIdent }),
+    name_row(production: ^dag_production_uses_entry, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadFieldInitLabel })
   ]
 }
 
@@ -216,7 +289,11 @@ fn production_holds_name_terminal(expr: GrammarExpr) -> Bool {
     sequence: fn(a, b) { a || b },
     choice: fn(a, b) { a || b },
     optional: fn(a) { a },
-    repeat: fn(a) { a }
+    repeat: fn(a) { a },
+    expect: fn(a, _reason) { a },
+    refuse_on_match: fn(a, _reason) { a },
+    after_line_break: fn(a) { a },
+    not_predicate: fn(_a) { false }
   })
 }
 
@@ -284,12 +361,15 @@ fn name_production_table_admission(root: GrammarRoot, rows: List<NameProductionR
 // that could disagree. `not_yet_read` counts nodes of NameRoleNotYetRead productions by production.
 // `unminted` counts names a reader returned whose token carries no minted occurrence -- nothing to
 // key them by, so counted rather than dropped. `reader_refused` counts, per production, nodes whose
-// decoder refused or which carried no captured child: a binder the walk could not read.
+// decoder refused or which carried no captured child: a binder the walk could not read. `derived`
+// counts names whose atom is a projected (or still pending) member of a lowered image: it has an
+// authored cause, so it is neither unminted nor a refused read.
 type OccurrenceRoles {
   roles: FreeMonoid<AtomOccurrenceRole>
   not_yet_read: Map<Symbol, Int>
   reader_refused: Map<Symbol, Int>
   unminted: Int
+  derived: Int
 }
 
 type OccurrenceRoleOutcome
@@ -297,7 +377,7 @@ type OccurrenceRoleOutcome
   | OccurrenceRoleTableRefused { unlisted: List<Symbol>, unknown: List<Symbol>, unkeyed: List<Symbol> }
 
 fn occurrence_roles_empty() -> OccurrenceRoles {
-  OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0 }
+  OccurrenceRoles { roles: Empty, not_yet_read: empty_map(), reader_refused: empty_map(), unminted: 0, derived: 0 }
 }
 
 fn count_symbol(m: Map<Symbol, Int>, key: Symbol) -> Map<Symbol, Int> {
@@ -314,10 +394,12 @@ fn record_name(acc: OccurrenceRoles, atom: Node, role: OccurrenceRole, category:
         roles: list_snoc_item(xs: acc.roles, item: AtomOccurrenceRole { occurrence: id, role: role, category: category }),
         not_yet_read: acc.not_yet_read,
         reader_refused: acc.reader_refused,
-        unminted: acc.unminted
+        unminted: acc.unminted,
+        derived: acc.derived
       }
-    OccurrenceProjected { id: _, caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1 }
-    OccurrenceSynthetic => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1 }
+    OccurrenceProjected { id: _, caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived + 1 }
+    OccurrencePending { caused_by: _ } => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived + 1 }
+    OccurrenceSynthetic => OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: acc.reader_refused, unminted: acc.unminted + 1, derived: acc.derived }
   }
 }
 
@@ -329,7 +411,7 @@ fn roles_at_production(acc: OccurrenceRoles, node: Node, emitted: Symbol, by_emi
         NamesAreReferences => acc
         NamesAreImportChannel => acc
         NamesAreMarkers => acc
-        NameRoleNotYetRead => OccurrenceRoles { roles: acc.roles, not_yet_read: count_symbol(m: acc.not_yet_read, key: emitted), reader_refused: acc.reader_refused, unminted: acc.unminted }
+        NameRoleNotYetRead => OccurrenceRoles { roles: acc.roles, not_yet_read: count_symbol(m: acc.not_yet_read, key: emitted), reader_refused: acc.reader_refused, unminted: acc.unminted, derived: acc.derived }
         NameRoleRead { role: role, category: category, reader: reader } =>
           match parse_production_captured_child_optional(node: node) {
             Absent => roles_count_refused(acc: acc, emitted: emitted)
@@ -346,7 +428,7 @@ fn roles_at_production(acc: OccurrenceRoles, node: Node, emitted: Symbol, by_emi
 }
 
 fn roles_count_refused(acc: OccurrenceRoles, emitted: Symbol) -> OccurrenceRoles {
-  OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: count_symbol(m: acc.reader_refused, key: emitted), unminted: acc.unminted }
+  OccurrenceRoles { roles: acc.roles, not_yet_read: acc.not_yet_read, reader_refused: count_symbol(m: acc.reader_refused, key: emitted), unminted: acc.unminted, derived: acc.derived }
 }
 
 // THE ACCUMULATOR IS THREADED, NEVER APPENDED (DESIGN section 6, bare minimum cost).

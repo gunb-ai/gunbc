@@ -1,10 +1,11 @@
 module extdeps.systemd.systemd_run
 
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }
-import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -40,6 +41,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data systemd_run_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
 // THE PROPERTY WORDS ARE RENDERED IN EXACTLY ONE PLACE, and that is the whole point of this
 // function existing beside the full-line authority rather than inside it. A systemd unit property
@@ -139,9 +142,22 @@ fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command:
   let with_properties = fold(systemd_run_property_argv(properties: properties), init: head, f: (acc, word) => list_push(acc, word))
   let with_separator = list_push(with_properties, "--")
   argv_command(
-    program: "systemd-run" as NonEmptyStr,
+    program: systemd_run_program(),
     arguments: fold(argv_words(command: command), init: with_separator, f: (acc, arg) => list_push(acc, arg)),
   )
+}
+
+// ONE COMMAND IN A TRANSIENT SCOPE OF THE SYSTEM MANAGER (`systemd-run --scope -p NAME=VALUE ... -- CMD`).
+// The user-manager form above needs the caller's own session bus, which a command elevated from
+// another login does not have; the system manager starts the scope and the kernel bounds its
+// cgroup. The caller must be root. The command runs with the caller's credentials: systemd-run's
+// --uid/--gid are not rendered, because in scope mode they switch uid and gid without initialising
+// the target's supplementary groups and leave the caller's in place (fleet-converge run
+// 37098981121). A caller that needs another account composes its own privilege drop as CMD.
+fn systemd_run_system_scope_argv(properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: ["systemd-run", "--scope"], f: (acc, word) => list_push(acc, word))
+  let with_separator = list_push(with_properties, "--")
+  fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
 }
 
 fn systemd_run_property(name: String, value: String) -> String {
@@ -200,6 +216,7 @@ fn systemd_run_transient_wait_unit_argv(unit: NonEmptyStr, properties: List<Syst
 // annotation names its subject instead of relying on adjacency.)
 service systemd.SystemdRun {
   operation RunTransient {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
@@ -218,6 +235,7 @@ service systemd.SystemdRun {
 
 
   operation RunTransientRetained {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       success: Bool from "exit_success"
@@ -235,6 +253,7 @@ service systemd.SystemdRun {
   }
 
   operation RunTransientAndWait {
+    requires opaque
     input { unit: NonEmptyStr, property_argv: List<String>, command_argv: List<String> }
     output {
       exit_code: Int from "exit_code"

@@ -3,17 +3,28 @@
 
 pub use crate::extdeps_languages_rust_representation::RustRepresentation;
 use crate::extdeps_languages_rust_representation::RustRepresentation::{
-    RustBool, RustF64, RustI64, RustSerdeJsonValue, RustStdString, RustUnit, RustVecU8,
+    RustBool, RustI64, RustSerdeJsonValue, RustStdString, RustUnit, RustVecU8,
+};
+pub use crate::extdeps_languages_rust_representation::{
+    rust_bool_false_value, rust_bool_true_value,
 };
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_kernel_type_name::kernel_type_name;
+pub use crate::std_kernel_type_name::KernelTypeNameAdmission;
+use crate::std_kernel_type_name::KernelTypeNameAdmission::{
+    KernelTypeNameAdmitted, NotAKernelTypeName,
+};
 use crate::std_target_representation::CheckpointRowDisposition::{
     MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt,
 };
-pub use crate::std_target_representation::{
-    CheckpointRowDisposition, CheckpointRowMigration, SourceTypeTargetBinding,
+use crate::std_target_representation::VariantParentKey::{
+    VariantParentDeclaration, VariantParentKernelType,
 };
-use crate::std_types::Bool::*;
+pub use crate::std_target_representation::{
+    CheckpointRowDisposition, CheckpointRowMigration, RepresentationValue, SourceTypeTargetBinding,
+    SourceVariantTargetValue, VariantParentKey,
+};
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -37,10 +48,72 @@ pub fn rust_source_binding(
 pub fn rust_source_type_binding_rows() -> Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>> = {
-            Rc::new(vec![rust_source_binding("v2.std.node".to_string(), "Symbol".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.types".to_string(), "Secret".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.integer".to_string(), "Int".to_string(), RustRepresentation::RustI64), rust_source_binding("std.float".to_string(), "Float".to_string(), RustRepresentation::RustF64), rust_source_binding("std.types".to_string(), "Bool".to_string(), RustRepresentation::RustBool), rust_source_binding("std.types".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("v2.std.cardinality".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("std.types".to_string(), "Bytes".to_string(), RustRepresentation::RustVecU8), rust_source_binding("std.types".to_string(), "Json".to_string(), RustRepresentation::RustSerdeJsonValue)])
+            Rc::new(vec![rust_source_binding("v2.std.node".to_string(), "Symbol".to_string(), RustRepresentation::RustStdString), rust_source_binding("v2.std.node".to_string(), "String".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.types".to_string(), "Secret".to_string(), RustRepresentation::RustStdString), rust_source_binding("std.integer".to_string(), "Int".to_string(), RustRepresentation::RustI64), rust_source_binding("std.types".to_string(), "Bool".to_string(), RustRepresentation::RustBool), rust_source_binding("std.types".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("v2.std.cardinality".to_string(), "Unit".to_string(), RustRepresentation::RustUnit), rust_source_binding("std.types".to_string(), "Bytes".to_string(), RustRepresentation::RustVecU8), rust_source_binding("std.types".to_string(), "Json".to_string(), RustRepresentation::RustSerdeJsonValue)])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<SourceTypeTargetBinding<RustRepresentation>>>>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BoolArmValue {
+    pub variant: NonEmptyStr,
+    pub value: Rc<RepresentationValue<RustRepresentation>>,
+}
+
+pub fn rust_bool_arm_values() -> Rc<Vec<Rc<BoolArmValue>>> {
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<BoolArmValue>>> = {
+                Rc::new(vec![Rc::new(BoolArmValue {
+        variant: "True".to_string(),
+        value: rust_bool_true_value(),
+    }), Rc::new(BoolArmValue {
+        variant: "False".to_string(),
+        value: rust_bool_false_value(),
+    })])
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<BoolArmValue>>>| c.clone())
+}
+
+pub fn rust_bool_variant_rows(
+    parent: Rc<VariantParentKey>,
+) -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for a in rust_bool_arm_values().iter().cloned() {
+            __result.push(Rc::new(SourceVariantTargetValue {
+                parent: parent.clone(),
+                variant: a.variant.clone(),
+                value: a.value.clone(),
+                _phantom: std::marker::PhantomData,
+            }));
+        }
+        __result
+    })
+}
+
+pub fn rust_bool_kernel_variant_rows() -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>
+{
+    match (*crate::std_kernel_type_name::kernel_type_name("Bool".to_string())).clone() {
+        KernelTypeNameAdmission::KernelTypeNameAdmitted { kernel_name: k, .. } => {
+            rust_bool_variant_rows(Rc::new(VariantParentKey::VariantParentKernelType {
+                kernel_name: k.clone(),
+            }))
+        }
+        KernelTypeNameAdmission::NotAKernelTypeName { name: _, .. } => Rc::new(vec![]),
+    }
+}
+
+pub fn rust_source_variant_value_rows() -> Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>
+{
+    thread_local! {
+            static CACHED: Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>> = {
+                v1_rt::concat(rust_bool_variant_rows(Rc::new(VariantParentKey::VariantParentDeclaration {
+        declaration: crate::std_decl_ref::decl_ref("std.types".to_string(), "Bool".to_string()),
+    })), rust_bool_kernel_variant_rows())
+            };
+        }
+    CACHED.with(|c: &Rc<Vec<Rc<SourceVariantTargetValue<RustRepresentation>>>>| c.clone())
 }
 
 pub fn rust_bound_declaration_refs() -> Rc<Vec<Rc<DeclarationRef>>> {
@@ -62,24 +135,23 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 }), Rc::new(CheckpointRowMigration {
     dag_name: "String".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::ProvenUniqueKernelBinding {
-    proof: "The kernel string_type is minted by v1.compiler.types for every string literal and carries no declaration; both .dag declarations of the spelling (v2.std.text, std.string_type) are gated structural by v1.compiler.coercion structural_declaration_modules_for and never reach this row. THE VERDICT STANDS AND ITS ORIGINAL ARGUMENT WAS EXACTLY INVERTED, corrected here rather than softened because the inverted form would justify the wrong things if reused. It read: the bare spelling cannot be captured because the only import that could shadow it binds the SAME token, so in a module importing v2.std.text String every `String` reference IS the text carrier and the kernel spelling is unreachable there. The opposite is true. KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (v1.compiler.infer direct_import_export_precedence_note, overlay_skips_kernel_name), so in such a module the import does not shadow at all and a bare `String` is ALWAYS the kernel -- the spelling the old argument called unreachable is the only one you reach. Three routes exist and all three are sound for this row: a bare reference in an importing module resolves to the kernel and IS this row's binding; a bare reference INSIDE v2.std.text resolves LOCALLY (locals beat kernel) and is gated structural, never reaching the row; and a QUALIFIED v2.std.text.String resolves through the alias to the dotted name std.algebra.FreeMonoid, which matches no bare row. Symbol was captured precisely because its token differed from its spelling, and that clause survives unchanged. ESTABLISHED BY EXECUTION, not by reading precedence -- AND THE SUBJECT NAMED HERE IS CORRECTED: this sentence previously said the census was run over A FIXTURE MODULE importing both v2.std.text String and v2.std.node Node. IT WAS NOT. The receipts carry no fixture rows at all; the subjects were LIVE CORPUS MODULES, and naming a subject that was not run is the same citation defect this row exists to correct. What v1.tests.claim.carrier_realization_census actually reports: in std.algebra, a module that imports the spelling, a bare String carries the kernel identity at declaration_field AND at fn_signature_param; inside v2.std.text the same spelling carries its own declaring module and diverges with exact identity, which is route 2 executed rather than argued; and v2.std.node Node carries its real declaring module at both position kinds as the positive control. RE-DERIVATION IS POSITION-KIND SENSITIVE AND THE OBVIOUS INSTRUCTION IS A TRAP. Running that census over a closure re-derives routes 1 and 2 soundly. It does NOT re-derive route 3: at fn_signature_param the census resolves a QUALIFIED v2.std.text.String through the alias onto the alias declaration's own name, which is the spelling String, and attributes it to <kernel:String> -- confidently naming the very carrier the qualification was written to move away from. That is measured by vivid-deer-102 and filed as recurring failure mode alias_resolution_collides_with_kernel_spelling (gunbc#9939); the same instrument is correct for qualified aliases at declaration_field. ROUTE 3 THEREFORE RESTS ON STRUCTURAL RESOLUTION PLUS A RUSTC MEASUREMENT -- the emitted crate carries an E0308 on the bare arm and not on the qualified one -- and explicitly NOT on this census, which cannot answer at that position. The instrument is named rather than its rows transcribed (DESIGN section 6).".to_string(),
+    proof: "The kernel string_type is minted by v1.compiler.types for every string literal and carries no declaration; both .dag declarations of the spelling (v2.std.text, std.string_type) are gated structural by v1.compiler.coercion structural_declaration_modules_for and never reach this row. THE VERDICT STANDS AND ITS ORIGINAL ARGUMENT WAS EXACTLY INVERTED, corrected here rather than softened because the inverted form would justify the wrong things if reused. It read: the bare spelling cannot be captured because the only import that could shadow it binds the SAME token, so in a module importing v2.std.text String every `String` reference IS the text carrier and the kernel spelling is unreachable there. The opposite is true. KERNEL NAMES ARE NEVER OVERRIDDEN BY IMPORTS (v1.compiler.infer direct_import_export_precedence_note, overlay_skips_kernel_name), so in such a module the import does not shadow at all and a bare `String` is ALWAYS the kernel -- the spelling the old argument called unreachable is the only one you reach. Three routes exist and all three are sound for this row: a bare reference in an importing module resolves to the kernel and IS this row's binding; a bare reference INSIDE v2.std.text resolves LOCALLY (locals beat kernel) and is gated structural, never reaching the row; and a QUALIFIED v2.std.text.String resolves through the alias to the dotted name std.algebra.FreeMonoid, which matches no bare row. Symbol was captured precisely because its token differed from its spelling, and that clause survives unchanged. ESTABLISHED BY EXECUTION, not by reading precedence -- AND THE SUBJECT NAMED HERE IS CORRECTED: this sentence previously said the census was run over A FIXTURE MODULE importing both v2.std.text String and v2.std.node Node. IT WAS NOT. The receipts carry no fixture rows at all; the subjects were LIVE CORPUS MODULES, and naming a subject that was not run is the same citation defect this row exists to correct. What v1.tests.claim.carrier_realization_census actually reports: in std.algebra, a module that imports the spelling, a bare String carries the kernel identity at declaration_field AND at fn_signature_param; inside v2.std.text the same spelling carries its own declaring module and diverges with exact identity, which is route 2 executed rather than argued; and v2.std.node Node carries its real declaring module at both position kinds as the positive control. RE-DERIVATION IS POSITION-KIND SENSITIVE AND THE OBVIOUS INSTRUCTION IS A TRAP. Running that census over a closure re-derives routes 1 and 2 soundly. It does NOT re-derive route 3: at fn_signature_param the census resolves a QUALIFIED v2.std.text.String through the alias onto the alias declaration's own name, which is the spelling String, and attributes it to <kernel:String> -- confidently naming the very carrier the qualification was written to move away from. That is measured by vivid-deer-102 and filed as recurring failure mode alias_resolution_collides_with_kernel_spelling (gunbc#9939); the same instrument is correct for qualified aliases at declaration_field. ROUTE 3 THEREFORE RESTS ON STRUCTURAL RESOLUTION PLUS A RUSTC MEASUREMENT -- the emitted crate carries an E0308 on the bare arm and not on the qualified one -- and explicitly NOT on this census, which cannot answer at that position. The instrument is named rather than its rows transcribed (DESIGN section 6). SINCE gunbc#12760 THE KERNEL HOST TEXT HAS A DECLARATION: v2.std.node String, opaque, with its own exact row above (RustStdString). So the kernel spelling now has one declaration, and this bare row and that exact row render the same carrier, std::string::String; the uniqueness this row proves is unchanged.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Int".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::StillBareNameDebt {
-    reason: "std.integer Int has an exact row (RustI64; native by v1.compiler.coercion numeric_realization_declaring_modules). v2.std.integer Int (GroupCompletion<v2.std.nat.Nat>) is answered i64 by the bare-name bypass today and no authority has ruled that this is its modeled realization rather than an accident of the bypass; the kernel int_type mint rides the same row.".to_string(),
+    reason: "std.integer Int has an exact row (RustI64; native by v1.compiler.coercion numeric_realization_declaring_modules). v2.std.integer Int (GroupCompletion<std.nat.Nat>) is answered i64 by the bare-name bypass today and no authority has ruled that this is its modeled realization rather than an accident of the bypass; the kernel int_type mint rides the same row.".to_string(),
     restoration_trigger: "A ruling on v2.std.integer Int's Rust realization sufficient to author its exact row or its structural gate, after which this bare row serves only the kernel mint and its verdict becomes ProvenUniqueKernelBinding (i64 is a primitive token no use-line can shadow).".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Float".to_string(),
-    disposition: Rc::new(CheckpointRowDisposition::StillBareNameDebt {
-    reason: "std.float Float has an exact row (RustF64). v2.std.float Float (= Binary64) is answered f64 by the bare-name bypass with no ruling that this is its modeled realization; the kernel float_type mint rides the same row.".to_string(),
-    restoration_trigger: "The same ruling as Int, for v2.std.float Float; then ProvenUniqueKernelBinding on the f64 primitive token.".to_string(),
+    disposition: Rc::new(CheckpointRowDisposition::ProvenUniqueKernelBinding {
+    proof: "No .dag declaration of the spelling Float remains: the Float de-fork (operator ruling relayed 2026-09-28) deleted std.float (Float = Float64 = Real64) and v2.std.float (Float = Binary64) together, and moved the IEEE 754-2019 binary64 facts to extdeps.standards.ieee_754_2019. What reaches this row is the kernel float_type mint and a bare Float in a module importing std.types Float, which is the same kernel name. What kernel Float MEANS is std.kernel_type_denotation (binary64), target-independent; this row states only how Rust spells it. That realization is checked against the denotation by extdeps.languages.rust.primitives rust_float_binding_verdict, and `f64` is a primitive token no use-line can shadow.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Bool".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::ProvenUniqueKernelBinding {
-    proof: "std.types Bool has an exact row (RustBool); v2.std.logic Bool is gated structural by structural_declaration_modules_for and never reaches this row; what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow.".to_string(),
+    proof: "std.types Bool has an exact row (RustBool) and is the only declaration of Bool (v2.std.logic's second declaration and its structural route were retired by the Bool de-fork, gunbc.defork_type_name_census ResolvedByDeletingV2); what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Unit".to_string(),

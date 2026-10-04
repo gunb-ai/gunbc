@@ -39,7 +39,7 @@ targets:
         CFBundleDisplayName: Approve
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UIBackgroundModes: [remote-notification]
-        ApproveServerHost: $(APPROVE_SERVER_HOST)
+        ApproveServerHost: srv1.tailecbe08.ts.net
         ApproveApnsEnvironment: $(APNS_ENVIRONMENT)
     entitlements:
       path: Approve/Approve.entitlements

@@ -216,8 +216,8 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.non_fold_residue", decl_name: "non_fold_residue_frontier"),
     unit_kind: "non-fold-residue site key (path::fn)",
     membership: DeclaredFrontier {
-      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6); per-row reasons and dissolution triggers in-row via shared class strings, dated landing receipts preserved; the host census (nfr_residue_sites) reads the rows through the record-row reader",
-      dissolution: unbound_dissolution(description: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the host scan and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
+      reason: "closed-coproduct wildcard sites classified un-migrated modeling (DESIGN §6); per-row reasons and dissolution triggers in-row via shared class strings, dated landing receipts preserved; the host's typed walk reads the rows through the record-row reader, diff-scoped on the required floor and whole-corpus in the census that derives the roster. POPULATION BOUND: the census types every module it can; a module carrying a blocking diagnostic is typed partially or not at all, so its wildcard sites are uncounted and unrostered=0 establishes the TYPED population only (the census output names the blocked modules; they re-census when they type)",
+      dissolution: unbound_dissolution(description: "per row: the site's wildcard arm migrates to a total match (or the fn is declared kernel-permanent, forcing deletion — DESIGN §6 exclusivity) and the row deletes; roster-wide, the typed walk and reader fold into a pure .dag Node-tree lens when compile-graph access lands (gunbc#5364)")
     }
   },
   RosterRegistration {

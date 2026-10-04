@@ -99,11 +99,76 @@ fn audit_conclusion_text(c: AuditConclusion) -> String {
   }
 }
 
-fn audit_premise_withholds_change(p: AuditPremise) -> Bool { match p { CapabilityWithheld { capability: ChangeTheTree } => true  _ => false } }
-fn audit_premise_offers_goal(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheApprovedGoal } => true  _ => false } }
-fn audit_premise_offers_cost(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheDisplacedCost } => true  _ => false } }
-fn audit_premise_offers_acceptance(p: AuditPremise) -> Bool { match p { EvidenceOffered { source: TheAcceptanceEvidence } => true  _ => false } }
-fn audit_premise_requires_verdict(p: AuditPremise) -> Bool { match p { VerdictFileAt { path: _ } => true  _ => false } }
+fn audit_premise_withholds_change(p: AuditPremise) -> Bool {
+  match p {
+    AuditorOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: c } => match c { ReadTheTree => false  RunTheAcceptanceCommand => false  ChangeTheTree => true  CommitOrPublish => false }
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
+}
+fn audit_premise_offers_goal(p: AuditPremise) -> Bool {
+  match p {
+    AuditorOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: s } => match s { TheApprovedGoal => true  TheDisplacedCost => false  TheHandbackConditions => false  TheAcceptanceEvidence => false  TheReviewReconciliation => false  TheDiffRange => false }
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
+}
+fn audit_premise_offers_cost(p: AuditPremise) -> Bool {
+  match p {
+    AuditorOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: s } => match s { TheApprovedGoal => false  TheDisplacedCost => true  TheHandbackConditions => false  TheAcceptanceEvidence => false  TheReviewReconciliation => false  TheDiffRange => false }
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
+}
+fn audit_premise_offers_acceptance(p: AuditPremise) -> Bool {
+  match p {
+    AuditorOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: s } => match s { TheApprovedGoal => false  TheDisplacedCost => false  TheHandbackConditions => false  TheAcceptanceEvidence => true  TheReviewReconciliation => false  TheDiffRange => false }
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => false
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
+}
+fn audit_premise_requires_verdict(p: AuditPremise) -> Bool {
+  match p {
+    AuditorOfOneCandidate => false
+    ToolIs { tool: _ } => false
+    ToolRunsInTheCandidateWorktreeAt { path: _ } => false
+    ToolReturnsCombinedOutput => false
+    EvidenceOffered { source: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    VerdictFileAt { path: _ } => true
+    VerdictShapeIs { shape: _ } => false
+    VerdictWordMeans { word: _ } => false
+  }
+}
 
 fn any_audit_premise(rows: List<AuditGroundedPremise>, f: fn(AuditPremise) -> Bool) -> Bool {
   any(rows, r => f(r.premise))

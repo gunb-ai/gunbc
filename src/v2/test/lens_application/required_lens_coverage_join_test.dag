@@ -1,5 +1,6 @@
 module v2.test.lens_application.required_lens_coverage_join
 
+import std.types { List }
 // THE EXECUTING CONSUMER OF THE REGISTRATION/OBSERVATION JOIN. The registration carries identity
 // and grain so that a witness can be joined back to the lens that produced it; this module is what
 // makes that claim green BY EXECUTION rather than by the fields existing. One positive control (a
@@ -50,12 +51,10 @@ import v2.compiler.compile {
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { Cons, Empty, fold_list, length, list_reverse }
 import std.algebra { list_append }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.test.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -63,6 +62,7 @@ import v2.test.lens_common.infer_fixture {
 }
 import v2.std.text { String, string_is_empty }
 import v2.std.witness { Holds, Witness }
+import v2.std.node_query { binder_edge }
 
 // COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5, verbatim). The check
 // these replace was `length(rows) == length(roster())`, and both sides derive from the same fold
@@ -323,10 +323,10 @@ data coverage_join_field_target: Node = Node {
 data coverage_join_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
-      label: Named { name: ^ram_bytes },
-      target: coverage_join_field_target
-    }
+    binder_edge(
+      name: ^ram_bytes,
+      type_node: coverage_join_field_target
+    )
   ],
   occurrence_id: OccurrenceSynthetic
 }
