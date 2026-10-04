@@ -1569,24 +1569,42 @@ type NativeEffectRealizationAdmission
   | NativeEffectOutsideProductionDenominator { effect_contract: NativeEffectContract, denominator: String }
   | NativeEffectRealizationUnavailable { effect_contract: NativeEffectContract, cause: NativeEffectUnavailableCause }
 
-// WHICH EFFECTS EACH NATIVE DENOMINATOR EXCLUDES, BY RULING. The compiler route (NativeCliDriver)
+// WHICH EFFECTS EACH NATIVE DENOMINATOR ADMITS, BY RULING. The compiler route (NativeCliDriver)
 // keeps the 2026-09-16 exclusion whole. The service route (NativeServeDriver) is the 2026-10-04
-// extension: Clock and Network come back in, Entropy and AuthContext stay out. An effect is matched
-// by its declared name, whether it is a service or a resource, so a clock reached as the
-// extdeps.clock service is excluded from the compiler route exactly as the std.resources Clock is.
+// extension: Clock and Network come back in, Entropy and AuthContext stay out. The claim route
+// (NativeClaimDriver, #13180) DECLARES its set instead of excluding from an open one: a claim report
+// may demand the Filesystem service and nothing else. An effect is matched by its declared name,
+// whether it is a service or a resource, so a clock reached as the extdeps.clock service is excluded
+// from the compiler route exactly as the std.resources Clock is.
+type NativeEffectDenominatorScope
+  = NativeAdmitAllExcept { excluded: List<String> }
+  | NativeAdmitOnly { admitted: List<String> }
+
 type NativeEffectDenominator {
   ruling: String
-  excluded_effects: List<String>
+  scope: NativeEffectDenominatorScope
+}
+
+fn native_effect_outside_denominator(denominator: NativeEffectDenominator, effect: String) -> Bool {
+  match denominator.scope {
+    NativeAdmitAllExcept { excluded: xs } => xs |> any(x => x == effect)
+    NativeAdmitOnly { admitted: xs } => (xs |> any(x => x == effect)) == false
+  }
 }
 
 data native_compiler_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
   ruling: "native compiler route: demand-engine-program D11 (operator, 2026-09-16)",
-  excluded_effects: ["Clock", "Network", "Entropy", "AuthContext"]
+  scope: NativeAdmitAllExcept { excluded: ["Clock", "Network", "Entropy", "AuthContext"] }
 }
 
 data native_service_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
   ruling: "native service route: D11 (operator, 2026-09-16) extended by gentle-dove-36 (2026-10-04) to admit Clock and Network",
-  excluded_effects: ["Entropy", "AuthContext"]
+  scope: NativeAdmitAllExcept { excluded: ["Entropy", "AuthContext"] }
+}
+
+data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
+  ruling: "native claim route: std.compiler_entry NativeClaimDriver declares the resource set {Filesystem} (#13180)",
+  scope: NativeAdmitOnly { admitted: ["Filesystem"] }
 }
 
 fn bound_operation_transport_kind(bound: BoundOperation) -> TransportKind? {
@@ -1605,7 +1623,7 @@ fn native_transport_kinds_insert(kinds: List<TransportKind>, kind: TransportKind
 
 fn admit_native_service_effect(service: String, item: Node?, denominator: NativeEffectDenominator, source_indices: Map<String, NewlineIndex>) -> NativeEffectRealizationAdmission {
   let contract = NativeServiceEffect { service: service }
-  if denominator.excluded_effects |> any(r => r == service) {
+  if native_effect_outside_denominator(denominator: denominator, effect: service) {
     return NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator.ruling }
   }
   match item {
@@ -1642,7 +1660,7 @@ type BoundOperationAt {
 
 fn admit_native_resource_effect(binding: String, resource: String, capability_count: Int?, denominator: NativeEffectDenominator) -> NativeEffectRealizationAdmission {
   let contract = NativeResourceEffect { binding: binding, resource: resource }
-  if denominator.excluded_effects |> any(r => r == resource) {
+  if native_effect_outside_denominator(denominator: denominator, effect: resource) {
     NativeEffectOutsideProductionDenominator { effect_contract: contract, denominator: denominator.ruling }
   } else {
     match capability_count {

@@ -268,7 +268,7 @@ import v1.compiler.emit {
   NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
   NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken,
   admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
-  NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator,
+  NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator, native_claim_route_denominator,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
@@ -17561,11 +17561,13 @@ type NativeEntryEffects {
 fn native_entry_function_name(modules: List<TypedModule>) -> String? {
   if compiler_pipeline_entry_is_native_serve(modules: modules) { Present { value: native_serve_entry_function } }
   else if compiler_pipeline_entry_is_native_cli(modules: modules) { Present { value: native_cli_entry_function } }
+  else if compiler_pipeline_entry_is_native_claim(modules: modules) { Present { value: native_claim_entry_function } }
   else { none }
 }
 
 data native_serve_entry_function: String = "native_serve_handle"
 data native_cli_entry_function: String = "v2_cli_main"
+data native_claim_entry_function: String = "native_claim_report"
 
 type NativeEffectDeclSite {
   item: Node
@@ -17587,7 +17589,9 @@ fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemIn
     Absent => none
     Present { value: entry_fn } => {
       let entry_module = compiler_pipeline_entry_module_name(modules: modules)
-      let denominator = if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator } else { native_compiler_route_denominator }
+      let denominator = if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator }
+        else if compiler_pipeline_entry_is_native_claim(modules: modules) { native_claim_route_denominator }
+        else { native_compiler_route_denominator }
       let entry_si = modules
         |> filter(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module) == entry_module)
         |> map(tm => tm.type_env.source_indices)
@@ -17725,7 +17729,8 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
-      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
+      )
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
       return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
@@ -17873,8 +17878,66 @@ fn emit_host_source_root_read_rs(crate_name: String) -> String {
 // gunbc test reads (0 held, 1 not held, 2 no observation). No code is taken from the program, so no
 // program can reach a fourth status or a failure spelled as 0. The reason goes to stderr so the case
 // rows on stdout stay the whole observation a reader joins by identity.
-fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+// WHAT THE REPORT DEMANDS OF ITS HOST is v1.compiler.emit NativeEffectRealizationAdmission, the one
+// verdict every native main reads (native_entry_effects, under native_claim_route_denominator: the
+// declared resource set {Filesystem}). A pure report gets the sync main below unchanged; a report that
+// demands effects gets the handlers the verdict admitted -- today only the existing filesystem_io
+// handler, the binding NativeCliDriver's main performs -- and any other demand has already refused
+// emission with NativeEffectRealizationAdmission's typed diagnostic, so no main is rendered for it.
+fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  if (bindings |> count) == 0 {
+    emit_native_claim_driver_pure_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod)
+  } else {
+    emit_native_claim_driver_effect_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod, bindings: bindings)
+  }
+}
+
+// The report's terminal mapping is shared by both mains: held 0, not held 1, no observation 2.
+fn native_claim_terminal_exit_lines() -> String {
+  concat(
+      "    print!(\"\{\}\", report.stdout);", "\n",
+      "    match &*report.terminal \{", "\n",
+      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
+      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
+      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
+      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+}
+
+// A transport error out of a bound handler is no observation (2), never a held or not-held case:
+// the report did not finish deciding.
+fn emit_native_claim_driver_effect_main_rs(crate_name: String, pipeline_mod: String, bindings: List<NativeEffectBindingText>) -> TextFile {
+  let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
+  let effect_args = bindings |> map(b => b.argument) |> join(separator: ", ")
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::native_claim_report;", "\n",
+      "\n",
+      "#[tokio::main(flavor = \"current_thread\")]", "\n",
+      "async fn main() \{", "\n",
+      binding_lines,
+      "    let report = match native_claim_report(", effect_args, ").await \{", "\n",
+      "        Ok(report) => report,", "\n",
+      "        Err(cause) => \{ eprintln!(\"NO OBSERVATION: native effect transport: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      native_claim_terminal_exit_lines(),
+      "\}", "\n")
+  }
+}
+
+fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: String) -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -17887,18 +17950,7 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
       "\n",
       "fn main() \{", "\n",
       "    let report = native_claim_report();", "\n",
-      "    print!(\"\{\}\", report.stdout);", "\n",
-      "    match &*report.terminal \{", "\n",
-      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
-      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
-      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
-      "            std::process::exit(1);", "\n",
-      "        \}", "\n",
-      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
-      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
+      native_claim_terminal_exit_lines(),
       "\}", "\n")
   }
 }

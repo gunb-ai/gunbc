@@ -2,6 +2,7 @@ module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, Set, String }
 import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 
 // THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
@@ -129,6 +130,23 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
+// NativeClaimDriver; v1.compiler.emit NativeEffectRealizationAdmission under native_claim_route_denominator). Reaching Filesystem
+// makes native_claim_report effectful, so this whole program runs only if the rendered main binds
+// the filesystem_io handler and awaits the report: remove the binding and the main calls an async,
+// handler-taking report with neither, which rustc refuses -- the red is the label's, not a row's.
+// The path sits under a root no host provisions, so the case decides the same way everywhere.
+fn control_absent_path_read_is_refused() -> Bool {
+  let read = Filesystem.Read(path: "/gunbc-native-emission-controls-absent/none")
+  !read.success && read.error != ""
+}
+
+fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "claim_driver_filesystem_absent_path_read_is_refused", held: control_absent_path_read_is_refused() }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -144,11 +162,12 @@ data native_emission_expected_identities: List<String> = [
   "filter_guard_nested_else_arm",
   "filter_guard_receipt_blank_tail_accepts",
   "filter_guard_receipt_red_nonblank_tail_refuses",
-  "filter_guard_receipt_red_empty_tag_short_circuits"
+  "filter_guard_receipt_red_empty_tag_short_circuits",
+  "claim_driver_filesystem_absent_path_read_is_refused"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(header_bound_cases(), filter_in_branch_condition_cases())
+  concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
