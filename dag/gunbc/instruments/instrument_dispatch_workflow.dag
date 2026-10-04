@@ -38,7 +38,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_assign_lit, bash_build_assign_var, bash_build_or_else,
   bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_test_bracket, bash_build_with_redir_to_file,
+  bash_build_test_bracket, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
   bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
   bash_build_exit, bash_build_if_from_stmts,
 }
@@ -335,7 +335,7 @@ fn instrument_dispatch_echo_to(words: List<Node>, file: String) -> Node {
 }
 
 // THE SEED: the receipt line, and placeholders the instrument step overwrites. A run that never reaches
-// the instrument uploads stdout `not-started` and exit `not-started`, never an absent artifact and never
+// the instrument uploads stdout, stderr and exit `not-started`, never an absent artifact and never
 // a fabricated exit code.
 fn instrument_dispatch_seed_statements() -> List<Node> {
   [
@@ -351,6 +351,7 @@ fn instrument_dispatch_seed_statements() -> List<Node> {
       bash_build_word_var(name: "GITHUB_RUN_ATTEMPT"),
     ], file: "receipt.txt"),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "not-started")], file: "stdout.txt"),
+    instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "not-started")], file: "stderr.txt"),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit=not-started")], file: "exit.txt"),
   ]
 }
@@ -376,24 +377,32 @@ fn instrument_dispatch_seed_step(script: String) -> Step {
 }
 
 // THE RUN SCRIPT. The seed step has already written the receipt; this overwrites the placeholders with
-// the instrument's stdout (also replayed into the log) and its exit, and the step fails exactly when the
-// instrument did not hold. The
-// instrument's stderr is left on the log, where its progress lines belong.
+// the instrument's stdout and stderr (each replayed into the log on its own stream) and its exit, and the
+// step fails exactly when the instrument did not hold. stderr is captured, not left on the log alone:
+// `gunbc test` writes its verdict there on a non-zero exit, so a run that did not hold would otherwise
+// upload an empty stdout and keep its receipt only in the lossy job log.
 fn instrument_dispatch_statements() -> List<Node> {
   [
     bash_build_assign_lit(name: "status", text: "0"),
     bash_build_or_else(
-      left: bash_build_with_redir_to_file(
-        inner: bash_build_command_with_words(words: [
-          bash_build_word_lit(text: "target/release/gunbc"),
-          bash_build_word_lit(text: "test"),
-          bash_build_word_var(name: "INSTRUMENT_LABEL"),
-        ]),
-        path: instrument_dispatch_path_word(file: "stdout.txt"),
+      left: bash_build_with_redir_stderr_to_file(
+        inner: bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "target/release/gunbc"),
+            bash_build_word_lit(text: "test"),
+            bash_build_word_var(name: "INSTRUMENT_LABEL"),
+          ]),
+          path: instrument_dispatch_path_word(file: "stdout.txt"),
+        ),
+        path: instrument_dispatch_path_word(file: "stderr.txt"),
       ),
       right: bash_build_assign_var(name: "status", var_name: "?"),
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stdout.txt")]),
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stderr.txt")]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit="), bash_build_word_var(name: "status")], file: "exit.txt"),
     bash_build_test_bracket(words: [bash_build_word_var(name: "status"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
   ]

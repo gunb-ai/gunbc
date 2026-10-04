@@ -7074,7 +7074,8 @@ pub fn emit_rust_selected(
             crate_name.clone(),
             EmittedCrateDependencyDemand {
                 renders_clap_cli: has_pipeline.clone(),
-                renders_async_services: has_services.clone(),
+                renders_async_services: (has_services.clone()
+                    || closure_renders_async_trait_resource(typed.clone())),
             },
         );
         let main_file = emit_main_rs(
@@ -36039,7 +36040,7 @@ pub fn emit_operation_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let output_type = render_rust_type(
+        let ret_type = render_rust_type(
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             shared_types.clone(),
             env.source_indices.clone(),
@@ -36054,24 +36055,6 @@ pub fn emit_operation_method(
             op_node.clone(),
             env.source_indices.clone(),
         );
-        let is_rest = match (*bound.clone()).clone() {
-            BoundOperation::RestBound { transport: _, .. } => true,
-            _ => false,
-        };
-        let ret_type = if is_rest.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("std::rc::Rc<".to_string(), rust_rest_result_path()),
-                        "<".to_string(),
-                    ),
-                    output_type.clone(),
-                ),
-                ">>".to_string(),
-            )
-        } else {
-            output_type.clone()
-        };
         let real_body = emit_transport_call(
             bound.clone(),
             op_text.clone(),
@@ -36097,7 +36080,7 @@ pub fn emit_operation_method(
             }
             __result
         });
-        let mock_body = emit_dry_run_branch_from_props(
+        let dry_run_body = emit_dry_run_branch_from_props(
             op_text.clone(),
             crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
             mock_props.clone(),
@@ -36108,11 +36091,6 @@ pub fn emit_operation_method(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let dry_run_body = if is_rest.clone() {
-            emit_rust_rest_answered_mock(mock_body.clone(), output_type.clone())
-        } else {
-            mock_body.clone()
-        };
         let body = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -36439,16 +36417,10 @@ pub fn emit_rest_call(
                     }
                     __result
                 });
-                let output_type = render_rust_type(
-                    crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-                );
-                let result_lowering = emit_rust_rest_result_lowering(
+                let send_line = "let response = request.send().await?;".to_string();
+                let response_handling = emit_response_code_handling(
                     op_node.clone(),
                     transport.clone(),
-                    output_type.clone(),
                     source_indices.clone(),
                     shared_types.clone(),
                     env.clone(),
@@ -36468,7 +36440,8 @@ pub fn emit_rest_call(
                         Rc::new(vec![
                             query_line.clone(),
                             body_line.clone(),
-                            result_lowering.clone(),
+                            send_line.clone(),
+                            response_handling.clone(),
                         ]),
                     )
                     .iter()
@@ -36945,6 +36918,14 @@ v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone())
 }
 }
 
+pub fn has_response_prefix(name: String) -> bool {
+    if (v1_rt::string_length(&name) < 9) {
+        false
+    } else {
+        (v1_rt::substring(&name, 0, 9) == "response_".to_string())
+    }
+}
+
 pub fn has_from_key_fields(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -37416,20 +37397,20 @@ pub fn emit_from_key_extraction(
                 let prelude = match wire_opt.clone() {
                     Some(tn) => {
                         if is_json_wire_declaration_type(tn.clone(), source_indices.clone()) {
-                            "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n".to_string()
+                            "let json_body: serde_json::Value = response.json().await?;\n"
+                                .to_string()
                         } else {
                             {
                                 let wire_ty = match tn.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
                                     _ => tn.clone(),
                                 };
-                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = serde_json::from_str(&__rest_text)?;\n".to_string())
+                                v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), source_indices.clone(), crate::v1_compiler_infer_emit_info::empty_emit_graph_info())), " = response.json().await?;\n".to_string())
                             }
                         }
                     }
                     std::option::Option::None => {
-                        "let json_body: serde_json::Value = serde_json::from_str(&__rest_text)?;\n"
-                            .to_string()
+                        "let json_body: serde_json::Value = response.json().await?;\n".to_string()
                     }
                 };
                 let extract_lines = Rc::new({
@@ -37471,7 +37452,13 @@ match ch.inferred.clone().as_deref().cloned() {
                     __result
                 });
                 let tuple_body = if ((field_names.clone().len() as i64) == 1) {
-                    field_names.clone().first().cloned().clone().unwrap()
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "(".to_string(),
+                            field_names.clone().first().cloned().clone().unwrap(),
+                        ),
+                        ",)".to_string(),
+                    )
                 } else {
                     v1_rt::concat(
                         v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())),
@@ -37513,9 +37500,9 @@ pub fn emit_plain_response_body(
             std::option::Option::None => false,
         };
         if is_text.clone() {
-            "Ok(__rest_text.clone())".to_string()
+            "let result = response.text().await?;\nOk(result)".to_string()
         } else {
-            "let result = serde_json::from_str(&__rest_text)?;\nOk(result)".to_string()
+            "let result = response.json().await?;\nOk(result)".to_string()
         }
     }
 }
@@ -37527,100 +37514,167 @@ pub fn emit_rust_boxed_error_return(message_expr: String) -> String {
     )
 }
 
-pub fn rust_rest_result_path() -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            "crate::".to_string(),
-            crate::gunbc_rust_emitted_edge::module_to_filename(
-                "extdeps.transports.rest".to_string(),
-            ),
-        ),
-        "::RestResult".to_string(),
-    )
-}
-
-pub fn rust_rest_refused(refusal_arm: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
-                        "::RestRefused { refusal: std::rc::Rc::new(crate::".to_string(),
-                    ),
-                    crate::gunbc_rust_emitted_edge::module_to_filename(
-                        "extdeps.transports.rest".to_string(),
-                    ),
-                ),
-                "::RestRefusal::".to_string(),
-            ),
-            refusal_arm.clone(),
-        ),
-        ") })".to_string(),
-    )
-}
-
-pub fn rust_rest_answered(answer_expr: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
-                "::RestAnswered { answer: ".to_string(),
-            ),
-            answer_expr.clone(),
-        ),
-        " })".to_string(),
-    )
-}
-
-pub fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "let __rest_answer = (|| -> Result<".to_string(),
-                                    output_type.clone(),
-                                ),
-                                ", Box<dyn std::error::Error>> {\n".to_string(),
-                            ),
-                            mock_body.clone(),
-                        ),
-                        "\n".to_string(),
-                    ),
-                    "})();\n".to_string(),
-                ),
-                "Ok(".to_string(),
-            ),
-            rust_rest_answered("__rest_answer?".to_string()),
-        ),
-        ")".to_string(),
-    )
-}
-
-pub fn emit_rust_rest_result_lowering(
+pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
-    output_type: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let decode = if has_from_key_fields(op_node.clone(), source_indices.clone()) {
-            emit_from_key_extraction(
-                op_node.clone(),
-                source_indices.clone(),
-                shared_types.clone(),
-                env.clone(),
-            )
+        let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
+        let response_props = Rc::new({
+            let mut __result = Vec::new();
+            for p in op_node.properties.clone().iter().cloned() {
+                if has_response_prefix(crate::v1_std_core::field_init_node_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                )) {
+                    __result.push(p);
+                }
+            }
+            __result
+        });
+        if ((response_props.clone().len() as i64) == 0) {
+            if use_from_key.clone() {
+                emit_from_key_extraction(
+                    op_node.clone(),
+                    source_indices.clone(),
+                    shared_types.clone(),
+                    env.clone(),
+                )
+            } else {
+                emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
+            }
         } else {
-            emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
+            {
+                let arms = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in response_props.iter().cloned() {
+                        __result.push(emit_response_arm(
+                            p.clone(),
+                            op_node.clone(),
+                            use_from_key.clone(),
+                            transport.clone(),
+                            source_indices.clone(),
+                            shared_types.clone(),
+                            env.clone(),
+                        ));
+                    }
+                    __result
+                });
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "let status = response.status().as_u16();\n".to_string(),
+                                        "match status {\n".to_string(),
+                                    ),
+                                    arms.clone().join(&"\n".to_string()),
+                                ),
+                                "\n    _ => ".to_string(),
+                            ),
+                            emit_rust_boxed_error_return(
+                                "format!(\"unexpected status code: {}\", status)".to_string(),
+                            ),
+                        ),
+                        "\n".to_string(),
+                    ),
+                    "}".to_string(),
+                )
+            }
+        }
+    }
+}
+
+pub fn emit_response_arm(
+    prop: Rc<Node>,
+    op_node: Rc<Node>,
+    use_from_key: bool,
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<BTreeSet<String>>,
+    env: Rc<TypeEnv>,
+) -> String {
+    {
+        let name =
+            crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
+        let code_str = v1_rt::substring(&name, 9, v1_rt::string_length(&name));
+        let is_success = if (v1_rt::string_length(&code_str) >= 1) {
+            (v1_rt::substring(&code_str, 0, 1) == "2".to_string())
+        } else {
+            false
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
+        let pattern = if (code_str.clone() == "nonzero".to_string()) {
+            "_".to_string()
+        } else {
+            if ((v1_rt::string_length(&code_str) == 3)
+                && (v1_rt::substring(&code_str, 1, 3) == "xx".to_string()))
+            {
+                {
+                    let prefix = v1_rt::substring(&code_str, 0, 1);
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(prefix.clone(), "00..=".to_string()),
+                            prefix.clone(),
+                        ),
+                        "99".to_string(),
+                    )
+                }
+            } else {
+                code_str.clone()
+            }
+        };
+        if is_success.clone() {
+            if use_from_key.clone() {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("    ".to_string(), pattern.clone()),
+                            " => { ".to_string(),
+                        ),
+                        emit_from_key_extraction(
+                            op_node.clone(),
+                            source_indices.clone(),
+                            shared_types.clone(),
+                            env.clone(),
+                        ),
+                    ),
+                    " },".to_string(),
+                )
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("    ".to_string(), pattern.clone()),
+                            " => { ".to_string(),
+                        ),
+                        emit_plain_response_body(
+                            op_node.clone(),
+                            transport.clone(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                    " },".to_string(),
+                )
+            }
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("    ".to_string(), pattern.clone()),
+                        " => { let err_body = response.text().await.unwrap_or_default(); "
+                            .to_string(),
+                    ),
+                    emit_rust_boxed_error_return(
+                        "format!(\"HTTP {}: {}\", status, err_body)".to_string(),
+                    ),
+                ),
+                " },".to_string(),
+            )
+        }
     }
 }
 
@@ -38646,6 +38700,34 @@ pub fn emit_local_call(op_name: String) -> String {
     )
 }
 
+pub fn resource_item_renders_async_trait(item: Rc<Node>) -> bool {
+    ((item.children.clone().len() as i64) > 0)
+}
+
+pub fn closure_renders_async_trait_resource(typed: Rc<ResolvedGraph>) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed.modules.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for item in tm.items.clone().iter().cloned() {
+                    if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource)
+                        && resource_item_renders_async_trait(item.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn emit_resource_def(
     item: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -38654,7 +38736,7 @@ pub fn emit_resource_def(
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let cap_children = item.children.clone();
-        if ((cap_children.clone().len() as i64) == 0) {
+        if !resource_item_renders_async_trait(item.clone()) {
             v1_rt::concat(
                 v1_rt::concat(
                     "#[derive(Debug, Clone)]\npub struct ".to_string(),
@@ -38740,12 +38822,41 @@ pub fn emit_capability_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let ret = render_rust_type(
-            crate::v1_compiler_infer_types::resolved_type(cap_node.clone()),
-            shared_types.clone(),
-            env.source_indices.clone(),
-            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-        );
+        let out = crate::v1_compiler_infer_types::resolved_type(cap_node.clone());
+        let ret = if ((out.connective.clone() == Connective::Conj)
+            && (out.ident_span.clone() == std::option::Option::None))
+        {
+            v1_rt::concat(
+                v1_rt::concat(
+                    "(".to_string(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for f in out.children.clone().iter().cloned() {
+                            __result.push(render_rust_fn_sig_type(
+                                crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                env.source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, String>(),
+                                env.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string()),
+                ),
+                ")".to_string(),
+            )
+        } else {
+            render_rust_fn_sig_type(
+                out.clone(),
+                Rc::new(vec![]),
+                shared_types.clone(),
+                env.source_indices.clone(),
+                v1_rt::rc_empty_map::<String, String>(),
+                env.clone(),
+            )
+        };
         let items = rust_items();
         v1_rt::concat(
             v1_rt::concat(

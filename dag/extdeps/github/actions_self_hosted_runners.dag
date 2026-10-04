@@ -1,0 +1,118 @@
+module extdeps.github.actions_self_hosted_runners
+
+import std.types { String, NonEmptyStr, Int, List, Secret }
+import extdeps.github.github { default_api_base }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import std.resources { Network }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#list-self-hosted-runners-for-an-organization",
+  }
+}
+
+data delete_organization_runner_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.github.com/en/rest/actions/self-hosted-runners#delete-a-self-hosted-runner-from-an-organization",
+  }
+}
+
+// THE ORGANIZATION'S RUNNER LISTING, FILTERED BY NAME, IS THE READBACK FOR WHETHER A REGISTRATION
+// EXISTS. Upstream's list operation takes a `name` query parameter and answers `total_count` beside
+// the `runners` page (REST API version 2022-11-28). A name is the identity this fleet minted the
+// registration under (extdeps.github.actions_jit_runner JitRunnerConfigRequest name), so a lookup by
+// name answers for a registration whose runner id was never received -- a mint whose answer was
+// lost still left a runner under that name, and a readback keyed by id could not see it.
+//
+// Only the two fields a consumer reads are modeled; the rest of upstream's runner schema (os,
+// status, busy, labels) has no reader here and would be a declaration nothing consumes.
+type OrganizationRunnerWire {
+  id: Int
+  name: String
+}
+
+type OrganizationRunnerListWire {
+  total_count: Int
+  runners: List<OrganizationRunnerWire>
+}
+
+// THE DELETE ANSWERS 204 WITH NO BODY. It is the same organization self-hosted-runners write
+// permission as the JIT mint (extdeps.github.effect DeleteOrganizationRunner).
+type OrganizationRunnerDeletedBody {}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.actions_self_hosted_runners",
+      decl_name: "OrganizationRunnerListWire",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [delete_organization_runner_citation]
+}
+
+data organization_runners_max_per_page: Int = 100
+
+service github.ActionsSelfHostedRunners {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_input: installation_token
+  }
+
+  operation ListOrganizationRunnersByName {
+    requires Network
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      name: NonEmptyStr
+      per_page: Int = organization_runners_max_per_page
+    }
+    output {
+      result: OrganizationRunnerListWire
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/orgs/\{org\}/actions/runners",
+      query: { name: name, per_page: per_page }
+    }
+    response {
+      200 => OrganizationRunnerListWire
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+
+  operation DeleteOrganizationRunner {
+    requires Network
+    input {
+      installation_token: Secret
+      org: NonEmptyStr
+      runner_id: Int
+    }
+    output {
+      result: OrganizationRunnerDeletedBody
+    }
+    transport rest {
+      method: DELETE,
+      path: "/orgs/\{org\}/actions/runners/\{runner_id\}"
+    }
+    response {
+      204 => OrganizationRunnerDeletedBody
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+  }
+}
