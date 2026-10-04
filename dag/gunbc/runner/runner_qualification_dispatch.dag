@@ -56,8 +56,21 @@ fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
 // A DISPATCH IS ONE ATTEMPT AND ITS ANSWER IS THE RECEIPT OR THE REFUSAL, never a run assumed to
 // exist. The run id comes from GitHub's 2026-03-10 response (WorkflowDispatchReceipt); a refused or
 // unreached request carries its RestOutcome and mints no run.
+//
+// THE DISPATCHED RUN IS SEALED, AND THAT IS WHAT PUTS COLLECTION CAUSALLY AFTER DISPATCH.
+// WorkflowDispatchReceipt is a plain upstream record anyone can write, so a collect fold taking one
+// would read back whatever run id a caller named. DispatchedQualificationRun is sole_constructor:
+// only this file can write it, and in this file only dispatch_qualification_floor does, from a
+// RestOk answer. collect_qualification_run takes that value, so no run is collected that this
+// module did not dispatch, for this target and this attempt.
+type DispatchedQualificationRun sole_constructor {
+  target: QualificationWorkflowTarget
+  attempt: NonEmptyStr
+  receipt: WorkflowDispatchReceipt
+}
+
 type QualificationDispatch
-  = QualificationDispatched { attempt: NonEmptyStr, receipt: WorkflowDispatchReceipt }
+  = QualificationDispatched { run: DispatchedQualificationRun }
   | QualificationDispatchRefused { attempt: NonEmptyStr, outcome: RestOutcome }
 
 fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: NonEmptyStr) -> QualificationDispatch uses net: Network {
@@ -71,11 +84,14 @@ fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: No
   match answered.outcome {
     RestOk =>
       QualificationDispatched {
-        attempt: attempt,
-        receipt: WorkflowDispatchReceipt {
-          workflow_run_id: answered.workflow_run_id,
-          run_url: answered.run_url,
-          html_url: answered.html_url,
+        run: DispatchedQualificationRun {
+          target: target,
+          attempt: attempt,
+          receipt: WorkflowDispatchReceipt {
+            workflow_run_id: answered.workflow_run_id,
+            run_url: answered.run_url,
+            html_url: answered.html_url,
+          },
         },
       }
     other => QualificationDispatchRefused { attempt: attempt, outcome: other }
@@ -83,6 +99,10 @@ fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: No
 }
 
 // ── COLLECT: THE RUN READ BACK, ENSURE-STYLE ──────────────────────────────────────────────────
+//
+// THE SUBJECT IS THE DISPATCHED RUN, CHECKED ON THE READBACK: the run read must carry the id the
+// dispatch returned and the workflow_dispatch event, and every job listed must belong to it;
+// anything else is RunSubjectMismatch, never a collection of some other run.
 //
 // A DISPATCH RECEIPT SAYS A RUN EXISTS, NOT THAT THE ATTEMPT'S RUNNER SERVED IT. The collection
 // therefore decides only from what GitHub reports about the run now: the run must be Completed with
@@ -101,17 +121,25 @@ type QualificationRunRefusal
   | RunJobsUnreadable { outcome: RestOutcome }
   | RunJobsTruncated { returned: Int, total: Int }
   | RunNeverReachedAttemptRunner { job_labels: List<List<String>> }
+  | RunSubjectMismatch { observed_run_id: Int, observed_event: String, foreign_job_run_ids: List<Int> }
 
 // INSTRUMENT EXTRACTION IS A DECLARED FRONTIER, carried on the collected arm as the instruments the
 // run was read for and not yet extracted from (qualification_instrument_extraction_frontier_rows).
+//
+// THE SUCCESS PAYLOAD IS SEALED: CollectedQualificationRun is sole_constructor, written only by
+// conclude_qualification_run, whose callers are admitted by name -- the one production reader,
+// collect_qualification_run, and the witness declarations that supply readbacks at that interface.
+// A module elsewhere cannot mint "this host ran the floor" without a readback.
+type CollectedQualificationRun sole_constructor {
+  attempt: NonEmptyStr
+  run_id: Int
+  conclusion: WorkflowRunConclusion
+  attempt_jobs: List<WorkflowJobRun>
+  instruments_unextracted: List<QualificationInstrument>
+}
+
 type QualificationRunCollection
-  = QualificationRunCollected {
-      attempt: NonEmptyStr
-      run_id: Int
-      conclusion: WorkflowRunConclusion
-      attempt_jobs: List<WorkflowJobRun>
-      instruments_unextracted: List<QualificationInstrument>
-    }
+  = QualificationRunCollected { collected: CollectedQualificationRun }
   | QualificationRunRefused { attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal }
 
 fn job_served_by_attempt(job: WorkflowJobRun, attempt: NonEmptyStr) -> Bool {
@@ -130,9 +158,19 @@ fn conclude_qualification_run(
   run: WorkflowRun,
   jobs_outcome: RestOutcome,
   jobs: WorkflowJobRunList,
-) -> QualificationRunCollection {
+) -> QualificationRunCollection
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_run"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "conclude"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_truncated_or_unreadable_readback_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_readback_of_another_run_refuses_on_the_subject"),
+  ]
+{
   match run_outcome {
     RestOk =>
+      if run.id != run_id || run.event != "workflow_dispatch" {
+        refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: [] })
+      } else {
       match run.status {
         Completed =>
           match run.conclusion {
@@ -143,17 +181,24 @@ fn conclude_qualification_run(
                   if count(jobs.jobs) != jobs.total_count {
                     refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count })
                   } else {
+                    let foreign = jobs.jobs |> filter(j => j.run_id != run_id) |> map(j => j.run_id)
+                    if count(foreign) != 0 {
+                      refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: foreign })
+                    } else {
                     let served = jobs.jobs |> filter(j => job_served_by_attempt(job: j, attempt: attempt))
                     if count(served) == 0 {
                       refuse_run(attempt: attempt, run_id: run_id, refusal: RunNeverReachedAttemptRunner { job_labels: jobs.jobs |> map(j => j.labels) })
                     } else {
                       QualificationRunCollected {
-                        attempt: attempt,
-                        run_id: run_id,
-                        conclusion: conclusion,
-                        attempt_jobs: served,
-                        instruments_unextracted: qualification_instruments,
+                        collected: CollectedQualificationRun {
+                          attempt: attempt,
+                          run_id: run_id,
+                          conclusion: conclusion,
+                          attempt_jobs: served,
+                          instruments_unextracted: qualification_instruments,
+                        },
                       }
+                    }
                     }
                   }
                 other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsUnreadable { outcome: other })
@@ -161,28 +206,26 @@ fn conclude_qualification_run(
           }
         other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunNotCompleted { status: other })
       }
+      }
     other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunReadUnreadable { outcome: other })
   }
 }
 
 fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
   match c {
-    QualificationRunCollected { attempt: _, run_id: _, conclusion: _, attempt_jobs: _, instruments_unextracted: _ } => true
+    QualificationRunCollected { collected: _ } => true
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
 
-fn collect_qualification_run(
-  target: QualificationWorkflowTarget,
-  dispatched: WorkflowDispatchReceipt,
-  attempt: NonEmptyStr,
-) -> QualificationRunCollection uses net: Network {
-  let run_id = dispatched.workflow_run_id as String
+fn collect_qualification_run(dispatched: DispatchedQualificationRun) -> QualificationRunCollection uses net: Network {
+  let target = dispatched.target
+  let run_id = dispatched.receipt.workflow_run_id as String
   let read = github.WorkflowRuns.GetRun(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
   let jobs = github.WorkflowRuns.ListJobs(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
   conclude_qualification_run(
-    attempt: attempt,
-    run_id: dispatched.workflow_run_id,
+    attempt: dispatched.attempt,
+    run_id: dispatched.receipt.workflow_run_id,
     run_outcome: read.outcome,
     run: read.run,
     jobs_outcome: jobs.outcome,

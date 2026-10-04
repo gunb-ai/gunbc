@@ -12,7 +12,7 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_attempt_dispatch_input, qualification_dispatch_inputs,
   QualificationRunCollection, QualificationRunCollected, QualificationRunRefused,
   RunReadUnreadable, RunNotCompleted, RunCompletedWithoutConclusion, RunJobsUnreadable,
-  RunJobsTruncated, RunNeverReachedAttemptRunner,
+  RunJobsTruncated, RunNeverReachedAttemptRunner, RunSubjectMismatch,
   conclude_qualification_run, qualification_run_collected,
 }
 
@@ -89,10 +89,10 @@ fn conclude(run_completed: Bool, concluded: Bool, js: WorkflowJobRunList) -> Qua
 // silent empty reading.
 test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion() -> Bool {
   match conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
-    QualificationRunCollected { attempt: a, run_id: r, conclusion: c, attempt_jobs: served, instruments_unextracted: u } =>
-      a == attempt && r == 77 && count(served) == 1
-        && (match c { Failure => true _ => false })
-        && count(u) == count(qualification_instruments)
+    QualificationRunCollected { collected: c } =>
+      c.attempt == attempt && c.run_id == 77 && count(c.attempt_jobs) == 1
+        && (match c.conclusion { Failure => true _ => false })
+        && count(c.instruments_unextracted) == count(qualification_instruments)
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
@@ -147,4 +147,23 @@ test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
       QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsUnreadable { outcome: _ } } => true
       _ => false
     })
+}
+
+// THE SUBJECT IS THE DISPATCHED RUN: a readback naming another run id, or listing a job of another
+// run, refuses as RunSubjectMismatch even when everything else would collect -- the served job
+// below carries the attempt label and started, so only the subject check can turn it red.
+test fn a_readback_of_another_run_refuses_on_the_subject() -> Bool {
+  let served = jobs(js: [job(labels: [attempt as String], started: true)])
+  let other_run = conclude_qualification_run(
+    attempt: attempt, run_id: 78,
+    run_outcome: RestOk, run: run(status_completed: true, concluded: true),
+    jobs_outcome: RestOk, jobs: served,
+  )
+  let foreign_job = conclude(run_completed: true, concluded: true, js: jobs(js: [WorkflowJobRun {
+    id: 501, run_id: 99, run_attempt: 1, name: "floor", status: Completed,
+    conclusion: Present { value: Success }, labels: [attempt as String],
+    created_at: none, started_at: Present { value: "2026-10-04T00:01:00Z" }, completed_at: none,
+  }]))
+  (match other_run { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: 77, observed_event: _, foreign_job_run_ids: _ } } => true _ => false })
+    && (match foreign_job { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: _, observed_event: _, foreign_job_run_ids: f } } => count(f) == 1 && (f |> all(x => x == 99)) _ => false })
 }
