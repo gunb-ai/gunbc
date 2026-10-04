@@ -1,0 +1,12 @@
+module gunbc.fleet_converge_scope
+
+// Dispatch names a scope without loading the observers and controllers that realize it.
+// The planner and workflow import this same closed vocabulary.
+type FleetConvergeScope
+  = FullHost
+  | LaunchEnvironment
+  | FabricExecutionCellsOnly
+  | FabricAllocationStoreOnly
+  | WorkspaceAllocationOnly
+  | WorkspaceSlotCommissioningOnly
+  | LiveDeploy

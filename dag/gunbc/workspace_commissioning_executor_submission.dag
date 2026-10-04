@@ -1,0 +1,238 @@
+module gunbc.workspace_commissioning_executor_submission
+
+import std.types { String, NonEmptyStr, Bool }
+import std.decl_ref { decl_ref }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent }
+import std.content_hash { content_hash_validate_lower_hex_length }
+import std.durable_compare_and_set { CasGeneration }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
+import gunbc.workspace_commissioning_executor_input { WorkspaceExecutorInput, workspace_executor_input_observe, WorkspaceExecutorInputObserved }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorSubject, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
+  workspace_executor_recorded_directive,
+}
+import gunbc.workspace_commissioning_executor_store {
+  WorkspaceExecutorJournalSnapshot, workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished,
+}
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutation_matches }
+import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved }
+import gunbc.workspace_commissioning_start_observe {
+  workspace_commissioning_start_observe, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartObserved,
+}
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_key, workspace_commissioning_mutation_owner,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationLeaseHeld,
+}
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.workspace_commissioning_admission_observe { workspace_observe_commissioning_admission }
+import gunbc.workspace_commissioning { WorkspaceCommissioningReady }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_path }
+import gunbc.runner_microvm_slot_unit { workspace_launch_credential_source_path }
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent }
+import std.algebra { trim }
+import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, WorkspaceCommissioningFleetObserved }
+
+type WorkspaceExecutorPreparation
+  = WorkspaceExecutorPrepared { directive: String }
+  | WorkspaceExecutorPreparationRefused { reason: String }
+
+data workspace_executor_credential_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: false, write: false, execute: false },
+  other: PermissionBits { read: false, write: false, execute: false },
+  setuid: false, setgid: false, sticky: false,
+}
+
+// Only a held, unclaimed/fenced submission may replace the runtime credential snapshot.
+// An existing unrelated file refuses. Each publication is create-only with a declared mode;
+// interruption between delete and create leaves the controller unable to claim this submission.
+fn workspace_executor_credential_publish(path: String, previous: String?, desired: String) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_arm")]
+{
+  match read_store_ownership(path: "/etc/credstore") {
+    OwnershipRead { ownership: StoreRootOwned } => {
+      let read = Filesystem.Read(path: path)
+      let absent = match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+        FilesystemExactPathAbsent { path: _ } => true
+        FilesystemExactPathRead { path: _, content } => if content == desired { false }
+          else if (match previous { Present { value } => content == value _ => false }) {
+            match read_store_ownership(path: path) {
+              OwnershipRead { ownership: StoreRootOwned } => Filesystem.Delete(path: path).success
+              _ => false
+            }
+          } else { false }
+        _ => false
+      }
+      let wrote = if absent { Filesystem.WriteCreateNewWithMode(path: path, content: desired,
+        mode: file_mode_bits(mode: workspace_executor_credential_mode)).success } else { false }
+      if !wrote && (!read.success || read.content != desired) { false } else {
+        let back = Filesystem.Read(path: path)
+        back.success && back.content == desired
+          && (match read_store_ownership(path: path) { OwnershipRead { ownership: StoreRootOwned } => true _ => false })
+      }
+    }
+    _ => false
+  }
+}
+
+// No executor journal means no controller could have passed its CAS gate. If preparation died
+// after taking the guard, the next actual executor can retain that exact plan-owned generation.
+// A released/foreign/unreadable hold is not an initial preparation state.
+fn workspace_executor_initial_guard(slot: NonEmptyStr, plan: NonEmptyStr) -> CasGeneration?
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_prepare")]
+{
+  match read_store_ownership(path: workspace_commissioning_store_location) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr,
+      key: workspace_slot_mutation_key(slot_key: slot)) {
+      HoldSlotHeld { owner, generation } => if owner == workspace_commissioning_mutation_owner(plan_hash: plan) {
+        Present { value: generation }
+      } else { none }
+      HoldSlotAbsent => match workspace_slot_mutation_acquire(slot_key: slot, owner: workspace_commissioning_mutation_owner(plan_hash: plan)) {
+        WorkspaceSlotMutationAdmitted { lease: WorkspaceSlotMutationLeaseHeld { held } } => Present { value: held.generation }
+        _ => none
+      }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> WorkspaceExecutorPreparation {
+  match workspace_executor_input_observe(slot: slot, executor: executor) {
+    WorkspaceExecutorInputObserved { input } => match workspace_executor_journal_observe(slot_key: slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Absent => match run_shell_command_capture(command: fleet_generation_publication_as_owner(action: "admit",
+          host: input.plan.provenance.slot.host as NonEmptyStr, prior: input.plan.receipt.prior_generation,
+          planned: input.plan.receipt.planned_generation, bundle: input.plan.bundle), transport: LocalExec) {
+          ProcessOutputPresent { text } => if trim(s: text) != "apply" {
+            WorkspaceExecutorPreparationRefused { reason: "unsubmitted commissioning cannot inherit a pending fleet publication" }
+          } else { match workspace_commissioning_basis_observe(provenance: input.plan.provenance) {
+            WorkspaceCommissioningFleetObserved { basis } => if basis.already_committed || basis.prestate != input.plan.prestate {
+              WorkspaceExecutorPreparationRefused { reason: "commissioning prestate changed since the reviewed fleet plan" }
+            } else { match workspace_executor_initial_guard(slot: slot, plan: input.plan.provenance.plan_hash) {
+              Present { value: generation } => workspace_executor_arm(input: input, executor: executor, snapshot: snapshot, generation: generation)
+              _ => WorkspaceExecutorPreparationRefused { reason: "initial mutation generation is unavailable" }
+            } }
+            _ => WorkspaceExecutorPreparationRefused { reason: "reviewed commissioning prestate is not established" }
+          } }
+          _ => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
+        }
+        Present { value: record } => if record.subject.plan_hash != input.plan.provenance.plan_hash
+          || record.subject.fleet_bundle_hash != input.plan.bundle {
+          WorkspaceExecutorPreparationRefused { reason: "existing executor belongs to another reviewed plan" }
+        } else { match record.phase {
+          ExecutorSubmissionRecorded => workspace_executor_fence_submission(snapshot: snapshot, record: record, executor: executor)
+          ExecutorSubmissionFenced => if workspace_executor_mutation_matches(record: record) && record.submitter != executor {
+            WorkspaceExecutorPrepared { directive: "drain:none" }
+          } else { WorkspaceExecutorPreparationRefused { reason: "fenced submission has no replacement actor and exact guard" } }
+          _ => match workspace_executor_recorded_directive(record: record) {
+            Present { value } => WorkspaceExecutorPrepared { directive: value }
+            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
+          }
+        } }
+      }
+      _ => WorkspaceExecutorPreparationRefused { reason: "executor journal is unreadable" }
+    }
+    _ => WorkspaceExecutorPreparationRefused { reason: "reviewed executor input is unavailable" }
+  }
+}
+
+// CAS decides the race with the controller. If the controller won, no stop is requested.
+// Only after the fence is durably read back may the native transport drain the slot unit.
+fn workspace_executor_fence_submission(snapshot: WorkspaceExecutorJournalSnapshot,
+  record: WorkspaceExecutorRecord, executor: NonEmptyStr) -> WorkspaceExecutorPreparation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_prepare")]
+{
+  if record.submitter == executor || !workspace_executor_mutation_matches(record: record) {
+    WorkspaceExecutorPreparationRefused { reason: "cannot fence a live original submitter or a changed mutation" }
+  } else { match workspace_executor_journal_publish(snapshot: snapshot, record: WorkspaceExecutorRecord {
+    subject: record.subject, submitter: record.submitter, previous_invocation: record.previous_invocation,
+    invocation: "", phase: ExecutorSubmissionFenced,
+  }) {
+    WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorPrepared { directive: "drain:none" }
+    _ => WorkspaceExecutorPreparationRefused { reason: "submission fence lost CAS; reread the winner without stopping it" }
+  } }
+}
+
+// The native transport has performed a bounded blocking StopUnit. Reobserve independently;
+// a timeout, pending job, nonzero PID or changed identity never grants permission to rearm.
+fn workspace_executor_rearm(slot: NonEmptyStr, executor: NonEmptyStr) -> WorkspaceExecutorPreparation {
+  match workspace_executor_input_observe(slot: slot, executor: executor) {
+    WorkspaceExecutorInputObserved { input } => match workspace_executor_journal_observe(slot_key: slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.phase != ExecutorSubmissionFenced
+          || record.submitter == executor || record.subject.plan_hash != input.plan.provenance.plan_hash
+          || record.subject.fleet_bundle_hash != input.plan.bundle || !workspace_executor_mutation_matches(record: record) {
+          WorkspaceExecutorPreparationRefused { reason: "rearm has no matching fenced submission" }
+        } else { workspace_executor_arm(input: input, executor: executor, snapshot: snapshot, generation: record.subject.mutation_generation) }
+        _ => WorkspaceExecutorPreparationRefused { reason: "rearm has no recorded fence" }
+      }
+      _ => WorkspaceExecutorPreparationRefused { reason: "rearm journal is unreadable" }
+    }
+    _ => WorkspaceExecutorPreparationRefused { reason: "rearm input is unavailable" }
+  }
+}
+
+fn workspace_executor_arm(input: WorkspaceExecutorInput, executor: NonEmptyStr,
+  snapshot: WorkspaceExecutorJournalSnapshot, generation: CasGeneration) -> WorkspaceExecutorPreparation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_prepare"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_rearm"),
+  ]
+{
+  let provenance = input.plan.provenance
+  let slot = runner_slot_instance_name(slot: provenance.slot)
+  let unit = microvm_slot_unit_instance_name(slot_instance: slot as String)
+  match workspace_commissioning_start_observe(unit: unit) {
+    WorkspaceCommissioningStartObserved { snapshot: before } => if !workspace_commissioning_start_quiescent(snapshot: before) {
+      WorkspaceExecutorPreparationRefused { reason: "slot has a running or queued controller; no new start admitted" }
+    } else { match workspace_observe_commissioning_admission(provenance: provenance, release_dir: input.release_dir,
+      login: input.login, network: input.network) {
+      WorkspaceCommissioningReady { commissioned: _ } => {
+        let token_read = Filesystem.Read(path: workspace_commissioning_submitter_path(instance: slot as String))
+        let old_submitter: String? = if token_read.success
+          && content_hash_validate_lower_hex_length(text: token_read.content, expected_hex_digits: 32) {
+          Present { value: token_read.content }
+        } else { none }
+        let credential = workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String
+        if !workspace_executor_credential_publish(path: workspace_launch_credential_source_path(instance: slot as String), previous: none, desired: credential)
+          || !workspace_executor_credential_publish(path: workspace_commissioning_submitter_path(instance: slot as String), previous: old_submitter, desired: executor as String) {
+          WorkspaceExecutorPreparationRefused { reason: "canonical invocation credentials could not be installed and read back" }
+        } else { match workspace_commissioning_start_observe(unit: unit) {
+          WorkspaceCommissioningStartObserved { snapshot: after } => if before != after {
+            WorkspaceExecutorPreparationRefused { reason: "controller changed during submission preparation" }
+          } else {
+            let record = WorkspaceExecutorRecord {
+              subject: WorkspaceExecutorSubject { slot: slot, plan_hash: provenance.plan_hash, fleet_bundle_hash: input.plan.bundle,
+                prior_fleet_generation: input.plan.receipt.prior_generation, planned_fleet_generation: input.plan.receipt.planned_generation,
+                mutation_generation: generation },
+              submitter: executor, previous_invocation: after.invocation, invocation: "", phase: ExecutorSubmissionRecorded,
+            }
+            if !workspace_executor_mutation_matches(record: record) { WorkspaceExecutorPreparationRefused { reason: "mutation changed before submission" } }
+            else { match workspace_executor_journal_publish(snapshot: snapshot, record: record) {
+              WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorPrepared {
+                directive: concat("start:", if after.invocation == "" { "none" } else { after.invocation }),
+              }
+              _ => WorkspaceExecutorPreparationRefused { reason: "submission publication is unsettled; do not start" }
+            } }
+          }
+          _ => WorkspaceExecutorPreparationRefused { reason: "controller became unreadable during preparation" }
+        } }
+      }
+      _ => WorkspaceExecutorPreparationRefused { reason: "fresh commissioning admission refused; mutation retained" }
+    } }
+    _ => WorkspaceExecutorPreparationRefused { reason: "controller prestate is unreadable" }
+  }
+}

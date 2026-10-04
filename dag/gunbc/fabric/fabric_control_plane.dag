@@ -1,5 +1,10 @@
 module gunbc.fabric_control_plane
 
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_release,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
+}
+
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { Fnv1a64StructuralDigestHex, serialize_content_hash }
 import std.decl_ref { decl_ref }
@@ -232,6 +237,28 @@ fn reserve_selected_cell(
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation {
+  let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id))
+  match workspace_slot_mutation_acquire(slot_key: slot_key, owner: owner) {
+    WorkspaceSlotMutationRefused { reason } => AttemptRefused { slot_key: slot_key, detail: reason }
+    WorkspaceSlotMutationAdmitted { lease } => {
+      let result = reserve_selected_cell_under_exclusion(root: root, slot_key: slot_key,
+        demand_id: demand_id, offer_id: offer_id, account: account)
+      if workspace_slot_mutation_release(lease: lease) { result }
+      else { AttemptRefused { slot_key: slot_key,
+        detail: "reservation operation returned but mutation exclusion is unsettled; observe the existing hold before recovery" } }
+    }
+  }
+}
+
+fn reserve_selected_cell_under_exclusion(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
+  account: MoneyAccount,
+) -> CellReservation
+  admit_callers: [decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "reserve_selected_cell")]
+{
   match file_hold_acquire(
     root: root,
     slot_key: slot_key,

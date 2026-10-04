@@ -1,0 +1,108 @@
+module gunbc.workspace_prepare_convergence
+
+import gunbc.clock_read { clock_now_probed_at }
+import extdeps.clock { clock_timestamp_to_unix_secs, ClockTimestampObserved, ClockTimestampRefused }
+
+import std.types { String, NonEmptyStr, List, Timestamp, EpochSecs }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import product.fabric.demand { BuyTerms }
+import product.fabric.selection { ResourceBudgetPolicy }
+import product.fabric.supply { GrantDuration }
+import product.fabric.budget { MoneyAccount }
+import product.fabric.provider_route { ProviderRouteFacts, CompliancePostureRevision }
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
+import product.fabric.candidate_field { FieldRequest }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { WorkspaceRequest }
+import gunbc.workspace_allocation_reservation { workspace_demand }
+import gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }
+import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
+import gunbc.workspace_tool_observer { WorkspaceToolsObserved }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence }
+import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_candidate_field, workspace_supply_from_field }
+import gunbc.workspace_offer_producer { WorkspaceOfferTerms, workspace_offer_from_observations, WorkspaceOfferProduced, WorkspaceOfferUnmet }
+import gunbc.workspace_preparation { workspace_prepare_recorded_intent, WorkspacePreparationRecorded, WorkspacePreparationUnmet }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceObservation, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved, workspace_convergence_observe }
+
+type WorkspacePreparationEvidence {
+  commissioned: WorkspaceCommittedCommissioning
+  image: VerifiedWorkspaceImage
+  host: WorkspaceHostSupplyObservation
+  tools: WorkspaceToolsObserved
+  gateway: WorkspaceGatewayEvidence
+  terms: WorkspaceOfferTerms
+  route_facts: ProviderRouteFacts
+}
+type WorkspacePreparationPolicy {
+  resource_budget: ResourceBudgetPolicy<NonEmptyStr>
+  sanctions: List<RouteScopeSanction>
+  active: CompliancePostureRevision
+  scope: ProviderUseScope<NonEmptyStr>
+  decision_receipt: DeclarationRef
+  exercises: List<RouteExercise>
+  readiness: RouteReadinessRequirement<NonEmptyStr>
+  buy: BuyTerms
+  initial_account: MoneyAccount
+  duration: GrantDuration
+}
+type WorkspaceProducedField { offers: List<FieldRequest<NonEmptyStr>>, routes: List<OfferRouteRow<NonEmptyStr>>, unmet: List<NonEmptyStr> }
+
+// Preparation enters the same sealed convergence basis as the existing plan/apply path. It never
+// acquires a hold or starts a VM. Empty commissioning evidence cannot manufacture a provider offer.
+fn workspace_prepare_convergence_at_observed_clock(store: FabricStorageBinding, root: NonEmptyStr,
+  request: WorkspaceRequest, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  evidence: List<WorkspacePreparationEvidence>, policy: WorkspacePreparationPolicy,
+  submitted_at: Timestamp, now: Timestamp, at: EpochSecs) -> WorkspaceConvergenceObservation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_prepare_convergence", decl_name: "workspace_prepare_convergence_from_observations")]
+{
+  let admitted_demand = workspace_demand(request: request, submitted_at: submitted_at, buy: policy.buy)
+  if !fabric_identity_eq(left: policy.scope.demand, right: admitted_demand.id)
+    || !fabric_identity_eq(left: policy.scope.work, right: admitted_demand.work) {
+    WorkspaceConvergenceUnobserved { reason: "provider-use policy scope belongs to another demand or Work" }
+  } else {
+  let produced = fold(evidence, init: WorkspaceProducedField { offers: [], routes: [], unmet: [] }, f: (acc, sample) =>
+    match workspace_offer_from_observations(root: root, request: request, commissioned: sample.commissioned,
+      image: sample.image, host: sample.host, tools: sample.tools, gateway: sample.gateway, terms: sample.terms, now: now) {
+      WorkspaceOfferUnmet { reason: detail } => WorkspaceProducedField { offers: acc.offers, routes: acc.routes, unmet: acc.unmet + [detail] }
+      WorkspaceOfferProduced { request: offered } => WorkspaceProducedField { offers: acc.offers + [offered],
+        routes: acc.routes + [OfferRouteRow { offer: offered.offer.id, facts: sample.route_facts }], unmet: acc.unmet }
+    })
+  if produced.offers.count() == 0 { WorkspaceConvergenceUnobserved { reason: concat("no commissioned eligible workspace offers: ", join(map(produced.unmet, fact => fact as String), "; ")) } }
+  else {
+    let field = workspace_candidate_field(request: request, routes: produced.routes, sanctions: policy.sanctions, active: policy.active,
+      scope: policy.scope, decision_receipt: policy.decision_receipt, exercises: policy.exercises, readiness: policy.readiness,
+      at: at, offers: produced.offers)
+    let supply = workspace_supply_from_field(root: root, field: field, observations: map(evidence, sample => sample.host), now: now)
+    match workspace_prepare_recorded_intent(store: store, root: root, request: request,
+      demand: admitted_demand, attempt: attempt,
+      supply: supply.supply, resource_policy: policy.resource_budget, duration: policy.duration, initial_account: policy.initial_account) {
+      WorkspacePreparationUnmet { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+      WorkspacePreparationRecorded { plan: _ } => workspace_convergence_observe(store: store, owner: request.owner, idempotency_key: request.idempotency_key)
+    }
+  }
+  }
+}
+
+
+fn workspace_prepare_convergence_from_observations(store: FabricStorageBinding, root: NonEmptyStr,
+  request: WorkspaceRequest, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  evidence: List<WorkspacePreparationEvidence>, policy: WorkspacePreparationPolicy,
+  submitted_at: Timestamp) -> WorkspaceConvergenceObservation {
+  match workspace_convergence_observe(store: store, owner: request.owner, idempotency_key: request.idempotency_key) {
+    WorkspaceConvergenceObserved { basis: already_planned } => if already_planned.allocation.request == request {
+      WorkspaceConvergenceObserved { basis: already_planned }
+    } else { WorkspaceConvergenceUnobserved { reason: "supplied request differs from the durable planned request" } }
+    WorkspaceConvergenceUnobserved { reason: _ } => match clock_now_probed_at() {
+      Absent => WorkspaceConvergenceUnobserved { reason: "preparation clock is unavailable" }
+      Present { value: observed_now } => match clock_timestamp_to_unix_secs(timestamp: observed_now as Timestamp) {
+        ClockTimestampRefused { detail: cause } => WorkspaceConvergenceUnobserved { reason: cause }
+        ClockTimestampObserved { epoch_secs: epoch } => workspace_prepare_convergence_at_observed_clock(store: store, root: root,
+          request: request, attempt: attempt, evidence: evidence, policy: policy, submitted_at: submitted_at,
+          now: observed_now as Timestamp, at: epoch)
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+module test.claim.workspace_executor_journal_witness
+
+import std.types { Bool, String }
+import v2.std.algebra { for_all }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorSubject, WorkspaceExecutorPhase,
+  ExecutorSubmissionRecorded, ExecutorInvocationRecorded, ExecutorReadbackAccepted,
+  ExecutorReleaseObserved, ExecutorGenerationCommitted,
+  workspace_executor_record_follows, workspace_executor_record_text, workspace_executor_record_decode, workspace_executor_recorded_directive,
+}
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe }
+
+fn journal_fixture(phase: WorkspaceExecutorPhase, invocation: String) -> WorkspaceExecutorRecord {
+  WorkspaceExecutorRecord {
+    subject: WorkspaceExecutorSubject { slot: "srv1-13", plan_hash: "reviewed-plan", fleet_bundle_hash: "0123456789abcdef",
+      prior_fleet_generation: 17, planned_fleet_generation: 18, mutation_generation: 3 },
+    submitter: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previous_invocation: "11111111111111111111111111111111",
+    invocation: invocation, phase: phase,
+  }
+}
+
+data journal_invocation: String = "22222222222222222222222222222222"
+
+fn journal_roundtrip(record: WorkspaceExecutorRecord) -> Bool {
+  match workspace_executor_record_decode(text: workspace_executor_record_text(record: record) as String) {
+    Present { value: decoded } => decoded == record
+    _ => false
+  }
+}
+
+test fn each_recovery_obligation_roundtrips() -> Bool {
+  journal_roundtrip(record: journal_fixture(phase: ExecutorSubmissionRecorded, invocation: ""))
+    && for_all([ExecutorInvocationRecorded, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorGenerationCommitted],
+      phase => journal_roundtrip(record: journal_fixture(phase: phase, invocation: journal_invocation)))
+}
+
+test fn submission_cannot_skip_to_success() -> Bool {
+  let prior = journal_fixture(phase: ExecutorSubmissionRecorded, invocation: "")
+  workspace_executor_record_follows(previous: prior, next: journal_fixture(phase: ExecutorInvocationRecorded, invocation: journal_invocation))
+    && !workspace_executor_record_follows(previous: prior, next: journal_fixture(phase: ExecutorGenerationCommitted, invocation: journal_invocation))
+    && !workspace_executor_record_follows(previous: prior, next: journal_fixture(phase: ExecutorReadbackAccepted, invocation: journal_invocation))
+}
+
+test fn readback_and_release_are_distinct_durable_obligations() -> Bool {
+  let readback = journal_fixture(phase: ExecutorReadbackAccepted, invocation: journal_invocation)
+  let released = journal_fixture(phase: ExecutorReleaseObserved, invocation: journal_invocation)
+  let committed = journal_fixture(phase: ExecutorGenerationCommitted, invocation: journal_invocation)
+  workspace_executor_record_follows(previous: readback, next: released)
+    && workspace_executor_record_follows(previous: released, next: committed)
+    && !workspace_executor_record_follows(previous: readback, next: committed)
+    && !workspace_executor_record_follows(previous: released, next: readback)
+    && workspace_executor_record_follows(previous: committed, next: committed)
+}
+
+test fn recovery_cannot_substitute_another_controller() -> Bool {
+  !workspace_executor_record_follows(
+    previous: journal_fixture(phase: ExecutorInvocationRecorded, invocation: journal_invocation),
+    next: journal_fixture(phase: ExecutorReadbackAccepted, invocation: "33333333333333333333333333333333"))
+}
+
+test fn stale_invocation_cannot_bind_a_fresh_submission() -> Bool {
+  !workspace_executor_record_follows(previous: journal_fixture(phase: ExecutorSubmissionRecorded, invocation: ""),
+    next: journal_fixture(phase: ExecutorInvocationRecorded, invocation: "11111111111111111111111111111111"))
+}
+
+test fn malformed_or_incomplete_history_is_not_submission() -> Bool {
+  (match workspace_executor_record_decode(text: "{}") { Absent => true _ => false })
+    && (match workspace_executor_record_decode(text: "not-json") { Absent => true _ => false })
+    && (match workspace_executor_record_decode(text: workspace_executor_record_text(
+      record: journal_fixture(phase: ExecutorGenerationCommitted, invocation: "")) as String) { Absent => true _ => false })
+}
+
+
+test fn persisted_submission_is_never_a_repeated_start_permit() -> Bool {
+  match workspace_executor_recorded_directive(record: journal_fixture(phase: ExecutorSubmissionRecorded, invocation: "")) {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn released_slot_recovery_does_not_wait_for_the_predecessor_controller() -> Bool {
+  match workspace_executor_recorded_directive(record: journal_fixture(phase: ExecutorReleaseObserved, invocation: journal_invocation)) {
+    Present { value: directive } => directive == concat("settle:", journal_invocation)
+    _ => false
+  }
+}
+
+
+test fn retry_cannot_replace_the_reviewed_bundle_under_the_same_commissioning_plan() -> Bool {
+  let before = journal_fixture(phase: ExecutorSubmissionRecorded, invocation: "")
+  let after = WorkspaceExecutorRecord {
+    subject: WorkspaceExecutorSubject { slot: before.subject.slot, plan_hash: before.subject.plan_hash,
+      fleet_bundle_hash: "fedcba9876543210", prior_fleet_generation: before.subject.prior_fleet_generation,
+      planned_fleet_generation: before.subject.planned_fleet_generation, mutation_generation: before.subject.mutation_generation },
+    submitter: before.submitter, previous_invocation: before.previous_invocation,
+    invocation: journal_invocation, phase: ExecutorInvocationRecorded,
+  }
+  !workspace_executor_record_follows(previous: before, next: after)
+}

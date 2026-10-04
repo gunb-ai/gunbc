@@ -1,0 +1,31 @@
+module test.claim.workspace_commissioning_seal_witness
+
+import std.types { Bool, String, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_census_probe { blocking_subject_count_for }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data commissioning_forged_supply_source: String = "module test.probe.commissioning_forged_supply\nimport gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }\nimport gunbc.workspace_commissioning { WorkspaceCommissionedSlot }\nimport gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }\nfn forge(admitted: WorkspaceCommissionedSlot, provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommittedCommissioning { WorkspaceCommittedCommissioning { admitted: admitted, provenance: provenance } }\n"
+
+data commissioning_skipped_readback_source: String = "module test.probe.commissioning_skipped_readback\nimport gunbc.workspace_commissioning_store { WorkspaceCommissioningStoreSnapshot, WorkspaceCommissioningSupplyReadback, workspace_commissioning_current_supply }\nfn skip(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback { workspace_commissioning_current_supply(snapshot: snapshot) }\n"
+
+data commissioning_admitted_readback_source: String = "module test.probe.commissioning_admitted_readback\nimport gunbc.workspace_commissioning_store { WorkspaceCommissioningStoreSnapshot, WorkspaceCommissioningSupplyReadback, workspace_commissioning_store_admit_supply }\nfn read(snapshot: WorkspaceCommissioningStoreSnapshot) -> WorkspaceCommissioningSupplyReadback { workspace_commissioning_store_admit_supply(snapshot: snapshot) }\n"
+
+test fn initial_admission_cannot_forge_committed_supply() -> Bool {
+  blocking_subject_count_for(source: commissioning_forged_supply_source, wanted_class: "SoleConstructorViolation", wanted_subject: "WorkspaceCommittedCommissioning") == 1
+}
+
+test fn supply_cannot_skip_fresh_provenance_readback() -> Bool {
+  blocking_subject_count_for(source: commissioning_skipped_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 1
+}
+
+// The census includes imported production diagnostics. Scope this positive control to the
+// same access boundary as the negative control; a failed census returns -1, never zero.
+test fn the_public_fresh_readback_route_preserves_constructor_admission() -> Bool {
+  blocking_subject_count_for(source: commissioning_admitted_readback_source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: "workspace_commissioning_current_supply") == 0
+}
+
+data commissioning_release_bypass_source: String = "module test.probe.commissioning_release_bypass\nimport std.types { Bool }\nimport gunbc.workspace_slot_mutation { WorkspaceSlotMutationLease, workspace_slot_mutation_release_fenced }\nfn skip(lease: WorkspaceSlotMutationLease) -> Bool { workspace_slot_mutation_release_fenced(lease: lease) }\n"
+
+data commissioning_cleanup_bypass_source: String = "module test.probe.commissioning_cleanup_bypass\nimport std.types { Bool }\nimport gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }\nimport gunbc.workspace_commissioning_apply_readback { workspace_commissioning_credential_remove }\nfn skip(provenance: WorkspaceCommissioningProvenance) -> Bool { workspace_commissioning_credential_remove(provenance: provenance) }\n"
