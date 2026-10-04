@@ -815,15 +815,12 @@ fn prod_role_realization_refusal_detail(cause: ProdRoleRealizationRefusal) -> St
   }
 }
 
-// Does THIS instance realize the prod-role holder? False under every refusal: a refused role has
-// no holder, so no instance may act as one.
-fn instance_realizes_prod_role_in(
-  selection: ProdRoleSelection,
-  instances: List<HostDashboardInstance>,
-  instance: HostDashboardInstance,
-) -> Bool {
-  match prod_role_realization_in(selection: selection, instances: instances) {
-    ProdRoleRealizedBy { instance: holder } => (holder.instance_id as String) == (instance.instance_id as String)
+// IS THIS instance_id THE PROD-ROLE HOLDER'S REALIZATION, under a supplied realization: the ONE
+// holder-identity comparison every role-following singleton (broker owner, fabric placement) asks.
+// False under every refusal: a refused role has no holder, so no instance may act as one.
+fn prod_role_realized_by(realization: ProdRoleRealization, instance_id: NonEmptyStr) -> Bool {
+  match realization {
+    ProdRoleRealizedBy { instance: holder } => (holder.instance_id as String) == (instance_id as String)
     ProdRoleRealizationRefused { cause: _ } => false
   }
 }

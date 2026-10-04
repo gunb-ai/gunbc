@@ -49,9 +49,8 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceIdUnknown,
   dashboard_instance_for_id,
   ProdRoleRealization,
-  ProdRoleRealizedBy,
-  ProdRoleRealizationRefused,
   prod_role_realization,
+  prod_role_realized_by,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root,
@@ -467,10 +466,7 @@ fn instance_owns_the_host_approval_broker_under(
   realization: ProdRoleRealization,
   instance_id: NonEmptyStr,
 ) -> Bool {
-  match realization {
-    ProdRoleRealizedBy { instance: holder } => (holder.instance_id as String) == (instance_id as String)
-    ProdRoleRealizationRefused { cause: _ } => false
-  }
+  prod_role_realized_by(realization: realization, instance_id: instance_id)
 }
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
