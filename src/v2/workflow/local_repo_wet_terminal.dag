@@ -2674,6 +2674,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "enrolled_roster_discovers_a_customer_request_the_operator_pass_misses" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "enrolled_roster_discovers_a_customer_request_the_operator_pass_misses",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_state_namespace_wet_witness", function: "witness_public_head_cannot_alias_private_state_object" },
       entry: "dag/test/claim/fabric/fabric_state_namespace_wet_witness_test.dag",
       function: "witness_public_head_cannot_alias_private_state_object",

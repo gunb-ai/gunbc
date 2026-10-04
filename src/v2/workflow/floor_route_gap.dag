@@ -2088,6 +2088,8 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.enrolled_roster_discovers_a_customer_request_the_operator_pass_misses", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_allocation_write_seam_wet_witness_test.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.terminal_elected_actor_without_hold_settles_retirement", operation: "Dir", ground: NoMockResponse {} },
@@ -2095,7 +2097,7 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.running_elected_actor_retains_quota", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.concurrent_actor_replacement_admits_exactly_one", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } } 
+    tail: Empty {} } } } } } } } } } } } } } 
 }
 
 // THE PROCESS-LIFECYCLE WET EVIDENCE (the emit-host node serve smoke), the third member of its
