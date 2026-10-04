@@ -132,6 +132,25 @@ test fn witness_authorized_keys_requires_the_whole_line() -> Bool {
     && !authorized_keys_admits_line(content: "", line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai")
 }
 
+// RED WITHOUT THE RAW-LINE COMPARISON: grep -x compared the file's RAW lines. A line that only
+// EQUALS the key line after trimming is not the enrolled line: padding is not what the registry
+// wrote, and a file whose line ends in CR (edited on Windows) does not carry the enrolled line
+// either. Each of these must NOT be admitted; a trim-tolerant comparison goes red here.
+test fn witness_authorized_keys_rejects_padded_and_crlf_lines() -> Bool {
+  !authorized_keys_admits_line(
+    content: "  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai \n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\r\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+}
+
 // RED WITHOUT THE MARKER GUARD: a config already carrying the pin is left byte-identical. This
 // is the idempotence the shell's `if ! grep -q` gave the pin; degrading the check to
 // always-append would double the Host block and go red here.
@@ -146,20 +165,23 @@ test fn witness_pinned_config_is_idempotent() -> Bool {
   }
 }
 
-// POSITIVE CONTROL: an unpinned config's next content is the existing bytes PLUS the four pin
-// lines, in the order the shell's grouped echo-redirect added them, with the absolute fragment
-// path in the fourth. Pinned as a full-equality pin, not a containment hint.
-test fn witness_pinned_config_next_content_carries_the_four_lines() -> Bool {
+// POSITIVE CONTROL: an unpinned config's answer is the APPEND PAYLOAD -- the leading blank line
+// the shell's first `echo` contributed, then the four pin lines in the order the grouped
+// echo-redirect added them, with the absolute fragment path in the fourth. The payload does NOT
+// include the file's existing bytes: the caller appends it (tee -a), so the config's other lines
+// are never rewritten, and the payload begins with a newline so a config not ending in one is not
+// glued to the pin.
+test fn witness_pinned_config_payload_carries_the_four_lines() -> Bool {
   match pinned_config_content(
     existing: "Host github.com\n  User git\n",
     endpoints: "srv2.invalid srv3.invalid",
     fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
   ) {
-    PinConfigNextContent { next: next } =>
-      next == "Host github.com\n  User git\n# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
-        && string_contains(s: next, pattern: "# gunbc-fleet-pin")
-        && string_contains(s: next, pattern: "StrictHostKeyChecking yes")
-        && string_contains(s: next, pattern: "UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment")
+    PinConfigNextContent { payload: payload } =>
+      payload == "\n# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
+        && string_contains(s: payload, pattern: "# gunbc-fleet-pin")
+        && string_contains(s: payload, pattern: "StrictHostKeyChecking yes")
+        && string_contains(s: payload, pattern: "UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment")
     _ => false
   }
 }
@@ -184,7 +206,6 @@ test fn witness_cwd_capture_answers_empty_unless_admitted() -> Bool {
 test fn witness_self_enroll_presence_absent_applies() -> Bool {
   match self_enroll_presence_decision(
     observed: FilesystemExactPathAbsent { path: "/home/srvuser/.ssh/authorized_keys" },
-    content: "",
     line: "ssh-ed25519 AAAA fleet",
   ) {
     SelfEnrollApply => true
@@ -197,7 +218,6 @@ test fn witness_self_enroll_presence_absent_applies() -> Bool {
 test fn witness_self_enroll_presence_admitted_read_already_present() -> Bool {
   match self_enroll_presence_decision(
     observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA fleet\n" },
-    content: "ssh-ed25519 AAAA fleet\n",
     line: "ssh-ed25519 AAAA fleet",
   ) {
     SelfEnrollAlreadyPresent => true
@@ -210,7 +230,6 @@ test fn witness_self_enroll_presence_admitted_read_already_present() -> Bool {
 test fn witness_self_enroll_presence_admitted_read_without_the_key_applies() -> Bool {
   match self_enroll_presence_decision(
     observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA other\n" },
-    content: "ssh-ed25519 AAAA other\n",
     line: "ssh-ed25519 AAAA fleet",
   ) {
     SelfEnrollApply => true
@@ -224,7 +243,6 @@ test fn witness_self_enroll_presence_admitted_read_without_the_key_applies() -> 
 test fn witness_self_enroll_presence_unreadable_refuses() -> Bool {
   match self_enroll_presence_decision(
     observed: FilesystemExactPathUnreadable { path: "/home/srvuser/.ssh/authorized_keys", kind: FilesystemPermissionDenied, error: "open refused" },
-    content: "",
     line: "ssh-ed25519 AAAA fleet",
   ) {
     SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unreadable")
@@ -237,7 +255,6 @@ test fn witness_self_enroll_presence_unreadable_refuses() -> Bool {
 test fn witness_self_enroll_presence_kind_unrecognized_refuses() -> Bool {
   match self_enroll_presence_decision(
     observed: FilesystemExactPathKindUnrecognized { path: "/home/srvuser/.ssh/authorized_keys", observed: "E_GREETING", error: "mystery" },
-    content: "",
     line: "ssh-ed25519 AAAA fleet",
   ) {
     SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unrecognized")

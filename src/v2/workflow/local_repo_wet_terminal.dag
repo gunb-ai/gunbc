@@ -2642,6 +2642,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/spark/pair_serving_d0_grant_row_wet_witness_test.dag",
       function: "the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test", function: "fleet_authorized_key_enroll_create_mode_append_readback_by_real_execution" },
+      entry: "dag/test/claim/fleet/fleet_authorized_key_enroll_real_path_witness_test.dag",
+      function: "fleet_authorized_key_enroll_create_mode_append_readback_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test", function: "fleet_authorized_key_enroll_of_a_fresh_home_applies_by_real_execution" },
+      entry: "dag/test/claim/fleet/fleet_authorized_key_enroll_real_path_witness_test.dag",
+      function: "fleet_authorized_key_enroll_of_a_fresh_home_applies_by_real_execution",
+      expectation: ExpectedToHold {}
     }
   ]
 }

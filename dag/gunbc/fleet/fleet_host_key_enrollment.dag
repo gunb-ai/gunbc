@@ -11,11 +11,11 @@ import extdeps.tools.hostname { hostname_read_command }
 import extdeps.filesystem.filesystem_io { filesystem_create_new, filesystem_exact_read, filesystem_read_outcome, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, FilesystemReadRefused, FilesystemReadSucceeded }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
-import extdeps.tools.gnu_coreutils { whoami_command, pwd_command, cat_command }
+import extdeps.tools.gnu_coreutils { whoami_command, pwd_command, cat_command, tee_append_command }
 import gunbc.fleet_probe_identity_observe { passwd_home_of, passwd_home_observation, passwd_probe_for_user }
 import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_fingerprint_command, ssh_keygen_known_hosts_find_command }
 import extdeps.ssh { ssh_public_key_line }
-import gunbc.command_runner { run_shell_commands, run_shell_command_capture, process_outcome_admitted, process_outcome_receipt_text }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture, run_shell_command_stdin_local, process_outcome_admitted, process_outcome_receipt_text }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
@@ -233,13 +233,16 @@ data fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-rece
 // THE AUTHORIZED-KEYS PRESENCE DECISION, PURE OVER A SUPPLIED READ. The shell asked
 // `grep -qxF "<key line>" "$H/.ssh/authorized_keys"`: fixed string (-F), whole line (-x), quiet
 // (-q). The read-then-decide form asks the same question of a captured file: the key line is
-// present iff some line of the file EQUALS it -- substring containment (the scan-side test) is
-// deliberately not enough here, because a line that merely CONTAINS the key material is not the
-// enrolled line the registry wrote. A witness supplies both values; nothing here runs a process.
+// present iff some RAW line of the file EQUALS it -- no trimming on either side, exactly the
+// whole-line comparison grep -x makes, so a line padded with leading or trailing whitespace (or a
+// trailing CR from a file edited on Windows) is NOT the enrolled line. Substring containment (the
+// scan-side test) is deliberately not enough here, because a line that merely CONTAINS the key
+// material is not the enrolled line the registry wrote. A witness supplies both values; nothing
+// here runs a process.
 fn authorized_keys_admits_line(content: String, line: String) -> Bool {
   any(
     split(s: content, delimiter: "\n"),
-    predicate: fn(l) { trim(s: l) == trim(s: line) },
+    predicate: fn(l) { l == line },
   )
 }
 
@@ -443,17 +446,20 @@ fn fleet_host_key_enroll_apply_after_create(cfg: String, endpoints: String, frag
               ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=ssh-config mode: ", why, "\n"], "")
               ExitSuccess => pin_readback_block(staged: staged)
             }
-          PinConfigNextContent { next: next } => {
-            let wr = Filesystem.Write(path: cfg, content: next)
-            if !wr.success {
-              join(["enroll outcome=refused cause=ssh-config write: ", wr.error, "\n"], "")
-            } else {
-              match run_shell_commands(
-                commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "600", path: cfg) ],
-                transport: LocalExec,
-              ) {
-                ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=ssh-config mode: ", why, "\n"], "")
-                ExitSuccess => pin_readback_block(staged: staged)
+          PinConfigNextContent { payload: fragment } => {
+            match run_shell_command_stdin_local(
+              command: tee_append_command(path: cfg),
+              stdin_payload: fragment,
+            ) {
+              ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=ssh-config append: ", why, "\n"], "")
+              ExitSuccess => {
+                match run_shell_commands(
+                  commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "600", path: cfg) ],
+                  transport: LocalExec,
+                ) {
+                  ExitFailure { code: _, reason: why } => join(["enroll outcome=refused cause=ssh-config mode: ", why, "\n"], "")
+                  ExitSuccess => pin_readback_block(staged: staged)
+                }
               }
             }
           }
@@ -464,22 +470,24 @@ fn fleet_host_key_enroll_apply_after_create(cfg: String, endpoints: String, frag
 
 // THE PINNED-CONFIG DECISION, PURE OVER A SUPPLIED READ. The marker is a content question: does
 // the config already carry the fleet pin? Already-pinned answers PinConfigAlreadyPinned -- no
-// write happens, and the read's bytes are left exactly as they were. Otherwise the next content is
-// the existing bytes PLUS the four pin lines, in the same order the shell's `( echo; echo; echo;
-// echo ) >>` added them, with the fragment path absolute from one pwd capture. A witness supplies
-// every value; nothing here reads a file or runs a process.
+// write happens, and the read's bytes are left exactly as they were. Otherwise the answer is the
+// APPEND PAYLOAD: the four pin lines with the leading blank line the shell's first `echo`
+// contributed, in the same order the shell's grouped echo-redirect added them, with the fragment
+// path absolute from one pwd capture. The caller appends the payload (tee -a, O_APPEND), so the
+// config's other lines are never rewritten and a pin another process adds meanwhile survives; the
+// payload begins with a newline so a config that does not end in one is not glued to the pin. A
+// witness supplies every value; nothing here reads a file or runs a process.
 type PinnedConfigDecision
   = PinConfigAlreadyPinned
-  | PinConfigNextContent { next: String }
+  | PinConfigNextContent { payload: String }
 
 fn pinned_config_content(existing: String, endpoints: String, fragment_path: String) -> PinnedConfigDecision {
   if string_contains(s: existing, pattern: "gunbc-fleet-pin") {
     PinConfigAlreadyPinned
   } else {
     PinConfigNextContent {
-      next: join([
-        existing,
-        "# gunbc-fleet-pin\nHost ",
+      payload: join([
+        "\n# gunbc-fleet-pin\nHost ",
         endpoints,
         "\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ",
         fragment_path,
@@ -566,17 +574,18 @@ fn fleet_automation_authorized_keys_line() -> String {
 // file -- grep's exit 2 folded into the same `||` -- and its apply branch then created it: a
 // fresh home enrolls. The typed read keeps that route (Absent applies) and refuses only what the
 // old script never distinguished: a file that exists but cannot be read, and a host error the
-// kind table does not know. Witnesses pin each verdict; nothing here reads a file or runs a
-// process.
+// kind table does not know. The bytes the verdict judges are bound from the read itself -- the
+// fn takes no separate content, so it cannot inspect anything but what was actually read.
+// Witnesses pin each verdict; nothing here reads a file or runs a process.
 type SelfEnrollPresenceDecision
   = SelfEnrollAlreadyPresent
   | SelfEnrollApply
   | SelfEnrollRefuse { cause: String }
 
-fn self_enroll_presence_decision(observed: FilesystemExactRead, content: String, line: String) -> SelfEnrollPresenceDecision
+fn self_enroll_presence_decision(observed: FilesystemExactRead, line: String) -> SelfEnrollPresenceDecision
 {
   match observed {
-    FilesystemExactPathRead { path: _ } =>
+    FilesystemExactPathRead { path: _, content: content } =>
       if authorized_keys_admits_line(content: content, line: line) {
         SelfEnrollAlreadyPresent
       } else {
@@ -610,11 +619,15 @@ fn self_enroll_apply(home: String, line: String) -> String {
   }
 }
 
-// THE PUT-IF-ABSENT'S PROCEED ARM. Created and TargetOccupied are the same next move -- read what
-// is there, append the key line once -- which is the idempotence the shell's `touch` provided; a
-// new key file and an existing one reach this fn alike. The verify consumes the passwd home the
-// wet fn already established: the probe ran once, in the caller; no second whoami/getent pair
-// re-derives it here.
+// THE PUT-IF-ABSENT'S PROCEED ARM. Created and TargetOccupied are the same next move -- append
+// the key line once -- which is the create-or-append the shell's touch-then-`>>` did; a new key
+// file and an existing one reach this fn alike. THE APPEND IS tee(1) -a WITH THE KEY LINE ON
+// STDIN: the shell's `echo "$line" >> "$f"` carried the line through argv, and tee -a opens the
+// file for append (O_APPEND) so a key another process appends between our verdict and this write
+// is PRESERVED, not erased by a whole-file rewrite. The key line rides stdin, never argv. The
+// mode 600 is in force before the append, as the shell's chmod-before-echo order was. The
+// verification consumes the passwd home the wet fn already established: the probe ran once, in
+// the caller; no second whoami/getent pair re-derives it here.
 fn self_enroll_apply_after_create(ak_path: String, home: String, line: String) -> String
 {
   match run_shell_commands(
@@ -623,17 +636,12 @@ fn self_enroll_apply_after_create(ak_path: String, home: String, line: String) -
   ) {
     ExitFailure { code: _, reason: why } => join(["outcome=refused cause=authorized-keys mode: ", why], "")
     ExitSuccess => {
-      let ra = Filesystem.Read(path: ak_path)
-      match filesystem_read_outcome(content: ra.content, success: ra.success, error: ra.error) {
-        FilesystemReadRefused { error: e } => join(["outcome=refused cause=authorized-keys unreadable after create: ", e], "")
-        FilesystemReadSucceeded { content: existing } => {
-          let wr = Filesystem.Write(path: ak_path, content: join([existing, line, "\n"], ""))
-          if !wr.success {
-            join(["outcome=refused cause=authorized-keys write: ", wr.error], "")
-          } else {
-            verify_enrollment_outcome(ph: home)
-          }
-        }
+      match run_shell_command_stdin_local(
+        command: tee_append_command(path: ak_path),
+        stdin_payload: join([line, "\n"], ""),
+      ) {
+        ExitFailure { code: _, reason: why } => join(["outcome=refused cause=authorized-keys append: ", why], "")
+        ExitSuccess => verify_enrollment_outcome(ph: home)
       }
     }
   }
@@ -676,7 +684,6 @@ fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
       let rc = Filesystem.Read(path: ak_path)
       match self_enroll_presence_decision(
         observed: filesystem_exact_read(path: ak_path, content: rc.content, success: rc.success, error: rc.error, error_kind: rc.error_kind),
-        content: rc.content,
         line: line,
       ) {
         SelfEnrollAlreadyPresent => "outcome=already-present"
