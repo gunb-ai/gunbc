@@ -171,3 +171,15 @@ test fn lel_elaborated_literal_executes_with_its_meaning_on_v2_eval() -> Bool {
 test fn lel_count_compared_with_a_literal_executes_on_the_seed() -> Bool {
   count([]) == 0 && !(count([1]) == 0)
 }
+
+// PROBES (temporary)
+test fn lelp_neg_main_accepted() -> Bool { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  gi(n: -1)\n}\n") == ^accepted }
+test fn lelp_neg_at_nat_undecided() -> Bool { lel_negative_literal_at_nat_reason() == ^accepted }
+test fn lelp_lit_lit_ok() -> Bool { lel_literal_against_literal_reason() == ^accepted }
+test fn lelp_nat_vs_expr_refuses() -> Bool { lel_nat_compared_to_int_expression_reason() != ^accepted }
+test fn lelp_eval_zero_absent() -> Bool { lel_eval_zero() == optional_absent() }
+test fn lelp_eval_zero_true() -> Bool { lel_eval_zero() == optional_present(value: true) }
+test fn lelp_eval_zero_false() -> Bool { lel_eval_zero() == optional_present(value: false) }
+test fn lelp_eval_one_absent() -> Bool { lel_eval_one() == optional_absent() }
+test fn lelp_eval_one_false() -> Bool { lel_eval_one() == optional_present(value: false) }
+test fn lelp_eval_src_infers() -> Bool { lel_reason(src: lel_eval_prelude + "fn k() -> Bool {\n  z(n: Zero)\n}\n") == ^accepted }
