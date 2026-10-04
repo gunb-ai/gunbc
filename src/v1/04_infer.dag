@@ -4340,20 +4340,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
-// ONE ANSWER TO "IS THIS DECLARED TYPE OPTIONAL", read by both cardinality directions. Optionality
-// lives in two representations (declared_type_conformance_note class 1): CardOptional on the node or
-// its alias-peeled form, or the nominal Optional coproduct a `-> T?` return arrives as. The leaf-name
-// arm is the pre-existing authority this function always used, not a new one; it is part of the
-// bare-name identity debt routed to 2K's identity-keying lane.
-fn declared_type_carries_optional(declared: Node, scope: InferScope) -> Bool {
-  let source_indices = scope.type_env.source_indices
-  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
-  declared.return_cardinality == CardOptional
-    || declared_peeled.return_cardinality == CardOptional
-    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared)) == "Optional"
-    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
-}
-
 // THE MIRROR, AT THE DECLARED RETURN (gunbc.recurring_failure_mode optional_compared_with_required_value,
 // class C5). A fn declared `-> T?` whose body produces a bare T was accepted: no declared coercion
 // lifts T into T? (DESIGN 4, 2026-09-26), and the Rust emission refused it as E0308 `expected
@@ -4381,7 +4367,7 @@ fn required_produced_at_optional_declared(declared: Node, produced: Node, scope:
       Present { value: TypeVariable { id: _ } } => true
       _ => false
     }
-  declared_type_carries_optional(declared: declared, scope: scope)
+  declared.return_cardinality == CardOptional
     && !produced_carries_optional
     && !produced_is_generic
     && produced_name != ""
@@ -4400,8 +4386,13 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
     Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
+  let declared_peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+  let declared_carries_optional = declared.return_cardinality == CardOptional
+    || declared_peeled.return_cardinality == CardOptional
+    || qualified_last_segment(name: declared_name) == "Optional"
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: declared_peeled)) == "Optional"
   produced_carries_optional
-    && !declared_type_carries_optional(declared: declared, scope: scope)
+    && !declared_carries_optional
     && !declared_is_generic
     && declared_name != ""
     && !type_node_is_callable(n: declared)

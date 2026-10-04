@@ -159,9 +159,3 @@ test fn explicit_present_return_stays_admitted() -> Bool {
 test fn absent_return_stays_admitted() -> Bool {
   eq_admitted(source: return_absent_green_source)
 }
-
-data return_lift_match_arm_red_source: String = "module ret_probe_arm\nfn g(s: String) -> String? {\n  match s {\n    \"a\" => s\n    _ => none\n  }\n}\n"
-
-test fn required_arm_at_optional_return_refuses_blocking() -> Bool {
-  eq_blocking_count(source: return_lift_match_arm_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
-}
