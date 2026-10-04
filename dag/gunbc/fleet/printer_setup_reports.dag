@@ -1,4 +1,5 @@
 module gunbc.fleet.printer_setup_reports
+import v2.std.algebra {filter,length}
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.printing.fdm { FilamentMaterial, Pla }
