@@ -104,3 +104,77 @@ fn nmcli_wireless_powersave_modify_argv(connection: NonEmptyStr, value: NmWirele
     nm_wireless_powersave_property as String, to_string(nm_wireless_powersave_numeric(v: value)),
   ]
 }
+
+// nm-settings-nmcli(5), connection setting (networkmanager.dev/docs/api/latest/nm-settings-nmcli.html,
+// read 2026-10-04): "auth-retries -- The number of retries for the authentication. Zero means to try
+// indefinitely; -1 means to use a global default. If the global default is not set, the
+// authentication retries for 3 times before failing the connection. Connections using a pre-shared
+// key to authenticate will only prompt for a new key during the last authentication attempt."
+// The three arms are upstream's encoding of one Int, decoded once here.
+data nm_connection_auth_retries_property: NonEmptyStr = "connection.auth-retries" as NonEmptyStr
+
+type NmAuthRetries
+  = NmAuthRetriesGlobalDefault
+  | NmAuthRetriesIndefinitely
+  | NmAuthRetriesCount { count: Int }
+
+fn nm_auth_retries_numeric(v: NmAuthRetries) -> Int {
+  match v {
+    NmAuthRetriesGlobalDefault => -1
+    NmAuthRetriesIndefinitely => 0
+    NmAuthRetriesCount { count: n } => n
+  }
+}
+
+type NmAuthRetriesRead
+  = NmAuthRetriesReadValue { value: NmAuthRetries }
+  | NmAuthRetriesUnreadable { text: String }
+
+// The getter prints the integer (`nmcli -g connection.auth-retries connection show <id>` answered
+// "-1" on spark-2196 2026-10-04 ~03:20Z, read by valiant-crab-775). Anything not an integer >= -1
+// is unreadable, never a default.
+fn nm_auth_retries_of_getter(stdout: String) -> NmAuthRetriesRead {
+  let t = trim(s: stdout)
+  match parse_int(s: t) {
+    Absent => NmAuthRetriesUnreadable { text: t }
+    Present { value: n } =>
+      if n == -1 { NmAuthRetriesReadValue { value: NmAuthRetriesGlobalDefault } }
+      else if n == 0 { NmAuthRetriesReadValue { value: NmAuthRetriesIndefinitely } }
+      else if n > 0 { NmAuthRetriesReadValue { value: NmAuthRetriesCount { count: n } } }
+      else { NmAuthRetriesUnreadable { text: t } }
+  }
+}
+
+fn nmcli_auth_retries_modify_argv(connection: NonEmptyStr, value: NmAuthRetries) -> List<String> {
+  [
+    nmcli_binary_name as String, "connection", "modify", connection as String,
+    nm_connection_auth_retries_property as String, to_string(nm_auth_retries_numeric(v: value)),
+  ]
+}
+
+// nmcli(1): `device show <ifname>` prints GENERAL.STATE as "<code> (<name>)"; NetworkManager's
+// NMDeviceState gives 100 activated, 30 disconnected, 20 unavailable. The getter keeps the code.
+fn nmcli_device_state_get_argv(interface: NonEmptyStr) -> List<String> {
+  [nmcli_binary_name as String, "-g", "GENERAL.STATE", "device", "show", interface as String]
+}
+
+type NmDeviceStateRead
+  = NmDeviceActivated
+  | NmDeviceDisconnected
+  | NmDeviceOtherState { code: Int }
+  | NmDeviceStateUnreadable { text: String }
+
+fn nm_device_state_of_getter(stdout: String) -> NmDeviceStateRead {
+  let t = trim(s: stdout)
+  match first(split(s: t, delimiter: " ")) {
+    Absent => NmDeviceStateUnreadable { text: t }
+    Present { value: head } =>
+      match parse_int(s: head) {
+        Absent => NmDeviceStateUnreadable { text: t }
+        Present { value: code } =>
+          if code == 100 { NmDeviceActivated }
+          else if code == 30 { NmDeviceDisconnected }
+          else { NmDeviceOtherState { code: code } }
+      }
+  }
+}

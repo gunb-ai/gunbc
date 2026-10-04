@@ -10,12 +10,18 @@ import extdeps.iw {
 import extdeps.networkmanager.nmcli {
   NmPowersaveDefault, NmPowersaveDisable, NmPowersaveEnable, NmPowersaveReadValue, NmPowersaveUnreadable,
   nm_wireless_powersave_of_getter, nmcli_wireless_powersave_modify_argv,
+  NmAuthRetriesIndefinitely, NmAuthRetriesGlobalDefault, NmAuthRetriesReadValue, NmAuthRetriesUnreadable,
+  nm_auth_retries_of_getter, nmcli_auth_retries_modify_argv,
+  NmDeviceActivated, NmDeviceDisconnected, nm_device_state_of_getter,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_intent_network { operator_host_srv7, operator_host_srv12 }
 import gunbc.fleet_wireless_link {
   WirelessLinkDesired, WirelessLinkObservation, WirelessLinkPlan,
   DisconnectCountRead, kernel_disconnect_line_count,
+  JournalLineCountRead, networkmanager_no_secrets_line_count,
+  wireless_link_standing, LinkActivated, LinkDisconnectedNoSecrets, LinkDisconnected,
+  wireless_link_uncovered_spark_hosts,
   wireless_link_desired_for, spark_wireless_link_desired, wireless_link_decide, wireless_link_converge,
   WirelessLinkAlreadyConverged, WirelessLinkApplied, WirelessLinkRefused,
 }
@@ -65,24 +71,83 @@ test fn witness_disconnect_count_matches_only_the_interface() -> Bool {
 
 // ── desired roster ───────────────────────────────────────────────────────────
 
-test fn witness_spark_row_present_and_unmeasured_host_absent() -> Bool {
+test fn witness_spark_rows_present_including_srv12() -> Bool {
   let srv7 = match wireless_link_desired_for(host: operator_host_srv7) {
     Present { value: d } => d.interface as String == "wlP9s9" && d.connection as String == "Verizon_39TTYV"
     Absent => false
   }
-  let srv12 = match wireless_link_desired_for(host: operator_host_srv12) { Absent => true  Present { value: _ } => false }
+  let srv12 = match wireless_link_desired_for(host: operator_host_srv12) {
+    Present { value: d } => d.interface as String == "wlP9s9" && d.connection as String == "Verizon_39TTYV"
+    Absent => false
+  }
   srv7 && srv12
+}
+
+// THE COVERAGE JOIN: every procured Spark identity has a wireless row. Removing srv12's row (the
+// state main held until 2026-10-04, which let spark-2196 keep NetworkManager's power-save default)
+// reds this claim.
+test fn witness_every_procured_spark_has_a_wireless_row() -> Bool {
+  length(wireless_link_uncovered_spark_hosts()) == 0
+}
+
+// ── auth retries and the no-secrets standing ─────────────────────────────────
+
+test fn witness_auth_retries_getter_decodes_upstream_encoding() -> Bool {
+  let dflt = match nm_auth_retries_of_getter(stdout: "-1\n") { NmAuthRetriesReadValue { value: NmAuthRetriesGlobalDefault } => true  _ => false }
+  let forever = match nm_auth_retries_of_getter(stdout: "0") { NmAuthRetriesReadValue { value: NmAuthRetriesIndefinitely } => true  _ => false }
+  let empty = match nm_auth_retries_of_getter(stdout: "") { NmAuthRetriesUnreadable { text: _ } => true  _ => false }
+  let below = match nm_auth_retries_of_getter(stdout: "-2") { NmAuthRetriesUnreadable { text: _ } => true  _ => false }
+  dflt && forever && empty && below
+}
+
+test fn witness_auth_retries_modify_argv_is_zero_for_indefinitely() -> Bool {
+  join(nmcli_auth_retries_modify_argv(connection: "Verizon_39TTYV" as NonEmptyStr, value: NmAuthRetriesIndefinitely), " ")
+    == "nmcli connection modify Verizon_39TTYV connection.auth-retries 0"
+}
+
+// spark-2196 read 2026-10-04: auth-retries -1 (global default, 3 attempts, the last one prompts).
+test fn witness_default_auth_retries_is_drift_planned_to_zero() -> Bool {
+  match wireless_link_decide(desired: srv7_desired(), observed: obs_auth(runtime: "Power save: off", persisted: "disable", auth: "-1")) {
+    Apply { plan: p } =>
+      (match p.auth_retries { Present { value: NmAuthRetriesIndefinitely } => true  _ => false })
+      && (match p.persisted { Absent => true  Present { value: _ } => false })
+    _ => false
+  }
+}
+
+data nm_no_secrets_journal: String = "1759470000.0 srv8 NetworkManager[1022]: <warn>  [1759470000.0] device (wlP9s9): no secrets: No agents were available for this request.\n1759470001.0 srv8 NetworkManager[1022]: <info>  [1759470001.0] device (wlP9s9): state change: need-auth -> failed\n"
+
+test fn witness_disconnected_with_no_secrets_is_named() -> Bool {
+  let o = obs_full(runtime: "Power save: off", persisted: "disable", auth: "0", device: "30 (disconnected)", journal: nm_no_secrets_journal)
+  match wireless_link_standing(o: o) { LinkDisconnectedNoSecrets { failures: n } => n == 1  _ => false }
+}
+
+test fn witness_plain_disconnect_and_activated_are_not_no_secrets() -> Bool {
+  let plain = match wireless_link_standing(o: obs_full(runtime: "Power save: off", persisted: "disable", auth: "0", device: "30 (disconnected)", journal: "")) { LinkDisconnected => true  _ => false }
+  let up = match wireless_link_standing(o: obs_full(runtime: "Power save: off", persisted: "disable", auth: "0", device: "100 (connected)", journal: nm_no_secrets_journal)) { LinkActivated => true  _ => false }
+  plain && up
 }
 
 // ── decision over supplied observations ──────────────────────────────────────
 
-fn obs(runtime: String, persisted: String) -> WirelessLinkObservation {
+fn obs_full(runtime: String, persisted: String, auth: String, device: String, journal: String) -> WirelessLinkObservation {
   WirelessLinkObservation {
     runtime: iw_power_save_of_getter(stdout: runtime),
     persisted: nm_wireless_powersave_of_getter(stdout: persisted),
+    auth_retries: nm_auth_retries_of_getter(stdout: auth),
     link: IwLinkNotConnected,
+    device: nm_device_state_of_getter(stdout: device),
     disconnects: DisconnectCountRead { count: 0 },
+    no_secrets_failures: JournalLineCountRead { count: networkmanager_no_secrets_line_count(journal: journal) },
   }
+}
+
+fn obs_auth(runtime: String, persisted: String, auth: String) -> WirelessLinkObservation {
+  obs_full(runtime: runtime, persisted: persisted, auth: auth, device: "100 (connected)", journal: "")
+}
+
+fn obs(runtime: String, persisted: String) -> WirelessLinkObservation {
+  obs_auth(runtime: runtime, persisted: persisted, auth: "0")
 }
 
 test fn witness_both_off_is_noop() -> Bool {
@@ -134,6 +199,9 @@ fn fake_run(runtime: String, persisted: String, modify_exit: Int) -> fn(List<Str
     else if line == "nmcli -g 802-11-wireless.powersave connection show Verizon_39TTYV" { ArgvRan { exit_code: 0, stdout: persisted, stderr: "" } }
     else if line == "iw dev wlP9s9 link" { ArgvRan { exit_code: 0, stdout: iw_link_connected_sample, stderr: "" } }
     else if line == "journalctl -k -b --no-pager -o short-unix" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
+    else if line == "nmcli -g connection.auth-retries connection show Verizon_39TTYV" { ArgvRan { exit_code: 0, stdout: "0", stderr: "" } }
+    else if line == "nmcli -g GENERAL.STATE device show wlP9s9" { ArgvRan { exit_code: 0, stdout: "100 (connected)", stderr: "" } }
+    else if line == "journalctl -u NetworkManager -b --no-pager -o short-unix" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
     else if line == "nmcli connection modify Verizon_39TTYV 802-11-wireless.powersave 2" { ArgvRan { exit_code: modify_exit, stdout: "", stderr: "denied" } }
     else if line == "iw dev wlP9s9 set power_save off" { ArgvRan { exit_code: 0, stdout: "", stderr: "" } }
     else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", line], "") } }
