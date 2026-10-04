@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
 import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_mtcollins1_access_observation {

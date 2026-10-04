@@ -1,7 +1,7 @@
 module test.claim.machine_intake_mtcollins1_bmc_secure_standing_witness_test
 
 import gunbc.managed_host { managed_host_bound_account }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.ipmi_channel { ipmi_controller_channel_census }

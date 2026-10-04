@@ -26,7 +26,7 @@ import product.fan_policy_standing {
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.managed_host { managed_host_bound_account }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_bmc_fan_observation {
   FanObservationRefused,
   FanObservationRound,

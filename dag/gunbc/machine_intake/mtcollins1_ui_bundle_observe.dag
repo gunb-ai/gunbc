@@ -13,7 +13,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.bmc.megarac { megarac_ui_bundle_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.managed_host { managed_host_bound_account }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand }
 import std.measure { Second, second, second_count }

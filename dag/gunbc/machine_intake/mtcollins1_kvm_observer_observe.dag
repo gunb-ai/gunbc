@@ -15,7 +15,7 @@ import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacKvmCanvasStill, 
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host_unit_hold {
   UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
   ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
