@@ -24,7 +24,7 @@ import extdeps.bmc.ipmi_channel { IpmiPrivilegeAdministrator, ipmi_user_channel_
 import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead,
-  PublicStandardOperation, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
+  PublicStandardOperation, EffectObserved, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
 }
 
 // THE ROTATION ROUTE STANDING OF EACH CONTROLLER THIS FLEET HAS EVIDENCE FOR, derived from that
@@ -36,7 +36,9 @@ import gunbc.machine_intake_bmc_rotation_route {
 // store round-trip, and the controller answered "Set User Password command successful"; step (d)
 // then authenticated as that user over IPMI and the web API at the same address. The request and
 // its response are both recorded in that one transcript, so both receipts name it: the transcript
-// is the request receipt and the response receipt, at its committed digest. It is consumed for the
+// is the request receipt and the response receipt, at its committed digest. THE EFFECT WAS OBSERVED:
+// the value set was a newly minted secret the account did not hold before (steps b and c), and step (d)
+// then authenticated with it over IPMI and the web API, so the before and after readings differ. It is consumed for the
 // same rotation by gunbc.machine_intake_mtcollins1_bmc_secure_observation as RotationApplied.
 fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
   rotation_route_from_committed_execution(
@@ -45,6 +47,7 @@ fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
     request: IpmiSetUserPassword { user: 3 },
     request_receipt: mtcollins1_user3_route_evidence,
     response_receipt: mtcollins1_user3_route_evidence,
+    effect: EffectObserved,
   )
 }
 

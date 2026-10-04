@@ -17,7 +17,7 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
 import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
-import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts, bmc_ipmi_get_user_access }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts, bmc_ipmi_get_user_access, bmc_ipmi_set_user_access }
 import extdeps.bmc.ipmi_channel { IpmiChannelPrivilegeLimit, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator, IpmiPrivilegeUser, ipmi_user_channel_access }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
@@ -34,7 +34,8 @@ import gunbc.machine_intake_bmc_rotation_route {
   QualificationResponseForAnotherSubject, QualificationRequestUnrealized,
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
-  RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
+  RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved, RotationApplyApprovalRefused,
+  EffectObserved, AcceptedEffectUnobserved, RouteEffectStanding, rotation_route_executed_fixture, RotationApplyApprovalDenied,
   RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
   ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow,
   RouteQualificationRequestAdmitted, RouteQualificationRequestRefused, QualificationRequestForAnotherOperation,
@@ -77,7 +78,7 @@ fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
 
 fn standing_request(s: BmcRotationRouteStanding) -> BmcAccountWriteRequest {
   match s.grounding {
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => r
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => r
     RouteGroundedByCitedSource { request: r, citation: _ } => r
     RouteQualificationCandidate { request: r, evidence: _ } => r
     RouteUngrounded => IpmiSetUserPassword { user: 3 }
@@ -146,7 +147,7 @@ fn refusal_name(c: RouteQualificationRefusal) -> String {
 // The modeled verdict for a candidate, an approval and a modeled run against `answered`.
 fn modeled_verdict(candidate: BmcRotationRouteStanding, approval_value: Redemption, world: BmcWorld, answered: RouteQualificationSubject) -> String {
   match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: dry_route_qualification_request(world: world, subject: answered, password: "new-Secret!1").response) {
-    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: _ } => "would-qualify"
     ModeledQualificationRefused { cause: c } => refusal_name(c: c)
   }
 }
@@ -166,6 +167,7 @@ fn apply_verdict_for(standing: BmcRotationRouteStanding, target: BmcControllerEn
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
+    RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
     RotationApplyApprovalRefused { cause: _ } => "approval-refused"
     RotationApplyApprovalDenied => "approval-denied"
     RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
@@ -176,7 +178,7 @@ fn apply_verdict_for(standing: BmcRotationRouteStanding, target: BmcControllerEn
 
 fn grounding_kind(standing: BmcRotationRouteStanding) -> String {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => "executed"
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => "executed"
     RouteGroundedByCitedSource { request: _, citation: _ } => "cited"
     RouteQualificationCandidate { request: _, evidence: _ } => "candidate"
     RouteUngrounded => "ungrounded"
@@ -198,7 +200,7 @@ test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
   (s.endpoint.host as String) == "192.168.1.228"
     && (s.firmware.raw_version as String) == "0.32"
     && match s.grounding {
-      RouteGroundedByExecutedRequest { request: r, request_receipt: q, response_receipt: p } =>
+      RouteGroundedByExecutedRequest { request: r, request_receipt: q, response_receipt: p, effect: _ } =>
         match r {
           IpmiSetUserPassword { user: u } => (u as Int) == 3
           IpmiSetUserPrivilegeLimit { access: _ } => false
@@ -348,7 +350,7 @@ test fn requests_differing_only_in_transport_or_action_shape_are_different_reque
 
 fn classify_names(candidate: BmcRotationRouteStanding, approval_value: Redemption) -> String {
   match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: none) {
-    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: _ } => "would-qualify"
     ModeledQualificationRefused { cause: c } => refusal_name(c: c)
   }
 }
@@ -467,7 +469,7 @@ test fn mtcollins1_channel_access_route_is_an_ungrounded_candidate_on_its_curren
       RouteQualificationCandidate { request: r, evidence: e } =>
         account_write_request_eq(a: r, b: access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator))
           && match e { PublicStandardOperation { authority: _ } => true  ObservedSurfaceRead { surface: _, receipt: _ } => false }
-      RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => false
+      RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => false
       RouteGroundedByCitedSource { request: _, citation: _ } => false
       RouteUngrounded => false
     }
@@ -629,4 +631,57 @@ test fn the_prewrite_admission_admits_only_with_the_same_run_receipt() -> Bool {
   prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "admitted"
     && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: readback_at(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "retention-refused"
     && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: rotation_approval_for(s: c), readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1))) == "another-authority"
+}
+
+// ── WHAT A QUALIFICATION GROUNDS: acceptance, and effect only when the run could tell ───────────────
+
+// The witness's one way to hold an executed grounding with a chosen effect standing.
+fn executed_route_at(request: BmcAccountWriteRequest, effect: RouteEffectStanding) -> BmcRotationRouteStanding {
+  rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: request, receipt: lab_surface_receipt, effect: effect)
+}
+
+fn modeled_effect(candidate: BmcRotationRouteStanding, world: BmcWorld, request: BmcAccountWriteRequest) -> String {
+  match classify_modeled_route_qualification(standing: candidate, approval: qualification_approval_for(standing: candidate, request: request), response: dry_route_qualification_request(world: world, subject: subject_at(endpoint: lab_endpoint, request: request), password: "unused").response) {
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: e } => match e { EffectObserved => "observed"  AcceptedEffectUnobserved => "accepted-only" }
+    ModeledQualificationRefused { cause: _ } => "refused"
+  }
+}
+
+fn world_with_user3_admin_on_1() -> BmcWorld {
+  bmc_ipmi_set_user_access(world: lab_world_with_user3(), access: ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)).world
+}
+
+// THE IDEMPOTENT QUALIFYING REQUEST GROUNDS ACCEPTANCE ONLY. Re-asserting a value already present reads
+// back identically whether applied or ignored: the modeled run reports accepted-only. The same request
+// against a world where the value differed beforehand reports the effect observed.
+test fn an_idempotent_qualifying_write_grounds_acceptance_only() -> Bool {
+  let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let c = lab_candidate(request: request)
+  modeled_effect(candidate: c, world: world_with_user3_admin_on_1(), request: request) == "accepted-only"
+    && modeled_effect(candidate: c, world: lab_world_with_user3(), request: request) == "observed"
+}
+
+// AN ACCEPT-ONLY GROUNDING DOES NOT ADMIT THE CLOSING WRITE. A grounded privilege-limit route whose
+// effect was unobserved, with an exact approval of closing user 2 on channel 2 and a valid same-run
+// managed-administrator readback, refuses as effect-unobserved; the same with EffectObserved is admitted.
+fn closing_verdict(effect: RouteEffectStanding) -> String {
+  let route = executed_route_at(request: access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator), effect: effect)
+  let close = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  match admit_rotation_apply(
+    standing: route,
+    target_endpoint: lab_endpoint,
+    target_firmware: lab_firmware(),
+    request: close,
+    managed_readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]),
+    approval: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: close)),
+  ) {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
+    _ => "other-refusal"
+  }
+}
+
+test fn an_accept_only_grounding_does_not_admit_the_closing_write() -> Bool {
+  closing_verdict(effect: AcceptedEffectUnobserved) == "effect-unobserved"
+    && closing_verdict(effect: EffectObserved) == "admitted"
 }

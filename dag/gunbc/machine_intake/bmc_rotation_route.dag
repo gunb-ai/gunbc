@@ -66,10 +66,21 @@ type RouteCandidateEvidence
 // RouteGroundedByExecutedRequest, plus a route grounded by a source cited for this build. Only the
 // two Grounded arms admit an ordinary rotation Apply (admit_rotation_apply).
 type BmcRotationRouteGrounding
-  = RouteGroundedByExecutedRequest { request: BmcAccountWriteRequest, request_receipt: EvidenceRef, response_receipt: EvidenceRef }
+  = RouteGroundedByExecutedRequest { request: BmcAccountWriteRequest, request_receipt: EvidenceRef, response_receipt: EvidenceRef, effect: RouteEffectStanding }
   | RouteGroundedByCitedSource { request: BmcAccountWriteRequest, citation: ExternalAuthority }
   | RouteQualificationCandidate { request: BmcAccountWriteRequest, evidence: RouteCandidateEvidence }
   | RouteUngrounded
+
+// WHAT AN EXECUTED REQUEST GROUNDS: that the controller ACCEPTED the operation, and -- only when the
+// run could tell -- that it TOOK EFFECT. A write whose requested value equals the value already present
+// reads back identically whether the controller applied it or silently ignored it, so it grounds
+// acceptance only. The effect is observed exactly when the reading taken BEFORE the write differed from
+// the requested value and the readback AFTER it matches; that comparison is made by whoever mints the
+// response, never declared by a caller. A privilege-lowering Apply relies on the effect and requires
+// EffectObserved (admit_rotation_apply).
+type RouteEffectStanding
+  = EffectObserved
+  | AcceptedEffectUnobserved
 
 // SEALED: the endpoint and build are joined to their grounding only by the mints in this module, so
 // no other module can pair one controller's executed request with another controller or build. The
@@ -112,6 +123,7 @@ fn rotation_route_from_committed_execution(
   request: BmcAccountWriteRequest,
   request_receipt: EvidenceRef,
   response_receipt: EvidenceRef,
+  effect: RouteEffectStanding,
 ) -> BmcRotationRouteStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route_evidence", decl_name: "mtcollins1_rotation_route_standing"),
@@ -120,7 +132,7 @@ fn rotation_route_from_committed_execution(
   BmcRotationRouteStanding {
     endpoint: endpoint,
     firmware: firmware,
-    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: request_receipt, response_receipt: response_receipt },
+    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: request_receipt, response_receipt: response_receipt, effect: effect },
   }
 }
 
@@ -160,7 +172,7 @@ type HistoricalRotationRouteObservation {
 
 fn rotation_route_is_grounded(standing: BmcRotationRouteStanding) -> Bool {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => true
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => true
     RouteGroundedByCitedSource { request: _, citation: _ } => true
     RouteQualificationCandidate { request: _, evidence: _ } => false
     RouteUngrounded => false
@@ -350,6 +362,7 @@ type RouteQualificationLiveResponse sole_constructor {
   response_receipt: EvidenceRef
   completed: Bool
   readback_accepted: Bool
+  effect: RouteEffectStanding
 }
 
 type ModeledRouteQualificationResponse sole_constructor {
@@ -358,6 +371,11 @@ type ModeledRouteQualificationResponse sole_constructor {
   response_receipt: EvidenceRef
   completed: Bool
   readback_accepted: Bool
+  effect: RouteEffectStanding
+}
+
+fn effect_of(before_matched: Bool, after_matched: Bool) -> RouteEffectStanding {
+  if !before_matched && after_matched { EffectObserved } else { AcceptedEffectUnobserved }
 }
 
 type DryRouteQualificationStep {
@@ -376,6 +394,10 @@ fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationS
   match subject.request {
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
     IpmiSetUserPrivilegeLimit { access: x } => {
+      let before = match bmc_ipmi_get_user_access(world: world, user: x.user, channel: x.channel as Int) {
+        Present { value: p } => ipmi_privilege_eq(a: p, b: x.privilege)
+        Absent => false
+      }
       let step = bmc_ipmi_set_user_access(world: world, access: x)
       let accepted = match bmc_ipmi_get_user_access(world: step.world, user: x.user, channel: x.channel as Int) {
         Present { value: p } => ipmi_privilege_eq(a: p, b: x.privilege)
@@ -395,11 +417,13 @@ fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationS
             response_receipt: EvidenceRef { label: response_text, digest: content_hash_of_value(value: response_text) },
             completed: step.completed,
             readback_accepted: accepted,
+            effect: effect_of(before_matched: before, after_matched: accepted),
           },
         },
       }
     }
     IpmiSetUserPassword { user: u } => {
+      let before = bmc_ipmi_user_accepts(world: world, user: u, password: password)
       let step = bmc_ipmi_set_user_password(world: world, user: u, password: password)
       let accepted = bmc_ipmi_user_accepts(world: step.world, user: u, password: password)
       let request_text = join(["modeled ", account_write_request_text(request: subject.request) as String, " at ", subject.endpoint.host as String, " firmware ", subject.firmware.raw_version as String, ", password length ", to_string(length(password))], "") as NonEmptyStr
@@ -416,6 +440,7 @@ fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationS
             response_receipt: EvidenceRef { label: response_text, digest: content_hash_of_value(value: response_text) },
             completed: step.completed,
             readback_accepted: accepted,
+            effect: effect_of(before_matched: before, after_matched: accepted),
           },
         },
       }
@@ -465,7 +490,7 @@ fn route_qualification_refusal(
   readback_accepted: Bool,
 ) -> RouteQualificationRefusal? {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => Present { value: QualificationSubjectNotACandidate }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => Present { value: QualificationSubjectNotACandidate }
     RouteGroundedByCitedSource { request: _, citation: _ } => Present { value: QualificationSubjectNotACandidate }
     RouteUngrounded => Present { value: QualificationSubjectNotACandidate }
     RouteQualificationCandidate { request: req, evidence: _ } =>
@@ -494,7 +519,7 @@ fn candidate_refusal_without_response(standing: BmcRotationRouteStanding, approv
         Present { value: refusal } => refusal
         Absent => QualificationRequestUnrealized
       }
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => QualificationSubjectNotACandidate
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => QualificationSubjectNotACandidate
     RouteGroundedByCitedSource { request: _, citation: _ } => QualificationSubjectNotACandidate
     RouteUngrounded => QualificationSubjectNotACandidate
   }
@@ -521,7 +546,7 @@ fn qualify_rotation_route(
             standing: BmcRotationRouteStanding {
               endpoint: standing.endpoint,
               firmware: standing.firmware,
-              grounding: RouteGroundedByExecutedRequest { request: r.subject.request, request_receipt: r.request_receipt, response_receipt: r.response_receipt },
+              grounding: RouteGroundedByExecutedRequest { request: r.subject.request, request_receipt: r.request_receipt, response_receipt: r.response_receipt, effect: r.effect },
             },
           }
       }
@@ -530,7 +555,7 @@ fn qualify_rotation_route(
 
 // THE MODELED VERDICT: what the same classifier says of a modeled run. No arm carries a standing.
 type ModeledRouteQualificationVerdict
-  = ModeledQualificationWouldQualify { subject: RouteQualificationSubject, request_receipt: EvidenceRef, response_receipt: EvidenceRef }
+  = ModeledQualificationWouldQualify { subject: RouteQualificationSubject, request_receipt: EvidenceRef, response_receipt: EvidenceRef, effect: RouteEffectStanding }
   | ModeledQualificationRefused { cause: RouteQualificationRefusal }
 
 fn classify_modeled_route_qualification(
@@ -543,7 +568,7 @@ fn classify_modeled_route_qualification(
     Present { value: r } =>
       match route_qualification_refusal(standing: standing, approval: approval, answered: r.subject, response_receipt: r.response_receipt, completed: r.completed, readback_accepted: r.readback_accepted) {
         Present { value: refusal } => ModeledQualificationRefused { cause: refusal }
-        Absent => ModeledQualificationWouldQualify { subject: r.subject, request_receipt: r.request_receipt, response_receipt: r.response_receipt }
+        Absent => ModeledQualificationWouldQualify { subject: r.subject, request_receipt: r.request_receipt, response_receipt: r.response_receipt, effect: r.effect }
       }
   }
 }
@@ -599,7 +624,7 @@ fn admit_route_qualification_request(
               }
           }
       }
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
     RouteGroundedByCitedSource { request: _, citation: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
     RouteUngrounded => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
   }
@@ -608,7 +633,7 @@ fn admit_route_qualification_request(
 fn candidate_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
   match standing.grounding {
     RouteQualificationCandidate { request: r, evidence: _ } => Present { value: r }
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => none
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => none
     RouteGroundedByCitedSource { request: _, citation: _ } => none
     RouteUngrounded => none
   }
@@ -673,6 +698,7 @@ type RotationApplyAdmission
   | RotationApplyRouteForAnotherController { route_endpoint: BmcControllerEndpoint, target_endpoint: BmcControllerEndpoint }
   | RotationApplyRouteForAnotherBuild { route_firmware: BmcFirmwareReleaseIdentity, target_firmware: BmcFirmwareReleaseIdentity }
   | RotationApplyRouteForAnotherOperation { grounded: BmcAccountWriteRequest, requested: BmcAccountWriteRequest }
+  | RotationApplyRouteEffectUnobserved { standing: BmcRotationRouteStanding }
   | RotationApplyApprovalRefused { cause: RedemptionRefusal }
   | RotationApplyApprovalDenied
   | RotationApplyApprovalForAnotherAuthority { authority: NonEmptyStr }
@@ -775,9 +801,50 @@ fn request_channel(request: BmcAccountWriteRequest) -> Int {
   }
 }
 
+fn lowering_request(request: BmcAccountWriteRequest) -> Bool {
+  match request {
+    IpmiSetUserPrivilegeLimit { access: x } => lowers_privilege(privilege: x.privilege)
+    IpmiSetUserPassword { user: _ } => false
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+  }
+}
+
+// A route whose grounding observed the operation take effect: an executed request with EffectObserved,
+// or a source cited for this build (the citation states the operation's effect). An accept-only
+// execution does not qualify.
+fn route_effect_observed(standing: BmcRotationRouteStanding) -> Bool {
+  match standing.grounding {
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: e } =>
+      match e { EffectObserved => true  AcceptedEffectUnobserved => false }
+    RouteGroundedByCitedSource { request: _, citation: _ } => true
+    RouteQualificationCandidate { request: _, evidence: _ } => false
+    RouteUngrounded => false
+  }
+}
+
+// THE WITNESS'S EXECUTED-ROUTE FIXTURE: the only way to hold an executed grounding with a chosen effect
+// standing while no live response mint exists. Admitted to the witness helper only.
+fn rotation_route_executed_fixture(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  request: BmcAccountWriteRequest,
+  receipt: EvidenceRef,
+  effect: RouteEffectStanding,
+) -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "executed_route_at"),
+  ]
+{
+  BmcRotationRouteStanding {
+    endpoint: endpoint,
+    firmware: firmware,
+    grounding: RouteGroundedByExecutedRequest { request: request, request_receipt: receipt, response_receipt: receipt, effect: effect },
+  }
+}
+
 fn grounded_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => Present { value: r }
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => Present { value: r }
     RouteGroundedByCitedSource { request: r, citation: _ } => Present { value: r }
     RouteQualificationCandidate { request: _, evidence: _ } => none
     RouteUngrounded => none
@@ -801,6 +868,8 @@ fn admit_rotation_apply(
         RotationApplyRouteForAnotherBuild { route_firmware: standing.firmware, target_firmware: target_firmware }
       } else if !account_write_request_same_operation(a: grounded, b: request) {
         RotationApplyRouteForAnotherOperation { grounded: grounded, requested: request }
+      } else if lowering_request(request: request) && !route_effect_observed(standing: standing) {
+        RotationApplyRouteEffectUnobserved { standing: standing }
       } else {
         match approval {
           RedemptionRefused { cause: c } => RotationApplyApprovalRefused { cause: c }
