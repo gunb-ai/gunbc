@@ -744,3 +744,43 @@ test fn a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_a
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
 }
+
+fn sized_verdicts(module: String, n: Int) -> List<ArtifactPayload> {
+  verdicts(text: concat(module, repeat_string(s: " pass", n: n)))
+}
+
+// AN UNFINISHED RESERVATION BINDS NOTHING, INCLUDING ITS SIZE. X (oldest) and W are live; a SMALL Y
+// evicts X, whose delete is refused, so Y is refused unpublished with its small row live. X is
+// cleared. The same request Y is retried with a LARGER result: it must be charged at its current size
+// -- which no longer fits beside W, so W is evicted -- and disk stays within budget. Admitting the
+// retry on the first attempt's smaller row would publish Y beside W and settle over the ceiling.
+test fn a_retry_with_a_larger_result_is_charged_at_its_current_size_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let rx = bundle_req(module: "x")
+      let rw = bundle_req(module: "w")
+      let ry = bundle_req(module: "y")
+      let cx = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: rx, payloads: sized_verdicts(module: "x", n: 70))
+      let cw = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: rw, payloads: sized_verdicts(module: "w", n: 50))
+      let x_path = object_path(root_path: root_path, req: rx)
+      let unlinked = Filesystem.Delete(path: x_path).success
+      let blocked = shell.Mkdir.NewOwnerOnly(path: x_path).success
+      let small = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: sized_verdicts(module: "y", n: 100))
+      let cleared = shell.Remove.RecursiveForce(path: x_path).success
+      let large = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: sized_verdicts(module: "y", n: 190))
+      commit_tag(c: cx.commit) == "committed" && commit_tag(c: cw.commit) == "committed" && unlinked && blocked
+        && commit_tag(c: small.commit) == "cleanup_outstanding"
+        && cleared
+        && commit_tag(c: large.commit) == "committed"
+        && large.evicted |> any(n => n == object_name(req: rw))
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: ry))
+        && root_object_bytes(root_path: root_path) <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
