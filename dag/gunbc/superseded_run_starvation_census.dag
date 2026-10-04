@@ -45,7 +45,7 @@ import std.page_fold {
   page_fold_refusal_key,
   PageBound,
   PageCursor,
-  OffsetPage,
+  OffsetPage, OpaqueToken, LinkNext,
   PageFoldSubject,
   PageContinuation,
   ContinuationClosed,
@@ -329,7 +329,8 @@ fn pump_run_pages(
     DemandPage { cursor: c } => {
       let page_num = match c {
         OffsetPage { page: n } => n
-        _ => 1
+        OpaqueToken { token: _ } => 1
+        LinkNext { target: _ } => 1
       }
       match github.WorkflowRuns.ListWorkflowRuns(
         auth_token: auth_token,
