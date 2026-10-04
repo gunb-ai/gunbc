@@ -1,0 +1,31 @@
+module v2.test.claim.self_host_contract.source_authority_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.source_authority {
+  SourceRootCoverage, SourceRootCoverageComplete, SourceRootManifestElided, SourceRootRowsMissing,
+  SourceRootManifestAbsent,
+  source_root_coverage_is_complete, source_root_ref_transport_coverage_admits
+}
+
+// THE source_authority ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.source_authority source_root_coverage_is_complete admits only complete coverage, and
+// source_root_ref_transport_coverage_admits additionally admits an elided manifest and nothing
+// else.
+fn sac_row(coverage: SourceRootCoverage, inline_expected: Bool, ref_expected: Bool) -> Bool {
+  source_root_coverage_is_complete(coverage: coverage) == inline_expected
+    && source_root_ref_transport_coverage_admits(coverage: coverage) == ref_expected
+}
+
+// The planted fault expects the elided manifest to count as complete inline coverage, so the
+// injected reading does not hold exactly when that coverage is refused.
+fn source_authority_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  sac_row(coverage: SourceRootCoverageComplete, inline_expected: true, ref_expected: true)
+    && sac_row(coverage: SourceRootManifestElided { read_count: 65, cap: 64 }, inline_expected: inject_fault, ref_expected: true)
+    && sac_row(coverage: SourceRootRowsMissing { read_count: 3, produced_row_count: 2 }, inline_expected: false, ref_expected: false)
+    && sac_row(coverage: SourceRootManifestAbsent, inline_expected: false, ref_expected: false)
+}
+
+test fn source_authority_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  source_authority_emitted_contract_holds(inject_fault: false)
+    && !source_authority_emitted_contract_holds(inject_fault: true)
+}
