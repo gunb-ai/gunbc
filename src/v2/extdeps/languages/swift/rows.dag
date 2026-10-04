@@ -735,7 +735,7 @@ fn swl_stmt_has_block(s: SwiftStmt) -> Bool {
     SwiftForInStmt { pattern: _, sequence: _, statements: _ } => true
     SwiftSwitchStmt { subject: _, cases: _ } => true
     SwiftDoStmt { statements: _, catches: _ } => true
-    SwiftCommentedStmt { comments: _, stmt: st } => swl_stmt_has_block(s: st)
+    SwiftCommentedStmt { comments: _, stmt: _ } => true
   }
 }
 
