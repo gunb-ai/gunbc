@@ -1,0 +1,105 @@
+module test.claim.auth.account_controls_route_witness_test
+
+import std.types { Bool, String, NonEmptyStr, Secret }
+import extdeps.ietf.http_semantics { GET, POST }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap_serve { AuthLoginHandler, AuthLogoutHandler }
+import test.claim.roadmap_serve_witness { selects }
+import extdeps.http.server {
+  ServeHttpRequest, ServeHttpResponse, RequestSecurityContext,
+  ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
+}
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, OidcLoginPrompt, OidcLoginPromptSelectAccount }
+import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, AccessPathLocalDev, RequestAccessPath }
+import gunbc.auth.session { session_cookie_name }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.roadmap_auth_routes {
+  auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused,
+  auth_login_redirect_location, auth_logout_response,
+}
+
+// THE PROMPT PARAMETER HAS THREE ANSWERS: absent is an ordinary login, select_account is the one
+// admitted prompt, and any other spelling refuses carrying the spelling it refused.
+test fn the_login_prompt_admits_only_select_account() -> Bool {
+  match auth_login_prompt_admit(raw: "") {
+    LoginPromptAdmitted { prompt: p } => match p {
+      Absent => true
+      Present { value: _ } => false
+    }
+    LoginPromptRefused { raw: _ } => false
+  }
+    && match auth_login_prompt_admit(raw: "select_account") {
+      LoginPromptAdmitted { prompt: p } => match p {
+        Present { value: OidcLoginPromptSelectAccount } => true
+        Absent => false
+      }
+      LoginPromptRefused { raw: _ } => false
+    }
+    && match auth_login_prompt_admit(raw: "consent") {
+      LoginPromptRefused { raw: r } => r == "consent"
+      LoginPromptAdmitted { prompt: _ } => false
+    }
+}
+
+fn witness_redirect_location(prompt: OidcLoginPrompt?) -> String {
+  auth_login_redirect_location(
+    config: OidcDeploymentConfig {
+      client_id: "fixture-client-id" as NonEmptyStr,
+      client_secret: "fixture-secret" as Secret,
+      redirect_uri: "https://tracker.example/auth/google/callback" as NonEmptyStr,
+      admitted_audiences: ["fixture-client-id" as NonEmptyStr],
+      expected_hosted_domain: "example.test" as NonEmptyStr,
+      session_lifetime_seconds: 43200,
+      login_transaction_lifetime_seconds: 600,
+    },
+    transaction: OidcLoginTransaction {
+      state: "state-1", nonce: "nonce-1", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
+      verifier: OidcPkceCodeVerifier { verifier: "verifier-1" }, return_path: RelativeReturnPath { path: "/" },
+    },
+    redirect_encoded: "https%3A%2F%2Ftracker.example%2Fauth%2Fgoogle%2Fcallback",
+    challenge: "supplied-challenge" as NonEmptyStr,
+    prompt: prompt,
+  )
+}
+
+// THE AUTHORIZATION REQUEST CARRIES THE PROMPT MEMBER ONLY WHEN ONE WAS ADMITTED, over a supplied
+// transaction, encoded redirect and challenge: the ordinary login's request is unchanged, and the
+// account menu's Switch account appends exactly prompt=select_account.
+test fn the_authorization_request_carries_the_prompt_only_when_admitted() -> Bool {
+  let ordinary = witness_redirect_location(prompt: none)
+  !string_contains(s: ordinary, pattern: "prompt")
+    && witness_redirect_location(prompt: Present { value: OidcLoginPromptSelectAccount }) == concat(ordinary, "&prompt=select_account")
+}
+
+// LOGOUT REDIRECTS HOME AND CLEARS THE COOKIE: a request presenting no session answers 303 with
+// Location / ahead of an emptied session cookie, so the Sign out form post lands back on the page
+// rather than on a text receipt, and the browser drops the cookie whether or not a session existed.
+test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
+  let response = auth_logout_response(
+    instance: srv2_preview_dashboard_instance(),
+    request: ServeHttpRequest {
+      method: POST,
+      path: "/auth/logout",
+      body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+    },
+  )
+  response.status == 303
+    && join(map(response.headers, h => match h {
+      ServeResponseHeaderLocation { location: l } => concat("location=", l as String)
+      ServeResponseHeaderSetCookie { cookie: c } => if c.name == session_cookie_name && c.value == "" { "session-cookie-emptied" } else { "other-cookie" }
+      ServeResponseHeaderNoStore => "no-store"
+    }), "|") == "location=/|session-cookie-emptied"
+}
+
+// THE PATHS THE ACCOUNT CONTROLS ADDRESS ARE SERVED, on the live route table and with the method
+// each control uses: Sign in and Switch account are links (GET) to the login path, and Sign out is
+// a form POST to the logout path. The controls and the route specs read the same two rows
+// (gunbc.roadmap_auth_route_paths), so this fails if a row stops being served rather than when a
+// second spelling drifts.
+test fn the_account_controls_address_routes_the_table_serves() -> Bool {
+  selects(method: GET, path: auth_login_route_path, want: AuthLoginHandler)
+    && selects(method: GET, path: concat(auth_login_route_path, "?prompt=select_account"), want: AuthLoginHandler)
+    && selects(method: POST, path: auth_logout_route_path, want: AuthLogoutHandler)
+}
