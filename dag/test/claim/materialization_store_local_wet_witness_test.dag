@@ -706,3 +706,41 @@ test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> 
   let removed = shell.Remove.RecursiveForce(path: root_path)
   names_judged && verdict && removed.success
 }
+
+// A RETRY IS NOT A WAY AROUND UNDELETED BYTES. Y's first attempt evicts X, whose delete the host
+// refuses, so Y's row is reserved but Y is never published. Retrying the SAME request finds its own row
+// live -- the arm that would converge -- but the object is absent, so the retry is an unfinished
+// reservation and stays cleanup outstanding while X's bytes remain; Y is still absent and disk stays
+// within budget. Once X is cleared, the same retry publishes.
+test fn a_retry_of_an_unpublished_request_stays_refused_until_the_doomed_bytes_are_gone_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let rx = bundle_req(module: "x")
+      let ry = bundle_req(module: "y")
+      let cx = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: rx, payloads: half_budget_verdicts(module: "x"))
+      let x_path = object_path(root_path: root_path, req: rx)
+      let unlinked = Filesystem.Delete(path: x_path).success
+      let blocked = shell.Mkdir.NewOwnerOnly(path: x_path).success
+      let first = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"))
+      let retry = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"))
+      let y_absent_after_retry = !Filesystem.Read(path: object_path(root_path: root_path, req: ry)).success
+      let within_after_retry = root_object_bytes(root_path: root_path) <= budget
+      let cleared = shell.Remove.RecursiveForce(path: x_path).success
+      let settled = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"))
+      commit_tag(c: cx.commit) == "committed" && unlinked && blocked
+        && commit_tag(c: first.commit) == "cleanup_outstanding"
+        && commit_tag(c: retry.commit) == "cleanup_outstanding"
+        && y_absent_after_retry && within_after_retry
+        && cleared
+        && commit_tag(c: settled.commit) == "committed"
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: ry))
+        && root_object_bytes(root_path: root_path) <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
