@@ -10,10 +10,10 @@ import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_int }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
-  json_field, json_field_string, json_field_int, json_field_nat, FieldRead, FieldAbsent, FieldMalformed,
+  json_field_string, json_field_int, json_field_nat, FieldRead, FieldAbsent, FieldMalformed,
 }
 import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_is_canonically_spelled }
 import gunbc.clock_read { clock_now_probed_at }
@@ -39,9 +39,10 @@ import gunbc.roadmap_session_placement {
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
 }
 import gunbc.roadmap_service_evidence {
-  ServiceEvidenceReceipt, ServiceEvidenceEntry, StandingObserved, StandingOwed, StandingRefused,
+  ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
+  service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode,
   ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
-  service_evidence_observe_for_attempt, service_evidence_receipt_digest, service_evidence_entries, service_evidence_readings,
+  service_evidence_observe_for_attempt,
 }
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
@@ -480,46 +481,11 @@ fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // which check every join; the wire encoder re-checks them, so correctness does not rest on
 // sole_constructor (enforced by the seed, not yet by the native route -- gunbc.rung_drop
 // g0_type_decl_modifier_parse_without_sealing_property), which is defence in depth here.
-// THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap_service_evidence, #13109/#13157): its
-// canonical digest and every field's standing, in the evidence module's own ordered view. A field may
-// stand observed or owed to a producer that has not landed; a REFUSED field is not a standing a start
-// can carry -- refused evidence about the qualifying attempt disqualifies it -- so it has no arm here.
-type DogfoodEvidenceStanding
-  = EvidenceFieldObserved
-  | EvidenceFieldOwed
-
-type DogfoodEvidenceField {
-  field: String
-  standing: DogfoodEvidenceStanding
-}
-
-fn dogfood_evidence_field_of(x: ServiceEvidenceEntry) -> DogfoodEvidenceField? {
-  match x.standing {
-    StandingObserved { value: _, source: _ } => Present { value: DogfoodEvidenceField { field: x.field, standing: EvidenceFieldObserved } }
-    StandingOwed { producer: _ } => Present { value: DogfoodEvidenceField { field: x.field, standing: EvidenceFieldOwed } }
-    StandingRefused { reason: _ } => none
-  }
-}
-
-// Every field's standing, or none when any field is refused.
-fn dogfood_evidence_fields(r: ServiceEvidenceReceipt) -> List<DogfoodEvidenceField>? {
-  fold(service_evidence_entries(r: service_evidence_readings(r: r)), init: Present { value: [] }, f: (acc, x) => match acc {
-    Absent => none
-    Present { value: done } =>
-      match dogfood_evidence_field_of(x: x) {
-        Absent => none
-        Present { value: f } => Present { value: concat(done, [f]) }
-      }
-  })
-}
-
-fn dogfood_evidence_standing_wire(s: DogfoodEvidenceStanding) -> String {
-  match s {
-    EvidenceFieldObserved => "observed"
-    EvidenceFieldOwed => "owed"
-  }
-}
-
+// THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap_service_evidence, #13109/#13157) is one
+// ServiceEvidenceSnapshot: the canonical evidence wire, persisted whole, from which the decoder of that
+// module derives the digest, the binding and every field's standing. The start receipt carries no
+// digest or standing list of its own, so the two can never describe different evidence, and the field
+// population is that module's, not a list kept here.
 type DogfoodStartReceipt sole_constructor {
   node_id: String
   attempt_key: String
@@ -533,8 +499,7 @@ type DogfoodStartReceipt sole_constructor {
   grant_identity: String
   fence_generation: Nat
   cleanup_outcome: String
-  service_evidence_digest: String
-  service_evidence_fields: List<DogfoodEvidenceField>
+  service_evidence: ServiceEvidenceSnapshot
   established_at: Rfc3339Timestamp
 }
 
@@ -553,8 +518,7 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
   else if r.grant_identity == "" { Present { value: "grant_identity is empty" } }
   else if r.fence_generation == 0 { Present { value: "fence_generation is not a granted fence" } }
   else if r.cleanup_outcome != "released" && r.cleanup_outcome != "nothing-to-release" { Present { value: "cleanup_outcome is not a settled release" } }
-  else if r.service_evidence_digest == "" { Present { value: "service_evidence_digest is empty" } }
-  else if length(r.service_evidence_fields) == 0 || any(r.service_evidence_fields, f => f.field == "") { Present { value: "service_evidence_fields is empty or names an empty field" } }
+  else if r.service_evidence.node_id != r.node_id || r.service_evidence.attempt_key != r.attempt_key { Present { value: "the pinned service evidence names another node or attempt" } }
   else if !rfc3339_is_canonically_spelled(value: r.established_at) { Present { value: "established_at is not a canonical RFC 3339 UTC instant" } }
   else { none }
 }
@@ -570,9 +534,9 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceR
         || (service.binding.node_id as String) != e.node_id || (service.binding.attempt_key as String) != e.attempt_key {
         none
       } else {
-        match dogfood_evidence_fields(r: service) {
-          Absent => none
-          Present { value: fields } => {
+        match service_evidence_snapshot_of_receipt(r: service) {
+          SnapshotInvalid { reason: _ } => none
+          SnapshotDecoded { snapshot } => {
         let r = DogfoodStartReceipt {
           node_id: e.node_id,
           attempt_key: e.attempt_key,
@@ -586,8 +550,7 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceR
           grant_identity: placement.grant_identity,
           fence_generation: placement.fence_generation,
           cleanup_outcome: cleanup.outcome,
-          service_evidence_digest: service_evidence_receipt_digest(r: service),
-          service_evidence_fields: fields,
+          service_evidence: snapshot,
           established_at: established_at,
         }
         match dogfood_start_receipt_defect(r: r) {
@@ -655,11 +618,8 @@ fn dogfood_start_receipt_wire(r: DogfoodStartReceipt) -> String? {
         json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
         json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
         json_kv(key: "cleanup_outcome", value: json_string(s: r.cleanup_outcome)),
-        json_kv(key: "service_evidence_digest", value: json_string(s: r.service_evidence_digest)),
-        json_kv(key: "service_evidence_fields", value: json_array(map(r.service_evidence_fields, f => json_object([
-          json_kv(key: "field", value: json_string(s: f.field)),
-          json_kv(key: "standing", value: json_string(s: dogfood_evidence_standing_wire(s: f.standing))),
-        ])))),
+        json_kv(key: "service_evidence_digest", value: json_string(s: r.service_evidence.digest)),
+        json_kv(key: "service_evidence_wire", value: json_string(s: r.service_evidence.wire)),
         json_kv(key: "established_at", value: json_string(s: r.established_at as String)),
       ])) }
   }
@@ -680,36 +640,6 @@ fn dogfood_decode_field(v: JsonValue, key: String) -> String {
   }
 }
 
-// A malformed element or array decodes as an empty list, which the defect check refuses, so the
-// defect check stays the decoder's whole judgment.
-fn dogfood_decode_evidence_field(v: JsonValue) -> DogfoodEvidenceField? {
-  let standing = dogfood_decode_field(v: v, key: "standing")
-  let field = dogfood_decode_field(v: v, key: "field")
-  if standing == "observed" { Present { value: DogfoodEvidenceField { field: field, standing: EvidenceFieldObserved } } }
-  else if standing == "owed" { Present { value: DogfoodEvidenceField { field: field, standing: EvidenceFieldOwed } } }
-  else { none }
-}
-
-fn dogfood_decode_evidence_fields(v: JsonValue) -> List<DogfoodEvidenceField> {
-  match json_field(obj: v, key: "service_evidence_fields") {
-    FieldRead { value: arr } =>
-      match arr {
-        JsonArray { elements } => {
-          let decoded = map(elements, e => dogfood_decode_evidence_field(v: e))
-          if any(decoded, d => match d { Absent => true  Present { value: _ } => false }) { [] }
-          else { flat_map(decoded, d => match d { Absent => []  Present { value: f } => [f] }) }
-        }
-        JsonNull => []
-        JsonBool { value: _ } => []
-        JsonNumber { lexeme: _ } => []
-        JsonString { value: _ } => []
-        JsonObject { members: _ } => []
-      }
-    FieldAbsent => []
-    FieldMalformed { cause: _ } => []
-  }
-}
-
 fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
   match parse_json_document(s: payload) {
     JsonDocumentUnreadable { gap: _ } => StartReceiptInvalid { reason: "the start receipt is not a JSON document" }
@@ -721,6 +651,12 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
         if when == "" {
           StartReceiptInvalid { reason: "established_at is missing" }
         } else {
+          match service_evidence_snapshot_decode(wire: dogfood_decode_field(v: v, key: "service_evidence_wire")) {
+            SnapshotInvalid { reason } => StartReceiptInvalid { reason: join(["the pinned service evidence does not decode: ", reason], "") }
+            SnapshotDecoded { snapshot } =>
+              if dogfood_decode_field(v: v, key: "service_evidence_digest") != snapshot.digest {
+                StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
+              } else {
           let r = DogfoodStartReceipt {
             node_id: dogfood_decode_field(v: v, key: "node_id"),
             attempt_key: dogfood_decode_field(v: v, key: "attempt_key"),
@@ -734,13 +670,14 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
             grant_identity: dogfood_decode_field(v: v, key: "grant_identity"),
             fence_generation: match json_field_nat(obj: v, key: "fence_generation") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
             cleanup_outcome: dogfood_decode_field(v: v, key: "cleanup_outcome"),
-            service_evidence_digest: dogfood_decode_field(v: v, key: "service_evidence_digest"),
-            service_evidence_fields: dogfood_decode_evidence_fields(v: v),
+            service_evidence: snapshot,
             established_at: when as Rfc3339Timestamp,
           }
           match dogfood_start_receipt_defect(r: r) {
             Absent => StartReceiptDecoded { receipt: r }
             Present { value: why } => StartReceiptInvalid { reason: why }
+          }
+              }
           }
         }
       }

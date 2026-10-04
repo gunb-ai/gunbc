@@ -18,6 +18,11 @@ import gunbc.roadmap_dogfood_route {
   dogfood_route_acceptance_holds_on,
   DogfoodStartRecord, DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
+import gunbc.roadmap_service_evidence { ServiceEvidenceReceipt, ServiceEvidenceInputs, SessionPlacementRead, AttemptBinding, service_evidence_receipt_wire }
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
+import std.content_hash { content_hash_of_value }
+import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
@@ -50,13 +55,33 @@ fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
 
 data head: String = "b04485cffb000000000000000000000000000000"
 
+fn evidence_wire() -> String {
+  service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
+    binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+    inputs: ServiceEvidenceInputs { session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" } } },
+  })
+}
+
 fn wire(pr: String) -> String {
-  join([
-    "{\"schema\": \"dogfood-start-receipt/v3\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"head_sha\": \"", head,
-    "\", \"submission_digest\": \"d1\", \"review_subject\": \"n1@", head,
-    "\", \"review_plan_revision\": \"plan-r1\", \"review_digest\": \"rd1\", \"pr_number\": ", pr,
-    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"grant_identity\": \"evt-7\", \"fence_generation\": 7, \"cleanup_outcome\": \"released\", \"service_evidence_digest\": \"sed1\", \"service_evidence_fields\": [{\"field\": \"placement\", \"standing\": \"observed\"}, {\"field\": \"wait_time\", \"standing\": \"owed\"}], \"established_at\": \"2026-10-03T07:00:00Z\"}",
-  ], "")
+  let ev = evidence_wire()
+  serialize_json(v: json_object([
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v3")),
+    json_kv(key: "node_id", value: json_string(s: "n1")),
+    json_kv(key: "attempt_key", value: json_string(s: "k1")),
+    json_kv(key: "head_sha", value: json_string(s: head)),
+    json_kv(key: "submission_digest", value: json_string(s: "d1")),
+    json_kv(key: "review_subject", value: json_string(s: join(["n1@", head], ""))),
+    json_kv(key: "review_plan_revision", value: json_string(s: "plan-r1")),
+    json_kv(key: "review_digest", value: json_string(s: "rd1")),
+    json_kv(key: "pr_number", value: json_int(n: if pr == "0" { 0 } else { 4242 })),
+    json_kv(key: "pr_url", value: json_string(s: "https://github.com/gunb-ai/gunbc/pull/4242")),
+    json_kv(key: "grant_identity", value: json_string(s: "evt-7")),
+    json_kv(key: "fence_generation", value: json_int(n: 7)),
+    json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
+    json_kv(key: "service_evidence_digest", value: json_string(s: wire_content_hash_to_hex(hash: content_hash_of_value(value: ev as NonEmptyStr)))),
+    json_kv(key: "service_evidence_wire", value: json_string(s: ev)),
+    json_kv(key: "established_at", value: json_string(s: "2026-10-03T07:00:00Z")),
+  ]))
 }
 
 fn is_refused(r: DogfoodStartRecord) -> Bool {
