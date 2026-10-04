@@ -17411,10 +17411,44 @@ mod changed_selections_outside_discovery_mirror_tests {
             .collect()
     }
 
+    /// A `List<T>` value in either realization the interpreter produces: the host vector, or the
+    /// free-monoid `Cons`/`Empty` chain a `.dag` fold builds (`v2.std.algebra` `list_reverse`
+    /// returns one since gunbc#13138). Anything else is not a list and panics with its own name.
+    fn list_items(ctx: &v1_interpreter::InterpContext, value: &Value) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut cursor = value.clone();
+        loop {
+            match cursor {
+                Value::List(items) => {
+                    out.extend(items.iter().cloned());
+                    return out;
+                }
+                Value::Variant {
+                    variant_name,
+                    ref fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Empty") && fields.is_empty() => return out,
+                Value::Variant {
+                    variant_name,
+                    ref fields,
+                    ..
+                } if ctx.sym_eq(variant_name, "Cons") => {
+                    let (Some(head), Some(tail)) =
+                        (ctx.field(fields, "head"), ctx.field(fields, "tail"))
+                    else {
+                        panic!("a Cons cell of the .dag decider's list lacks head or tail");
+                    };
+                    out.push(head.clone());
+                    let next = tail.clone();
+                    cursor = next;
+                }
+                _ => panic!("the .dag decider did not return a List"),
+            }
+        }
+    }
+
     fn dag_rows(ctx: &v1_interpreter::InterpContext, value: &Value) -> BTreeMap<String, String> {
-        let Value::List(rows) = value else {
-            panic!("the .dag decider did not return a List");
-        };
+        let rows = list_items(ctx, value);
         let mut out = BTreeMap::new();
         for row in rows.iter() {
             let Value::Record { fields, .. } = row else {

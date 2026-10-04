@@ -34349,18 +34349,18 @@ fn roster_entry_registry_cache(
 mod nfr_observation_roster_test {
     use super::non_fold_residue_site_is_rostered;
 
-    // Green-by-execution for the one observation-stack wildcard site
-    // (ci_hold_cause_text over SchedulerHold, merged via #7168): the roster now
-    // carries it, so the corpus nfr witness's unrostered count no longer counts it.
-    // Reds if the roster row's key drifts from the scan's `{rel}::{fn}` key, or if
-    // the hand edit malformed the frontier list (the reader panics on a bad list).
+    // The one observation-stack wildcard site (ci_hold_cause_text over SchedulerHold, rostered via
+    // #7168) was enumerated by gunbc#13277, which drained its row. A dissolved site must stay
+    // unrostered: a row for a site with no wildcard is the stale arm the floor's
+    // NonFoldResidueRosterDiverged refuses. Reds if the row returns, or if the reader panics on a
+    // malformed frontier list.
     #[test]
-    fn observation_hold_cause_wildcard_is_rostered() {
+    fn observation_hold_cause_row_stays_drained() {
         assert!(
-            non_fold_residue_site_is_rostered(
+            !non_fold_residue_site_is_rostered(
                 "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text"
             ),
-            "the observation ci_hold_cause_text wildcard must be rostered after the fix"
+            "ci_hold_cause_text has no wildcard since gunbc#13277; its roster row must stay drained"
         );
     }
 }
