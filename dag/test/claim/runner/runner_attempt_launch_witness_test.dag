@@ -1,5 +1,7 @@
 module test.claim.runner_attempt_launch_witness
 
+import test.claim.github_app_registry { dispatched, runner_grant }
+import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused }
 import gunbc.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
@@ -135,11 +137,20 @@ fn minted_credential(encoded: String) -> List<EncodedJitConfig> {
 // something that is not a whole credential, handed on as if it were.
 data short_blob: String = "ZmFrZS1qaXQtY29uZmln"
 
+// THE DISPATCH ON A HAND-BUILT DELIVERY. JitCredentialBoundToAttempt carries the sealed authorized
+// dispatch that produced it (gunbc.runner.runner_qualification_dispatch joins on it). This fixture
+// builds a delivery directly to drive the launch decision, which reads only the slot, the credential
+// and the runner id, so it takes the dispatch from test.claim.github_app_registry dispatched -- the
+// one admitted fixture mint -- rather than forging one.
 fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance {
   match minted_credential(encoded: encoded) {
     Cons { head: c, tail: _ } =>
-      JitMintReceived {
-        delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: attempt }, credential: c, runner_id: registration_fixture_id },
+      match dispatched(owned: true, perms: runner_grant) {
+        JitMintDispatchAuthorized { dispatch: d } =>
+          JitMintReceived {
+            delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: attempt }, credential: c, runner_id: registration_fixture_id, dispatch: d },
+          }
+        JitMintDispatchRefused { refusal: _ } => JitMintAppJwtUnsigned { detail: "fixture: the admitted dispatch fixture was refused" }
       }
     Empty {} => JitMintAppJwtUnsigned { detail: "fixture: credential fixture did not mint" }
   }

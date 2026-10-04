@@ -207,7 +207,7 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
   match mint {
     JitMintReceived { delivery: delivery } =>
       match delivery {
-        JitCredentialBoundToAttempt { slot: bound, credential: c, runner_id: id } =>
+        JitCredentialBoundToAttempt { slot: bound, credential: c, runner_id: id, dispatch: _ } =>
           if !host_mint_admission_is_required() {
             JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
           } else if bound != MicroVmJitSlot { attempt: attempt } {
