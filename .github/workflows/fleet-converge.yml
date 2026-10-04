@@ -154,7 +154,7 @@ jobs:
       - name: Derive release-bins key (pre-materialization axes; sha256 at cross-run scope)
         id: release_bins_key
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'printer' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           DIRTY=$('git' '-C' "$ROOT" 'status' '--porcelain' '--untracked-files=no')
@@ -360,7 +360,7 @@ jobs:
       - name: Decide release-bins outcome; verify a stored pack completely before any restored binary runs
         id: release_bins_outcome
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'printer' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -496,7 +496,7 @@ jobs:
       - name: Build release bins (the dispatched mode's product)
         id: release_build
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'printer' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ]; then
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
           else
           ROOT=$('git' 'rev-parse' '--show-toplevel')
@@ -531,7 +531,7 @@ jobs:
         timeout-minutes: 5
       - name: Pack release bins with member manifest into staging (build outcomes only; tar keeps exec bits)
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'printer' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           STAGE="$ROOT"'/.release-bins-staging'
@@ -602,7 +602,7 @@ jobs:
       - name: Verify the handed-off release bins against the build key, then promote and run --verify-build-artifacts (fail-closed)
         id: release_bins
         run: |
-          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ] || [ "${FLEET_CONVERGE_MODE:-}" = 'printer' ]; then
+          if [ "${FLEET_CONVERGE_MODE:-}" = 'approval_device_enrolment_code_issue' ]; then
           set -e
           ROOT=$('git' 'rev-parse' '--show-toplevel')
           '[' '-n' "$RELEASE_BINS_KEY" ']' || ('echo' '::error title=release-bins ConsumerKeyMissing::the build job published no release-bins key'; exit 1)
