@@ -11,7 +11,7 @@ import gunbc.durable_exclusive_hold_file_store {
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.host_boot_attempt_admission {
   SlotConsumption, SlotConsumed, SlotRefused,
-  AttemptReceiptRefusal, AttemptAlreadyConsumed, ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptNonceMissing,
+  AttemptReceiptRefusal, AttemptAlreadyConsumed, ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing,
   ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe, ReceiptPathOutsideReceipts, ReceiptFileAbsent, ReceiptFileUnreadable, ReceiptNotJson,
   ReceiptSchemaMismatch, ReceiptFieldUnreadable, ReceiptTimeUnreadable, ReceiptSubjectMismatch, ReceiptAttemptMismatch, ReceiptPlanMismatch,
   ReceiptOrderingViolated, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
@@ -42,6 +42,8 @@ fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
     AttemptAlreadyConsumed { slot: _, consumed_by: _ } => true
     ReceiptHostHasNoRoute { host: _ } => false
     ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => false
+    ReceiptExecutorNotOnStoreHost { reason: _ } => false
+    ReceiptHostUnbound { detail: _ } => false
     ReceiptNonceMissing { variable: _, detail: _ } => false
     ReceiptNonceNotSlotSafe { nonce: _ } => false
     ReceiptHostNotSlotSafe { host: _ } => false

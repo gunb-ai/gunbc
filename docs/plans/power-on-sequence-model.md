@@ -378,6 +378,12 @@ Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspectio
 
 **Placement** (agreed with warm-crane-577): the module sits beside the boot authorization, not inside it, and runs behind boot admission, boot authorization and the unit hold, because it consumes the unit hold's store-host executor. Untangle cuts 4a and 4d move its call site and do not delete it, and cut O2 carries its refusals.
 
+**Wiring.** `gunbc.machine_intake_mtcollins1_boot_run` `mtcollins1_boot_under_live_unit_hold` calls `admit_boot_attempt(proof, revision)` immediately after `UnitHeld`. That is after the boot subject and the unit hold, and before `mtcollins1_boot_actuate`, so before any pre-power read or write.
+- **Executor and binding:** admission mints the store-host executor from the hold proof's own admitted subject, and binds the host through `managed_host_binding`.
+- **Refused receipt:** the hold is released, nothing is written, and the run fails with the typed cause.
+- **Configuration record:** the frozen `AttemptConfigurationReceipt` travels on the attempt record into the diagnostic bundle, and the power-on account reads it there. Slice A's always-`NotRecorded` placeholder (`mtcollins1_attempt_configuration_receipt`) is deleted, not kept beside it.
+- **Attempts that never reach admission:** if the unit hold is refused or the attempt ends before the hold, the attempt records the configuration as `NotRecorded` with that reason.
+
 Where the build differs from the plan above, with reasons:
 - **Slot key.** The key is `attempt-<len(host)>-<host>-<nonce>`, with the host and nonce both admitted only over `[A-Za-z0-9_-]`. That makes it injective by construction. It is not a hash: the corpus's `content_hash_of_value` is a 64-bit structural hash, which does not meet "collision-safe" against a chosen nonce. A nonce outside that set refuses before any read.
 - **Evidence commit.** The commit is the boot run's own bound execution revision (`GITHUB_SHA`, which the run already refuses to proceed without), passed into admission. The file is the reviewed one at that revision.

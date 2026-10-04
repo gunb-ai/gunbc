@@ -13,7 +13,7 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
 }
 import gunbc.host_boot_attempt_admission {
   AttemptReceiptRefusal, ReceiptValidation, ReceiptValidated, ReceiptRefused,
-  ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptNonceMissing, ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe,
+  ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing, ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe,
   ReceiptPathOutsideReceipts, ReceiptFileAbsent, ReceiptFileUnreadable, ReceiptNotJson, ReceiptSchemaMismatch,
   ReceiptFieldUnreadable, ReceiptTimeUnreadable, ReceiptSubjectMismatch, ReceiptAttemptMismatch, ReceiptPlanMismatch,
   ReceiptOrderingViolated, AttemptAlreadyConsumed, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
@@ -65,6 +65,8 @@ fn refusal_tag(cause: AttemptReceiptRefusal) -> String {
   match cause {
     ReceiptHostHasNoRoute { host: _ } => "ReceiptHostHasNoRoute"
     ReceiptExecutorForAnotherHost { executor_host: _, bound: _ } => "ReceiptExecutorForAnotherHost"
+    ReceiptExecutorNotOnStoreHost { reason: _ } => "ReceiptExecutorNotOnStoreHost"
+    ReceiptHostUnbound { detail: _ } => "ReceiptHostUnbound"
     ReceiptNonceMissing { variable: _, detail: _ } => "ReceiptNonceMissing"
     ReceiptNonceNotSlotSafe { nonce: _ } => "ReceiptNonceNotSlotSafe"
     ReceiptHostNotSlotSafe { host: _ } => "ReceiptHostNotSlotSafe"
@@ -90,6 +92,8 @@ fn refusal_detail(cause: AttemptReceiptRefusal) -> String {
   match cause {
     ReceiptHostHasNoRoute { host: h } => h as String
     ReceiptExecutorForAnotherHost { executor_host: e, bound: b } => join([e as String, b as String], "|")
+    ReceiptExecutorNotOnStoreHost { reason: r } => r as String
+    ReceiptHostUnbound { detail: d } => d as String
     ReceiptNonceMissing { variable: v, detail: d } => join([v as String, d], "|")
     ReceiptNonceNotSlotSafe { nonce: n } => n as String
     ReceiptHostNotSlotSafe { host: h } => h as String

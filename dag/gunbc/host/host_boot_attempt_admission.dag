@@ -29,8 +29,11 @@ import extdeps.languages.json.parse {
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
-import gunbc.managed_host { ManagedHost, ManagedHostBinding }
-import gunbc.managed_host_unit_hold { UnitHoldStoreExecutor }
+import gunbc.managed_host {
+  ManagedHost, ManagedHostBinding, managed_host_binding,
+  ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch,
+}
+import gunbc.managed_host_unit_hold { UnitHoldProof, UnitHoldStoreExecutor, UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   AttemptConfigurationReceipt, ExpectedTopology, ExpectedSockets, ExpectedTopologyNotRecorded,
   StimulusRequest, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
@@ -136,6 +139,8 @@ type AttemptInspectionReceipt sole_constructor {
 type AttemptReceiptRefusal
   = ReceiptHostHasNoRoute { host: HostIdentity }
   | ReceiptExecutorForAnotherHost { executor_host: HostIdentity, bound: HostIdentity }
+  | ReceiptExecutorNotOnStoreHost { reason: NonEmptyStr }
+  | ReceiptHostUnbound { detail: NonEmptyStr }
   | ReceiptNonceMissing { variable: NonEmptyStr, detail: String }
   | ReceiptNonceNotSlotSafe { nonce: NonEmptyStr }
   | ReceiptHostNotSlotSafe { host: HostIdentity }
@@ -649,22 +654,36 @@ fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptySt
 }
 
 // ── THE ADMISSION ───────────────────────────────────────────────────────────────────────────────
-// THE ORDER IS THE CONTRACT: route, executor, receipt variable (absent clears as NotNamed), nonce,
-// slot-safety, path, read, every check on the file, and only then the slot.
-fn admit_boot_attempt(binding: ManagedHostBinding, executor: UnitHoldStoreExecutor, revision: NonEmptyStr) -> BootAttemptAdmission {
-  let host = binding.host.host
-  if !host_identity_eq(a: executor.subject.host.host, b: host) {
-    return BootAttemptRefused { cause: ReceiptExecutorForAnotherHost { executor_host: executor.subject.host.host, bound: host } }
-  }
-  match attempt_receipt_route(host: binding.host) {
-    Absent => BootAttemptRefused { cause: ReceiptHostHasNoRoute { host: host } }
+// TAKEN UNDER THE UNIT HOLD, FROM ITS PROOF: the host is the hold's admitted subject, never a label,
+// and the store-host executor is minted from that subject by gunbc.managed_host_unit_hold's own read
+// of this process's hostname. THE ORDER IS THE CONTRACT: route, receipt variable (absent clears as
+// NotNamed and touches nothing), executor, binding, nonce, slot-safety, path, read, every check on the
+// file, and only then the slot.
+fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemptAdmission {
+  let host = proof.subject.host
+  match attempt_receipt_route(host: host) {
+    Absent => BootAttemptRefused { cause: ReceiptHostHasNoRoute { host: host.host } }
     Present { value: route } =>
       match actions_variable_read(name: route.receipt_env as String) {
-        ActionsVariableAbsent { variable: _, detail: _ } => BootAttemptCleared { clearance: BootAttemptClearance { host: host, source: ConfigurationReceiptNotNamed } }
+        ActionsVariableAbsent { variable: _, detail: _ } => BootAttemptCleared { clearance: BootAttemptClearance { host: host.host, source: ConfigurationReceiptNotNamed } }
         ActionsVariablePresent { value: path } =>
-          match actions_variable_read(name: route.nonce_env as String) {
-            ActionsVariableAbsent { variable: v, detail: d } => BootAttemptRefused { cause: ReceiptNonceMissing { variable: v as NonEmptyStr, detail: d } }
-            ActionsVariablePresent { value: nonce } => admit_named_receipt(host: host, nonce: nonce, path: path, revision: revision)
+          match unit_hold_store_executor(subject: proof.subject) {
+            UnitHoldNotOnStoreHost { reason: r } => BootAttemptRefused { cause: ReceiptExecutorNotOnStoreHost { reason: r } }
+            UnitHoldOnStoreHost { executor: e } =>
+              match managed_host_binding(host: host) {
+                ManagedHostAccessUnobserved { endpoint: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller access is unobserved" } }
+                ManagedHostNotSecured { cause: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its controller is not secured" } }
+                ManagedHostEndpointMismatch { observed: _, secured: _ } => BootAttemptRefused { cause: ReceiptHostUnbound { detail: "its access and secure standings name different controllers" } }
+                ManagedHostBound { binding: b } =>
+                  if !host_identity_eq(a: e.subject.host.host, b: b.host.host) {
+                    BootAttemptRefused { cause: ReceiptExecutorForAnotherHost { executor_host: e.subject.host.host, bound: b.host.host } }
+                  } else {
+                    match actions_variable_read(name: route.nonce_env as String) {
+                      ActionsVariableAbsent { variable: v, detail: d } => BootAttemptRefused { cause: ReceiptNonceMissing { variable: v as NonEmptyStr, detail: d } }
+                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: b.host.host, nonce: nonce, path: path, revision: revision)
+                    }
+                  }
+              }
           }
       }
   }
@@ -748,10 +767,31 @@ fn attempt_configuration_receipt_of(host: HostIdentity, source: AttemptConfigura
   }
 }
 
+// THE CONFIGURATION OF AN ATTEMPT THAT NEVER REACHED ADMISSION, or whose named receipt was refused:
+// nothing was recorded, and the reason says which.
+fn attempt_configuration_not_recorded(host: NonEmptyStr, attempt: NonEmptyStr, reason: NonEmptyStr) -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: host,
+    attempt: attempt,
+    expected: ExpectedTopologyNotRecorded { reason: reason },
+    requested: StimulusRequestNotRecorded { reason: reason },
+    applied: StimulusApplicationNotRecorded { reason: reason },
+    cpus: PopulationNotRecorded { reason: reason },
+    dimms: PopulationNotRecorded { reason: reason },
+    firmware: FirmwareReadbacksNotRecorded { reason: reason },
+  }
+}
+
+fn attempt_configuration_refused(host: NonEmptyStr, attempt: NonEmptyStr, cause: AttemptReceiptRefusal) -> AttemptConfigurationReceipt {
+  attempt_configuration_not_recorded(host: host, attempt: attempt, reason: concat("the named attempt receipt was refused: ", attempt_receipt_refusal_text(cause: cause)) as NonEmptyStr)
+}
+
 fn attempt_receipt_refusal_text(cause: AttemptReceiptRefusal) -> String {
   match cause {
     ReceiptHostHasNoRoute { host: h } => join(["managed host '", h as String, "' has no attempt receipt route in gunbc.host_boot_attempt_admission"], "")
     ReceiptExecutorForAnotherHost { executor_host: e, bound: b } => join(["the store-host executor was admitted for '", e as String, "' and the boot is bound to '", b as String, "'"], "")
+    ReceiptExecutorNotOnStoreHost { reason: r } => r as String
+    ReceiptHostUnbound { detail: d } => join(["the managed host does not bind (", d as String, "), so a named receipt cannot be joined to it"], "")
     ReceiptNonceMissing { variable: v, detail: d } => join(["an attempt receipt was named but the attempt nonce ", v as String, " is ", d], "")
     ReceiptNonceNotSlotSafe { nonce: n } => join(["the attempt nonce '", n as String, "' is outside [A-Za-z0-9_-]"], "")
     ReceiptHostNotSlotSafe { host: h } => join(["the host identity '", h as String, "' is outside [A-Za-z0-9_-]"], "")
