@@ -232,7 +232,7 @@ type NodeServeReadiness
 
 fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: Int, last_status: String, last_exit_code: Int) -> NodeServeReadiness {
   if attempts_left <= 0 { ServeNotReady { attempts_used: attempts_used, last_status: last_status, last_exit_code: last_exit_code } } else {
-    let probe = http.Client.Probe(url: url, connect_time: second(count: 1))
+    let probe = http.Client.Probe(url: url, connect_time: second(count: 1), max_time: second(count: 2))
     if probe.answered && probe.status == "200" { ServeReady } else {
       let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
       node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: probe.status, last_exit_code: probe.exit_code)
@@ -244,26 +244,28 @@ fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: In
 // inside the trap), so a server that outlived the smoke left nothing behind but a lie. The typed
 // route does not swallow: TerminateProcess refuses loudly when the kill fails, and the kill is
 // CONFIRMED by reaping -- a process that answered readiness is alive, so after SIGTERM it either
-// dies (reap reports the exit, 128 + 15 for a signal death) or the poll exhausts and the smoke
-// is red. Reap is parent-only (waitpid ECHILD otherwise), which is exactly the confirmation the
-// trap could never give.
-fn node_http_await_reaped(pid: Int, attempts_left: Int) -> Int? {
+// dies by the signal (Reap reports Signaled { signal }) or the poll exhausts and the smoke is
+// red. Reap is parent-only (waitpid ECHILD otherwise), which is exactly the confirmation the
+// trap could never give; the closed ProcessReapOutcome keeps a signal death distinct from an
+// ordinary exit, so a smoke that passes on 128+15 would have to actually say so.
+fn node_http_await_reaped(pid: Int, attempts_left: Int) -> ProcessReapOutcome? {
   if attempts_left <= 0 { none } else {
     let reaped = posix.Process.Reap(pid: pid)
-    if reaped.exited {
-      match reaped.exit_code {
-        Present { value: code } => Present { value: code }
-        Absent => none
+    match reaped.reaped {
+      StillRunning => {
+        let _pause = sleep.Delay.Seconds(seconds: "0.1" as NonEmptyStr)
+        node_http_await_reaped(pid: pid, attempts_left: attempts_left - 1)
       }
-    } else {
-      let _pause = sleep.Delay.Seconds(seconds: "0.1" as NonEmptyStr)
-      node_http_await_reaped(pid: pid, attempts_left: attempts_left - 1)
+      Exited { code: code } => Present { value: Exited { code: code } }
+      Signaled { signal: signal } => Present { value: Signaled { signal: signal } }
+      ReapRefused { cause: cause } => Present { value: ReapRefused { cause: cause } }
     }
   }
 }
 
 // A process that answered readiness is alive, so after SIGTERM the only honest outcome is a
-// confirmed signal death (128 + 15); anything else is a red smoke, never a swallowed cleanup.
+// confirmed SIGNAL death -- Signaled { signal: 15 }, not a folded exit code; anything else is a
+// red smoke, never a swallowed cleanup.
 fn run_node_http_serve_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   match node_http_serve_port_seed(workdir: dir.path) {
@@ -292,13 +294,19 @@ fn run_node_http_serve_smoke() -> Bool {
             last_exit_code: 0
           )
           let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
-          let reap_code = node_http_await_reaped(pid: pid, attempts_left: 20)
+          let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
           let cleanup = shell.Remove.RecursiveForce(path: dir.path)
           let harness_ok = dir.success && server_js.success && cleanup.success
           let lifecycle_ok = kill.success
-            && (match reap_code {
+            && (match reaped {
               Absent => false
-              Present { value: code } => code == 128 + 15
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
             })
           harness_ok && lifecycle_ok
             && (match readiness {

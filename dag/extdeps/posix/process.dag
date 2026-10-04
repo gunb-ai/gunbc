@@ -45,10 +45,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // probes, and reaps within one execution, so nothing is left behind by these operations.
 //
 // Refusals: StartDetached answers SpawnRefused as a VALUE (missing binary, permissions -- the
-// spawn refused, so there is no pid and no exit status to report); Reap refuses when the pid was
-// never a child of this process (waitpid's ECHILD) or was already reaped. A killed process that
-// died by SIGNAL reports through Reap as 128 + signal, the shell exit-status convention that
-// extdeps.process.posix_exit records for >128 codes.
+// spawn refused, so there is no pid and no exit status to report); Reap answers ReapRefused as a
+// VALUE when the pid was never a child of this process (waitpid's ECHILD) or was already reaped
+// -- the caller asked about a pid it does not own, and "still running" would be a fabricated
+// plausible answer. Death by SIGNAL is reported as Signaled { signal }, distinct from Exited
+// { code }: SIGTERM is not an exit 143.
 //
 // TRANSPORT-LESS BY CONTRACT, not by omission: no argv can spawn a process that survives its own
 // transport call while the calling process holds the pid -- that edge is exactly what the retired
@@ -60,6 +61,17 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type ProcessSpawnOutcome
   = Spawned { pid: Int }
   | SpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }
+
+// The closed lifecycle of one waitpid observation (POSIX waitpid(2) / wait(2)): WNOHANG returning
+// 0 is StillRunning; WIFEXITED is Exited with the raw exit code; WIFSIGNALED is Signaled with the
+// fatal signal number — a killed child is NOT an exit, and folding 15 into 143 would make SIGTERM
+// indistinguishable from a normal exit 143; ECHILD (or any waitpid error) is ReapRefused, a typed
+// answer, not a fabricated "still running".
+type ProcessReapOutcome
+  = StillRunning
+  | Exited { code: Int }
+  | Signaled { signal: Int }
+  | ReapRefused { cause: NonEmptyStr }
 
 service posix.Process {
   operation StartDetached {
@@ -76,10 +88,6 @@ service posix.Process {
   operation Reap {
     requires none
     input { pid: Int }
-    output {
-      exited: Bool from "exited"
-      exit_code: Int? from "exit_code"
-    }
-    readonly
+    output { reaped: ProcessReapOutcome }
   }
 }

@@ -332,7 +332,7 @@ service http.Client {
 
   operation Probe {
     requires Network
-    input { url: NonEmptyStr, connect_time: Second }
+    input { url: NonEmptyStr, connect_time: Second, max_time: Second }
     output {
       status: String from "stdout"
       answered: Bool from "exit_success"
@@ -346,6 +346,7 @@ service http.Client {
         "-o", "/dev/null",
         "-w", "%\{http_code\}",
         "--connect-timeout", http_client_max_time_flag(max_time: connect_time),
+        "--max-time", http_client_max_time_flag(max_time: max_time),
         "{url}",
       ]
     }

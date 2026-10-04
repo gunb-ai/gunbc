@@ -48,11 +48,6 @@ data process_lifecycle_seed_growth_justification: SeedGrowthJustification = Seed
     },
     DeclarationRef {
       module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
-      decl_name: "detached_stdio_path" as NonEmptyStr,
-      field: WholeDeclaration,
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.v1_interpreter" as NonEmptyStr,
       decl_name: "render_shell_detached_trace" as NonEmptyStr,
       field: WholeDeclaration,
     },

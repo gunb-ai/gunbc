@@ -16916,6 +16916,20 @@ fn process_spawn_outcome_variant(
     }
 }
 
+/// The closed waitpid observation, projected the same way (`ProcessReapOutcome`).
+fn process_reap_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ProcessReapOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
 /// Outputs of a detached-spawn operation OTHER than the `ProcessSpawnOutcome` field (StartDetached
 /// declares none today; fail-closed Nulls keep a future extra field honest instead of guessed).
 fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
@@ -17166,7 +17180,19 @@ fn dispatch_process_reap_native(
         }
     };
 
-    let outcome: Result<Option<i32>, String> = {
+    // One waitpid(2) observation, typed exactly as the modeled authority
+    // (dag/extdeps/posix/process.dag ProcessReapOutcome) reports it: StillRunning is WNOHANG's 0,
+    // Exited is WIFEXITED's raw code, Signaled is WIFSIGNALED's signal number (a killed child is
+    // NOT an exit; folding 15 into 128+15 would make SIGTERM indistinguishable from a normal exit
+    // 143), and ReapRefused is ECHILD or any waitpid error -- a typed answer about a pid this
+    // process does not own, never a fabricated "still running".
+    enum ReapObservation {
+        StillRunning,
+        Exited(i32),
+        Signaled(i32),
+        Refused(String),
+    }
+    let observation: ReapObservation = {
         let mut registry = detached_children()
             .lock()
             .expect("detached child registry poisoned");
@@ -17174,51 +17200,59 @@ fn dispatch_process_reap_native(
             Some(child) => match child.try_wait() {
                 Ok(Some(status)) => {
                     registry.remove(&pid);
-                    Ok(Some(exit_status_code(status)))
+                    #[cfg(unix)]
+                    {
+                        match std::os::unix::process::ExitStatusExt::signal(&status) {
+                            Some(signal) => ReapObservation::Signaled(signal),
+                            None => ReapObservation::Exited(status.code().unwrap_or(-1)),
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        ReapObservation::Exited(status.code().unwrap_or(-1))
+                    }
                 }
-                Ok(None) => Ok(None),
-                Err(err) => Err(format!("waitpid on pid {pid} failed: {err}")),
+                Ok(None) => ReapObservation::StillRunning,
+                Err(err) => ReapObservation::Refused(format!(
+                    "waitpid on pid {pid} failed: {err}"
+                )),
             },
-            None => Err(format!(
+            None => ReapObservation::Refused(format!(
                 "pid {pid} was not started by this process (waitpid ECHILD): Reap answers only about detached children of the calling process"
             )),
         }
     };
-
-    let (exited, exit_code) = match outcome {
-        Ok(Some(code)) => (true, Some(code)),
-        Ok(None) => (false, None),
-        Err(reason) => {
-            return Err(InterpError::TypeError { msg: reason });
+    let outcome = match observation {
+        ReapObservation::StillRunning => {
+            process_reap_outcome_variant(ctx, "StillRunning", Vec::new())
         }
-    };
-
-    let mut fields: Vec<(Symbol, Value)> = vec![
-        (ctx.sym("exited"), Value::Bool(exited)),
-        (
-            ctx.sym("exit_code"),
-            match exit_code {
-                Some(code) => Value::Int(code as i64),
-                None => Value::Null,
-            },
+        ReapObservation::Exited(code) => process_reap_outcome_variant(
+            ctx,
+            "Exited",
+            vec![(ctx.sym("code"), Value::Int(code as i64))],
         ),
-    ];
-    fields.sort_unstable_by_key(|(name, _)| name.0);
-    Ok(Value::Record {
-        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
-        fields: Rc::new(fields),
-    })
-}
-
-fn exit_status_code(status: std::process::ExitStatus) -> i32 {
-    if let Some(code) = status.code() {
-        return code;
-    }
-    #[cfg(unix)]
-    if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
-        return 128 + signal;
-    }
-    -1
+        ReapObservation::Signaled(signal) => process_reap_outcome_variant(
+            ctx,
+            "Signaled",
+            vec![(ctx.sym("signal"), Value::Int(signal as i64))],
+        ),
+        ReapObservation::Refused(cause) => process_reap_outcome_variant(
+            ctx,
+            "ReapRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+    };
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ProcessReapOutcome")
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "posix.Process.Reap declares no ProcessReapOutcome output field".to_string(),
+        })?;
+    Ok(attach_transport_outcome(
+        None,
+        op_node,
+        &outcome_field,
+        outcome,
+        ctx,
+    ))
 }
 
 pub(crate) fn shell_result_from_capture(
