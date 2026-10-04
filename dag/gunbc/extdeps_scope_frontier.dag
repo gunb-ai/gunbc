@@ -239,6 +239,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/action/rust_cache.dag",
   "dag/extdeps/github/action/setup_rust_toolchain.dag",
   "dag/extdeps/github/action/upload_artifact.dag",
+  "dag/extdeps/github/actions_self_hosted_runners.dag",
   "dag/extdeps/network/dell_0r887v.dag",
   "dag/extdeps/network/ibm_01ft753.dag",
   "dag/extdeps/network/mcx4121a_acat.dag",
@@ -605,6 +606,11 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/auth/jwt.dag",
   "dag/extdeps/uuid/uuid.dag",
   "dag/extdeps/time/rfc3339.dag",
+  "dag/extdeps/languages/json/emit.dag",
+  "dag/extdeps/process/posix_exit.dag",
+  "dag/extdeps/network/ipv6.dag",
+  "dag/extdeps/github/gists.dag",
+  "dag/extdeps/filesystem/posix.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

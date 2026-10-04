@@ -28,7 +28,7 @@ import product.fabric.supply {
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
   QuoteNotPriceableWithoutDuration,
   QuoteBillingBasis, BillsElapsedTime, BillsPerGrant, quote_billing_basis,
-  offer_affordability_for, offer_quote_currency, offer_quoted_total_for_grant,
+  offer_affordability_for, offer_quote_currency, offer_quote_amount, offer_quoted_total_for_grant,
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
   grant_duration_bound_seconds,
@@ -58,10 +58,9 @@ import product.fabric.supply {
 // a billing quantum of zero against one of 3600, a quote of an explicit zero against a
 // published rate, an already-paid-through interval against pay-as-you-go, an operating cost
 // we bear against one the vendor bears. Every one of those moves the number this fold ranks
-// on, so the modes are compared by ARITHMETIC over one carrier and never by a mode tag. There
-// is deliberately no such tag anywhere in this file: an offer that wins because it is ours
-// must win because its number is lower, and if a mode enum existed someone would eventually
-// branch on it.
+// on, so price-ranked selection compares modes by arithmetic over one carrier.
+// Explicit resource-budget selection below makes a different, non-economic decision:
+// it consumes a request-bound budget policy and never follows a pricing refusal.
 
 // THE SIX INPUTS, ENUMERATED AS A CLOSED AXIS RATHER THAN AS SIX PROSE SENTENCES.
 //
@@ -1419,4 +1418,68 @@ fn select_supply<P>(
           }
       }
   }
+}
+
+// An explicit allocation policy may select already-budgeted capacity without an economic
+// ranking. This is never a fallback from failed pricing. Allowed offers are supplied by the
+// commissioning authority; this record does not itself establish commissioning or ownership.
+type ResourceBudgetPolicy<P> {
+  authority: NonEmptyStr
+  revision: NonEmptyStr
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  allowed_offers: List<FabricIdentity<P, OfferKey>>
+}
+type ResourceBudgetSelection<P>
+  = ResourceBudgetSelected { candidate: CandidateOffer<P>, policy: ResourceBudgetPolicy<P> }
+  | ResourceBudgetRefused { reason: NonEmptyStr }
+
+// The zero tariff is a user-charge policy, not a measurement of physical operating cost.
+// Returning the original candidate preserves every unknown financial observation.
+fn select_resource_budget_supply<P>(
+  policy: ResourceBudgetPolicy<P>, demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>, requirements: ExecutionRequirements,
+  duration: GrantDuration, candidates: List<CandidateOffer<P>>,
+) -> ResourceBudgetSelection<P> {
+  if !fabric_identity_eq(left: policy.demand, right: demand)
+    || !fabric_identity_eq(left: policy.work, right: work) {
+    ResourceBudgetRefused { reason: "resource budget policy names another demand or Work" }
+  } else { match grant_duration_bound_seconds(d: duration) {
+    Absent => ResourceBudgetRefused { reason: "resource budget requires a bounded lease" }
+    Present { value: seconds } => if second_count(s: seconds) <= 0 {
+      ResourceBudgetRefused { reason: "resource budget requires a positive lease" }
+    } else {
+      let eligible = candidates.filter(candidate =>
+        policy.allowed_offers.any(identity => fabric_identity_eq(left: identity, right: candidate.offer.id))
+        && money_amount_micro_count(m: offer_quote_amount(q: candidate.offer.quote)) == 0
+        && (match offer_fungibility_for(requirements: requirements, offer: candidate.offer) {
+          Fungible => true
+          TrustDomainMismatch { required: _, offered: _ } => false
+          CapabilitiesNotOffered { required: _, offered: _ } => false
+          IsolationNotProvided { missing: _ } => false
+          ShapeAxesNotCovered { unmet: _ } => false
+        })
+        && (match permit_standing(permit: candidate.permit, offer: candidate.offer.id,
+          route: candidate.offer.route, demand: demand, work: work) {
+          PermitAuthorizesUse => true
+          PermitNamesAnotherOfferThan { permit_names: _ } => false
+          PermitNamesAnotherRouteThan => false
+          PermitNamesAnotherWorkThan { permit_work: _, subject_work: _ } => false
+          PermitNamesAnotherDemandThan { permit_demand: _, subject_demand: _ } => false
+        })
+        && (match candidate.dispatch.availability {
+          AvailableIndefinitely { delay, receipt: _ } => second_count(s: delay) == 0
+          AvailableForInterval { delay, interval, receipt: _ } =>
+            second_count(s: delay) == 0 && second_count(s: interval) >= second_count(s: seconds)
+          AvailabilityUnobserved { obligation: _ } => false
+        }))
+      match eligible.first() {
+        Absent => ResourceBudgetRefused { reason: "no admitted, available offer within the explicit resource budget" }
+        Present { value: selected } =>
+          if candidates.filter(candidate => fabric_identity_eq(left: candidate.offer.id, right: selected.offer.id)).count() != 1 {
+            ResourceBudgetRefused { reason: "resource budget offer identity is ambiguous" }
+          } else { ResourceBudgetSelected { candidate: selected, policy: policy } }
+      }
+    }
+  } }
 }

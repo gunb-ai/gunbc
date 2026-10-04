@@ -44,7 +44,7 @@ import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused,
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
@@ -499,13 +499,16 @@ fn executor_home_wet() -> String? {
 // let "we could not ask" and "the host cannot measure" render identically to whoever reads the
 // receipt and decides what can measure the reserve.
 
-fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding
+fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding {
+  observe_firecracker_host_standing_at_binary_wet(binary: firecracker_installed_binary(root: root, rel: firecracker_release_aarch64), login: login)
+}
+
+fn observe_firecracker_host_standing_at_binary_wet(binary: String, login: NonEmptyStr) -> FirecrackerHostStanding
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
   let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
   let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
-  let binary = firecracker_installed_binary(root: root, rel: rel)
   let executable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
   let version_output = if executable {
     match run_shell_command_capture(command: firecracker_version_command(binary: binary), transport: LocalExec) {

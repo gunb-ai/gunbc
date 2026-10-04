@@ -3,8 +3,8 @@ module test.claim.fabric_cell_observe_witness
 import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import product.placement_supply { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,

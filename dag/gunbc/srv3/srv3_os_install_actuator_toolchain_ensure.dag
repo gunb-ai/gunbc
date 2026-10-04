@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_actuator_toolchain_ensure
 
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, OsInstallActuator }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import std.process { ProcessExit }
 import std.types { Bool }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }

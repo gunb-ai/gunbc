@@ -289,6 +289,7 @@ type SystemdServiceDirective
   | ServiceStandardError { stream: SystemdOutputStream }
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
+  | LoadCredential { identifier: NonEmptyStr, source: NonEmptyStr }
   | EnvironmentFile { path: NonEmptyStr }
   | EnvironmentFileIfPresent { path: NonEmptyStr }
   | WorkingDirectory { path: NonEmptyStr }
@@ -738,6 +739,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
       join(["StandardError=", systemd_output_stream_wire(stream: v)], "")
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
+    LoadCredential { identifier: id, source: source } => join(["LoadCredential=", id as String, ":", source as String], "")
     EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
     EnvironmentFileIfPresent { path: v } => join(["EnvironmentFile=-", v as String], "")
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")

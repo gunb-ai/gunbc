@@ -39,14 +39,14 @@ pub fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> 
         DescentEvidence::Strict => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            _ => DescentEvidence::DescentUnknown,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
         },
         DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::NonIncreasing,
             DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
-            _ => DescentEvidence::DescentUnknown,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
         },
-        _ => DescentEvidence::DescentUnknown,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
     }
 }
 
@@ -55,7 +55,8 @@ pub fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> 
         DescentEvidence::DescentUnknown => b.clone(),
         DescentEvidence::NonIncreasing => match b.clone() {
             DescentEvidence::Strict => DescentEvidence::Strict,
-            _ => DescentEvidence::NonIncreasing,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::NonIncreasing,
         },
         DescentEvidence::Strict => DescentEvidence::Strict,
     }
@@ -80,7 +81,7 @@ pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
     match evidence.clone() {
         DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
         DescentEvidence::Strict => DescentEvidence::Strict,
-        _ => DescentEvidence::DescentUnknown,
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
     }
 }
 

@@ -5,7 +5,7 @@ import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
 import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }

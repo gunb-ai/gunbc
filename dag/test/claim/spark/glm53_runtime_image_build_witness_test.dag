@@ -11,7 +11,7 @@ import gunbc.spark.vllm_image_identity {
 }
 import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import extdeps.docker.cli { docker_image_save_command, docker_image_load_command }
 import extdeps.ssh.openssh_client_commands { scp_download_command, scp_upload_command }
 import extdeps.vllm.source_build {
