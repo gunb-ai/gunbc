@@ -6,7 +6,6 @@ import v2.lens.testgen {
   testgen_emit_algebra_law_claim
 }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import std.nat { Nat, Succ, Zero, nat_add, nat_mul }
 import v2.std.verification {

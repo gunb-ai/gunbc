@@ -555,6 +555,7 @@ fn vllm_argv_value_text(r: VllmArgvValueRead, flag: String) -> String {
 data vllm_node_rank_flag: String = "--node-rank"
 data vllm_gpu_memory_utilization_flag: String = "--gpu-memory-utilization"
 data vllm_max_num_seqs_flag: String = "--max-num-seqs"
+data vllm_kv_cache_dtype_flag: String = "--kv-cache-dtype"
 
 type VllmArgvNatRead
   = VllmArgvNat { value: Nat }
@@ -782,5 +783,64 @@ fn vllm_argv_kv_watermark(argv: List<String>) -> VllmKvWatermarkRead {
       }
     VllmArgvFlagWithoutValue => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
     VllmArgvFlagRepeated { values: _ } => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+// ── THE ADMISSION FLAGS AS ONE UNIT OF AN ARGV ────────────────────────────────────────────────────
+//
+// The scheduler's admission controls and the indexer dtype are flags a launch may add or omit, so
+// they change an argv's LENGTH -- a word-wise comparison cannot attribute that to an axis. This
+// projection removes exactly those words (the boolean spellings, and each valued flag with the word
+// after it), so a reader compares the rest word for word and compares these through their typed
+// readers. A valued flag at the end with no value is left in place, so the word comparison still
+// sees the malformed argv.
+fn vllm_argv_without_admission_flags(argv: List<String>) -> List<String> {
+  let scan = fold(argv, init: AdmissionStrip { kept: [], skip_next: false }, f: (acc, word) =>
+    if acc.skip_next {
+      AdmissionStrip { kept: acc.kept, skip_next: false }
+    } else if word == vllm_scheduler_reserve_full_isl_flag || word == vllm_no_scheduler_reserve_full_isl_flag {
+      acc
+    } else if word == vllm_watermark_flag || word == vllm_indexer_kv_dtype_flag {
+      AdmissionStrip { kept: acc.kept, skip_next: true }
+    } else {
+      AdmissionStrip { kept: concat(acc.kept, [word]), skip_next: false }
+    })
+  if scan.skip_next { argv } else { scan.kept }
+}
+
+type AdmissionStrip {
+  kept: List<String>
+  skip_next: Bool
+}
+
+// THE ADMISSION CONTROLS AN ARGV CARRIES, read back into the TYPED requests the launch rendered them
+// from (review 74142), or none when either cannot be read (a repeated or conflicting flag). Comparison
+// goes through the renderers' own keys (vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key), so
+// there is one spelling of each control and a reader cannot drift from what a launch renders.
+fn vllm_argv_scheduler_admission(argv: List<String>) -> VllmSchedulerAdmissionRequest? {
+  let full = match vllm_argv_full_input_admission(argv: argv) {
+    FullInputAdmissionReadOmitted => Present { value: FullInputAdmissionOmitted }
+    FullInputAdmissionReadExplicit { enabled: e } => Present { value: FullInputAdmissionExplicit { enabled: e } }
+    FullInputAdmissionReadConflict { cause: _ } => none
+  }
+  let wm = match vllm_argv_kv_watermark(argv: argv) {
+    KvWatermarkReadOmitted => Present { value: KvWatermarkOmitted }
+    KvWatermarkReadExplicit { fraction: bp } => Present { value: KvWatermarkExplicit { fraction: bp } }
+    KvWatermarkReadUnread { cause: _ } => none
+  }
+  match full {
+    Absent => none
+    Present { value: f } => match wm {
+      Absent => none
+      Present { value: w } => Present { value: VllmSchedulerAdmissionRequest { full_input_admission: f, kv_watermark: w } }
+    }
+  }
+}
+
+fn vllm_argv_indexer_kv_dtype_request(argv: List<String>) -> VllmIndexerKvDtypeRequest? {
+  match vllm_argv_indexer_kv_dtype(argv: argv) {
+    IndexerKvDtypeReadOmitted => Present { value: IndexerKvDtypeOmitted }
+    IndexerKvDtypeReadExplicit { dtype: d } => Present { value: IndexerKvDtypeExplicit { dtype: d } }
+    IndexerKvDtypeReadUnread { cause: _ } => none
   }
 }

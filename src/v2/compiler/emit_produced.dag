@@ -41,7 +41,6 @@ import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
-import v2.std.logic { Bool }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }

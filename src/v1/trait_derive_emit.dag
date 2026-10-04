@@ -39,8 +39,7 @@ import std.trait_derive_shape {
   ReprDeriveElemUnknown,
   ReprGroundingDeriveElemShape,
   repr_grounding_derive_completeness_predicate,
-  repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target
+  repr_grounding_group_completion_carrier
 }
 import extdeps.languages.rust.capabilities {
   RustCapability,
@@ -63,8 +62,7 @@ import extdeps.languages.rust.capabilities {
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rust_trait_derive_spelling,
-  rust_supplemental_impls_group_completion,
-  rust_supplemental_impls_bool_coproduct
+  rust_supplemental_impls_group_completion
 }
 import std.types {
   is_container_type,
@@ -2529,19 +2527,11 @@ fn v1_emit_enum_supplemental_impls(
       "\n\n",
       v1_set_enum_partial_eq_impl(name: name, generic_param_names: generic_param_names, header_clone_param_names: header_clone_param_names, set_params: set_params, children: children, field_type_exprs: field_type_exprs, source_indices: source_indices)
     )
-  } else if repr_grounding_supplemental_bool_host_bridge_target(module_path: module_path, name: name)
-    && repr_grounding_derive_completeness_predicate(
-      rust_capability_shape_table(),
-      nullary_coproduct_derive_traits(),
-      ReprDeriveElemNullaryEnumCopy
-    ) {
-    rust_supplemental_impls_bool_coproduct()
   } else {
     ""
   }
 }
 
-data trait_derive_emit_bool_host_bridge_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an e")
 
 data trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the g")
 

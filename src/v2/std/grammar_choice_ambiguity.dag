@@ -3,7 +3,6 @@ module v2.std.grammar_choice_ambiguity
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.algebra { FreeMonoid }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 // GrammarChoiceAmbiguityRow is the grammar-analysis authority for FIRST-set choice overlap facts.
