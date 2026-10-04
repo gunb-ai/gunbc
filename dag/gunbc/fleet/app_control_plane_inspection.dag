@@ -875,7 +875,9 @@ fn app_control_plane_failure(
         GoalAssessmentRefused { cause: _ } => Present { value: "AppHookAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never" }
       }
     }
-    _ => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+    GoalDiverged { deviations: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+    GoalAssessmentRefused { cause: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
   }
 }
 
@@ -936,7 +938,9 @@ fn app_control_plane_inspect_wet() -> ProcessExit {
               observe: observe_app_hook,
               assess: assess_app_hook,
             ))
-            _ => HookNotAttempted
+            GoalDiverged { deviations: _ } => HookNotAttempted
+            GoalIndeterminate { known_deviations: _, unknowns: _ } => HookNotAttempted
+            GoalAssessmentRefused { cause: _ } => HookNotAttempted
           }
           let receipt = app_control_plane_receipt_text(
             registration: observed_registration,
