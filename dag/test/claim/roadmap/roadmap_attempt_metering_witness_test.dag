@@ -13,7 +13,7 @@ import gunbc.roadmap_attempt_metering {
   MeteredRole, MeteredWorker, MeteredReviewer, MeteredAuditor, MeteredSupervisor,
   RoleTokens, TokensObserved, TokensStreamAbsent, TokensRefused,
   SeatHeld, SeatReleased, SeatStillHeld, SeatRefused, SeatPointerAbsent,
-  MeteredRoleUsage, AttemptMeteringRecord, MeteringStandingFinal, ComputeNotAttributable, compute_not_attributable_reason,
+  MeteredRoleUsage, AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
   MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
   MeteringObserved, MeteringProvisional, MeteringRefused, MeteringNotYetWritten,
   RosterObserved, RosterRefused,
@@ -272,7 +272,8 @@ test fn one_seat_attributed_to_two_launches_refuses() -> Bool {
 }
 
 // FINAL ONLY WHEN NOTHING CAN CHANGE: a seat still held, or a launch not yet terminal, is Provisional
-// -- a distinct arm, never Observed -- and a record that claims Final over such a row refuses.
+// -- a distinct arm, never Observed. The standing is derived from the rows, so a record cannot claim
+// Final over such a row at all.
 fn held_record() -> AttemptMeteringRecord {
   record_of(roles: [
     usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: SeatStillHeld { pointer: pointer_for(role: MeteredWorker, stamp: "1000"), granted_at: 1000 }),
@@ -289,11 +290,6 @@ test fn a_record_with_a_running_launch_is_provisional() -> Bool {
     usage(role: MeteredWorker, tokens: role_tokens_from_events(body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":1,\"output_tokens\":2,\"epoch_ms\":1}"), seat: worker_seat()),
     usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
   ])) == "provisional"
-}
-
-test fn a_record_claiming_final_over_a_held_seat_refuses() -> Bool {
-  let held = held_record()
-  observe(record: AttemptMeteringRecord { node_id: held.node_id, attempt_key: held.attempt_key, metered_at: held.metered_at, standing: MeteringStandingFinal, roles: held.roles, compute: held.compute }) == "refused"
 }
 
 // A LAUNCH ADMITTED AFTER A RECORD WENT FINAL MAKES THAT RECORD INADMISSIBLE: the old record cannot

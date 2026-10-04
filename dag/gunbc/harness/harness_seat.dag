@@ -1536,6 +1536,16 @@ fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceili
   }
 }
 
+// THE POINTER TO THE SEAT A BOUND BINDING HOLDS, for gunbc.harness.harness_seat_pointer.
+fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
+  match binding {
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: r } =>
+      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
+    HarnessSeatRefused { detail: _ } => none
+    HarnessSeatPending { detail: _ } => none
+  }
+}
+
 // THE BINDING CARRIES THE CEILING ITS SEAT WAS TAKEN AGAINST, for the same reason the cross-process
 // capability does, and an earlier spelling of this function got it wrong in the one way the rest of
 // the module is written to prevent. It re-derived the ceiling from the group and the class at RELEASE
@@ -1549,16 +1559,6 @@ fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceili
 // reinterpreting exactly the events the versioned partition exists to keep separate. Acquisition
 // already takes the number from candidate.ceiling; the release now reads the same number back off
 // the grant instead of asking the world again.
-// THE POINTER TO THE SEAT A BOUND BINDING HOLDS, for gunbc.harness.harness_seat_pointer.
-fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
-  match binding {
-    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: r } =>
-      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
-    HarnessSeatRefused { detail: _ } => none
-    HarnessSeatPending { detail: _ } => none
-  }
-}
-
 fn harness_release_seat(binding: HarnessSeatBinding, reason: NonEmptyStr) -> HarnessSeatRelease {
   match binding {
     HarnessSeatRefused { detail: d } => HarnessSeatReleaseRefused { detail: join(["nothing to release: ", d], "") }

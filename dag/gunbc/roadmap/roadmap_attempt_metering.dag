@@ -397,7 +397,9 @@ data compute_not_attributable_reason: NonEmptyStr = "no record links this attemp
 
 // ── the record ────────────────────────────────────────────────────────────────────────────────
 // FINAL ONCE NOTHING IT MEASURES CAN CHANGE: every launch's stream has a terminal event and every
-// launch's seat is released on the ledger. A Final record is never rewritten, so it cannot go stale;
+// launch's seat is released on the ledger. The standing is derived from the rows (metering_standing_of),
+// never stored beside them, so no record can claim a standing its rows do not hold. A Final record is
+// never rewritten, so it cannot go stale;
 // a Provisional one is rewritten each tick and is never reported as the current meter. A launch
 // admitted after a record went Final makes that record inadmissible against the roster, and the
 // next tick writes a new Provisional one.
@@ -413,7 +415,6 @@ type AttemptMeteringRecord {
   node_id: String
   attempt_key: String
   metered_at: EpochSecs
-  standing: MeteringStanding
   roles: List<MeteredRoleUsage>
   compute: ComputeUsage
 }
@@ -440,7 +441,7 @@ fn metering_wire_repeats(wires: List<String>) -> Bool {
 }
 
 // THE RECORD IS ADMISSIBLE ONLY AGAINST ITS ROSTER: every launch exactly once, no row outside the
-// roster, no seat reference counted twice, and a Final standing only where it holds. The writer and
+// roster, and no seat reference counted twice. The writer and
 // the reader both apply it, so a decoded record can claim no more than a constructed one.
 fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<MeteredRole>) -> String? {
   let wires = map(record.roles, u => metered_role_wire(role: u.role))
@@ -457,12 +458,7 @@ fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<Mete
   } else if metering_wire_repeats(wires: refs) {
     Present { value: "one seat reference is attributed to more than one launch" }
   } else {
-    match record.standing {
-      MeteringStandingFinal =>
-        if all(record.roles, u => metered_role_usage_final(u: u)) { none }
-        else { Present { value: "the record claims Final while a launch is not terminal or a seat is not released" } }
-      MeteringStandingProvisional => none
-    }
+    none
   }
 }
 
@@ -520,7 +516,7 @@ fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTo
 }
 
 // ── codec ─────────────────────────────────────────────────────────────────────────────────────
-data attempt_metering_schema: String = "gunbc-attempt-metering/v2"
+data attempt_metering_schema: String = "gunbc-attempt-metering/v3"
 data attempt_metering_basename: String = "metering.json"
 data attempt_metering_roster_schema: String = "gunbc-attempt-metering-roster/v1"
 data attempt_metering_roster_basename: String = "metering-roster.json"
@@ -578,20 +574,12 @@ fn compute_usage_json(c: ComputeUsage) -> JsonValue {
   }
 }
 
-fn metering_standing_wire(s: MeteringStanding) -> String {
-  match s {
-    MeteringStandingFinal => "final"
-    MeteringStandingProvisional => "provisional"
-  }
-}
-
 fn attempt_metering_json(record: AttemptMeteringRecord) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: attempt_metering_schema)),
     json_kv(key: "node_id", value: json_string(s: record.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: record.attempt_key)),
     json_kv(key: "metered_at", value: json_int(n: record.metered_at)),
-    json_kv(key: "standing", value: json_string(s: metering_standing_wire(s: record.standing))),
     json_kv(key: "roles", value: json_array(elements: map(record.roles, u => json_object(members: [
       json_kv(key: "role", value: metered_role_json(role: u.role)),
       json_kv(key: "tokens", value: role_tokens_json(t: u.tokens)),
@@ -830,20 +818,6 @@ fn compute_usage_decode(doc: JsonValue) -> RowDecode<ComputeUsage> {
   }
 }
 
-fn metering_standing_decode(doc: JsonValue) -> RowDecode<MeteringStanding> {
-  match metering_member_text(doc: doc, key: "standing") {
-    MemberTextGap { cause: c } => RowUndecodable { cause: join(["the metering record ", c], "") }
-    MemberText { value: s } =>
-      if s == "final" {
-        RowDecoded { row: MeteringStandingFinal }
-      } else if s == "provisional" {
-        RowDecoded { row: MeteringStandingProvisional }
-      } else {
-        RowUndecodable { cause: join(["unknown metering standing ", s], "") }
-      }
-  }
-}
-
 fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap: _ } => RowUndecodable { cause: "the metering record is not a JSON document" }
@@ -863,9 +837,6 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
                     match metering_member_int(doc: doc, key: "metered_at") {
                       MemberIntGap { cause: c } => RowUndecodable { cause: c }
                       MemberInt { value: at } =>
-                        match metering_standing_decode(doc: doc) {
-                          RowUndecodable { cause: c } => RowUndecodable { cause: c }
-                          RowDecoded { row: standing } =>
                             match metering_member_array(doc: doc, key: "roles") {
                               MemberArrayGap { cause: c } => RowUndecodable { cause: c }
                               MemberArray { elements: rows } =>
@@ -876,13 +847,12 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
                                       RowUndecodable { cause: c } => RowUndecodable { cause: c }
                                       RowDecoded { row: compute } =>
                                         RowDecoded { row: AttemptMeteringRecord {
-                                          node_id: node, attempt_key: key, metered_at: at, standing: standing,
+                                          node_id: node, attempt_key: key, metered_at: at,
                                           roles: roles, compute: compute,
                                         } }
                                     }
                                 }
                             }
-                        }
                     }
                 }
             }
@@ -1033,7 +1003,7 @@ fn metering_observe_from_text(node_id: String, attempt_key: String, roster: List
         match metering_record_inadmissible(record: r, roster: roster) {
           Present { value: c } => MeteringRefused { cause: c }
           Absent =>
-            match r.standing {
+            match metering_standing_of(roles: r.roles) {
               MeteringStandingFinal => MeteringObserved { record: r }
               MeteringStandingProvisional => MeteringProvisional { record: r }
             }
@@ -1092,7 +1062,6 @@ fn metering_record_from_usage(node_id: String, attempt_key: String, metered_at: 
     node_id: node_id,
     attempt_key: attempt_key,
     metered_at: metered_at,
-    standing: metering_standing_of(roles: roles),
     roles: roles,
     compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
   }
@@ -1123,7 +1092,7 @@ fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNode
         Absent => {
           let path = attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
           let written = Filesystem.Write(path: path, content: attempt_metering_json(record: record))
-          if written.success { MeteringPersisted { path: path, standing: record.standing } } else { MeteringPersistRefused { cause: written.error } }
+          if written.success { MeteringPersisted { path: path, standing: metering_standing_of(roles: record.roles) } } else { MeteringPersistRefused { cause: written.error } }
         }
       }
     }
