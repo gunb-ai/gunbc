@@ -2,7 +2,7 @@ module gunbc.machine_intake_bmc_rotation_route
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.scoped_authorization { AttemptIdentity }
-import v2.std.algebra { any }
+import v2.std.algebra { any, filter, length }
 import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
@@ -40,15 +40,19 @@ data bmc_rotation_route_disposition: Disposition = Terminal {
 // over the controller's IPMI LAN route; it is what mtcollins1 executed. RedfishAccountPasswordWrite
 // names the modeled Redfish account-password operation and action shape by reference; on MegaRAC it
 // is only ever a candidate today, because no AccountService write has been executed on any MegaRAC
-// controller this repository has receipts for. IpmiSetUserAccess is the public IPMI v2.0 Set User
-// Access command (App NetFn, command 43h): it sets one user's privilege limit on one channel, carried
-// as the same (channel, user, privilege) row Get User Access returns (extdeps.bmc.ipmi_channel
-// IpmiUserChannelAccess). It is the write that closes a published account on a channel -- a password
+// controller this repository has receipts for. IpmiSetUserPrivilegeLimit is ONLY the privilege-limit
+// form of the public IPMI v2.0 Set User Access command (App NetFn, command 43h): request byte 1 bit 7
+// clear, so the callback, link-authentication and IPMI-messaging bits are NOT changed, and only the
+// user's privilege limit on one channel is set; no session limit is written. It is carried as the same
+// (channel, user, privilege) row Get User Access returns (extdeps.bmc.ipmi_channel IpmiUserChannelAccess),
+// which is a projection of that command's result, not the full command. A future live transport must
+// issue exactly this mode, and a route grounded by it grounds this restricted operation only: it is not
+// evidence for any other use of Set User Access. It is the write that closes a published account on a channel -- a password
 // write cannot set a channel privilege to NO ACCESS -- and no execution of it is committed for any
 // controller, so it is only ever a candidate today.
 type BmcAccountWriteRequest
   = IpmiSetUserPassword { user: IpmiUserId }
-  | IpmiSetUserAccess { access: IpmiUserChannelAccess }
+  | IpmiSetUserPrivilegeLimit { access: IpmiUserChannelAccess }
   | RedfishAccountPasswordWrite { transport_operation: DeclarationRef, action_shape: DeclarationRef }
 
 // WHY A CANDIDATE IS WORTH TRYING. Either a surface was observed on THIS controller (the read surface
@@ -166,8 +170,8 @@ fn rotation_route_is_grounded(standing: BmcRotationRouteStanding) -> Bool {
 fn account_write_request_text(request: BmcAccountWriteRequest) -> NonEmptyStr {
   match request {
     IpmiSetUserPassword { user: u } => join(["IPMI Set User Password (App 47h) user ", to_string(u as Int)], "") as NonEmptyStr
-    IpmiSetUserAccess { access: a } =>
-      join(["IPMI Set User Access (App 43h) user ", to_string(a.user as Int), " channel ", to_string(a.channel as Int), " privilege ", canonical_ipmi_privilege(privilege: a.privilege)], "") as NonEmptyStr
+    IpmiSetUserPrivilegeLimit { access: a } =>
+      join(["IPMI Set User Access, privilege limit only (App 43h, byte 1 bit 7 clear) user ", to_string(a.user as Int), " channel ", to_string(a.channel as Int), " privilege ", canonical_ipmi_privilege(privilege: a.privilege)], "") as NonEmptyStr
     RedfishAccountPasswordWrite { transport_operation: op, action_shape: _ } =>
       join(["Redfish account password write via ", op.module_path as String, " ", op.decl_name as String], "") as NonEmptyStr
   }
@@ -185,13 +189,13 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
     IpmiSetUserPassword { user: ua } =>
       match b {
         IpmiSetUserPassword { user: ub } => (ua as Int) == (ub as Int)
-        IpmiSetUserAccess { access: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
         RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
       }
-    IpmiSetUserAccess { access: xa } =>
+    IpmiSetUserPrivilegeLimit { access: xa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
-        IpmiSetUserAccess { access: xb } =>
+        IpmiSetUserPrivilegeLimit { access: xb } =>
           (xa.user as Int) == (xb.user as Int)
             && (xa.channel as Int) == (xb.channel as Int)
             && ipmi_privilege_eq(a: xa.privilege, b: xb.privilege)
@@ -200,7 +204,7 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
     RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
-        IpmiSetUserAccess { access: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
         RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
           declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
       }
@@ -217,19 +221,19 @@ fn account_write_request_same_operation(a: BmcAccountWriteRequest, b: BmcAccount
     IpmiSetUserPassword { user: _ } =>
       match b {
         IpmiSetUserPassword { user: _ } => true
-        IpmiSetUserAccess { access: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
         RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
       }
-    IpmiSetUserAccess { access: _ } =>
+    IpmiSetUserPrivilegeLimit { access: _ } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
-        IpmiSetUserAccess { access: _ } => true
+        IpmiSetUserPrivilegeLimit { access: _ } => true
         RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
       }
     RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
-        IpmiSetUserAccess { access: _ } => false
+        IpmiSetUserPrivilegeLimit { access: _ } => false
         RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
           declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
       }
@@ -270,8 +274,8 @@ fn canonical_decl_ref(r: DeclarationRef) -> String {
 fn canonical_account_write_request(request: BmcAccountWriteRequest) -> String {
   match request {
     IpmiSetUserPassword { user: u } => join(["ipmi-set-user-password;", canonical_component(text: to_string(u as Int))], "")
-    IpmiSetUserAccess { access: a } =>
-      join(["ipmi-set-user-access;", canonical_component(text: to_string(a.user as Int)), canonical_component(text: to_string(a.channel as Int)), canonical_component(text: canonical_ipmi_privilege(privilege: a.privilege))], "")
+    IpmiSetUserPrivilegeLimit { access: a } =>
+      join(["ipmi-set-user-privilege-limit;", canonical_component(text: to_string(a.user as Int)), canonical_component(text: to_string(a.channel as Int)), canonical_component(text: canonical_ipmi_privilege(privilege: a.privilege))], "")
     RedfishAccountPasswordWrite { transport_operation: op, action_shape: act } =>
       join(["redfish-account-password-write;", canonical_decl_ref(r: op), canonical_decl_ref(r: act)], "")
   }
@@ -371,7 +375,7 @@ type DryRouteQualificationStep {
 fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationSubject, password: String) -> DryRouteQualificationStep {
   match subject.request {
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
-    IpmiSetUserAccess { access: x } => {
+    IpmiSetUserPrivilegeLimit { access: x } => {
       let step = bmc_ipmi_set_user_access(world: world, access: x)
       let accepted = match bmc_ipmi_get_user_access(world: step.world, user: x.user, channel: x.channel as Int) {
         Present { value: p } => ipmi_privilege_eq(a: p, b: x.privilege)
@@ -544,8 +548,112 @@ fn classify_modeled_route_qualification(
   }
 }
 
+// ── THE PRE-WRITE QUALIFICATION ADMISSION: the only value a transport call may be made from ──────
+//
+// THE FIRST DANGEROUS WRITE IS THE QUALIFICATION, NOT THE APPLY. Qualifying a route executes a real
+// account write, so every guard the Apply has must hold BEFORE that write too. Each request shape has
+// its own qualification entrypoint -- the effect boundary its census row names -- and each produces
+// AdmittedRouteQualificationRequest, sealed, minted only here, and the ONLY input from which the live
+// realization may make its transport call (route_qualification_live_frontier). A privilege-limit write
+// is admitted only beside a same-run ManagedAdministratorReadback for the same controller and build:
+// the managed account read back, uniquely, at ADMINISTRATOR on that channel, and not the account being
+// lowered. No receipt, no transport call.
+type AdmittedRouteQualificationRequest sole_constructor {
+  subject: RouteQualificationSubject
+  attempt: AttemptIdentity
+  decided_by: NonEmptyStr
+}
+
+type RouteQualificationRequestRefusal
+  = QualificationRequestForAnotherOperation { candidate: BmcAccountWriteRequest }
+  | QualificationRequestRefusedByClassifier { cause: RouteQualificationRefusal }
+  | QualificationRequestWouldLeaveNoAdministrator { cause: AdministratorRetentionRefusal }
+
+type RouteQualificationRequestAdmission
+  = RouteQualificationRequestAdmitted { request: AdmittedRouteQualificationRequest }
+  | RouteQualificationRequestRefused { cause: RouteQualificationRequestRefusal }
+
+fn admit_route_qualification_request(
+  standing: BmcRotationRouteStanding,
+  approval: Redemption,
+  readback: ManagedAdministratorReadback?,
+) -> RouteQualificationRequestAdmission {
+  match standing.grounding {
+    RouteQualificationCandidate { request: req, evidence: _ } =>
+      match qualification_approval_refusal(standing: standing, request: req, approval: approval) {
+        Present { value: refusal } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: refusal } }
+        Absent =>
+          match approval {
+            RedemptionRefused { cause: c } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationApprovalRefused { cause: c } } }
+            RedemptionAdmitted { claims: cl, decided_by: by } =>
+              match administrator_retention_refusal(standing: standing, request: req, readback: readback, approved_attempt: cl.attempt) {
+                Present { value: c } => RouteQualificationRequestRefused { cause: QualificationRequestWouldLeaveNoAdministrator { cause: c } }
+                Absent =>
+                  RouteQualificationRequestAdmitted {
+                    request: AdmittedRouteQualificationRequest {
+                      subject: RouteQualificationSubject { endpoint: standing.endpoint, firmware: standing.firmware, request: req },
+                      attempt: cl.attempt,
+                      decided_by: by,
+                    },
+                  }
+              }
+          }
+      }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+    RouteGroundedByCitedSource { request: _, citation: _ } => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+    RouteUngrounded => RouteQualificationRequestRefused { cause: QualificationRequestRefusedByClassifier { cause: QualificationSubjectNotACandidate } }
+  }
+}
+
+fn candidate_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
+  match standing.grounding {
+    RouteQualificationCandidate { request: r, evidence: _ } => Present { value: r }
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => none
+    RouteGroundedByCitedSource { request: _, citation: _ } => none
+    RouteUngrounded => none
+  }
+}
+
+fn is_password_request(request: BmcAccountWriteRequest) -> Bool {
+  match request {
+    IpmiSetUserPassword { user: _ } => true
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true
+    IpmiSetUserPrivilegeLimit { access: _ } => false
+  }
+}
+
+// THE PASSWORD QUALIFICATION EFFECT. Census: route_qualification_effect.
+fn admit_password_route_qualification(standing: BmcRotationRouteStanding, approval: Redemption) -> RouteQualificationRequestAdmission {
+  match candidate_request(standing: standing) {
+    Present { value: r } =>
+      if is_password_request(request: r) {
+        admit_route_qualification_request(standing: standing, approval: approval, readback: none)
+      } else {
+        RouteQualificationRequestRefused { cause: QualificationRequestForAnotherOperation { candidate: r } }
+      }
+    Absent => admit_route_qualification_request(standing: standing, approval: approval, readback: none)
+  }
+}
+
+// THE PRIVILEGE-LIMIT QUALIFICATION EFFECT. Census: route_qualification_channel_access_effect.
+fn admit_privilege_limit_route_qualification(
+  standing: BmcRotationRouteStanding,
+  approval: Redemption,
+  readback: ManagedAdministratorReadback?,
+) -> RouteQualificationRequestAdmission {
+  match candidate_request(standing: standing) {
+    Present { value: r } =>
+      if is_password_request(request: r) {
+        RouteQualificationRequestRefused { cause: QualificationRequestForAnotherOperation { candidate: r } }
+      } else {
+        admit_route_qualification_request(standing: standing, approval: approval, readback: readback)
+      }
+    Absent => admit_route_qualification_request(standing: standing, approval: approval, readback: readback)
+  }
+}
+
 data route_qualification_live_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller, bound to the exact RouteQualificationSubject it was made against, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
+  description: "dissolves when a live realization of the route-qualification request mints RouteQualificationLiveResponse in this module from a transport call against the controller made ONLY from an AdmittedRouteQualificationRequest (admit_password_route_qualification or admit_privilege_limit_route_qualification, so every pre-write guard including the same-run administrator-retention receipt has held) and, for a privilege-limit request, issued in the privilege-limit-only mode of Set User Access, bound to the exact RouteQualificationSubject it was made against, under that controller's own operator go-ahead redeemed through gunbc.auth.approval_broker, with request and response bytes committed as content-addressed evidence, and qualify_rotation_route is called with it; until then RouteQualificationLiveResponse has no mint and no candidate can be grounded by qualification. NOT satisfied by the dry realization over gunbc.bmc_model BmcWorld (its ModeledRouteQualificationResponse cannot construct a standing), by a workflow entry that has not executed, or by a receipt that names no controller and build" as NonEmptyStr,
 )
 
 // ── THE ORDINARY ROTATION APPLY CONSUMES ONLY A GROUNDED ROUTE ──────────────────────────────────
@@ -616,6 +724,7 @@ type AdministratorRetentionRefusal
   | ManagedReadbackFromAnotherRun { readback: AttemptIdentity, approved: AttemptIdentity }
   | ManagedAccountIsTheClosedAccount { user: IpmiUserId }
   | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
+  | ManagedReadbackDuplicateRow { managed_user: IpmiUserId, count: Int }
 
 fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
   match privilege {
@@ -632,10 +741,7 @@ fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: 
   match request {
     IpmiSetUserPassword { user: _ } => none
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
-    IpmiSetUserAccess { access: x } =>
-      if !lowers_privilege(privilege: x.privilege) {
-        none
-      } else {
+    IpmiSetUserPrivilegeLimit { access: x } =>
         match readback {
           Absent => Present { value: ManagedReadbackAbsent }
           Present { value: r } =>
@@ -645,21 +751,25 @@ fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: 
               Present { value: ManagedReadbackFromAnotherBuild { readback: r.firmware, route: standing.firmware } }
             } else if (r.attempt as String) != (approved_attempt as String) {
               Present { value: ManagedReadbackFromAnotherRun { readback: r.attempt, approved: approved_attempt } }
-            } else if (r.managed_user as Int) == (x.user as Int) {
+            } else if lowers_privilege(privilege: x.privilege) && (r.managed_user as Int) == (x.user as Int) {
               Present { value: ManagedAccountIsTheClosedAccount { user: x.user } }
-            } else if any(r.access, a => (a.user as Int) == (r.managed_user as Int) && (a.channel as Int) == (x.channel as Int) && !lowers_privilege(privilege: a.privilege)) {
-              none
             } else {
-              Present { value: ManagedAccountNotAdministratorOnChannel { managed_user: r.managed_user } }
+              let rows = filter(r.access, a => (a.user as Int) == (r.managed_user as Int) && (a.channel as Int) == (x.channel as Int))
+              if length(rows) > 1 {
+                Present { value: ManagedReadbackDuplicateRow { managed_user: r.managed_user, count: length(rows) } }
+              } else if any(rows, a => !lowers_privilege(privilege: a.privilege)) {
+                none
+              } else {
+                Present { value: ManagedAccountNotAdministratorOnChannel { managed_user: r.managed_user } }
+              }
             }
         }
-      }
   }
 }
 
 fn request_channel(request: BmcAccountWriteRequest) -> Int {
   match request {
-    IpmiSetUserAccess { access: x } => x.channel as Int
+    IpmiSetUserPrivilegeLimit { access: x } => x.channel as Int
     IpmiSetUserPassword { user: _ } => 0
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => 0
   }

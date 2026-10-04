@@ -319,7 +319,7 @@ fn route_qualification_effect() -> PrivilegedEffect {
 // password. No dispatched run carries it; in this cut it is modeled with a dry realization only.
 fn route_qualification_channel_access_effect() -> PrivilegedEffect {
   PrivilegedEffect {
-    subject: "qualify a BMC channel-access route: execute one IPMI Set User Access request on one controller at one firmware build and read it back with Get User Access" as NonEmptyStr,
+    subject: "qualify a BMC channel-access route: execute one IPMI Set User Access request in its privilege-limit-only form on one controller at one firmware build and read it back with Get User Access" as NonEmptyStr,
     frequency: DeviceOnce,
     reversibility: IrreversibleEffect { what_is_lost: "a privilege write to the wrong user or channel can remove the last administrator's LAN access; recovering it needs hands on the unit, not a reapply" as NonEmptyStr },
     surface: ApiSurface,
@@ -626,13 +626,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_password_route_qualification"),
     effect: route_qualification_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_privilege_limit_route_qualification"),
     effect: route_qualification_channel_access_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,

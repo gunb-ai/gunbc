@@ -19,11 +19,11 @@ import gunbc.machine_intake_mtjade1_access_observation {
   read_mtjade1_recorded_manager_identity,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence, mtcollins1_published_user }
-import extdeps.bmc.ipmi_channel { IpmiPrivilegeNoAccess, ipmi_user_channel_access, extdeps_external_authority_anchor }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
+import extdeps.bmc.ipmi_channel { IpmiPrivilegeAdministrator, ipmi_user_channel_access, extdeps_external_authority_anchor }
 import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
 import gunbc.machine_intake_bmc_rotation_route {
-  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserAccess, ObservedSurfaceRead,
+  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, ObservedSurfaceRead,
   PublicStandardOperation, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
 }
 
@@ -60,10 +60,16 @@ fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
 // carry over to it (admit_rotation_apply refuses another build). The raw string is the release's own
 // version; no post-reflash version readback is committed (see the evidence note below).
 //
-// THE REQUEST is the one the operator-gated qualification would execute: the published account
-// (mtcollins1_published_user) to NO ACCESS on LAN channel 2, the first of the channels the operator
-// reports the factory administrator still holds after the reflash (eager-gull-22, 2026-10-04). Those
-// channel numbers are an operator report, not a committed observation.
+// THE QUALIFYING REQUEST IS CHOSEN TO BE NON-DESTRUCTIVE. It re-asserts the MANAGED account's own
+// ADMINISTRATOR limit on LAN channel 1 -- user 3, the gunbc account's IPMI id before the reflash -- rather
+// than closing the factory administrator. It is safe because the pre-write admission
+// (admit_privilege_limit_route_qualification) requires a same-run Get User Access readback, on this
+// controller and build, showing that user ALREADY at ADMINISTRATOR on channel 1 as the unique row for
+// the pair: so the write sets exactly the value just read, changes no access, and still exercises the
+// command and its readback. If the post-reflash managed id or channel differs, that readback refuses
+// and nothing is written. Closing the factory administrator (user 2, the channels the operator reports
+// it still holds, eager-gull-22 2026-10-04) is an ordinary Apply AFTER this route is grounded, and it
+// passes the same administrator-retention precondition.
 //
 // EVIDENCE IS THE PUBLIC STANDARD ONLY. The IPMI v2.0 specification defines Set User Access
 // (extdeps.bmc.ipmi_channel's cited authority). NO post-reflash channel-access observation is
@@ -84,7 +90,7 @@ fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
   rotation_route_candidate(
     endpoint: mtcollins1_endpoint,
     firmware: mtcollins1_current_bmc_firmware(),
-    request: IpmiSetUserAccess { access: ipmi_user_channel_access(channel: 2, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess) },
+    request: IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator) },
     evidence: PublicStandardOperation { authority: extdeps_external_authority_anchor },
   )
 }
