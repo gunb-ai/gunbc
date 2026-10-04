@@ -14,7 +14,6 @@ import v2.std.dependency {
   DependencyView,
   ResourceDependsOn
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Authored, Node, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.test.lens_common.infer_fixture {

@@ -1029,10 +1029,6 @@ pub fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: bool)
     v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in crate::std_trait_derive_shape::pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone(), carrier_param_needs_clone.clone())); } __result }).join(&"".to_string()))
 }
 
-pub fn rust_supplemental_impls_bool_coproduct() -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
-}
-
 pub fn rust_pair_completion_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {

@@ -16,7 +16,6 @@ import v2.extdeps.languages.python {
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, invariant_port_locus }
 import v2.std.grammar { ModeledGrammar, ParseTree }
-import v2.std.logic { Bool }
 
 test fn python_grammar_validates_fixture() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^python_grammar_claim_test_grammar_contract)

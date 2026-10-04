@@ -189,9 +189,6 @@ import v2.std.qualified_name {
   lexical_reference_label_optional,
   declaration_reference_path_optional
 }
-import v2.std.logic {
-  Bool
-}
 import v2.std.text {
   Char,
   String

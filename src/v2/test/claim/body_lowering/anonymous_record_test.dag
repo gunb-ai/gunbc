@@ -19,7 +19,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes, symbol_lexeme }
 import v2.std.node_query { ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_reading, construct_tag_path_optional }
@@ -51,25 +50,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ArA and ArB have the SAME field set, and the headless literals are annotated with ArB, the one
 // declared SECOND: a chooser that read the field names would pick ArA or refuse as ambiguous, and
 // ar_the_annotation_chooses_not_the_field_names_holds reds either way.
-data ar_provider_source: String = "module v2.test.arp\n\nimport v2.std.logic { Bool }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype ArOuter {\n  inner: ArB\n  flag: Bool\n}\n\ntype ArShape\n  = ArV { n: Bool }\n  | ArW\n\ntype ArBox<T> {\n  top: T\n}\n\nfn ar_take(x: ArB) -> Bool { true }\n"
+data ar_provider_source: String = "module v2.test.arp\n\nimport std.types { Bool }\n\ntype ArA {\n  n: Bool\n  m: Bool\n}\n\ntype ArB {\n  n: Bool\n  m: Bool\n}\n\ntype ArOuter {\n  inner: ArB\n  flag: Bool\n}\n\ntype ArShape\n  = ArV { n: Bool }\n  | ArW\n\ntype ArBox<T> {\n  top: T\n}\n\nfn ar_take(x: ArB) -> Bool { true }\n"
 
-data ar_headed_source: String = "module v2.test.ar_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = ArB { n: true, m: false }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { ArB { n: true, m: true } }\n"
+data ar_headed_source: String = "module v2.test.ar_headed\n\nimport std.types { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = ArB { n: true, m: false }\n\ndata ar_outer: ArOuter = ArOuter { inner: ArB { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { ArB { n: true, m: true } }\n"
 
-data ar_headless_source: String = "module v2.test.ar_headless\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = { n: true, m: false }\n\ndata ar_outer: ArOuter = { inner: { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { { n: true, m: true } }\n"
+data ar_headless_source: String = "module v2.test.ar_headless\n\nimport std.types { Bool }\nimport v2.test.arp { ArA, ArB, ArOuter }\n\ndata ar_x: ArB = { n: true, m: false }\n\ndata ar_outer: ArOuter = { inner: { n: false, m: true }, flag: true }\n\nfn ar_ret() -> ArB { { n: true, m: true } }\n"
 
 // Review condition 3: the expectation does not leak into a call argument.
-data ar_call_argument_source: String = "module v2.test.ar_call_argument\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB, ar_take }\n\nfn ar_call() -> Bool { ar_take(x: { n: true, m: true }) }\n"
+data ar_call_argument_source: String = "module v2.test.ar_call_argument\n\nimport std.types { Bool }\nimport v2.test.arp { ArB, ar_take }\n\nfn ar_call() -> Bool { ar_take(x: { n: true, m: true }) }\n"
 
-data ar_coproduct_source: String = "module v2.test.ar_coproduct\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArShape }\n\ndata ar_c: ArShape = { n: true }\n"
+data ar_coproduct_source: String = "module v2.test.ar_coproduct\n\nimport std.types { Bool }\nimport v2.test.arp { ArShape }\n\ndata ar_c: ArShape = { n: true }\n"
 
 // Review condition 1: the outer literal elaborates to ArBox; its field `top: T` is a binder, which
 // is not substituted, so the inner literal refuses.
-data ar_binder_source: String = "module v2.test.ar_binder\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB, ArBox }\n\ndata ar_box: ArBox<ArB> = { top: { n: true, m: true } }\n"
+data ar_binder_source: String = "module v2.test.ar_binder\n\nimport std.types { Bool }\nimport v2.test.arp { ArB, ArBox }\n\ndata ar_box: ArBox<ArB> = { top: { n: true, m: true } }\n"
 
 // Review condition 2: resolve's choice is not proof. `m: 3` is an Int where ArB declares a Bool.
-data ar_value_mismatch_source: String = "module v2.test.ar_value_mismatch\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = { n: true, m: 3 }\n"
+data ar_value_mismatch_source: String = "module v2.test.ar_value_mismatch\n\nimport std.types { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = { n: true, m: 3 }\n"
 
-data ar_value_mismatch_headed_source: String = "module v2.test.ar_value_mismatch_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
+data ar_value_mismatch_headed_source: String = "module v2.test.ar_value_mismatch_headed\n\nimport std.types { Bool }\nimport v2.test.arp { ArB }\n\ndata ar_bad: ArB = ArB { n: true, m: 3 }\n"
 
 // THE LIST-ELEMENT RULE AND WHERE CONDITION 1 DRAWS ITS LINE. A list literal's element type is
 // passed to its elements only when the annotation's head resolves to the one declaration infer types
@@ -78,27 +77,27 @@ data ar_value_mismatch_headed_source: String = "module v2.test.ar_value_mismatch
 // or through PURE-RENAMING aliases only (docs/plans/anonymous-record-literal-design.md, Pure-renaming aliases).
 data ar_algebra_source: String = "module std.algebra\n\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
 
-data ar_seq_source: String = "module v2.test.arseq\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\n\ntype ArSeq<T> = FreeMonoid<T>\n\ntype List<element> = FreeMonoid<element>\n\ntype ArPair<x, y> {\n  first: x\n  second: y\n}\n\ntype ArPairS<b, a> = ArPair<b, a>\n\ntype ArPairR<a, b> = ArPair<b, a>\n\ntype ArPairC<a> = ArPair<Bool, Bool>\n\ntype ArPairP<a> = ArPair<a, Bool>\n\ntype ArCycA = ArCycB\n\ntype ArCycB = ArCycA\n"
+data ar_seq_source: String = "module v2.test.arseq\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\n\ntype ArSeq<T> = FreeMonoid<T>\n\ntype List<element> = FreeMonoid<element>\n\ntype ArPair<x, y> {\n  first: x\n  second: y\n}\n\ntype ArPairS<b, a> = ArPair<b, a>\n\ntype ArPairR<a, b> = ArPair<b, a>\n\ntype ArPairC<a> = ArPair<Bool, Bool>\n\ntype ArPairP<a> = ArPair<a, Bool>\n\ntype ArCycA = ArCycB\n\ntype ArCycB = ArCycA\n"
 
 // PURE RENAMINGS ELABORATE; ANY OTHER ALIAS REFUSES (design doc, Pure-renaming aliases). ArSeq and List rename
 // FreeMonoid; ArPairS renames ArPair with its binders written b, a -- a renaming because its
 // arguments are its binders IN ITS OWN ORDER, which also reds if binder order were ever sorted away.
 // ArPairR reorders, ArPairC is constant, ArPairP is partially applied, and ArCycA/ArCycB are a cycle.
-data ar_rename_headed_source: String = "module v2.test.ar_rename_headed\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [ArB { n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [ArB { n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = ArPair { first: true, second: false }\n"
+data ar_rename_headed_source: String = "module v2.test.ar_rename_headed\n\nimport std.types { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [ArB { n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [ArB { n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = ArPair { first: true, second: false }\n"
 
-data ar_rename_headless_source: String = "module v2.test.ar_rename_headless\n\nimport v2.std.logic { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [{ n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [{ n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = { first: true, second: false }\n"
+data ar_rename_headless_source: String = "module v2.test.ar_rename_headless\n\nimport std.types { Bool }\nimport v2.test.arp { ArB }\nimport v2.test.arseq { ArSeq, List, ArPair, ArPairS }\n\nfn ar_seq() -> ArSeq<ArB> { [{ n: true, m: false }] }\n\nfn ar_list() -> List<ArB> { [{ n: false, m: true }] }\n\ndata ar_pair: ArPairS<Bool, Bool> = { first: true, second: false }\n"
 
-data ar_reorder_source: String = "module v2.test.ar_reorder\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairR }\n\ndata ar_r: ArPairR<Bool, Bool> = { first: true, second: false }\n"
+data ar_reorder_source: String = "module v2.test.ar_reorder\n\nimport std.types { Bool }\nimport v2.test.arseq { ArPairR }\n\ndata ar_r: ArPairR<Bool, Bool> = { first: true, second: false }\n"
 
-data ar_constant_source: String = "module v2.test.ar_constant\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairC }\n\ndata ar_c: ArPairC<Bool> = { first: true, second: false }\n"
+data ar_constant_source: String = "module v2.test.ar_constant\n\nimport std.types { Bool }\nimport v2.test.arseq { ArPairC }\n\ndata ar_c: ArPairC<Bool> = { first: true, second: false }\n"
 
-data ar_partial_source: String = "module v2.test.ar_partial\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArPairP }\n\ndata ar_p: ArPairP<Bool> = { first: true, second: false }\n"
+data ar_partial_source: String = "module v2.test.ar_partial\n\nimport std.types { Bool }\nimport v2.test.arseq { ArPairP }\n\ndata ar_p: ArPairP<Bool> = { first: true, second: false }\n"
 
-data ar_cycle_source: String = "module v2.test.ar_cycle\n\nimport v2.std.logic { Bool }\nimport v2.test.arseq { ArCycA }\n\ndata ar_y: ArCycA = { first: true }\n"
+data ar_cycle_source: String = "module v2.test.ar_cycle\n\nimport std.types { Bool }\nimport v2.test.arseq { ArCycA }\n\ndata ar_y: ArCycA = { first: true }\n"
 
-data ar_list_headed_source: String = "module v2.test.ar_list_headed\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
+data ar_list_headed_source: String = "module v2.test.ar_list_headed\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [ArB { n: true, m: false }, ArB { n: false, m: false }] }\n"
 
-data ar_list_headless_source: String = "module v2.test.ar_list_headless\n\nimport v2.std.logic { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
+data ar_list_headless_source: String = "module v2.test.ar_list_headless\n\nimport std.types { Bool }\nimport std.algebra { FreeMonoid }\nimport v2.test.arp { ArB }\n\nfn ar_list() -> FreeMonoid<ArB> { [{ n: true, m: false }, { n: false, m: false }] }\n"
 
 fn ar_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
