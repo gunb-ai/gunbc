@@ -396,8 +396,6 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       command_argv: argv,
     ) {
       SystemdRunCommandRefused { reason: why } =>
-        // A refusal means nothing ran: there is no exit code to fabricate, so the observation is
-        // a typed refusal carrying the builder's reason.
         ComputeUnitRun {
           exec: ComputeExecRefused { reason: why },
           summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },

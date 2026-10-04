@@ -65,10 +65,10 @@ fn systemd_run_transient_outcome_from_result(success: Bool, stdout: String, stde
   }
 }
 
+// The transport owns the program head (argv: ["systemd-run", command_argv]); the words handed
+// to it are the argument tail, not the full argv — passing argv_words here would run
+// 'systemd-run systemd-run --unit=...'.
 fn systemd_run_transient_local(command: ArgvCommand) -> SystemdRunTransientOutcome {
-  // The transport owns the program head (argv: ["systemd-run", command_argv]); the words handed
-  // to it are the argument tail, not the full argv — passing argv_words here would run
-  // 'systemd-run systemd-run --unit=...'.
   let result = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
   systemd_run_transient_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
 }
@@ -126,8 +126,8 @@ fn systemd_run_transient_read(
   }
 }
 
+// The transport owns the program head; hand it the argument tail (see systemd_run_transient_local).
 fn systemd_run_transient_wait_local(command: ArgvCommand) -> SystemdRunTransientWaitOutcome {
-  // The transport owns the program head; hand it the argument tail (see systemd_run_transient_local).
   let result = systemd.SystemdRun.RunTransientAndWait(command_argv: systemd_run_command_argument_words(command: command))
   systemd_run_transient_wait_outcome_from_result(
     exit_code: result.exit_code,
@@ -198,10 +198,6 @@ fn systemd_run_transient_wait_read(
   match transport {
     LocalShell => systemd_run_transient_wait_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_wait_ssh(host: h, command: command)
-    // The boundary this arm refuses through is exact: a remote exit status cannot be
-    // distinguished from ssh's own 255 on this result, so a waited transient over FleetSsh
-    // refuses at the transport rather than fabricating an exit code (restored from the
-    // pre-cutover boundary).
     FleetSsh { target: _, context: _ } => SystemdRunTransientWaitTransportRefused {
       reason: "systemd-run transient wait refused FleetSsh until exact remote status is distinguished from transport status",
     }

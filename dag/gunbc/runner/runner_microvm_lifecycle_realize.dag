@@ -1172,8 +1172,6 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
   match attempt_jailer_at_launch(receipt: receipt) {
     Absent => VmmStartFailed { unit: unit, detail: "lease expired during staging or launch clock is unreadable" }
     Present { value: jailer } =>
-      // RunTransientRetained exists so the terminal state stays observable: the invocation must
-      // NOT carry --collect, so this builds through the retained shape, not the collecting one.
       match systemd_run_transient_retained_unit_command(
         unit: unit,
         properties: concat([
