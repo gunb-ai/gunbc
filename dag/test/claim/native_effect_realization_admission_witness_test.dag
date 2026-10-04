@@ -1,6 +1,7 @@
 module test.claim.native_effect_realization_admission_witness
 
 import std.types { String, Bool, List }
+import v2.std.algebra { contains }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import tools.multi_module_compile_fixture {
