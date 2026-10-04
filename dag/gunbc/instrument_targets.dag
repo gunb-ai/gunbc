@@ -353,6 +353,7 @@ fn native_serve_entry() -> String {
 
 fn native_serve_binding() -> TargetBinding {
   TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() } }
+}
 
 // THE MATERIALIZATION STORE CLOSURE, EMITTED, BUILT UNDER CARGO AND RUN: the NativeClaimDriver
 // program gunbc.instruments.native_materialization_store_closure, whose closure contains
