@@ -1,6 +1,8 @@
 module gunbc.required_ci_phase_roster
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.measure { Millisecond, millisecond }
+import std.checked_arithmetic { nat_magnitude }
 import v2.std.optional { Present, Absent }
 
 // THE SUBSTRATE AUTHORITY FOR WHICH PHASES REQUIRED CI RUNS, AND WHICH LANE OWNS EACH.
@@ -256,7 +258,7 @@ data floor_phase_row_tag: String = "[floor-phase]"
 // fabricate a timing. A row with no phase word, or a wall_ms that is not a count, is garbled and is
 // carried with its line, never skipped.
 type FloorPhaseRow
-  = FloorPhaseTimed { phase: NonEmptyStr, wall_ms: Int }
+  = FloorPhaseTimed { phase: NonEmptyStr, wall: Millisecond }
   | FloorPhaseUntimed { phase: NonEmptyStr }
 
 type FloorPhaseRowReading
@@ -280,7 +282,7 @@ fn read_floor_phase_row(line: String) -> FloorPhaseRowReading? {
                   if ms < 0 {
                     Present { value: FloorPhaseRowGarbled { line: line, cause: "[floor-phase] wall_ms is negative" as NonEmptyStr } }
                   } else {
-                    Present { value: FloorPhaseRowRead { row: FloorPhaseTimed { phase: phase as NonEmptyStr, wall_ms: ms } } }
+                    Present { value: FloorPhaseRowRead { row: FloorPhaseTimed { phase: phase as NonEmptyStr, wall: millisecond(count: nat_magnitude(a: ms)) } } }
                   }
               }
           }

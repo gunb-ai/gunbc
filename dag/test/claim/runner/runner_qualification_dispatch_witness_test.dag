@@ -15,10 +15,14 @@ import gunbc.runner.runner_qualification_dispatch {
   RunJobsTruncated, RunNeverReachedAttemptRunner, RunSubjectMismatch,
   conclude_qualification_run, qualification_run_collected,
   AttemptJobLog, AttemptJobLogRead, AttemptJobLogUnreadable,
-  QualificationInstrumentExtraction, QualificationInstrumentsRead, QualificationInstrumentsRefused,
-  QualificationLogReadings, InstrumentReadRefusal, JobLogUnreadable, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
+  DesignatedFloorJob, FloorJobDesignated, FloorJobRefused, designated_floor_job,
+  ExtractionSubjectRefusal, SubjectRunMismatch, SubjectAttemptMismatch, NoJobOnRegisteredRunner, SeveralJobsOnRegisteredRunner,
+  DesignatedJobLog, DesignatedJobLogText, DesignatedJobLogRefused, designated_job_log,
+  JobLogReadRefusal, JobLogOfAnotherJob, JobLogUnreadable, JobLogEmpty,
+  JobLogInstrumentDecode, JobLogInstrumentsDecoded, JobLogInstrumentsUndecodable, decode_job_log_instruments,
+  QualificationLogReadings, InstrumentReadRefusal, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
   FloorPhaseRowsAbsent, SlotCgroupLevelAbsent,
-  extract_qualification_instruments, qualification_instrument_read_from_job_log,
+  qualification_instrument_read_from_job_log,
   ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
   ClaimCostArchiveUnreadable, ClaimCostArchiveNotInflatable,
   conclude_claim_cost_listing, conclude_claim_cost_download,
@@ -26,7 +30,7 @@ import gunbc.runner.runner_qualification_dispatch {
 }
 import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, millisecond_count }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import test.fixture.recorded_required_floor_log_excerpt {
   recorded_required_floor_log_excerpt, recorded_floor_log_job_id, recorded_floor_log_slot_unit,
@@ -81,6 +85,7 @@ fn job(labels: List<String>, started: Bool) -> WorkflowJobRun {
     status: Completed,
     conclusion: Present { value: Success },
     labels: labels,
+    runner_name: none,
     created_at: Present { value: "2026-10-04T00:00:10Z" },
     started_at: if started { Present { value: "2026-10-04T00:01:00Z" } } else { none },
     completed_at: Present { value: "2026-10-04T00:50:00Z" },
@@ -168,18 +173,114 @@ test fn a_readback_of_another_run_refuses_on_the_subject() -> Bool {
   let foreign_job = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [WorkflowJobRun {
     id: 501, run_id: 99, run_attempt: 1, name: "floor", status: Completed,
     conclusion: Present { value: Success }, labels: [attempt as String],
+    runner_name: none,
     created_at: none, started_at: Present { value: "2026-10-04T00:01:00Z" }, completed_at: none,
   }]))
   (match other_run { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: 77, observed_event: _, foreign_job_run_ids: _ } } => true _ => false })
     && (match foreign_job { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: _, observed_event: _, foreign_job_run_ids: f } } => count(f) == 1 && (f |> all(x => x == 99)) _ => false })
 }
 
-// ── EXTRACTION, OVER SUPPLIED LOGS ─────────────────────────────────────────────────────────────
+// ── THE SUBJECT: ONE RUN, ONE REGISTERED RUNNER, ONE JOB ──────────────────────────────────────
 //
-// These claims are about extract_qualification_instruments alone, so the collection and the logs are
-// supplied values. The real producer's bytes are exercised once, by the inhabitance claim at the end.
+// designated_floor_job is the pure join qualification_extraction_subject runs before any network
+// read. Each claim concludes its own readback (admitted by name to conclude_qualification_run) and
+// asks the join for the floor job, so the collection is never minted by a helper here.
 
-data no_claim_cost: ClaimCostArtifactRead = ClaimCostArtifactAbsent { names_seen: ["required-ci-measurement-receipt"] }
+data runner: NonEmptyStr = "gunbc-q-mtcollins1-q-20261004-1"
+
+fn job_on(id: Int, runner_name: String?) -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: id,
+    run_id: 77,
+    run_attempt: 1,
+    name: "floor",
+    status: Completed,
+    conclusion: Present { value: Success },
+    labels: [attempt as String],
+    runner_name: runner_name,
+    created_at: Present { value: "2026-10-04T00:00:10Z" },
+    started_at: Present { value: "2026-10-04T00:01:00Z" },
+    completed_at: Present { value: "2026-10-04T00:50:00Z" },
+  }
+}
+
+fn designated_in(c: QualificationRunCollection, dispatched_run_id: Int, slot_attempt: NonEmptyStr) -> DesignatedFloorJob? {
+  match c {
+    QualificationRunCollected { collected: collected } =>
+      Present { value: designated_floor_job(dispatched_run_id: dispatched_run_id, dispatched_attempt: attempt, collected: collected, slot_attempt: slot_attempt, runner_name: runner) }
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => none
+  }
+}
+
+fn subject_refused(d: DesignatedFloorJob?, check: fn(ExtractionSubjectRefusal) -> Bool) -> Bool {
+  match d {
+    Present { value: FloorJobRefused { refusal: r } } => check(r)
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL: of two served jobs, the one the registered runner ran is the floor job.
+test fn the_floor_job_is_the_one_the_registered_runner_ran() -> Bool {
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job_on(id: 501, runner_name: Present { value: "srv4-03" }), job_on(id: 502, runner_name: Present { value: runner as String })]))
+  match designated_in(c: c, dispatched_run_id: 77, slot_attempt: attempt) {
+    Present { value: FloorJobDesignated { job: j } } => j.id == 502
+    _ => false
+  }
+}
+
+// RED: a target from run B beside a collection of run A refuses before any read -- the dispatched
+// run id and the collected run id are both carried, so the cross-wire is located.
+test fn a_dispatch_of_another_run_refuses_the_subject() -> Bool {
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job_on(id: 502, runner_name: Present { value: runner as String })]))
+  subject_refused(d: designated_in(c: c, dispatched_run_id: 78, slot_attempt: attempt), check: r => match r {
+    SubjectRunMismatch { dispatched_run_id: 78, collected_run_id: 77 } => true
+    _ => false
+  })
+}
+
+// RED: a slot minted for attempt B beside a run of attempt A refuses, so its unit can never filter
+// any cgroup row of this run.
+test fn a_slot_of_another_attempt_refuses_the_subject() -> Bool {
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job_on(id: 502, runner_name: Present { value: runner as String })]))
+  subject_refused(d: designated_in(c: c, dispatched_run_id: 77, slot_attempt: "q-20261004-2"), check: r => match r {
+    SubjectAttemptMismatch { dispatched_attempt: _, other_attempt: o } => (o as String) == "q-20261004-2"
+    _ => false
+  })
+}
+
+// RED: no served job ran on the registered runner, or two did. Neither is a floor job.
+test fn zero_or_two_jobs_on_the_registered_runner_refuse() -> Bool {
+  let none_on = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job_on(id: 501, runner_name: Present { value: "srv4-03" }), job_on(id: 503, runner_name: none)]))
+  let two_on = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job_on(id: 501, runner_name: Present { value: runner as String }), job_on(id: 502, runner_name: Present { value: runner as String })]))
+  subject_refused(d: designated_in(c: none_on, dispatched_run_id: 77, slot_attempt: attempt), check: r => match r {
+    NoJobOnRegisteredRunner { runner_name: _, runner_names_seen: seen } => count(seen) == 2 && (seen |> any(n => n == "srv4-03"))
+    _ => false
+  })
+    && subject_refused(d: designated_in(c: two_on, dispatched_run_id: 77, slot_attempt: attempt), check: r => match r {
+      SeveralJobsOnRegisteredRunner { runner_name: _, job_ids: ids } => count(ids) == 2
+      _ => false
+    })
+}
+
+// ── THE DESIGNATED JOB'S LOG ──────────────────────────────────────────────────────────────────
+
+// RED: a log read for any job other than the designated one is refused, whatever it says.
+test fn a_log_of_another_job_is_not_the_floor_jobs_log() -> Bool {
+  (match designated_job_log(designated_job_id: 502, log: AttemptJobLogRead { job_id: 501, log: "[floor-phase] phase=x wall_ms=1" }) {
+    DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: 502, read_job_id: 501 } } => true
+    _ => false
+  })
+    && (match designated_job_log(designated_job_id: 502, log: AttemptJobLogUnreadable { job_id: 502, outcome: RestStatusRefused { status: 410, body: "Gone" } }) {
+      DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: 502, outcome: _ } } => true
+      _ => false
+    })
+    && (match designated_job_log(designated_job_id: 502, log: AttemptJobLogRead { job_id: 502, log: "" }) {
+      DesignatedJobLogRefused { refusal: JobLogEmpty { job_id: 502 } } => true
+      _ => false
+    })
+}
+
+// ── THE PURE DECODER, OVER SUPPLIED TEXT ──────────────────────────────────────────────────────
 
 data slot: NonEmptyStr = "gunbc-qualification-mtcollins1-q-20261004-1.service"
 
@@ -188,30 +289,14 @@ data started_line: String = "2026-10-04T00:09:00.0000000Z [floor-phase] phase=st
 data slot_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-q-20261004-1.service max=17179869184 high=16106127360 current=8949473280 peak=10444185600 events=[low,0]"
 data slice_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice max=max high=max current=1 peak=364675248128"
 
-fn served_jobs() -> WorkflowJobRunList {
-  jobs(js: [job(labels: [attempt as String], started: true)])
+fn decode(lines: List<String>) -> JobLogInstrumentDecode {
+  decode_job_log_instruments(log: join(lines, "\n"), slot_unit: slot)
 }
 
-fn log_of(lines: List<String>) -> List<AttemptJobLog> {
-  [AttemptJobLogRead { job_id: 500, log: join(lines, "\n") }]
-}
-
-// THE COLLECTION IS SEALED, so no helper here returns one. Each claim below concludes its own served
-// readback (it is admitted by name to conclude_qualification_run for that) and hands the collection
-// to extraction_of, which only takes a collection apart and cannot mint one. A refused collection
-// has nothing to extract and answers none, which every claim below reads as red.
-fn extraction_of(c: QualificationRunCollection, logs: List<AttemptJobLog>, slot_unit: NonEmptyStr) -> QualificationInstrumentExtraction? {
-  match c {
-    QualificationRunCollected { collected: collected } =>
-      Present { value: extract_qualification_instruments(collected: collected, logs: logs, claim_cost: no_claim_cost, slot_unit: slot_unit) }
-    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => none
-  }
-}
-
-fn refused_with(e: QualificationInstrumentExtraction?, check: fn(InstrumentReadRefusal) -> Bool) -> Bool {
-  match e {
-    Present { value: QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: r } } => check(r)
-    _ => false
+fn undecodable_with(d: JobLogInstrumentDecode, check: fn(InstrumentReadRefusal) -> Bool) -> Bool {
+  match d {
+    JobLogInstrumentsUndecodable { refusal: r } => check(r)
+    JobLogInstrumentsDecoded { readings: _ } => false
   }
 }
 
@@ -219,83 +304,76 @@ test fn the_job_log_instruments_are_the_two_the_extraction_reads() -> Bool {
   qualification_instrument_read_from_job_log(i: FloorPhaseRows)
     && qualification_instrument_read_from_job_log(i: FloorCgroupRows)
     && count(qualification_instruments |> filter(i => qualification_instrument_read_from_job_log(i: i))) == 2
-    && count(qualification_instrument_extraction_frontier_rows) == 3
+    && count(qualification_instrument_extraction_frontier_rows) == 4
 }
 
-// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, the claim-cost read's refusal
-// rides beside them, and only the slot's own level is taken as the cgroup reading -- the slice above
-// it has a larger peak and must not be read as the slot's.
-test fn a_log_with_phase_rows_and_the_slot_level_is_read() -> Bool {
-  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
-  match extraction_of(c: c, logs: log_of(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]), slot_unit: slot) {
-    Present { value: QualificationInstrumentsRead { attempt: a, run_id: r, conclusion: _, readings: rd, claim_cost: cc } } =>
-      a == attempt && r == 77
-        && (match cc { ClaimCostArtifactAbsent { names_seen: _ } => true _ => false })
-        && count(rd.floor_phase_rows) == 2
+// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, and only the slot's own
+// level is taken -- the slice above it has a larger peak and must not be read as the slot's.
+test fn a_log_with_phase_rows_and_the_slot_level_is_decoded() -> Bool {
+  match decode(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]) {
+    JobLogInstrumentsDecoded { readings: rd } =>
+      count(rd.floor_phase_rows) == 2
         && count(rd.slot_cgroup_rows) == 1
         && (rd.slot_cgroup_rows |> all(l => byte_size_count(b: l.peak) == 10444185600))
-    _ => false
+        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: _, wall: w } => millisecond_count(m: w) == 22194 _ => false }))
+    JobLogInstrumentsUndecodable { refusal: _ } => false
   }
 }
 
 test fn a_garbled_row_refuses_rather_than_being_skipped() -> Bool {
-  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
-  refused_with(
-    e: extraction_of(c: c, logs: log_of(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]), slot_unit: slot),
-    check: r => match r { FloorPhaseRowGarbledInLog { job_id: 500, line: _, cause: _ } => true _ => false },
-  )
-    && refused_with(
-      e: extraction_of(c: c, logs: log_of(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]), slot_unit: slot),
-      check: r => match r { FloorCgroupRowGarbledInLog { job_id: 500, line: _, cause: _ } => true _ => false },
-    )
+  undecodable_with(d: decode(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]), check: r => match r {
+    FloorPhaseRowGarbledInLog { line: _, cause: _ } => true
+    _ => false
+  })
+    && undecodable_with(d: decode(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]), check: r => match r {
+      FloorCgroupRowGarbledInLog { line: _, cause: _ } => true
+      _ => false
+    })
 }
 
-test fn a_log_missing_either_reading_refuses_with_what_it_saw() -> Bool {
-  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
-  refused_with(
-    e: extraction_of(c: c, logs: log_of(lines: [started_line, slot_level_line]), slot_unit: slot),
-    check: r => match r { FloorPhaseRowsAbsent => true _ => false },
-  )
-    && refused_with(
-      e: extraction_of(c: c, logs: log_of(lines: [phase_line, slice_level_line]), slot_unit: slot),
-      check: r => match r { SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 1 _ => false },
-    )
+// RED, THE SPLIT-ACROSS-JOBS CASE: the phase rows of one job and the slot row of another never meet,
+// because only the designated job's log is decoded -- read alone, the job carrying only phase rows
+// refuses for want of the slot level, and the one carrying only the slot level refuses for want of a
+// timed phase row.
+test fn rows_split_across_two_jobs_are_not_one_measurement() -> Bool {
+  undecodable_with(d: decode(lines: [started_line, phase_line]), check: r => match r {
+    SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 0
+    _ => false
+  })
+    && undecodable_with(d: decode(lines: [slot_level_line, slice_level_line]), check: r => match r {
+      FloorPhaseRowsAbsent => true
+      _ => false
+    })
 }
 
-test fn an_unreadable_log_reads_nothing() -> Bool {
-  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
-  refused_with(
-    e: extraction_of(c: c, logs: [AttemptJobLogUnreadable { job_id: 500, outcome: RestStatusRefused { status: 410, body: "Gone" } }], slot_unit: slot),
-    check: r => match r { JobLogUnreadable { job_id: 500, outcome: _ } => true _ => false },
-  )
+test fn a_log_without_the_slot_level_names_the_levels_it_saw() -> Bool {
+  undecodable_with(d: decode(lines: [phase_line, slice_level_line]), check: r => match r {
+    SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 1
+    _ => false
+  })
 }
 
 // ── INHABITANCE: THE REAL PRODUCER'S BYTES ─────────────────────────────────────────────────────
 //
 // The supplied lines above are designed against the row shapes; this claim is what keeps them
-// readings. It hands extract_qualification_instruments the verbatim [floor-phase] and [floor-cgroup]
-// lines claim_executor printed on a recorded required-floor run (test.fixture
+// readings. It hands decode_job_log_instruments the verbatim [floor-phase] and [floor-cgroup] lines
+// claim_executor printed on a recorded required-floor run (test.fixture
 // recorded_required_floor_log_excerpt), under that run's real slot unit, and asserts the ROUTE as well
 // as the answer: every one of the 79 phase rows is read (none garbled, none dropped), the timed rows
 // carry the gate-closure wall the log printed, and of the 12 level rows only the 4 at the slot's own
 // level -- floor entry and three heartbeats -- are taken, with the slot's memory.high read as a byte
 // bound and floor entry's memory.peak as printed. If the host's row encoding moves, this goes red
 // while the designed fixtures above stay green.
-test fn the_extraction_reads_a_recorded_required_floor_log() -> Bool {
-  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
-  match extraction_of(
-    c: c,
-    logs: [AttemptJobLogRead { job_id: recorded_floor_log_job_id, log: recorded_required_floor_log_excerpt }],
-    slot_unit: recorded_floor_log_slot_unit as NonEmptyStr,
-  ) {
-    Present { value: QualificationInstrumentsRead { attempt: _, run_id: _, conclusion: _, readings: rd, claim_cost: _ } } =>
+test fn the_decoder_reads_a_recorded_required_floor_log() -> Bool {
+  match decode_job_log_instruments(log: recorded_required_floor_log_excerpt, slot_unit: recorded_floor_log_slot_unit as NonEmptyStr) {
+    JobLogInstrumentsDecoded { readings: rd } =>
       count(rd.floor_phase_rows) == 79
-        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: ph, wall_ms: ms } => (ph as String) == "gate-closure" && ms == 22194 _ => false }))
+        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: ph, wall: w } => (ph as String) == "gate-closure" && millisecond_count(m: w) == 22194 _ => false }))
         && (rd.floor_phase_rows |> any(p => match p { FloorPhaseUntimed { phase: ph } => (ph as String) == "strict-preparation" _ => false }))
         && count(rd.slot_cgroup_rows) == 4
         && (rd.slot_cgroup_rows |> all(l => match l.high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 16106127360 _ => false }))
         && (rd.slot_cgroup_rows |> any(l => (l.when as String) == "floor-entry" && byte_size_count(b: l.peak) == 10444185600))
-    _ => false
+    JobLogInstrumentsUndecodable { refusal: _ } => false
   }
 }
 
@@ -311,6 +389,7 @@ fn artifact(name: String, expired: Bool) -> ActionsArtifact {
 
 test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
   let present = ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: false)] }
+  let gone = RestStatusRefused { status: 410, body: "Gone" }
   (match conclude_claim_cost_listing(outcome: RestOk, listed: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-ci-measurement-receipt", expired: false)] }) {
     Present { value: ClaimCostArtifactAbsent { names_seen: ns } } => count(ns) == 1
     _ => false
@@ -326,6 +405,10 @@ test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
     && (match conclude_claim_cost_listing(outcome: RestOk, listed: present) { Absent => true _ => false })
     && (match conclude_claim_cost_download(artifact_id: 9001, outcome: RestBodyUndecodable { status: 200, cause: "stream did not contain valid UTF-8" }) {
       ClaimCostArchiveUnreadable { artifact_id: 9001, outcome: _ } => true
+      _ => false
+    })
+    && (match conclude_claim_cost_download(artifact_id: 9001, outcome: gone) {
+      ClaimCostArtifactExpired { artifact_id: 9001 } => true
       _ => false
     })
     && (match conclude_claim_cost_download(artifact_id: 9001, outcome: RestOk) {

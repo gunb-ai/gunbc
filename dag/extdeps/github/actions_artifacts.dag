@@ -91,7 +91,7 @@ service github.Artifacts {
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape
-      500 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 
@@ -119,7 +119,7 @@ service github.Artifacts {
       403 => GitHubErrorShape
       404 => GitHubErrorShape
       410 => GitHubErrorShape
-      500 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 }

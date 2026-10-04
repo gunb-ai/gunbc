@@ -21,6 +21,10 @@ import gunbc.required_ci_phase_roster {
   read_floor_phase_row,
 }
 import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
+import gunbc.runner.runner_jit_deregistration { JitRegistration }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import gunbc.runner_jit_mint { MicroVmJitSlot, HostUnitJitSlot }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.host_budget_source {
   FloorCgroupLevelRow, FloorCgroupRowReading, FloorCgroupLevelRead, FloorCgroupRowGarbled,
@@ -184,11 +188,10 @@ fn conclude_qualification_run(
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_or_unconcluded_run_refuses_rather_than_collecting"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_truncated_or_unreadable_readback_refuses"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_readback_of_another_run_refuses_on_the_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_log_with_phase_rows_and_the_slot_level_is_read"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_garbled_row_refuses_rather_than_being_skipped"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_log_missing_either_reading_refuses_with_what_it_saw"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unreadable_log_reads_nothing"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_extraction_reads_a_recorded_required_floor_log"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_floor_job_is_the_one_the_registered_runner_ran"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_dispatch_of_another_run_refuses_the_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_slot_of_another_attempt_refuses_the_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "zero_or_two_jobs_on_the_registered_runner_refuse"),
   ]
 {
   match run_outcome {
@@ -261,10 +264,11 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun) -> Qualific
 //
 // WHERE EACH INSTRUMENT IS READ FROM IS A TOTAL MATCH, so adding an instrument to
 // gunbc.runner_throughput_qualification_route QualificationInstrument refuses to compile here until it
-// says where its reading comes from. Two are this run's job log, read now. Two are this run's
+// says where its reading comes from. Two are the designated floor job's log; two are this run's
 // required-floor-claim-cost artifact, whose read is attempted on every collection and today ends in a
-// typed refusal (read_claim_cost_artifact); two are not outputs of this run at all. Each of those four
-// is carried by a row below with the capability that would read it.
+// typed refusal (read_claim_cost_artifact); two are not outputs of this run at all. Each of the
+// four is carried by a row below with the capability that would read it, and the two log
+// instruments carry a row too until the route invokes collect_qualification_instruments.
 type QualificationInstrumentSource
   = ReadFromAttemptJobLog
   | ReadFromClaimCostArtifact
@@ -291,72 +295,159 @@ fn qualification_instrument_read_from_job_log(i: QualificationInstrument) -> Boo
   }
 }
 
-// ONE SERVED JOB'S LOG, AS GITHUB ANSWERED IT. An unreadable log carries the RestOutcome it came with
-// -- a 410 for a log past retention, RestBodyUndecodable for a body the handler could not read whole --
-// and is never read as an empty log.
-type AttemptJobLog
-  = AttemptJobLogRead { job_id: Int, log: String }
-  | AttemptJobLogUnreadable { job_id: Int, outcome: RestOutcome }
+// ── THE SUBJECT: ONE RUN, ONE REGISTERED RUNNER, ONE JOB ──────────────────────────────────────
+//
+// EVERY IDENTITY THE READS USE COMES FROM ONE SEALED VALUE, never from caller-supplied strings. The
+// repository and workflow are the dispatch's (DispatchedQualificationRun target), the run is the one
+// that dispatch returned and conclude_qualification_run collected, and the slot is the authorized
+// JIT registration's own host-unit slot (gunbc.runner.runner_jit_deregistration JitRegistration,
+// minted only from an authorized mint), so the cgroup unit the rows are filtered to is that slot's
+// unit and no other. A target from run B beside a collection of run A, or a slot minted for
+// another attempt, refuses here, before any network read.
+//
+// THE FLOOR JOB IS THE ONE JOB THE REGISTERED RUNNER RAN. The collection's served jobs carry the
+// attempt label and started; among them, the designated job is the one whose runner_name is the
+// name the authorized mint fixed. Zero such jobs, or more than one, refuses: reading every served
+// job and pooling their rows would let phase rows from one job and a cgroup row from another
+// stand as one measurement.
+type QualificationExtractionSubject sole_constructor {
+  dispatched: DispatchedQualificationRun
+  collected: CollectedQualificationRun
+  registration: JitRegistration
+  slot: HostUnitSlot
+  floor_job: WorkflowJobRun
+}
 
-// THE READINGS. Phase rows are every [floor-phase] row the served jobs printed, timed and untimed, in
-// log order; the cgroup rows are only the [floor-cgroup] rows at the SLOT's own level, because the
-// levels above it (the runner slice, the system slice) are other subjects' memory and a qualification
-// of this slot must not take their peak for its own.
+type ExtractionSubjectRefusal
+  = SubjectRunNotCollected { refusal: QualificationRunRefusal }
+  | SubjectRunMismatch { dispatched_run_id: Int, collected_run_id: Int }
+  | SubjectAttemptMismatch { dispatched_attempt: NonEmptyStr, other_attempt: NonEmptyStr }
+  | SubjectSlotNotAHostUnit
+  | NoJobOnRegisteredRunner { runner_name: NonEmptyStr, runner_names_seen: List<String> }
+  | SeveralJobsOnRegisteredRunner { runner_name: NonEmptyStr, job_ids: List<Int> }
+
+type DesignatedFloorJob
+  = FloorJobDesignated { job: WorkflowJobRun }
+  | FloorJobRefused { refusal: ExtractionSubjectRefusal }
+
+fn job_ran_on(job: WorkflowJobRun, runner_name: NonEmptyStr) -> Bool {
+  match job.runner_name {
+    Present { value: n } => n == (runner_name as String)
+    Absent => false
+  }
+}
+
+fn job_runner_name_seen(job: WorkflowJobRun) -> String {
+  match job.runner_name {
+    Present { value: n } => n
+    Absent => "<none>"
+  }
+}
+
+// THE PURE JOIN, over the identities alone, so each refusal is witnessable without a network read.
+fn designated_floor_job(
+  dispatched_run_id: Int,
+  dispatched_attempt: NonEmptyStr,
+  collected: CollectedQualificationRun,
+  slot_attempt: NonEmptyStr,
+  runner_name: NonEmptyStr,
+) -> DesignatedFloorJob {
+  if collected.run_id != dispatched_run_id {
+    FloorJobRefused { refusal: SubjectRunMismatch { dispatched_run_id: dispatched_run_id, collected_run_id: collected.run_id } }
+  } else if collected.attempt != dispatched_attempt {
+    FloorJobRefused { refusal: SubjectAttemptMismatch { dispatched_attempt: dispatched_attempt, other_attempt: collected.attempt } }
+  } else if slot_attempt != dispatched_attempt {
+    FloorJobRefused { refusal: SubjectAttemptMismatch { dispatched_attempt: dispatched_attempt, other_attempt: slot_attempt } }
+  } else {
+    let on_runner = collected.attempt_jobs |> filter(j => job_ran_on(job: j, runner_name: runner_name))
+    if count(on_runner) == 0 {
+      FloorJobRefused { refusal: NoJobOnRegisteredRunner { runner_name: runner_name, runner_names_seen: collected.attempt_jobs |> map(j => job_runner_name_seen(job: j)) } }
+    } else if count(on_runner) > 1 {
+      FloorJobRefused { refusal: SeveralJobsOnRegisteredRunner { runner_name: runner_name, job_ids: on_runner |> map(j => j.id) } }
+    } else {
+      match on_runner |> first {
+        Present { value: j } => FloorJobDesignated { job: j }
+        Absent => FloorJobRefused { refusal: NoJobOnRegisteredRunner { runner_name: runner_name, runner_names_seen: [] } }
+      }
+    }
+  }
+}
+
+type ExtractionSubjectStanding
+  = ExtractionSubjectMinted { subject: QualificationExtractionSubject }
+  | ExtractionSubjectRefused { refusal: ExtractionSubjectRefusal }
+
+fn qualification_extraction_subject(
+  dispatched: DispatchedQualificationRun,
+  collection: QualificationRunCollection,
+  registration: JitRegistration,
+) -> ExtractionSubjectStanding {
+  match collection {
+    QualificationRunRefused { attempt: _, run_id: _, refusal: r } => ExtractionSubjectRefused { refusal: SubjectRunNotCollected { refusal: r } }
+    QualificationRunCollected { collected: collected } =>
+      match registration.slot {
+        MicroVmJitSlot { attempt: _ } => ExtractionSubjectRefused { refusal: SubjectSlotNotAHostUnit }
+        HostUnitJitSlot { slot: slot } =>
+          match designated_floor_job(
+            dispatched_run_id: dispatched.receipt.workflow_run_id,
+            dispatched_attempt: dispatched.attempt,
+            collected: collected,
+            slot_attempt: slot.attempt,
+            runner_name: registration.name.value,
+          ) {
+            FloorJobRefused { refusal: r } => ExtractionSubjectRefused { refusal: r }
+            FloorJobDesignated { job: j } =>
+              ExtractionSubjectMinted {
+                subject: QualificationExtractionSubject { dispatched: dispatched, collected: collected, registration: registration, slot: slot, floor_job: j },
+              }
+          }
+      }
+  }
+}
+
+// ── THE PURE DECODER ──────────────────────────────────────────────────────────────────────────
+//
+// It decides what one log's text says and nothing about whose log it is; identity is the subject's
+// and the receipt's. It is open so the row shapes are witnessable on supplied and recorded text.
+// The phase rows are every [floor-phase] row the log printed, timed and untimed, in log order; the
+// cgroup rows are only the [floor-cgroup] rows at the slot's own level, because the levels above it
+// are other subjects' memory and a qualification of this slot must not take their peak for its own.
 type QualificationLogReadings {
   floor_phase_rows: List<FloorPhaseRow>
   slot_cgroup_rows: List<FloorCgroupLevelRow>
 }
 
 type InstrumentReadRefusal
-  = JobLogUnreadable { job_id: Int, outcome: RestOutcome }
-  | FloorPhaseRowGarbledInLog { job_id: Int, line: String, cause: NonEmptyStr }
-  | FloorCgroupRowGarbledInLog { job_id: Int, line: String, cause: NonEmptyStr }
+  = FloorPhaseRowGarbledInLog { line: String, cause: NonEmptyStr }
+  | FloorCgroupRowGarbledInLog { line: String, cause: NonEmptyStr }
   | FloorPhaseRowsAbsent
   | SlotCgroupLevelAbsent { slot_unit: NonEmptyStr, levels_seen: List<String> }
 
-type QualificationInstrumentExtraction
-  = QualificationInstrumentsRead {
-      attempt: NonEmptyStr
-      run_id: Int
-      conclusion: WorkflowRunConclusion
-      readings: QualificationLogReadings
-      claim_cost: ClaimCostArtifactRead
-    }
-  | QualificationInstrumentsRefused { attempt: NonEmptyStr, run_id: Int, refusal: InstrumentReadRefusal }
+type JobLogInstrumentDecode
+  = JobLogInstrumentsDecoded { readings: QualificationLogReadings }
+  | JobLogInstrumentsUndecodable { refusal: InstrumentReadRefusal }
 
-// One log's rows, or the first row that could not be read. A garbled row stops the read: a reading
-// assembled around a row it skipped would report a phase or a level as absent that the run printed.
+// A garbled row stops the read: a reading assembled around a row it skipped would report a phase
+// or a level as absent that the run printed.
 type JobLogRowsReading
   = JobLogRowsRead { phases: List<FloorPhaseRow>, levels: List<FloorCgroupLevelRow> }
   | JobLogRowsRefused { refusal: InstrumentReadRefusal }
 
-fn read_job_log_line(acc: JobLogRowsReading, job_id: Int, line: String) -> JobLogRowsReading {
+fn read_job_log_line(acc: JobLogRowsReading, line: String) -> JobLogRowsReading {
   match acc {
     JobLogRowsRefused { refusal: _ } => acc
     JobLogRowsRead { phases: ps, levels: ls } =>
       match read_floor_phase_row(line: line) {
         Present { value: FloorPhaseRowGarbled { line: l, cause: c } } =>
-          JobLogRowsRefused { refusal: FloorPhaseRowGarbledInLog { job_id: job_id, line: l, cause: c } }
+          JobLogRowsRefused { refusal: FloorPhaseRowGarbledInLog { line: l, cause: c } }
         Present { value: FloorPhaseRowRead { row: r } } => JobLogRowsRead { phases: list_push(ps, r), levels: ls }
         Absent =>
           match read_floor_cgroup_level_row(line: line) {
             Present { value: FloorCgroupRowGarbled { line: l, cause: c } } =>
-              JobLogRowsRefused { refusal: FloorCgroupRowGarbledInLog { job_id: job_id, line: l, cause: c } }
+              JobLogRowsRefused { refusal: FloorCgroupRowGarbledInLog { line: l, cause: c } }
             Present { value: FloorCgroupLevelRead { row: r } } => JobLogRowsRead { phases: ps, levels: list_push(ls, r) }
             Absent => acc
           }
-      }
-  }
-}
-
-fn read_job_log_rows(acc: JobLogRowsReading, log: AttemptJobLog) -> JobLogRowsReading {
-  match acc {
-    JobLogRowsRefused { refusal: _ } => acc
-    JobLogRowsRead { phases: _, levels: _ } =>
-      match log {
-        AttemptJobLogUnreadable { job_id: j, outcome: o } => JobLogRowsRefused { refusal: JobLogUnreadable { job_id: j, outcome: o } }
-        AttemptJobLogRead { job_id: j, log: text } =>
-          fold(split(s: text, delimiter: "\n"), init: acc, f: (a, line) => read_job_log_line(acc: a, job_id: j, line: line))
       }
   }
 }
@@ -365,44 +456,95 @@ fn level_is_slot(row: FloorCgroupLevelRow, slot_unit: NonEmptyStr) -> Bool {
   ends_with(s: row.level as String, suffix: concat("/", slot_unit as String))
 }
 
-// THE SUPPLIED-INPUT BOUNDARY. Everything the extraction decides is decided here from the sealed
-// collection and the reads as they came back; collect_qualification_instruments below is the only
-// caller that reaches the network, and it does nothing but perform the reads and hand them in. The
-// collection is CollectedQualificationRun and not the collection sum, so an extraction exists only for
-// a run conclude_qualification_run admitted -- a refused run has nothing to extract and is not asked.
-fn extract_qualification_instruments(
-  collected: CollectedQualificationRun,
-  logs: List<AttemptJobLog>,
-  claim_cost: ClaimCostArtifactRead,
-  slot_unit: NonEmptyStr,
-) -> QualificationInstrumentExtraction {
-  let attempt = collected.attempt
-  let run_id = collected.run_id
-  match fold(logs, init: JobLogRowsRead { phases: [], levels: [] }, f: (acc, l) => read_job_log_rows(acc: acc, log: l)) {
-    JobLogRowsRefused { refusal: r } => QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: r }
+fn phase_row_is_timed(p: FloorPhaseRow) -> Bool {
+  match p {
+    FloorPhaseTimed { phase: _, wall: _ } => true
+    FloorPhaseUntimed { phase: _ } => false
+  }
+}
+
+fn decode_job_log_instruments(log: String, slot_unit: NonEmptyStr) -> JobLogInstrumentDecode {
+  match fold(split(s: log, delimiter: "\n"), init: JobLogRowsRead { phases: [], levels: [] }, f: (acc, line) => read_job_log_line(acc: acc, line: line)) {
+    JobLogRowsRefused { refusal: r } => JobLogInstrumentsUndecodable { refusal: r }
     JobLogRowsRead { phases: phases, levels: levels } => {
       let slot_levels = levels |> filter(l => level_is_slot(row: l, slot_unit: slot_unit))
-      let timed = phases |> filter(p => match p { FloorPhaseTimed { phase: _, wall_ms: _ } => true FloorPhaseUntimed { phase: _ } => false })
-      if count(timed) == 0 {
-        QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: FloorPhaseRowsAbsent }
+      if count(phases |> filter(p => phase_row_is_timed(p: p))) == 0 {
+        JobLogInstrumentsUndecodable { refusal: FloorPhaseRowsAbsent }
       } else if count(slot_levels) == 0 {
-        QualificationInstrumentsRefused {
-          attempt: attempt,
-          run_id: run_id,
-          refusal: SlotCgroupLevelAbsent { slot_unit: slot_unit, levels_seen: levels |> map(l => l.level as String) },
-        }
+        JobLogInstrumentsUndecodable { refusal: SlotCgroupLevelAbsent { slot_unit: slot_unit, levels_seen: levels |> map(l => l.level as String) } }
       } else {
-        QualificationInstrumentsRead {
-          attempt: attempt,
-          run_id: run_id,
-          conclusion: collected.conclusion,
-          readings: QualificationLogReadings { floor_phase_rows: phases, slot_cgroup_rows: slot_levels },
-          claim_cost: claim_cost,
-        }
+        JobLogInstrumentsDecoded { readings: QualificationLogReadings { floor_phase_rows: phases, slot_cgroup_rows: slot_levels } }
       }
     }
   }
 }
+
+// ── THE READ, AND THE RECEIPT ONLY THE READ CAN MINT ──────────────────────────────────────────
+//
+// A log is admitted only if it is the designated job's: the read is addressed by the subject's job
+// id, and the join below is what a supplied log of any other job fails.
+type AttemptJobLog
+  = AttemptJobLogRead { job_id: Int, log: String }
+  | AttemptJobLogUnreadable { job_id: Int, outcome: RestOutcome }
+
+type JobLogReadRefusal
+  = JobLogOfAnotherJob { designated_job_id: Int, read_job_id: Int }
+  | JobLogUnreadable { job_id: Int, outcome: RestOutcome }
+  | JobLogEmpty { job_id: Int }
+  | JobLogUndecodable { job_id: Int, refusal: InstrumentReadRefusal }
+
+type DesignatedJobLog
+  = DesignatedJobLogText { job_id: Int, log: NonEmptyStr }
+  | DesignatedJobLogRefused { refusal: JobLogReadRefusal }
+
+fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJobLog {
+  match log {
+    AttemptJobLogUnreadable { job_id: j, outcome: o } =>
+      if j != designated_job_id {
+        DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: designated_job_id, read_job_id: j } }
+      } else {
+        DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: j, outcome: o } }
+      }
+    AttemptJobLogRead { job_id: j, log: text } =>
+      if j != designated_job_id {
+        DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: designated_job_id, read_job_id: j } }
+      } else if text == "" {
+        DesignatedJobLogRefused { refusal: JobLogEmpty { job_id: j } }
+      } else {
+        DesignatedJobLogText { job_id: j, log: text as NonEmptyStr }
+      }
+  }
+}
+
+// THE SUCCESS RECEIPT IS SEALED AND CARRIES ITS EVIDENCE. Only collect_qualification_instruments
+// writes it, and only after reading the designated job's log over the network: the subject it
+// names, the length (in Unicode code points, as the transport hands the body over) and the content
+// digest of the complete log body the rows came from, and the rows. A later assessment does not
+// have to trust rows detached from the job and the bytes that produced them, and a caller cannot
+// author one from invented text -- the decoder above is open, this record is not.
+type QualificationJobLogReceipt sole_constructor {
+  subject: QualificationExtractionSubject
+  log_code_points: Int
+  log_digest: Fnv1a64Structural
+  readings: QualificationLogReadings
+}
+
+// A STANDING PER INSTRUMENT SOURCE, NOT ONE "INSTRUMENTS READ" ARM. The job-log instruments either
+// carry the sealed receipt or the typed reason they do not; the claim-cost read carries its own
+// typed standing beside it; the boot-leg and cohort instruments are not in this stage's payload at
+// all and are rows below. Nothing in this value says the collect stage is complete.
+type JobLogInstrumentStanding
+  = QualificationJobLogInstrumentsRead { receipt: QualificationJobLogReceipt }
+  | QualificationJobLogInstrumentsRefused { refusal: JobLogReadRefusal }
+
+type QualificationCollectStage {
+  job_log: JobLogInstrumentStanding
+  claim_cost: ClaimCostArtifactRead
+}
+
+type QualificationCollectOutcome
+  = QualificationCollected { stage: QualificationCollectStage }
+  | QualificationCollectRefused { refusal: ExtractionSubjectRefusal }
 
 fn read_attempt_job_log(target: QualificationWorkflowTarget, job: WorkflowJobRun) -> AttemptJobLog uses net: Network {
   let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(
@@ -414,6 +556,29 @@ fn read_attempt_job_log(target: QualificationWorkflowTarget, job: WorkflowJobRun
   match read.outcome {
     RestOk => AttemptJobLogRead { job_id: job.id, log: read.log }
     other => AttemptJobLogUnreadable { job_id: job.id, outcome: other }
+  }
+}
+
+fn job_log_standing(subject: QualificationExtractionSubject, log: AttemptJobLog) -> JobLogInstrumentStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
+  ]
+{
+  match designated_job_log(designated_job_id: subject.floor_job.id, log: log) {
+    DesignatedJobLogRefused { refusal: r } => QualificationJobLogInstrumentsRefused { refusal: r }
+    DesignatedJobLogText { job_id: j, log: text } =>
+      match decode_job_log_instruments(log: text as String, slot_unit: subject.slot.unit) {
+        JobLogInstrumentsUndecodable { refusal: r } => QualificationJobLogInstrumentsRefused { refusal: JobLogUndecodable { job_id: j, refusal: r } }
+        JobLogInstrumentsDecoded { readings: rd } =>
+          QualificationJobLogInstrumentsRead {
+            receipt: QualificationJobLogReceipt {
+              subject: subject,
+              log_code_points: string_length(s: text as String),
+              log_digest: content_hash_atom(value: text),
+              readings: rd,
+            },
+          }
+      }
   }
 }
 
@@ -458,10 +623,20 @@ fn conclude_claim_cost_listing(outcome: RestOutcome, listed: ActionsArtifactList
   }
 }
 
+// A 410 ON THE DOWNLOAD IS UPSTREAM'S EXPIRY ANSWER (actions/download-artifact documents 410 Gone for
+// an expired artifact), so it is ClaimCostArtifactExpired like the listing's own flag, not a generic
+// unreadable archive.
 fn conclude_claim_cost_download(artifact_id: Int, outcome: RestOutcome) -> ClaimCostArtifactRead {
   match outcome {
     RestOk => ClaimCostArchiveNotInflatable { artifact_id: artifact_id }
-    other => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: other }
+    RestStatusRefused { status: st, body: bd } =>
+      if st == 410 {
+        ClaimCostArtifactExpired { artifact_id: artifact_id }
+      } else {
+        ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestStatusRefused { status: st, body: bd } }
+      }
+    RestTransportRefused { cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestTransportRefused { cause: c } }
+    RestBodyUndecodable { status: st, cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestBodyUndecodable { status: st, cause: c } }
   }
 }
 
@@ -490,14 +665,26 @@ fn read_claim_cost_artifact(target: QualificationWorkflowTarget, run_id: Int) ->
   }
 }
 
+// THE PRODUCTION ENTRY. It takes the sealed dispatch, the collection and the authorized
+// registration -- no target, run or unit argument a caller could cross-wire -- mints the subject
+// (refusing before any read when the three disagree), reads the designated job's log and the
+// claim-cost artifact, and returns a standing per instrument source. Its consumer is the route's
+// collect stage (gunbc.runner_throughput_qualification_route CollectInstruments, standing
+// mtcollins1_collect_leg), which does not invoke it yet: that edge is the row below.
 fn collect_qualification_instruments(
-  target: QualificationWorkflowTarget,
-  collected: CollectedQualificationRun,
-  slot_unit: NonEmptyStr,
-) -> QualificationInstrumentExtraction uses net: Network {
-  let logs = collected.attempt_jobs |> map(j => read_attempt_job_log(target: target, job: j))
-  let claim_cost = read_claim_cost_artifact(target: target, run_id: collected.run_id)
-  extract_qualification_instruments(collected: collected, logs: logs, claim_cost: claim_cost, slot_unit: slot_unit)
+  dispatched: DispatchedQualificationRun,
+  collection: QualificationRunCollection,
+  registration: JitRegistration,
+) -> QualificationCollectOutcome uses net: Network {
+  match qualification_extraction_subject(dispatched: dispatched, collection: collection, registration: registration) {
+    ExtractionSubjectRefused { refusal: r } => QualificationCollectRefused { refusal: r }
+    ExtractionSubjectMinted { subject: subject } => {
+      let target = subject.dispatched.target
+      let log = read_attempt_job_log(target: target, job: subject.floor_job)
+      let claim_cost = read_claim_cost_artifact(target: target, run_id: subject.collected.run_id)
+      QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(subject: subject, log: log), claim_cost: claim_cost } }
+    }
+  }
 }
 
 // ── THE INSTRUMENTS THIS RUN'S LOG DOES NOT CARRY, EACH WITH THE CAPABILITY THAT WOULD READ IT ──
@@ -506,6 +693,11 @@ fn collect_qualification_instruments(
 // log. The remaining four are three facts, so three rows: one per missing capability, so that each
 // row is retired by its own trigger and by nothing else.
 data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
+    reason: "FloorPhaseRows and FloorCgroupRows have an implemented extraction authority and no production consumer. collect_qualification_instruments reads the designated floor job's log and mints the sealed QualificationJobLogReceipt, but nothing on the route calls it: the collect stage's standing is gunbc.runner_throughput_qualification_route mtcollins1_collect_leg, LegAuthorityImplemented, and only witnesses reach the decoder. Its subject also needs the runner name the authorized mint fixed to name exactly one served job, which is the JitRegistration the route's registration leg (itself LegAuthorityImplemented) would hand it",
+    dissolution: unbound_dissolution(description: "the qualification route's collect stage invokes collect_qualification_instruments with the DispatchedQualificationRun its dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration its registration leg minted, on an executed route, so mtcollins1_collect_leg is LegWired and FloorPhaseRows and FloorCgroupRows are read from a real run's designated job. NOT satisfied by a witness calling the decoder or the subject join, nor by the collector compiling"),
+  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv"),
     reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt), there are zero [witness] lines and zero occurrences of the specimen identity test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument and is not read as one. Two capabilities are missing. FIRST, the required workflow no longer uploads the artifact: cli_run write_required_floor_claim_cost_tsv still writes the TSV, but the emission of .github/workflows/witnesses.yml by gunbc.compiler_gate_workflow carries no upload step for it, and recent required runs publish only required-ci-measurement-receipt and compiler-pair-candidate. SECOND, an uploaded artifact is always a zip, and the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so extdeps.github.actions_artifacts github.Artifacts DownloadArtifact answers RestBodyUndecodable. read_claim_cost_artifact attempts the read on every collection and carries the result as a typed ClaimCostArtifactRead refusal (ClaimCostArtifactAbsent while nothing uploads it)",

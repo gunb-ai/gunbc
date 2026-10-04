@@ -177,6 +177,13 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // original ground, which was right both times. DESIGN section 4c is the rule: an annotation is
 // never evidence that a machine claim holds.
 //
+// RETURNED 2026-10-04 WITH ITS CONSUMER IN THE SAME CHANGE, exactly as the trigger below required:
+// gunbc.runner.runner_qualification_dispatch designated_floor_job reads it to find the one job a
+// JIT-registered runner ran, by the name the authorized mint fixed (JitRegistration name). Upstream
+// publishes runner_name as nullable -- null until a runner takes the job -- so it is optional here,
+// and every record in this tree written before the field returned carries none rather than a
+// guessed name.
+//
 // The example survives the deletion because it is the part that was worth keeping.
 // "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's fleet, so any
 // provenance reading with two arms folds a paying provider customer in with a team running its own
@@ -203,6 +210,7 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
+  runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
   completed_at: Timestamp?
@@ -451,7 +459,7 @@ service github.WorkflowRuns {
       403 => GitHubErrorShape
       404 => GitHubErrorShape
       410 => GitHubErrorShape
-      500 => GitHubErrorShape
+      5xx => GitHubErrorShape
     }
   }
 

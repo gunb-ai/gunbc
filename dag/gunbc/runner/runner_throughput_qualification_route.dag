@@ -46,13 +46,13 @@ import gunbc.runner_throughput_qualification {
 type StageEffect
   = BmcWrite { gate: DeclarationRef, boot: RouteLegStanding, image: RouteLegStanding }
   | GitHubControlPlaneWrite { authority: RouteLegStanding }
-  | ObservationOnly
+  | ObservationOnly { collection: RouteLegStanding }
 
 type QualificationStage
   = BootHostUnderApprovalGate { host: HostIdentity, boot: RouteLegStanding, image: RouteLegStanding }
   | RegisterEphemeralRunnerSlot { unit: NonEmptyStr, labels: List<String>, workspace: WorkspaceBacking, registration: RouteLegStanding }
   | DispatchFloorToSlot { workload: FloorWorkloadPin, selector: List<String>, dispatch: RouteLegStanding }
-  | CollectInstruments { instruments: List<QualificationInstrument> }
+  | CollectInstruments { instruments: List<QualificationInstrument>, collection: RouteLegStanding }
   | DeregisterRunnerSlot { unit: NonEmptyStr, deregistration: RouteLegStanding }
 
 fn stage_effect(stage: QualificationStage) -> StageEffect {
@@ -65,7 +65,7 @@ fn stage_effect(stage: QualificationStage) -> StageEffect {
       }
     RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: r } => GitHubControlPlaneWrite { authority: r }
     DispatchFloorToSlot { workload: _, selector: _, dispatch: d } => GitHubControlPlaneWrite { authority: d }
-    CollectInstruments { instruments: _ } => ObservationOnly
+    CollectInstruments { instruments: _, collection: c } => ObservationOnly { collection: c }
     DeregisterRunnerSlot { unit: _, deregistration: d } => GitHubControlPlaneWrite { authority: d }
   }
 }
@@ -81,7 +81,7 @@ fn stage_egress(stage: QualificationStage) -> EgressPolicyShape? {
     BootHostUnderApprovalGate { host: _, boot: _, image: _ } => none
     RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => Present { value: runner_host_egress_policy }
     DispatchFloorToSlot { workload: _, selector: _, dispatch: _ } => Present { value: runner_host_egress_policy }
-    CollectInstruments { instruments: _ } => none
+    CollectInstruments { instruments: _, collection: _ } => none
     DeregisterRunnerSlot { unit: _, deregistration: _ } => Present { value: runner_host_egress_policy }
   }
 }
@@ -247,6 +247,13 @@ data mtcollins1_deregistration_leg: RouteLegStanding = LegAuthorityImplemented {
   wiring_owed: "the same route fold calling ensure_jit_runner_deregistered on every slot exit with the registration jit_registration_of minted from the registration leg's dispatch, joined to a host-unit gunbc.runner.runner_teardown_receipt RunnerTeardownResult; SUFFICIENT FOR the route reporting a slot retired only when the runner is absent from the organization listing and the unit's resources are observed gone" as NonEmptyStr,
 }
 
+// THE COLLECT STAGE'S STANDING. The authority reads the designated floor job's log and the
+// claim-cost artifact into a sealed receipt; nothing on the route invokes it yet.
+data mtcollins1_collect_leg: RouteLegStanding = LegAuthorityImplemented {
+  authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
+  wiring_owed: "the same route fold calling collect_qualification_instruments with the DispatchedQualificationRun the dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration the registration leg minted; SUFFICIENT FOR FloorPhaseRows and FloorCgroupRows being read on every executed attempt from the one job its registered runner ran, as a sealed QualificationJobLogReceipt or a typed refusal (gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows)" as NonEmptyStr,
+}
+
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to
 // `gunbc.fleet_converge_workflow` and lands there with the boot leg (section 3c: a declared frontier
 // with its trigger beside it); a mode whose boot leg has no authority on main would dispatch nothing
@@ -259,6 +266,7 @@ type QualificationRouteLegs {
   image: RouteLegStanding
   registration: RouteLegStanding
   dispatch: RouteLegStanding
+  collect: RouteLegStanding
   deregistration: RouteLegStanding
 }
 
@@ -267,6 +275,7 @@ data mtcollins1_route_legs: QualificationRouteLegs = QualificationRouteLegs {
   image: mtcollins1_image_leg,
   registration: mtcollins1_registration_leg,
   dispatch: mtcollins1_dispatch_leg,
+  collect: mtcollins1_collect_leg,
   deregistration: mtcollins1_deregistration_leg,
 }
 
@@ -283,7 +292,7 @@ fn qualification_route(
     BootHostUnderApprovalGate { host: host, boot: legs.boot, image: legs.image },
     RegisterEphemeralRunnerSlot { unit: unit, labels: labels, workspace: workspace, registration: legs.registration },
     DispatchFloorToSlot { workload: workload, selector: labels, dispatch: legs.dispatch },
-    CollectInstruments { instruments: qualification_instruments },
+    CollectInstruments { instruments: qualification_instruments, collection: legs.collect },
     DeregisterRunnerSlot { unit: unit, deregistration: legs.deregistration },
   ]
 }
@@ -302,17 +311,19 @@ fn mtcollins1_qualification_route(attempt: NonEmptyStr, workload: FloorWorkloadP
 
 fn stage_is_effectful(stage: QualificationStage) -> Bool {
   match stage_effect(stage: stage) {
-    ObservationOnly => false
+    ObservationOnly { collection: _ } => false
     BmcWrite { gate: _, boot: _, image: _ } => true
     GitHubControlPlaneWrite { authority: _ } => true
   }
 }
 
-// THE LEGS AN EFFECTFUL STAGE STANDS ON. A BMC write stands on its boot and image legs; a
-// control-plane write on its authority; observation on nothing.
+// THE LEGS A STAGE STANDS ON. A BMC write stands on its boot and image legs; a control-plane write
+// on its authority; the collect stage on its collection standing. Observation is not exempt: a
+// route whose effectful legs were all wired while nothing invoked the collector would execute and
+// read nothing, so the collect stage's standing counts toward route_is_executable like any leg.
 fn stage_legs(stage: QualificationStage) -> List<RouteLegStanding> {
   match stage_effect(stage: stage) {
-    ObservationOnly => []
+    ObservationOnly { collection: c } => [c]
     BmcWrite { gate: _, boot: b, image: i } => [b, i]
     GitHubControlPlaneWrite { authority: a } => [a]
   }
