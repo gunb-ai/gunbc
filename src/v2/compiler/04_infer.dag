@@ -3378,6 +3378,28 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
   }
 }
 
+// A TYPE WITH EVERY ALIAS UNFOLDED, at its head and inside every Instantiation argument. The matched
+// formal and the argument are compared in this form first, because the declared-position judge compares
+// spellings exactly and does not unfold an alias: `FreeMonoid<Pair>` and `List<Pair>` are one type. Two
+// types equal here are the same type, so no judgment is skipped; a pair that differs here still goes to
+// the judge, which decides it (refinement carriers, optionals) and refuses with its own cause.
+fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
+  match infer_type_alias_unfolded(t: t, declarations: declarations) {
+    Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Instantiation } =>
+          Node {
+            kind: t.kind,
+            children: list_map(xs: t.children, f: fn(e) { Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) } }),
+            occurrence_id: t.occurrence_id
+          }
+        TypeNode { connective: _ } => t
+        ComputationNode { behavior: _ } => t
+      }
+  }
+}
+
 type InferTypePair {
   formal: Node
   produced: Node
@@ -3456,6 +3478,12 @@ fn infer_judge_generic_formal(
             )
           )
         InferFormalMatched { instances: matched } =>
+          if infer_type_equal_ignoring_provenance(
+            a: infer_type_alias_normalized(t: infer_type_instantiated(t: formal.declared, instances: matched), declarations: declarations),
+            b: infer_type_alias_normalized(t: produced, declarations: declarations)
+          ) {
+            Accepted { value: matched, diagnostics: None }
+          } else {
           match infer_judge_declared_position(
             position: position,
             application: application,
@@ -3467,6 +3495,7 @@ fn infer_judge_generic_formal(
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
+          }
           }
       }
   }
