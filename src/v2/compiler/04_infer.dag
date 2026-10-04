@@ -17,6 +17,7 @@ import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
+  canonical_operation_op_sub,
   target_model_canonical_operation_member_declared_type,
 }
 import v2.compiler.resolve { ResolvedTree, resolved_tree_lexical_binding, resolved_tree_unavailable_provider }
@@ -3010,19 +3011,7 @@ fn infer_unify_transform_operand_types(
           if infer_branch_type_atoms_equal(a: left_type, b: right_type) {
             Accepted { value: left_type, diagnostics: None }
           } else {
-            match infer_literal_elaborates_at(literal_node: right_node, expected: left_type, declarations: resolved.resolved_declarations) {
-              InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: left_type, diagnostics: None }
-              InferLiteralElaborationRefused { cause: cause } =>
-                outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: right_node), correction: Unavailable { reason: CorrectionNotModeled } })
-              InferLiteralNotElaborated =>
-                match infer_literal_elaborates_at(literal_node: left_node, expected: right_type, declarations: resolved.resolved_declarations) {
-                  InferLiteralElaboratesTo { destination_type: _ } => Accepted { value: right_type, diagnostics: None }
-                  InferLiteralElaborationRefused { cause: cause } =>
-                    outcome_rejected(Diagnostic { reason: cause, at: node_locus(node: left_node), correction: Unavailable { reason: CorrectionNotModeled } })
-                  InferLiteralNotElaborated =>
-                    outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
-                }
-            }
+            outcome_rejected(infer_transform_operand_type_mismatch_diagnostic(node: left_node))
           }
       }
   }
@@ -3559,10 +3548,12 @@ fn infer_declared_type_obligation(
 // gunbc.structural_realization_bindings literal_homomorphism_rows' Peano row -- IS a value of that type: 0 is
 // Zero, 3 is Succ^3(Zero). The decision is std.literal_elaboration elaborate_literal_at over that ONE table,
 // the same function and rows the seed's inference consults (v1.compiler.infer literal_boundary_elaboration),
-// so the two routes cannot disagree on which literal elaborates where. Read by BOTH places that hold an
-// expected type when they judge: the declared-type obligation (infer_judge_declared_position, every declared
-// position) and the binary-operator operand unify (infer_unify_transform_operand_types, the other operand's
-// type) -- one rule.
+// so the two routes cannot disagree on which literal elaborates where. Read where an expected type is held when a
+// value is judged: the declared-type obligation (infer_judge_declared_position, every declared position).
+// NOT READ BY THE OPERATOR UNIFY, AND THAT IS STATED: an operand partner would elaborate a literal only beside a
+// Nat, and Nat carries no algebra row, so `n + 1` refuses at the operator either way, while `==`/`<` are not
+// judged at all (gunbc.recurring_failure_mode comparison_operands_never_judged_in_v2_infer). A reader there
+// would change no verdict -- an unconsumed declaration -- so it is added when either trigger makes it observable.
 //
 // destination_realizes_natively IS false HERE, AND THAT IS A DECISION, NOT AN OMISSION. The seed answers it from
 // kernel_grounding_rows, so std.nat Nat (grounded to the kernel integer) takes DirectLiteral there and the seed
@@ -3590,9 +3581,65 @@ fn infer_type_declaration_ref(t: Node) -> Optional<DeclarationRef> {
   }
 }
 
+// A NEGATED INTEGER LITERAL (`-1`) lowers to a unary Transform whose operator is the `-` token or the subtraction
+// wire resolve canonicalizes it to, over one integer literal. It is not a literal node, so without this reading it
+// reached the judge underived and was admitted at ANY declared type -- including Nat, which has no negative
+// values. At a destination whose literal row unfolds (a Peano Nat) it refuses, typed and located at the
+// expression; at a destination with no row (Int) it is not this function's subject.
+fn infer_negated_int_literal(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Transform } =>
+      let targets = node_positional_child_targets(node: node)
+      if length(xs: targets) != 2 {
+        false
+      } else {
+        match list_at_optional(xs: targets, index: 0) {
+          Absent => false
+          Present { value: op } =>
+            (infer_operator_is_minus_token(op_node: op) || canonical_operation_wire_matches_operation(wire: op, operation: canonical_operation_op_sub()))
+              && (match list_at_optional(xs: targets, index: 1) {
+                Absent => false
+                Present { value: operand } =>
+                  match dag_canonical_literal_from_node(node: operand) {
+                    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
+                    Accepted { value: _, diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
+                  }
+              })
+        }
+      }
+    ComputationNode { behavior: _ } => false
+    TypeNode { connective: _ } => false
+  }
+}
+
+fn infer_operator_is_minus_token(op_node: Node) -> Bool {
+  match node_atom_identity_optional(node: op_node) {
+    Present { value: id } => id == ^dag_token_minus
+    Absent => false
+  }
+}
+
+fn infer_literal_destination_has_row(expected: Node, declarations: SymbolIndex) -> Bool {
+  match infer_type_declaration_ref(t: infer_type_alias_normalized(t: expected, declarations: declarations)) {
+    Absent => false
+    Present { value: destination } =>
+      match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: destination, element: none, destination_realizes_natively: false) {
+        ViaHomomorphism { homomorphism: _ } => true
+        DirectLiteral => false
+        LiteralElaborationRefused { cause: _ } => false
+      }
+  }
+}
+
 fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
   match dag_canonical_literal_from_node(node: literal_node) {
-    Rejected { diagnostics: _ } => InferLiteralNotElaborated
+    Rejected { diagnostics: _ } =>
+      if infer_negated_int_literal(node: literal_node) && infer_literal_destination_has_row(expected: expected, declarations: declarations) {
+        InferLiteralElaborationRefused { cause: ^infer_reason_negative_literal_has_no_image_in_destination }
+      } else {
+        InferLiteralNotElaborated
+      }
     Accepted { value: literal, diagnostics: _ } =>
       match literal {
         DagCanonicalIntLiteral { magnitude: _ } =>
