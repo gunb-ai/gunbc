@@ -3,6 +3,7 @@ module test.claim.roadmap_validation_oracle_witness_test
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+import extdeps.filesystem.filesystem_io { FilesystemReadSucceeded, FilesystemReadRefused }
 
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
@@ -172,9 +173,11 @@ fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservat
   [
     validation_oracle_observe_from_source(
       oracle: oracle_ref(),
-      source_readable: source_readable,
-      source: source,
-      read_error: if source_readable { "" } else { "No such file or directory" },
+      source_read: if source_readable {
+        FilesystemReadSucceeded { content: source }
+      } else {
+        FilesystemReadRefused { error: "No such file or directory" }
+      },
     ),
   ]
 }
