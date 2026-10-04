@@ -5,9 +5,8 @@ import v2.compiler.normalized_tree { no_record_declarations, no_resource_declara
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge_label }
 import v2.std.algebra { fold_list, fold_list_node, is_empty }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

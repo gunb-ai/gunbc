@@ -1,8 +1,7 @@
 module v2.std.dependents
 
+import std.types { List }
 import v2.std.algebra { is_empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceId }
 
 type Dependents

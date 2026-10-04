@@ -1,5 +1,6 @@
 module v2.test.long.meta_exec_confinement_clean_tree
 
+import std.types { List }
 import v2.lens.meta_exec_confinement {
   meta_exec_confinement_exception_paths,
   meta_exec_consumer_scan_roots,
@@ -11,9 +12,7 @@ import v2.lens.meta_exec_confinement {
 import v2.std.layer_import_scan { layer_import_facts_live }
 import v2.std.algebra { is_empty }
 import std.algebra { list_append }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

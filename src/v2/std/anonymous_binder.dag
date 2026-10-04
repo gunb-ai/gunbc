@@ -1,10 +1,9 @@
 module v2.std.anonymous_binder
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_reverse }
-import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
 import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 
@@ -96,6 +95,19 @@ fn fold_carrier_prefix() -> String {
 
 fn fresh_fold_carrier(step_digest: String) -> Symbol {
   symbol_intern_lexeme(lexeme: fold_carrier_prefix() + step_digest + ">")
+}
+
+// A SYNTHESIZED STEP'S ACCUMULATOR FORMAL. A callback operation (map, filter, any, all) has no authored
+// step, so v2.compiler.body_lowering_fold builds one, and its first formal needs a name no author can
+// write. It is keyed by the CALLBACK's content hash for the same reason the slot is keyed by the step's:
+// a callback nested inside another's body has different content, so the inner formal never hides the
+// outer one. It is distinct from the slot's prefix, so the formal and the slot are never one spelling.
+fn fold_accumulator_prefix() -> String {
+  "<fold-accumulator@"
+}
+
+fn fresh_fold_accumulator(callback_digest: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: fold_accumulator_prefix() + callback_digest + ">")
 }
 
 fn is_fold_carrier_binder(sym: Symbol) -> Bool {

@@ -32,11 +32,10 @@ import v2.workflow.required_floor { long_home_prefixes, required_gate_admits }
 import gunbc.quarantine_outside_gate_decline { QuarantineOutsideGateDecline, quarantine_outside_gate_declines }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { Cons, Empty, fold_list }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE LIVE JOIN plus its discriminating controls. The model is in
 // gunbc.quarantine_probe_disposition; this file supplies the three live populations from the

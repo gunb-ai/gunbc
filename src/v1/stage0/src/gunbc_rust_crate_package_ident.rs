@@ -10,7 +10,6 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::retires_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

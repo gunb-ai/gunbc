@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -53,39 +52,39 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CONTROLS hold on both sides: a tail return in a fn body, after a let, and in a fn value's
 // block body are accepted. `tail_und` is the discriminator that the tail return's operand is READ,
 // not dropped: its undeclared operand refuses unbound at that atom.
-data rtp_bug_source: String = "module v2.test.rtp_bug\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c { return j } else { k }\n  x\n}\n"
+data rtp_bug_source: String = "module v2.test.rtp_bug\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c { return j } else { k }\n  x\n}\n"
 
-data rtp_nontail_source: String = "module v2.test.rtp_nontail\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  return i\n  i\n}\n"
+data rtp_nontail_source: String = "module v2.test.rtp_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  return i\n  i\n}\n"
 
-data rtp_lambda_nontail_source: String = "module v2.test.rtp_lambda_nontail\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) {\n    return x\n    x\n  }\n  i\n}\n"
+data rtp_lambda_nontail_source: String = "module v2.test.rtp_lambda_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) {\n    return x\n    x\n  }\n  i\n}\n"
 
-data rtp_guard_fallthrough_source: String = "module v2.test.rtp_guard_fallthrough\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
+data rtp_guard_fallthrough_source: String = "module v2.test.rtp_guard_fallthrough\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { i }\n  i\n}\n"
 
-data rtp_guard_last_source: String = "module v2.test.rtp_guard_last\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  let j = i\n  if c { return j }\n}\n"
+data rtp_guard_last_source: String = "module v2.test.rtp_guard_last\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  let j = i\n  if c { return j }\n}\n"
 
-data rtp_guard_nontail_source: String = "module v2.test.rtp_guard_nontail\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c {\n    if c { return j }\n    k\n  } else { k }\n  x\n}\n"
+data rtp_guard_nontail_source: String = "module v2.test.rtp_guard_nontail\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, j: Int, k: Int) -> Int {\n  let x = if c {\n    if c { return j }\n    k\n  } else { k }\n  x\n}\n"
 
-data rtp_tail_ctl_source: String = "module v2.test.rtp_tail_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return i }\n"
+data rtp_tail_ctl_source: String = "module v2.test.rtp_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return i }\n"
 
-data rtp_let_tail_ctl_source: String = "module v2.test.rtp_let_tail_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let x = i\n  return x\n}\n"
+data rtp_let_tail_ctl_source: String = "module v2.test.rtp_let_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let x = i\n  return x\n}\n"
 
-data rtp_lambda_tail_ctl_source: String = "module v2.test.rtp_lambda_tail_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) { return x }\n  i\n}\n"
+data rtp_lambda_tail_ctl_source: String = "module v2.test.rtp_lambda_tail_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int {\n  let g = fn(x) { return x }\n  i\n}\n"
 
-data rtp_tail_und_source: String = "module v2.test.rtp_tail_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return rtp_undeclared_tail }\n"
+data rtp_tail_und_source: String = "module v2.test.rtp_tail_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(i: Int) -> Int { return rtp_undeclared_tail }\n"
 
-data rtp_arm_ctl_source: String = "module v2.test.rtp_arm_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int { if c { return i } else { i } }\n"
+data rtp_arm_ctl_source: String = "module v2.test.rtp_arm_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int { if c { return i } else { i } }\n"
 
-data rtp_guard_ctl_source: String = "module v2.test.rtp_guard_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  let j = i\n  j\n}\n"
+data rtp_guard_ctl_source: String = "module v2.test.rtp_guard_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  let j = i\n  j\n}\n"
 
-data rtp_guard_arm_und_source: String = "module v2.test.rtp_guard_arm_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return rtp_undeclared_guard_arm }\n  i\n}\n"
+data rtp_guard_arm_und_source: String = "module v2.test.rtp_guard_arm_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return rtp_undeclared_guard_arm }\n  i\n}\n"
 
-data rtp_guard_rest_und_source: String = "module v2.test.rtp_guard_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  rtp_undeclared_guard_rest\n}\n"
+data rtp_guard_rest_und_source: String = "module v2.test.rtp_guard_rest_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn rtp_probe(c: Bool, i: Int) -> Int {\n  if c { return i }\n  rtp_undeclared_guard_rest\n}\n"
 
-data rtp_match_ctl_source: String = "module v2.test.rtp_match_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB => i\n} }\n"
+data rtp_match_ctl_source: String = "module v2.test.rtp_match_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB => i\n} }\n"
 
-data rtp_match_und_source: String = "module v2.test.rtp_match_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return rtp_undeclared_match_arm\n  RtpB => i\n} }\n"
+data rtp_match_und_source: String = "module v2.test.rtp_match_und\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, i: Int) -> Int { match s {\n  RtpA => return rtp_undeclared_match_arm\n  RtpB => i\n} }\n"
 
-data rtp_match_nested_ctl_source: String = "module v2.test.rtp_match_nested_ctl\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, t: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB =>\n    match t {\n      RtpA => return i\n      RtpB => return i\n    }\n} }\n"
+data rtp_match_nested_ctl_source: String = "module v2.test.rtp_match_nested_ctl\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype RtpS = RtpA | RtpB\n\nfn rtp_probe(s: RtpS, t: RtpS, i: Int) -> Int { match s {\n  RtpA => return i\n  RtpB =>\n    match t {\n      RtpA => return i\n      RtpB => return i\n    }\n} }\n"
 
 fn rtp_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

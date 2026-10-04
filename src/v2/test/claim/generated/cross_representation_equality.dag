@@ -86,7 +86,7 @@ fn witness_cross_representation_roster_covers_bool() -> Bool {
   (length(xs: testgen_scheduled_cross_representation_equality_generators()) > 0)
     && roster_covers_genuine_straddle(
       modeled_ref: DeclarationRef {
-        module_path: "v2.std.logic",
+        module_path: "std.types",
         decl_name: "Bool",
         field: WholeDeclaration
       },

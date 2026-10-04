@@ -1,10 +1,9 @@
 module v2.compiler.self_host.frontier_probe_semantic_family_receipt
 
+import std.types { List }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -121,8 +120,9 @@ data semantic_family_shard_rows: List<SemanticFamilyShardRow> = [
 // THE FINDING, at the grain the evidence supports. Both measurable shards refuse with a head of
 // ^parse_grammar_choice_overlap_residue — a grammar-global constant that says nothing about either
 // module (see the correction note above; an earlier revision of this row read that agreement as
-// confirming the frontier rows, which it cannot). The cause in both is MaskedAssembleRefusal, and
-// masked means that constant is standing in front of a further chain. Reading those chains:
+// confirming the frontier rows, which it cannot). The cause in both was recorded under an arm since
+// deleted (the probe now classifies by the fatal element), and it meant that constant stood in
+// front of a further chain. Reading those chains:
 // use_site_verdict carries 126 symbols of which 120 differ from the head, materialization_carriers
 // carries 11 of which 5 differ, and in BOTH the first differing symbol is
 // body_lowering_reason_wrapper_retained_emitted. So the recorded reason is neither confirmed nor

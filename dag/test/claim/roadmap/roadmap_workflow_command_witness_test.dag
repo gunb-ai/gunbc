@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_command_witness
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -117,6 +118,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
   match activity_view_from_progress(progress: progress) {
     LegacySupersedableAttempt { summary, located_reason: _, attempt_key: _, evidence: _ } =>

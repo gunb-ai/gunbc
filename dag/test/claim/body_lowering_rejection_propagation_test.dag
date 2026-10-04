@@ -1,9 +1,8 @@
 module gunbc.test.claim.body_lowering_rejection_propagation_test
 
-import v2.std.logic { Bool }
+import std.types { List }
 import v2.std.text { String }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, None }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic }
 import v2.compiler.body_lowering_fold {
