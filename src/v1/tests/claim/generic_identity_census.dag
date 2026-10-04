@@ -526,7 +526,7 @@ fn gi_supplied_node_reading_lines(xs: ResolvedFormal, renamed_xs: ResolvedFormal
     Absent => "no child"
   }
   [
-    gi_reading_line(name: "substitute_keeps_outer_declaration", value: if gi_declaration_label(d: substituted.declaration) == gi_declaration_label(d: xs.declared_type.declaration) { "kept" } else { "CHANGED" }),
+    gi_reading_line(name: "substitute_keeps_outer_declaration", value: concat(concat(if gi_declaration_label(d: substituted.declaration) == gi_declaration_label(d: xs.declared_type.declaration) { "kept " } else { "CHANGED from " }, gi_declaration_label(d: xs.declared_type.declaration)), if gi_declaration_label(d: xs.declared_type.declaration) == "none" { " (vacuous: the input carried no declaration to lose)" } else { "" })),
     gi_reading_line(name: "substitute_child_becomes", value: concat(concat(substituted_child_label, " carrying "), substituted_child_declaration)),
     gi_reading_line(name: "substitute_copy_keeps_child_declaration", value: if copied_child_key == formal_child_key { concat("kept ", copied_child_key) } else { concat(concat(concat("CHANGED ", formal_child_key), " -> "), copied_child_key) }),
     gi_reading_line(name: "unify_binds_from_substitution_basis", value: match map_get(bound_from_basis, "T") {
