@@ -17,7 +17,6 @@ import gunbc.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
-import gunbc.workspace_allocation_plan { WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable }
 
 // The environment identifier is accepted only when the manager identifies this interpreter as
 // the selected controller's MainPID. An inherited or caller-supplied identifier is insufficient.
@@ -149,6 +148,12 @@ fn workspace_recorded_actor_decode(generation: CasGeneration, wire: String) -> W
     }
   }
 }
+
+// Whether the recorded actor's invocation can still issue a hold effect, as read from the slot.
+type WorkspacePriorActorStanding
+  = PriorActorRunning
+  | PriorActorTerminal
+  | PriorActorUnobservable { reason: NonEmptyStr }
 
 // The slot unit's current InvocationID, read once by the effectful caller and supplied to the
 // takeover so the decision is a function of what was observed.

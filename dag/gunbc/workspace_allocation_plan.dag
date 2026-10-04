@@ -3,7 +3,7 @@ module gunbc.workspace_allocation_plan
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_seal }
 import std.decl_ref { decl_ref }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
-import gunbc.workspace_acquisition_invocation { workspace_current_acquisition_invocation }
+import gunbc.workspace_acquisition_invocation { workspace_current_acquisition_invocation, WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_release,
   WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
@@ -173,11 +173,6 @@ fn workspace_reservation_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: Dur
 // with quota held forever. Takeover needs BOTH facts, read in this order: the recorded actor's
 // systemd invocation is terminal (the slot unit now runs another invocation, or none), and a fresh
 // hold observation of the exact slot. Only then can no effect of the old actor still be queued.
-type WorkspacePriorActorStanding
-  = PriorActorRunning
-  | PriorActorTerminal
-  | PriorActorUnobservable { reason: NonEmptyStr }
-
 type WorkspaceActorIntent
   = ActorIntentAcquire
   | ActorIntentRetire
