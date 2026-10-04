@@ -1240,6 +1240,8 @@ type BmcAccountStateObservation sole_constructor {
   published_probes: List<ObservedPublishedLanProbe>
   published_user: IpmiUserId
   published_account: ObservedPublishedAccount
+  break_glass: ManagedCredentialReference
+  break_glass_probe: ObservedCredentialProbe
   controller_clock: ControllerClockReading?
 }
 
@@ -1256,6 +1258,8 @@ fn observed_bmc_account_state(
   published_probes: List<ObservedPublishedLanProbe>,
   published_user: IpmiUserId,
   published_account: ObservedPublishedAccount,
+  break_glass: ManagedCredentialReference,
+  break_glass_probe: ObservedCredentialProbe,
   controller_clock: ControllerClockReading?,
 ) -> BmcAccountStateObservation {
   BmcAccountStateObservation {
@@ -1271,6 +1275,8 @@ fn observed_bmc_account_state(
     published_probes: published_probes,
     published_user: published_user,
     published_account: published_account,
+    break_glass: break_glass,
+    break_glass_probe: break_glass_probe,
     controller_clock: controller_clock,
   }
 }
@@ -1316,6 +1322,25 @@ type BmcSecureGoal {
   policy: IntakeQualificationPolicy
 }
 
+// WHAT AN ASSESSMENT FOUND. The conjunction's own causes, plus the published account's replacement:
+// the published user must authenticate with the goal's exact break-glass generation (break_glass /
+// break_glass_probe on the reading), observed at or after the read floor. Without it, "factory rejected
+// beside an arbitrary replacement" would read as secured, and an Apply could mint a receipt without the
+// goal generation ever authenticating. Disable or delete of the published account is not an admitted
+// goal arm here; it would carry its own observation, not ride on this probe.
+type BmcSecureStateFinding
+  = ConjunctionFinding { cause: BmcSecureRefusalCause }
+  | BreakGlassGenerationRejected
+  | BreakGlassGenerationUnestablished { detail: NonEmptyStr }
+
+fn bmc_secure_state_finding_label(finding: BmcSecureStateFinding) -> NonEmptyStr {
+  match finding {
+    ConjunctionFinding { cause: c } => bmc_secure_refusal_label(cause: c)
+    BreakGlassGenerationRejected => "the published account does not authenticate with the goal's break-glass generation"
+    BreakGlassGenerationUnestablished { detail: _ } => "the probe of the goal's break-glass generation did not establish a credential state"
+  }
+}
+
 // The satisfied evidence: the conjunction's BmcSecured, kept with the observation it was read from.
 type BmcSecureHeld {
   observation: BmcAccountStateObservation
@@ -1329,6 +1354,7 @@ type BmcSecureStateRefusal
   | AccountStateConjunctionRefused { cause: BmcSecureRefusalCause }
   | AccountDeviationNeedsUngroundedOperation { cause: BmcSecureRefusalCause, operation: MissingAccountOperation }
   | AccountRetentionNotGoalBound { retained: SecretRef, goal: ManagedCredentialReference }
+  | AccountStateForOtherBreakGlassReference { goal: ManagedCredentialReference, observed: ManagedCredentialReference }
 
 // WHICH CONJUNCTION REFUSALS AN ACCOUNT WRITE CAN REMEDY, WHICH ARE UNKNOWNS, AND WHICH ARE NEITHER.
 // A deviation is a state the account action changes (the managed credential not accepted, the
@@ -1440,10 +1466,37 @@ fn retained_secret_or_goal(kind: PublishedAccountKind, goal: BmcSecureGoal) -> S
   }
 }
 
+fn assess_break_glass_generation(
+  goal: BmcSecureGoal,
+  observed: BmcAccountStateObservation,
+  evidence: List<EvidenceRef>,
+) -> GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal> {
+  if !managed_reference_same(a: goal.published_break_glass, b: observed.break_glass) {
+    GoalAssessmentRefused { cause: AccountStateForOtherBreakGlassReference { goal: goal.published_break_glass, observed: observed.break_glass } }
+  } else {
+    match observed.break_glass_probe {
+      ObservedCredentialUnestablished { detail: d } =>
+        GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: BreakGlassGenerationUnestablished { detail: d }, tail: [] } }
+      ObservedCredentialRejected { reading: r } =>
+        if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) {
+          GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
+        } else {
+          GoalDiverged { deviations: FreeSemigroup { head: BreakGlassGenerationRejected, tail: [] } }
+        }
+      ObservedCredentialAccepted { reading: r } =>
+        if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) {
+          GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
+        } else {
+          GoalSatisfied { evidence: BmcSecureHeld { observation: observed, evidence: concat(evidence, [r.evidence]) } }
+        }
+    }
+  }
+}
+
 fn assess_bmc_account_state(
   goal: BmcSecureGoal,
   observed: BmcAccountStateObservation,
-) -> GoalAssessment<BmcSecureHeld, BmcSecureRefusalCause, BmcSecureRefusalCause, BmcSecureStateRefusal> {
+) -> GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal> {
   if !managed_reference_same(a: goal.managed, b: observed.managed) {
     GoalAssessmentRefused { cause: AccountStateForOtherManagedReference { goal: goal.managed, observed: observed.managed } }
   } else if !retention_is_goal_bound(kind: observed.published_account.kind, goal: goal) {
@@ -1451,12 +1504,12 @@ fn assess_bmc_account_state(
   } else {
     match conjunction_over_observation(goal: goal, observed: observed) {
       BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } =>
-        GoalSatisfied { evidence: BmcSecureHeld { observation: observed, evidence: e } }
+        assess_break_glass_generation(goal: goal, observed: observed, evidence: e)
       BmcSecureRefused { cause: c } =>
         match conjunction_cause_class(cause: c) {
-          CauseRemediableByAccountAction => GoalDiverged { deviations: FreeSemigroup { head: c, tail: [] } }
+          CauseRemediableByAccountAction => GoalDiverged { deviations: FreeSemigroup { head: ConjunctionFinding { cause: c }, tail: [] } }
           CauseNeedsUngroundedOperation { operation: op } => GoalAssessmentRefused { cause: AccountDeviationNeedsUngroundedOperation { cause: c, operation: op } }
-          CauseUnestablishedReading => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: c, tail: [] } }
+          CauseUnestablishedReading => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: ConjunctionFinding { cause: c }, tail: [] } }
           CauseReadingPrecedesFloor => GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
           CauseRefusesAssessment => GoalAssessmentRefused { cause: AccountStateConjunctionRefused { cause: c } }
         }
@@ -1480,16 +1533,16 @@ fn observe_bmc_account_state(
 
 // What a divergence obliges: an account action, not yet admitted. Admission is the plan mint's.
 type BmcAccountActionDue {
-  deviation: BmcSecureRefusalCause
+  deviation: BmcSecureStateFinding
 }
 
 fn decide_bmc_account_state(
-  assessment: GoalAssessment<BmcSecureHeld, BmcSecureRefusalCause, BmcSecureRefusalCause, BmcSecureStateRefusal>,
+  assessment: GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal>,
 ) -> UpsertDecision<BmcAccountActionDue> {
   match assessment {
     GoalSatisfied { evidence: _ } => Noop
     GoalDiverged { deviations: d } => Apply { plan: BmcAccountActionDue { deviation: d.head } }
-    GoalIndeterminate { known_deviations: _, unknowns: u } => Refuse { reason: bmc_secure_refusal_label(cause: u.head) }
+    GoalIndeterminate { known_deviations: _, unknowns: u } => Refuse { reason: bmc_secure_state_finding_label(finding: u.head) }
     GoalAssessmentRefused { cause: c } => Refuse { reason: bmc_secure_state_refusal_label(cause: c) }
   }
 }
@@ -1506,6 +1559,7 @@ fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
         PublishedFactoryCredentialRestore => "the policy retains the factory credential and it is not accepted; restoring it is not an admitted operation"
       }
     AccountRetentionNotGoalBound { retained: _, goal: _ } => "the break-glass account retained by policy is not the generation the goal names"
+    AccountStateForOtherBreakGlassReference { goal: _, observed: _ } => "the account-state reading probed another break-glass generation than the goal names"
   }
 }
 
@@ -1513,7 +1567,7 @@ fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
 // gunbc.host_convergence_census BmcSecureAccountState. The protocol's apply side is an open frontier
 // (host_effect_decide_apply_frontier, CONVERGENCE-ONE C8); the apply and the independent readback
 // below are this domain's own, with its own sealed receipt, and do not discharge C8.
-fn bmc_secure_state_projection() -> HostEffectDomainProjection<MachineIntakeSubject, BmcSecureGoal, BmcAccountStateObservation, BmcAccountStateObservation, BmcSecureHeld, BmcSecureRefusalCause, BmcSecureRefusalCause, BmcSecureStateRefusal, BmcSecureStateRefusal, BmcAccountActionDue> {
+fn bmc_secure_state_projection() -> HostEffectDomainProjection<MachineIntakeSubject, BmcSecureGoal, BmcAccountStateObservation, BmcAccountStateObservation, BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal, BmcSecureStateRefusal, BmcAccountActionDue> {
   HostEffectDomainProjection {
     observe: observe_bmc_account_state,
     assess: assess_bmc_account_state,
@@ -1524,7 +1578,7 @@ fn bmc_secure_state_projection() -> HostEffectDomainProjection<MachineIntakeSubj
 type BmcSecureStateInspection
   = BmcSecureStateInspected {
       observed: BmcAccountStateObservation,
-      assessment: GoalAssessment<BmcSecureHeld, BmcSecureRefusalCause, BmcSecureRefusalCause, BmcSecureStateRefusal>,
+      assessment: GoalAssessment<BmcSecureHeld, BmcSecureStateFinding, BmcSecureStateFinding, BmcSecureStateRefusal>,
       decision: UpsertDecision<BmcAccountActionDue>,
     }
   | BmcSecureStateUnobserved { cause: BmcSecureStateRefusal }
@@ -1977,6 +2031,8 @@ fn dry_read_bmc_account_state(
   published_user: IpmiUserId,
   published_password: String,
   published_account: PublishedAccountKind,
+  break_glass: ManagedCredentialReference,
+  break_glass_password: String,
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -1997,6 +2053,8 @@ fn dry_read_bmc_account_state(
       evidence: dry_evidence(text: join(["dry user list of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
       observed_at: at,
     ),
+    break_glass: break_glass,
+    break_glass_probe: dry_probe(world: world, user: published_user, password: break_glass_password, what: "break-glass", at: at),
     controller_clock: none,
   )
 }
@@ -2059,7 +2117,7 @@ fn dry_apply_bmc_account_plan(
 // ── DECLARED FRONTIERS ───────────────────────────────────────────────────────────────────────────
 
 data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; NOT satisfied by the dry realization, by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
+  description: "dissolves when a live read of a controller's account state mints BmcAccountStateObservation beside dry_read_bmc_account_state from IPMI user-test and channel-census transport calls, including the user test of the published account with the goal's exact break-glass generation (break_glass_probe) materialized through fetch_secret_ref_credential, timed by gunbc.clock_read observer_clock_read, with every probe and census response committed as content-addressed evidence; NOT satisfied by the dry realization, by a transcription of an older readback, or by a read whose instants come from the controller's clock" as NonEmptyStr,
 )
 
 data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(

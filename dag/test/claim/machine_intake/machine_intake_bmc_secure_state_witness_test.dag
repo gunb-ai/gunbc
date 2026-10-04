@@ -92,6 +92,11 @@ import gunbc.machine_intake_bmc_secure {
   GenerationFetchAdmission,
   BmcSecureRefusalCause,
   bmc_secure_refusal_label,
+  bmc_secure_state_finding_label,
+  BmcSecureStateFinding,
+  ConjunctionFinding,
+  BreakGlassGenerationRejected,
+  AccountStateForOtherBreakGlassReference,
   BmcAccountStateObservation,
   BmcSecureStateInspected,
   BmcSecureStateUnobserved,
@@ -300,6 +305,8 @@ fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredent
     published_user: published_user,
     published_password: factory_password,
     published_account: account,
+    break_glass: goal_break_glass_ref(),
+    break_glass_password: break_glass_password,
     read_at_millis: at,
   )
 }
@@ -516,14 +523,18 @@ fn admission_label(a: RotationApplyAdmission) -> String {
 }
 
 fn apply_on(cause: BmcSecureRefusalCause) -> String {
-  join(["apply:", bmc_secure_refusal_label(cause: cause) as String], "")
+  apply_on_finding(finding: ConjunctionFinding { cause: cause })
+}
+
+fn apply_on_finding(finding: BmcSecureStateFinding) -> String {
+  join(["apply:", bmc_secure_state_finding_label(finding: finding) as String], "")
 }
 
 fn decision_label(d: UpsertDecision<BmcAccountActionDue>) -> String {
   match d {
     Noop => "noop"
     Refuse { reason: _ } => "refuse"
-    Apply { plan: due } => join(["apply:", bmc_secure_refusal_label(cause: due.deviation) as String], "")
+    Apply { plan: due } => join(["apply:", bmc_secure_state_finding_label(finding: due.deviation) as String], "")
   }
 }
 
@@ -580,6 +591,17 @@ fn applied_on(
   applied_at: EpochMs,
   readback_at: EpochMs,
 ) -> String {
+  applied_with(initial: initial, closed_before: closed_before, managed_fetch: managed_fetch, published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password), applied_at: applied_at, readback_at: readback_at)
+}
+
+fn applied_with(
+  initial: BmcWorld,
+  closed_before: Bool,
+  managed_fetch: SecretCredentialFetch,
+  published_fetch: SecretCredentialFetch,
+  applied_at: EpochMs,
+  readback_at: EpochMs,
+) -> String {
   let before = read(w: initial, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: closed_before, at: t_read)
   match plan_default(reading: before) {
     Absent => "fixture-generation-unavailable"
@@ -591,7 +613,7 @@ fn applied_on(
             world: initial,
             plan: p,
             managed_fetch: managed_fetch,
-            published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password),
+            published_fetch: published_fetch,
             applied_at_millis: applied_at,
           )
           let after = read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: closed_before, at: readback_at)
@@ -724,6 +746,7 @@ fn state_refusal_label(c: BmcSecureStateRefusal) -> String {
         PublishedFactoryCredentialRestore => "needs:factory-credential-restore"
       }
     AccountRetentionNotGoalBound { retained: _, goal: _ } => "retention-not-goal-bound"
+    AccountStateForOtherBreakGlassReference { goal: _, observed: _ } => "other-break-glass-reference"
   }
 }
 
@@ -793,4 +816,28 @@ test fn a_retained_credential_must_be_the_goal_bound_generation() -> Bool {
   assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: goal_break_glass_ref().secret } })) == "satisfied/noop"
     && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-other", version: "4", hash_state: HashPending } } })) == "retention-not-goal-bound/refuse"
     && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: PublishedFactoryCredential })) == "needs:factory-credential-restore/refuse"
+}
+
+// ── the published replacement is observed, not only planned (side-chat review of 86b27f3) ─────────
+
+// Factory rejected beside an ARBITRARY replacement on the published account, channels closed: the
+// conjunction holds, but the goal's break-glass generation does not authenticate, so it is NOT a Noop.
+// The exact goal generation accepted with closed access IS a Noop.
+test fn an_arbitrary_published_replacement_is_not_a_noop_and_the_goal_generation_is() -> Bool {
+  let arbitrary = world(users: [BmcIpmiUser { id: 3, password: managed_password_v1 }, BmcIpmiUser { id: 2, password: "arbitrary-replacement!9" }])
+  decision_on(w: arbitrary, closed: true) == apply_on_finding(finding: BreakGlassGenerationRejected)
+    && decision_on(w: world_secured(), closed: true) == "noop"
+}
+
+// An Apply whose writes complete but whose post-read does not authenticate the goal generation (the
+// published write carried other bytes under the right version) mints NO phase receipt.
+test fn an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt() -> Bool {
+  applied_with(
+    initial: world_factory_open(),
+    closed_before: true,
+    managed_fetch: managed_v2_fetch(),
+    published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: "not-the-goal-bytes!7"),
+    applied_at: t_apply,
+    readback_at: t_readback,
+  ) == join(["refused:post-read-not-held:", apply_on_finding(finding: BreakGlassGenerationRejected)], "")
 }
