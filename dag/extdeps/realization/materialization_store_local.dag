@@ -78,6 +78,8 @@ import gunbc.durable_cas_file_store {
   file_compare_and_set, observe_cas_slot_state, DefaultAccessCreateOnly,
   CasSlotRetention, KeepGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
   CasWindowReclamation, CasReclamationNotCommitted, CasAttemptAdmission,
+  cas_window_generations, CasWindowGenerations, CasWindowGenerationsListed, CasWindowGenerationsUnlisted,
+  cas_reclaim_below, CasGenerationWindow,
 }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, DurableHoldReleaseRefusal, DurableHoldRecoveryRefusal,
@@ -94,7 +96,7 @@ import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, ProcessHoldHolder,
   self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
-import std.durable_compare_and_set { CasGeneration }
+import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import std.materialization_provider {
   ResultContentIdentity, ArtifactRequest, request_key, request_kind, evaluation_store_address,
   Admitted, FamilyRefused
@@ -159,16 +161,26 @@ data materialization_store_local_id: CacheInterfaceId = "materialization_store_l
 
 data materialization_store_marker_name: String = "materialization-store.identity"
 
-data materialization_store_marker_magic: String = "gunbc-materialization-store v1"
+data materialization_store_marker_magic: String = "gunbc-materialization-store v2"
 
 fn store_path(root_path: String, name: String) -> String {
   if ends_with(s: root_path, suffix: "/") { concat(root_path, name) } else { concat(root_path, "/", name) }
 }
 
-fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> String {
+// THE STORE'S FAMILY CATALOG IS A FACT OF THE STORE, written once into its identity marker at
+// initialization. Every family whose objects live in the root is in it, so a sweep -- which decides
+// what is an orphan by reading every family's index -- runs only against the catalog the store was
+// created with. A caller that opens with a partial or different roster is refused before anything is
+// swept, rather than having the families it forgot treated as orphans.
+fn store_marker_catalog_line(families: List<ArtifactKindId>) -> String {
+  concat("families ", join(families |> map(f => f as String) |> sort_by(f => f), ","))
+}
+
+fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmptyStr, families: List<ArtifactKindId>) -> String {
   join([
     materialization_store_marker_magic,
     concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
+    store_marker_catalog_line(families: families),
     concat("instance ", instance_label as String),
     "",
   ], "\n")
@@ -180,9 +192,13 @@ fn store_marker_recognized(root: MaterializationStoreRoot, content: String) -> B
     prefix: join([
       materialization_store_marker_magic,
       concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
-      "instance ",
+      "families ",
     ], "\n")
   )
+}
+
+fn store_marker_catalog_matches(content: String, families: List<ArtifactKindId>) -> Bool {
+  content.split(delimiter: "\n") |> any(l => l == store_marker_catalog_line(families: families))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -232,6 +248,7 @@ type LocalStoreUnavailableCause
   = LocalStoreGrantRefused { verb: Verb, target: NamespacePosition, frame: Frame }
   | LocalStoreNotInitialized { marker_path: String }
   | LocalStoreMarkerUnrecognized { marker_path: String }
+  | LocalStoreCatalogMismatch { marker_path: String, offered: String }
   | LocalStoreMarkerUnavailable { fault: StoreFault }
 
 type LocalStoreOpening
@@ -239,7 +256,7 @@ type LocalStoreOpening
   | LocalStoreUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
 
 // PURE: the open decision over the marker read. Hermetic controls call this directly.
-fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead) -> LocalStoreOpening {
+fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead, families: List<ArtifactKindId>) -> LocalStoreOpening {
   let root_path = materialization_store_root_path(root: root)
   let marker_path = store_path(root_path: root_path, name: materialization_store_marker_name)
   match marker_read {
@@ -250,7 +267,11 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
     FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
       LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat(o, ": ", e) } } }
     FilesystemExactPathRead { path: _, content: c } =>
-      if store_marker_recognized(root: root, content: c) {
+      if !store_marker_recognized(root: root, content: c) {
+        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
+      } else if !store_marker_catalog_matches(content: c, families: families) {
+        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreCatalogMismatch { marker_path: marker_path, offered: store_marker_catalog_line(families: families) } }
+      } else {
         LocalStoreOpened {
           root: root,
           store: OpenedMaterializationStore {
@@ -260,8 +281,6 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
           durability: materialization_store_durability(root: root),
           sweep: LocalStoreSweepNotRun
         }
-      } else {
-        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
       }
   }
 }
@@ -287,7 +306,8 @@ fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFami
     Permit =>
       match local_store_open_decide(
         root: root,
-        marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name))
+        marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name)),
+        families: budgets |> map(b => b.family)
       ) {
         LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
         LocalStoreOpened { root: r, store: st, durability: d, sweep: _ } =>
@@ -314,7 +334,7 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
     Permit =>
       match store_publish_observation(create: local_store_create_new(
         path: store_path(root_path: root_path, name: materialization_store_marker_name),
-        content: store_marker_content(root: root, instance_label: instance_label)
+        content: store_marker_content(root: root, instance_label: instance_label, families: budgets |> map(b => b.family))
       )) {
         StoreObjectPublishRefused { fault: f } =>
           LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
@@ -505,7 +525,7 @@ fn local_store_index_line_decode(line: String) -> LocalStoreIndexLine {
       match local_store_digits_int(s: p2) {
         Absent => LocalStoreUndecodableLine
         Present { value: b } =>
-          if local_store_is_object_name(name: p1) { LocalStoreDoomedLine { row: LocalStoreDoomedRow { name: p1, bytes: byte_size(count: b) } } } else { LocalStoreUndecodableLine }
+          if local_store_is_object_name(name: p1) || local_store_is_copy_name(name: p1) { LocalStoreDoomedLine { row: LocalStoreDoomedRow { name: p1, bytes: byte_size(count: b) } } } else { LocalStoreUndecodableLine }
       }
     } else {
       match local_store_digits_int(s: p1) {
@@ -600,6 +620,58 @@ fn local_store_index_retention() -> CasSlotRetention? {
   }
 }
 
+// A WINDOWED SLOT ADVANCES ONLY WHEN ITS WINDOW IS SETTLED. A windowed write reclaims generations at or
+// below head - k after its own commit, but that reclamation is best effort -- a delete the host refuses
+// leaves the generation behind and the write still commits. So before this store advances a windowed
+// slot (its occupancy index, or its family hold) it lists the slot: no generation at or below head - k
+// may remain. If one does, the CAS store's own cas_reclaim_below is retried once; if the stale
+// generations still stand, the write REFUSES, typed, naming them. A slot whose cleanup keeps failing
+// therefore stops advancing, and its generation files are bounded by the window plus the one write
+// that found it unsettled -- they never grow with the writes that follow.
+type LocalStoreSlotSettlement
+  = LocalStoreSlotSettled
+  | LocalStoreSlotGenerationsOutstanding { key: NonEmptyStr, stale: List<CasGeneration> }
+  | LocalStoreSlotUnlisted { key: NonEmptyStr, cause: String }
+  | LocalStoreSlotWindowTooNarrow { k: Int }
+
+fn local_store_stale_generations(gs: List<CasGeneration>, k: Int) -> List<CasGeneration> {
+  let head = fold(gs, init: 0, f: (acc, g) => if cas_generation_count(g: g) > acc { cas_generation_count(g: g) } else { acc })
+  gs |> filter(g => cas_generation_count(g: g) <= head - k)
+}
+
+fn local_store_settle_slot(root_path: String, key: NonEmptyStr) -> LocalStoreSlotSettlement {
+  match cas_generation_window(k: local_store_index_window_k) {
+    CasGenerationWindowTooNarrow { k: k } => LocalStoreSlotWindowTooNarrow { k: k }
+    CasGenerationWindowAdmitted { window: w } =>
+      match cas_window_generations(root: root_path as NonEmptyStr, key: key) {
+        CasWindowGenerationsUnlisted { cause: c } => LocalStoreSlotUnlisted { key: key, cause: c }
+        CasWindowGenerationsListed { generations: gs } => {
+          let stale = local_store_stale_generations(gs: gs, k: local_store_index_window_k)
+          if count(stale) == 0 { LocalStoreSlotSettled } else {
+            let head = fold(gs, init: 0, f: (acc, g) => if cas_generation_count(g: g) > acc { cas_generation_count(g: g) } else { acc })
+            let _reclaimed = cas_reclaim_below(root: root_path as NonEmptyStr, key: key, window: w, head: head)
+            match cas_window_generations(root: root_path as NonEmptyStr, key: key) {
+              CasWindowGenerationsUnlisted { cause: c } => LocalStoreSlotUnlisted { key: key, cause: c }
+              CasWindowGenerationsListed { generations: after } => {
+                let still = local_store_stale_generations(gs: after, k: local_store_index_window_k)
+                if count(still) == 0 { LocalStoreSlotSettled } else { LocalStoreSlotGenerationsOutstanding { key: key, stale: still } }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn local_store_settlement_text(s: LocalStoreSlotSettlement) -> String {
+  match s {
+    LocalStoreSlotSettled => "the slot's window is settled"
+    LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => concat(concat("generations at or below the window could not be reclaimed in ", k as String), concat(": ", count(st) as String))
+    LocalStoreSlotUnlisted { key: k, cause: c } => concat(concat("the slot ", k as String), concat(" could not be listed: ", c))
+    LocalStoreSlotWindowTooNarrow { k: k } => concat("the slot window is narrower than its floor: k = ", k as String)
+  }
+}
+
 // WHY THE INDEX COULD NOT BE USED, typed and located, never prose: the CAS layer's own causes are
 // carried as they are, so a receipt names the slot observation, the attempt admission or the store
 // failure that stopped the line. local_store_index_refusal_text is the ONE place they become text,
@@ -611,6 +683,7 @@ type LocalStoreIndexRefusal
   | LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptAdmission }
   | LocalStoreIndexStoreRefused { cause: CasStoreFailure }
   | LocalStoreIndexContended { attempts: Int }
+  | LocalStoreIndexUnsettled { settlement: LocalStoreSlotSettlement }
 
 fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
   match refusal {
@@ -629,6 +702,7 @@ fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
       CasGenerationSpaceExhausted { head: _ } => "the occupancy index slot exhausted its generation space"
     }
     LocalStoreIndexContended { attempts: n } => concat("the occupancy index kept moving under concurrent writers past the attempt bound: ", n as String)
+    LocalStoreIndexUnsettled { settlement: st } => concat("the occupancy index cannot advance: ", local_store_settlement_text(s: st))
   }
 }
 
@@ -658,7 +732,18 @@ type LocalStoreIndexWrite
   | LocalStoreIndexLostRace
   | LocalStoreIndexWriteRefused { refusal: LocalStoreIndexRefusal }
 
-fn local_store_write_index(root_path: String, family: ArtifactKindId, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite {
+fn local_store_write_index(held: LocalStoreFamilyHeld, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite {
+  match local_store_settle_slot(root_path: held.root_path as String, key: local_store_index_key(family: held.family)) {
+    LocalStoreSlotSettled => local_store_write_index_settled(held: held, expected: expected, index: index)
+    LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
+    LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
+    LocalStoreSlotWindowTooNarrow { k: k } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexWindowTooNarrow { k: k } }
+  }
+}
+
+fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite {
+  let root_path = held.root_path as String
+  let family = held.family
   let content = local_store_index_encode(index: index) as NonEmptyStr
   match local_store_index_retention() {
     Absent => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
@@ -715,6 +800,7 @@ type LocalStoreHoldRefusal
   | LocalStoreHoldKeyNotAddressable
   | LocalStoreHoldSelfUnidentified { cause: NonEmptyStr }
   | LocalStoreHoldWindowTooNarrow { k: Int }
+  | LocalStoreHoldUnsettled { settlement: LocalStoreSlotSettlement }
 
 fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
   match refusal {
@@ -727,6 +813,7 @@ fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
     LocalStoreHoldKeyNotAddressable => "the family hold key is not slot-addressable"
     LocalStoreHoldSelfUnidentified { cause: c } => concat("this process cannot name itself, so it cannot hold a family: ", c as String)
     LocalStoreHoldWindowTooNarrow { k: k } => concat("the family hold window is narrower than its floor: k = ", k as String)
+    LocalStoreHoldUnsettled { settlement: st } => concat("the family hold slot cannot advance: ", local_store_settlement_text(s: st))
   }
 }
 
@@ -758,6 +845,18 @@ fn local_store_acquire_family_hold(root_path: String, family: ArtifactKindId, re
         SelfIdentified { process: me, pid_namespace: ns } => {
           let owner = concat(local_store_hold_owner_prefix, process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
           let key = local_store_hold_key(family: family)
+          match local_store_settle_slot(root_path: root_path, key: key) {
+            LocalStoreSlotSettled => local_store_acquire_settled(root_path: root_path, family: family, key: key, owner: owner, retention: retention, recovered: recovered)
+            LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
+            LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
+            LocalStoreSlotWindowTooNarrow { k: k } => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: k } }
+          }
+        }
+      }
+  }
+}
+
+fn local_store_acquire_settled(root_path: String, family: ArtifactKindId, key: NonEmptyStr, owner: DurableHoldOwnerRef, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition {
           match file_hold_acquire(root: root_path as NonEmptyStr, slot_key: key, requested_owner: owner, retention: retention) {
             FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
               LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { root_path: root_path as NonEmptyStr, family: family, owner: o, generation: g, retention: retention } }
@@ -768,9 +867,6 @@ fn local_store_acquire_family_hold(root_path: String, family: ArtifactKindId, re
             FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LocalStoreHoldRefused { refusal: LocalStoreHoldSlotUndecodable { detail: d } }
             FileHoldKeyNotSlotAddressable { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldKeyNotAddressable }
           }
-        }
-      }
-  }
 }
 
 // An occupied family is looked at ONCE: a live or unobservable holder refuses; a holder observed dead is
@@ -839,7 +935,22 @@ type LocalStoreDeleteAttempt {
   outcome: FilesystemDelete
 }
 
-fn local_store_delete_attempts(root_path: String, names: List<String>) -> List<LocalStoreDeleteAttempt> {
+// WHO MAY DELETE: a writer holding the family the names belong to, or the sweep holding every family.
+// Both proofs are sealed records minted only by the hold acquisitions, so a delete without the hold
+// cannot be written.
+type LocalStoreWriteAuthority
+  = LocalStoreFamilyAuthority { held: LocalStoreFamilyHeld }
+  | LocalStoreSweepAuthority { all: LocalStoreAllFamiliesHeld }
+
+fn local_store_authority_root(authority: LocalStoreWriteAuthority) -> String {
+  match authority {
+    LocalStoreFamilyAuthority { held: h } => h.root_path as String
+    LocalStoreSweepAuthority { all: a } => a.root_path as String
+  }
+}
+
+fn local_store_delete_attempts(authority: LocalStoreWriteAuthority, names: List<String>) -> List<LocalStoreDeleteAttempt> {
+  let root_path = local_store_authority_root(authority: authority)
   names |> map(n => {
     let path = store_path(root_path: root_path, name: n)
     let d = Filesystem.Delete(path: path)
@@ -910,8 +1021,9 @@ fn local_store_presence_converges(presence: LocalStoreObjectPresence) -> Bool {
   }
 }
 
-fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, family: ArtifactKindId, name: String, bytes: ByteSize, presence: LocalStoreObjectPresence, attempt: Int) -> LocalStoreReservation {
-  let root_path = materialization_store_root_path(root: root)
+fn local_store_reserve(held: LocalStoreFamilyHeld, budgets: List<LocalStoreFamilyBudget>, name: String, bytes: ByteSize, presence: LocalStoreObjectPresence, attempt: Int) -> LocalStoreReservation {
+  let family = held.family
+  let root_path = held.root_path as String
   if attempt > local_store_reservation_attempt_bound {
     LocalStoreReservationIndexRefused { refusal: LocalStoreIndexContended { attempts: local_store_reservation_attempt_bound } }
   } else {
@@ -925,8 +1037,11 @@ fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreF
             match local_store_read_index(root_path: root_path, family: family) {
               LocalStoreIndexUnavailable { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
               LocalStoreIndexAt { index: index, expected: expected } => {
-                let cleanup = local_store_delete_records(root_path: root_path, records: index.doomed |> map(d => d.name))
-                let cleanup_split = local_store_record_delete_split(attempts: cleanup)
+                let doomed_copies = index.doomed |> filter(d => local_store_is_copy_name(name: d.name)) |> map(d => d.name)
+                let doomed_records = index.doomed |> filter(d => !local_store_is_copy_name(name: d.name)) |> map(d => d.name)
+                let copy_split = local_store_delete_split(attempts: local_store_delete_attempts(authority: LocalStoreFamilyAuthority { held: held }, names: doomed_copies))
+                let record_cleanup = local_store_record_delete_split(attempts: local_store_delete_records(authority: LocalStoreFamilyAuthority { held: held }, records: doomed_records))
+                let cleanup_split = LocalStoreRecordDeleteSplit { gone: concat(record_cleanup.gone, copy_split.gone), refused: record_cleanup.refused }
                 let gone = local_store_name_set(names: cleanup_split.gone)
                 let still_doomed = index.doomed |> filter(d => !set_contains(gone, d.name))
                 let undeleted = measure_count(m: local_store_doomed_bytes(doomed: still_doomed))
@@ -954,10 +1069,10 @@ fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreF
                         rows: survivors,
                         doomed: concat(still_doomed, evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }))
                       }
-                      match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
+                      match local_store_write_index(held: held, expected: expected, index: next_index) {
                         LocalStoreIndexWritten { reclamation: rc } =>
                           LocalStoreReserved { budget: ready.budget, evicted: evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }), retired: cleanup_split.gone, reclamation: rc }
-                        LocalStoreIndexLostRace => local_store_reserve(root: root, budgets: budgets, family: family, name: name, bytes: bytes, presence: presence, attempt: attempt + 1)
+                        LocalStoreIndexLostRace => local_store_reserve(held: held, budgets: budgets, name: name, bytes: bytes, presence: presence, attempt: attempt + 1)
                         LocalStoreIndexWriteRefused { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
                       }
                     }
@@ -1030,9 +1145,10 @@ fn local_store_group_refused_part(by_record: Map<String, List<LocalStoreDeleteAt
   map_insert(by_record, r, filed |> list_push(attempt))
 }
 
-fn local_store_delete_records(root_path: String, records: List<String>) -> List<LocalStoreRecordDeleteAttempt> {
+fn local_store_delete_records(authority: LocalStoreWriteAuthority, records: List<String>) -> List<LocalStoreRecordDeleteAttempt> {
+  let root_path = local_store_authority_root(authority: authority)
   if count(records) == 0 { [] } else {
-    let record_split = local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: records))
+    let record_split = local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: records))
     let record_refused: Map<String, LocalStoreDeleteAttempt> = fold(record_split.refused, init: empty_map(), f: (m, t) => map_insert(m, t.name, t))
     let listing = Filesystem.List(path: root_path)
     let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
@@ -1040,7 +1156,7 @@ fn local_store_delete_records(root_path: String, records: List<String>) -> List<
       FilesystemDirectoryListed(listed) => {
         let wanted = local_store_name_set(names: records)
         let part_split = local_store_delete_split(attempts: local_store_delete_attempts(
-          root_path: root_path,
+          authority: authority,
           names: filesystem_listing_entry_names(listing: listed) |> filter(n => (local_store_is_part_name(name: n) || local_store_is_copy_name(name: n)) && set_contains(wanted, local_store_record_of(name: n)))
         ))
         let parts_refused: Map<String, List<LocalStoreDeleteAttempt>> = fold(part_split.refused, init: empty_map(), f: (m, t) => local_store_group_refused_part(by_record: m, attempt: t))
@@ -1102,15 +1218,20 @@ fn local_store_indexed_names(root: MaterializationStoreRoot, budgets: List<Local
 // writing while the listing and the indexes are compared. Holds are taken in budget order; a refusal
 // releases the ones already taken and reports which family refused and why.
 type LocalStoreAllHeld
-  = LocalStoreAllHeldAcquired { held: List<LocalStoreFamilyHeld> }
+  = LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld }
   | LocalStoreAllHeldRefused { family: ArtifactKindId, refusal: LocalStoreHoldRefusal, released: List<LocalStoreHoldRelease> }
 
+type LocalStoreAllFamiliesHeld sole_constructor {
+  root_path: NonEmptyStr
+  held: List<LocalStoreFamilyHeld>
+}
+
 fn local_store_acquire_all(root_path: String, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreAllHeld {
-  fold(budgets, init: LocalStoreAllHeldAcquired { held: [] }, f: (acc, b) => match acc {
+  fold(budgets, init: LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { root_path: root_path as NonEmptyStr, held: [] } }, f: (acc, b) => match acc {
     LocalStoreAllHeldRefused { family: f, refusal: r, released: rs } => LocalStoreAllHeldRefused { family: f, refusal: r, released: rs }
-    LocalStoreAllHeldAcquired { held: hs } => match local_store_acquire_family_hold(root_path: root_path, family: b.family, recovered: false) {
-      LocalStoreHoldAcquired { held: h } => LocalStoreAllHeldAcquired { held: hs |> list_push(h) }
-      LocalStoreHoldRefused { refusal: r } => LocalStoreAllHeldRefused { family: b.family, refusal: r, released: hs |> map(x => local_store_release_family_hold(held: x)) }
+    LocalStoreAllHeldAcquired { all: a } => match local_store_acquire_family_hold(root_path: root_path, family: b.family, recovered: false) {
+      LocalStoreHoldAcquired { held: h } => LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { root_path: a.root_path, held: a.held |> list_push(h) } }
+      LocalStoreHoldRefused { refusal: r } => LocalStoreAllHeldRefused { family: b.family, refusal: r, released: a.held |> map(x => local_store_release_family_hold(held: x)) }
     }
   })
 }
@@ -1119,9 +1240,9 @@ fn local_store_sweep(root: MaterializationStoreRoot, budgets: List<LocalStoreFam
   let root_path = materialization_store_root_path(root: root)
   match local_store_acquire_all(root_path: root_path, budgets: budgets) {
     LocalStoreAllHeldRefused { family: f, refusal: r, released: rs } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepHoldRefused { family: f, refusal: r, released: rs } }
-    LocalStoreAllHeldAcquired { held: hs } => {
-      let swept = local_store_sweep_held(root: root, budgets: budgets)
-      let releases = hs |> map(x => local_store_release_family_hold(held: x))
+    LocalStoreAllHeldAcquired { all: a } => {
+      let swept = local_store_sweep_held(all: a, root: root, budgets: budgets)
+      let releases = a.held |> map(x => local_store_release_family_hold(held: x))
       match swept {
         LocalStoreSwept { removed: r, delete_refused: d, releases: _ } => LocalStoreSwept { removed: r, delete_refused: d, releases: releases }
         LocalStoreSweepUnavailable { refusal: x } => LocalStoreSweepUnavailable { refusal: x }
@@ -1131,7 +1252,7 @@ fn local_store_sweep(root: MaterializationStoreRoot, budgets: List<LocalStoreFam
   }
 }
 
-fn local_store_sweep_held(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreSweep {
+fn local_store_sweep_held(all: LocalStoreAllFamiliesHeld, root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreSweep {
   let root_path = materialization_store_root_path(root: root)
   let listing = Filesystem.List(path: root_path)
   let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
@@ -1144,8 +1265,8 @@ fn local_store_sweep_held(root: MaterializationStoreRoot, budgets: List<LocalSto
         LocalStoreIndexedNamesRead { names: indexed } => {
           let indexed_set = local_store_name_set(names: indexed)
           let orphans = filesystem_listing_entry_names(listing: listed)
-            |> filter(n => local_store_is_store_file_name(name: n) && !set_contains(indexed_set, local_store_record_of(name: n)))
-          let split = local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: orphans))
+            |> filter(n => local_store_is_copy_name(name: n) || (local_store_is_store_file_name(name: n) && !set_contains(indexed_set, local_store_record_of(name: n))))
+          let split = local_store_delete_split(attempts: local_store_delete_attempts(authority: LocalStoreSweepAuthority { all: all }, names: orphans))
           LocalStoreSwept { removed: split.gone, delete_refused: split.refused, releases: [] }
         }
       }
@@ -1174,26 +1295,27 @@ fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKi
   match local_store_acquire_family_hold(root_path: materialization_store_root_path(root: root), family: family, recovered: false) {
     LocalStoreHoldRefused { refusal: r } => LocalStoreRecencyReceipt { recency: LocalStoreRecencyHoldRefused { family: family, refusal: r }, hold_release: none }
     LocalStoreHoldAcquired { held: h } => {
-      let recency = local_store_record_recency_held(root: root, family: family, served: served)
+      let recency = local_store_record_recency_held(held: h, root: root, served: served)
       LocalStoreRecencyReceipt { recency: recency, hold_release: Present { value: local_store_release_family_hold(held: h) } }
     }
   }
 }
 
-fn local_store_record_recency_held(root: MaterializationStoreRoot, family: ArtifactKindId, served: List<String>) -> LocalStoreRecency {
-  let root_path = materialization_store_root_path(root: root)
+fn local_store_record_recency_held(held: LocalStoreFamilyHeld, root: MaterializationStoreRoot, served: List<String>) -> LocalStoreRecency {
+  let family = held.family
+  let root_path = held.root_path as String
   match local_store_read_index(root_path: root_path, family: family) {
     LocalStoreIndexUnavailable { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let names = index.rows |> map(r => r.name)
-      let held = local_store_name_set(names: names)
-      let hits = served |> filter(n => set_contains(held, n))
+      let live_names = local_store_name_set(names: names)
+      let hits = served |> filter(n => set_contains(live_names, n))
       if count(hits) == 0 { LocalStoreRecencyNothingToRecord { family: family } } else {
         let bumped = fold(hits, init: local_store_artifact_store(budget: byte_size(count: 0), index: index), f: (st, n) => match store_get(store: st, key: local_store_row_key(name: n)) {
           StoreHit { store: s2, row: _ } => s2
           StoreMiss { store: s2 } => s2
         })
-        match local_store_write_index(root_path: root_path, family: family, expected: expected, index: local_store_index_of(store: bumped, names: names, doomed: index.doomed)) {
+        match local_store_write_index(held: held, expected: expected, index: local_store_index_of(store: bumped, names: names, doomed: index.doomed)) {
           LocalStoreIndexWritten { reclamation: _ } => LocalStoreRecencyRecorded { family: family, bumped: count(hits) }
           LocalStoreIndexLostRace => LocalStoreRecencyRaced { family: family }
           LocalStoreIndexWriteRefused { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
@@ -1349,6 +1471,7 @@ fn local_store_commit_released(c: LocalStoreCommit, settled_release: LocalStoreH
 // budget because a delete did not happen. No other writer runs while this one holds the family, so
 // what the reservation committed is still the index when the object appears.
 fn local_store_commit_held(
+  held: LocalStoreFamilyHeld,
   root: MaterializationStoreRoot,
   budgets: List<LocalStoreFamilyBudget>,
   store: OpenedMaterializationStore,
@@ -1367,14 +1490,40 @@ fn local_store_commit_held(
   match presence {
     LocalStoreObjectUnavailable { lookup: _ } =>
       local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: "the object's presence could not be established, so its row is neither converged on nor replaced" } })
-    LocalStoreObjectVerified => local_store_commit_reserved(root: root, store: store, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
-      reservation: local_store_reserve(root: root, budgets: budgets, family: request_kind(req: req), name: name, bytes: bytes, presence: presence, attempt: 1))
-    LocalStoreObjectAbsent => local_store_commit_reserved(root: root, store: store, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
-      reservation: local_store_reserve(root: root, budgets: budgets, family: request_kind(req: req), name: name, bytes: bytes, presence: presence, attempt: 1))
+    LocalStoreObjectVerified => local_store_commit_verified(root: root, store: store, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result)
+    LocalStoreObjectAbsent => local_store_commit_reserved(held: held, root: root, store: store, req: req, key: key, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs, bytes: bytes,
+      reservation: local_store_reserve(held: held, budgets: budgets, name: name, bytes: bytes, presence: presence, attempt: 1))
   }
 }
 
+// A VERIFIED HIT MATERIALIZES NOTHING. The exact record and every part are already present and verified,
+// so no reservation is made, no part is copied and no inode is created: the record's create-only
+// publish answers occupied, and the settle reads the stored artifact back and decides -- the same
+// result converges, a different one is the result-content conflict. Both are decided before any byte
+// is copied, so a divergent retry leaves the index, the root and every part exactly as they were.
+fn local_store_commit_verified(
+  root: MaterializationStoreRoot,
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  key: ContentHash,
+  name: String,
+  object: String,
+  offered: ContentHash,
+  offered_result: ResultContentIdentity
+) -> LocalStoreCommit {
+  let root_path = materialization_store_root_path(root: root)
+  local_store_commit_refused(commit: store_commit_settle(
+    store: store,
+    prepared_key: key,
+    offered_digest: offered,
+    offered_result: offered_result,
+    publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
+    read_back: local_store_lookup(root: root, store: store, req: req)
+  ))
+}
+
 fn local_store_commit_reserved(
+  held: LocalStoreFamilyHeld,
   root: MaterializationStoreRoot,
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
@@ -1395,7 +1544,7 @@ fn local_store_commit_reserved(
     LocalStoreReservationProviderRefused { construction: _ } =>
       local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: concat("the family's provider row does not construct a bounded store: ", request_kind(req: req) as String) } })
     LocalStoreReserved { budget: budget, evicted: evicted, retired: retired, reclamation: rc } => {
-      let split = local_store_record_delete_split(attempts: local_store_delete_records(root_path: root_path, records: evicted |> map(e => e.name)))
+      let split = local_store_record_delete_split(attempts: local_store_delete_records(authority: LocalStoreFamilyAuthority { held: held }, records: evicted |> map(e => e.name)))
       let unconfirmed_set = local_store_name_set(names: split.refused |> map(t => t.name))
       if count(split.refused) > 0 {
         LocalStoreCommit {
@@ -1406,7 +1555,7 @@ fn local_store_commit_reserved(
       } else {
         let part_refusal = zip_parts(parts: parts, blobs: blobs) |> fold(init: none, f: (acc, pb) => match acc {
           Present { value: _ } => acc
-          Absent => local_store_publish_part(root_path: root_path, record: name, part: pb.part, staged: pb.blob)
+          Absent => local_store_publish_part(held: held, record: name, part: pb.part, staged: pb.blob)
         })
         LocalStoreCommit {
           commit: match part_refusal {
@@ -1476,14 +1625,50 @@ fn local_store_copy_name(record: String, id: ArtifactOutputId) -> String {
   concat(local_store_part_name(record: record, id: id), ".copy")
 }
 
-fn local_store_publish_part(root_path: String, record: String, part: LocalStoreStagedPart, staged: ArtifactBlobPart) -> String? {
+fn local_store_publish_part(held: LocalStoreFamilyHeld, record: String, part: LocalStoreStagedPart, staged: ArtifactBlobPart) -> String? {
+  let root_path = held.root_path as String
   let copy_name = local_store_copy_name(record: record, id: part.id)
-  let copy_path = store_path(root_path: root_path, name: copy_name)
+  let authority = LocalStoreFamilyAuthority { held: held }
+  if count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) > 0 {
+    Present { value: concat(concat("byte part ", part.id as String), ": a leftover copy could not be removed") }
+  } else {
+    let outcome = local_store_copy_and_link(root_path: root_path, record: record, part: part, staged: staged)
+    let removed = count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) == 0
+    if removed { outcome } else {
+      match local_store_doom_copy(held: held, name: copy_name, bytes: staged.size, attempt: 1) {
+        Present { value: why } => Present { value: concat(concat("byte part ", part.id as String), concat(": the store's temporary copy could not be removed or charged: ", why)) }
+        Absent => Present { value: concat(concat("byte part ", part.id as String), ": the store's temporary copy could not be removed; it is charged as cleanup debt") }
+      }
+    }
+  }
+}
+
+// THE TEMPORARY COPY NEVER OUTLIVES ITS ATTEMPT UNCHARGED. Every path out of copy-and-link -- a copy
+// that failed, did not verify or could not be read, a link the host refused, a name held by different
+// bytes, or success -- returns to local_store_publish_part, which removes the copy; if the host
+// refuses that delete, the copy is entered in the family's doomed list at its staged size, so it is
+// charged against the budget and later writes refuse until a reservation confirms it gone.
+fn local_store_doom_copy(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize, attempt: Int) -> String? {
+  if attempt > local_store_reservation_attempt_bound { Present { value: "the occupancy index kept moving past the attempt bound" } } else {
+    match local_store_read_index(root_path: held.root_path as String, family: held.family) {
+      LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+      LocalStoreIndexAt { index: index, expected: expected } =>
+        if index.doomed |> any(d => d.name == name) { none } else {
+          match local_store_write_index(held: held, expected: expected, index: LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: index.doomed |> list_push(LocalStoreDoomedRow { name: name, bytes: bytes }) }) {
+            LocalStoreIndexWritten { reclamation: _ } => none
+            LocalStoreIndexLostRace => local_store_doom_copy(held: held, name: name, bytes: bytes, attempt: attempt + 1)
+            LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+          }
+        }
+    }
+  }
+}
+
+fn local_store_copy_and_link(root_path: String, record: String, part: LocalStoreStagedPart, staged: ArtifactBlobPart) -> String? {
+  let copy_path = store_path(root_path: root_path, name: local_store_copy_name(record: record, id: part.id))
   let target = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
   let label = concat("byte part ", part.id as String)
-  if count(local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: [copy_name])).refused) > 0 {
-    Present { value: concat(label, ": a leftover copy could not be removed") }
-  } else if !shell.Copy.File(source: part.staged as String, destination: copy_path).success {
+  if !shell.Copy.File(source: part.staged as String, destination: copy_path).success {
     Present { value: concat(label, ": the staged bytes could not be copied into the store") }
   } else {
     match local_store_read_part(id: part.id, path: copy_path as NonEmptyStr) {
@@ -1493,7 +1678,7 @@ fn local_store_publish_part(root_path: String, record: String, part: LocalStoreS
           Present { value: concat(label, ": the store's copy does not hold the staged bytes") }
         } else {
           let l = Filesystem.LinkCreateNew(source: copy_path, path: target)
-          let linked = match filesystem_link_create_new(source: copy_path, path: target, success: l.success, error: l.error, error_kind: l.error_kind) {
+          match filesystem_link_create_new(source: copy_path, path: target, success: l.success, error: l.error, error_kind: l.error_kind) {
             FilesystemLinked { path: _ } => none
             FilesystemLinkTargetOccupied { path: _ } =>
               match local_store_read_part(id: part.id, path: target as NonEmptyStr) {
@@ -1504,13 +1689,6 @@ fn local_store_publish_part(root_path: String, record: String, part: LocalStoreS
             FilesystemLinkCrossDevice { source: src, path: _ } => Present { value: concat(concat(label, ": the store's own copy is on another filesystem than its root: "), src) }
             FilesystemLinkRefused { path: _, kind: _, error: e } => Present { value: concat(concat(label, " could not be published: "), e) }
             FilesystemLinkKindUnrecognized { path: _, observed: o, error: _ } => Present { value: concat(concat(label, " publish failed with an unrecognized kind: "), o) }
-          }
-          match linked {
-            Present { value: why } => Present { value: why }
-            Absent =>
-              if count(local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: [copy_name])).refused) > 0 {
-                Present { value: concat(label, ": the store's temporary copy could not be removed after publishing") }
-              } else { none }
           }
         }
     }
@@ -1584,7 +1762,7 @@ fn local_store_commit_staged(
           match local_store_acquire_family_hold(root_path: root_path, family: request_kind(req: req), recovered: false) {
             LocalStoreHoldRefused { refusal: r } => local_store_commit_hold_refused(key: k, refusal: r)
             LocalStoreHoldAcquired { held: h } => {
-              let written = local_store_commit_held(root: root, budgets: budgets, store: store, req: req, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
+              let written = local_store_commit_held(held: h, root: root, budgets: budgets, store: store, req: req, key: k, name: name, object: object, offered: offered, offered_result: offered_result, parts: parts, blobs: blobs)
               local_store_commit_released(c: written, settled_release: local_store_release_family_hold(held: h))
             }
           }

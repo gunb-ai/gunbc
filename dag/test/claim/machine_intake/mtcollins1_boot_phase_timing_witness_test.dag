@@ -9,7 +9,7 @@ import v2.std.algebra { skip }
 import v2.std.optional { Present, Absent }
 import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused, proc_uptime_parse, proc_uptime_read }
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
 import extdeps.ampere.smpro_register { smpro_bootstage_reg }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing {
   MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,

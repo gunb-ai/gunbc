@@ -1,0 +1,31 @@
+module gunbc.serve_declared_binding_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed-growth obligation for binding a served entry's arguments by its declared parameters. It
+// replaces two host-side conditionals -- peer_user only on an attesting listener (gunbc#12627) and
+// cookie_header only when the request carried one (gunbc#13004) -- each of which was the repair of
+// one instance of gunbc.recurring_failure_mode
+// a_serve_contract_widened_for_one_handler_refuses_every_other and left the class writable: the
+// seed still held its own list of names beside every handler's signature. The second conditional
+// made the refusal REQUEST-CONTROLLED: on main's seed, gunbc.auth.approval_broker_serve
+// approval_broker_handle answered 500 (no parameter named cookie_header) to any request carrying a
+// Cookie header and answered normally without one, observed over a real socket on 2026-10-03.
+// PURPOSE ADMISSION (gunbc.v1_maintenance_standing v1_seed_standing): a defect repair in the serve
+// seam the operator surface runs on, on the same ground gunbc.serve_cookie_header_seed_growth
+// states; it adds one request fact (the header list) and no route, cookie or session logic.
+data serve_declared_binding_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServeRequestFact", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ServeRequest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "serve_handler_fact_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "handler_facts_follow_the_declared_parameters", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "declared_parameter_names", field: WholeDeclaration }
+  ],
+  reason: "Which arguments a served entry receives is the entry's own declaration; the seed reading that declaration is the one host step, because the call is made from the accept loop. ServeRequestFact is the closed vocabulary of facts the seam can supply (method, path, body, tailscale_identity, release_revision, peer_user, request_headers); serve_handler_fact_plan maps the declared names onto it once at startup and refuses a name outside it, or peer_user behind a listener that attests none; declared_parameter_names is the interpreter read of the entry's parameter names; ServeRequest carries one parsed request, its header fields uninterpreted. Net of this change SERVE_COOKIE_HEADER and the test cookie_context_does_not_manufacture_a_tcp_peer are deleted.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all five when `serve` is a verb of the v2-native CLI door (v2.cli.compile_cli) whose request read is a modeled host effect carrying typed request headers and whose handler call is an ordinary .dag application -- the same trigger as gunbc.serve_cookie_header_seed_growth and gunbc.fabric_door_socket_seed_growth, because it is the same transport.",
+  current_boundary: "Confined to v1_compiler.cli_run handle_serve, serve_read_request and serve_handler_args, plus the one interpreter read. An entry declaring the five standard parameters receives exactly the arguments it received before. The seam no longer refuses a duplicate Cookie header itself; gunbc.roadmap_serve roadmap_serve_handle_over answers the same 400. Tests: cli_run serve_unix_socket_door_tests."
+}

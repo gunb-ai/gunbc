@@ -1107,7 +1107,22 @@ fn floor_route_gap_expectation_chunk_09() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.an_object_whose_presence_cannot_be_established_refuses_before_any_index_write_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.mutating_the_staging_file_after_commit_leaves_the_stored_part_unchanged_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.an_identical_retry_of_a_verified_record_copies_nothing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_divergent_retry_conflicts_before_any_copy_and_changes_nothing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.materialization_store_local_wet_witness.a_refused_part_publish_leaves_no_temporary_copy_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
+    }
+    }
+    }
+    }
+    }
     }
     }
     }
