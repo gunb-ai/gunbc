@@ -54,7 +54,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -1338,6 +1338,41 @@ fn constructor_reference_admission_early_refusal(
   }
 }
 
+// A TEXT CROSSING'S REFUSAL NAMES ITS ROUTE (operator ruling O5, 2026-10-03). Host text and a
+// code-point sequence meet only through a declared conversion plan, and under O5 a plan is selected
+// by calling the ordinary function its row names. So where the checker refuses a crossing by
+// declaration identity, the residual names the function that would make it lawful: the unfold when
+// the produced side is host text, the fold when it is a code-point sequence. Every other mismatch
+// keeps its ordinary TypeMismatch.
+//
+// ONE ARM PER TextRepresentation, NO WILDCARD (zero-ambiguity ruling, via sharp-raven-357 on #13151):
+// a variant added later must fail the route match at compile time rather than be silently advised to
+// call the fold. A crossing is only reported between two text readings, so the NotText and
+// Unidentified arms name no route and keep the plain mismatch instead of guessing one.
+fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv, span: SourceSpan, module_name: String) -> ErrorNode {
+  let si = env.source_indices
+  let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
+  if text_crossing_by_identity(left: expected, right: got, env: env) {
+    match text_representation_by_identity(n: got, env: env) {
+      HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+      CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
+      NotText => plain
+      TextRepresentationUnidentified => plain
+    }
+  } else {
+    plain
+  }
+}
+
+fn text_crossing_route_error(expected: Node, got: Node, route: String, si: Map<String, NewlineIndex>, span: SourceSpan, module_name: String) -> ErrorNode {
+  make_error_node(diagnostic: TextCrossingHasNoImplicitRoute {
+    expected: node_type_shape(n: expected, source_indices: si),
+    got: node_type_shape(n: got, source_indices: si),
+    route: route,
+    span: span
+  }, module_name: module_name)
+}
+
 fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
@@ -1598,12 +1633,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     scope: scope)
   if (cardinality_diags |> count) > 0 { cardinality_diags }
   else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
-    [type_mismatch_error(
-      expected: node_type_shape(n: declared, source_indices: si),
-      got: node_type_shape(n: produced, source_indices: si),
-      span: span,
-      module_name: scope.module_name
-    )]
+    [text_crossing_or_type_mismatch_error(expected: declared, got: produced, env: scope.type_env, span: span, module_name: scope.module_name)]
   }
   else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
@@ -5605,12 +5635,7 @@ fn direct_call_structured_application_mismatch_diags(
               formal: formal, substitution_basis: app.formal.substitution_basis, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)) {
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal, source_indices: source_indices),
-              got: node_type_shape(n: actual, source_indices: source_indices),
-              span: actual_expr.span,
-              module_name: module_name
-            )]
+            [text_crossing_or_type_mismatch_error(expected: formal, got: actual, env: type_env, span: actual_expr.span, module_name: module_name)]
           } else {
             []
           }

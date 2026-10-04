@@ -7,7 +7,7 @@ import extdeps.boards.types { AsrockRackAltrad8ud1l2t, BaseboardModel, DimmPopul
 import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.ampere { ampere_altra_avl_authority, ampere_altra_avl_current_issue }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
 import extdeps.memory.training {

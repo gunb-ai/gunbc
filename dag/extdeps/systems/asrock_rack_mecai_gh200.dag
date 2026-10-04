@@ -1,0 +1,121 @@
+module extdeps.systems.asrock_rack_mecai_gh200
+
+import std.types { NonEmptyStr, List }
+import std.measure { watt, millimeter, celsius }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.systems.types {
+  SuperchipServerCatalogRow,
+  ServerPowerSupplies,
+  SuppliesOnePlusOne,
+  ServerManagementController,
+  StorageBay,
+  ExpansionSlot,
+  FrontPanelPort,
+  ChassisDimensions,
+  TemperatureRange,
+  HumidityRange,
+  SupplyOutputRating,
+  SupplyInputRange,
+}
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog }
+import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com/general/productdetail.asp?Model=MECAI-GH200#Specifications"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systems.asrock_rack_mecai_gh200",
+      decl_name: "asrock_rack_mecai_gh200",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps.systems.asrock_rack_mecai_gh200.mecai_user_manual_authority]
+}
+
+// The MECAI-GH200 User Manual, Version 1.00, Sep. 2024, from ASRock's download server (read 2026-10-04).
+data mecai_user_manual_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/Manual/MECAI-GH200.pdf"
+  }
+}
+
+// GH200-4 (2026-10-04). Every field is the vendor's Specifications table, read from the print view of
+// the anchor page (productdetail-print.asp?model=MECAI-GH200) that the operator saved and uploaded on
+// 2026-10-04; this session's direct fetch was answered by the site's bot protection. Quoted: Form Factor "2U NVIDIA MGX";
+// Dimensions "420 x 438 x 87 mm"; Front Panel buttons "Reset, Power, UID" and I/O "1 Mini DisplayPort
+// (VGA), 1 Micro USB (COM), 1 Type-A (USB3.2 Gen1)"; "1 dedicated IPMI" LAN; front bays "2 E1.S
+// (PCIe5.0 x4), supports 9.5mm width"; internal "2 M-key (PCIe5.0 x4), supports 22110/2280"; power
+// "1+1 CRPS", "2000W"; fans "6 PWM fixed 60x76 mm fans"; TDP "Up to 1000W (CPU + GPU + Memory)";
+// memory "HBM3 or HBM3e (coming soon)"; slots "1 HHHL single-slot PCIe5.0 x16 for NVIDIA ConnectX-7
+// NICs" and "1 FHHL dual-slot PCIe5.0 x16 for NVIDIA BlueField-3 DPUs"; BMC "ASPEED AST2600"; "1
+// Realtek RTL8211F for dedicated management GLAN"; "Operating temperature: 10°C ~ 40°C /
+// Non-operating temperature: -40°C ~ 70°C"; "Non-operating humidity: 20% ~ 90% (non-condensing)". The
+// slot table is headed "PCIe Expansion Slots (SLOT7 close to CPU)" without saying which listed slot is
+// SLOT7, so slot numbering is not carried.
+//
+// THE USER MANUAL (second citation) IS MORE SPECIFIC THAN THE PAGE, AND WHERE THEY DIFFER THE ROW
+// CARRIES THE MANUAL. Power: "Output Watts 1000W @ 100-127Vac input / 2000W @ 200-240Vac input",
+// "80-PLUS Titanium", "Low-line: 100-127Vrms, 50/60Hz 12A / High-line: 200-240Vrms, 50/60Hz 10A" -- the
+// page's bare "2000W" holds only at high line. Operating temperature: the manual says "10°C ~ 35°C",
+// the page "10°C ~ 40°C"; the row carries 35, the narrower. Fans: the manual says "6 PWM Hot-swap
+// 60x76mm fans", the page "fixed". Buttons: "Reset, UID w/LED, Power w/LED". The carrier is
+// ARLINGTON-MB ("Support MB"), carried as its own row.
+//
+// ONE FIGURE ON THE PAGE IS NOT CARRIED: "Max. DIMM Frequency Grace CPU: 512GB/s". NVIDIA's datasheet
+// pairs 512 GB/s with the 120/240 GB LPDDR5X tiers and 384 GB/s with 480 GB, and the page lists 480GB,
+// so the memory facts come from the referenced NVIDIA rows rather than from this sentence. The
+// product photograph shows the module on an ASRock carrier silkscreened ARLINGTON-MB REV 1.00 beside a
+// power-distribution board silkscreened 1U4G_PDB; those are photograph observations, not page facts,
+// and stay out of this row. The page has no host LAN; its network is the two slots.
+data asrock_rack_mecai_gh200: SuperchipServerCatalogRow = SuperchipServerCatalogRow {
+  vendor: asrock_rack,
+  model: "MECAI-GH200",
+  form_factor: "2U NVIDIA MGX",
+  dimensions: Present { value: ChassisDimensions { width: millimeter(count: 420), depth: millimeter(count: 438), height: millimeter(count: 87) } },
+  supported_superchips: [nvidia_gh200_480gb_catalog],
+  announced_superchips: [nvidia_gh200_624gb_hbm3e_catalog],
+  module_power_ceiling: watt(count: 1000),
+  carrier: Present { value: asrock_rack_arlington_mb },
+  power_supplies: ServerPowerSupplies {
+    form: "CRPS, 80-PLUS Titanium",
+    count: 2,
+    redundancy: SuppliesOnePlusOne,
+    output_ratings: [
+      SupplyOutputRating { input: Present { value: SupplyInputRange { minimum_vac: 100, maximum_vac: 127 } }, output: watt(count: 1000) },
+      SupplyOutputRating { input: Present { value: SupplyInputRange { minimum_vac: 200, maximum_vac: 240 } }, output: watt(count: 2000) },
+    ],
+  },
+  management: Present { value: ServerManagementController { bmc: "ASPEED AST2600", dedicated_management_lan: "Realtek RTL8211F, 1 dedicated IPMI GbE port" } },
+  host_network: [],
+  storage_bays: [
+    StorageBay { count: 2, form_factor: "E1.S, 9.5 mm width", link: Present { value: PcieLink { generation: Gen5, lane_count: 4 } }, placement: "front" },
+    StorageBay { count: 2, form_factor: "M.2 M-key 22110/2280", link: Present { value: PcieLink { generation: Gen5, lane_count: 4 } }, placement: "internal" },
+  ],
+  expansion_slots: [
+    ExpansionSlot { count: 1, mechanical: "HHHL single-slot", link: PcieLink { generation: Gen5, lane_count: 16 }, intended_for: Present { value: "NVIDIA ConnectX-7 NICs" } },
+    ExpansionSlot { count: 1, mechanical: "FHHL dual-slot", link: PcieLink { generation: Gen5, lane_count: 16 }, intended_for: Present { value: "NVIDIA BlueField-3 DPUs" } },
+  ],
+  front_panel: [
+    FrontPanelPort { count: 1, connector: "Mini DisplayPort", function: Present { value: "VGA" } },
+    FrontPanelPort { count: 1, connector: "Micro USB", function: Present { value: "COM" } },
+    FrontPanelPort { count: 1, connector: "USB Type-A", function: Present { value: "USB3.2 Gen1" } },
+    FrontPanelPort { count: 3, connector: "button", function: Present { value: "Reset, UID w/LED, Power w/LED" } },
+  ],
+  fans: Present { value: "6 PWM hot-swap 60x76 mm (the product page says fixed)" },
+  operating_temperature: Present { value: TemperatureRange { minimum: celsius(count: 10), maximum: celsius(count: 35) } },
+  non_operating_temperature: Present { value: TemperatureRange { minimum: celsius(count: 0 - 40), maximum: celsius(count: 70) } },
+  non_operating_humidity: Present { value: HumidityRange { minimum_percent: 20, maximum_percent: 90, condition: "non-condensing" } },
+  figure_standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}

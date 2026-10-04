@@ -3,9 +3,9 @@ module gunbc.spark.model_snapshot_materialize
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
 import std.content_hash { content_hash_atom }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.algebra { trim }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -13,6 +13,8 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import extdeps.exec.command { shell_quote }
+import extdeps.ssh.session { ssh_client_error_exit_status }
+import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began }
 import gunbc.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
 }
@@ -60,7 +62,68 @@ type SparkMaterializeContext {
 
 type SparkRemoteRun
   = RemoteRan { exit_code: Int, stdout: String, stderr: String }
-  | RemoteUnreachable { cause: String }
+  | RemoteUnreachable { cause: String, reach: SparkLegUnreachability }
+
+// WHY A LEG'S RESULT DID NOT ARRIVE, TYPED, AND THE TWO CLAIMS IT DOES NOT MAKE. Every Spark reaches
+// the executor only over its management Wi-Fi (wlP9s9). On 2026-10-03 that link went dark on srv8 and
+// Group B spark-3336 (NetworkManager left it DISCONNECTED after a failed 4-way handshake) and srv7
+// stayed associated but forwarded nothing 05:33-06:53 EDT; none of the hosts rebooted or wedged, yet
+// the runs reported them as down.
+//
+//   LegNotAttempted     -- nothing was sent: no endpoint, an inexpressible command, a refused password
+//                          prerequisite. The only arm that may be read as "did not run".
+//   LegBeginUnobserved  -- ssh exited with its own 255 and the remote shell's began-line
+//                          (gunbc.spark.remote_leg_began remote_leg_began_word) never ARRIVED. That is not "never began": the
+//                          marker and the command travel in one unacknowledged stream, so the path can
+//                          go dark after the shell wrote the marker, or after the command started,
+//                          before the marker reached the client. The command MAY HAVE RUN.
+//
+// FIRST CLAIM NOT MADE: "host down". From one leg the executor cannot tell a dark LAN leg from a host
+// that is off (DESIGN §4d), so there is no HostDown arm. The FIRST settling readback is a probe of the
+// host's fabric-rail address (enp1s0f1np1, 192.168.110.x) from a same-group peer: rail answers -> LAN
+// dark, host up; rail dark too -> host down or both links down, still undecided. Uptime and the wlP9s9
+// NetworkManager journal come after, since they need a session. This is how the 2026-10-03 incident
+// was closed by hand, as LAN-dark every time.
+//
+// SECOND CLAIM NOT MADE: "did not run". spark_remote_argv_run projects LegBeginUnobserved to
+// ArgvLegMayHaveRun, never ArgvLegDidNotRun, so an effect consumer reads the host back before retrying
+// a non-idempotent effect.
+//
+// NEXT RUNGS, not built here: (1) a two-phase protocol -- the client receives an acknowledgement before
+// it sends the effect command -- after which a NeverBegan arm is supportable; (2) an automatic
+// rail-jump classifier with its own consumer, splitting LegBeginUnobserved into LAN-dark-host-up vs
+// rail-also-dark.
+type SparkLegUnreachability
+  = LegNotAttempted { cause: String }
+  | LegBeginUnobserved { endpoint: String, stderr: String }
+
+fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
+  match u {
+    LegNotAttempted { cause: c } => c
+    LegBeginUnobserved { endpoint: e, stderr: err } =>
+      join([
+        "the ssh leg to ", e, " lost its session before the remote began-line arrived (ssh exit 255): the command MAY HAVE RUN; ",
+        "management LAN leg dark or host down, UNDECIDED from this leg -- settle it first by probing the host's fabric-rail address ",
+        "from a same-group peer, then uptime and the wlP9s9 journal; stderr=",
+        err,
+      ], "")
+  }
+}
+
+fn spark_remote_unreachable(u: SparkLegUnreachability) -> SparkRemoteRun {
+  RemoteUnreachable { cause: spark_leg_unreachability_text(u: u), reach: u }
+}
+
+// THE READING OF ONE LANDED SESSION RESULT, pure so a witness can supply the result rather than a
+// host. 255 with no began-line received is LegBeginUnobserved (may have run); 255 WITH a began-line
+// is a command that ran (or a session lost after it began) and is reported as ran.
+fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String, stderr: String) -> SparkRemoteRun {
+  if exit_code == ssh_client_error_exit_status && !remote_leg_reported_began(stdout: stdout) {
+    spark_remote_unreachable(u: LegBeginUnobserved { endpoint: endpoint, stderr: trim(s: stderr) })
+  } else {
+    RemoteRan { exit_code: exit_code, stdout: remote_leg_stdout_without_began(stdout: stdout), stderr: trim(s: stderr) }
+  }
+}
 
 // EVERY LEG IS PRIVILEGED, BECAUSE THE DAEMON IT MUST REACH IS. Acquisition drives docker on the
 // target, and docker's socket is root-owned on these hosts -- an unprivileged run answers
@@ -78,10 +141,10 @@ type SparkRemoteRun
 // so this module and the grant installer can no longer disagree about how briansrls is reached.
 fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRemoteRun {
   match portable_remote_words(raws: ["sudo", "-S", "sh", "-s"]) {
-    Absent => RemoteUnreachable { cause: "the remote invocation is not expressible as portable remote words" }
+    Absent => spark_remote_unreachable(u: LegNotAttempted { cause: "the remote invocation is not expressible as portable remote words" })
     Present { value: words } =>
       match spark_reach_endpoint(host: ctx.host, path: ctx.path) {
-        Absent => RemoteUnreachable { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") }
+        Absent => spark_remote_unreachable(u: LegNotAttempted { cause: join(["no ", spark_reach_path_wire(p: ctx.path), " endpoint for ", ctx.host as String], "") })
         Present { value: endpoint } =>
           match exec_as_fleet_principal_trusting_with_stdin(
             trust: ctx.trust,
@@ -90,12 +153,12 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
               principal: fleet_bootstrap_principal_login(),
             },
             words: words,
-            stdin_payload: join([ctx.admin_credential as String, "\n", shell_command_line(argv: argv), "\n"], ""),
+            stdin_payload: join([ctx.admin_credential as String, "\n", remote_leg_began_payload_line(), shell_command_line(argv: argv), "\n"], ""),
             credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
           ) {
-            FleetPrincipalLegRefused { cause: why } => RemoteUnreachable { cause: why as String }
+            FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
             FleetPrincipalLegRan { session: _, result: r } =>
-              RemoteRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+              spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
           }
       }
   }
@@ -312,7 +375,7 @@ fn read_instrument_failed_claim(exit_code: Int) -> InstrumentReading {
 // engine launch on a partial checkpoint.
 fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: ["test", "-d", subject.install_path as String]) {
-    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
     RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
       if present != 0 {
         AcquisitionAbsent
@@ -350,7 +413,7 @@ fn spark_snapshot_observe(ctx: SparkMaterializeContext, verify: List<String>, su
 // distinction, at which point this arm may narrow to the digest claim it currently declines to make.
 fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<String>) -> AcquisitionObservation {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
-    RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       match read_instrument(exit_code: code, stdout: out) {
         InstrumentDidNotRun =>
@@ -366,7 +429,7 @@ fn spark_snapshot_verify_observation(ctx: SparkMaterializeContext, verify: List<
 
 fn spark_snapshot_ensure_parent(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
   }
 }
@@ -466,7 +529,7 @@ type SparkTransferState
 
 fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> SparkTransferState {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ActiveState", "--value"]) {
-    RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+    RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
     RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
       if state == "active" || state == "activating" || state == "deactivating" {
         TransferRunning
@@ -474,7 +537,7 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
         TransferAbsent
       } else {
         match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=ExecMainStatus", "--value"]) {
-          RemoteUnreachable { cause: c } => TransferStateUnreadable { cause: c }
+          RemoteUnreachable { cause: c, reach: _ } => TransferStateUnreadable { cause: c }
           RemoteRan { exit_code: _, stdout: code, stderr: _ } =>
             if trim(s: code) == "0" { TransferExitedClean } else { TransferExitedFailed { status: trim(s: code) } }
         }
@@ -494,7 +557,7 @@ fn spark_transfer_state(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
 // place a reader will believe.
 fn spark_transfer_clear(ctx: SparkMaterializeContext, subject: AcquisitionSubject) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", spark_transfer_unit_for(subject: subject) as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => true
   }
 }
@@ -544,7 +607,7 @@ fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionS
     ],
     executor_wrap(executor: ctx.executor, argv: argv),
   )) {
-    RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => TransferStartUnreachable { cause: c as NonEmptyStr }
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
       if e == 0 {
         TransferStarted
@@ -664,7 +727,7 @@ fn spark_snapshot_after_transfer(ctx: SparkMaterializeContext, verify: List<Stri
 
 fn spark_verify_after_transfer(ctx: SparkMaterializeContext, verify: List<String>, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   match spark_remote_run(ctx: ctx, argv: executor_wrap(executor: ctx.executor, argv: verify)) {
-    RemoteUnreachable { cause: c } =>
+    RemoteUnreachable { cause: c, reach: _ } =>
       AttemptTerminal { outcome: AcquisitionRefused { cause: VerifyMechanismFailed {
         identity: subject.identity, source: origin.identity, reason: c as NonEmptyStr,
       } } }
@@ -771,9 +834,17 @@ fn spark_materialize_seed(
 // declares that container as host-effect residue, and the fleet agent cannot read the docker socket,
 // so the lane hands this leg to gunbc.spark.host_commitment release_host_effect_live_over /
 // host_effect_recover_over and its release observes with the privilege its effect used.
+// THE PROJECTION, and the arm it must not take: only a leg that sent nothing is ArgvLegDidNotRun.
+fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -> ArgvRun {
+  match reach {
+    LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
+    LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
+  }
+}
+
 fn spark_remote_argv_run(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: why } => ArgvLegDidNotRun { cause: why as String }
+    RemoteUnreachable { cause: why, reach: r } => spark_argv_run_of_unreachable(cause: why, reach: r)
     RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
   }
 }

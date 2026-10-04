@@ -3,7 +3,7 @@ module test.claim.runner.runner_microvm_ci_admission_witness_test
 import std.types { Bool, NonEmptyStr, String }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
 import product.fabric.sanitation { CellId }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric_executor_class { ExecutorSanctioned, ExecutorUnclassified, fleet_cell_sanction }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, srv3_fabric_first_slot, workspace_execution_slot_identities, gunbc_runner_slot_desired_for }
