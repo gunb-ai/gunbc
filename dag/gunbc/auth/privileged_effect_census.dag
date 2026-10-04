@@ -288,6 +288,28 @@ fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
   )
 }
 
+// ROTATION ROUTE QUALIFICATION (cut O1a). Grounding a controller's account-write route is its own
+// effect, separate from the rotation Apply that consumes the route: one executed account-write
+// request per controller and build. IRREVERSIBLE, AND SAID SO: an account write over an unqualified
+// route can leave an account enabled holding a password nobody stored, and the exposure window it
+// opens is not undone by a reapply (artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, steps
+// b1 and b1r). It applies a credential to one controller account, so its reach is one resource. No
+// dispatched run carries it: in this cut it is modeled, with a dry realization only. The realization
+// takes an operator-approved capability (gunbc.auth.approval_broker Redemption) bound to the exact
+// controller, build and request, which is what the selection is expected to return.
+fn route_qualification_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "qualify a BMC account-write route: execute one account-write request on one controller at one firmware build and read it back" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "an account write over an unqualified route can leave an account enabled holding an unstored password; the exposure window is not undone by a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries route qualification; in cut O1a it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
 // A row's reversibility can depend on a fact about the world rather than about the call: the boot
 // above is reversible by reapply only while nobody is working on the unit. That condition is not a
@@ -596,6 +618,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedRunSelected,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    effect: route_qualification_effect(),
+    realized: RealizedApprovalCapability,
     divergence_reason: none,
   },
   PrivilegedEffectSite {

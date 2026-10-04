@@ -10,10 +10,12 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
 import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
@@ -269,6 +271,8 @@ type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
   | AllocationPageHandler
+  | AllocationListHandler
+  | AllocationGetHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
@@ -349,6 +353,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations.json", handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations/\{allocation_id\}", handler: AllocationGetHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -378,9 +384,9 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
-    ServedRouteSpec { method: GET, raw: "/auth/login", handler: AuthLoginHandler },
+    ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
     ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
-    ServedRouteSpec { method: POST, raw: "/auth/logout", handler: AuthLogoutHandler },
+    ServedRouteSpec { method: POST, raw: auth_logout_route_path, handler: AuthLogoutHandler },
     ServedRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     ServedRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     ServedRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
@@ -1292,6 +1298,8 @@ fn roadmap_serve_invoke_over(
       ))
     }
     AllocationPageHandler => allocation_page_response(request: request)
+    AllocationListHandler => workspace_route_list(request: request)
+    AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
