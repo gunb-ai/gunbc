@@ -158,11 +158,11 @@ type TypeDeclIndex {
 }
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
-// `String`, `Int` and `Bool` are kernel spellings (std.types is_kernel_type), and resolve leaves a
+// `String` and `Int` are kernel spellings (std.types is_kernel_type), and resolve leaves a
 // kernel-spelled reference unstamped on purpose (v1.compiler.infer_resolve
 // reference_with_declaration: it names no corpus declaration). The corpus ALSO declares those
 // leaves, in more than one module (v2.std.text and v2.std.node String, std.integer and
-// v2.std.integer Int, std.types and v2.std.logic Bool), so the spelling arm cannot say which, and
+// v2.std.integer Int), so the spelling arm cannot say which, and
 // refusing would refuse every record with a String field. Which representation a kernel-spelled
 // position denotes is the text-boundary question (DESIGN section 4, gunbc.rung_drop
 // text_boundary_identity_wall), not one this index can answer; it reports the state and its readers
