@@ -33,9 +33,12 @@ import extdeps.docker.cli { docker_image_inspect_names_no_such_image, docker_ima
 // its own shape: its migration onto this entry is a named follow-up, triggered by the snapshot path
 // carrying per-file populations.
 //
-// EVERY HOST SEEDS. Rail replication is a declared unbuilt transport (spark_materialize_member refuses
-// a replica role by name), so each Group A host acquires from the Hub, or adopts what is already in its
-// cache -- a host that still holds the FP8 snapshot from Group A's old serve verifies it and moves nothing.
+// ONE SEED, THE REST RAIL REPLICAS. The checkpoint's seed host is a modeled fact
+// (gunbc.spark.arm_group_launch_dispatch glm53_checkpoint_seed_host): only the seed fetches from the Hub;
+// every other Group A host replicates the seed's verified snapshot over the fabric rail
+// (gunbc.spark.snapshot_rail_replica replicate_snapshot_over_rail) or refuses with the seed's exact verify
+// cause -- there is no Hub fallback (checkpoint_materialize_work below). A host whose own snapshot already
+// verifies adopts it and moves nothing.
 //
 // THE HUB CLI RUNS INSIDE A RUNTIME IMAGE, because no Spark has it on the host (the executor's own
 // record). WHICH image is the caller's: any produced image whose receipt is recorded (its tag and its
