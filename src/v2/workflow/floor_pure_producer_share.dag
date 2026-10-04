@@ -572,8 +572,17 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // the one claim demanding a nullary producer that roster had warmed.
 // Five more were added from probe 37186494805, for the six rows gunbc#13060 added to the hand roster
 // (v2.test.claim.algebra_operator_derivation), on the same ground.
+// Four more were added from the probe pair 37204679518 against 37204680949 (main 072c37b6cf): claims
+// over budget only without the roster after main's corpus moved, each in a module with a producer
+// only it demands.
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.callexec.synthetic_facts_key_collision",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "sfk_the_separation_is_not_specific_to_one_fixture_holds", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.algebra_operator_derivation",
     claims: [
@@ -848,6 +857,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.kernel_value_type_roster_witness_test",
     claims: [
+      SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_an_int_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds", standing: ActiveFillDebt }
@@ -894,6 +904,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.field_projection.field_projection_stages",
     claims: [
+      SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_projects_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_qualified_declaration_path_resolves_holds", standing: ActiveFillDebt },
@@ -1214,6 +1225,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.execution.infer_declaration_formation",
     claims: [
+      SingleClaimFillDebtClaim { claim: "an_authored_empty_record_is_not_grounded_by_the_opaque_rule_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_payloadless_coproduct_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt }
     ]
