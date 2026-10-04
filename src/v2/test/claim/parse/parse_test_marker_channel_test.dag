@@ -1,5 +1,7 @@
 module test.claim.parse_test_marker_channel
 
+import test.claim.parse_test_declaration_choice_route { route_parse_at }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE DESIGN SECTION 4c OBLIGATION, READ AT ONE INTERFACE: the `test` marker is captured on a
@@ -108,12 +110,16 @@ fn test_marker_inner_declaration(shell: Node) -> Optional<Node> {
   }
 }
 
-// The marked shell of `projection_source` against the declaration inside it.
+// THE SHELL CLAIM READS ONE DECLARATION, SO IT PARSES ONE: the marked declaration of
+// projection_source, entered at the item production (the projection's readers take the parse tree
+// they are given; a module parse of both declarations paid for one this claim never reads).
+data marked_declaration_source: String = "test data w: Bool = true\n"
+
 fn test_marker_shell_agrees_with_its_declaration() -> Optional<Bool> {
-  match test_marker_projection_parsed() {
+  match route_parse_at(text: marked_declaration_source, production: ^dag_production_top_level_item) {
     Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: artifact, diagnostics: _ } =>
-      match test_marker_find_emitted(n: artifact.tree, emitted: ^dag_surface_test_fn_decl) {
+    Accepted { value: tree, diagnostics: _ } =>
+      match test_marker_find_emitted(n: tree, emitted: ^dag_surface_test_fn_decl) {
         Absent => optional_absent()
         Present { value: shell } =>
           match test_marker_inner_declaration(shell: shell) {
@@ -149,15 +155,11 @@ fn test_marker_gather_data_decls(n: Node, acc: TestMarkerDeclarationPair) -> Tes
   }
 }
 
-// ONE SOURCE AND ONE PRODUCER FOR BOTH PROJECTION CLAIMS: the real parse of `projection_source`,
-// read by the 4c equality (the marked shell against the declaration inside it) AND by its
-// discrimination control (the two declarations of that same module against each other). WHAT IS
-// SHARED IS THE SOURCE LITERAL, THIS PRODUCER AND THE FIXTURE SHAPE, NOT A MATERIALIZED PARSE: the
-// runner's claim frames are isolated, so each claim recomputes this parse, twice across the pair,
-// until a controlled measurement justifies enrolling it. It carries NO warm-share row: a row's admission is decided by the
-// required floor's shared-fill ledger and claim-cost table, and gunbc#11742 took those lanes off the
-// merge path, so no figure for one could be produced on any head. A row can be added when the lanes
-// return and can measure it.
+// THE DISCRIMINATION CONTROL'S PRODUCER: the real parse of `projection_source`, whose two
+// declarations are lowered against each other. The 4c equality reads only the marked declaration and
+// parses only that (marked_declaration_source, the same text). Each claim pays its own parse; there is
+// no warm-share row, because bundling distinct parses into one fill only moves each claim's cost
+// into preparation.
 fn test_marker_projection_parsed() -> Outcome<ParseArtifact> {
   test_marker_parsed(src: projection_source, file: ^test_marker_projection_subject)
 }
