@@ -10763,6 +10763,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               span: ar_typed.span,
               module_name: scope.module_name
             )]
+          } else if nominal_product_inhabitance_refusal(
+              declared: with_required_cardinality(n: expected_node), produced: got_node, scope: scope) != none {
+            [make_error_node(
+              diagnostic: DeclaredTypeNotInhabited {
+                position: declared_type_position_label(position: PositionRecordLiteralField, subject: fi_name),
+                expected: obligation_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+                got: obligation_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
+                span: ar_typed.span
+              },
+              module_name: scope.module_name
+            )]
           } else if expected_node.return_cardinality != CardOptional
             && coproduct_payload_where_parent_required(
               formal: formal_peeled, actual: actual_peeled, scope: scope) {
