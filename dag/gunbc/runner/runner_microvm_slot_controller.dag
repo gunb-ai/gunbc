@@ -818,6 +818,8 @@ fn workspace_commissioning_slot_refused(reason: String) -> SlotControllerOutcome
   SlotControllerRefused { refusal: WorkloadAdmissionRefused { detail: concat("commissioning: ", reason) } }
 }
 
+// The directive names its owner; only an enrolled owner's ledger is reread, and the reread
+// ledger -- not the directive -- must carry the planned allocation.
 fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
   match workspace_launch_directive_from_text(text: text) {
     WorkspaceLaunchDirectiveRefused { reason } => workspace_slot_refused(reason: reason)
@@ -827,8 +829,6 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
         MicrovmHostBindingRefused { cause: c } => SlotControllerRefused { refusal: SlotHostBindingRefused { cause: c } }
         MicrovmHostBound { spec: _, host: _ } => {
           let store = fabric_state_storage_binding()
-          // The directive names its owner; only an enrolled owner's ledger is reread, and the
-          // reread ledger -- not the directive -- must carry the planned allocation.
           match workspace_owner_enrollment(policy: workspace_authorization_policy(), owner: directive.allocation.request.owner) {
             Absent => workspace_slot_refused(reason: "workspace directive owner is not enrolled by the installed allocation policy")
             Present { value: enrollment } => match workspace_read_owner(store: store, owner: enrollment.principal) {
