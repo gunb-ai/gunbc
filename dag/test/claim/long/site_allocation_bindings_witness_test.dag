@@ -5,30 +5,33 @@ import gunbc.site.client_bindings { client_program_free_names }
 import gunbc.roadmap_allocation_client { allocation_client_program }
 import extdeps.languages.typescript.program { TsProgram, Const }
 
-// The actual producer, not an isomorphic fixture: remove its declaration to reproduce
-// the observed defect. Scope is browser globals plus JS literals represented as Ident
-// by the existing AST. Application identifiers are never admitted as platform names.
-fn allocation_free_names_without_session(remove_session: Bool) -> List<String> {
-  let program = allocation_client_program()
+// These are separate served scripts. Each must close over its own declarations and
+// browser globals, rather than accidentally borrowing a declaration from the other.
+data client_platform_names: List<String> = ["String", "encodeURIComponent", "Map", "Uint8Array", "crypto", "btoa", "setInterval", "Array", "CustomEvent", "AudioContext", "document", "window", "localStorage", "fetch", "Promise", "Error", "JSON", "Math", "Date", "console", "setTimeout", "clearTimeout", "true", "false", "null", "undefined"]
+
+// The actual session owner, not an isomorphic fixture: remove its declaration to
+// reproduce the observed defect. Application names are never platform names.
+fn shell_free_names_without_session(remove_session: Bool) -> List<String> {
+  let program = site_client_program()
   client_program_free_names(program: TsProgram {
     ts_nocheck: program.ts_nocheck,
     header_lines: program.header_lines,
-    statements: filter(concat(site_client_program().statements, program.statements), s => match s {
+    statements: filter(program.statements, s => match s {
       Const { name, value: _ } => !(remove_session && name == "gunbcSessionRead")
       _ => true
     }),
-  }, platform_names: ["Array", "CustomEvent", "AudioContext", "document", "window", "localStorage", "fetch", "Promise", "Error", "JSON", "Math", "Date", "console", "setTimeout", "clearTimeout", "true", "false", "null", "undefined"])
+  }, platform_names: client_platform_names)
 }
 
 test fn allocation_client_has_no_unbound_names() -> Bool {
-  allocation_free_names_without_session(remove_session: false) == []
+  client_program_free_names(program: allocation_client_program(), platform_names: client_platform_names) == []
+}
+
+test fn shell_client_has_no_unbound_names() -> Bool {
+  shell_free_names_without_session(remove_session: false) == []
 }
 
 test fn deleting_session_binding_is_detected_in_real_program() -> Bool {
-  let names = allocation_free_names_without_session(remove_session: true)
+  let names = shell_free_names_without_session(remove_session: true)
   any(names, n => n == "gunbcSessionRead")
-}
-
-fn allocation_binding_diagnostics() -> List<String> {
-  allocation_free_names_without_session(remove_session: false)
 }

@@ -6,6 +6,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
@@ -87,7 +88,7 @@ fn workspace_request_admit(
     GoogleOidcSession { session } => {
       let decision = workspace_write_admission(security: security, owner: session.principal,
         policy: policy, deployment_policy: deployment_policy, observed_at: observed_at,
-        route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: csrf_presented)
+        route_path: allocation_page_path, action: ServeActionCreateAllocation, csrf_presented: csrf_presented)
       match decision {
         Permit =>
           if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: expires_at) { WorkspaceRequestPolicyRefused { reason: "canonical UTC lease instants required" } }
@@ -103,8 +104,8 @@ fn workspace_request_admit(
         Deny { refusal: r } => WorkspaceRequestAdmissionRefused { decision: Deny { refusal: r } }
       }
     }
-    FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
-    SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
-    AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: allocation_page_path, action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
   }
 }

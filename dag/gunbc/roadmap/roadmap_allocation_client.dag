@@ -2,59 +2,329 @@ module gunbc.roadmap_allocation_client
 
 import std.types { String, List }
 import extdeps.languages.typescript.program {
-  TsExpr, TsStmt, TsProgram, serialize_typescript_program, ts_ident, ts_lit_str, ts_member,
-  ts_call, ts_arrow, ts_block, ts_const, ts_return, ts_expr_stmt, ts_if,
-  ts_prefix, ts_binop, ts_array,
+  TsExpr, TsStmt, TsProgram, serialize_typescript_program, ts_ident, ts_lit_str, ts_lit_num, ts_member,
+  ts_call, ts_new, ts_arrow, ts_block, ts_const, ts_let, ts_return, ts_expr_stmt, ts_if, ts_try,
+  ts_prefix, ts_binop, ts_cond, ts_object, ts_field, ts_quoted_field, ts_spread, ts_for_of,
 }
 
-import gunbc.site.session_client { session_read_bind_statements }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
+import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
 
-import gunbc.site.controls { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
+fn js_id(name: String) -> TsExpr { ts_ident(name: name) }
+fn js_get(object: TsExpr, property: String) -> TsExpr { ts_member(object: object, property: property) }
+fn js_send(object: TsExpr, method: String, args: List<TsExpr>) -> TsExpr { ts_call(callee: ts_member(object: object, property: method), args: args) }
+fn js_set(target: TsExpr, value: TsExpr) -> TsStmt { ts_expr_stmt(expr: ts_binop(left: target, op: "=", right: value)) }
+fn js_do(expr: TsExpr) -> TsStmt { ts_expr_stmt(expr: expr) }
+fn js_fn(params: List<String>, stmts: List<TsStmt>) -> TsExpr { ts_arrow(params: params, body: ts_block(stmts: stmts)) }
+fn js_ret(expr: TsExpr) -> TsStmt { ts_return(expr: Present { value: expr }) }
+fn js_then(promise: TsExpr, handler: TsExpr) -> TsExpr { js_send(object: promise, method: "then", args: [handler]) }
+fn js_element(id: String) -> TsExpr { js_send(object: js_id(name: "document"), method: "getElementById", args: [ts_lit_str(value: id)]) }
+fn js_create(tag: String) -> TsExpr { js_send(object: js_id(name: "document"), method: "createElement", args: [ts_lit_str(value: tag)]) }
+fn js_text(target: TsExpr, value: TsExpr) -> TsStmt { js_set(target: js_get(object: target, property: "textContent"), value: value) }
+fn js_plus(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "+", right: right) }
+fn js_status(value: TsExpr) -> TsStmt { js_text(target: js_id(name: "allocationStatus"), value: value) }
 
-fn allocation_element(id: String) -> TsExpr {
-  ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"), args: [ts_lit_str(value: id)])
-}
+fn js_lit(value: String) -> TsExpr { ts_lit_str(value: value) }
+fn js_eq(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "===", right: right) }
+fn js_and(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "&&", right: right) }
+fn js_or(left: TsExpr, right: TsExpr) -> TsExpr { ts_binop(left: left, op: "||", right: right) }
+fn js_not(expr: TsExpr) -> TsExpr { ts_prefix(op: "!", expr: expr) }
+fn js_invoke(name: String, args: List<TsExpr>) -> TsExpr { ts_call(callee: js_id(name: name), args: args) }
+fn js_when(cond: TsExpr, stmts: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then: ts_block(stmts: stmts), else_stmt: none) }
+fn js_branch(cond: TsExpr, then: List<TsStmt>, otherwise: List<TsStmt>) -> TsStmt { ts_if(cond: cond, then: ts_block(stmts: then), else_stmt: Present { value: ts_block(stmts: otherwise) }) }
+fn js_quiet(stmts: List<TsStmt>) -> TsStmt { ts_try(body: ts_block(stmts: stmts), catch_param: "error", handler: ts_block(stmts: [])) }
+fn js_typeof(expr: TsExpr, kind: String) -> TsExpr { js_eq(left: ts_prefix(op: "typeof ", expr: expr), right: js_lit(value: kind)) }
 
-fn allocation_value(id: String) -> TsExpr {
-  ts_member(object: allocation_element(id: id), property: "value")
-}
-
-// Browser validation and review affect only a local draft. No fetch, storage, or admission.
-fn allocation_draft_statements() -> List<TsStmt> {
+// THE PENDING INTENT is the exact request a click means -- its idempotency key AND the profile it
+// names -- captured and persisted BEFORE the POST, and settled only by a readable snapshot that
+// carries that key and that profile. A lost or unreadable response, a fetch that never reached the
+// server, a refusal and a reload all leave it in place, so the next click repeats the SAME request
+// (same key, same size) and the server answers the allocation it already recorded rather than a
+// second one; the initial list settles it when that allocation is already there. The key is unpadded
+// base64url (RFC 4648 section 5) over 16 random bytes: 22 characters, inside the alphabet and the
+// length gunbc.workspace_allocation workspace_allocation_id_of admits. Storage that throws (a private
+// window) degrades to an intent held for the page's life, still never a fresh key per retry.
+fn allocation_key_statements() -> List<TsStmt> {
   [
-      ts_const(name: "allocationForm", value: allocation_element(id: "allocation-draft")),
-      ts_const(name: "allocationReview", value: ts_arrow(params: [], body: ts_block(stmts: [
-        ts_if(cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "reportValidity"), args: [])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
-        ts_expr_stmt(expr: ts_binop(left: ts_member(object: allocation_element(id: "allocation-summary"), property: "textContent"), op: "=", right: ts_call(callee: ts_member(object: ts_array(elements: [
-            ts_lit_str(value: "Draft: "), allocation_value(id: "allocation-cpu"), ts_lit_str(value: " vCPU · "),
-            allocation_value(id: "allocation-memory"), ts_lit_str(value: " GiB RAM · "),
-            allocation_value(id: "allocation-disk"), ts_lit_str(value: " GiB disk · "),
-            allocation_value(id: "allocation-hours"), ts_lit_str(value: " hours. No resources reserved."),
-          ]), property: "join"), args: [ts_lit_str(value: "")]))),
-      ]))),
-      ts_expr_stmt(expr: ts_call(callee: ts_member(object: allocation_element(id: "allocation-review"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_ident(name: "allocationReview")])),
-      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "addEventListener"), args: [ts_lit_str(value: "submit"), ts_arrow(params: ["event"], body: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "event"), property: "preventDefault"), args: [])),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "allocationReview"), args: [])),
-      ]))])),
-      ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "allocationForm"), property: "addEventListener"), args: [ts_lit_str(value: "input"), ts_arrow(params: [], body: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_binop(left: ts_member(object: allocation_element(id: "allocation-summary"), property: "textContent"), op: "=", right: ts_lit_str(value: "Size changed. Review your updated draft."))),
-      ]))])),
+    ts_const(name: "allocationIntentStore", value: js_lit(value: "gunbc.allocation.pending-intent")),
+    ts_let(name: "allocationHeldIntent", value: js_id(name: "null")),
+    ts_const(name: "allocationMintKey", value: js_fn(params: [], stmts: [
+      ts_const(name: "bytes", value: ts_new(callee: js_id(name: "Uint8Array"), args: [ts_lit_num(text: "16")])),
+      js_do(expr: js_send(object: js_id(name: "crypto"), method: "getRandomValues", args: [js_id(name: "bytes")])),
+      js_ret(expr: js_send(object: js_send(object: js_send(object: js_invoke(name: "btoa", args: [
+          js_send(object: js_id(name: "String"), method: "fromCharCode", args: [ts_spread(expr: js_id(name: "bytes"))])]),
+        method: "replaceAll", args: [js_lit(value: "+"), js_lit(value: "-")]),
+        method: "replaceAll", args: [js_lit(value: "/"), js_lit(value: "_")]),
+        method: "replaceAll", args: [js_lit(value: "="), js_lit(value: "")])),
+    ])),
+    ts_const(name: "allocationIntentShape", value: js_fn(params: ["intent"], stmts: [
+      js_ret(expr: js_and(left: js_and(left: js_and(left: js_id(name: "intent"), right: js_typeof(expr: js_id(name: "intent"), kind: "object")),
+        right: js_typeof(expr: js_get(object: js_id(name: "intent"), property: "key"), kind: "string")),
+        right: js_typeof(expr: js_get(object: js_id(name: "intent"), property: "profile"), kind: "string"))),
+    ])),
+    ts_const(name: "allocationPending", value: js_fn(params: [], stmts: [
+      js_when(cond: js_not(expr: js_id(name: "allocationHeldIntent")), stmts: [
+        js_quiet(stmts: [
+          ts_const(name: "stored", value: js_send(object: js_id(name: "JSON"), method: "parse", args: [js_or(left: js_send(object: js_id(name: "localStorage"), method: "getItem", args: [js_id(name: "allocationIntentStore")]), right: js_lit(value: "null"))])),
+          js_when(cond: js_invoke(name: "allocationIntentShape", args: [js_id(name: "stored")]), stmts: [
+            js_set(target: js_id(name: "allocationHeldIntent"), value: ts_object(fields: [ts_field(key: "key", value: js_get(object: js_id(name: "stored"), property: "key")), ts_field(key: "profile", value: js_get(object: js_id(name: "stored"), property: "profile"))])),
+          ]),
+        ]),
+      ]),
+      js_ret(expr: js_id(name: "allocationHeldIntent")),
+    ])),
+    ts_const(name: "allocationBeginIntent", value: js_fn(params: ["profile"], stmts: [
+      ts_const(name: "prior", value: js_invoke(name: "allocationPending", args: [])),
+      js_when(cond: js_id(name: "prior"), stmts: [js_ret(expr: js_id(name: "prior"))]),
+      js_set(target: js_id(name: "allocationHeldIntent"), value: ts_object(fields: [ts_field(key: "key", value: js_invoke(name: "allocationMintKey", args: [])), ts_field(key: "profile", value: js_id(name: "profile"))])),
+      js_quiet(stmts: [js_do(expr: js_send(object: js_id(name: "localStorage"), method: "setItem", args: [js_id(name: "allocationIntentStore"), js_send(object: js_id(name: "JSON"), method: "stringify", args: [js_id(name: "allocationHeldIntent")])]))]),
+      js_ret(expr: js_id(name: "allocationHeldIntent")),
+    ])),
+    ts_const(name: "allocationSettleIntent", value: js_fn(params: [], stmts: [
+      js_set(target: js_id(name: "allocationHeldIntent"), value: js_id(name: "null")),
+      js_quiet(stmts: [js_do(expr: js_send(object: js_id(name: "localStorage"), method: "removeItem", args: [js_id(name: "allocationIntentStore")]))]),
+    ])),
   ]
 }
 
-fn allocation_draft_source() -> String {
-  serialize_typescript_program(p: TsProgram { ts_nocheck: false, header_lines: [], statements: allocation_draft_statements() })
+fn js_result(property: String) -> TsExpr { js_get(object: js_id(name: "result"), property: property) }
+fn js_body(property: String) -> TsExpr { js_get(object: js_result(property: "body"), property: property) }
+
+// A RESPONSE IS TWO FACTS: its HTTP status and whether its body was readable JSON. Every caller
+// reads both, so an unreadable 200 is never a snapshot, and a fetch that never completed is its own
+// result (status 0, unreadable). A snapshot counts only when it is a readable 200 object carrying the
+// id that was asked for; a list only when it is a readable 200 array. A readable refusal shows the
+// server's reason (with its cause); the typed unavailable answer also disables the write controls,
+// because retrying cannot change it.
+fn allocation_request_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "allocationRead", value: js_fn(params: ["response"], stmts: [
+      js_ret(expr: js_send(object: js_send(object: js_id(name: "response"), method: "json", args: []), method: "then", args: [
+        js_fn(params: ["body"], stmts: [js_ret(expr: ts_object(fields: [ts_field(key: "status", value: js_get(object: js_id(name: "response"), property: "status")), ts_field(key: "readable", value: js_id(name: "true")), ts_field(key: "body", value: js_id(name: "body"))]))]),
+        js_fn(params: [], stmts: [js_ret(expr: ts_object(fields: [ts_field(key: "status", value: js_get(object: js_id(name: "response"), property: "status")), ts_field(key: "readable", value: js_id(name: "false")),
+          ts_field(key: "body", value: ts_object(fields: [ts_field(key: "reason", value: js_plus(left: js_plus(left: js_lit(value: "The allocation service answered HTTP "), right: js_get(object: js_id(name: "response"), property: "status")), right: js_lit(value: " with a body this page could not read.")))]))]))]),
+      ])),
+    ])),
+    ts_const(name: "allocationUnreached", value: js_fn(params: [], stmts: [
+      js_ret(expr: ts_object(fields: [ts_field(key: "status", value: ts_lit_num(text: "0")), ts_field(key: "readable", value: js_id(name: "false")),
+        ts_field(key: "body", value: ts_object(fields: [ts_field(key: "reason", value: js_lit(value: "The allocation service could not be reached."))]))])),
+    ])),
+    ts_const(name: "allocationFetch", value: js_fn(params: ["path", "payload"], stmts: [
+      ts_const(name: "init", value: ts_object(fields: [ts_field(key: "credentials", value: js_lit(value: "same-origin")), ts_field(key: "cache", value: js_lit(value: "no-store"))])),
+      js_when(cond: js_id(name: "payload"), stmts: [
+        js_set(target: js_get(object: js_id(name: "init"), property: "method"), value: js_lit(value: "POST")),
+        js_set(target: js_get(object: js_id(name: "init"), property: "headers"), value: ts_object(fields: [ts_quoted_field(key: "Content-Type", value: js_lit(value: "application/json"))])),
+        js_set(target: js_get(object: js_id(name: "init"), property: "body"), value: js_send(object: js_id(name: "JSON"), method: "stringify", args: [js_id(name: "payload")])),
+      ]),
+      js_ret(expr: js_send(object: js_invoke(name: "fetch", args: [js_id(name: "path"), js_id(name: "init")]), method: "then", args: [js_id(name: "allocationRead"), js_id(name: "allocationUnreached")])),
+    ])),
+    ts_const(name: "allocationSnapshotFor", value: js_fn(params: ["result", "id"], stmts: [
+      js_ret(expr: js_and(left: js_and(left: js_and(left: js_and(left: js_eq(left: js_result(property: "status"), right: ts_lit_num(text: "200")), right: js_result(property: "readable")),
+        right: js_result(property: "body")), right: js_typeof(expr: js_result(property: "body"), kind: "object")),
+        right: js_eq(left: js_body(property: "id"), right: js_id(name: "id")))),
+    ])),
+    ts_const(name: "allocationRefused", value: js_fn(params: ["body"], stmts: [
+      ts_const(name: "shown", value: ts_cond(test: js_get(object: js_id(name: "body"), property: "cause"),
+        consequent: js_plus(left: js_plus(left: js_get(object: js_id(name: "body"), property: "reason"), right: js_lit(value: " (")), right: js_plus(left: js_get(object: js_id(name: "body"), property: "cause"), right: js_lit(value: ")"))),
+        alternate: js_get(object: js_id(name: "body"), property: "reason"))),
+      js_status(value: js_id(name: "shown")),
+      js_when(cond: js_eq(left: js_get(object: js_id(name: "body"), property: "availability"), right: js_lit(value: workspace_write_unavailable_wire)), stmts: [
+        js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeAvailability"), value: js_lit(value: workspace_write_unavailable_wire)),
+        js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason"), value: js_id(name: "shown")),
+        js_do(expr: js_send(object: js_send(object: js_id(name: "document"), method: "querySelectorAll", args: [js_lit(value: "[data-allocation-release]")]), method: "forEach", args: [js_fn(params: ["button"], stmts: [
+          js_set(target: js_get(object: js_id(name: "button"), property: "disabled"), value: js_id(name: "true")),
+          js_set(target: js_get(object: js_id(name: "button"), property: "title"), value: js_id(name: "shown")),
+        ])])),
+      ]),
+    ])),
+    ts_const(name: "allocationWritable", value: js_fn(params: [], stmts: [
+      js_ret(expr: ts_binop(left: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeAvailability"), op: "!==", right: js_lit(value: workspace_write_unavailable_wire))),
+    ])),
+  ]
 }
 
-// Reuse shared header behavior without workspace observation or workflow polling.
+fn js_row(term: String, value: TsExpr) -> TsStmt {
+  js_do(expr: ts_call(callee: js_id(name: "allocationRow"), args: [js_id(name: "list"), ts_lit_str(value: term), value]))
+}
+
+fn js_field(name: String) -> TsExpr { js_get(object: js_id(name: "a"), property: name) }
+
+// ONE CARD PER ALLOCATION, keyed by its id, rendered only from the server snapshot of
+// gunbc.workspace_allocation_http workspace_http_snapshot. Every value is set as text. The
+// connection is the backend-produced command, shown verbatim and only when the server sent one --
+// this client never assembles a guest address or an SSH command from host, id or anything else.
+fn allocation_render_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "allocationCards", value: ts_new(callee: js_id(name: "Map"), args: [])),
+    ts_const(name: "allocationRow", value: js_fn(params: ["list", "term", "value"], stmts: [
+      ts_const(name: "dt", value: js_create(tag: "dt")),
+      js_text(target: js_id(name: "dt"), value: js_id(name: "term")),
+      ts_const(name: "dd", value: js_create(tag: "dd")),
+      js_text(target: js_id(name: "dd"), value: js_id(name: "value")),
+      js_do(expr: js_send(object: js_id(name: "list"), method: "append", args: [js_id(name: "dt"), js_id(name: "dd")])),
+      js_ret(expr: js_id(name: "dd")),
+    ])),
+    ts_const(name: "allocationRender", value: js_fn(params: ["a"], stmts: [
+      ts_const(name: "card", value: js_create(tag: "article")),
+      js_set(target: js_get(object: js_get(object: js_id(name: "card"), property: "dataset"), property: "allocationId"), value: js_field(name: "id")),
+      ts_const(name: "title", value: js_create(tag: "h4")),
+      js_text(target: js_id(name: "title"), value: js_plus(left: js_plus(left: js_field(name: "id"), right: ts_lit_str(value: " · ")), right: js_field(name: "profile"))),
+      ts_const(name: "list", value: js_create(tag: "dl")),
+      js_row(term: "Phase", value: js_field(name: "phase")),
+      js_row(term: "Reason", value: ts_binop(left: js_field(name: "reason"), op: "||", right: ts_lit_str(value: "—"))),
+      js_row(term: "Host", value: ts_binop(left: js_field(name: "host"), op: "||", right: ts_lit_str(value: "Not placed"))),
+      js_row(term: "Observation", value: ts_cond(test: js_field(name: "observation_fresh"),
+        consequent: js_plus(left: ts_lit_str(value: "Fresh, observed "), right: js_field(name: "observed_at")),
+        alternate: js_plus(left: ts_lit_str(value: "Stale, last observed "), right: ts_binop(left: js_field(name: "observed_at"), op: "||", right: ts_lit_str(value: "never"))))),
+      js_row(term: "Lease ends", value: js_field(name: "expires_at")),
+      js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "title"), js_id(name: "list")])),
+      ts_if(cond: js_field(name: "connection"), then: ts_block(stmts: [
+        ts_const(name: "code", value: js_create(tag: "code")),
+        js_text(target: js_id(name: "code"), value: js_field(name: "connection")),
+        js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "code")])),
+      ]), else_stmt: Present { value: ts_block(stmts: [
+        ts_const(name: "waiting", value: js_create(tag: "p")),
+        js_text(target: js_id(name: "waiting"), value: ts_lit_str(value: "No connection is advertised until a fresh observation shows it running.")),
+        js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "waiting")])),
+      ]) }),
+      ts_if(cond: ts_binop(left: js_field(name: "retired_at"), op: "===", right: ts_lit_str(value: "")), then: ts_block(stmts: [
+        ts_const(name: "release", value: js_create(tag: "button")),
+        js_set(target: js_get(object: js_id(name: "release"), property: "type"), value: ts_lit_str(value: "button")),
+        js_do(expr: js_send(object: js_id(name: "release"), method: "setAttribute", args: [ts_lit_str(value: "data-allocation-release"), ts_lit_str(value: "")])),
+        js_text(target: js_id(name: "release"), value: ts_lit_str(value: "Release")),
+        js_set(target: js_get(object: js_id(name: "release"), property: "disabled"), value: ts_prefix(op: "!", expr: ts_call(callee: js_id(name: "allocationWritable"), args: []))),
+        js_set(target: js_get(object: js_id(name: "release"), property: "title"), value: ts_binop(left: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason"), op: "||", right: ts_lit_str(value: "Release this workspace"))),
+        js_do(expr: js_send(object: js_id(name: "release"), method: "addEventListener", args: [ts_lit_str(value: "click"), js_fn(params: [], stmts: [
+          js_do(expr: ts_call(callee: js_id(name: "allocationRelease"), args: [js_field(name: "id"), js_field(name: "generation")])),
+        ])])),
+        js_do(expr: js_send(object: js_id(name: "card"), method: "append", args: [js_id(name: "release")])),
+      ]), else_stmt: none),
+      ts_const(name: "prior", value: js_send(object: js_id(name: "allocationCards"), method: "get", args: [js_field(name: "id")])),
+      ts_if(cond: js_id(name: "prior"), then: ts_block(stmts: [js_do(expr: js_send(object: js_id(name: "prior"), method: "replaceWith", args: [js_id(name: "card")]))]),
+        else_stmt: Present { value: ts_block(stmts: [js_do(expr: js_send(object: js_id(name: "allocationList"), method: "append", args: [js_id(name: "card")]))]) }),
+      js_do(expr: js_send(object: js_id(name: "allocationCards"), method: "set", args: [js_field(name: "id"), js_id(name: "card")])),
+    ])),
+  ]
+}
+
+fn js_item_path(id: TsExpr) -> TsExpr {
+  js_plus(left: ts_lit_str(value: allocation_item_prefix), right: ts_call(callee: js_id(name: "encodeURIComponent"), args: [id]))
+}
+
+fn js_pending_note() -> TsExpr {
+  js_plus(left: js_plus(left: js_lit(value: "A request for "), right: js_get(object: js_id(name: "pending"), property: "profile")),
+    right: js_lit(value: " may already be recorded; Request workspace repeats that same request."))
+}
+
+// List once (settling a pending intent whose allocation is already there), then poll each known
+// allocation by its own GET; create and release POST the session's CSRF token beside the request.
+// A pending intent restores its own size choice, so a retry after a reload repeats it exactly.
+fn allocation_flow_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "allocationRestoreChoice", value: js_fn(params: ["profile"], stmts: [
+      js_do(expr: js_send(object: js_send(object: js_id(name: "allocationForm"), method: "querySelectorAll", args: [js_lit(value: "input[name=allocation-profile]")]), method: "forEach", args: [js_fn(params: ["input"], stmts: [
+        js_set(target: js_get(object: js_id(name: "input"), property: "checked"), value: js_eq(left: js_get(object: js_id(name: "input"), property: "value"), right: js_id(name: "profile"))),
+      ])])),
+    ])),
+    ts_const(name: "allocationReconcile", value: js_fn(params: ["allocations"], stmts: [
+      ts_const(name: "pending", value: js_invoke(name: "allocationPending", args: [])),
+      js_when(cond: js_not(expr: js_id(name: "pending")), stmts: [ts_return(expr: none)]),
+      ts_const(name: "recorded", value: js_send(object: js_id(name: "allocations"), method: "find", args: [js_fn(params: ["a"], stmts: [js_ret(expr: js_and(left: js_and(left: js_id(name: "a"), right: js_typeof(expr: js_id(name: "a"), kind: "object")), right: js_eq(left: js_get(object: js_id(name: "a"), property: "id"), right: js_get(object: js_id(name: "pending"), property: "key"))))])])),
+      js_branch(cond: js_and(left: js_id(name: "recorded"), right: js_eq(left: js_get(object: js_id(name: "recorded"), property: "profile"), right: js_get(object: js_id(name: "pending"), property: "profile"))), then: [
+        js_do(expr: js_invoke(name: "allocationSettleIntent", args: [])),
+        js_status(value: js_lit(value: "Your earlier request was recorded; it is shown below.")),
+      ], otherwise: [
+        js_do(expr: js_invoke(name: "allocationRestoreChoice", args: [js_get(object: js_id(name: "pending"), property: "profile")])),
+        js_status(value: js_pending_note()),
+      ]),
+    ])),
+    ts_const(name: "allocationLoad", value: js_fn(params: [], stmts: [
+      js_ret(expr: js_then(promise: js_invoke(name: "allocationFetch", args: [js_lit(value: allocation_list_path), js_id(name: "null")]), handler: js_fn(params: ["result"], stmts: [
+        js_when(cond: js_not(expr: js_and(left: js_and(left: js_eq(left: js_result(property: "status"), right: ts_lit_num(text: "200")), right: js_result(property: "readable")),
+          right: js_send(object: js_id(name: "Array"), method: "isArray", args: [js_result(property: "body")]))), stmts: [
+          js_text(target: js_id(name: "allocationList"), value: js_or(left: js_and(left: js_result(property: "body"), right: js_body(property: "reason")), right: js_lit(value: "The allocation list could not be read."))),
+          ts_const(name: "pending", value: js_invoke(name: "allocationPending", args: [])),
+          js_when(cond: js_id(name: "pending"), stmts: [js_do(expr: js_invoke(name: "allocationRestoreChoice", args: [js_get(object: js_id(name: "pending"), property: "profile")])), js_status(value: js_pending_note())]),
+          ts_return(expr: none),
+        ]),
+        js_text(target: js_id(name: "allocationList"), value: ts_cond(test: js_body(property: "length"), consequent: js_lit(value: ""), alternate: js_lit(value: "No workspaces yet."))),
+        js_do(expr: js_send(object: js_send(object: js_result(property: "body"), method: "filter", args: [js_fn(params: ["a"], stmts: [js_ret(expr: js_and(left: js_and(left: js_id(name: "a"), right: js_typeof(expr: js_id(name: "a"), kind: "object")), right: js_typeof(expr: js_get(object: js_id(name: "a"), property: "id"), kind: "string")))])]), method: "forEach", args: [js_id(name: "allocationRender")])),
+        js_do(expr: js_invoke(name: "allocationReconcile", args: [js_result(property: "body")])),
+      ]))),
+    ])),
+    ts_const(name: "allocationPoll", value: js_fn(params: [], stmts: [
+      ts_for_of(var_name: "id", iterable: js_send(object: js_id(name: "Array"), method: "from", args: [js_send(object: js_id(name: "allocationCards"), method: "keys", args: [])]), body: ts_block(stmts: [
+        js_do(expr: js_then(promise: js_invoke(name: "allocationFetch", args: [js_item_path(id: js_id(name: "id")), js_id(name: "null")]), handler: js_fn(params: ["result"], stmts: [
+          js_when(cond: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_id(name: "id")]), stmts: [js_do(expr: js_invoke(name: "allocationRender", args: [js_result(property: "body")]))]),
+        ]))),
+      ])),
+    ])),
+    ts_const(name: "allocationRelease", value: js_fn(params: ["id", "generation"], stmts: [
+      js_status(value: js_lit(value: "Requesting release…")),
+      js_do(expr: js_then(promise: js_invoke(name: "allocationFetch", args: [js_plus(left: js_item_path(id: js_id(name: "id")), right: js_lit(value: allocation_release_suffix)),
+        ts_object(fields: [ts_field(key: "csrf_token", value: js_id(name: "allocationCsrf")), ts_field(key: "generation", value: js_id(name: "generation"))])]), handler: js_fn(params: ["result"], stmts: [
+        js_branch(cond: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_id(name: "id")]), then: [
+          js_do(expr: js_invoke(name: "allocationRender", args: [js_result(property: "body")])),
+          js_status(value: js_lit(value: "Release recorded; the controller retires the workspace.")),
+        ], otherwise: [js_branch(cond: js_and(left: js_result(property: "readable"), right: js_result(property: "body")), then: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
+          otherwise: [js_status(value: js_plus(left: js_body(property: "reason"), right: js_lit(value: " Reload to see whether the release was recorded.")))])]),
+      ]))),
+    ])),
+    ts_const(name: "allocationSubmit", value: js_fn(params: ["event"], stmts: [
+      js_do(expr: js_send(object: js_id(name: "event"), method: "preventDefault", args: [])),
+      js_when(cond: js_not(expr: js_invoke(name: "allocationWritable", args: [])), stmts: [
+        js_status(value: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason")),
+        ts_return(expr: none),
+      ]),
+      ts_const(name: "chosen", value: js_send(object: js_id(name: "allocationForm"), method: "querySelector", args: [js_lit(value: "input[name=allocation-profile]:checked")])),
+      js_when(cond: js_not(expr: js_or(left: js_invoke(name: "allocationPending", args: []), right: js_id(name: "chosen"))), stmts: [js_status(value: js_lit(value: "Choose a workspace size.")), ts_return(expr: none)]),
+      ts_const(name: "intent", value: js_invoke(name: "allocationBeginIntent", args: [js_and(left: js_id(name: "chosen"), right: js_get(object: js_id(name: "chosen"), property: "value"))])),
+      js_do(expr: js_invoke(name: "allocationRestoreChoice", args: [js_get(object: js_id(name: "intent"), property: "profile")])),
+      js_set(target: js_get(object: js_id(name: "allocationCreate"), property: "disabled"), value: js_id(name: "true")),
+      js_status(value: js_lit(value: "Requesting workspace…")),
+      js_do(expr: js_then(promise: js_invoke(name: "allocationFetch", args: [js_lit(value: allocation_page_path), ts_object(fields: [
+          ts_field(key: "csrf_token", value: js_id(name: "allocationCsrf")),
+          ts_field(key: "idempotency_key", value: js_get(object: js_id(name: "intent"), property: "key")),
+          ts_field(key: "profile", value: js_get(object: js_id(name: "intent"), property: "profile")),
+        ])]), handler: js_fn(params: ["result"], stmts: [
+        js_set(target: js_get(object: js_id(name: "allocationCreate"), property: "disabled"), value: js_not(expr: js_invoke(name: "allocationWritable", args: []))),
+        js_branch(cond: js_and(left: js_invoke(name: "allocationSnapshotFor", args: [js_id(name: "result"), js_get(object: js_id(name: "intent"), property: "key")]), right: js_eq(left: js_body(property: "profile"), right: js_get(object: js_id(name: "intent"), property: "profile"))), then: [
+          js_do(expr: js_invoke(name: "allocationSettleIntent", args: [])),
+          js_do(expr: js_invoke(name: "allocationRender", args: [js_result(property: "body")])),
+          js_status(value: js_lit(value: "Request recorded; placement and boot are reported below.")),
+        ], otherwise: [js_branch(cond: js_and(left: js_and(left: js_result(property: "readable"), right: js_result(property: "body")), right: ts_binop(left: js_result(property: "status"), op: "!==", right: ts_lit_num(text: "200"))),
+          then: [js_do(expr: js_invoke(name: "allocationRefused", args: [js_result(property: "body")]))],
+          otherwise: [js_status(value: js_plus(left: js_or(left: js_and(left: js_result(property: "body"), right: js_body(property: "reason")), right: js_lit(value: "The answer did not name this request.")), right: js_lit(value: " Your request is kept; Request workspace repeats it.")))])]),
+      ]))),
+    ])),
+  ]
+}
+
+// A signed-out page has no token and lists nothing: the read routes would answer 401.
+fn allocation_live_statements() -> List<TsStmt> {
+  concat([
+    ts_const(name: "allocationRoot", value: js_element(id: "allocation-workspace")),
+    ts_const(name: "allocationForm", value: js_element(id: "allocation-request")),
+    ts_const(name: "allocationCreate", value: js_element(id: "allocation-create")),
+    ts_const(name: "allocationStatus", value: js_element(id: "allocation-status")),
+    ts_const(name: "allocationList", value: js_element(id: "allocation-list")),
+    ts_const(name: "allocationCsrf", value: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "csrf")),
+  ], concat(allocation_key_statements(), concat(allocation_request_statements(), concat(allocation_render_statements(), concat(allocation_flow_statements(), [
+    ts_if(cond: js_id(name: "allocationCsrf"), then: ts_block(stmts: [
+      js_do(expr: js_send(object: js_id(name: "allocationForm"), method: "addEventListener", args: [ts_lit_str(value: "submit"), js_id(name: "allocationSubmit")])),
+      js_do(expr: js_invoke(name: "allocationLoad", args: [])),
+      js_do(expr: ts_call(callee: js_id(name: "setInterval"), args: [js_id(name: "allocationPoll"), ts_lit_num(text: "5000")])),
+    ]), else_stmt: none),
+  ])))))
+}
+
+fn allocation_live_source() -> String {
+  serialize_typescript_program(p: TsProgram { ts_nocheck: false, header_lines: [], statements: allocation_live_statements() })
+}
+
+// The shared shell owns account, theme and sound controls; this asset owns allocations.
 fn allocation_client_program() -> TsProgram {
-  TsProgram {
-    ts_nocheck: false,
-    header_lines: ["Allocation draft and shared account/theme controls; no allocation writes."],
-    statements: concat([], concat([],
-      concat([], concat([], concat([], allocation_draft_statements()))))),
-  }
+  TsProgram { ts_nocheck: false, header_lines: ["Allocation client over the server's allocation routes."], statements: allocation_live_statements() }
 }
 
 fn allocation_client_source() -> String {
