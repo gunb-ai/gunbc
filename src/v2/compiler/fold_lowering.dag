@@ -263,18 +263,15 @@ fn collection_roster_row_optional(head: Symbol) -> Optional<CollectionRosterRow>
   })
 }
 
-fn collection_roster_form_is_fold(f: CollectionRosterForm) -> Bool {
-  match f {
-    RosterAuthoredStep => true
-    RosterCallbackStep { realization: _ } => true
-    RosterFreeMonoidPrimitiveCall => false
-  }
-}
-
 // The roster rows lowering realizes as a fold Loop; a primitive-call row is never one.
 fn collection_roster_fold_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
   match collection_roster_row_optional(head: head) {
-    Present { value: r } => if collection_roster_form_is_fold(f: r.form) { optional_present(value: r) } else { optional_absent() }
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => optional_present(value: r)
+        RosterCallbackStep { realization: _ } => optional_present(value: r)
+        RosterFreeMonoidPrimitiveCall => optional_absent()
+      }
     Absent => optional_absent()
   }
 }
@@ -282,7 +279,12 @@ fn collection_roster_fold_row_optional(head: Symbol) -> Optional<CollectionRoste
 // The primitive-call row an unbound bare head binds to, if the roster carries one for it.
 fn collection_roster_primitive_call_row_optional(head: Symbol) -> Optional<CollectionRosterRow> {
   match collection_roster_row_optional(head: head) {
-    Present { value: r } => if collection_roster_form_is_fold(f: r.form) { optional_absent() } else { optional_present(value: r) }
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => optional_absent()
+        RosterCallbackStep { realization: _ } => optional_absent()
+        RosterFreeMonoidPrimitiveCall => optional_present(value: r)
+      }
     Absent => optional_absent()
   }
 }
@@ -1075,7 +1077,15 @@ fn fold_realization_is_at(head: Symbol, path: String) -> Bool {
 
 // Every collection roster operation -- the fold and each callback operation -- hands its step one member.
 fn fold_roster_row_is_at(path: String) -> Bool {
-  any(xs: collection_roster_rows, predicate: fn(r) { collection_roster_form_is_fold(f: r.form) && r.row.module_path + "." + r.row.decl_name == path })
+  match collection_roster_row_at(path: path) {
+    Present { value: r } =>
+      match r.form {
+        RosterAuthoredStep => true
+        RosterCallbackStep { realization: _ } => true
+        RosterFreeMonoidPrimitiveCall => false
+      }
+    Absent => false
+  }
 }
 
 // THE ORDER A FOLD-REALIZED LOOP VISITS ITS DOMAIN IS A FACT OF ITS REALIZATION, and the realization says
