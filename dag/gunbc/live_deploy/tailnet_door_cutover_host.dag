@@ -1,0 +1,49 @@
+module gunbc.live_deploy.tailnet_door_cutover_host
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.tailscale.serve {
+  ServeStatusProxies, ServeStatusUnreadable,
+  tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
+}
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.exec.command { argv_words, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.typed_argv_exec { typed_argv_exec_over_ssh, typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.tailnet_door_cutover { ServeRouteObservation, ServeRouteTargets, ServeRouteUnreadable }
+
+// The node's serve configuration at the deployment's route key, read as the deploy principal.
+fn serve_route_observation_of_status(status_json: String, spec: DeploymentSpec) -> ServeRouteObservation {
+  match tailscale_serve_status_route_proxy_targets(status_json: status_json, key: tailscale_serve_route_key(endpoint: spec.names.tailscale_serve_endpoint)) {
+    ServeStatusUnreadable => ServeRouteUnreadable { detail: "tailscale serve status printed a document that could not be read" }
+    ServeStatusProxies { targets } => ServeRouteTargets { targets: targets }
+  }
+}
+
+fn serve_route_observation_of_outcome(outcome: TypedArgvExecOutcome, spec: DeploymentSpec) -> ServeRouteObservation {
+  match outcome {
+    TypedArgvExecRefused { reason: why } => ServeRouteUnreadable { detail: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { serve_route_observation_of_status(status_json: r.stdout, spec: spec) }
+      else { ServeRouteUnreadable { detail: join(["tailscale serve status exited ", to_string(r.exit_code), ": ", trim(r.stderr)], "") } }
+  }
+}
+
+fn live_deploy_serve_route_observe(spec: DeploymentSpec, transport: HostEffectTransport) -> ServeRouteObservation {
+  let command = sudo_elevate_command(command: argv_words(command: tailscale_serve_status_json_command()))
+  match transport {
+    LocalShell =>
+      match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause: why } => ServeRouteUnreadable { detail: concat("tailscale serve status was not spawned: ", why as String) }
+        ProcessRan { observation: o } =>
+          if o.exit_code == 0 { serve_route_observation_of_status(status_json: o.stdout, spec: spec) }
+          else { ServeRouteUnreadable { detail: join(["tailscale serve status exited ", to_string(o.exit_code), ": ", trim(o.stderr)], "") } }
+      }
+    SshShell { ssh_host: h } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)), spec: spec)
+    FleetSsh { target: t, context: c } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)), spec: spec)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ServeRouteUnreadable { detail: "serve status read refused EmitArtifactThenThinRun transport" }
+  }
+}

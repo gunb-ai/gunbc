@@ -26,6 +26,8 @@ import gunbc.live_deploy.intent {
   live_deploy_health_url_for_port,
   live_deploy_health_url_over_socket,
 }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import extdeps.tailscale.serve { ServeRootMount, ServeSetPath }
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
@@ -314,6 +316,56 @@ fn service_readiness_with_tailnet_door(loopback: ServiceReadiness, door_socket: 
             Refused { cause: c } => Refused { cause: c }
           }
       }
+  }
+}
+
+// ── THE TWO READS THE DOOR CUTOVER TAKES AFTER READINESS ────────────────────────────────────
+// The proxied path: the same /healthz, asked for at the deployment's own tailnet name so the
+// request crosses tailscale serve and arrives through the route under test. A target with no
+// tailnet domain has no such name, and the probe refuses rather than probing something else.
+fn live_deploy_proxied_health_url(spec: DeploymentSpec) -> NonEmptyStr? {
+  match spec.target.tailnet_domain {
+    Absent => none
+    Present { value: domain } => {
+      let endpoint = spec.names.tailscale_serve_endpoint
+      Present { value: join([
+        "https://", spec.target.ssh_host as String, ".", domain as String,
+        if endpoint.https_port == 443 { "" } else { concat(":", to_string(endpoint.https_port)) },
+        match endpoint.mount { ServeRootMount => "" ServeSetPath { path } => path as String },
+        roadmap_site_health_path,
+      ], "") as NonEmptyStr }
+    }
+  }
+}
+
+fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, transport: HostEffectTransport) -> HealthzEffectiveRead {
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } =>
+      match transport {
+        LocalShell => {
+          let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+          healthz_effective_read_from_get(success: got.success, body: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
+        }
+        SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)
+        FleetSsh { target: t, context: c } =>
+          healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: http_client_get_argv(url: url, max_time: deadline)))
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }
+      }
+  }
+}
+
+fn live_deploy_proxied_readiness(spec: DeploymentSpec, candidate: CandidateRelease, transport: HostEffectTransport) -> ServiceReadiness {
+  match live_deploy_proxied_health_url(spec: spec) {
+    Absent => Pending { cause: ServiceProbeUnanswered { detail: "the deployment target declares no tailnet domain, so the proxied path has no name to be asked at" } }
+    Present { value: url } =>
+      observe_service_readiness_from_healthz(
+        read: live_deploy_healthz_get_for_url(url: url, spec: spec, transport: transport),
+        bundle: materialize_live_roadmap_site_surface_bundle(),
+        expected_revision: candidate.revision,
+        expected_surface_identity: candidate.expected_surface_identity,
+      )
   }
 }
 

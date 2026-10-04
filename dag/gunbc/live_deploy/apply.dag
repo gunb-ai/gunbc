@@ -16,6 +16,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   deployment_plan_listen_port,
   deployment_plan_host_identity,
+  deployment_tailnet_door_socket,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { String, CommitSha, NonEmptyStr }
@@ -62,9 +63,16 @@ import gunbc.host_effect {
   LiveDeployMicrovmControllerInstall,
   LiveDeployEnsureDependency,
   LiveDeployDigestReadback,
+  LiveDeployServeRoute,
   DeployAccessPreflight,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_proxy_url, tailscale_serve_backend_of_proxy_target }
+import gunbc.live_deploy.tailnet_door_cutover {
+  ServeCutoverEffects, ServeCutoverOutcome, CapturedServeBackend, CapturedBackend, CapturedNoRoute,
+  tailnet_door_cutover_run, serve_cutover_outcome_committed, serve_cutover_outcome_reason,
+}
+import gunbc.live_deploy.tailnet_door_cutover_host { live_deploy_serve_route_observe }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
@@ -77,6 +85,7 @@ import gunbc.live_deploy.readiness {
   live_deploy_liveness_get_local,
   ServiceReadiness,
   service_readiness_reason,
+  live_deploy_proxied_readiness,
 }
 import gunbc.live_deploy.service_ready {
   approval_broker_expected_startup,
@@ -216,6 +225,13 @@ fn live_deploy_mutation_denied(
 // add rather than as a replace, the route is briefly ABSENT while the service is unverified. That
 // is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering
 // is a known quantity rather than something a later reader rediscovers as a surprise.
+//
+// THAT ARGUMENT HOLDS ONLY FOR A ROUTE TO THE PORT THE RESTARTED UNIT SERVES. A deployment whose
+// route targets its tailnet door would be redirecting traffic to a second process, which is the
+// redirection-to-an-unverified-process the paragraph above rules out. So for such a deployment the
+// mapping is NOT written inside the mutation (gunbc.live_deploy.emit
+// tailscale_serve_mapping_apply_steps): it is written by live_deploy_tailnet_door_cutover_gate
+// below, after the readiness gate, as a transaction that restores the prior backend on failure.
 fn live_deploy_fold(
   spec: DeploymentSpec,
   effect: HostEffect,
@@ -294,24 +310,6 @@ fn live_deploy_apply_mutation_via_transport(
   }
 }
 
-fn live_deploy_apply_readiness_gate(
-  spec: DeploymentSpec,
-  candidate: CandidateRelease,
-  transport: HostEffectTransport,
-  access: DeployAccess,
-  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_readiness_gate_with_readiness(
-    mutation: mutation,
-    readiness: live_deploy_poll_until_service_ready_for_deploy(
-      spec: spec,
-      candidate: candidate,
-      transport: transport,
-      access: access,
-    ),
-  )
-}
-
 // One NotConverged, reached from both non-Ready arms. The Pending/Refused
 // distinction is NOT erased by the collapse: service_readiness_reason carries the
 // readiness value into the reason, and the retry decision that consumes the
@@ -339,6 +337,101 @@ fn live_deploy_apply_readiness_gate_with_readiness(
       Pending { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
       Refused { cause: _ } => readiness_gate_not_converged(mutation: mutation, readiness: readiness)
     }
+  }
+}
+
+// ── THE TAILNET DOOR CUTOVER, ON THE HOST ───────────────────────────────────────────────────
+// The four effects gunbc.live_deploy.tailnet_door_cutover sequences, bound to this deployment and
+// transport. The re-point and the restore are each one LiveDeployServeRoute through the same
+// mutation gate every other deploy mutation crosses; the observation and the proxied probe are
+// reads. The restore restates the CAPTURED target as a serve backend, and a captured target it
+// cannot restate is a refused restore, not an approximated one.
+fn serve_route_effect_refusal(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> String {
+  match r {
+    Converged { evidence: _, applied: _ } => ""
+    NotConverged { reason: why, applied: _ } => if why == "" { "the serve route effect did not converge" } else { why }
+  }
+}
+
+fn live_deploy_serve_route_restore(
+  spec: DeploymentSpec,
+  prior: CapturedServeBackend,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> String {
+  let declared = spec.names.tailscale_serve_endpoint
+  match prior {
+    CapturedNoRoute =>
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: declared, enabled: false }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    CapturedBackend { target: t } =>
+      match tailscale_serve_backend_of_proxy_target(target: t) {
+        Absent => concat("the captured backend cannot be restated as a serve backend: ", t)
+        Present { value: backend } =>
+          serve_route_effect_refusal(r: live_deploy_fold(
+            spec: spec,
+            effect: LiveDeployServeRoute { endpoint: TailscaleServeEndpoint { https_port: declared.https_port, mount: declared.mount, backend: backend }, enabled: true },
+            transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent,
+          ))
+      }
+  }
+}
+
+fn live_deploy_tailnet_door_cutover_effects(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> ServeCutoverEffects {
+  ServeCutoverEffects {
+    observe: fn(n) { live_deploy_serve_route_observe(spec: spec, transport: transport) },
+    repoint: fn(permit) {
+      serve_route_effect_refusal(r: live_deploy_fold(spec: spec, effect: LiveDeployServeRoute { endpoint: spec.names.tailscale_serve_endpoint, enabled: true }, transport: transport, access: access, fixture_actor: Absent, fixture_host: Absent))
+    },
+    proxied: fn() { live_deploy_proxied_readiness(spec: spec, candidate: candidate, transport: transport) },
+    restore: fn(prior) { live_deploy_serve_route_restore(spec: spec, prior: prior, transport: transport, access: access) },
+  }
+}
+
+// What the cutover's outcome makes of the deployment: committed leaves the reconciliation as it
+// was, and anything else is NotConverged carrying the outcome's own account, including what
+// became of the route.
+fn tailnet_door_cutover_reconciliation(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  outcome: ServeCutoverOutcome,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if serve_cutover_outcome_committed(outcome: outcome) {
+    mutation
+  } else {
+    NotConverged {
+      reason: serve_cutover_outcome_reason(outcome: outcome),
+      applied: match mutation {
+        Converged { evidence: _, applied: intent } => intent
+        NotConverged { reason: _, applied: intent } => intent
+      },
+    }
+  }
+}
+
+// A deployment with no door has no cutover: its mapping was applied inside the mutation.
+fn live_deploy_tailnet_door_cutover_gate(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  readiness: ServiceReadiness,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => mutation
+    Present { value: _ } =>
+      tailnet_door_cutover_reconciliation(
+        mutation: mutation,
+        outcome: tailnet_door_cutover_run(
+          door: readiness,
+          door_target: tailscale_serve_proxy_url(endpoint: spec.names.tailscale_serve_endpoint),
+          effects: live_deploy_tailnet_door_cutover_effects(spec: spec, candidate: candidate, transport: transport, access: access),
+        ).outcome,
+      )
   }
 }
 
@@ -401,13 +494,18 @@ fn live_deploy_apply_via_transport(
     transport: transport,
     access: access,
   )
-  let gated = live_deploy_apply_readiness_gate(
+  let readiness = live_deploy_poll_until_service_ready_for_deploy(
     spec: spec,
     candidate: candidate,
     transport: transport,
     access: access,
-    mutation: mutation,
   )
+  let ready = live_deploy_apply_readiness_gate_with_readiness(mutation: mutation, readiness: readiness)
+  let gated = if !reconciliation_converged(r: ready) {
+    ready
+  } else {
+    live_deploy_tailnet_door_cutover_gate(spec: spec, candidate: candidate, transport: transport, access: access, readiness: readiness, mutation: ready)
+  }
   if !reconciliation_converged(r: gated) {
     gated
   } else {

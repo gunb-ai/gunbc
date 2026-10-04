@@ -41,6 +41,7 @@ import gunbc.managed_directory {
 import extdeps.tools.chmod { chmod_binary_path }
 import extdeps.access.posix { PosixUser }
 import extdeps.tailscale.serve {
+  TailscaleServeEndpoint,
   tailscale_serve_enable_argv,
   tailscale_serve_off_argv,
   TailscaleServeCapability,
@@ -1303,6 +1304,19 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: shell_privileged_command_text_of_argv(
     argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
   ))
+}
+
+// THE MAPPING'S APPLY IS NOT IN THE BULK MUTATION WHEN IT WOULD REDIRECT TRAFFIC. A route to a
+// port is an idempotent re-assert of the backend the unit just restarted, and stays an ordinary
+// apply step. A route to the tailnet door moves every tailnet request to another process, so its
+// write belongs to the cutover transaction (gunbc.live_deploy.tailnet_door_cutover), which holds it
+// until the door is proven and undoes it if the proxied path fails; the member is still owned,
+// and still torn down, here.
+fn tailscale_serve_mapping_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Present { value: _ } => []
+    Absent => [tailscale_serve_apply_step(spec: spec)]
+  }
 }
 
 fn tailscale_serve_teardown_step(spec: DeploymentSpec) -> PipelineStep {
@@ -2830,9 +2844,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     FleetConvergeTimerUnit => [
       deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
-    TailscaleServeMapping => [
-      tailscale_serve_apply_step(spec: spec),
-    ]
+    TailscaleServeMapping => tailscale_serve_mapping_apply_steps(spec: spec)
     FabricStorageServeUnit => [
       apply_fabric_storage_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
@@ -3398,6 +3410,21 @@ fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipelin
     steps: ensure_dependency_steps(dep: dep, privileged: false),
     on_failure: FailFast
   }
+}
+
+// ONE SERVE ROUTE, WRITTEN OR TURNED OFF, as a script of its own: the same privileged argv the
+// mapping member's apply and teardown steps carry, for the tailnet door cutover
+// (gunbc.live_deploy.tailnet_door_cutover), which applies the re-point and its restore singly.
+fn deployment_serve_route_script(endpoint: TailscaleServeEndpoint, enabled: Bool) -> String {
+  emit_pipeline_or_poison(
+    p: Pipeline {
+      steps: [deploy_raw(command: shell_privileged_command_text_of_argv(
+        argv: concat(["tailscale"], if enabled { tailscale_serve_enable_argv(endpoint: endpoint) } else { tailscale_serve_off_argv(endpoint: endpoint) }),
+      ))],
+      on_failure: FailFast
+    },
+    refused: live_deploy_ensure_dep_emit_refused_poison,
+  )
 }
 
 fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
