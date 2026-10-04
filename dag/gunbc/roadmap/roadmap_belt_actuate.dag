@@ -410,7 +410,7 @@ import gunbc.fleet_desired_observe {
   FleetRevisionStanding,
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
-import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args }
+import extdeps.git { shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_commit_message_args, git_pathspec_literal }
 import gunbc.roadmap.roadmap_belt_commit { BeltCommitDecision, CandidateCommitNeeded, CheckpointCommitNeeded, CommitNotNeeded, belt_commit_decision, CandidateCommitSubject, belt_candidate_commit_subject }
 import gunbc.scm.integration { CommitIntegration, NoSquashIntegration, SquashIntegrated }
 import gunbc.scm.ancestry { ancestry_walk, AncestryTraced, AncestryBrokenAt, AncestryStartNotInHistory, AncestryRevisitsACommit }
@@ -11286,9 +11286,19 @@ fn belt_path_parent_dir(path: String) -> String {
   join(acc.segments, "/")
 }
 
-// Materialize the integration head's corpus into the belt-owned integration worktree and commit
-// it at the edge. The recovered files' parent directories are created in ONE install -d -- the
-// Filesystem.Write intrinsic creates no parents, the lesson the publication directory taught.
+// MATERIALIZE THE PUBLISH PLAN INTO THE INTEGRATION WORKTREE, in the one order that realizes every
+// topology change (ruling on #13111, 2026-10-04): DELETES FIRST, so a base file is gone before a bind
+// creates a directory at its path (file -> directory) and a base directory is emptied -- git rm
+// removes the directories it empties -- before a bind writes a file at its path (directory -> file);
+// then the bind parents in ONE install -d, only when some bind needs a parent; then the writes (the
+// Filesystem.Write intrinsic creates no parents). Every delete path crosses
+// extdeps.git git_pathspec_literal: `--` only ends option parsing, it does not make a pathspec
+// literal, and a manifest path is a NonEmptyStr that may spell pathspec magic or a glob. git rm runs
+// without --ignore-unmatch, so a delete the checkout disagrees with stops the publish.
+//
+// The realization is one function over the git and install programs, so production
+// (belt_publish_project_materialize, the instance's capability programs) and the real-repository
+// witness (test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test) drive the same code.
 //
 // One note on the fold arms below, kept at declaration grain (the annotation channel admits no
 // in-body comments): NO POISON IS BORN IN MATERIALIZATION (its refusals are all exec/write I/O),
@@ -11300,73 +11310,43 @@ fn belt_publish_project_materialize(
   files: List<RecoveredSourceFile>,
   deletes: List<NonEmptyStr>,
 ) -> BeltScmCapture {
-  let dirs = distinct_by_key(
-    xs: files
-      |> map(f => belt_path_parent_dir(path: f.path as String))
-      |> filter(d => d != ""),
-    key: d => d,
+  belt_publish_realize(
+    git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
+    install_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+    worktree: worktree,
+    files: files,
+    deletes: deletes,
   )
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(
-        environment: instance.execution_environment,
-        cap: AttemptStateDirectoryCapability,
-      ),
-      args: concat(["-d", "-m", "0700"], if count(dirs) == 0 { ["."] } else { dirs }),
-    ),
-    workdir: worktree,
-  ) {
-    ExecFailed { program, exit_code, stderr } =>
-      ScmCaptureRefused {
-        detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
-      }
-    ExecRefused { program, reason } =>
-      ScmCaptureRefused {
-        detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecRefused { program: program, reason: reason }),
-      }
-    ExecOk { stdout: _ } =>
-      match fold(
-        files,
-        init: ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" },
-        f: (acc, f) =>
-          match acc {
-            ScmCaptureRefused { detail: _ } => acc
-            ScmCapturePoisoned { detail: _ } => acc
-            ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } => {
-              let write = Filesystem.Write(
-                path: join([worktree, "/", f.path as String], ""),
-                content: match f.content {
-                  AuthoredSourceEmpty => ""
-                  AuthoredSourceText(t) => t as String
-                },
-              )
-              if write.success {
-                acc
-              } else {
-                ScmCaptureRefused {
-                  detail: join(["the integration head's ", f.path as String, " could not be materialized: ", write.error], ""),
-                }
-              }
-            }
-          },
-      ) {
+}
+
+fn belt_publish_realize(
+  git_program: String,
+  install_program: String,
+  worktree: String,
+  files: List<RecoveredSourceFile>,
+  deletes: List<NonEmptyStr>,
+) -> BeltScmCapture {
+  match belt_publish_realize_deletes(git_program: git_program, worktree: worktree, deletes: deletes) {
+    ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
+    ScmCapturePoisoned { detail } => ScmCapturePoisoned { detail: detail }
+    ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
+      match belt_publish_realize_parents(install_program: install_program, worktree: worktree, files: files) {
         ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
         ScmCapturePoisoned { detail } => ScmCapturePoisoned { detail: detail }
         ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
-          belt_publish_apply_deletes(instance: instance, worktree: worktree, deletes: deletes)
+          belt_publish_realize_writes(worktree: worktree, files: files)
       }
   }
 }
 
-// EVERY DELETE IN THE PLAN IS REMOVED FROM THE CHECKOUT AND STAGED, in one git rm, before the edge
-// commit. A delete naming a path the base checkout lacks is the plan disagreeing with the checkout,
-// so --ignore-unmatch is NOT passed: git refuses and the publish stops rather than committing a tree
-// other than the head's.
-fn belt_publish_apply_deletes(instance: HostDashboardInstance, worktree: String, deletes: List<NonEmptyStr>) -> BeltScmCapture {
+fn belt_publish_realize_deletes(git_program: String, worktree: String, deletes: List<NonEmptyStr>) -> BeltScmCapture {
   if count(deletes) == 0 {
     ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
   } else {
-    match belt_commit_git(instance: instance, worktree: worktree, args: concat(["rm", "-q", "--"], map(deletes, d => d as String))) {
+    match belt_exec(
+      cmd: host_exec_argv(program: git_program, args: concat(["rm", "-q", "--"], map(deletes, d => git_pathspec_literal(path: d as String)))),
+      workdir: worktree,
+    ) {
       ExecFailed { program, exit_code, stderr } =>
         ScmCaptureRefused {
           detail: belt_commit_exec_detail(step: "publish-deletes", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
@@ -11376,6 +11356,58 @@ fn belt_publish_apply_deletes(instance: HostDashboardInstance, worktree: String,
       ExecOk { stdout: _ } => ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
     }
   }
+}
+
+fn belt_publish_realize_parents(install_program: String, worktree: String, files: List<RecoveredSourceFile>) -> BeltScmCapture {
+  let dirs = distinct_by_key(
+    xs: files
+      |> map(f => belt_path_parent_dir(path: f.path as String))
+      |> filter(d => d != ""),
+    key: d => d,
+  )
+  if count(dirs) == 0 {
+    ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
+  } else {
+    match belt_exec(cmd: host_exec_argv(program: install_program, args: concat(["-d", "-m", "0700"], dirs)), workdir: worktree) {
+      ExecFailed { program, exit_code, stderr } =>
+        ScmCaptureRefused {
+          detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+        }
+      ExecRefused { program, reason } =>
+        ScmCaptureRefused {
+          detail: belt_commit_exec_detail(step: "materialize-directories", outcome: ExecRefused { program: program, reason: reason }),
+        }
+      ExecOk { stdout: _ } => ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
+    }
+  }
+}
+
+fn belt_publish_realize_writes(worktree: String, files: List<RecoveredSourceFile>) -> BeltScmCapture {
+  fold(
+    files,
+    init: ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" },
+    f: (acc, f) =>
+      match acc {
+        ScmCaptureRefused { detail: _ } => acc
+        ScmCapturePoisoned { detail: _ } => acc
+        ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } => {
+          let write = Filesystem.Write(
+            path: join([worktree, "/", f.path as String], ""),
+            content: match f.content {
+              AuthoredSourceEmpty => ""
+              AuthoredSourceText(t) => t as String
+            },
+          )
+          if write.success {
+            acc
+          } else {
+            ScmCaptureRefused {
+              detail: join(["the integration head's ", f.path as String, " could not be materialized: ", write.error], ""),
+            }
+          }
+        }
+      },
+  )
 }
 
 // THE PUBLISH'S CONTENT DEMAND IS THE HEAD'S DELTA AGAINST THE BASE IT IS WRITTEN OVER. The
