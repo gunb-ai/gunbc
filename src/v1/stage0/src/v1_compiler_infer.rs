@@ -6150,45 +6150,6 @@ pub fn declared_type_inhabitance(
     }
 }
 
-pub fn position_is_declared_return(position: DeclaredTypePosition) -> bool {
-    match position.clone() {
-        DeclaredTypePosition::PositionDeclaredReturn => true,
-        _ => false,
-    }
-}
-
-pub fn required_produced_at_optional_declared(
-    declared: Rc<Node>,
-    produced: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        let declared_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), declared.clone());
-        let produced_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), produced.clone());
-        let produced_carries_optional = ((produced.return_cardinality.clone()
-            == Cardinality::CardOptional)
-            || (crate::v1_std_core::qualified_last_segment(produced_name.clone())
-                == "Optional".to_string()));
-        let produced_is_generic = (((((produced.params.clone().len() as i64) > 0)
-            || (produced.inferred.clone() == std::option::Option::None))
-            || crate::v1_std_core::is_compiler_error(produced.inferred.clone().clone().unwrap()))
-            || match produced.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::TypeVariable { id: _, .. }) => true,
-                _ => false,
-            });
-        (((((((declared.return_cardinality.clone() == Cardinality::CardOptional)
-            && !produced_carries_optional.clone())
-            && !produced_is_generic.clone())
-            && (produced_name.clone() != "".to_string()))
-            && (declared_name.clone() != "".to_string()))
-            && !type_node_is_callable(declared.clone()))
-            && !type_node_is_callable(produced.clone()))
-    }
-}
-
 pub fn optional_produced_at_required_declared(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -6236,17 +6197,11 @@ pub fn optional_at_required_obligation_diags(
     obligation: Rc<DeclaredTypeObligation>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    if (optional_produced_at_required_declared(
+    if optional_produced_at_required_declared(
         obligation.declared.clone(),
         obligation.produced.clone(),
         scope.clone(),
-    ) || (position_is_declared_return(obligation.position.clone())
-        && required_produced_at_optional_declared(
-            obligation.declared.clone(),
-            obligation.produced.clone(),
-            scope.clone(),
-        )))
-    {
+    ) {
         Rc::new(vec![crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
                 position: declared_type_position_label(
