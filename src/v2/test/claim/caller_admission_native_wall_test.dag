@@ -30,6 +30,8 @@ import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_t
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { assemble_program_from_ingest, dag_prepared_grammar, program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model, dag_lex, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }
+import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { OccurrenceIdAllocator }
 import v2.compiler.resolve { ResolvedTree, resolve }
@@ -42,7 +44,8 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol, symbol_eq }
+import v2.std.node { Edge, Symbol, symbol_eq, symbol_lexeme }
+import std.process { ProcessExit, exit_failure }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -215,17 +218,30 @@ test fn the_native_wall_admits_a_cross_module_call_from_the_listed_caller_holds(
   aca_accepted_clean(r: aca_cross_control_inferred())
 }
 
-// DBG-PROBE (temporary): prints the observed refusal reason for the cross fixtures.
-fn dbg_cross_red_reason() -> Symbol {
-  match aca_cross_red_inferred() {
-    Accepted { value: _, diagnostics: _ } => ^dbg_cross_red_accepted
-    Rejected { diagnostics: ned } => ned.head.reason
-  }
-}
-
-fn dbg_cross_control_standing() -> Symbol {
-  match aca_cross_control_inferred() {
-    Accepted { value: _, diagnostics: _ } => ^dbg_control_accepted
-    Rejected { diagnostics: ned } => ned.head.reason
+// DBG-PROBE (temporary): walk the carrier search + reader projections with Outcome semantics.
+fn dbg_clause_reader_verdict() -> ProcessExit {
+  match aca_normalized(text: aca_cross_peer_text()) {
+    Rejected { diagnostics: _ } => exit_failure(reason: "normalize-refused")
+    Accepted { value: t, diagnostics: _ } =>
+      match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
+        Absent => exit_failure(reason: "clause-not-found-under-root")
+        Present { value: clause } =>
+          match find_named_child(root: clause, name: ^grammar_production_captured_node_projection) {
+            Rejected { diagnostics: _ } => exit_failure(reason: "clause-captured-missing")
+            Accepted { value: cap2, diagnostics: _ } =>
+              match find_named_child(root: cap2, name: ^grammar_sequence_right_node_projection) {
+                Rejected { diagnostics: _ } => exit_failure(reason: "no-outer-right")
+                Accepted { value: outer_right, diagnostics: _ } =>
+                  match find_named_child(root: outer_right, name: ^grammar_sequence_left_node_projection) {
+                    Rejected { diagnostics: _ } => exit_failure(reason: "no-repeat-under-outer-right")
+                    Accepted { value: rep, diagnostics: _ } =>
+                      match parse_production_emitted_identity_optional(node: rep) {
+                        Absent => exit_failure(reason: "WALK-OK-repeat-not-a-production")
+                        Present { value: id } => exit_failure(reason: symbol_lexeme(sym: id))
+                      }
+                  }
+              }
+          }
+      }
   }
 }
