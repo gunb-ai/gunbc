@@ -7,7 +7,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.resources { Network }
-import v2.std.collection { empty_map }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -285,13 +284,3 @@ service cargo.Identity {
     }
   }
 }
-
-// CARGO'S OWN RETRY WARNING, A FACT ABOUT CARGO AND NOT ABOUT THE CRATE IT BUILDS. When a fetch
-// fails transiently, cargo retries and reports each retry through its shell's warn channel as
-// `warning: spurious network error (N tries remaining): <error>` (cargo src/cargo/util/network/
-// retry.rs, `Retry::r#try`). The line is a cargo status message on stderr, not a rustc diagnostic,
-// so it says nothing about whether the compiled crate is warning-clean. Consumed by the host
-// mirror v1_compiler.emitted_closure_compile_host CARGO_SPURIOUS_NETWORK_ERROR_FRAGMENT, the
-// one place that judges an emitted build's warnings from cargo's stderr; a recognised retry is
-// excluded from that count and reported as a retry, and every other warning still counts.
-data cargo_spurious_network_error_log_fragment: String = "spurious network error"

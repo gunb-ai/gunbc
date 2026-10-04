@@ -965,11 +965,18 @@ fn warning_header_lines(stderr: &str) -> Vec<String> {
         .collect()
 }
 
-/// `extdeps.rust.cargo_build` `cargo_spurious_network_error_log_fragment`, mirrored: the text
-/// cargo prints when it RETRIES a failed fetch (`warning: spurious network error (N tries
-/// remaining): ...`). ONLY this header is excluded from the warning count, so any other warning,
-/// including a cargo warning this mirror does not recognise, still counts and still refuses: the
-/// exclusion narrows by one recognised upstream fact and never widens by default.
+/// The text cargo prints when it RETRIES a failed fetch: `warning: spurious network error (N tries
+/// remaining): <error>`, reported through cargo's shell warn channel (cargo
+/// src/cargo/util/network/retry.rs, `Retry::r#try`). A cargo status message on stderr, not a rustc
+/// diagnostic, so it says nothing about whether the compiled crate is warning-clean.
+///
+/// THIS CONST IS THE ONE DECLARED SEED FACT, not a mirror of a `.dag` row: a row with no consumer
+/// beside a hand-copied literal was two authorities that could drift (review 75283), so the row was
+/// deleted and the fact lives here, rostered in `gunbc.emitted_closure_compile_seed_growth`.
+///
+/// ONLY this header is excluded from the warning count, so any other warning, including a cargo
+/// warning this does not recognise, still counts and still refuses: the exclusion narrows by one
+/// recognised upstream fact and never widens by default.
 const CARGO_SPURIOUS_NETWORK_ERROR_FRAGMENT: &str = "spurious network error";
 
 fn is_cargo_network_retry(header: &str) -> bool {
