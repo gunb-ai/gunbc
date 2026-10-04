@@ -3,7 +3,6 @@ module v2.test.claim.namespace_xl0.value_read_direct
 import v2.compiler.body_lowering_fold { body_lower_value_read }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, content_hash, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

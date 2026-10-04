@@ -13,7 +13,6 @@ pub use crate::std_source_annotation::{
     AnnotationSubject, KeyedAnnotationRow, NormalizedAnnotationCapture, SourceAnnotationDebt,
     SourceAnnotationGraph, UnboundAnnotationCapture,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

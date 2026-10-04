@@ -10,7 +10,6 @@ module v2.test.claim.product_receipt_evidence_cause_swap_test
 // These construct the standings directly, so no host effect is required and the control routes on the
 // required floor even though the transport it guards does not.
 
-import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
   EvidenceSubjectCompleted,

@@ -47,7 +47,6 @@ import v2.std.node {
 
 }
 import v2.std.optional { Absent, Present, optional_absent }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 
 // THE CALLABLE-BINDER SLICE, READ AT ONE INTERFACE EACH, WITH SUPPLIED NODES. Every claim here

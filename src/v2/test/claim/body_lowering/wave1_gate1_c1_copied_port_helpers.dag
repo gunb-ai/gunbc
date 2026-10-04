@@ -9,7 +9,6 @@ import v2.lens.cost.copied_port_citations {
 }
 import v2.lens.cost.copied_port_derivation { derive_copied_port_index_from_arrow }
 import v2.std.collection { Absent, Present }
-import v2.std.logic { Bool }
 
 // Wave 1 Gate 1 C1 helpers: per-op cost derivation over ^arrow_body_edge; list_append copied
 // port is 1 (concat copies the right), list_snoc_item 0, map_merge 1. Unpriceable combiners stay

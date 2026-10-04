@@ -44,7 +44,6 @@ import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { grammar_empty_node }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
