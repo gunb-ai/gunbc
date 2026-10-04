@@ -54,7 +54,7 @@ import v1.std.core { Unmarked,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -264,6 +264,10 @@ import v1.compiler.emit {
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
+  NativeEffectRealizationAdmission, NativeEffectHandlerBound, NativeEffectOutsideProductionDenominator, NativeEffectRealizationUnavailable,
+  NativeServiceEffect, NativeResourceEffect, NativeTransportHandler, NativeCapabilityToken,
+  admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal,
+  NativeEffectDenominator, native_compiler_route_denominator, native_service_route_denominator,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
@@ -3604,7 +3608,12 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       renders_clap_cli: has_pipeline,
       renders_async_services: has_services
     })
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name)
+  let native_effects = native_entry_effects(modules: typed.modules, registry: registry)
+  let native_effect_refusals = native_entry_effect_diagnostics(effects: native_effects, modules: typed.modules)
+  if native_effect_refusals |> count > 0 {
+    return EmitResult { files: [], diagnostics: native_effect_refusals, emitted_edges: [] }
+  }
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, effects: native_effects)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -17480,7 +17489,164 @@ fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
 // a library: its main is the typed entry-point-absent refusal. The derived "workflow" CLI that used
 // to answer below the pipeline arms -- one clap subcommand per function carrying `uses` or reaching
 // a service -- is deleted: it renamed the effect axis an entry role, and no built closure reached it.
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String) -> TextFile {
+// ── THE NATIVE ENTRY'S EFFECT HANDLES, FROM ONE VERDICT ────────────────────────────────────
+// v1.compiler.emit NativeEffectRealizationAdmission is computed here once per native entry, in the
+// order emit_func_params renders the entry function's effect parameters (its `uses` resources, then
+// the services it reaches), and BOTH consumers read that one list: the emission refusal below, and
+// the rendered main, which binds exactly the bound handlers. No main writes a handle by hand.
+type NativeEntryEffects {
+  entry_module: String
+  entry_function: String
+  admissions: List<NativeEffectRealizationAdmission>
+  module_files: List<String>
+}
+
+fn native_entry_function_name(modules: List<TypedModule>) -> String? {
+  if compiler_pipeline_entry_is_native_serve(modules: modules) { Present { value: native_serve_entry_function } }
+  else if compiler_pipeline_entry_is_native_cli(modules: modules) { Present { value: native_cli_entry_function } }
+  else { none }
+}
+
+data native_serve_entry_function: String = "native_serve_handle"
+data native_cli_entry_function: String = "v2_cli_main"
+
+type NativeEffectDeclSite {
+  item: Node
+  module_file: String
+}
+
+fn native_effect_decl_sites(modules: List<TypedModule>, kind: ParsedModuleItemKind, name: String) -> List<NativeEffectDeclSite> {
+  modules |> flat_map(tm => {
+    let si = tm.type_env.source_indices
+    let file = module_to_filename(name: authored_name_at(source_indices: si, node: tm.module))
+    tm.items
+      |> filter(item => item.module_item_kind == kind && authored_name_at(source_indices: si, node: item) == name)
+      |> map(item => NativeEffectDeclSite { item: item, module_file: file })
+  })
+}
+
+fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> NativeEntryEffects? {
+  match native_entry_function_name(modules: modules) {
+    Absent => none
+    Present { value: entry_fn } => {
+      let entry_module = compiler_pipeline_entry_module_name(modules: modules)
+      let denominator = if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator } else { native_compiler_route_denominator }
+      let entry_si = modules
+        |> filter(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module) == entry_module)
+        |> map(tm => tm.type_env.source_indices)
+        |> first
+      let si = match entry_si { Present { value: x } => x  Absent => empty_map() }
+      let info = lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: entry_module, decl_name: entry_fn })
+      let resources = match info { Present { value: i } => i.resource_requirements  Absent => [] }
+      let services = match info { Present { value: i } => i.service_names  Absent => [] }
+      let resource_rows = resources |> map(r => {
+        let rname = type_leaf_name_for_collapse(n: r.resource, source_indices: si)
+        let sites = native_effect_decl_sites(modules: modules, kind: ModuleItemResource, name: rname)
+        let site = if (sites |> count) == 1 { sites |> first } else { none }
+        NativeEntryEffectRow {
+          admission: admit_native_resource_effect(binding: r.binding_name, resource: rname, capability_count: match site { Present { value: d } => Present { value: d.item.children |> count }  Absent => none }, denominator: denominator),
+          module_file: match site { Present { value: d } => d.module_file  Absent => "" }
+        }
+      })
+      let service_rows = services |> map(sn => {
+        let sites = native_effect_decl_sites(modules: modules, kind: ModuleItemService, name: sn)
+        let site = if (sites |> count) == 1 { sites |> first } else { none }
+        NativeEntryEffectRow {
+          admission: admit_native_service_effect(service: sn, item: match site { Present { value: d } => Present { value: d.item }  Absent => none }, denominator: denominator, source_indices: si),
+          module_file: match site { Present { value: d } => d.module_file  Absent => "" }
+        }
+      })
+      let rows = concat(resource_rows, service_rows)
+      Present { value: NativeEntryEffects {
+        entry_module: entry_module,
+        entry_function: entry_fn,
+        admissions: rows |> map(r => r.admission),
+        module_files: rows |> map(r => r.module_file)
+      } }
+    }
+  }
+}
+
+type NativeEntryEffectRow {
+  admission: NativeEffectRealizationAdmission
+  module_file: String
+}
+
+fn native_entry_effect_diagnostics(effects: NativeEntryEffects?, modules: List<TypedModule>) -> List<ErrorNode> {
+  match effects {
+    Absent => []
+    Present { value: e } => {
+      let refusals = e.admissions |> flat_map(a => match native_effect_admission_refusal(a: a) {
+        Present { value: r } => [r]
+        Absent => []
+      })
+      if (refusals |> count) == 0 { [] } else {
+        let span = modules
+          |> filter(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module) == e.entry_module)
+          |> map(tm => tm.module.span)
+          |> first
+        match span {
+          Present { value: sp } => [make_error_node(
+            diagnostic: NativeEffectRealizationRefused { entry: concat(e.entry_module, concat(".", e.entry_function)), refusals: refusals, span: sp },
+            module_name: e.entry_module)]
+          Absent => [make_error_node(
+            diagnostic: NativeEffectRealizationRefused { entry: concat(e.entry_module, concat(".", e.entry_function)), refusals: concat(refusals, ["the entry module is not in the closure"]), span: no_span() },
+            module_name: e.entry_module)]
+        }
+      }
+    }
+  }
+}
+
+// The rendered binding of one admitted handler: the `let` that constructs it and the argument that
+// lends it to the entry function. Only a bound admission renders; the refusal above has already
+// stopped emission for any other arm, so nothing here guesses.
+type NativeEffectBindingText {
+  var: String
+  type_path: String
+  binding_line: String
+  argument: String
+}
+
+fn native_effect_binding_of(var: String, type_path: String, constructor: String) -> NativeEffectBindingText {
+  NativeEffectBindingText {
+    var: var,
+    type_path: type_path,
+    binding_line: concat("    let ", var, " = ", constructor, ";\n"),
+    argument: concat("&", var)
+  }
+}
+
+fn native_effect_binding_text(a: NativeEffectRealizationAdmission, module_file: String, crate_name: String) -> NativeEffectBindingText? {
+  match a {
+    NativeEffectHandlerBound { effect_contract: c, handler_identity: _ } => match c {
+      NativeServiceEffect { service: sn } => {
+        let path = concat(crate_name, "::", module_file, "::", sanitize_service_name(name: sn))
+        Present { value: native_effect_binding_of(var: service_var_name(service_name: sn), type_path: path, constructor: concat(path, "::new(Default::default())")) }
+      }
+      NativeResourceEffect { binding: b, resource: r } => {
+        let path = concat(crate_name, "::", module_file, "::", r)
+        Present { value: native_effect_binding_of(var: emit_ident(name: b, target: Rust), type_path: path, constructor: path) }
+      }
+    }
+    _ => none
+  }
+}
+
+fn native_effect_bindings(effects: NativeEntryEffects?, crate_name: String) -> List<NativeEffectBindingText> {
+  match effects {
+    Absent => []
+    Present { value: e } => e.admissions |> enumerate |> flat_map(pair => {
+      let file = match e.module_files |> skip(pair.first) |> first { Present { value: f } => f  Absent => "" }
+      match native_effect_binding_text(a: pair.second, module_file: file, crate_name: crate_name) {
+        Present { value: t } => [t]
+        Absent => []
+      }
+    })
+  }
+}
+
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, effects: NativeEntryEffects?) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
@@ -17499,13 +17665,13 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_cli(modules: modules) {
-      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
       return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_serve(modules: modules) {
-      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module, bindings: native_effect_bindings(effects: effects, crate_name: crate_name))
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -17692,8 +17858,41 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
 // status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no status table
 // is restated here. Serial by design, as the seed's loop is. No per-request budget is armed:
 // that is the declared drop gunbc.rung_drop.native_serve_request_budget_unrealized.
-fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  // An entry with effects is an async function returning Result (emit_func_def); one without is a
+  // pure function returning the response. The admitted bindings decide which, so the call shape
+  // and the handles come from the same verdict.
+  let effectful = (bindings |> count) > 0
+  let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
+  let exchange_effect_params = if effectful {
+    concat(", runtime: &tokio::runtime::Runtime", bindings |> map(b => concat(", ", b.var, ": &", b.type_path)) |> join(separator: ""))
+  } else { "" }
+  let exchange_effect_args = if effectful {
+    concat(", &runtime", bindings |> map(b => concat(", ", b.argument)) |> join(separator: ""))
+  } else { "" }
+  let handler_effect_args = bindings |> map(b => concat(", ", b.var)) |> join(separator: "")
+  let handler_call = if effectful {
+    concat(
+      "        NativeServeRoute::NativeServeToHandler => match runtime.block_on(native_serve_handle(", "\n",
+      "            head.method.clone(), head.target.clone(), body, head.tailscale_identity.clone(), contract.release_revision.clone()", handler_effect_args, ",", "\n",
+      "        )) \{", "\n",
+      "            Ok(response) => Exchange::Answer(response),", "\n",
+      "            Err(cause) => Exchange::Answer(native_serve_effect_failed(cause.to_string())),", "\n",
+      "        \},", "\n")
+  } else {
+    concat(
+      "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(", "\n",
+      "            head.method.clone(),", "\n",
+      "            head.target.clone(),", "\n",
+      "            body,", "\n",
+      "            head.tailscale_identity.clone(),", "\n",
+      "            contract.release_revision.clone(),", "\n",
+      "        )),", "\n")
+  }
+  let runtime_line = if effectful {
+    "    let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() \{ Ok(runtime) => runtime, Err(cause) => \{ eprintln!(\"REFUSED: native effect executor: \{\}\", cause); std::process::exit(2); \} \};\n"
+  } else { "" }
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -17707,7 +17906,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
       "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
-      "    native_serve_announcement, native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
+      "    native_serve_announcement, native_serve_effect_failed, native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
       "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,", "\n",
       "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
@@ -17744,7 +17943,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    Answer(Rc<ServeWireResponse>),", "\n",
       "\}", "\n",
       "\n",
-      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
+      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64", exchange_effect_params, ") -> Exchange \{", "\n",
       "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
       "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
       "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
@@ -17778,13 +17977,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    let (head, body) = head;", "\n",
       "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) \{", "\n",
       "        NativeServeRoute::NativeServeAnswered \{ response \} => Exchange::Answer(response.clone()),", "\n",
-      "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(", "\n",
-      "            head.method.clone(),", "\n",
-      "            head.target.clone(),", "\n",
-      "            body,", "\n",
-      "            head.tailscale_identity.clone(),", "\n",
-      "            contract.release_revision.clone(),", "\n",
-      "        )),", "\n",
+      handler_call,
       "    \}", "\n",
       "\}", "\n",
       "\n",
@@ -17808,6 +18001,8 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "    let bound_host = bound.ip().to_string();", "\n",
       "    let bound_port = bound.port() as i64;", "\n",
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
+      runtime_line,
+      binding_lines,
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
       "    for accepted in listener.incoming() \{", "\n",
       "        let mut stream = match accepted \{", "\n",
@@ -17818,7 +18013,7 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
       "            eprintln!(\"native-serve: set_read_timeout: \{\}\", cause);", "\n",
       "            continue;", "\n",
       "        \}", "\n",
-      "        match exchange(&stream, &contract, &bound_host, bound_port) \{", "\n",
+      "        match exchange(&stream, &contract, &bound_host, bound_port", exchange_effect_args, ") \{", "\n",
       "            Exchange::Idle => \{\}", "\n",
       "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),", "\n",
       "        \}", "\n",
@@ -17828,10 +18023,14 @@ fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String)
   }
 }
 
-// Bind the existing file transport once. v2_cli_main owns parse, acquisition and compilation;
-// the host supplies argv and realizes output and ProcessExit, with no source-root walk.
-fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+// Bind the handlers NativeEffectRealizationAdmission admitted for v2_cli_main (today the existing
+// file transport, extdeps.filesystem.filesystem_io Filesystem) and nothing else. v2_cli_main owns
+// parse, acquisition and compilation; the host supplies argv and realizes output and ProcessExit,
+// with no source-root walk.
+fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String, bindings: List<NativeEffectBindingText>) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  let binding_lines = bindings |> map(b => b.binding_line) |> join(separator: "")
+  let effect_args = bindings |> map(b => concat(", ", b.argument)) |> join(separator: "")
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -17849,10 +18048,10 @@ fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -
       "#[tokio::main(flavor = \"current_thread\")]", "\n",
       "async fn main() \{", "\n",
       "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
-      "    let filesystem = ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());", "\n",
-      "    let outcome = match v2_cli_main(Rc::new(argv.into()), &filesystem).await {", "\n",
+      binding_lines,
+      "    let outcome = match v2_cli_main(Rc::new(argv.into())", effect_args, ").await {", "\n",
       "        Ok(outcome) => outcome,", "\n",
-      "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }", "\n",
+      "        Err(cause) => { eprintln!(\"REFUSED: native effect transport: {}\", cause); std::process::exit(2); }", "\n",
       "    };", "\n",
       "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
       "    print!(\"\{text\}\");", "\n",
