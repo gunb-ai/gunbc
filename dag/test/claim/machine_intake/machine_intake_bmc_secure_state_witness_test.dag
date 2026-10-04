@@ -8,7 +8,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
-import extdeps.bmc.access_profile { SurfaceAccountManagement }
 import extdeps.bmc.ipmi_channel {
   IpmiChannelNumber,
   IpmiControllerChannelCensus,
@@ -23,6 +22,7 @@ import extdeps.bmc.ipmi_channel {
   ipmi_user_channel_access,
 }
 import extdeps.network.ipv4 { ipv4_address }
+import extdeps.bmc.ipmi_channel { extdeps_external_authority_anchor }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
@@ -54,9 +54,6 @@ import gunbc.machine_intake_bmc_rotation_route {
   RouteGroundedByCitedSource,
   RouteQualificationCandidate,
   RouteUngrounded,
-  ObservedSurfaceRead,
-  RouteQualified,
-  RouteQualificationRefused,
   RotationApplyAdmission,
   RotationApplyAdmitted,
   RotationApplyRouteNotGrounded,
@@ -66,12 +63,9 @@ import gunbc.machine_intake_bmc_rotation_route {
   RotationApplyApprovalDenied,
   RotationApplyApprovalForAnotherAuthority,
   RotationApplyApprovalForAnotherRequest,
-  rotation_route_candidate,
   rotation_route_ungrounded,
-  qualify_rotation_route,
-  dry_route_qualification_request,
+  rotation_route_from_citation,
   rotation_apply_authority,
-  route_qualification_authority,
   rotation_route_request_identity,
 }
 import gunbc.machine_intake_bmc_secure {
@@ -320,28 +314,21 @@ fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
   }
 }
 
-// A route grounded by the real qualification effect: candidate -> executed request on a qualification
-// world -> grounded. The qualification world is the lab controller before intake.
+// GROUNDED LAB ROUTES, BY CITATION. A modeled run cannot ground a route (O1a), so the synthetic lab
+// controller's routes are grounded the way a build-scoped citation grounds one: the IPMI v2.0
+// specification's Set User Password command (App 47h). The two helpers take no argument, so the
+// standing they return names the lab controller and build and nothing a caller can aim; they are the
+// admitted callers of rotation_route_from_citation for this witness.
+fn cited_lab_route_managed_user() -> BmcRotationRouteStanding {
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 3 }, citation: extdeps_external_authority_anchor)
+}
+
+fn cited_lab_route_published_user() -> BmcRotationRouteStanding {
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 2 }, citation: extdeps_external_authority_anchor)
+}
+
 fn grounded_route(user: IpmiUserId) -> BmcRotationRouteStanding {
-  let request = IpmiSetUserPassword { user: user }
-  let candidate = rotation_route_candidate(
-    endpoint: lab_endpoint,
-    firmware: lab_firmware(),
-    request: request,
-    evidence: ObservedSurfaceRead {
-      surface: SurfaceAccountManagement,
-      receipt: EvidenceRef { label: "lab IPMI user list read", digest: content_hash_of_value(value: "lab IPMI user list read" as NonEmptyStr) },
-    },
-  )
-  let qualification_world = world(users: [BmcIpmiUser { id: 3, password: "qualify" }, BmcIpmiUser { id: 2, password: "qualify" }])
-  match qualify_rotation_route(
-    standing: candidate,
-    approval: approval(authority: route_qualification_authority, revision: rotation_route_request_identity(standing: candidate, request: request)),
-    response: dry_route_qualification_request(world: qualification_world, request: request, password: "qualify-Secret!1").response,
-  ) {
-    RouteQualified { standing: s } => s
-    RouteQualificationRefused { standing: s, cause: _ } => s
-  }
+  if (user as Int) == (published_user as Int) { cited_lab_route_published_user() } else { cited_lab_route_managed_user() }
 }
 
 // ── the secret order ────────────────────────────────────────────────────────────────────────────
