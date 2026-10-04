@@ -54,6 +54,7 @@ import v2.std.diagnostic {
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
+  rejected_with_pending,
   outcome_accepted,
   outcome_with_diagnostics,
   outcome_rejected
@@ -463,6 +464,18 @@ fn program_assembly_advisories_extend(acc: Diagnostics, more: Diagnostics) -> Di
   }
 }
 
+// THE ONE TRANSITION FROM AN ACCEPTED FOLD TO A REFUSED ONE. The advisories the ingest accumulated
+// before the refusing file stay on the refusal, ahead of it, in the order rejected_with_pending gives
+// any pending chain (the fatal cause stays the refusal's own, the last element). Both refusing arms of
+// the fold step go through here, so they cannot disagree about it; building the failed state from the
+// refusal alone dropped every earlier file's advisories.
+fn program_assembly_fold_failed(pending: Diagnostics, refused: NonEmptyDiagnostics, spans: SpanIndex) -> ProgramAssemblyLocatedFoldState {
+  ProgramAssemblyLocatedFoldFailed {
+    diagnostics: rejected_with_pending(pending: pending, rejected: refused),
+    spans: spans
+  }
+}
+
 fn program_assembly_fold_step(
   state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
@@ -499,10 +512,14 @@ fn program_assembly_fold_step(
                 advisories: program_assembly_advisories_extend(acc: advised, more: file_advisories)
               }
             Rejected { diagnostics: d } =>
-              ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+              program_assembly_fold_failed(
+                pending: program_assembly_advisories_extend(acc: advised, more: file_advisories),
+                refused: d,
+                spans: carried
+              )
           }
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+          program_assembly_fold_failed(pending: advised, refused: d, spans: carried)
       }
   }
 }
