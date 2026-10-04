@@ -54,6 +54,32 @@ fn instance_serves_itself(instance: HostDashboardInstance) -> Bool {
     })
 }
 
-test fn every_instances_serve_function_serves_that_instance() -> Bool {
-  all(public_builtin_dashboard_instances(), i => instance_serves_itself(instance: i))
+// ONE CLAIM PER INSTANCE: the cases are independent, so one conjunction would force six full serves
+// through one budget while losing no coverage by splitting (DESIGN 3: a witness discriminates at one
+// interface). The roster claim keeps completeness: every instance's serve_function names exactly one
+// declared handler, so a seventh instance cannot slip past the per-instance claims unbound.
+fn the_instance(id: String) -> List<HostDashboardInstance> {
+  public_builtin_dashboard_instances() |> filter(i => (i.instance_id as String) == id)
 }
+
+fn serves_itself_by_id(id: String) -> Bool {
+  let found = the_instance(id: id)
+  count(found) == 1 && all(found, i => instance_serves_itself(instance: i))
+}
+
+test fn every_instance_names_exactly_one_declared_handler() -> Bool {
+  count(public_builtin_dashboard_instances()) == count(declared_serve_handlers())
+    && all(public_builtin_dashboard_instances(), i => count(filter(declared_serve_handlers(), h => h.name == (i.serve_function as String))) == 1)
+}
+
+test fn srv1_live_serves_itself() -> Bool { serves_itself_by_id(id: "srv1-live") }
+
+test fn macbook_local_serves_itself() -> Bool { serves_itself_by_id(id: "macbook-local") }
+
+test fn srv1_lab_serves_itself() -> Bool { serves_itself_by_id(id: "srv1-lab-codex-feedback-v0") }
+
+test fn srv2_preview_serves_itself() -> Bool { serves_itself_by_id(id: "srv2-preview-codex-feedback-v0") }
+
+test fn srv2_deploy_serves_itself() -> Bool { serves_itself_by_id(id: "srv2-deploy") }
+
+test fn srv2_lab_serves_itself() -> Bool { serves_itself_by_id(id: "srv2-lab-v1-deletion") }
