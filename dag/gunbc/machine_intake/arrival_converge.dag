@@ -76,7 +76,6 @@ import gunbc.machine_intake_bmc_rotation_route {
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
-import gunbc.host_convergence_census { host_convergence_census_standing }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
   StepSubjectKey,
@@ -84,6 +83,9 @@ import gunbc.fleet.convergence_fold {
   ConvergenceStep,
   SameSubject,
   ConvergenceOrderAuthority,
+  ConvergencePlanningAuthority,
+  convergence_planning_authority,
+  convergence_receipt_projection,
   ConvergencePlanRefusal,
   ConvergencePlanAdmitted,
   ConvergencePlanRefused,
@@ -242,7 +244,10 @@ fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStand
 // What the unit supplies from its committed observations: board serials (FRU, SMBIOS), the unit keys
 // already bound elsewhere in the fleet, and the provisional assembly readable before boot. The access
 // receipt is the step's precondition and is the one input the fold checks against the ledger.
-type IdentityBindInputs {
+// SEALED. Production inputs are constructed only in this module, by the per-unit function that reads
+// the unit's committed captures (mtjade1_identity_bind_inputs). Supplied inputs reach the step only
+// through identity_bind_inputs_supplied, whose callers are named witness facades.
+type IdentityBindInputs sole_constructor {
   board_serials: List<BoardSerialObservation>
   other_units: List<UnitKey>
   assembly: AssemblyManifest?
@@ -320,6 +325,14 @@ type IdentityBoundProvisional sole_constructor {
   subject: MachineIntakeSubject
 }
 
+fn identity_bind_inputs_supplied(board_serials: List<BoardSerialObservation>, other_units: List<UnitKey>, assembly: AssemblyManifest?) -> IdentityBindInputs
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "supplied_identity_inputs"),
+  ]
+{
+  IdentityBindInputs { board_serials: board_serials, other_units: other_units, assembly: assembly }
+}
+
 // ONE INTAKE ATTEMPT PER RUN, BY CONSTRUCTION: the attempt identity is the run identity.
 fn intake_attempt_of_run(run: ConvergenceRunId) -> IntakeAttemptId {
   (run as NonEmptyStr) as IntakeAttemptId
@@ -334,6 +347,7 @@ type ArrivalStepReceipt
 type ArrivalStepRefusal
   = AccessDiscoverObserveRefused { cause: AccessObserveRefusal }
   | IdentityBindObserveRefused { cause: IdentityObserveRefusal }
+  | IdentityBindAccessForAnotherInstance { access: StepInstanceKey }
   | ReadOnlyPhaseRefused { phase: ArrivalPhase, reason: NonEmptyStr }
   | ReadOnlyPhaseDecidedApply { phase: ArrivalPhase }
   | ReadOnlyPhaseSatisfiedWithoutEvidence { phase: ArrivalPhase }
@@ -353,10 +367,7 @@ fn arrival_receipt_consumed(r: ArrivalStepReceipt) -> List<StepInstanceKey> {
 }
 
 fn arrival_receipt_projection() -> ConvergenceReceiptProjection<ArrivalStepReceipt> {
-  ConvergenceReceiptProjection {
-    key_of: arrival_receipt_key,
-    consumed_of: arrival_receipt_consumed,
-  }
+  convergence_receipt_projection(key_of: arrival_receipt_key, consumed_of: arrival_receipt_consumed)
 }
 
 fn read_only_refusal(phase: ArrivalPhase, decision: UpsertDecision<ReadOnlyPhaseRemedy>) -> ArrivalStepRefusal {
@@ -399,6 +410,15 @@ fn access_discover(key: StepInstanceKey, read: CurrentManagerRead) -> StepOutcom
 // observations, the provisional assembly, the live firmware manifest from the consumed access
 // receipt, qualification_subject_of, then MachineIntakeSubject with this run's one attempt identity.
 fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
+  if (access.key.run as NonEmptyStr) != (key.run as NonEmptyStr) || (access.key.subject as NonEmptyStr) != (key.subject as NonEmptyStr) {
+    StepRefused { key: key, cause: IdentityBindAccessForAnotherInstance { access: access.key } }
+  } else {
+    identity_bind_for_access(key: key, access: access, inputs: inputs)
+  }
+}
+
+// The access receipt is this instance's own (same run, same subject): the step binds from it.
+fn identity_bind_for_access(key: StepInstanceKey, access: AccessDiscoverEstablished, inputs: IdentityBindInputs) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
   let projection = identity_bind_projection()
   let request = IdentityBindRequest { access: access, inputs: inputs }
   match inspect_via_host_effect_projection(subject: key, goal: IdentityBindGoal { attempt: intake_attempt_of_run(run: key.run) }, request: request, projection: projection) {
@@ -429,6 +449,13 @@ fn identity_bind_provisional(key: StepInstanceKey, access: AccessDiscoverEstabli
 
 fn arrival_order_authority() -> ConvergenceOrderAuthority<IntakePhase> {
   ConvergenceOrderAuthority { authority: arrival_order_authority_ref, rank_of: intake_phase_rank }
+}
+
+// THE ONE BINDING OF THE ARRIVAL ORDER AS A PLANNING AUTHORITY: gunbc.machine_intake_phase's own
+// ranking under its own name. gunbc.fleet.convergence_fold convergence_planning_authority admits this
+// function and no other caller in this domain.
+fn arrival_planning_authority() -> ConvergencePlanningAuthority<IntakePhase> {
+  convergence_planning_authority(order: arrival_order_authority())
 }
 
 // The step each arrival phase is realized by in this cut. A phase of the prefix with no step refuses
@@ -510,7 +537,7 @@ fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read:
 }
 
 fn fold_arrival_prefix(steps: List<ConvergenceStep<IntakePhase>>, run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>>) -> ArrivalPrefixVerdict {
-  match admit_convergence_plan(census: host_convergence_census_standing, order: arrival_order_authority(), steps: steps) {
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: steps) {
     ConvergencePlanRefused { cause: c } => ArrivalPlanRefused { cause: c }
     ConvergencePlanAdmitted { plan: plan } =>
       ArrivalRunFolded { verdict: fold_convergence_run(plan: plan, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }

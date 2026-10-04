@@ -48,6 +48,7 @@ import gunbc.machine_intake_subject {
   UnitKeyStanding,
 }
 import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 
@@ -310,7 +311,9 @@ type ControllerClockReading
   = ControllerClockRendered { rendering: NonEmptyStr }
   | ControllerClockUnread { cause: String }
 
-type CurrentManagerRead {
+// SEALED: minted only in this module, downstream of the fail-closed file read and its digest check,
+// so a caller cannot author a decoded Manager response and hand it to AccessDiscover.
+type CurrentManagerRead sole_constructor {
   identity: RecordedManagerIdentityObservation
   controller_clock: ControllerClockReading
 }
@@ -335,7 +338,11 @@ fn controller_clock_of_capture(content: String) -> ControllerClockReading {
 
 // The clock is read only from bytes whose digest and unit binding already held: a reading from a
 // capture that did not decode as this unit is not this controller's clock.
-fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, endpoint: ObservedBmcNetwork, link: Eui48Address?, capture_path: NonEmptyStr) -> CurrentManagerRead {
+fn current_manager_read_of(content: String, expected_sha256: NonEmptyStr, endpoint: ObservedBmcNetwork, link: Eui48Address?, capture_path: NonEmptyStr) -> CurrentManagerRead
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtjade1_access_observation", decl_name: "read_mtjade1_current_manager_read"),
+  ]
+{
   let decoded = decode_recorded_manager_capture_for_link(content: content, expected_sha256: expected_sha256, link: link)
   let clock = match decoded {
     RecordedManagerDecoded { observation: _ } => controller_clock_of_capture(content: content)
