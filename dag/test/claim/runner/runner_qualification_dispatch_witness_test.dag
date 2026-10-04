@@ -24,7 +24,7 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_workflow_path, qualification_dispatch_effect,
   QualificationSubjectAdmitted, QualificationSubjectRefused,
   SubjectSlotForAnotherWorkflow, SubjectAttemptInputUndeclared, SubjectFloorJobAbsent, SubjectFloorRunsOnNotTheAttemptInput,
-  qualification_dispatch_subject_over,
+  qualification_dispatch_subject, qualification_dispatch_subject_over,
   qualification_slot_refusal, qualification_floor_admission, QualificationFloorAdmitted, QualificationFloorRefused,
   qualification_run_expectation, QualificationRunExpectation,
   qualification_dispatch_standing, QualificationDispatchStanding,
@@ -89,9 +89,6 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 // minted name (ephemeral_slot_unit), and the floor job's name; the dispatch sends exactly the declared
 // input with a label the slot registered; the effect names fleet-converge.yml in gunbc_repository at
 // the pinned revision; the expectation the collection judges against is derived from that subject.
-// The production wrapper qualification_dispatch_subject, over the real fleet_converge_workflow, is
-// its own claim in the long tier (test.claim.long.runner_qualification_dispatch_production_workflow_witness):
-// building that generated model costs ~600k eval steps per claim, which is the measured reason.
 test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
@@ -130,6 +127,38 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
             QualificationSubjectRefused { refusal: _ } => false
           })
         }
+        JitMintDispatchRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// THE PRODUCTION MINT OVER TODAY'S GENERATED WORKFLOW REFUSES, AND THE CLAIM ASSERTS THE ROUTE: the
+// real JIT mint, then qualification_dispatch_subject, which reads the real fleet-converge inputs
+// declaration first and refuses SubjectAttemptInputUndeclared naming runner_attempt_label. When the
+// boot leg lands the qualification mode, this turns red and is replaced by the admitted case.
+test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } =>
+      match dispatch_jit_mint(
+        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: branch)) },
+        authority: app_credential,
+        control_plane: observed_grant(perms: runner_grant),
+        organization: gunbai_org_ref,
+        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: branch)),
+        attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+      ) {
+        JitMintDispatchAuthorized { dispatch: d } =>
+          match qualification_dispatch_subject(
+            dispatch: d,
+            delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome),
+            floor_job_id: floor_job_id,
+            branch: branch,
+            revision: revision,
+          ) {
+            QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: i } } => i == "runner_attempt_label"
+            _ => false
+          }
         JitMintDispatchRefused { refusal: _ } => false
       }
     Absent => false

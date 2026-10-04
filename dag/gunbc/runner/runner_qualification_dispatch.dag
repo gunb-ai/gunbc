@@ -25,7 +25,7 @@ import extdeps.github.workflow_runs {
 }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
 import gunbc.auth.github_apps { GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
@@ -125,10 +125,14 @@ type QualificationSubjectStanding
   = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
   | QualificationSubjectRefused { refusal: QualificationSubjectRefusal }
 
+fn dispatch_inputs_declare(inputs: List<DispatchInput>, input: DispatchInput) -> Bool {
+  inputs |> any(i => i.name == input.name)
+}
+
 fn workflow_declares_dispatch_input(workflow: Workflow, input: DispatchInput) -> Bool {
   workflow.on |> any(t =>
     match t {
-      WorkflowDispatch { inputs: ins } => ins |> any(i => i.name == input.name)
+      WorkflowDispatch { inputs: ins } => dispatch_inputs_declare(inputs: ins, input: input)
       Push { branches: _, paths: _ } => false
       PullRequest { branches: _, types: _ } => false
       Schedule { cron: _ } => false
@@ -271,9 +275,17 @@ fn qualification_dispatch_subject_over(
   }
 }
 
-// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model. Until the
-// boot leg lands the route's mode there, it has no floor job reading the attempt input and this
-// refuses -- the wiring the route leg owes, refused rather than faked.
+// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model.
+//
+// THE DECLARED INPUTS ARE READ BEFORE THE WORKFLOW IS BUILT. The model's workflow_dispatch inputs are
+// their own declaration (gunbc.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
+// are built by fleet_converge_jobs(); evaluating the whole fleet_converge_workflow builds every job of
+// every mode, ~600k eval steps measured by the required floor, and the first check the mint makes
+// reads only the inputs. So the wrapper asks that check of the inputs declaration directly and builds
+// the workflow only when the inputs declare the attempt input -- the refusal is the same
+// SubjectAttemptInputUndeclared the mint would reach, without the construction it would never read.
+// Until the boot leg lands the qualification mode there, this refuses -- the wiring the route leg
+// owes, refused rather than faked.
 fn qualification_dispatch_subject(
   dispatch: AuthorizedJitMintDispatch,
   delivery: JitCredentialDelivery,
@@ -281,14 +293,18 @@ fn qualification_dispatch_subject(
   branch: NonEmptyStr,
   revision: CommitSha,
 ) -> QualificationSubjectStanding {
-  qualification_dispatch_subject_over(
-    dispatch: dispatch,
-    delivery: delivery,
-    workflow: fleet_converge_workflow,
-    floor_job_id: floor_job_id,
-    branch: branch,
-    revision: revision,
-  )
+  if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
+    QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
+  } else {
+    qualification_dispatch_subject_over(
+      dispatch: dispatch,
+      delivery: delivery,
+      workflow: fleet_converge_workflow,
+      floor_job_id: floor_job_id,
+      branch: branch,
+      revision: revision,
+    )
+  }
 }
 
 fn qualification_dispatch_effect(subject: QualificationDispatchSubject) -> GitHubEffect {
