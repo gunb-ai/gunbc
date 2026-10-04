@@ -656,7 +656,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
 
     StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
-      decl(prop: MarginTop, value: scale_var(t: space_20)),
+      decl(prop: MarginTop, value: scale_var(t: space_12)),
     ] },
     StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
       decl(prop: Cursor, value: "pointer"),
@@ -913,7 +913,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
       decl(prop: TextOverflow, value: "ellipsis"),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-sort, .issue-inline-assign" }, decls: [
@@ -967,10 +967,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Overflow, value: "hidden"),
       decl(prop: WhiteSpace, value: "nowrap"),
       decl(prop: TextOverflow, value: "ellipsis"),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
       decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
-      decl(prop: LineHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: LineHeight, value: scale_var(t: height_control)),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-cell-title" }, decls: [
       decl(prop: Color, value: "var(--issue-text)"),
@@ -1008,9 +1008,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: "issue-table-heading" }, decls: [
       decl(prop: FontFamily, value: "var(--issue-font-heading)"),
-      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: FontWeight, value: "500"),
-      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+      decl(prop: Margin, value: "0"),
+      decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
       decl(prop: GridColumn, value: "1 / -1"),
     ] },
 

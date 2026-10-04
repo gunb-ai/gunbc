@@ -46,15 +46,23 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
-      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_12)),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: Flex, value: "1 1 30ch"),
       decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-table-scroll" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      role_decl(prop: Background, r: SurfaceRole)
     ] },
     StaticRule { selector: RawSelector { text: ".issue-table" }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: issue_results_row_tracks()),
-      decl(prop: Gap, value: join([scale_var(t: space_6), " ", scale_var(t: space_8)], "")),
+      decl(prop: Gap, value: scale_var(t: space_0)),
       decl(prop: AlignItems, value: "stretch"),
       decl(prop: MinWidth, value: "65ch")
     ] },

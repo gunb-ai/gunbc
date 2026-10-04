@@ -32,7 +32,7 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Display, value: "flex"),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: Gap, value: "var(--space-16)"),
-      decl(prop: Padding, value: "var(--space-16) var(--space-24)"),
+      decl(prop: Padding, value: "0"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: MinWidth, value: "0"),
       decl(prop: FontFamily, value: "var(--font-sans)"),
@@ -249,7 +249,9 @@ fn site_layout_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".view-table" }, decls: [
       decl(prop: MaxWidth, value: "100%"),
       decl(prop: MinWidth, value: "0"),
-      decl(prop: RawProperty { name: "overflow-x" }, value: "auto")
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)")
     ] },
     StaticRule { selector: RawSelector { text: ".site-choice" }, decls: [
       decl(prop: Position, value: "relative"),
@@ -314,7 +316,7 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Width, value: scale_var(t: height_compact_face)),
       decl(prop: Height, value: scale_var(t: height_compact_face))
     ] },
-    StaticRule { selector: RawSelector { text: ".site-choice-compact summary" }, decls: [
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary, .site-button-compact" }, decls: [
       decl(prop: ListStyle, value: "none"),
       decl(prop: Cursor, value: "pointer"),
       decl(prop: Display, value: "flex"),
@@ -331,7 +333,7 @@ fn site_layout_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".site-choice-compact summary::marker" }, decls: [
       decl(prop: RawProperty { name: "content" }, value: "\"\"")
     ] },
-    StaticRule { selector: RawSelector { text: ".site-choice-compact summary::before" }, decls: [
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary::before, .site-button-compact::before" }, decls: [
       decl(prop: RawProperty { name: "content" }, value: "\"\""),
       decl(prop: Position, value: "absolute"),
       decl(prop: Inset, value: "var(--space-4) 0 auto"),

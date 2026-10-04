@@ -1634,12 +1634,12 @@ fn issue_controls_markup() -> Fragment {
       ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
-        attr(name: "class", value: "chip issue-topological"),
+        attr(name: "class", value: "site-button-compact issue-topological"),
         attr(name: "aria-pressed", value: "false"),
       ], [ txt("Topological sort") ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
-        attr(name: "class", value: "chip issue-sort-undo"),
+        attr(name: "class", value: "site-button-compact issue-sort-undo"),
         attr(name: "disabled", value: "disabled"),
       ], [ txt("Undo sort") ]),
       el_attrs("span", [
@@ -2794,7 +2794,7 @@ fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, membership
       [ issue_controls_markup() ],
       concat(
         if ws.hidden_not_ready == 0 { [] } else { [ el_class("p", "issue-hidden-summary", [ txt(hidden_not_ready_summary(ws: ws)) ]) ] },
-        [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ]))),
+        [ el_class("div", "issue-table-scroll", [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ]) ]))),
   ])
 }
 
