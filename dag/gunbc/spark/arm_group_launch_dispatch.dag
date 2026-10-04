@@ -267,9 +267,18 @@ fn arm_launch_readiness_minutes(env: List<DockerEnvAssignment>) -> Int {
 
 // Every arm the step can launch: the GLM staircase's steps and the V4.1 arm. An unreadable timeout
 // contributes nothing here and is refused by that arm's own front-door plan before any wait.
-fn arm_launch_step_timeout_minutes() -> Duration {
+fn arm_launch_step_needed_minutes() -> Int {
   let glm = map(glm53_staircase_steps, s => arm_launch_readiness_minutes(env: glm53_step_deployment_env(s: s)))
   let v41 = arm_launch_readiness_minutes(env: v41_group_a_deployment_env())
   let longest = fold(concat(glm, [v41]), init: 0, f: fn(a, m) { if m > a { m } else { a } })
-  (longest + arm_launch_apply_budget_minutes + arm_launch_rollback_budget_minutes) as Duration
+  longest + arm_launch_apply_budget_minutes + arm_launch_rollback_budget_minutes
 }
+
+// THE STEP'S TIMEOUT IS A LITERAL ONLY BECAUSE THE LANGUAGE CANNOT YET CONSTRUCT A Duration FROM A
+// COMPUTED Int: std.types Duration is `Int where range(min: 0)` and std.coercion's refinement-cast wall
+// refuses an Int-to-refinement cast (no declared conversion route exists), so the derivation above cannot
+// flow into the workflow Step's timeout_minutes field. Until it can, this literal is CHECKED against the
+// derivation -- test.claim.spark.group_arm_launch_witness w_the_launch_step_timeout_covers_every_arms_readiness
+// and drifts loudly. NEXT TRIGGER: a declared Int-to-Duration conversion (range-checked, refusing a
+// negative), at which point this row is the derivation itself.
+data arm_launch_step_timeout_minutes: Duration = 110
