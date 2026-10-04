@@ -288,3 +288,15 @@ fn kernel_mint_declaration_for(rows: List<KernelMintDeclaration>, minted_name: S
     KernelMintDeclarationAmbiguous { row_count: n }
   }
 }
+
+// WHETHER A DECLARATION IS THE ONE A NAMED KERNEL MINT STANDS FOR. The converse read of
+// kernel_mint_declaration_for, for a consumer that holds an arm's declaration identity and must
+// decide whether the arm belongs to that mint. Exactly one row must bind the name: two rows for
+// one mint answer false here, as they answer Ambiguous there.
+fn kernel_mint_is_bound_to(rows: List<KernelMintDeclaration>, minted_name: String, declaration: DeclarationRef) -> Bool {
+  match kernel_mint_declaration_for(rows: rows, minted_name: minted_name) {
+    KernelMintDeclarationFound { declaration: d } => declaration_ref_eq(a: d, b: declaration)
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}

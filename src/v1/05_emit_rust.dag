@@ -4,7 +4,8 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
-  VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message }
+  VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
+  VariantParentIdentified, VariantParentDeclaration, VariantParentKernelType }
 import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
 import std.repair_input_origin {
   repair_input_origin_candidates,
@@ -192,8 +193,8 @@ import std.operator_realization {
   OperandDemand, DemandsBothOperands, DemandsRightOnlyWhenLeftIs, DemandsRightOnlyWhenLeftIsAbsent,
   operator_realization_for, operator_realization_refusal_message, operand_demand, binop_label
 }
-import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows, kernel_grounding_rows }
-import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous }
+import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
+import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_is_bound_to }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -9785,7 +9786,7 @@ fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: 
       match rust_native_variant_spelling(parent: identity, leaf_name: qualified_last_segment(name: n)) {
         Present { value: native } => native
         Absent =>
-      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      emit_variant_pattern(name: n, parent_enum: parent_enum, parent_identity: identity, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
       }
     Wildcard => "_"
   }
@@ -9971,16 +9972,56 @@ fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> Strin
     ": its parent enum does not resolve, and a bare identifier pattern binds as a catch-all variable in Rust"))
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
-    rendered: emit_resolved_variant_pattern(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+// WHETHER A PATTERN ARM IS AN ARM OF THE HOST OPTION, decided by the identity inference carried.
+// An arm whose owner is the declaration the kernel optional mint stands for
+// (gunbc.structural_realization_bindings kernel_mint_declaration_rows) lowers to Some/None. An arm
+// whose owner is ANY OTHER identified declaration does not, whatever it is spelled: an identified
+// owner never falls back to the spelling rule. An arm inference did not identify keeps the
+// spelling rule only where no parent is known at all, or the parent is the diagnostics carrier;
+// an unidentified arm whose parent is SPELLED as the kernel optional is refused, because that
+// spelling is produced with the identity beside it and its absence means the identity was lost.
+type HostOptionArmReading
+  = HostOptionArmIsHostOption
+  | HostOptionArmIsNot
+  | HostOptionArmSpelledWithoutIdentity
+
+fn host_option_arm_reading(identity: VariantParentIdentity, bare_name: String, resolved_parent: String?) -> HostOptionArmReading {
+  match identity {
+    VariantParentIdentified { key: key } =>
+      match key {
+        VariantParentDeclaration { declaration: d } =>
+          if kernel_mint_is_bound_to(rows: kernel_mint_declaration_rows, minted_name: kernel_optional_mint_name, declaration: d) { HostOptionArmIsHostOption }
+          else { HostOptionArmIsNot }
+        VariantParentKernelType { kernel_name: _ } => HostOptionArmIsNot
+      }
+    _ =>
+      if !is_optional_variant_name(name: bare_name) { HostOptionArmIsNot }
+      else {
+        match resolved_parent {
+          Absent => HostOptionArmIsHostOption
+          Present { value: parent } =>
+            if parent == kernel_optional_mint_name { HostOptionArmSpelledWithoutIdentity }
+            else if is_optional_like_parent_name(name: parent) { HostOptionArmIsHostOption }
+            else { HostOptionArmIsNot }
+        }
+      }
+  }
 }
 
-fn emit_resolved_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_pattern(name: String, parent_enum: String?, parent_identity: VariantParentIdentity, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
+    rendered: emit_resolved_variant_pattern(name: name, parent_enum: parent_enum, parent_identity: parent_identity, field_bindings: field_bindings, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn emit_resolved_variant_pattern(name: String, parent_enum: String?, parent_identity: VariantParentIdentity, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: bare_name)
-    && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
+  let host_option = host_option_arm_reading(identity: parent_identity, bare_name: bare_name, resolved_parent: resolved_parent)
+  let spelled_without_identity = host_option == HostOptionArmSpelledWithoutIdentity
+  if spelled_without_identity {
+    return emit_rust_compile_error_expr(message: concat("variant realization: the pattern arm `", bare_name, "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling"))
+  }
+  let optional_variant = host_option == HostOptionArmIsHostOption
   let rust_name = if optional_variant {
     rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
@@ -10225,22 +10266,26 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
       match rust_native_variant_spelling(parent: identity, leaf_name: qualified_last_segment(name: n)) {
         Present { value: native } => native
         Absent =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, parent_identity: identity, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
       }
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, parent_identity: VariantParentIdentity, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   refuse_unresolved_bare_variant_pattern(name: name, parent_enum: parent_enum, scrut_type: scrut_type, emit_info: emit_info,
-    rendered: emit_resolved_variant_pattern_rc_aware(name: name, parent_enum: parent_enum, field_bindings: field_bindings, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
+    rendered: emit_resolved_variant_pattern_rc_aware(name: name, parent_enum: parent_enum, parent_identity: parent_identity, field_bindings: field_bindings, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info))
 }
 
-fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, parent_identity: VariantParentIdentity, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let bare_name = qualified_last_segment(name: name)
   let resolved_parent = pattern_parent_enum(name: bare_name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: bare_name)
-    && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
+  let host_option = host_option_arm_reading(identity: parent_identity, bare_name: bare_name, resolved_parent: resolved_parent)
+  let spelled_without_identity = host_option == HostOptionArmSpelledWithoutIdentity
+  if spelled_without_identity {
+    return emit_rust_compile_error_expr(message: concat("variant realization: the pattern arm `", bare_name, "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling"))
+  }
+  let optional_variant = host_option == HostOptionArmIsHostOption
   let rust_name = if optional_variant {
     rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }

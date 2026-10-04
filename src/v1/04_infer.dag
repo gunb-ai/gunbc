@@ -20,7 +20,7 @@ import std.literal_elaboration {
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
@@ -30,7 +30,7 @@ import v1.compiler.type_head_exposure {
 }
 import v1.std.core { Unmarked, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
-  resolved_node_is_kernel_identity_for_name,
+  resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
@@ -55,7 +55,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, KernelMintShapeMismatch, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -7121,7 +7121,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
           let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
-            PatternParentReading { parent_enum: Present { value: "Optional" }, identity: kernel_mint_parent_identity(minted_name: "Optional") }
+            PatternParentReading { parent_enum: Present { value: "Optional" }, identity: kernel_mint_parent_identity(minted_name: kernel_optional_mint_name) }
           } else if witness_container_subject {
             PatternParentReading { parent_enum: Present { value: "Witness" }, identity: VariantParentUnrecovered { cause: "the arm belongs to the witness wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr } }
           } else {
@@ -16578,32 +16578,89 @@ fn ground_node(n: Node, ctx: GroundCtx) -> GroundOut {
   }
 }
 
-// One line per arm: the arm's name followed by its field names, sorted. Two coproducts with the
-// same signatures declare the same arms with the same fields.
-fn kernel_mint_arm_signatures(decl: Node, env: TypeEnv) -> List<String> {
-  decl.children |> map(v =>
-    fold(variant_node_fields(n: v), init: qualified_last_segment(name: authored_name_at(source_indices: env.source_indices, node: v)), f: (acc, fld) =>
-      concat(acc, " ", authored_name_at(source_indices: env.source_indices, node: fld)))
-  ) |> sort_by(sig => sig)
+// THE TYPE-VARIABLE BINDER A FIELD'S TYPE NAMES, or Absent when the field's type is not a type
+// variable. A declaration's field carries its parameter three ways depending on how far the
+// declaration has been processed: stamped on the field node itself (stamp_type_param_occurrences,
+// and the kernel mint), stamped on the type node the field resolves to, or still unresolved, where
+// the field's bare type label is the binder's own name. A field resolved to a declared type is
+// none of these and answers Absent.
+fn payload_field_type_binder(f: Node, si: Map<String, NewlineIndex>) -> String? {
+  match type_variable_binder_name(n: f) {
+    Present { value: tv } => Present { value: tv }
+    Absent =>
+      if f.inferred == none { Present { value: type_node_label(n: f, source_indices: si) } }
+      else { type_variable_binder_name(n: child_type_node(ch: f)) }
+  }
 }
 
-// THE MINT AND THE DECLARATION IT STANDS FOR MUST DECLARE THE SAME ARMS. Judged where the declaring
-// module is typechecked, because that is the one place the declaration is certainly in the closure.
-// A row naming a declaration its module does not declare, a row for a name this seed does not mint,
-// and a declaration whose arms differ from the mint's each refuse here, located on the declaration.
+// WHAT THE KERNEL OPTIONAL'S DECLARATION MUST BE, judged on the declaration itself and by type,
+// not against the mint's node and not by spelling alone. Arm names and a field name agreeing is
+// not enough: `Present { value: Int }` has the same names and is a different type, and every `T?`
+// arm would then be stamped with a parent that is not the optional of T. The four facts:
+// exactly one type parameter; exactly two arms; one arm with no fields; one arm with exactly one
+// field, named as the mint names it, whose TYPE IS THAT PARAMETER -- read from the field's
+// type-variable binder, which is what makes `value: Int` and `value: B` under a second parameter
+// both refuse. Absent when the declaration conforms; otherwise the first fact it breaks.
+fn kernel_optional_shape_refusal(decl: Node, env: TypeEnv) -> String? {
+  let si = env.source_indices
+  let mint = kernel_optional_type_node()
+  let mint_payload_field = match mint.children |> flat_map(v => variant_node_fields(n: v)) |> first {
+    Present { value: f } => f.name
+    Absent => ""
+  }
+  let is_coproduct = decl.connective == Disj
+  if !is_coproduct {
+    Present { value: "it is not a coproduct" }
+  } else if (decl.params |> count) != 1 {
+    Present { value: concat("it declares ", to_string(decl.params |> count), " type parameters where the optional of T has exactly one") }
+  } else if (decl.children |> count) != 2 {
+    Present { value: concat("it declares ", to_string(decl.children |> count), " arms where the optional of T has exactly two") }
+  } else {
+    let nullary = decl.children |> filter(v => (variant_node_fields(n: v) |> count) == 0)
+    let unary = decl.children |> filter(v => (variant_node_fields(n: v) |> count) == 1)
+    let param_name = match decl.params |> first {
+      Present { value: p } => generic_param_name_at(n: p, source_indices: si)
+      Absent => ""
+    }
+    if (nullary |> count) != 1 || (unary |> count) != 1 {
+      Present { value: "its arms are not one arm with no payload and one arm with a single field" }
+    } else {
+      match unary |> flat_map(v => variant_node_fields(n: v)) |> first {
+        Absent => Present { value: "its payload arm has no field" }
+        Present { value: f } =>
+          if authored_name_at(source_indices: si, node: f) != mint_payload_field {
+            Present { value: concat("its payload field is named '", authored_name_at(source_indices: si, node: f), "' where the kernel mint names it '", mint_payload_field, "'") }
+          } else {
+            match payload_field_type_binder(f: f, si: si) {
+              Present { value: tv } =>
+                if tv == param_name { none }
+                else { Present { value: concat("its payload field's type is the type variable '", tv, "', which is not its type parameter '", param_name, "'") } }
+              Absent => Present { value: concat("its payload field's type is not its type parameter '", param_name, "'") }
+            }
+          }
+      }
+    }
+  }
+}
+
+// Judged where the declaring module is typechecked, because that is the one place the declaration
+// is certainly in the closure, and keyed on the DeclarationRef the row carries: moving the
+// declaration changes the row and not this check. A row naming a declaration its module does not
+// declare, and a row for a name this seed does not mint, refuse under the same class.
 fn kernel_mint_shape_diagnostics(env: TypeEnv, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
   kernel_mint_declaration_rows |> flat_map(row =>
     if (row.declaration.module_path as String) != module_name { [] }
-    else if (row.minted_name as String) != "Optional" {
-      [inference_error(message: concat("kernel mint binding: gunbc.structural_realization_bindings kernel_mint_declaration_rows binds a kernel mint named ", row.minted_name as String, " to ", module_name, ".", row.declaration.decl_name as String, ", but the seed mints no type of that name"), span: module_span, module_name: module_name)]
+    else if (row.minted_name as String) != kernel_optional_mint_name {
+      [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: concat("the seed mints no kernel type named '", row.minted_name as String, "'"), span: module_span }, module_name: module_name)]
     } else {
       match declaration_node_of_ref(d: row.declaration, env: env) {
         Absent =>
-          [inference_error(message: concat("kernel mint binding: gunbc.structural_realization_bindings kernel_mint_declaration_rows binds the kernel ", row.minted_name as String, " to ", module_name, ".", row.declaration.decl_name as String, ", which this module does not declare"), span: module_span, module_name: module_name)]
+          [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: "this module does not declare it", span: module_span }, module_name: module_name)]
         Present { value: decl } =>
-          if decl.connective == Disj && kernel_mint_arm_signatures(decl: decl, env: env) == kernel_mint_arm_signatures(decl: kernel_optional_type_node(), env: env) { [] }
-          else {
-            [inference_error(message: concat("kernel mint binding: ", module_name, ".", row.declaration.decl_name as String, " is bound to the kernel ", row.minted_name as String, " (gunbc.structural_realization_bindings kernel_mint_declaration_rows) but does not declare the same arms; the kernel mint declares: ", fold(kernel_mint_arm_signatures(decl: kernel_optional_type_node(), env: env), init: "", f: (acc, sig) => concat(acc, "[", sig, "]"))), span: decl.span, module_name: module_name)]
+          match kernel_optional_shape_refusal(decl: decl, env: env) {
+            Absent => []
+            Present { value: cause } =>
+              [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: cause, span: decl.span }, module_name: module_name)]
           }
       }
     })
