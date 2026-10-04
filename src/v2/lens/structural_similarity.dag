@@ -5,7 +5,6 @@ import std.disposition { SingleAuthority }
 import v2.std.node { Node }
 import std.algebra { FreeMonoid }
 import v2.lens.common.chain_generalization { chain_collapses }
-import v2.std.logic { Bool }
 
 fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
   chain_collapses(steps: decls, min_len: 2, require_hole: false)

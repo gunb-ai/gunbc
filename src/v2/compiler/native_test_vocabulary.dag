@@ -17,6 +17,9 @@ import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import v2.std.optional { Optional }
+import v2.std.integer { Int }
+import v2.std.source_position { SourceByteColumn }
+import v2.std.collection { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
@@ -178,12 +181,39 @@ type NativeTestObservation {
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.
+//
+// `chain` IS THE REFUSAL'S DIAGNOSTICS, EACH LINK WITH ITS POSITION, in carriage order: the head
+// first, the fatal last. It is what `head_reason` and `fatal_reason` were folded out of
+// (gunbc.recurring_failure_mode located_cause_folded_to_its_reason_at_a_result_boundary named this
+// row as that class's declared remainder). Positions are RESOLVED at the absorb, against the
+// refused file's own span index and text, so the row retains no occurrence id: a refused parse's
+// ids are re-minted by the next file, and a retained NodeLocus would resolve to the wrong one.
+// The two symbols stay because the door ledger and the lane classifier key on them.
 type NativeTestFileRefusal {
   path: Symbol
   module: Optional<QualifiedName>
   head_reason: Symbol
   fatal_reason: Symbol
+  chain: List<FileRefusalLink>
 }
+
+type FileRefusalLink {
+  reason: Symbol
+  at: FileRefusalAt
+}
+
+// WHERE ONE LINK POINTS, AND WHY IT HAS NO LINE WHEN IT HAS NONE. The column unit is BYTES
+// (v2.std.source_position SourceLineCol), named in the field. A locus in ANOTHER file is not
+// positioned against this one's text; an invariant port has no position by construction (the
+// grammar-construction residue heads every file this way); a node the span index does not cover
+// is unresolved, never guessed.
+type FileRefusalAt
+  = FileRefusalAtLine { line: Int, byte_column: SourceByteColumn }
+  | FileRefusalAtWholeFile
+  | FileRefusalAtOtherFile { file: Symbol }
+  | FileRefusalAtInvariant { invariant: Symbol }
+  | FileRefusalAtDeclaration { declaration: QualifiedName }
+  | FileRefusalAtUnresolvedNode
 
 
 // AN ACCEPTED FILE'S ADVISORIES, COUNTED RATHER THAN DROPPED. An Accepted front-end outcome may

@@ -1,11 +1,11 @@
 module gunbc.seed_retention_frontier_emit
 
+import std.types { List }
 import extdeps.languages.rust.string_literal { escape_rust_cooked_string_literal_body }
 import v2.compiler.self_host.seed_retention_frontier {
   seed_retention_frontier_top_level_src_basenames
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.text { String }
 
 // THE BRIDGE, AND WHY THERE HAS TO BE ONE. v2.compiler.self_host.seed_retention_frontier is

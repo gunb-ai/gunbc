@@ -22,7 +22,9 @@ import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, ReleasedToFleet, FencedRefusal, PairRealizationUnestablished, pair_serving_committed_hosts,
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
-import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text }
+import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text, d0_binding_text_with, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant }
+import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread, grant_row_standing_over, grant_row_proof_over, GrantRowBlobRead, GrantRowBlobUnread }
+import gunbc.spark.pair_serving_d0 { D0GrantRowApproved, D0GrantRowUnproven, d0_frozen_filing_text_with, parse_d0_frozen_filing }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
@@ -319,13 +321,15 @@ fn rw_permitted(req: AuthorizationRequest<D0Subject>, issued: String, expires: S
   }
 }
 
+data rw_standing_basis: D0AuthorizationBasis = D0BasisStandingGrant { identity: group_a_dev_standing_grant.identity }
+
 fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
   let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
   match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {
     Absent => false
     Present { value: first } => match rw_permitted(req: req, issued: "2026-10-03T09:00:00Z", expires: "2026-10-03T09:30:00Z", at: "2026-10-03T09:01:00Z") {
       Absent => false
-      Present { value: later } => f(d0_binding_text(grant: first, claim_generation: 1), d0_binding_text(grant: later, claim_generation: 1))
+      Present { value: later } => f(d0_binding_text_with(grant: first, claim_generation: 1, basis: rw_standing_basis), d0_binding_text_with(grant: later, claim_generation: 1, basis: rw_standing_basis))
     }
   }
 }
@@ -336,7 +340,7 @@ fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
 test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool {
   rw_with(scenario: fn(h) {
     rw_two_runs(h: h, f: fn(a, b) {
-      a == b && string_contains(s: a, pattern: "standing_grant=group-a-dev-standing-grant-2026-10-03") && !string_contains(s: a, pattern: "expires_at=")
+      a == b && string_contains(s: a, pattern: join(["standing_grant=", group_a_dev_standing_grant.identity as String], "")) && !string_contains(s: a, pattern: "expires_at=")
     })
   })
 }
@@ -383,5 +387,76 @@ test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool {
         _ => false
       }
     })
+  })
+}
+
+// ── THE GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677) ─────────────────────────────
+//
+// The judgement over the two reads, supplied at its interface: identical bytes honor; a main with no row,
+// a branch-edited row, or an unreadable executed row do not. Then the door's coverage under each standing:
+// the same covered Group A release is honored on main and NOT honored off it, so it takes the broker path.
+test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
+  (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
+    && (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "", main_read: false, main_stderr: "fatal: path does not exist in origin/main") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "has not merged") })
+    && (match standing_grant_row_judged(executed: "row edited", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
+    && (match standing_grant_row_judged(executed: "", executed_read: false, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
+}
+
+// ONE AUTHORIZATION FACT, ONE READ. The standing is judged over the CAPTURED row: the supplied blob
+// producer sees only the captured content, so a working path that changed after capture -- here back to
+// main's bytes -- cannot rescue a captured row that differs from main, and the proof's digest is always
+// the captured row's. RED: a judgment that hashed the path again would admit the changed row.
+test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool {
+  let blob_of = fn(c) { GrantRowBlobRead { blob: join(["blob(", c, ")"], "") } }
+  let main = GrantRowBlobRead { blob: "blob(main row)" }
+  let captured_changed = ExecutedGrantRowRead { content: "branch-edited row", digest: "sha256:edited" as NonEmptyStr }
+  let captured_main = ExecutedGrantRowRead { content: "main row", digest: "sha256:main" as NonEmptyStr }
+  let changed_standing = grant_row_standing_over(executed: captured_changed, blob_of: blob_of, on_main: main)
+  let main_standing = grant_row_standing_over(executed: captured_main, blob_of: blob_of, on_main: main)
+  (match changed_standing { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
+    && (match grant_row_proof_over(executed: captured_changed, standing: changed_standing) { D0GrantRowUnproven => true  D0GrantRowApproved { row_digest: _ } => false })
+    && (match main_standing { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
+    && (match grant_row_proof_over(executed: captured_main, standing: main_standing) { D0GrantRowUnproven => false  D0GrantRowApproved { row_digest: d } => d as String == "sha256:main" })
+    && (match grant_row_standing_over(executed: captured_main, blob_of: fn(c) { GrantRowBlobUnread { cause: "witness" } }, on_main: main) { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
+}
+
+test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool {
+  rw_with(scenario: fn(h) {
+    let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+    let row = ExecutedGrantRowRead { content: "row", digest: "sha256:aa" as NonEmptyStr }
+    (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr }, executed: row) { Present { value: _ } => true  Absent => false })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowUnproven, executed: row) { Present { value: _ } => false  Absent => true })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:bb" as NonEmptyStr }, executed: row) { Present { value: _ } => false  Absent => true })
+      && (match d0_honored_standing_grant(request: req, frozen: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr }, executed: ExecutedGrantRowUnread { cause: "witness" }) { Present { value: _ } => false  Absent => true })
+  })
+}
+
+// THE FILING CARRIES THE PROOF AND ROUND-TRIPS; WITHOUT ONE IT IS BYTE-IDENTICAL TO BEFORE.
+test fn rw_the_frozen_filing_round_trips_its_grant_proof() -> Bool {
+  let with_proof = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowApproved { row_digest: "sha256:aa" as NonEmptyStr })
+  let without = d0_frozen_filing_text_with(intent_text: "a=b\n", execution_revision: "aaaa" as NonEmptyStr, proof: D0GrantRowUnproven)
+  without == "a=b\nexecution_revision=aaaa\n"
+    && (match parse_d0_frozen_filing(text: with_proof) { Present { value: f } => match f.grant_proof { D0GrantRowApproved { row_digest: d } => (d as String) == "sha256:aa" && (f.execution_revision as String) == "aaaa"  D0GrantRowUnproven => false }  Absent => false })
+    && (match parse_d0_frozen_filing(text: without) { Present { value: f } => match f.grant_proof { D0GrantRowUnproven => true  D0GrantRowApproved { row_digest: _ } => false }  Absent => false })
+}
+
+// PROVENANCE (side-chat review of #13102): the SAME covered release, authorized by the BROKER, keeps broker
+// lifecycle identity and expiry -- two windows are two lifecycles, and no standing-grant term appears. Only an
+// authorization issued from the grant carries the grant's identity. The grant never relabels a broker one.
+test fn rw_a_broker_authorized_covered_release_keeps_broker_identity() -> Bool {
+  rw_with(scenario: fn(h) {
+    let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+    match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {
+      Absent => false
+      Present { value: first } => match rw_permitted(req: req, issued: "2026-10-03T09:00:00Z", expires: "2026-10-03T09:30:00Z", at: "2026-10-03T09:01:00Z") {
+        Absent => false
+        Present { value: later } => {
+          let b1 = d0_binding_text_with(grant: first, claim_generation: 1, basis: D0BasisBroker)
+          let b2 = d0_binding_text_with(grant: later, claim_generation: 1, basis: D0BasisBroker)
+          b1 != b2 && string_contains(s: b1, pattern: "expires_at=") && !string_contains(s: b1, pattern: "standing_grant=")
+            && b1 == d0_binding_text(grant: first, claim_generation: 1)
+        }
+      }
+    }
   })
 }

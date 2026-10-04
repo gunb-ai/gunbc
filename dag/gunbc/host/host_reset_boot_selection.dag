@@ -1,0 +1,20 @@
+module gunbc.host_reset_boot_selection
+
+import product.placement_supply { host_identity_eq }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
+import gunbc.managed_host { ManagedHost }
+
+// THE BOOT A RESET RETURNS THROUGH IS RESET POLICY, not a fact about the host, so it lives in the
+// reset arm rather than on gunbc.managed_host ManagedHost, and this is its one authority:
+// gunbc.host_reset_subject_roster reads it to decide membership and hands the same value to the run.
+// The value is imported from the unit's actuation module, never re-spelled; a host with no selection
+// here is not a reset subject, however capable its controller.
+fn reset_boot_selection(host: ManagedHost) -> IpmiBootSelection? {
+  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
+    Present { value: mtcollins1_cdrom_selection }
+  } else {
+    none
+  }
+}

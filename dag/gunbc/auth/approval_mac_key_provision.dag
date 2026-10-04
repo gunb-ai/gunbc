@@ -161,7 +161,7 @@ fn standing_of_addition(secret_id: NonEmptyStr, added: VersionAdditionOutcome) -
 
 // MINT, SNAPSHOT, ADD, VERIFY -- for a container that exists and holds no enabled version, or one
 // this run just created.
-fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?, token: Secret) -> KeyProvisionStanding
+fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?, token: Secret, attempt: SecretProvisionAttemptIdentity = approval_mac_key_provision_attempt) -> KeyProvisionStanding
 {
   match mint_key_material() {
     KeyMaterialRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
@@ -172,14 +172,14 @@ fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?
       CredentialSnapshotTaken { snapshot: snap } => {
         match container {
           Absent =>
-            match create_secret_for_attempt(attempt: approval_mac_key_provision_attempt, project: fleet_secrets_gcp_project, secret_id: secret_id, snapshot: snap, token: token) {
+            match create_secret_for_attempt(attempt: attempt, project: fleet_secrets_gcp_project, secret_id: secret_id, snapshot: snap, token: token) {
               SecretCreatedForAttempt { capability: cap } => standing_of_addition(secret_id: secret_id, added: add_initial_version(capability: cap, token: token))
               SecretCreationRefused { cause: c } => KeyProvisionRefused { secret_id: secret_id, cause: c }
               SecretCreationOutcomeUnknown { cause: c } => KeyProvisionOutcomeUnknown { secret_id: secret_id, cause: c }
             }
           Present { value: c } =>
             standing_of_addition(secret_id: secret_id, added: add_initial_version(
-              capability: version_add_capability_for_observed_container(container: c, attempt: approval_mac_key_provision_attempt, snapshot: snap),
+              capability: version_add_capability_for_observed_container(container: c, attempt: attempt, snapshot: snap),
               token: token,
             ))
         }
@@ -188,14 +188,14 @@ fn add_first_version(secret_id: NonEmptyStr, container: ObservedSecretContainer?
   }
 }
 
-fn provision_one(ref: SecretRef, token: Secret) -> KeyProvisionStanding
+fn provision_one(ref: SecretRef, token: Secret, attempt: SecretProvisionAttemptIdentity = approval_mac_key_provision_attempt) -> KeyProvisionStanding
 {
   let secret_id = ref.secret
   match observe_secret_container(project: fleet_secrets_gcp_project, secret_id: secret_id, token: token) {
     SecretObservationRefused { cause: c } =>
       KeyProvisionRefused { secret_id: secret_id, cause: concat("the container could not be observed, so nothing is created over it: ", c as String) as NonEmptyStr }
     SecretContainerAbsent { project: _, secret_id: _ } =>
-      add_first_version(secret_id: secret_id, container: none, token: token)
+      add_first_version(secret_id: secret_id, container: none, token: token, attempt: attempt)
     SecretContainerObserved { container: _ } =>
       match pinned_version_standing(ref: ref, token: token) {
         PinnedVersionAccessible { version: v } => KeyAlreadyEnabled { secret_id: secret_id, version: v }

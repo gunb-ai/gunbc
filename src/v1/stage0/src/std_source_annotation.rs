@@ -7,7 +7,6 @@ use self::AnnotationAttachmentRefusal::*;
 use self::AnnotationPlacement::*;
 pub use crate::std_algebra::FreeSemigroup;
 pub use crate::std_occurrence_identity::OccurrenceId;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

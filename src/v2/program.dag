@@ -1,5 +1,6 @@
 module v2.program
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
 import v2.compiler.eval {
@@ -22,7 +23,6 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
@@ -47,7 +47,6 @@ import v2.std.diagnostic {
 import std.algebra { Empty }
 import v2.std.algebra { length }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

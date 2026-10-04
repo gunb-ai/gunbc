@@ -278,9 +278,14 @@ fn program_assembly_measured_outcome(measured: ParseProductionMeasured) -> Outco
 // over the ingest seeds the next file's parse from it: lowering allocates every image member an id
 // (v2.compiler.normalize normalize_scoped), and the next file's authored ids must start above those.
 // A refused parse or normalize returns the seed unchanged.
+// `spans` is THIS FILE'S OWN span index (the parse artifact's), carried so a refusal's node loci
+// can be resolved against the file that produced them before anything retains them; empty when
+// the parse itself refused, whose diagnostics are already Textual. Same field, same meaning, as
+// `ProgramAssemblySeededReadResult` `spans` on the composed door.
 type ProgramAssemblyNormalizedPhase {
   outcome: Outcome<NormalizedTree>
   alloc: OccurrenceIdAllocator
+  spans: SpanIndex
 }
 
 fn program_assembly_phase_normalize_seeded(
@@ -289,15 +294,16 @@ fn program_assembly_phase_normalize_seeded(
   scope: Fnv1a64Structural
 ) -> ProgramAssemblyNormalizedPhase {
   match parsed {
-    Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed }
+    Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed, spans: span_index_empty() }
     Accepted { value: artifact, diagnostics: od } =>
       match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope)) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyNormalizedPhase { outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }), alloc: seed }
+          ProgramAssemblyNormalizedPhase { outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }), alloc: seed, spans: artifact.span_index }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd }),
-            alloc: scoped.allocator.alloc
+            alloc: scoped.allocator.alloc,
+            spans: artifact.span_index
           }
       }
   }
@@ -309,6 +315,10 @@ fn program_assembly_normalized_outcome(phase: ProgramAssemblyNormalizedPhase) ->
 
 fn program_assembly_normalized_alloc(phase: ProgramAssemblyNormalizedPhase) -> OccurrenceIdAllocator {
   phase.alloc
+}
+
+fn program_assembly_normalized_spans(phase: ProgramAssemblyNormalizedPhase) -> SpanIndex {
+  phase.spans
 }
 
 // The ingest scope as an Outcome, for a caller outside the modeled fold (the emitted driver loop),

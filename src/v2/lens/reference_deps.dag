@@ -5,7 +5,7 @@ import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_i
 import v2.std.algebra { fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -90,7 +90,7 @@ fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
         ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
         ImportRowsOk { rows: prior } =>
           match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
-            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
+            Rejected { diagnostics: d } => ImportRowsFailed { reason: diagnostics_fatal_reason(d: d) }
             Accepted { value: target_qn, diagnostics: _ } =>
               ImportRowsOk {
                 rows: Cons {

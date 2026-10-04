@@ -1,8 +1,9 @@
 module test.claim.spark.execution_cell_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
-import std.measure { token_count, token_count_value }
+import std.measure { token_count, token_count_value , second, second_count }
 import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.execution_cell {
@@ -69,7 +70,7 @@ import gunbc.spark.native_serving_realization { glm_native_experiment_all_unit_r
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
 import gunbc.spark.serving_arm { serving_launch_profile_key, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4 }
 import gunbc.spark.arm_memory_fit {
-  arm_memory_experiment_runtime_seconds, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_experiment_runtime, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
   arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan, arm_memory_subject_open_components,
   ArmMemorySubjectReady, ArmMemorySubjectRefused, ArmMemoryFitUnestablished,
 }
@@ -124,7 +125,7 @@ fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
 // below is about, so they hand it its two inputs as values: a four-member cohort (one head, three
 // ranks) and the minted fragmentation-churn plan with a SHORT admitted duration. The duration is
 // supplied small on purpose: every bounded wait renders one poll word per five admitted seconds, so
-// the production figure (arm_memory_experiment_runtime_seconds) would make each claim re-render
+// the production figure (arm_memory_experiment_runtime) would make each claim re-render
 // thousands of words it never reads. Every relation these claims assert -- loops from the admitted
 // seconds, the churn window as its twelfth, the shared budget -- holds at any admitted figure.
 // The two producers of those inputs are each executed for real by an inhabitance claim below
@@ -489,7 +490,7 @@ test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitte
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
-      match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
+      match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
         ArmMemorySubjectRefused { cause: _ } => false
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_verdict(subject: subject) {
@@ -498,14 +499,14 @@ test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitte
               length(os) > 0
                 && (match arm_memory_fit_experiment_plan(
                   checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-                  workload: subject.intent, policy_profile: executable.profile, targets: open) {
+                  workload: subject.intent, policy_profile: executable.profile, targets: open, deployment_env: glm_group_b_deployment_env()) {
                   ArmMemoryExperimentRefused { cause: _ } => false
                   ArmMemoryExperimentAdmitted { plan: p } =>
-                    p.max_runtime_seconds == arm_memory_experiment_runtime_seconds()
+                    p.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
                       && 3600 <= p.max_runtime_seconds
                       && (match spark_workload_variant_named(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
                         Present { value: e } =>
-                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < arm_memory_experiment_runtime_seconds()
+                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
                         Absent => false
                       })
                       && length(p.targets) == length(open)
@@ -837,7 +838,7 @@ test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool 
 }
 
 // THE SHARED BUDGET, PINNED: the plan admits ONE experiment duration — the engine's own multi-node
-// ready timeout (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime_seconds, the same figure
+// ready timeout (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime, the same figure
 // every rank unit's RuntimeMaxSec carries) — and the readbacks share it. The admission's seconds
 // equal that one authority, and every leg's poll loop — head's and ranks' alike — is derived from
 // the admission's single admitted_seconds with the identical (seconds + 4) / 5 iteration

@@ -23,9 +23,8 @@ import v2.std.service_realization_labels {
   realization_arm_doc_label,
   realization_status_code_label
 }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Rejected, Unavailable, node_locus }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.node {

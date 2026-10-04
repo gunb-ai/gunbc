@@ -1,7 +1,6 @@
 module v2.compiler.self_host.parity_window
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
 import v2.std.text { String }
 
 // Parity window, DEMOTED to post-flip monitoring (2026-07-28; was the P6 pre-flip routing flip

@@ -107,6 +107,28 @@ thread_local! {
     static POOL: RefCell<HashMap<(String, usize, u64), Rc<Acquired>>> = RefCell::new(HashMap::new());
 }
 
+thread_local! {
+    /// Everything `attribute` has recorded on this thread, so a caller timing a span that forces
+    /// acquisitions can report itself NET of them instead of counting the same work twice.
+    static ATTRIBUTED: std::cell::Cell<std::time::Duration> =
+        const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// The lexing, the newline index and the heads parse are demanded by whichever walk reaches a file
+/// first, so they are recorded HERE, at the producer, as their own `[pre-entry]` rows. Timed at the first demander
+/// instead, they were reported under that demander's name: the module path index is built inside
+/// the import-edge facts, so `graph_facts_import_edges` carried the whole pool's acquisition and
+/// heads parse while its own work is a line scan.
+fn attribute(row: &'static str, elapsed: std::time::Duration) {
+    super::pre_entry_phase::record(row, super::pre_entry_phase::PhaseScale::Tree, elapsed);
+    ATTRIBUTED.with(|a| a.set(a.get() + elapsed));
+}
+
+/// Total time `attribute` has recorded on this thread; difference two readings around a span.
+pub(crate) fn attributed() -> std::time::Duration {
+    ATTRIBUTED.with(|a| a.get())
+}
+
 fn acquire(file: &str, content: &str) -> Rc<Acquired> {
     let (len, hash) = content_fingerprint(content);
     let key = (file.to_string(), len, hash);
@@ -117,12 +139,16 @@ fn acquire(file: &str, content: &str) -> Rc<Acquired> {
             return hit;
         }
     }
+    let lex_started = std::time::Instant::now();
     let artifact = crate::v1_compiler_tokenize::tokenize_artifact(
         content.to_string(),
         file.to_string(),
         crate::extdeps_languages_dag_syntax::dag_parse_environment(),
     );
+    attribute("pool_source_tokenize", lex_started.elapsed());
+    let newline_started = std::time::Instant::now();
     let newline_index = build_newline_index(file.to_string(), content.to_string());
+    attribute("pool_source_newline_index", newline_started.elapsed());
     let acquired = Rc::new(Acquired {
         content: Rc::new(content.to_string()),
         artifact,
@@ -206,11 +232,13 @@ pub fn heads_reading_for(file: &str, content: &str) -> Rc<HeadsReading> {
     }
     let mut indices = im::HashMap::new();
     indices.insert(file.to_string(), acquired.newline_index.clone());
+    let heads_started = std::time::Instant::now();
     let parsed = crate::v1_compiler_parse::parse_heads_with_table(
         acquired.artifact.tokens.clone(),
         Rc::new(indices),
         crate::v1_std_core::empty_intern_table(),
     );
+    attribute("pool_heads_parse", heads_started.elapsed());
     let reading = Rc::new(HeadsReading {
         module: parsed.result.module.clone(),
         error: parsed.result.error.clone(),

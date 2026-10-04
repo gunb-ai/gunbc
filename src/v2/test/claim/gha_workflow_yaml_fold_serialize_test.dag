@@ -18,7 +18,6 @@ import v2.extdeps.languages.gha_workflow_yaml_fold {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

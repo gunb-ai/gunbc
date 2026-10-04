@@ -1,11 +1,9 @@
 module test.claim.floor_eval_step_budget_witness_test
 
-import v2.std.logic { Bool }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
 import v2.std.integer { Int, int_add, int_mul, int_gt }
 import v2.std.text { String }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.measure { Millisecond, millisecond_count, EvalStepCount, eval_step_count, eval_step_count_value }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome, CompletedWithinSafetyLimits, SafetyInterrupted, CompletedPastSafetyLimit,

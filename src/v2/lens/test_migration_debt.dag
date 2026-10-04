@@ -1,9 +1,8 @@
 module v2.lens.test_migration_debt
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import extdeps.filesystem.filesystem_io
 import test.retirement.model {

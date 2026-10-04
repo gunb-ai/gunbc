@@ -25,9 +25,10 @@ import extdeps.languages.rust.representation {
 // both hold the same rule -- a row may be added only for a declaration whose native realization is
 // ALREADY TRUE, never to make a failing site compile. These rows restate, at declaration grain, the
 // realizations the spelling-keyed table was answering by name; they add no new realization. The
-// declarations of the same spelling that are NOT here (v2.std.text String, std.string_type String,
-// v2.std.logic Bool) are the ones v1.compiler.coercion structural_declaration_modules_for already
-// gates as structural, and their absence here is the same fact stated once at the exact key.
+// declarations of the same spelling that are NOT here (v2.std.text String, std.string_type String)
+// are the ones v1.compiler.coercion structural_declaration_modules_for already gates as structural,
+// and their absence here is the same fact stated once at the exact key. (Bool has one declaration
+// since the Bool de-fork, std.types Bool, bound below.)
 fn rust_source_binding(module_path: String, decl_name: String, representation: RustRepresentation) -> SourceTypeTargetBinding<RustRepresentation> {
   SourceTypeTargetBinding {
     source: decl_ref(module_path: module_path, decl_name: decl_name),
@@ -153,7 +154,7 @@ fn checkpoint_row_migration_rows() -> List<CheckpointRowMigration> {
     CheckpointRowMigration {
       dag_name: "Bool" as NonEmptyStr,
       disposition: ProvenUniqueKernelBinding {
-        proof: "std.types Bool has an exact row (RustBool); v2.std.logic Bool is gated structural by structural_declaration_modules_for and never reaches this row; what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow." as NonEmptyStr
+        proof: "std.types Bool has an exact row (RustBool) and is the only declaration of Bool (v2.std.logic's second declaration and its structural route were retired by the Bool de-fork, gunbc.defork_type_name_census ResolvedByDeletingV2); what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow." as NonEmptyStr
       }
     },
     CheckpointRowMigration {

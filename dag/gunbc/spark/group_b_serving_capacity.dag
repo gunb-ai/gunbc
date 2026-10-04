@@ -9,7 +9,7 @@ import extdeps.vllm.engine_args {
   VllmEngramConfigRequest, EngramConfigOmitted,
   ModalityOmitted,
 }
-import gunbc.spark.serving_arm { ServingLaunchProfile }
+import gunbc.spark.serving_arm { ServingLaunchProfile, glm53_native_launch_policy }
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
   SchedulerEnvelope, envelope_hard_max_num_seqs,
@@ -98,18 +98,15 @@ fn group_b_restoration_intent() -> ServingCapacityIntent? {
 
 // ── THE LAUNCH POLICY BESIDE THE INTENT ──────────────────────────────────────────────────────────
 //
-// WHAT THE INTENT DOES NOT DECIDE, stated once: utilization, KV dtype, port, alias, prefix
-// caching, Engram (none: this arm has no Engram tables). These are operator policy, and they
+// WHAT THE INTENT DOES NOT DECIDE, stated once: utilization, port, alias, prefix caching -- and the
+// model's own choices (KV dtypes, Engram, modality), which are gunbc.spark.serving_arm
+// glm53_native_launch_policy, the checkpoint's row. These are operator policy, and they
 // travel into the derived profile unchanged. THE UTILIZATION IS THE ENGINE'S OWN ADVICE: the
 // corpus records (gunbc.spark.serving_arm, the 2026-09-16 operator ruling) that 0.84 measures as
 // effectively 0.8233 once CUDA-graph profiling is charged, and names 0.8567 as the value restoring
 // the intended KV size. The crash-looping units ran the un-advised 8400; the restoration applies
 // the advice.
 data group_b_restoration_utilization: BasisPoint = basis_point(count: 8567)
-
-data group_b_restoration_kv_cache_dtype: VllmKvCacheDtypeRequest = KvFp8
-
-data group_b_restoration_engram: VllmEngramConfigRequest = EngramConfigOmitted
 
 data group_b_restoration_serve_port: Port = 30000
 
@@ -183,13 +180,11 @@ fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
     Present { value: envelope } =>
       Present { value: GroupBRestorationExecutable { profile: profile_for_envelope(
         envelope: envelope,
+        policy: glm53_native_launch_policy,
         decided_gpu_memory_basis_points: group_b_restoration_utilization,
-        kv_cache_dtype: group_b_restoration_kv_cache_dtype,
         serve_port: group_b_restoration_serve_port,
         served_alias: group_b_restoration_served_alias,
         prefix_caching: group_b_restoration_prefix_caching,
-        engram: group_b_restoration_engram,
-        modality: ModalityOmitted,
       ) } }
   }
 }

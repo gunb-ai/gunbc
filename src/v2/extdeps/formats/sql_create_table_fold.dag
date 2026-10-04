@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql_create_table_fold
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
@@ -25,7 +26,6 @@ import v2.extdeps.formats.sql_target {
 import v2.std.algebra { fold_list }
 import std.algebra { list_append }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -49,6 +49,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  diagnostics_fatal,
   Diagnostic,
   ExternalContractUnknown,
   Rejected,
@@ -642,7 +643,7 @@ fn sql_fold_target_model_for_operation_witness(op: SqlSchemaOperation) -> Witnes
               )
             Some { diagnostics: nd } => Violates { diagnostic: nd.head }
           }
-        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+        Rejected { diagnostics: nd } => Violates { diagnostic: diagnostics_fatal(d: nd) }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }

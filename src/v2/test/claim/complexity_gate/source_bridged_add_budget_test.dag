@@ -9,7 +9,6 @@ import v2.lens.complexity {
 }
 import v2.lens.cost { SizeVariable, cost_lens }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds }
 import v2.test.complexity_gate.lens_subject_body_supply {

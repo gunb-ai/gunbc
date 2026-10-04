@@ -1,0 +1,99 @@
+module v2.test.parse.brace_and_lambda_head_route
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROUTE EACH BRACE- OR PAREN-HEADED INPUT TAKES, NOT ONLY ITS VERDICT (v2.extdeps.languages.dag
+// dag_grammar_block_literal_head_expr, dag_grammar_empty_block_body_expr,
+// dag_grammar_arrow_lambda_name_head_expr). `= {}` is the empty brace literal (operator ruling
+// 2026-10-03, A): no block. `A => {}` is an empty arm block: the empty_block_body production.
+// `(a, b) => a` is an arrow lambda; `(a)` is a grouped expression and no lambda. Each claim pays ONE
+// parse of the smallest module that reaches its route: a single data declaration.
+data bhr_empty_literal_source: String = "module p\ndata d: M = {}\n"
+data bhr_empty_arm_source: String = "module p\ndata d: I = match b { t => {} }\n"
+data bhr_lambda_source: String = "module p\ndata d: I = g((a, b) => a)\n"
+data bhr_group_source: String = "module p\ndata d: I = (a)\n"
+
+fn bhr_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn bhr_count(root: Node, emitted: Symbol) -> Int {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => if id == emitted { 1 } else { 0 }
+    Absent => 0
+  }
+  fold(root.children, init: here, f: fn(acc, e) { acc + bhr_count(root: e.target, emitted: emitted) })
+}
+
+// Accepted, with `emitted` appearing `times` times in the tree.
+fn bhr_route(text: String, file: Symbol, emitted: Symbol, times: Int) -> Bool {
+  match bhr_parse(text: text, file: file) {
+    Accepted { value: tree, diagnostics: _ } => bhr_count(root: tree, emitted: emitted) == times
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bhr_brace_literal(text: String) -> Bool {
+  match bhr_parse(text: text, file: ^bhr_lit) {
+    Accepted { value: tree, diagnostics: _ } =>
+      bhr_count(root: tree, emitted: ^dag_surface_block_expr) == 0
+        && bhr_count(root: tree, emitted: ^dag_surface_empty_block_body) == 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE FOUR ROUTES, FROM ONE PARSE OF EACH SOURCE. Nullary and pure, enrolled WARM in
+// v2.workflow.floor_pure_producer_share: each source is parsed once at preparation and every claim
+// reads its stored Bool, so no claim pays a parse.
+type BhrVerdicts {
+  empty_literal: Bool
+  empty_arm: Bool
+  lambda: Bool
+  group: Bool
+}
+
+fn bhr_verdicts() -> BhrVerdicts {
+  BhrVerdicts {
+    empty_literal: bhr_brace_literal(text: bhr_empty_literal_source),
+    empty_arm: bhr_route(text: bhr_empty_arm_source, file: ^bhr_arm, emitted: ^dag_surface_empty_block_body, times: 1),
+    lambda: bhr_route(text: bhr_lambda_source, file: ^bhr_lam, emitted: ^dag_surface_arrow_lambda, times: 1),
+    group: bhr_route(text: bhr_group_source, file: ^bhr_grp, emitted: ^dag_surface_arrow_lambda, times: 0)
+  }
+}
+
+test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
+  bhr_verdicts().empty_literal
+}
+
+test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool {
+  bhr_verdicts().empty_arm
+}
+
+test fn parenthesised_parameter_list_takes_the_lambda_route() -> Bool {
+  bhr_verdicts().lambda
+}
+
+test fn grouped_expression_takes_no_lambda_route() -> Bool {
+  bhr_verdicts().group
+}

@@ -1,0 +1,104 @@
+module extdeps.linux.cgroup_v1_memory
+
+import std.algebra { trim }
+import v2.std.collection { list_at_optional }
+import std.checked_arithmetic { nat_magnitude }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.nat { Nat }
+import std.types { Int, NonEmptyStr, String, List }
+import v2.std.optional { Present, Absent }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.kernel.org/admin-guide/cgroup-v1/memory.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.cgroup_v1_memory",
+      decl_name: "CgroupV1MemoryLimitValue",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE LEGACY HIERARCHY IS A DIFFERENT INTERFACE, NOT A SPELLING OF cgroup-v2. Its memory controller is
+// its own mount (fstype `cgroup`, super option `memory`), its hard limit file is memory.limit_in_bytes
+// rather than memory.max, and "no limit" is not the literal `max` but a very large byte count. So it is
+// its own module beside extdeps.linux.cgroup_v2_memory, not extra arms there (DESIGN §3: one
+// independently specified interface, one authority).
+//
+// THE LIMIT THAT BINDS IS READ, NOT WALKED. cgroup-v1 memory.rst §5.2 documents memory.stat's
+// `hierarchical_memory_limit` as the limit "with regard to hierarchy under which memory cgroup is" --
+// the kernel's own minimum over the cgroup and every ancestor, including ancestors outside this
+// process's view of the mount (a container whose memory mount is rooted at its own cgroup). Walking
+// memory.limit_in_bytes up the visible directories would miss exactly those ancestors, so the walk
+// would be a weaker reading of a fact the kernel already states.
+
+// THE UNLIMITED SENTINEL IS DERIVED, NOT TRANSCRIBED. The kernel stores the limit in pages as a
+// page_counter whose "unlimited" value is PAGE_COUNTER_MAX = LONG_MAX / PAGE_SIZE (include/linux/
+// page_counter.h, 64-bit), and reports it in bytes as PAGE_COUNTER_MAX * PAGE_SIZE. The byte value
+// therefore depends on the page size (4 KiB and 64 KiB pages give different numbers), so the page
+// size is an input and the sentinel is computed from it rather than copied from one machine.
+data cgroup_v1_long_max: Nat = 9223372036854775807
+
+// A zero page size describes no kernel; callers refuse it before asking for the sentinel.
+fn cgroup_v1_unlimited_bytes(page_size: ByteSize) -> ByteSize {
+  let p = byte_size_count(b: page_size)
+  byte_size(count: (cgroup_v1_long_max / p) * p)
+}
+
+type CgroupV1MemoryLimitValue
+  = CgroupV1MemoryLimited { bytes: ByteSize }
+  | CgroupV1MemoryUnlimited
+  | CgroupV1MemoryLimitUnparseable { body: String }
+
+// A value at or above the sentinel is "no limit"; a negative or non-integer body is malformed, never
+// a magnitude and never "no limit" (a failed read is not an absent limit).
+fn cgroup_v1_memory_limit_from_body(body: String, page_size: ByteSize) -> CgroupV1MemoryLimitValue {
+  if byte_size_count(b: page_size) == 0 {
+    CgroupV1MemoryLimitUnparseable { body: body }
+  } else {
+    match parse_int(s: trim(body)) {
+      Present { value: n } =>
+        if n < 0 {
+          CgroupV1MemoryLimitUnparseable { body: body }
+        } else if nat_magnitude(a: n) >= byte_size_count(b: cgroup_v1_unlimited_bytes(page_size: page_size)) {
+          CgroupV1MemoryUnlimited
+        } else {
+          CgroupV1MemoryLimited { bytes: byte_size(count: nat_magnitude(a: n)) }
+        }
+      Absent => CgroupV1MemoryLimitUnparseable { body: body }
+    }
+  }
+}
+
+data cgroup_v1_hierarchical_limit_key: NonEmptyStr = "hierarchical_memory_limit"
+
+// memory.stat is `key value` lines. A file with no hierarchical_memory_limit line is unparseable for
+// this purpose: the key is documented, so its absence is a malformed read, not an absent limit.
+fn cgroup_v1_hierarchical_memory_limit(memory_stat: String, page_size: ByteSize) -> CgroupV1MemoryLimitValue {
+  let hits = split(s: memory_stat, delimiter: "\n")
+    |> map(l => trim(l))
+    |> filter(l => starts_with(s: l, prefix: join([cgroup_v1_hierarchical_limit_key as String, " "], "")))
+  match list_at_optional(xs: hits, index: 0) {
+    Present { value: line } =>
+      if length(hits) == 1 {
+        cgroup_v1_memory_limit_from_body(
+          body: substring(s: line, start: string_length(s: cgroup_v1_hierarchical_limit_key as String) + 1, end: string_length(s: line)),
+          page_size: page_size
+        )
+      } else {
+        CgroupV1MemoryLimitUnparseable { body: memory_stat }
+      }
+    Absent => CgroupV1MemoryLimitUnparseable { body: memory_stat }
+  }
+}

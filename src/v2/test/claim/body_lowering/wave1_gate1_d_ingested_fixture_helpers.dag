@@ -13,7 +13,6 @@ import v2.compiler.ingested_fixture_arrows {
   ingested_pick_if_arrow_with_body_swapped_arms
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Bind,
   Branch,

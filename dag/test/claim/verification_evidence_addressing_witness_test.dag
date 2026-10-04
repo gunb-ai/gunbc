@@ -1,5 +1,6 @@
 module test.claim.verification_evidence_addressing_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -39,6 +40,7 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_provider_events { ProviderCompleted }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
+  AttemptWorktreePresent,
   workflow_attempt_progress,
 }
 import gunbc.roadmap_workflow_stage {
@@ -343,6 +345,7 @@ fn fixture_evidence(
     attempt_key: "feedfacefeedface",
     branch: "dispatch/recut-a-afeedfacefeedface",
     modeled_state_present: true,
+    worktree: AttemptWorktreePresent { path: "/wt" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
@@ -376,6 +379,7 @@ fn fixture_evidence(
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 

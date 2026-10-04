@@ -12,7 +12,6 @@ import extdeps.access.posix {
 import std.effect_grant { Verb, Read, Write, Execute, verb_eq }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root }
 
 // A host directory the fleet owns, carried as WHO NEEDS WHAT rather than as a mode. The mode is
 // DERIVED (managed_directory_permissions below), which is the whole point: gunbc.live_deploy.emit's
@@ -349,9 +348,9 @@ fn srv1_dashboard_service_principal() -> PosixUser {
 // instance existed.\n\nOwner and dependents genuinely do not vary — every instance's attempt state
 // is written and read by that instance's own service user, so the derivation of the mode is
 // unchanged and this is not a loosening. Only the placement moves to a parameter, which is the axis
-// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory survives as the
-// production placement of the general row rather than as a second definition, so its single
-// consumer keeps working and there is still exactly one statement of what the directory requires.
+// #7456 established as the one that varies.\n\nsrv1_attempt_state_directory (gunbc.host_layout) is
+// the production placement of the general row rather than a second definition, so there is still
+// exactly one statement of what the directory requires.
 
 fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
   let service = srv1_dashboard_service_principal()
@@ -366,8 +365,4 @@ fn attempt_state_directory_at(path: FilePath) -> ManagedDirectory {
     ownership: Owned,
     entries: EntriesUnmanaged,
   }
-}
-
-fn srv1_attempt_state_directory() -> ManagedDirectory {
-  attempt_state_directory_at(path: srv1_dispatch_attempt_state_root)
 }

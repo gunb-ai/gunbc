@@ -1386,6 +1386,10 @@ pub fn gunbc_file_write_create_new(
     published
 }
 
+pub fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {
+    std::fs::hard_link(source_path, file_path)
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,

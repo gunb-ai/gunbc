@@ -1,0 +1,96 @@
+module test.claim.fabric_blob_shell
+
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import extdeps.cloudflare.r2 { R2S3Endpoint, R2JurisdictionDefault }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
+import gunbc.fabric.fabric_blob_shell {
+  FabricBlobShellTarget, FabricBlobShellReady, FabricBlobShellUnreachable,
+  fabric_blob_shell_target, fabric_blob_get_statements, fabric_blob_put_statements, fabric_blob_shell_emittable,
+}
+
+// SUBSTRATE ONLY: these establish what the EMITTED scripts say for a supplied, pinned target. The live
+// cache credentials are unminted, so fabric_blob_shell_target() is unreachable on this tree, and the
+// first two claims witness exactly that: no cache step can be emitted until the credentials are pinned.
+// What is NOT established here is that the script transfers bytes against R2; that is the live
+// fleet-desired publication's own receipt.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data secret_value_canary: String = "fixture-token-value-never-in-argv"
+
+fn fixture_target() -> FabricBlobShellTarget {
+  FabricBlobShellReady {
+    endpoint: R2S3Endpoint { account_id: "0123456789abcdef0123456789abcdef", jurisdiction: R2JurisdictionDefault },
+    bucket: "fixture-cache-bucket",
+    read_key_id: "fixture-read-key-id",
+    read_token: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "fixture-cache-read-token"), version: "3"),
+    write_key_id: "fixture-write-key-id",
+    write_token: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: "fixture-cache-write-token"), version: "4"),
+  }
+}
+
+fn text(o: Outcome<String>) -> String {
+  match o {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn get_text() -> String { text(o: bash_emit_stmts(statements: fabric_blob_get_statements(target: fixture_target()), set_e: true)) }
+fn put_text() -> String { text(o: bash_emit_stmts(statements: fabric_blob_put_statements(target: fixture_target()), set_e: true)) }
+
+// ── UNMINTED CREDENTIALS: NO CACHE STEP EXISTS ─────────────────────────────────────────────────
+
+test fn the_live_cache_is_unreachable_until_its_credentials_are_pinned() -> Bool {
+  !fabric_blob_shell_emittable() && match fabric_blob_shell_target() {
+    FabricBlobShellUnreachable { cause: c } => string_contains(s: c as String, pattern: "NOT MINTED") || string_contains(s: c as String, pattern: "NO MINT ENTRY")
+    FabricBlobShellReady { endpoint: _, bucket: _, read_key_id: _, read_token: _, write_key_id: _, write_token: _ } => false
+  }
+}
+
+test fn an_unreachable_target_emits_only_a_refusal() -> Bool {
+  let t = text(o: bash_emit_stmts(statements: fabric_blob_get_statements(target: FabricBlobShellUnreachable { cause: "fixture cause" }), set_e: true))
+  string_contains(s: t, pattern: "CacheUnreachable") && !string_contains(s: t, pattern: "curl")
+}
+
+// ── A PINNED TARGET ────────────────────────────────────────────────────────────────────────────
+
+test fn both_scripts_emit() -> Bool {
+  get_text() != "" && put_text() != ""
+}
+
+test fn the_address_is_refused_unless_64_lower_hex() -> Bool {
+  string_contains(s: get_text(), pattern: "[0-9a-f]{64}") && string_contains(s: get_text(), pattern: "AddressMalformed")
+    && string_contains(s: put_text(), pattern: "AddressMalformed")
+}
+
+test fn the_object_is_named_under_the_cache_prefix_in_the_declared_bucket() -> Bool {
+  string_contains(s: get_text(), pattern: "/fixture-cache-bucket/blobs/")
+}
+
+test fn the_put_is_create_only_and_the_get_is_not() -> Bool {
+  string_contains(s: put_text(), pattern: "If-None-Match: *") && !string_contains(s: get_text(), pattern: "If-None-Match")
+}
+
+test fn credentials_are_read_by_pinned_version_and_only_through_a_netrc() -> Bool {
+  string_contains(s: get_text(), pattern: "/secrets/fixture-cache-read-token/versions/3:access")
+    && string_contains(s: put_text(), pattern: "/secrets/fixture-cache-write-token/versions/4:access")
+    && string_contains(s: get_text(), pattern: "--netrc-file")
+    && !string_contains(s: get_text(), pattern: secret_value_canary)
+    && string_contains(s: get_text(), pattern: "trap")
+}
+
+test fn a_read_that_is_neither_200_nor_404_refuses_rather_than_missing() -> Bool {
+  string_contains(s: get_text(), pattern: "CacheReadRefused") && string_contains(s: get_text(), pattern: "standing=absent")
+}
+
+test fn an_oversized_pack_refuses_before_upload() -> Bool {
+  string_contains(s: put_text(), pattern: "ObjectTooLarge")
+}
+
+test fn an_occupied_address_must_hold_the_same_bytes() -> Bool {
+  string_contains(s: put_text(), pattern: "CacheOccupiedByDifferentBytes") && string_contains(s: put_text(), pattern: "publication=converged")
+    && string_contains(s: put_text(), pattern: "CachePublishUnreconciled")
+}
