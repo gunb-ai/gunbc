@@ -164,28 +164,8 @@ data approval_intent_digest_typed_admissions: List<FloorCostDebtTypedAdmission> 
   },
 ]
 
-// THE dag TARGET TEXT ROUND-TRIP NESTED-BIND ROWS (gunbc#13233), and only those two. Each claim renders
-// one emitted two-Bind token sequence, lexes it and parses it ONCE at `fn_body`; two lets is the
-// smallest text that exercises a Bind in the body block and a Bind in the value group, so the
-// fragment cannot shrink without dropping the route the claim exists for. They were un-bundled from
-// a warm producer that ran all six round trips at preparation, outside every claim's budget; their
-// four one-let siblings fit the line on their own and carry no row. The cost is the parse, not the
-// claim's shape: a step breakdown of these claims put the parse proper at most of each bill and
-// growing per token. The measurement is the PR required floor run of gunbc#13233 at its final head,
-// enrolment-margin lines; RUN_ID_PENDING.
-data dag_text_round_trip_parse_typed_admissions: List<FloorCostDebtTypedAdmission> = [
-  FloorCostDebtTypedAdmission {
-    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_body_round_trips_as_text",
-    reason: "honest per-token parse cost: 7 inlined precedence levels each stamp an empty continuation; owner: grammar program (stern-bear-500); retired by: a precedence-climbing tree contract (one node per operator application, not one per level), or parse claims evaluated on the native route" as NonEmptyStr,
-  },
-  FloorCostDebtTypedAdmission {
-    identity: "v2.test.emit.dag_target_text_round_trip.a_bind_with_a_bind_value_round_trips_as_text",
-    reason: "honest per-token parse cost: 7 inlined precedence levels each stamp an empty continuation; owner: grammar program (stern-bear-500); retired by: a precedence-climbing tree contract (one node per operator application, not one per level), or parse claims evaluated on the native route" as NonEmptyStr,
-  },
-]
-
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  concat(concat(concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions), approval_intent_digest_typed_admissions), dag_text_round_trip_parse_typed_admissions)
+  concat(concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions), approval_intent_digest_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
