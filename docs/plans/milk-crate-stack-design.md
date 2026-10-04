@@ -65,7 +65,7 @@ the 4-pin signal lead; high-load input population and header current limits rema
 | Shared supply → node | Independent front-side drop; rated, keyed disconnect and strain relief at each cassette. No power daisy-chain through a removable node. |
 | Disconnect → board | Short internal pigtails to the front-edge inputs. Select complete contacts, crimps, wire and protection together; do not infer compatibility from connector appearance. |
 | Network / management | Independent rear-side drops. Reserve plug bodies, latch access and bend radius before the fan bank; escape around a side instead of passing through fan apertures. Link count comes from the selected networking topology, not all four RJ45 sockets automatically. |
-| Rear fans → board | Route along a side to the front header. The modeled rear fan offset makes the straight route about 371 mm before service/bend allowance: a 400 mm fan lead is insufficient with 100 mm allowance. Add and weigh the extension. |
+| Rear fans → board | Route along a side to the front header. The modeled rear fan offset makes the straight route about 371 mm before service/bend allowance: a 400 mm fan lead is insufficient with 100 mm allowance. Include the extension in the harness BOM mass allowance. |
 | Cooler fan | Its own internal board-header lead; do not add its airflow to the rear bank as if they were independent parallel fans. |
 | Station wiring | Mains inlet/PE, distribution wiring, branch protection, disconnects and station cooling all belong to the power cassette BOM. |
 
@@ -82,7 +82,7 @@ harness and corner structure, and takes the DIMM count from `HostMemoryPopulatio
 `stack_mass_review` consumes the actual `srv3_memory_population` and `srv4_memory_population`:
 both have **eight Samsung M393A8G40D40-CRB DIMMs**, not an assumed four.
 
-Mass rows distinguish vendor nominal values, bounded values and a typed missing measurement.
+Mass rows distinguish vendor nominal values, sourced bounds, explicit planning estimates and typed design gaps. Estimates remain tagged and counted in the fold.
 The fold rejects missing mass, duplicate identities/measurements, stale measurement IDs,
 invalid ranges and empty inventories. A complete mass sum still reports provisional positions
 and nominal vendor inputs: it is not a complete structural qualification.
@@ -92,8 +92,9 @@ and nominal vendor inputs: it is not a complete structural qualification.
 | W1 active cooler including its fan | [Dynatron](https://www.dynatron.co/product-page/w1): 612 ± 10 g. Do not add its fan again. |
 | Three rear P8 PWM PST fans | [ARCTIC specification](https://www.arctic.de/media/84/14/68/1697784882/Spec_Sheet_P8_PWM_PST_EN.pdf): 81 g each, nominal; manufacturing tolerance not provided. |
 | srv3 970 EVO Plus / srv4 970 EVO SSD | Samsung brochures give **maximum 8 g**, represented as a bound, not a measured 8 g restoring weight. |
-| Board and CPU | Missing mass evidence. The optional `BOARD_AND_CPU` subassembly replaces the two separate rows so the CPU need not be removed for weighing. |
-| DIMMs | One matching DIMM's mass, multiplied by the modeled population. Do not count the RAM clearance slabs too. |
+| Board | **910–1700 g planning range**, using the operator-provided bracket. Conflicting online item/shipping weights do not establish a bare-board tolerance; this is explicitly an assumption. |
+| CPU | **114 g typical Altra Max package mass**, Ampere section 4 p.17. The earlier Altra family is 112 g. These are nominal values, not tolerances. |
+| DIMMs | **20–100 g each planning range**, multiplied by eight. This is a deliberately broad engineering allowance for the bare module, not a vendor mass claim. Samsung publishes its geometry; retailer shipping mass is not used as component mass. |
 | Printed pieces | Use revision/profile-bound slicer or measured part mass. Positive primitive volumes include overlaps and ignore cuts/infill; they are not actual printed mass or conservative tipping input. |
 | Hardware, harness, connectors | Explicit missing rows, filled from the selected BOM and routed lengths or measured sets. No silent zero. |
 | Power cassette | Separate PSU, enclosure, distribution and wiring rows. Supply selection is still open, so mass and CG are open. |
@@ -103,13 +104,25 @@ The already-generated PLA P1/P2 G-code reports **156.51 / 147.82 g of filament u
 job consumption estimates, potentially including support/purge, and belong to r06/profile/material;
 they must not be copied onto a redesigned PETG corner cassette as actual part weights.
 
-**Useful operator measurements now:** board with installed CPU (without cooler, DIMMs or SSD),
-and one matching DIMM. If separating the cooler is inconvenient, a board+CPU+cooler measurement
-can instead constrain the board+CPU range by subtracting the cited 602–622 g cooler interval;
-it must be recorded as that grouped observation, not double-counted. No need to weigh the fans
-or a whole server just to replace existing vendor/model rows. Printed/hardware/harness masses are
-our preparation task; PSU mass follows selection. Center-of-mass placement remains separate from
-weighing: use surveyed locations or explicit position bounds before calculating a stack limit.
+**No operator weighing or disassembly is requested.** Source research, existing CAD/slicer output,
+BOM calculations and explicit design allowances are the preparation route. The earlier request
+to weigh the board/DIMM and the default `BOARD_AND_CPU` measurement placeholder are withdrawn.
+The runtime report now keeps BOARD and PROCESSOR separate, supplies the available masses and
+planning ranges automatically, and exposes each row's evidence class and basis.
+
+The resulting **hardware-only planning subtotal is 2.029–3.487 kg per node** (board, CPU,
+eight DIMMs, W1, three P8 fans and SSD). It excludes prints, fasteners, standoffs, harness and the
+power cassette, and is not a guaranteed interval. Those remaining design/BOM rows stay visible;
+they are our modeling work, not requests for the operator to collect weights.
+
+Research references and interpretation (4 October 2026):
+
+- [Ampere Altra Max datasheet, §4 p.17](https://amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_25_20240130_73cfcc518a_4705c00046.pdf): 114 g typical, confirmed in the primary indexed text; also present in issues 1.15 and 1.30. The direct browser fetch exceeded its size limit.
+- [Samsung module datasheet, §18 p.39](https://download.semiconductor.samsung.com/resources/data-sheet/DS_64GB_TSV_DDR4_4Gb_D_die_RegisteredDIMM_Rev13.pdf): indexed primary drawing gives 133.35 × 31.25 mm and 3.9 mm maximum thickness. It supplies geometry, not the assumed 20–100 g mass range. Direct URL retrieval currently returns 404; the indexed primary excerpt remains available.
+- Board retailer results reproduce 0.91 kg and 1.7 kg figures, with other conflicting values and packaging ambiguity. We retain the user's bracket as a planning assumption; none is promoted to an ASRock specification.
+- DIMM seller results include explicitly labeled shipping masses (0.20 lb and 1 lb). Neither is accepted as a bare-module measurement. The mass range is a product-side assumption, kept outside Samsung's extdeps facts.
+
+Uncertainty remains in scenario sweeps instead of generating another physical-measurement request.
 
 ## Force calculations and their boundary
 

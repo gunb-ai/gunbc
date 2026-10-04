@@ -6,8 +6,8 @@ import extdeps.memory.samsung {m393a8g40d40_crb0q_catalog}
 import product.printed_chassis.assembly_geometry {placed}
 import product.printed_chassis.component_mass {
  MassComponent,MassEvidence,MassNeeded,BoardWithSocket,BoundedMass,VendorNominal,
- MassMeasurement,MassLedger,MassComplete,MassIncomplete,MassIssue,DuplicateMeasurement,
- UnknownMeasurement,MissingMass,EnvelopeCentre,with_board_cpu_group,component,mass_ledger,node_components,dimm_count,
+ lower_mass,upper_mass,MassMeasurement,MassLedger,MassComplete,MassIncomplete,MassIssue,DuplicateMeasurement,
+ UnknownMeasurement,MissingMass,EnvelopeCentre,PlanningMassRange,component,mass_ledger,node_components,dimm_count,
 }
 import product.printed_chassis.placed_mass_model {PlacedMass,SupportRectangle,LoadScenario,LoadScreen,RigidBodyScreen,InvalidLoadScenario,placed_load_screen,load_from_ledger,LowerMassEndpoint}
 fn population() -> HostMemoryPopulation {HostMemoryPopulation {rows:[MemoryPopulationRow {module:m393a8g40d40_crb0q_catalog,stick_count:8}]}}
@@ -52,10 +52,16 @@ test fn outside_support_has_no_positive_tip_margin() -> Bool {
  _=>false}
 }
 
-test fn grouped_board_does_not_double_count_cpu_and_incomplete_mass_refuses_force() -> Bool {
- let rows=with_board_cpu_group(components:node_components(population:population()))
- let ledger=mass_ledger(components:rows,measurements:[])
- !any(rows,r=>r.id=="BOARD" || r.id=="PROCESSOR")
- && count(filter(rows,r=>r.id=="BOARD_AND_CPU"))==1
- && (match load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:200000) {InvalidLoadScenario {reason:_}=>true _=>false})
+test fn online_mass_inputs_replace_operator_weighing_requests() -> Bool {
+ let rows=node_components(population:population())
+ let acquired=filter(rows,r=>r.id=="BOARD" || r.id=="PROCESSOR" || r.id=="DIMMS")
+ match mass_ledger(components:acquired,measurements:[]) {
+  MassComplete {total:t,rows:_}=>t.estimated_rows==2 && t.nominal_vendor_rows==1
+   && gram_count(g:t.lower)==1184 && gram_count(g:t.upper)==2614
+  _=>false
+ }
+}
+test fn unfinished_prints_still_refuse_without_requesting_hardware_measurements() -> Bool {
+ let ledger=mass_ledger(components:node_components(population:population()),measurements:[])
+ match load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:200000) {InvalidLoadScenario {reason:_}=>true _=>false}
 }
