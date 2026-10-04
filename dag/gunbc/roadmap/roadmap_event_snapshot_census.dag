@@ -1,0 +1,197 @@
+module gunbc.roadmap.roadmap_event_snapshot_census
+
+import std.types { String, Int, Bool, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, serialize_json, json_string, json_int, json_array, json_object, json_kv }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
+import extdeps.git.worktree_enumeration {
+  GitWorktreeSetObservation, GitWorktreeSetObserved, GitWorktreeSetReadRefused, GitWorktreeSetUndecodable,
+  git_worktree_set_observation_of,
+}
+import gunbc.host_layout { instance_receipts_dir }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_path_prefix,
+  carrier_exec, CarrierExecOk, CarrierExecFailed,
+}
+
+// THE CENSUS OF EVENT-LOG SNAPSHOT WORKTREES. Every carrier operation works in a private worktree
+// and removes it; several of its callers have no surface on which to say a removal failed (a served
+// response, the daily page, the launch-time binding commit, a successful record). This census is
+// their reporter. It does not depend on any of them saying anything: it reads the repository's own
+// registry of worktrees, which holds every snapshot any process on the host registered and did not
+// remove, and keeps the ones whose path carries the carrier's snapshot prefix.
+//
+// The belt tick takes it once per tick and writes it as a receipt beside the tick's own. A snapshot
+// that is in this tick's census and was in the previous tick's has outlived a tick; no carrier
+// operation runs that long, so it is a leak, counted and named by its path. A snapshot seen for the
+// first time may be an operation in flight and is counted without being called a leak.
+//
+// It removes nothing. Reaping a leaked snapshot is a separate capability that does not exist yet.
+type RoadmapSnapshotCensus
+  = SnapshotCensusRead { snapshots: List<String> }
+  | SnapshotCensusUnreadable { reason: String }
+
+fn roadmap_snapshot_census_of(observation: GitWorktreeSetObservation) -> RoadmapSnapshotCensus {
+  match observation {
+    GitWorktreeSetObserved { primary: _, linked } =>
+      SnapshotCensusRead { snapshots: map(filter(linked, w => starts_with(s: w.path, prefix: roadmap_event_snapshot_path_prefix)), w => w.path) }
+    GitWorktreeSetReadRefused { exit_code, stderr } =>
+      SnapshotCensusUnreadable { reason: join(["git worktree list exited ", to_string(value: exit_code), ": ", trim(stderr)], "") }
+    GitWorktreeSetUndecodable { entry_index, raw_entry: _, reason } =>
+      SnapshotCensusUnreadable { reason: join(["git worktree list entry ", to_string(value: entry_index), " could not be decoded: ", reason], "") }
+  }
+}
+
+fn roadmap_snapshot_census_read(layout: RoadmapEventCarrierLayout) -> RoadmapSnapshotCensus {
+  match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
+    CarrierExecOk { stdout } => roadmap_snapshot_census_of(observation: git_worktree_set_observation_of(raw: stdout, exit_code: 0, stderr: ""))
+    CarrierExecFailed { exit_code, stderr } => SnapshotCensusUnreadable { reason: join(["git worktree list exited ", to_string(value: exit_code), ": ", trim(stderr)], "") }
+  }
+}
+
+// WHAT THE PREVIOUS TICK'S CENSUS READS AS. Absent is a first tick. Unreadable is recorded on the
+// receipt this tick writes: with no previous census nothing can be shown to have outlived a tick,
+// and the receipt says that was the reason rather than reporting zero leaks as a finding.
+type SnapshotCensusPrior
+  = SnapshotCensusPriorRead { snapshots: List<String> }
+  | SnapshotCensusPriorAbsent
+  | SnapshotCensusPriorUnreadable { reason: String }
+
+type RoadmapSnapshotCensusReceipt {
+  observed_at: String
+  snapshots: List<String>
+  leaked: List<String>
+  prior: SnapshotCensusPrior
+}
+
+fn roadmap_snapshot_census_receipt(observed_at: String, snapshots: List<String>, prior: SnapshotCensusPrior) -> RoadmapSnapshotCensusReceipt {
+  RoadmapSnapshotCensusReceipt {
+    observed_at: observed_at,
+    snapshots: snapshots,
+    leaked: match prior {
+      SnapshotCensusPriorRead { snapshots: before } => filter(snapshots, s => any(before, b => b == s))
+      SnapshotCensusPriorAbsent => []
+      SnapshotCensusPriorUnreadable { reason: _ } => []
+    },
+    prior: prior,
+  }
+}
+
+data roadmap_snapshot_census_schema: String = "roadmap-event-snapshot-census/v1"
+
+fn snapshot_census_prior_text(prior: SnapshotCensusPrior) -> String {
+  match prior {
+    SnapshotCensusPriorRead { snapshots: _ } => "read"
+    SnapshotCensusPriorAbsent => "absent"
+    SnapshotCensusPriorUnreadable { reason } => concat("unreadable: ", reason)
+  }
+}
+
+fn roadmap_snapshot_census_receipt_json(receipt: RoadmapSnapshotCensusReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_snapshot_census_schema)),
+    json_kv(key: "observed_at", value: json_string(s: receipt.observed_at)),
+    json_kv(key: "snapshot_count", value: json_int(n: count(receipt.snapshots))),
+    json_kv(key: "snapshots", value: json_array(elements: map(receipt.snapshots, s => json_string(s: s)))),
+    json_kv(key: "leaked_count", value: json_int(n: count(receipt.leaked))),
+    json_kv(key: "leaked", value: json_array(elements: map(receipt.leaked, s => json_string(s: s)))),
+    json_kv(key: "prior", value: json_string(s: snapshot_census_prior_text(prior: receipt.prior))),
+  ])
+}
+
+// The next tick reads back only what it decides over: the paths the previous census held.
+fn snapshot_census_prior_decode(raw: String) -> SnapshotCensusPrior {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap } => SnapshotCensusPriorUnreadable { reason: concat("the snapshot census receipt is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match json_object_unique_member(v: doc, key: "schema") {
+        JsonMemberFound { value: JsonString { value: schema } } =>
+          if schema != roadmap_snapshot_census_schema {
+            SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt schema is unknown" }
+          } else {
+            match json_object_unique_member(v: doc, key: "snapshots") {
+              JsonMemberFound { value: JsonArray { elements } } =>
+                fold(elements, init: SnapshotCensusPriorRead { snapshots: [] }, f: (acc, e) => match acc {
+                  SnapshotCensusPriorRead { snapshots } => match e {
+                    JsonString { value: path } => SnapshotCensusPriorRead { snapshots: concat(snapshots, [path]) }
+                    _ => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt snapshots holds a non-string" }
+                  }
+                  SnapshotCensusPriorAbsent => SnapshotCensusPriorAbsent
+                  SnapshotCensusPriorUnreadable { reason } => SnapshotCensusPriorUnreadable { reason: reason }
+                })
+              JsonMemberFound { value: _ } => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt snapshots is not an array" }
+              JsonMemberAbsent => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt snapshots is missing" }
+              JsonMemberDuplicated { count: _ } => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt snapshots is duplicated" }
+              JsonMemberNotAnObject => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt is not an object" }
+            }
+          }
+        JsonMemberFound { value: _ } => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt schema is not a string" }
+        JsonMemberAbsent => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt schema is missing" }
+        JsonMemberDuplicated { count: _ } => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt schema is duplicated" }
+        JsonMemberNotAnObject => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt is not an object" }
+      }
+  }
+}
+
+fn snapshot_census_prior_of_read(success: Bool, content: String, error_kind: String, error: String) -> SnapshotCensusPrior {
+  if success {
+    if trim(content) == "" { SnapshotCensusPriorAbsent } else { snapshot_census_prior_decode(raw: content) }
+  } else if error_kind == "not_found" {
+    SnapshotCensusPriorAbsent
+  } else {
+    SnapshotCensusPriorUnreadable { reason: concat("the snapshot census receipt could not be read: ", error) }
+  }
+}
+
+// Per-instance by construction, in the directory the service principal owns
+// (gunbc.roadmap_belt_actuate belt_tick_receipt_path_for_instance records why that directory).
+fn roadmap_snapshot_census_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
+  join([instance_receipts_dir(instance_root: instance.instance_root as String), "/roadmap-event-snapshot-census.json"], "")
+}
+
+// THE TICK'S CENSUS PASS. Recorded is a census read and its receipt written. Refused is a census
+// that could not be read, or a receipt that could not be written -- in either case the count is
+// reported nowhere, so the tick refuses, naming the step. A leak is not a refusal: it is counted
+// and named on the receipt.
+type RoadmapSnapshotCensusPass
+  = SnapshotCensusRecorded { receipt: RoadmapSnapshotCensusReceipt }
+  | SnapshotCensusRefused { step: String, reason: String }
+
+fn roadmap_snapshot_census_for_instance(instance: HostDashboardInstance, observed_at: String) -> RoadmapSnapshotCensusPass {
+  match roadmap_snapshot_census_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
+    SnapshotCensusUnreadable { reason } => SnapshotCensusRefused { step: "worktree-list", reason: reason }
+    SnapshotCensusRead { snapshots } => {
+      let path = roadmap_snapshot_census_receipt_path_for_instance(instance: instance)
+      let before = Filesystem.Read(path: path)
+      let receipt = roadmap_snapshot_census_receipt(
+        observed_at: observed_at,
+        snapshots: snapshots,
+        prior: snapshot_census_prior_of_read(success: before.success, content: before.content, error_kind: before.error_kind, error: before.error),
+      )
+      let write = Filesystem.Write(path: path, content: serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: receipt)))
+      if write.success { SnapshotCensusRecorded { receipt: receipt } } else { SnapshotCensusRefused { step: "receipt-write", reason: write.error } }
+    }
+  }
+}
+
+// THE CENSUS JOINED TO THE TICK'S EXIT, pure. A recorded census leaves the exit exactly as it was:
+// what it found is on its receipt. A census that could not be taken fails the tick naming the step;
+// a tick that already failed keeps its code and reason and gains the census refusal after it.
+fn belt_tick_exit_with_snapshot_census(exit: ProcessExit, census: RoadmapSnapshotCensusPass) -> ProcessExit {
+  match census {
+    SnapshotCensusRecorded { receipt: _ } => exit
+    SnapshotCensusRefused { step, reason } => {
+      let refusal = join(["roadmap event snapshot census could not be taken (", step, "): ", reason], "")
+      match exit {
+        ExitSuccess => exit_failure(reason: refusal)
+        ExitFailure { code, reason: earlier } => ExitFailure { code: code, reason: join([earlier, "\n", refusal], "") }
+      }
+    }
+  }
+}

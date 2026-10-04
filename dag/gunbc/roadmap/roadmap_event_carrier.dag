@@ -179,13 +179,22 @@ fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsur
 // Every operation owns its worktree. A concurrent read cannot reset a writer's index or FETCH_HEAD.
 // The remote publication is conditional on the EXACT fetched commit, not merely fast-forward.
 // The issue-parent decision and operation receipt are made inside that same immutable snapshot.
+// A SNAPSHOT'S PATH SAYS IT IS ONE. Every private snapshot is created under this prefix, so the
+// repository's own worktree registry can be read for the snapshots any process left registered
+// (gunbc.roadmap.roadmap_event_snapshot_census). The mktemp template is the prefix and nothing else.
+data roadmap_event_snapshot_path_prefix: String = "/tmp/gunbc-roadmap-event-snapshot."
+
+fn roadmap_event_snapshot_template() -> FilePath {
+  concat(roadmap_event_snapshot_path_prefix, "XXXXXXXXXX") as FilePath
+}
+
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }
 
 fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierSnapshot {
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => CarrierSnapshotRefused { reason: concat(step, concat(": ", reason)) }
     CarrierReady => {
-      let temporary = shell.Mktemp.Dir()
+      let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template())
       if !temporary.success { CarrierSnapshotRefused { reason: "cannot create private event snapshot" } }
       else { match carrier_exec(layout: layout, workdir: layout.repo_root as String,
         args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"]) {

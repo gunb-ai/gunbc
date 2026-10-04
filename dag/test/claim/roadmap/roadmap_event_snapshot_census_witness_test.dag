@@ -1,0 +1,141 @@
+module test.claim.roadmap.roadmap_event_snapshot_census_witness_test
+
+import std.types { Bool, String, List }
+import std.process { ExitSuccess, ExitFailure }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.git.worktree_enumeration { git_worktree_set_observation_of }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_snapshot_path_prefix, roadmap_event_snapshot_template }
+import gunbc.roadmap.roadmap_event_snapshot_census {
+  SnapshotCensusRead, SnapshotCensusUnreadable, roadmap_snapshot_census_of,
+  SnapshotCensusPriorRead, SnapshotCensusPriorAbsent, SnapshotCensusPriorUnreadable,
+  roadmap_snapshot_census_receipt, roadmap_snapshot_census_receipt_json, snapshot_census_prior_decode, snapshot_census_prior_of_read,
+  SnapshotCensusRecorded, SnapshotCensusRefused, belt_tick_exit_with_snapshot_census,
+}
+
+data census_oid: String = "b0940967fc5128891bb289985b3e2a0714a88773"
+
+fn census_entry(attributes: List<String>) -> String {
+  concat(join(attributes, "\0"), "\0\0")
+}
+
+fn census_snapshot_path(suffix: String) -> String {
+  concat(roadmap_event_snapshot_path_prefix, suffix)
+}
+
+// THE CENSUS IS THE SNAPSHOTS IN GIT'S OWN WORKTREE LIST AND NOTHING ELSE, through the real decoder
+// over git's porcelain framing: of a primary, the long-lived event worktree, an attempt worktree and
+// two detached worktrees under the snapshot prefix, exactly the two are counted, by path. The path
+// a snapshot is created at is under that prefix -- the template is the prefix plus mktemp's
+// placeholder -- so what the carrier creates is what the census selects. A worktree list that could
+// not be read, and one that could not be decoded, are unreadable naming why, never an empty census.
+test fn the_census_counts_exactly_the_snapshot_worktrees_git_lists() -> Bool {
+  let a = census_snapshot_path(suffix: "aB3dE5fG7h")
+  let b = census_snapshot_path(suffix: "Zz9Yy8Xx7W")
+  let raw = join([
+    census_entry(attributes: ["worktree /srv/gunbc", concat("HEAD ", census_oid), "branch refs/heads/main"]),
+    census_entry(attributes: ["worktree /srv/instance/roadmap-events", concat("HEAD ", census_oid), "branch refs/heads/roadmap-events"]),
+    census_entry(attributes: ["worktree /srv/attempts/demo-node", concat("HEAD ", census_oid), "detached"]),
+    census_entry(attributes: [concat("worktree ", a), concat("HEAD ", census_oid), "detached"]),
+    census_entry(attributes: [concat("worktree ", b), concat("HEAD ", census_oid), "detached"]),
+  ], "")
+  let counted = match roadmap_snapshot_census_of(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: "")) {
+    SnapshotCensusRead { snapshots } => snapshots == [a, b]
+    SnapshotCensusUnreadable { reason: _ } => false
+  }
+  let none_registered = match roadmap_snapshot_census_of(observation: git_worktree_set_observation_of(raw: census_entry(attributes: ["worktree /srv/gunbc", concat("HEAD ", census_oid), "branch refs/heads/main"]), exit_code: 0, stderr: "")) {
+    SnapshotCensusRead { snapshots } => count(snapshots) == 0
+    SnapshotCensusUnreadable { reason: _ } => false
+  }
+  let refused = match roadmap_snapshot_census_of(observation: git_worktree_set_observation_of(raw: "", exit_code: 128, stderr: "fatal: not a git repository\n")) {
+    SnapshotCensusUnreadable { reason } => string_contains(s: reason, pattern: "128") && string_contains(s: reason, pattern: "not a git repository")
+    SnapshotCensusRead { snapshots: _ } => false
+  }
+  let undecodable = match roadmap_snapshot_census_of(observation: git_worktree_set_observation_of(raw: census_entry(attributes: ["not a worktree record"]), exit_code: 0, stderr: "")) {
+    SnapshotCensusUnreadable { reason: _ } => true
+    SnapshotCensusRead { snapshots: _ } => false
+  }
+  counted && none_registered && refused && undecodable
+    && starts_with(s: roadmap_event_snapshot_template() as String, prefix: roadmap_event_snapshot_path_prefix)
+}
+
+// A SNAPSHOT THAT OUTLIVED A TICK IS A LEAK, NAMED; ONE SEEN FOR THE FIRST TIME IS COUNTED AND NOT
+// CALLED ONE. With the previous census holding A, a census of A and B counts two and leaks A alone
+// -- the red is B called a leak, or A not. A snapshot the previous census held and this one does
+// not was removed and appears nowhere. With no previous census, or one that could not be read,
+// nothing is called a leak and the receipt says which of those it was.
+test fn a_snapshot_seen_on_two_consecutive_ticks_is_a_counted_named_leak() -> Bool {
+  let a = census_snapshot_path(suffix: "aaaaaaaaaa")
+  let b = census_snapshot_path(suffix: "bbbbbbbbbb")
+  let gone = census_snapshot_path(suffix: "cccccccccc")
+  let second = roadmap_snapshot_census_receipt(observed_at: "t2", snapshots: [a, b], prior: SnapshotCensusPriorRead { snapshots: [a, gone] })
+  let first = roadmap_snapshot_census_receipt(observed_at: "t1", snapshots: [a, b], prior: SnapshotCensusPriorAbsent)
+  let blind = roadmap_snapshot_census_receipt(observed_at: "t2", snapshots: [a, b], prior: SnapshotCensusPriorUnreadable { reason: "permission denied" })
+  let wire = serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: second))
+  let blind_wire = serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: blind))
+  second.leaked == [a] && second.snapshots == [a, b]
+    && count(first.leaked) == 0 && count(first.snapshots) == 2
+    && count(blind.leaked) == 0
+    && string_contains(s: wire, pattern: "\"snapshot_count\": 2") && string_contains(s: wire, pattern: "\"leaked_count\": 1") && string_contains(s: wire, pattern: a)
+    && string_contains(s: blind_wire, pattern: "unreadable: permission denied")
+}
+
+// THE NEXT TICK READS BACK WHAT THIS TICK WROTE. The written receipt decodes to the paths it held,
+// so the comparison across ticks runs over the real wire and not a constructed list. No file is a
+// first tick; a file that is not this schema, not JSON, or unreadable for another reason is
+// unreadable naming why -- never an empty previous census, which would report zero leaks as found.
+test fn the_census_receipt_round_trips_and_a_bad_one_is_unreadable_not_empty() -> Bool {
+  let a = census_snapshot_path(suffix: "aaaaaaaaaa")
+  let b = census_snapshot_path(suffix: "bbbbbbbbbb")
+  let wire = serialize_json(v: roadmap_snapshot_census_receipt_json(receipt: roadmap_snapshot_census_receipt(observed_at: "t1", snapshots: [a, b], prior: SnapshotCensusPriorAbsent)))
+  let round = match snapshot_census_prior_of_read(success: true, content: wire, error_kind: "", error: "") {
+    SnapshotCensusPriorRead { snapshots } => snapshots == [a, b]
+    SnapshotCensusPriorAbsent => false
+    SnapshotCensusPriorUnreadable { reason: _ } => false
+  }
+  let carried = roadmap_snapshot_census_receipt(observed_at: "t2", snapshots: [b], prior: snapshot_census_prior_decode(raw: wire)).leaked == [b]
+  let missing = match snapshot_census_prior_of_read(success: false, content: "", error_kind: "not_found", error: "No such file or directory") {
+    SnapshotCensusPriorAbsent => true
+    SnapshotCensusPriorRead { snapshots: _ } => false
+    SnapshotCensusPriorUnreadable { reason: _ } => false
+  }
+  let denied = match snapshot_census_prior_of_read(success: false, content: "", error_kind: "permission_denied", error: "Permission denied") {
+    SnapshotCensusPriorUnreadable { reason } => string_contains(s: reason, pattern: "Permission denied")
+    SnapshotCensusPriorRead { snapshots: _ } => false
+    SnapshotCensusPriorAbsent => false
+  }
+  let other_schema = match snapshot_census_prior_decode(raw: "{\"schema\":\"something-else/v1\",\"snapshots\":[]}") {
+    SnapshotCensusPriorUnreadable { reason } => string_contains(s: reason, pattern: "schema")
+    SnapshotCensusPriorRead { snapshots: _ } => false
+    SnapshotCensusPriorAbsent => false
+  }
+  let not_json = match snapshot_census_prior_decode(raw: "not json") {
+    SnapshotCensusPriorUnreadable { reason: _ } => true
+    SnapshotCensusPriorRead { snapshots: _ } => false
+    SnapshotCensusPriorAbsent => false
+  }
+  round && carried && missing && denied && other_schema && not_json
+}
+
+// THE TICK REFUSES ONLY WHEN THE CENSUS COULD NOT BE TAKEN. A census that was recorded leaves the
+// exit as it was even when it names a leak -- the leak is on the receipt. A census that could not
+// be read fails a clean tick naming the step, and is added after the reason of a tick that already
+// failed, whose code it keeps. The red is a clean exit over a census nobody could read.
+test fn the_tick_refuses_on_an_unreadable_census_and_not_on_a_leak() -> Bool {
+  let a = census_snapshot_path(suffix: "aaaaaaaaaa")
+  let leaking = SnapshotCensusRecorded { receipt: roadmap_snapshot_census_receipt(observed_at: "t2", snapshots: [a], prior: SnapshotCensusPriorRead { snapshots: [a] }) }
+  let unread = SnapshotCensusRefused { step: "worktree-list", reason: "git worktree list exited 128: fatal: not a git repository" }
+  let leak_is_not_a_refusal = match belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: leaking) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  let unread_refuses = match belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: unread) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "worktree-list") && string_contains(s: reason, pattern: "not a git repository")
+    ExitSuccess => false
+  }
+  let beside = match belt_tick_exit_with_snapshot_census(exit: ExitFailure { code: 3, reason: "served observation write failed" }, census: unread) {
+    ExitFailure { code, reason } => code == 3 && starts_with(s: reason, prefix: "served observation write failed") && string_contains(s: reason, pattern: "worktree-list")
+    ExitSuccess => false
+  }
+  let untouched = match belt_tick_exit_with_snapshot_census(exit: ExitFailure { code: 3, reason: "served observation write failed" }, census: leaking) {
+    ExitFailure { code, reason } => code == 3 && reason == "served observation write failed"
+    ExitSuccess => false
+  }
+  leak_is_not_a_refusal && unread_refuses && beside && untouched
+}

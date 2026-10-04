@@ -39,6 +39,7 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnPassRun, result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
 }
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
+import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
@@ -158,16 +159,19 @@ fn belt_start_record_exit(start: DogfoodStartRecord) -> ProcessExit {
 // (belt_observation_then_start_exit). So the standing the dashboard serves already reads an event
 // this tick appended, and a slow or failing recorder cannot stop the page being written.
 fn belt_tick_tail_after_result_return(instance: HostDashboardInstance, observed_at: String, returned: ResultReturnPassRun) -> ProcessExit {
-  belt_tick_exit_with_snapshot_closes(
-    exit: belt_tick_result_tail_exit(
-      returned: returned.pass,
-      tail: match returned.pass {
-        ResultReturnPassRan { outcomes: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-        ResultReturnPassWithheld { reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-        ResultReturnPassRefused { step: _, reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-      },
+  belt_tick_exit_with_snapshot_census(
+    exit: belt_tick_exit_with_snapshot_closes(
+      exit: belt_tick_result_tail_exit(
+        returned: returned.pass,
+        tail: match returned.pass {
+          ResultReturnPassRan { outcomes: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+          ResultReturnPassWithheld { reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+          ResultReturnPassRefused { step: _, reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+        },
+      ),
+      closes: returned.closes,
     ),
-    closes: returned.closes,
+    census: roadmap_snapshot_census_for_instance(instance: instance, observed_at: observed_at),
   )
 }
 
