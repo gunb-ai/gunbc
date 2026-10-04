@@ -775,8 +775,15 @@ type ProdRoleRealizationRefusal
   | ProdRoleHolderUnrealized { deployment: DeploymentId }
   | ProdRoleHolderAmbiguous { deployment: DeploymentId, count: Int }
 
+// THE HOLDER TOKEN. sole_constructor, so only this module -- and in it only prod_role_realization_in
+// -- can mint one: a role-following singleton is built FROM a holder, and no caller can claim
+// ownership by spelling an instance_id or by constructing a holder for an instance of its choosing.
+type ProdRoleHolder sole_constructor {
+  instance: HostDashboardInstance
+}
+
 type ProdRoleRealization
-  = ProdRoleRealizedBy { instance: HostDashboardInstance }
+  = ProdRoleRealizedBy { holder: ProdRoleHolder }
   | ProdRoleRealizationRefused { cause: ProdRoleRealizationRefusal }
 
 fn prod_role_realization_in(
@@ -791,7 +798,7 @@ fn prod_role_realization_in(
         Absent => ProdRoleRealizationRefused { cause: ProdRoleHolderUnrealized { deployment: holder } }
         Present { value: only } =>
           if count(realizing) == 1 {
-            ProdRoleRealizedBy { instance: only }
+            ProdRoleRealizedBy { holder: ProdRoleHolder { instance: only } }
           } else {
             ProdRoleRealizationRefused { cause: ProdRoleHolderAmbiguous { deployment: holder, count: count(realizing) } }
           }
@@ -815,15 +822,6 @@ fn prod_role_realization_refusal_detail(cause: ProdRoleRealizationRefusal) -> St
   }
 }
 
-// IS THIS instance_id THE PROD-ROLE HOLDER'S REALIZATION, under a supplied realization: the ONE
-// holder-identity comparison every role-following singleton (broker owner, fabric placement) asks.
-// False under every refusal: a refused role has no holder, so no instance may act as one.
-fn prod_role_realized_by(realization: ProdRoleRealization, instance_id: NonEmptyStr) -> Bool {
-  match realization {
-    ProdRoleRealizedBy { instance: holder } => (holder.instance_id as String) == (instance_id as String)
-    ProdRoleRealizationRefused { cause: _ } => false
-  }
-}
 
 data macbook_local_dashboard_id: NonEmptyStr = "macbook-local" as NonEmptyStr
 
@@ -908,7 +906,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
       ),
     },
     serve_binary: macbook_local_serve_binary,
-    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    serve_function: "roadmap_serve_handle_macbook_local" as NonEmptyStr,
     listen_host: "127.0.0.1" as NonEmptyStr,
     listen_port: 8081,
     tmux_server: dashboard_named_tmux_server(instance_id: macbook_local_dashboard_id),

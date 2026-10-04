@@ -1,7 +1,7 @@
 module test.claim.deployment_risk_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, List, Bool }
+import std.types { NonEmptyStr, List, Bool, String, Int }
 import v2.std.collection { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
@@ -47,11 +47,42 @@ import gunbc.roadmap_dashboard_instance {
   prod_role_realization_in,
   public_builtin_dashboard_instances,
 }
-import gunbc.live_deploy.spec { instance_owns_the_host_approval_broker_under }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentStep,
+  ArtifactStep,
+  Dependency,
+  FabricStorageServeUnit,
+  FabricStorageServeMapping,
+  FabricStorageStoreDirectory,
+  deployment_spec_for_under,
+  deployment_owns_the_host_approval_broker,
+  deployment_fabric_storage_door_socket,
+}
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster }
+import gunbc.live_deploy.role_singleton_convergence {
+  RoleSingletonConvergence,
+  RoleSingletonNoop,
+  RoleSingletonInstall,
+  RoleSingletonRefused,
+  RoleSingletonMoveUnimplemented,
+  RoleSingletonRemovalUnimplemented,
+  RoleSingletonHostUnobservable,
+  RoleSingletonHoldersAmbiguous,
+  RoleSingletonOwnerUnmapped,
+  HostRoleSingletonReading,
+  HostRoleSingletonsRead,
+  HostRoleSingletonsUnobservable,
+  role_singleton_convergence,
+  role_singleton_observation_of,
+}
+import gunbc.fleet_converge_workflow { fleet_converge_gcp_iam_converge_job_under }
+import extdeps.github.actions { SelfHosted, RunStep }
 import gunbc.fabric_storage_placement {
   FabricStoragePlacementRefused,
-  fabric_storage_placed_on_under,
   fabric_storage_placement_under,
+  fabric_storage_store_directories_for,
+  fabric_storage_door_socket,
 }
 import gunbc.auth.approval_request_client {
   ApprovalLoopbackOriginResolved,
@@ -153,45 +184,75 @@ test fn the_wrong_instance_failure_mode_row_cites_this_red() -> Bool {
   any(a_test_deployment_acts_on_the_prod_deployments_state.evidence, r => r.decl_name == "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings")
 }
 
-// ── The role-following singletons: broker owner, fabric storage placement, approval origin ──────
-// THE DISCRIMINATING RED (deployment-risk plan, deliverable 2). A FIXTURE selection moves the role
-// to srv2-deploy over the REAL instance roster, and every singleton that follows the role moves with
-// it: the broker owner is srv2-deploy and no longer srv1-live, the fabric store is placed on
-// srv2-deploy and not on srv1-live, and approvals are reached at srv2-deploy's listen address. A pin
-// back to srv1 by name -- an instance_id literal, srv1_live_dashboard_instance(), operator_host_srv1
-// -- keeps answering srv1-live and fails the srv1-negative conjuncts.
-fn fx_moved_realization() -> ProdRoleRealization {
-  prod_role_realization_in(
-    selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment },
-    instances: public_builtin_dashboard_instances(),
-  )
+// ── The role-following singletons, at the TRANSITION boundary ───────────────────────────────────
+// Every claim below reads what an apply would actually be handed: the roster's specs built under a
+// supplied realization (deployment_spec_for_under), the convergence decision over supplied per-host
+// readings, and the emitted GCP IAM job. The production entry points run the same functions over
+// prod_role_selection and a real observation; the positive control at the end is over those.
+fn fx_moved() -> ProdRoleRealization {
+  prod_role_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }, instances: public_builtin_dashboard_instances())
 }
 
-test fn moving_the_prod_role_moves_the_broker_owner_and_the_fabric_storage_placement() -> Bool {
-  let moved = fx_moved_realization()
-  let srv2 = srv2_deploy_dashboard_instance()
-  let srv1 = srv1_live_dashboard_instance()
-  let origin_moved = match approval_loopback_origin_under(realization: moved) {
-    ApprovalLoopbackOriginResolved { origin } =>
-      (origin as String) == (approval_loopback_origin_of(instance: srv2) as String)
-        && !((origin as String) == (approval_loopback_origin_of(instance: srv1) as String))
-    ApprovalLoopbackOriginRefused { cause: _ } => false
-  }
-  instance_owns_the_host_approval_broker_under(realization: moved, instance_id: srv2.instance_id)
-    && !instance_owns_the_host_approval_broker_under(realization: moved, instance_id: srv1.instance_id)
-    && fabric_storage_placed_on_under(realization: moved, instance: srv2)
-    && !fabric_storage_placed_on_under(realization: moved, instance: srv1)
-    && origin_moved
+fn fx_unheld() -> ProdRoleRealization {
+  prod_role_realization_in(selection: NoProdRole, instances: public_builtin_dashboard_instances())
 }
 
-// UNDER NoProdRole EVERY ROLE-FOLLOWER REFUSES WITH THE TYPED CAUSE -- nobody owns the broker, the
-// store is not placed anywhere, and approvals have no origin. A fallback to srv1 fails every conjunct.
-test fn under_no_prod_role_the_broker_owner_and_the_fabric_storage_placement_refuse() -> Bool {
-  let unheld = prod_role_realization_in(selection: NoProdRole, instances: public_builtin_dashboard_instances())
-  let realization_refused = match unheld {
-    ProdRoleRealizationRefused { cause: ProdRoleUnheld } => true
-    _ => false
-  }
+fn roster_specs_under(realization: ProdRoleRealization) -> List<DeploymentSpec> {
+  map(desired_deployment_roster(), r => deployment_spec_for_under(realization: realization, instance: r.instance, target: r.target, names: r.names))
+}
+
+fn spec_store_directory_count(spec: DeploymentSpec) -> Int {
+  count(spec.steps |> filter(s => match s {
+    Dependency { step } => match step.kind { FabricStorageStoreDirectory => true  _ => false }
+    ArtifactStep { step: _ } => false
+  }))
+}
+
+fn spec_store_artifact_count(spec: DeploymentSpec) -> Int {
+  count(spec.steps |> filter(s => match s {
+    ArtifactStep { step } => match step.kind { FabricStorageServeUnit => true  FabricStorageServeMapping => true  _ => false }
+    Dependency { step: _ } => false
+  }))
+}
+
+fn spec_holds_no_singleton(spec: DeploymentSpec) -> Bool {
+  spec_store_directory_count(spec: spec) == 0
+    && spec_store_artifact_count(spec: spec) == 0
+    && !deployment_owns_the_host_approval_broker(spec: spec)
+    && match deployment_fabric_storage_door_socket(spec: spec) { Absent => true  Present { value: _ } => false }
+}
+
+fn is_srv2_deploy(spec: DeploymentSpec) -> Bool {
+  (spec.instance_id as String) == (srv2_deploy_dashboard_instance().instance_id as String)
+}
+
+// THE DISCRIMINATING RED. Move the role to srv2-deploy: the srv2 spec carries EVERY store directory,
+// the unit and route, the broker, and its own door socket; both srv1 specs carry none of them. A pin
+// back to srv1 by name, or directories left on the srv1 target, fails it.
+test fn moving_the_prod_role_moves_every_role_singleton_member_to_the_new_holders_spec() -> Bool {
+  let specs = roster_specs_under(realization: fx_moved())
+  let srv2 = specs |> filter(s => is_srv2_deploy(spec: s))
+  let others = specs |> filter(s => !is_srv2_deploy(spec: s))
+  let want_dirs = count(fabric_storage_store_directories_for(instance: srv2_deploy_dashboard_instance()))
+  count(srv2) == 1
+    && count(others) > 0
+    && want_dirs > 0
+    && all(srv2, s =>
+      spec_store_directory_count(spec: s) == want_dirs
+        && spec_store_artifact_count(spec: s) == 2
+        && deployment_owns_the_host_approval_broker(spec: s)
+        && match deployment_fabric_storage_door_socket(spec: s) {
+          Present { value: k } => (k as String) == (fabric_storage_door_socket(instance: srv2_deploy_dashboard_instance()) as String)
+          Absent => false
+        }
+    )
+    && all(others, s => spec_holds_no_singleton(spec: s))
+}
+
+// UNDER NoProdRole NO TARGET GETS A DIRECTORY, A UNIT, A ROUTE OR THE BROKER, and every role-follower
+// refuses with the realization's typed cause.
+test fn under_no_prod_role_no_spec_holds_a_role_singleton_and_every_follower_refuses() -> Bool {
+  let unheld = fx_unheld()
   let placement_refused = match fabric_storage_placement_under(realization: unheld) {
     FabricStoragePlacementRefused { cause: ProdRoleUnheld } => true
     _ => false
@@ -200,13 +261,9 @@ test fn under_no_prod_role_the_broker_owner_and_the_fabric_storage_placement_ref
     ApprovalLoopbackOriginRefused { cause: ProdRoleUnheld } => true
     _ => false
   }
-  realization_refused
+  all(roster_specs_under(realization: unheld), s => spec_holds_no_singleton(spec: s))
     && placement_refused
     && origin_refused
-    && all(public_builtin_dashboard_instances(), i =>
-      !instance_owns_the_host_approval_broker_under(realization: unheld, instance_id: i.instance_id)
-        && !fabric_storage_placed_on_under(realization: unheld, instance: i)
-    )
 }
 
 // A HOLDER WITH NO REALIZATION REFUSES TOO, rather than resolving "the first instance".
@@ -218,20 +275,102 @@ test fn a_prod_role_holder_with_no_instance_refuses_as_unrealized() -> Bool {
   }
 }
 
-// THE POSITIVE CONTROL, over the REAL selection and the production entry points: today srv1-live
-// realizes the holder, owns the broker and holds the placement, and srv1's lab does neither. Without
-// it the REDs above would pass for resolvers that refuse everyone.
-test fn the_real_selection_places_the_broker_and_the_store_on_its_holder() -> Bool {
-  let real = prod_role_realization()
-  let live = srv1_live_dashboard_instance()
-  let lab = srv1_lab_dashboard_instance()
-  let holder_is_live = match real {
-    ProdRoleRealizedBy { instance } => (instance.instance_id as String) == (live.instance_id as String)
-    ProdRoleRealizationRefused { cause: _ } => false
+// ── The convergence transitions, over supplied per-host readings ────────────────────────────────
+fn read_on(host: String, holders: List<DeploymentId>, broker: Bool) -> HostRoleSingletonReading {
+  HostRoleSingletonsRead { host: host as NonEmptyStr, holders: holders, broker_present: broker }
+}
+
+fn decide(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>) -> RoleSingletonConvergence {
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings))
+}
+
+test fn a_moved_role_with_the_old_holder_still_observed_refuses_as_a_move() -> Bool {
+  match decide(desired: fx_moved(), readings: [read_on(host: "srv1", holders: [srv1_daily_workspace_deployment], broker: true), read_on(host: "srv2", holders: [], broker: false)]) {
+    RoleSingletonRefused { cause: RoleSingletonMoveUnimplemented { observed: o, desired: d } } => o == srv1_daily_workspace_deployment && d == srv2_deploy_deployment
+    _ => false
   }
-  holder_is_live
-    && instance_owns_the_host_approval_broker_under(realization: real, instance_id: live.instance_id)
-    && !instance_owns_the_host_approval_broker_under(realization: real, instance_id: lab.instance_id)
-    && fabric_storage_placed_on_under(realization: real, instance: live)
-    && !fabric_storage_placed_on_under(realization: real, instance: lab)
+}
+
+test fn no_prod_role_with_a_holder_observed_refuses_as_a_removal() -> Bool {
+  match decide(desired: fx_unheld(), readings: [read_on(host: "srv1", holders: [srv1_daily_workspace_deployment], broker: true)]) {
+    RoleSingletonRefused { cause: RoleSingletonRemovalUnimplemented { observed: o } } => o == srv1_daily_workspace_deployment
+    _ => false
+  }
+}
+
+// UNOBSERVED IS NOT ABSENT: with srv1 unreadable and srv2 empty, the moved role must NOT install.
+test fn an_unobservable_roster_host_refuses_rather_than_reading_as_absent() -> Bool {
+  match decide(desired: fx_moved(), readings: [HostRoleSingletonsUnobservable { host: "srv1" as NonEmptyStr, cause: "ssh refused" }, read_on(host: "srv2", holders: [], broker: false)]) {
+    RoleSingletonRefused { cause: RoleSingletonHostUnobservable { host: h, cause: _ } } => (h as String) == "srv1"
+    _ => false
+  }
+}
+
+test fn nothing_observed_and_a_valid_holder_installs_on_that_holder() -> Bool {
+  match decide(desired: fx_moved(), readings: [read_on(host: "srv1", holders: [], broker: false), read_on(host: "srv2", holders: [], broker: false)]) {
+    RoleSingletonInstall { holder } => holder.instance.deployment == srv2_deploy_deployment
+    _ => false
+  }
+}
+
+test fn the_observed_holder_equal_to_the_desired_one_is_a_noop() -> Bool {
+  match decide(desired: fx_moved(), readings: [read_on(host: "srv1", holders: [], broker: false), read_on(host: "srv2", holders: [srv2_deploy_deployment], broker: true)]) {
+    RoleSingletonNoop => true
+    _ => false
+  }
+}
+
+test fn two_observed_holders_or_an_ownerless_broker_refuse() -> Bool {
+  let two = match decide(desired: fx_moved(), readings: [read_on(host: "srv1", holders: [srv1_daily_workspace_deployment], broker: true), read_on(host: "srv2", holders: [srv2_deploy_deployment], broker: true)]) {
+    RoleSingletonRefused { cause: RoleSingletonHoldersAmbiguous { observed: os } } => count(os) == 2
+    _ => false
+  }
+  let ownerless = match decide(desired: fx_moved(), readings: [read_on(host: "srv1", holders: [], broker: true), read_on(host: "srv2", holders: [], broker: false)]) {
+    RoleSingletonRefused { cause: RoleSingletonOwnerUnmapped { host: h } } => (h as String) == "srv1"
+    _ => false
+  }
+  two && ownerless
+}
+
+// ── The emitted GCP IAM job follows the holder ──────────────────────────────────────────────────
+test fn the_gcp_iam_job_runs_on_the_holders_host_and_is_refused_under_no_prod_role() -> Bool {
+  let moved = fleet_converge_gcp_iam_converge_job_under(realization: fx_moved())
+  let unheld = fleet_converge_gcp_iam_converge_job_under(realization: fx_unheld())
+  let srv2_host = srv2_deploy_dashboard_instance().host_identity as String
+  let srv1_host = srv1_live_dashboard_instance().host_identity as String
+  let moved_labels = match moved.runner { SelfHosted { labels } => labels  _ => [] }
+  let unheld_labels = match unheld.runner { SelfHosted { labels } => labels  _ => [] }
+  let unheld_refuses = any(unheld.steps, st => match st {
+    RunStep { name: _, id: _, run, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      string_contains(s: run, pattern: "REFUSED") && string_contains(s: run, pattern: "NoProdRole")
+    _ => false
+  })
+  any(moved_labels, l => l == srv2_host)
+    && !any(moved_labels, l => l == srv1_host)
+    && !any(unheld_labels, l => l == srv1_host || l == srv2_host)
+    && count(unheld.steps) == 1
+    && unheld_refuses
+}
+
+// ── THE POSITIVE CONTROL, over the REAL selection and roster ────────────────────────────────────
+// Today the daily-workspace deployment (srv1-live) holds the role: its spec carries every singleton
+// member, srv1's lab and srv2-deploy carry none, the GCP IAM job runs on srv1, and the real
+// realization with the role's singletons observed on srv1-live is a Noop. Without it the REDs above
+// would pass for constructions that place nothing anywhere.
+test fn the_real_selection_places_every_singleton_on_its_holder_and_converges_as_noop() -> Bool {
+  let real = prod_role_realization()
+  let specs = roster_specs_under(realization: real)
+  let live_id = srv1_live_dashboard_instance().instance_id as String
+  let live = specs |> filter(s => (s.instance_id as String) == live_id)
+  let others = specs |> filter(s => !((s.instance_id as String) == live_id))
+  let job_labels = match fleet_converge_gcp_iam_converge_job_under(realization: real).runner { SelfHosted { labels } => labels  _ => [] }
+  let noop = match decide(desired: real, readings: [read_on(host: "srv1", holders: [srv1_daily_workspace_deployment], broker: true), read_on(host: "srv2", holders: [], broker: false)]) {
+    RoleSingletonNoop => true
+    _ => false
+  }
+  count(live) == 1
+    && all(live, s => spec_store_directory_count(spec: s) > 0 && spec_store_artifact_count(spec: s) == 2 && deployment_owns_the_host_approval_broker(spec: s))
+    && all(others, s => spec_holds_no_singleton(spec: s))
+    && any(job_labels, l => l == (srv1_live_dashboard_instance().host_identity as String))
+    && noop
 }

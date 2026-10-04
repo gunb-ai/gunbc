@@ -248,7 +248,7 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
 // serves approvals, so trust is NOT established and names the refusal; it is never srv1's by default.
 fn approval_identity_trust_under(realization: ProdRoleRealization) -> IdentityTrustStanding {
   match realization {
-    ProdRoleRealizedBy { instance } => approval_identity_trust_for(listen_host: instance.listen_host)
+    ProdRoleRealizedBy { holder } => approval_identity_trust_for(listen_host: holder.instance.listen_host)
     ProdRoleRealizationRefused { cause } =>
       IdentityHeaderTrustNotEstablished {
         blocker: join(["no instance serves approvals: ", prod_role_realization_refusal_detail(cause: cause)], "") as NonEmptyStr,

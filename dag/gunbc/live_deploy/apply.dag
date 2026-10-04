@@ -64,6 +64,11 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.live_deploy.role_singleton_convergence {
+  role_singleton_convergence, observe_role_singletons, role_singleton_refusal_detail,
+  RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused,
+}
+import gunbc.roadmap_dashboard_instance { prod_role_realization }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
   dark_install_release_discharged, cutover_refusal_reason,
@@ -264,10 +269,31 @@ fn live_deploy_ensure_dependency(
   )
 }
 
+// THE ROLE SINGLETONS ARE ASSESSED BEFORE ANYTHING ELSE (gunbc.live_deploy.role_singleton_convergence):
+// the desired prod-role realization against an observation of every roster host. A move, a removal,
+// an unobservable host, two holders or an unmapped broker stops the line here, before any member is
+// planned -- so no apply starts a second, empty singleton while the old one still runs.
+fn live_deploy_apply_mutation_via_transport(
+  spec: DeploymentSpec,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match role_singleton_convergence(desired: prod_role_realization(), observed: observe_role_singletons(applying: spec, own: transport)) {
+    RoleSingletonRefused { cause } =>
+      NotConverged {
+        reason: join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], ""),
+        applied: live_deploy_preflight_intent(access: access),
+      }
+    RoleSingletonNoop => live_deploy_apply_member_plan_via_transport(spec: spec, candidate: candidate, transport: transport, access: access)
+    RoleSingletonInstall { holder: _ } => live_deploy_apply_member_plan_via_transport(spec: spec, candidate: candidate, transport: transport, access: access)
+  }
+}
+
 // THE PLAN IS DERIVED FROM THE HOST BEFORE THE MUTATION IS BUILT (gunbc.live_deploy.member_observe):
 // the same evaluation that decides also acts, and a plan that could not be derived refuses here with
 // every member's cause, installing nothing -- never the whole roster as a fallback.
-fn live_deploy_apply_mutation_via_transport(
+fn live_deploy_apply_member_plan_via_transport(
   spec: DeploymentSpec,
   candidate: CandidateRelease,
   transport: HostEffectTransport,

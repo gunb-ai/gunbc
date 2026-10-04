@@ -8,7 +8,9 @@ import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, Cite
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from, srv1_tailnet_host_from }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance {
+  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
+}
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -96,11 +98,19 @@ data approval_broker_listen_port: Port = 8085
 // door is the only public path" true rather than merely intended.
 data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 
-// THE HOST THE BROKER RUNS ON, derived from the instance that owns its unit rather than spelled: a
-// run that files and polls over the loopback approval client (the GCP IAM converge job) has to run
-// there.
-fn approval_broker_host_identity() -> NonEmptyStr {
-  srv1_live_dashboard_instance().host_identity
+// THE HOST THE BROKER RUNS ON, derived from the prod-role holder that owns its unit (the same
+// resolution the loopback client origin follows): a run that files and polls over that client (the
+// GCP IAM converge job) has to run there. Under a refused realization there is no such host, and the
+// refusal is carried so the job that needs it is emitted refused rather than pinned to srv1.
+type ApprovalBrokerHost
+  = ApprovalBrokerHostResolved { host: NonEmptyStr }
+  | ApprovalBrokerHostRefused { cause: ProdRoleRealizationRefusal }
+
+fn approval_broker_host_under(realization: ProdRoleRealization) -> ApprovalBrokerHost {
+  match realization {
+    ProdRoleRealizedBy { holder } => ApprovalBrokerHostResolved { host: holder.instance.host_identity }
+    ProdRoleRealizationRefused { cause } => ApprovalBrokerHostRefused { cause: cause }
+  }
 }
 
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {

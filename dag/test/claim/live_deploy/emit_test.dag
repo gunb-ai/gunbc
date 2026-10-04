@@ -826,8 +826,8 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 // #12747 added a second host-scoped member, though nothing about the twin was wrong.
 fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
   concat(
-    deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
-    deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+    deployment_fabric_storage_steps(holding: live.role_singletons, names: live.names),
+    deployment_approval_broker_front_door_steps(holding: live.role_singletons),
   ) |> map(s => s.path as String)
 }
 
@@ -848,12 +848,12 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && all(singletons, h => any(live_paths, l => l == h))
     && all(live_instance_scoped, l => any(twin_steps, t => t.kind == l.kind))
     && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
-    && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
-    && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
+    && count(deployment_fabric_storage_steps(holding: twin.role_singletons, names: twin.names)) == 0
+    && count(deployment_approval_broker_front_door_steps(holding: twin.role_singletons)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.live_deploy.spec RoleSingletonHolding), so production carries exactly those members more than the twin, and the twin none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -874,6 +874,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
     instance: srv1_lab_dashboard_instance(),
     target: deployment_srv1_target(),
     names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
+    holding: twin.role_singletons,
   )
   let applied_paths = applied |> flat_map(s => match s {
     ArtifactStep { step } => [step.path as String]
@@ -1088,7 +1089,7 @@ test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
   let live = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
   !any(
-    deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
+    deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names, holding: spec.role_singletons),
     s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
   )
     && !string_contains(s: live, pattern: "OnCalendar=*:0/15")

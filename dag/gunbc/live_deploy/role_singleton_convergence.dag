@@ -1,0 +1,202 @@
+module gunbc.live_deploy.role_singleton_convergence
+
+import std.types { String, NonEmptyStr, List, Bool }
+import v2.std.collection { Present, Absent }
+import gunbc.deployment_risk { DeploymentId }
+import gunbc.roadmap_dashboard_instance {
+  ProdRoleHolder,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+}
+import gunbc.host_effect { HostEffectTransport, SshShell }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_fabric_storage_unit_path,
+  gunbc_approval_broker_unit_path,
+}
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster }
+import gunbc.live_deploy.member_observe {
+  ObservationArm,
+  observation_arm,
+  entry_presence,
+  EntryPresence,
+  EntryPresent,
+  EntryAbsent,
+  EntryPresenceIndeterminate,
+}
+
+// THE ROLE-FOLLOWING SINGLETONS AS A CONVERGENCE SUBJECT. The approval broker and the fabric store
+// (unit, route, socket, root and directories -- one subject, gunbc.live_deploy.spec
+// RoleSingletonHolding) are installed only by the spec that holds the prod role, and a spec's apply
+// reconciles its owned members against `observed: []`. So a role move, or NoProdRole, used to leave
+// the old singleton running and, on a move, start a second EMPTY one beside it -- the store's state
+// does not travel with a unit. This module assesses the DESIRED realization (prod_role_selection
+// resolved) against an INDEPENDENT OBSERVATION of every roster host (DESIGN 3d), before any apply.
+//
+// ONLY THE FIRST INSTALL IS IMPLEMENTED. Noop when the observed holder is the desired one (or nothing
+// is desired and nothing is observed); Install when a valid holder is desired and NOTHING is observed
+// anywhere. Every other transition REFUSES with a typed cause: a move (persistent state would have to
+// travel), a removal under NoProdRole, a host that cannot be observed (unobserved is never absent --
+// that reading is exactly how Install would start the second empty service), two observed holders,
+// and a broker present on a host where no roster deployment's store unit names its owner. Move and
+// Remove are refusal causes today and become arms of RoleSingletonConvergence when their actuation
+// lands; neither renames the arms that exist.
+//
+// THE HOST UNIVERSE IS THE ROSTER'S TARGETS (desired_deployment_roster), derived, not listed. A
+// singleton on a host outside the roster is INVISIBLE to this observation: a bounded residual whose
+// trigger is a roster row for that host, stated in docs/plans/deployment-risk-conformance.md.
+
+type RoleSingletonRefusal
+  = RoleSingletonMoveUnimplemented { observed: DeploymentId, desired: DeploymentId }
+  | RoleSingletonRemovalUnimplemented { observed: DeploymentId }
+  | RoleSingletonHostUnobservable { host: NonEmptyStr, cause: String }
+  | RoleSingletonHoldersAmbiguous { observed: List<DeploymentId> }
+  | RoleSingletonOwnerUnmapped { host: NonEmptyStr }
+
+type RoleSingletonConvergence
+  = RoleSingletonNoop
+  | RoleSingletonInstall { holder: ProdRoleHolder }
+  | RoleSingletonRefused { cause: RoleSingletonRefusal }
+
+// ── The observation ─────────────────────────────────────────────────────────────────────────────
+// ONE HOST'S READING. A holder is a roster deployment whose fabric storage unit (named per
+// deployment, so its presence maps to exactly one roster row) is present on that host. The broker
+// unit is host-global and carries no deployment identity, so it is read only for presence: a broker
+// with no holder beside it is a singleton nobody can be named as owning, and refuses.
+type HostRoleSingletonReading
+  = HostRoleSingletonsRead { host: NonEmptyStr, holders: List<DeploymentId>, broker_present: Bool }
+  | HostRoleSingletonsUnobservable { host: NonEmptyStr, cause: String }
+
+type RoleSingletonObservation
+  = RoleSingletonsObserved { holders: List<DeploymentId> }
+  | RoleSingletonObservationRefused { cause: RoleSingletonRefusal }
+
+fn distinct_ids(ids: List<DeploymentId>) -> List<DeploymentId> {
+  fold(ids, init: [], f: (acc, d) => if any(acc, a => a == d) { acc } else { concat(acc, [d]) })
+}
+
+// THE PURE FOLD OVER PER-HOST READINGS, so the transition REDs supply readings at this boundary
+// while the wet observation below runs the real legs.
+fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>) -> RoleSingletonObservation {
+  let unobservable = readings |> flat_map(r => match r {
+    HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
+    HostRoleSingletonsRead { host: _, holders: _, broker_present: _ } => []
+  })
+  let unmapped = readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host, holders, broker_present } =>
+      if broker_present && count(holders) == 0 { [RoleSingletonOwnerUnmapped { host: host }] } else { [] }
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  })
+  let holders = distinct_ids(ids: readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host: _, holders: hs, broker_present: _ } => hs
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  }))
+  match unobservable |> first {
+    Present { value: c } => RoleSingletonObservationRefused { cause: c }
+    Absent => match unmapped |> first {
+      Present { value: c } => RoleSingletonObservationRefused { cause: c }
+      Absent =>
+        if count(holders) > 1 { RoleSingletonObservationRefused { cause: RoleSingletonHoldersAmbiguous { observed: holders } } }
+        else { RoleSingletonsObserved { holders: holders } }
+    }
+  }
+}
+
+// ── The decision ────────────────────────────────────────────────────────────────────────────────
+fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingletonObservation) -> RoleSingletonConvergence {
+  match observed {
+    RoleSingletonObservationRefused { cause } => RoleSingletonRefused { cause: cause }
+    RoleSingletonsObserved { holders } => match holders |> first {
+      Absent => match desired {
+        ProdRoleRealizedBy { holder } => RoleSingletonInstall { holder: holder }
+        ProdRoleRealizationRefused { cause: _ } => RoleSingletonNoop
+      }
+      Present { value: seen } => match desired {
+        ProdRoleRealizedBy { holder } =>
+          if holder.instance.deployment == seen { RoleSingletonNoop }
+          else { RoleSingletonRefused { cause: RoleSingletonMoveUnimplemented { observed: seen, desired: holder.instance.deployment } } }
+        ProdRoleRealizationRefused { cause: _ } => RoleSingletonRefused { cause: RoleSingletonRemovalUnimplemented { observed: seen } }
+      }
+    }
+  }
+}
+
+fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
+  match cause {
+    RoleSingletonMoveUnimplemented { observed, desired } =>
+      join(["role singletons refused: the prod role moved from ", observed.name as String, " to ", desired.name as String, " while the old singletons are still observed; moving their persistent state is not implemented"], "")
+    RoleSingletonRemovalUnimplemented { observed } =>
+      join(["role singletons refused: no deployment holds the prod role but ", observed.name as String, "'s singletons are still observed; removal is not implemented"], "")
+    RoleSingletonHostUnobservable { host, cause: c } =>
+      join(["role singletons refused: host ", host as String, " could not be observed (", c, "); unobserved is not absent"], "")
+    RoleSingletonHoldersAmbiguous { observed } =>
+      join(["role singletons refused: ", to_string(count(observed)), " deployments are observed holding them: ", join(map(observed, d => d.name as String), ", ")], "")
+    RoleSingletonOwnerUnmapped { host } =>
+      join(["role singletons refused: the approval broker is present on ", host as String, " but no roster deployment's fabric storage unit names its owner"], "")
+  }
+}
+
+// ── The wet observation ─────────────────────────────────────────────────────────────────────────
+// Each roster host is read over the transport that reaches it from the applying host: the apply's
+// own transport for the host it is applying to, ssh to the target's declared ssh_host for every other
+// roster host. A host whose legs refuse is unobservable and stops the line.
+fn presence_reading(p: EntryPresence) -> Bool? {
+  match p {
+    EntryPresent => Present { value: true }
+    EntryAbsent => Present { value: false }
+    EntryPresenceIndeterminate { cause: _ } => none
+  }
+}
+
+fn presence_cause(p: EntryPresence) -> String {
+  match p {
+    EntryPresenceIndeterminate { cause } => cause
+    EntryPresent => ""
+    EntryAbsent => ""
+  }
+}
+
+fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>, arm: ObservationArm) -> HostRoleSingletonReading {
+  let broker = entry_presence(arm: arm, path: gunbc_approval_broker_unit_path() as String)
+  let stores = map(rows, r => DeploymentStorePresence {
+    deployment: r.instance.deployment,
+    presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String),
+  })
+  let indeterminate = concat(
+    match presence_reading(p: broker) { Absent => [presence_cause(p: broker)]  Present { value: _ } => [] },
+    stores |> flat_map(s => match presence_reading(p: s.presence) { Absent => [presence_cause(p: s.presence)]  Present { value: _ } => [] }),
+  )
+  match indeterminate |> first {
+    Present { value: cause } => HostRoleSingletonsUnobservable { host: host, cause: cause }
+    Absent => HostRoleSingletonsRead {
+      host: host,
+      holders: stores |> filter(s => match s.presence { EntryPresent => true  _ => false }) |> map(s => s.deployment),
+      broker_present: match broker { EntryPresent => true  _ => false },
+    }
+  }
+}
+
+type DeploymentStorePresence {
+  deployment: DeploymentId
+  presence: EntryPresence
+}
+
+fn roster_hosts(rows: List<DesiredDeployment>) -> List<NonEmptyStr> {
+  fold(rows, init: [], f: (acc, r) => if any(acc, h => (h as String) == (r.target.ssh_host as String)) { acc } else { concat(acc, [r.target.ssh_host]) })
+}
+
+fn transport_to(host: NonEmptyStr, applying: DeploymentSpec, own: HostEffectTransport) -> HostEffectTransport {
+  if (host as String) == (applying.target.ssh_host as String) { own } else { SshShell { ssh_host: host } }
+}
+
+fn observe_role_singletons(applying: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonObservation {
+  let rows = desired_deployment_roster()
+  role_singleton_observation_of(readings: map(roster_hosts(rows: rows), h =>
+    host_role_singleton_reading(
+      host: h,
+      rows: rows |> filter(r => (r.target.ssh_host as String) == (h as String)),
+      arm: observation_arm(transport: transport_to(host: h, applying: applying, own: own)),
+    )
+  ))
+}

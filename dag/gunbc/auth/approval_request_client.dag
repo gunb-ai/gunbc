@@ -40,7 +40,7 @@ fn approval_loopback_origin_of(instance: HostDashboardInstance) -> NonEmptyStr {
 
 fn approval_loopback_origin_under(realization: ProdRoleRealization) -> ApprovalLoopbackOrigin {
   match realization {
-    ProdRoleRealizedBy { instance } => ApprovalLoopbackOriginResolved { origin: approval_loopback_origin_of(instance: instance) }
+    ProdRoleRealizedBy { holder } => ApprovalLoopbackOriginResolved { origin: approval_loopback_origin_of(instance: holder.instance) }
     ProdRoleRealizationRefused { cause } => ApprovalLoopbackOriginRefused { cause: cause }
   }
 }

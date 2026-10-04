@@ -5,7 +5,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_fabric_storage_root, dashboard_instance_child,
-  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realized_by,
+  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
 }
 import std.effect_grant { Read, Write, Execute }
 import gunbc.ownership { Ensured }
@@ -75,17 +75,6 @@ fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
   dashboard_instance_fabric_storage_root(instance: instance) as String as NonEmptyStr
 }
 
-// WHETHER AN INSTANCE HOLDS THE PLACEMENT, over a supplied realization so a witness can move the
-// selection: it does exactly when it realizes the prod-role holder, and no instance does under a
-// refusal. Identity is the instance's own id, not a path comparison.
-fn fabric_storage_placed_on_under(realization: ProdRoleRealization, instance: HostDashboardInstance) -> Bool {
-  prod_role_realized_by(realization: realization, instance_id: instance.instance_id)
-}
-
-fn fabric_storage_placed_on(instance: HostDashboardInstance) -> Bool {
-  fabric_storage_placed_on_under(realization: prod_role_realization(), instance: instance)
-}
-
 fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
   match fleet_intent_network.tailnet_domain {
     Absent => none
@@ -96,7 +85,8 @@ fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
 fn fabric_storage_placement_under(realization: ProdRoleRealization) -> FabricStoragePlacement {
   match realization {
     ProdRoleRealizationRefused { cause } => FabricStoragePlacementRefused { cause: cause }
-    ProdRoleRealizedBy { instance } => {
+    ProdRoleRealizedBy { holder } => {
+      let instance = holder.instance
       let host = instance.host_identity as String as HostIdentity
       match fabric_storage_endpoint_for(host: host) {
         Absent => FabricStorageUnplaced
@@ -230,15 +220,9 @@ fn fabric_storage_placed_file_root(store_root: NonEmptyStr) -> FabricStoragePlac
   }
 }
 
-// THE PLACED INSTANCE'S STORE DIRECTORIES, or none when the placement refuses: an apply under
-// NoProdRole ensures no store, rather than ensuring srv1's.
-fn fabric_storage_store_directories() -> List<ManagedDirectoryAdmission> {
-  match prod_role_realization() {
-    ProdRoleRealizationRefused { cause: _ } => []
-    ProdRoleRealizedBy { instance } => fabric_storage_store_directories_for(instance: instance)
-  }
-}
-
+// THE PLACED INSTANCE'S STORE DIRECTORIES. Which instance is placed is the caller's holder token
+// (gunbc.live_deploy.spec deployment_role_singleton_directories), so the directories land on the
+// same target as the unit and route.
 fn fabric_storage_store_directories_for(instance: HostDashboardInstance) -> List<ManagedDirectoryAdmission> {
   let root = fabric_storage_store_root(instance: instance)
   let areas = fabric_storage_file_root(root: root)
