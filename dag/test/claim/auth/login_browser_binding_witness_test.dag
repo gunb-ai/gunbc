@@ -1,0 +1,31 @@
+module test.claim.auth.login_browser_binding_witness_test
+
+import std.types { String, Bool }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import gunbc.auth.login_browser_binding { auth_login_browser_presents }
+
+fn browser_transaction(verifier: String = "verifier-from-jar-A") -> OidcLoginTransaction {
+  OidcLoginTransaction { state: "state-A", nonce: "nonce-A", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: verifier }, return_path: RelativeReturnPath { path: "/" } }
+}
+
+// THE COOKIE HALF OF THE ADMISSION OVER A SUPPLIED BINDING (DESIGN §3 witness rule): the subject is
+// which cookie headers present a given binding, so the binding is a value, not a digest computed per
+// case. The real binding digest is exercised by test.claim.auth.login_callback_hold_wet_witness,
+// which runs the callback route itself.
+data supplied_binding: String = "4f1c2a-browser-a-binding"
+
+test fn callback_requires_initiating_browser_cookie() -> Bool {
+  let jar_a = concat("__Host-gunbc-login=", supplied_binding)
+  auth_login_browser_presents(binding: supplied_binding, cookie_header: jar_a)
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "__Host-gunbc-login=4f1c2a-browser-b-binding")
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "")
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: concat(jar_a, concat("; ", jar_a)))
+    && !auth_login_browser_presents(binding: supplied_binding, cookie_header: "__Host-gunbc-login=state-A")
+}
+
+test fn the_binding_is_not_the_public_state() -> Bool {
+  supplied_binding != browser_transaction().state
+}
+
+

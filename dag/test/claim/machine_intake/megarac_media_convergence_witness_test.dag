@@ -116,7 +116,7 @@ import gunbc.machine_intake_megarac_media_attach {
   SessionReleaseNotAttempted,
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
-import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_findings, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_harness, harness_finding_text, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
 import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -671,6 +671,11 @@ fn observed(general: String, configurations: String) -> MegaRacAttachResult {
     session_release: SessionReleased,
     baseline: none,
   }
+}
+
+// The handoff's typed harness findings, rendered once each by the bundle's own renderer.
+fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
+  map(handoff_media_harness(h: h), f => harness_finding_text(f: f))
 }
 
 fn only_finding_contains(findings: List<String>, pattern: String) -> Bool {

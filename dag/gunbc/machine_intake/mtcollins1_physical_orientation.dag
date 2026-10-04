@@ -2,12 +2,13 @@ module gunbc.machine_intake_mtcollins1_physical_orientation
 
 import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.nat { Nat }
-import std.measure { gibibyte_count }
+import std.measure { gibibyte_count, millivolt_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.ampere.smpro_register { SmproBootProgress, SmproBootProgressRead, SmproBootProgressRefused, smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
   mt_collins_channel_connector_pairs, mt_collins_population_rows,
@@ -37,10 +38,16 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
   MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
+  MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
+  SecondaryJoinUnclassified, secondary_join_outcome, mtcollins1_secondary_join_readings,
   MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
   MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
   MtCollins1PairingBootHistory, MachineBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history,
   mtcollins1_spare_processors,
+  mtcollins1_socket1_pin_damage_report,
+  MtCollins1SocketDamageReport, MtCollins1SocketEvidenceGate, SocketEvidenceRequiresInspectionSince,
+  SocketEvidenceRequiresInspectionUndated, socket_evidence_gate,
 }
 
 // THE PHYSICAL ORIENTATION OF MT. COLLINS UNIT 1'S DIMM ROW, AS THIS REPOSITORY OBSERVED IT.
@@ -704,7 +711,7 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   if list_length(items: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
       [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks))]),
-      concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: banks), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, banks: banks, pairs: mt_collins_channel_connector_pairs))))
+      concat(concat(concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: banks), map(mtcollins1_secondary_join_readings, r => concat(concat(concat("Join outcome (", r.run), "): "), join_outcome_text(outcome: secondary_join_outcome(reading: r))))), [socket_damage_text(damage: mtcollins1_socket1_pin_damage_report)]), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, banks: banks, pairs: mt_collins_channel_connector_pairs))))
   }
 }
 
@@ -762,15 +769,66 @@ fn stick_swap_verdict(swap: MtCollins1StickSwapReport, history: List<MtCollins1S
   })
 }
 
+fn date_text(d: SpecificationDocumentDate) -> String {
+  concat(concat(concat(to_string(d.year), if d.month < 10 { "-0" } else { "-" }), concat(to_string(d.month), if d.day < 10 { "-0" } else { "-" })), to_string(d.day))
+}
+
+fn evidence_gate_text(gate: MtCollins1SocketEvidenceGate) -> String {
+  match gate {
+    SocketEvidenceRequiresInspectionSince { socket: n, since: d } => concat(concat(concat(concat("Socket ", to_string(n)), " evidence after "), date_text(d: d)), " says nothing about the pre-damage fault until the socket is inspected.")
+    SocketEvidenceRequiresInspectionUndated { socket: n } => concat(concat("Socket ", to_string(n)), " evidence from an unknown date onward says nothing about the pre-damage fault until the socket is inspected.")
+  }
+}
+
+fn report_date_text(report: MtCollins1PhysicalFactStanding) -> String {
+  match report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => concat("operator report, ", date_text(d: d))
+    VendorFigureFact { figure: _, standing: _ } => "vendor figure"
+    FirmwareTrainedFact { run_id: r, artifact: _, roster_lines: _ } => concat("firmware run ", to_string(r))
+  }
+}
+
+fn socket_damage_text(damage: MtCollins1SocketDamageReport) -> String {
+  concat(concat(concat(concat(concat(concat("Socket ", to_string(damage.socket)), " pin damage ("), report_date_text(report: damage.report)), "): "), damage.account as String), concat(" ", evidence_gate_text(gate: socket_evidence_gate(damage: damage))))
+}
+
 fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Socket1InvestigationBoot>, banks: List<MtCollinsDimmFigureBank>, pairs: List<MtCollinsChannelConnectorPair>) -> String {
   let bet = concat(concat(h.hypothesis, " Test: "), h.discriminator)
   match h.standing {
-    HypothesisOpen => concat("Open hypothesis (not established): ", bet)
+    HypothesisOpen => concat(concat(concat("Open hypothesis (not established): ", bet), " Gate: "), evidence_gate_text(gate: socket_evidence_gate(damage: mtcollins1_socket1_pin_damage_report)))
     HypothesisRefutedByStickSwap { swap: sw } => match stick_swap_verdict(swap: sw, history: history, banks: banks, pairs: pairs) {
       StickCleared { stick: k, silent_run: sr, silent_connector: sc, trained_run: tr, trained_connector: tc } =>
         concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the operator's swap report: "), k), " was silent in J"), to_string(sc)), " (run "), to_string(sr)), ") and trained in J"), to_string(tc)), " (run "), to_string(tr)), "). The J17 slot is not cleared.")
       StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
     }
+    HypothesisWeakenedByMatchingCpu0Characteristics { comparison: c } => if matching_cpu0_characteristics(c: c) {
+        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(millivolt_count(v: c.current_fingerprint.core_voltage))), concat(concat(" mV, AVS ", to_string(millivolt_count(v: c.current_fingerprint.avs_voltage))), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
+      } else { concat("Weakening not derivable from the two summaries (unverified): ", h.hypothesis) }
+  }
+}
+
+fn matching_cpu0_characteristics(c: MtCollins1CpuFingerprintComparison) -> Bool {
+  let a = c.reference_fingerprint
+  let b = c.current_fingerprint
+  c.reference.active_sockets >= 2 && a.socket == b.socket && millivolt_count(v: a.core_voltage) == millivolt_count(v: b.core_voltage) && millivolt_count(v: a.avs_voltage) == millivolt_count(v: b.avs_voltage) && a.warranty == b.warranty
+}
+
+fn secondary_stage_text(st: SmproBootProgress) -> String {
+  match st {
+    SmproBootProgressRead { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
+    SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
+  }
+}
+
+fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
+
+fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
+  match outcome {
+    SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
+    SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l } =>
+      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), ", socket 0 continued alone"),
+        concat(", inter_socket_links_reported: ", concat(bool_text(b: l), " }")))
   }
 }
 

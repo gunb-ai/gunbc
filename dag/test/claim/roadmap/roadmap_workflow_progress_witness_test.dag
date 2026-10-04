@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -10,10 +11,12 @@ import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_provider_events {
   ProviderCompleted,
   ProviderRunning,
+  ProviderAwaitingSeat,
   ProviderFailed,
   ProviderEventsRefused,
 }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
   review_segment,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
@@ -117,6 +120,7 @@ fn fixture_evidence(
     attempt_key: "feedfacefeedface",
     branch: "dispatch/node-1-afeedfacefeedface",
     modeled_state_present: true,
+    worktree: AttemptWorktreePresent { path: "/wt/node-1-afeedfacefeedface" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
@@ -152,6 +156,7 @@ fn fixture_evidence(
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 
@@ -389,6 +394,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     attempt_key: base.attempt_key,
     branch: base.branch,
     modeled_state_present: base.modeled_state_present,
+    worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: nested_admitted_forgery(),
     spawn_failure_present: base.spawn_failure_present,
@@ -407,6 +413,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   segment_state(progress.segments, "environment") != "" 
@@ -423,6 +430,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     attempt_key: base.attempt_key,
     branch: base.branch,
     modeled_state_present: base.modeled_state_present,
+    worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: base.admission_receipt,
     spawn_failure_present: true,
@@ -441,6 +449,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -455,6 +464,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     attempt_key: "",
     branch: "dispatch/legacy",
     modeled_state_present: false,
+    worktree: AttemptWorktreeUnobserved { path: "", cause: "no modeled state pointer" },
     admission_receipt_readable: false,
     admission_receipt: "",
     spawn_failure_present: false,
@@ -490,6 +500,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
   match progress.provider {
     ProviderEventsRefused { activity, detail: _ } =>
@@ -512,6 +523,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     attempt_key: base.attempt_key,
     branch: base.branch,
     modeled_state_present: base.modeled_state_present,
+    worktree: base.worktree,
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\"}",
     spawn_failure_present: base.spawn_failure_present,
@@ -530,6 +542,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -654,6 +667,7 @@ fn publication_segment_of(
     attempt_key: base.attempt_key,
     branch: base.branch,
     modeled_state_present: base.modeled_state_present,
+    worktree: base.worktree,
     admission_receipt_readable: base.admission_receipt_readable,
     admission_receipt: base.admission_receipt,
     spawn_failure_present: base.spawn_failure_present,
@@ -672,6 +686,7 @@ fn publication_segment_of(
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: base.session_placement,
   })
   fold(progress.segments, init: WorkflowSegment {
     kind: PublicationWorkflowSegment,
@@ -807,4 +822,78 @@ test fn the_review_segment_waits_for_verification_then_carries_the_review_report
   (match done.state { WorkflowSegmentComplete => true  _ => false }) && string_contains(s: done.detail, pattern: "fail-closed: approved")
     && (match active.state { WorkflowSegmentActive => true  _ => false })
     && (match early.state { WorkflowSegmentPending => true  _ => false }) && string_contains(s: early.detail, pattern: "passed verification")
+}
+
+fn evidence_with_worktree(base: WorkflowAttemptEvidence, worktree: AttemptWorktreeObservation) -> WorkflowAttemptEvidence {
+  WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    worktree: worktree,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: base.admission_receipt,
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+    verification_subject: base.verification_subject,
+    verification_selection: base.verification_selection,
+    verification_source: base.verification_source,
+    publication_subject: base.publication_subject,
+    publication_source: base.publication_source,
+    submission_capture: base.submission_capture,
+    integration: base.integration,
+    review: base.review,
+    goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
+  }
+}
+
+// G5, DISCRIMINATING RED for the srv2 observation of 2026-10-02: an attempt with a modeled state
+// pointer whose worktree is MISSING read Workspace complete. The modeled pointer alone no longer
+// completes the segment; the observed worktree does, and its absence or unobservability refuses.
+test fn a_missing_worktree_refuses_the_workspace_segment() -> Bool {
+  let base = fixture_evidence(events: "", process: WorkerProcessRunning { command: "node" as NonEmptyStr })
+  let missing = workflow_attempt_progress(evidence: evidence_with_worktree(base: base, worktree: AttemptWorktreeAbsent { path: "/wt/gone" }))
+  let unseen = workflow_attempt_progress(evidence: evidence_with_worktree(base: base, worktree: AttemptWorktreeUnobserved { path: "/wt/x", cause: "listing refused" }))
+  let present = workflow_attempt_progress(evidence: base)
+  segment_state(missing.segments, "workspace") == "refused"
+    && segment_state(unseen.segments, "workspace") == "refused"
+    && segment_state(present.segments, "workspace") == "complete"
+}
+
+// A WORKER WAITING IN LINE FOR A SEAT IS AN ACTIVE AGENT, AND ITS REASON IS ON THE ROW. The events
+// are the projector's form of the harness's wait announcement; the process is the worker still
+// running its wait. Before the arm the same pair read as a live process with no recognised event --
+// "waiting for first provider event" -- and its exit as "Agent failed" with a spent turn.
+data projected_placement_wait: String = "{\"type\":\"turn.placement_waiting\",\"wait\":3,\"wait_cap\":1440,\"reason\":\"group-b: the engine reports 12 occupant(s) while the seat ledger admitted 0\"}\n"
+
+test fn a_waiting_worker_is_an_active_agent_with_its_reason() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: projected_placement_wait,
+    process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr },
+  ))
+  (match progress.provider {
+    ProviderAwaitingSeat { detail } => string_contains(s: detail, pattern: "seat ledger admitted 0") && string_contains(s: detail, pattern: "wait 3 of 1440")
+    _ => false
+  })
+    && segment_state(progress.segments, "agent") == "active"
+    && segment_state(progress.segments, "submission") == "pending"
+}
+
+// The wait is bounded, and running out of it is still loud: a worker that exits nonzero while
+// waiting is failed, exactly as any exit before a terminal provider event is.
+test fn a_wait_that_ends_in_a_nonzero_exit_is_failed() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: projected_placement_wait,
+    process: WorkerProcessExited { exit_code: 1, last_command: "gunbc" },
+  ))
+  match progress.provider {
+    ProviderFailed { activity: _, detail } => string_contains(s: detail, pattern: "exited 1")
+    _ => false
+  }
 }

@@ -1,4 +1,5 @@
 module v2.test.lens_common.infer_fixture
+import v2.std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.resolve { ResolvedTree }
@@ -19,7 +20,7 @@ import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.
 fn claim_resolved_tree_without_declarations(root: Node) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map() }
+  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), lexical_bindings: empty_map(), unavailable_providers: [] }
 }
 
 fn claim_atom_node(s: Symbol) -> Node {
@@ -57,7 +58,8 @@ fn claim_inferred_facts_witness(
 ) -> InferredFacts {
   InferredFacts {
     grounding: DerivedGrounding { grounding: grounding },
-    descent: descent
+    descent: descent,
+    denotation: optional_absent()
   }
 }
 
