@@ -5,6 +5,7 @@ use self::PackageIdentOutcome::*;
 use self::PackageIdentRefusalCause::*;
 use self::PackageIdentSetOutcome::*;
 pub use crate::extdeps_languages_rust_emit::rust_reserved;
+pub use crate::std_coercion::unicode_scalar_unfold;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::retires_dissolution;
@@ -85,26 +86,15 @@ pub fn rust_crate_package_ident(package_name: String) -> Rc<PackageIdentOutcome>
     } else {
         if {
             let mut __all = true;
-            for c in Rc::new(
-                package_name
-                    .clone()
-                    .chars()
-                    .map(|c| c as i64)
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
+            for c in crate::std_coercion::unicode_scalar_unfold(package_name.clone())
+                .iter()
+                .cloned()
             {
                 if !({
                     let mut __found = false;
-                    for a in Rc::new(
-                        package_ident_alphabet()
-                            .chars()
-                            .map(|c| c as i64)
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
+                    for a in crate::std_coercion::unicode_scalar_unfold(package_ident_alphabet())
+                        .iter()
+                        .cloned()
                     {
                         if (a.clone() == c.clone()) {
                             __found = true;

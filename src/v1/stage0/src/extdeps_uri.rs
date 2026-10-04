@@ -18,6 +18,7 @@ use self::UriUnicodeScalarConstruction::*;
 use self::UriUtf8OctetConstruction::*;
 use self::UriValidatedScalarConstruction::*;
 pub use crate::std_algebra::trim;
+pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_types::NonEmptyStr;
 pub use crate::std_unicode_types::{
     unicode_scalar_max_code_point, unicode_surrogate_first_code_point,
@@ -906,9 +907,7 @@ pub fn uri_percent_encode_code_point(cp: i64) -> Rc<UriPercentEncodeComponent> {
 }
 
 pub fn uri_percent_encode_component(value: String) -> Rc<UriPercentEncodeComponent> {
-    uri_percent_encode_code_points(Rc::new(
-        value.clone().chars().map(|c| c as i64).collect::<Vec<_>>(),
-    ))
+    uri_percent_encode_code_points(crate::std_coercion::unicode_scalar_unfold(value.clone()))
 }
 
 pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldState> {
@@ -1308,7 +1307,7 @@ pub fn uri_percent_decode_step(
 }
 
 pub fn uri_percent_decode_component(value: String) -> Rc<UriPercentDecodeComponent> {
-    match (*Rc::new(value.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+    match (*crate::std_coercion::unicode_scalar_unfold(value.clone())
         .iter()
         .cloned()
         .fold(

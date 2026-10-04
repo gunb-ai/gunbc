@@ -4,6 +4,7 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
+pub use crate::std_coercion::unicode_scalar_unfold;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
@@ -101,7 +102,7 @@ pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
 pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
     {
         let mut __all = true;
-        for c in Rc::new(text.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+        for c in crate::std_coercion::unicode_scalar_unfold(text.clone())
             .iter()
             .cloned()
         {
