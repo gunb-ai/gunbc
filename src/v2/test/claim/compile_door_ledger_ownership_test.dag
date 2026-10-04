@@ -1,12 +1,13 @@
 module v2.test.compile_door_ledger_ownership
 
 import v2.workflow.compile_door_cause_ownership {
-  cause_ownership_lookup, HeadGrain, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned
+  cause_ownership_lookup, known_frontier_causes, ThisLaneCalibration, SharedSelfHostCriticalPath, MigrationOwned
 }
 import v2.workflow.compile_door_ledger {
   affected_ledger_from_diff, AffectedDiffRefused, AffectedLedgered, ledger_refused_count
 }
 import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }
+import v2.std.algebra { any, filter, length }
 
 // Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the
 // histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed
@@ -16,7 +17,7 @@ import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }
 // witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION.
 
 fn lane_ok_this_lane(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
+  match cause_ownership_lookup(cause: cause) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => true
@@ -28,7 +29,7 @@ fn lane_ok_this_lane(cause: Symbol) -> Bool {
 }
 
 fn lane_ok_shared(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
+  match cause_ownership_lookup(cause: cause) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => false
@@ -40,7 +41,7 @@ fn lane_ok_shared(cause: Symbol) -> Bool {
 }
 
 fn lane_ok_migration(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
+  match cause_ownership_lookup(cause: cause) {
     Present { value: row } =>
       match row.lane {
         ThisLaneCalibration => false
@@ -55,7 +56,16 @@ test fn every_pinned_cause_is_attributed_to_its_lane() -> Bool {
   lane_ok_this_lane(cause: ^fact_density_hollow_alias_locus)
     && lane_ok_shared(cause: ^resolve_reason_unbound_symbol)
     && lane_ok_migration(cause: ^resolve_ambiguous_export)
-    && lane_ok_migration(cause: ^parse_grammar_choice_overlap_residue)
+    && lane_ok_migration(cause: ^tokenize_lex_e1_unrecognized_char)
+}
+
+// ONE ROW PER CAUSE. The table is keyed by cause alone (advisories steps 3+4 deleted the grain), and
+// cause_ownership_lookup answers the FIRST matching row, so a second row for one cause would be
+// silently unreachable rather than refused. Every cause appears exactly once.
+test fn every_owned_cause_has_exactly_one_row() -> Bool {
+  !any(xs: known_frontier_causes, predicate: fn(row) {
+    length(xs: filter(xs: known_frontier_causes, predicate: fn(other) { other.cause == row.cause })) != 1
+  })
 }
 
 test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
