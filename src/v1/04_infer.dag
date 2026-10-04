@@ -4340,40 +4340,6 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
 // Required and non-generic: a type variable may be instantiated at an Optional, and an unresolved
 // or erased declared identity is not a Required fact, so those stay with their own arms.
 //
-// THE MIRROR, AT THE DECLARED RETURN (gunbc.recurring_failure_mode optional_compared_with_required_value,
-// class C5). A fn declared `-> T?` whose body produces a bare T was accepted: no declared coercion
-// lifts T into T? (DESIGN 4, 2026-09-26), and the Rust emission refused it as E0308 `expected
-// Option<T>, found T` (gunbc.running_release_identity running_release_member_string). It is judged
-// here at the declared return only, the position the ruling names; a bare T bound to a T? PARAMETER
-// or field is a different position whose population was not measured by this change and is not
-// claimed. The none / Absent presence spellings produce an optional and never reach this arm.
-fn position_is_declared_return(position: DeclaredTypePosition) -> Bool {
-  match position {
-    PositionDeclaredReturn => true
-    _ => false
-  }
-}
-
-fn required_produced_at_optional_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  let source_indices = scope.type_env.source_indices
-  let declared_name = authored_name_at(source_indices: source_indices, node: declared)
-  let produced_name = authored_name_at(source_indices: source_indices, node: produced)
-  let produced_carries_optional = produced.return_cardinality == CardOptional
-    || qualified_last_segment(name: produced_name) == "Optional"
-  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
-    Present { value: TypeVariable { id: _ } } => true
-    Present { value: inferred } => is_compiler_error(inferred: inferred)
-    _ => true
-  }
-  declared.return_cardinality == CardOptional
-    && !produced_carries_optional
-    && !produced_is_generic
-    && produced_name != ""
-    && declared_name != ""
-    && !type_node_is_callable(n: declared)
-    && !type_node_is_callable(n: produced)
-}
-
 fn optional_produced_at_required_declared(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let source_indices = scope.type_env.source_indices
   let declared_name = authored_name_at(source_indices: source_indices, node: declared)
@@ -4413,8 +4379,7 @@ fn optional_produced_at_required_declared(declared: Node, produced: Node, scope:
 // DIRECTED fact about a declared position, which is what the obligation carries.
 //
 fn optional_at_required_obligation_diags(obligation: DeclaredTypeObligation, scope: InferScope) -> List<ErrorNode> {
-  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope)
-    || (position_is_declared_return(position: obligation.position) && required_produced_at_optional_declared(declared: obligation.declared, produced: obligation.produced, scope: scope)) {
+  if optional_produced_at_required_declared(declared: obligation.declared, produced: obligation.produced, scope: scope) {
     [make_error_node(
       diagnostic: DeclaredTypeNotInhabited {
         position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
