@@ -7532,7 +7532,11 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         Present { value: data_anno } =>
           match item.body {
             Present { value: data_value } => {
-              emit_data_def(name: item_text, type_node: data_anno, value: data_value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
+              // The declaration's `?` lives on the ITEM, not on its annotation node (infer's
+              // declared_type_conformance_note class 4), so the declared type is rebuilt through
+              // the same authority fn returns use. Without it a branded `data d: NonEmptyStr? =
+              // Present { .. }` rendered `-> NonEmptyStr` and every consumer of the row refused.
+              emit_data_def(name: item_text, type_node: preserve_outer_optional_cardinality(outer: item, inner: data_anno), value: data_value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
             }
             Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no value")
           }
