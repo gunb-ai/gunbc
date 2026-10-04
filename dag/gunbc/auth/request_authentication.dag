@@ -14,6 +14,7 @@ import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
 import extdeps.tailscale.serve {
   TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable, TailscaleServeRouteKey,
+  tailscale_serve_unix_proxy_peer,
 }
 import extdeps.tailscale.acl { TailscaleAclPolicy }
 import std.content_hash { ContentHash, content_hash_of_value }
@@ -53,12 +54,25 @@ type TailnetServeReadbackGap
   | TailnetReadbackCommandFailed { exit_code: Int, stderr: String }
 
 type TailnetRouteGap
-  = TailnetRouteUndeclared
+  = TailnetIngressUnattested
+  | TailnetIngressNotTheProxy { peer_user: String }
+  | TailnetRouteBackendNotASocket
+  | TailnetRouteUndeclared
   | TailnetReadbackUntaken { gap: TailnetServeReadbackGap }
   | TailnetReadbackStale
   | TailnetStatusUnreadable
   | TailnetRouteNotProxied
   | TailnetRouteProxiesElsewhere { targets: List<String> }
+
+// HOW THIS CONNECTION REACHED THE BACKEND, as the serving host attests it. Serve status is a fact
+// about the node's configuration; it says nothing about one connection. A TCP listener attests no
+// peer, so a local process dialing it with a self-written Tailscale-User-Login header is the same
+// request as a proxied one. A unix-socket listener hands the handler the kernel-attested account
+// of the peer (`gunbc serve --unix-socket`, peer_user), and tailscaled is the peer of every
+// connection Serve proxies (extdeps.tailscale.serve tailscale_serve_unix_proxy_peer).
+type RequestIngress
+  = IngressUnattested
+  | IngressAttestedPeer { peer_user: String }
 
 // What the access-path fold consumes: the declared route observed proxying this backend, or the
 // cause it was not.
@@ -78,6 +92,9 @@ fn tailnet_serve_readback_gap_sentence(gap: TailnetServeReadbackGap) -> String {
 
 fn tailnet_route_gap_sentence(gap: TailnetRouteGap) -> String {
   match gap {
+    TailnetIngressUnattested => "this connection arrived on a listener that attests no peer, so it cannot be told apart from a local request carrying the same header"
+    TailnetIngressNotTheProxy { peer_user: who } => concat("this connection's attested peer is not the tailscale proxy: ", who)
+    TailnetRouteBackendNotASocket => "this instance's declared tailscale serve route proxies to a TCP port, which any local process can also reach"
     TailnetRouteUndeclared => "this instance has no declared tailscale serve route"
     TailnetReadbackUntaken { gap: g } => tailnet_serve_readback_gap_sentence(gap: g)
     TailnetReadbackStale => "the serve-status reading is stale or undated at decision time"
@@ -91,6 +108,9 @@ fn tailnet_route_gap_sentence(gap: TailnetRouteGap) -> String {
 // The stable label of each cause, for a wire that reports it.
 fn tailnet_route_gap_label(gap: TailnetRouteGap) -> NonEmptyStr {
   match gap {
+    TailnetIngressUnattested => "ingress-unattested"
+    TailnetIngressNotTheProxy { peer_user: _ } => "ingress-not-the-proxy"
+    TailnetRouteBackendNotASocket => "route-backend-not-a-socket"
     TailnetRouteUndeclared => "route-undeclared"
     TailnetReadbackUntaken { gap: g } =>
       match g {
@@ -202,17 +222,19 @@ fn tailnet_acl_revision(acl_policy: TailscaleAclPolicy) -> ContentHash {
   content_hash_of_value(value: serialize_json(v: tailscale_acl_policy_json(policy: acl_policy)))
 }
 
-// THE ACCESS-PATH FOLD. The header ALONE mints no tailnet path: the tailnet arm is reachable
-// only on a loopback bind (the proxy is the sole route to the socket) AND a route standing that
-// observed this backend proxied at its declared route, and it carries the ACL revision and the
-// serve-route key it was computed under. A header without that standing is unattributed --
-// any co-located process can write it (extdeps.tailscale.identity's deployment-property note)
-// -- so the fold drops it: AccessPathTailnetUnobserved naming the cause, no observation, NO
-// principal, no authority. No header at all is AccessPathLocalDev. A non-loopback bind is direct
+// THE ACCESS-PATH FOLD. The tailnet arm needs THREE things and the header is none of them: a
+// loopback bind, a connection whose attested peer is the tailscale proxy, and a route standing
+// that observed this backend proxied at its declared route. It then carries the ACL revision and
+// the serve-route key it was computed under. A header without all three is unattributed -- any
+// co-located process can write it (extdeps.tailscale.identity's deployment-property note) -- so
+// the fold drops it: AccessPathTailnetUnobserved naming the cause, no observation, NO principal,
+// no authority. The ingress is judged first, because a healthy route says nothing about who
+// dialed this connection. No header at all is AccessPathLocalDev. A non-loopback bind is direct
 // reachability regardless of any header: AccessPathDirectHttps.
 fn request_access_path_of_standing(
   listen_host: NonEmptyStr,
   tailscale_header: String,
+  ingress: RequestIngress,
   standing: TailnetRouteStanding,
   acl_policy: TailscaleAclPolicy,
 ) -> RequestAccessPath {
@@ -224,18 +246,33 @@ fn request_access_path_of_standing(
       } else if tailscale_header == "" {
         AccessPathLocalDev
       } else {
-        match standing {
-          TailnetRouteUnobserved { gap: g } => AccessPathTailnetUnobserved { gap: g }
-          TailnetRouteObserved { serve_route: route } =>
-            AccessPathTailnetProxy {
-              transport_observation: tailnet_identity_of(header_value: tailscale_header),
-              route_readback: tailnet_route_readback_observed(
-                acl_revision: tailnet_acl_revision(acl_policy: acl_policy),
-                serve_route: route,
-              ),
+        match ingress {
+          IngressUnattested => AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+          IngressAttestedPeer { peer_user: who } =>
+            if who != (tailscale_serve_unix_proxy_peer as String) {
+              AccessPathTailnetUnobserved { gap: TailnetIngressNotTheProxy { peer_user: who } }
+            } else {
+              match standing {
+                TailnetRouteUnobserved { gap: g } => AccessPathTailnetUnobserved { gap: g }
+                TailnetRouteObserved { serve_route: route } =>
+                  AccessPathTailnetProxy {
+                    transport_observation: tailnet_identity_of(header_value: tailscale_header),
+                    route_readback: tailnet_route_readback_observed(
+                      acl_revision: tailnet_acl_revision(acl_policy: acl_policy),
+                      serve_route: route,
+                    ),
+                  }
+              }
             }
         }
       }
+  }
+}
+
+fn request_ingress_is_the_proxy(ingress: RequestIngress) -> Bool {
+  match ingress {
+    IngressUnattested => false
+    IngressAttestedPeer { peer_user: who } => who == (tailscale_serve_unix_proxy_peer as String)
   }
 }
 
@@ -258,6 +295,7 @@ fn tailnet_route_standing_of_projection(serve_status: TailscaleServeStatusProjec
 fn request_access_path_of(
   listen_host: NonEmptyStr,
   tailscale_header: String,
+  ingress: RequestIngress,
   serve_status: TailscaleServeStatusProjection,
   serve_route: TailscaleServeRouteKey?,
   acl_policy: TailscaleAclPolicy,
@@ -265,6 +303,7 @@ fn request_access_path_of(
   request_access_path_of_standing(
     listen_host: listen_host,
     tailscale_header: tailscale_header,
+    ingress: ingress,
     standing: tailnet_route_standing_of_projection(serve_status: serve_status, serve_route: serve_route),
     acl_policy: acl_policy,
   )

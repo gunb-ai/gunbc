@@ -10,14 +10,14 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeStatusProxies, ServeStatusUnreadable,
   tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets,
-  tailscale_serve_route_key, tailscale_serve_proxy_url,
+  tailscale_serve_route_key, tailscale_serve_proxy_url, tailscale_serve_backend_is_unix_target,
 }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.request_authentication {
   TailnetServeReadbackGap, TailnetReadbackClockUnreadable, TailnetReadbackNotSpawned, TailnetReadbackCommandFailed,
   TailnetRouteStanding, TailnetRouteObserved, TailnetRouteUnobserved,
-  TailnetRouteUndeclared, TailnetReadbackUntaken, TailnetReadbackStale, TailnetStatusUnreadable,
+  TailnetRouteBackendNotASocket, TailnetRouteUndeclared, TailnetReadbackUntaken, TailnetReadbackStale, TailnetStatusUnreadable,
   TailnetRouteNotProxied, TailnetRouteProxiesElsewhere,
 }
 import std.algebra { trim }
@@ -48,16 +48,22 @@ fn tailnet_serve_readback_is_fresh(observed_at: Timestamp, decided_at: Timestamp
   }
 }
 
-// THE STANDING FOLD. Only a fresh, readable reading showing the declared backend at the declared
-// listener and mount is an observed route; every other arm names its own cause.
+// THE STANDING FOLD. Only a declared route whose backend is a unix socket, with a fresh, readable
+// reading showing that backend at the declared listener and mount, is an observed route; every
+// other arm names its own cause. A route declared to a TCP port is never observed, whatever the
+// reading says: the port is reachable without the proxy.
 fn tailnet_route_standing(readback: TailnetServeReadback, declared: TailscaleServeEndpoint?, decided_at: Timestamp) -> TailnetRouteStanding {
   match declared {
     Absent => TailnetRouteUnobserved { gap: TailnetRouteUndeclared }
     Present { value: endpoint } =>
       match readback {
-        TailnetServeReadbackUntaken { gap: g } => TailnetRouteUnobserved { gap: TailnetReadbackUntaken { gap: g } }
+        TailnetServeReadbackUntaken { gap: g } =>
+          if !tailscale_serve_backend_is_unix_target(endpoint: endpoint) { TailnetRouteUnobserved { gap: TailnetRouteBackendNotASocket } }
+          else { TailnetRouteUnobserved { gap: TailnetReadbackUntaken { gap: g } } }
         TailnetServeReadbackTaken { status_json: text, observed_at: observed } =>
-          if !tailnet_serve_readback_is_fresh(observed_at: observed, decided_at: decided_at) {
+          if !tailscale_serve_backend_is_unix_target(endpoint: endpoint) {
+            TailnetRouteUnobserved { gap: TailnetRouteBackendNotASocket }
+          } else if !tailnet_serve_readback_is_fresh(observed_at: observed, decided_at: decided_at) {
             TailnetRouteUnobserved { gap: TailnetReadbackStale }
           } else {
             let key = tailscale_serve_route_key(endpoint: endpoint)

@@ -1,5 +1,5 @@
 module test.claim.roadmap_serve_witness
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler,
@@ -419,9 +419,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 
 // THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
 // this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it behind a serve-status readback — and the seam
-// takes no readback for this route, which requires no tailnet path — so the consent record names
-// no login. Without this the plumbing could
+// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
+// nothing can — so the consent record names no login. Without this the plumbing could
 // be silently laundering the header back into an identity and every unit-level witness would
 // still pass. The positive half (a modeled proxy path carries the observation) is
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
@@ -522,6 +521,7 @@ fn serve_over_plan_declaring(
     path: path,
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     release_revision: deploy_witness_release_revision,
   )
 }
@@ -1081,6 +1081,7 @@ fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) ->
     path: "/issue/demo-node/assignment",
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     request_headers: headers,
     release_revision: deploy_witness_release_revision,
   )

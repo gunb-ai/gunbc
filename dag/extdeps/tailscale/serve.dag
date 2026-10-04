@@ -114,6 +114,15 @@ fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
   concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
 }
 
+// THE PEER A UNIX TARGET SEES. tailscaled runs as root and it is tailscaled that dials the target,
+// so a connection Serve proxies to a unix socket arrives with root as its kernel-attested peer;
+// since v1.98.9 only root may configure a unix target at all (TS-2026-005).
+data tailscale_serve_unix_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+
+fn tailscale_serve_backend_is_unix_target(endpoint: TailscaleServeEndpoint) -> Bool {
+  starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix)
+}
+
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
   if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
   else { concat("http://127.0.0.1:", endpoint.backend as String) }
