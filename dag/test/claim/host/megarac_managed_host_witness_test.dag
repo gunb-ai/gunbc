@@ -58,7 +58,7 @@ fn observation_with(o: BmcAccessObservation, host: String, firmware: BmcFirmware
   }
 }
 
-fn refused_for_every_operation(h: ManagedHost, refused: (MegaRacHostAdmission) -> Bool) -> Bool {
+fn refused_for_every_operation(h: ManagedHost, refused: fn(MegaRacHostAdmission) -> Bool) -> Bool {
   megarac_operations |> all(op => refused(admit_megarac_host(host: h, operation: op)))
 }
 
