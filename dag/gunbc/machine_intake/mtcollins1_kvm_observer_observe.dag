@@ -206,13 +206,14 @@ fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
 // timeout frees the seat, and the hold is then cleared by the operator or, once it lands, by
 // observed-dead recovery. Absent is "let go"; Present names the first part not observed ended.
 fn kvm_probe_seat_parts_gap(session: KvmSessionRelease, browser: KvmBrowserClose, process: OwnedRelease, launched: Bool) -> NonEmptyStr? {
-  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  _ => false }
-  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  _ => false }
+  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  KvmSessionReleaseHttp { status: _ } => false  KvmSessionReleaseFailed { detail: _ } => false  KvmSessionLoginUnobserved => false  KvmSessionReleaseUnrecognized { raw: _ } => false }
+  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  KvmBrowserCloseFailed { detail: _ } => false  KvmBrowserCloseUnrecognized { raw: _ } => false }
   let process_ended = match process {
     OwnedReleased { pid: _ } => true
     OwnedAlreadyGone { pid: _ } => true
-    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  _ => false }
-    _ => false
+    OwnedReleaseFailed { pid: _, detail: _ } => false
+    OwnedReleaseUnresolved { pid: _, standing: _ } => false
+    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  OwnedRunning { pid: _, start_time: _ } => false  OwnedGone { pid: _ } => false  OwnedUnreadable { pid: _, detail: _ } => false  OwnedUnparseable { pid: _, detail: _ } => false }
   }
   if !session_ended { Present { value: "the web session was not observed released" as NonEmptyStr } }
   else if !browser_ended { Present { value: "the browser was not observed closed" as NonEmptyStr } }

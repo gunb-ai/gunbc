@@ -23,7 +23,7 @@ The product is one **power-on account** per attempt: `gunbc.machine_intake_mtcol
 |---|---|
 | Firmware boot stages 0–9 | `extdeps.ampere.scp_diagnostic` `AmpereBootStage`, `AmpereBootStatus` |
 | SMpro register pair and its refusal rule | `extdeps.ampere.smpro_register` `smpro_boot_progress_of` → `SmproBootProgress` (`SmproBootProgressRead` / `SmproBootProgressRefused`) |
-| Per-socket SMpro reading | `gunbc.machine_intake_mtcollins1_smpro_observation` `SmproSocketStage`, `SmproProbeOutcome` |
+| Per-socket SMpro reading | `gunbc.machine_intake_ampere_smpro_observation` `SmproSocketStage`, `SmproProbeOutcome`, read through `SmproPassObservation` |
 | Second socket's join | `gunbc.machine_intake_mtcollins1_socket1_investigation_observation` `MtCollins1SecondaryJoinReading`, `secondary_join_outcome` → `MtCollins1SecondaryJoinOutcome` |
 | SMpro/PMpro error records and GPI gate (#13058) | `extdeps.ampere.smpro_internal_error` `SmproInternalRecord`, `SmproRecordGate` |
 | DRAM console block and roster | `gunbc.machine_intake_ampere_dram_console_observation` `AmpereDramConsoleObservation` |
@@ -204,7 +204,7 @@ Laws, each with a discriminating RED in slice A:
 | `processor_findings`, `memory_findings`, `socket_absent_finding` | bundle findings | `coverage` plus `Degradation` against the `AttemptConfigurationReceipt` (BMC's inventory view vs the expected topology) |
 | `sel_findings` | bundle findings | Per-cycle SEL events: memory/processor events go to `DramFirmware` / `Socket` anomalies, and restart records go to cycle segmentation |
 | `sensor_findings` → `…bmc_sensor_observation` `mtcollins1_sensor_findings` | bundle; sensor witness | `mtcollins1_sensor_anomalies` (typed, in the sensor module) on `Platform{ChassisPower}` |
-| `smpro_findings` → `…smpro_observation` `mtcollins1_smpro_findings` | bundle (3 passes); SMpro witness | `Socket{k}` standings via `smpro_boot_progress_of`, and `SecondaryJoin` via `secondary_join_outcome`. The "sockets differ" string is retired: the difference is now the two typed standings |
+| `smpro_findings` → `gunbc.machine_intake_ampere_smpro_observation` `smpro_pass_findings` | bundle (3 passes); SMpro witness | `Socket{k}` standings via `smpro_boot_progress_of`, and `SecondaryJoin` via `secondary_join_outcome`. The "sockets differ" string is retired: the difference is now the two typed standings |
 | `console_findings`: `…dram_console_observation` `ampere_dram_findings` | bundle; DRAM witness | `ampere_dram_untrained_sockets` (closed-roster rule, in the DRAM module) feeds `DegradationDimmNotTrained` / `DramFirmware` anomalies; malformed rows become `DramFirmware` anomalies |
 | `console_findings`: `socket_summary_findings` | bundle | `SecondaryJoin` via `secondary_join_outcome`, and `ActiveSocketsBelowExpected` against the receipt's expected configuration |
 | `console_findings`: `…kernel_module_decompression_observation` `kernel_module_decompression_findings` | bundle; kernel-module witness | `Kernel` `StatedFailure { KernelModuleRefused }` |
@@ -212,7 +212,7 @@ Laws, each with a discriminating RED in slice A:
 | credential-shred string | bundle findings | `CollectionOutcome.credential` |
 | `HostBootObservation` and its datum (#13041) | `mtcollins_firmware_converge` `boot_verdict`; its witness | `FirmwareSetBootReadback` (above) |
 
-**Consumers outside the required gate.** The production consumers are all in this closure: `mtcollins1_boot_run` (its fleet-converge entry) and the bundle. The test consumers are the witnesses of `mtcollins1_boot_diagnostic_bundle`, `mtcollins1_smpro_observation`, `ampere_dram_console_observation`, `mtcollins1_bmc_sensor_observation`, `kernel_module_decompression_observation`, `megarac_media_convergence` and `mtcollins_firmware_converge`. Each one is migrated in slice A to the typed destination above, with each of its discriminating REDs kept. None is deleted without its claim moving.
+**Consumers outside the required gate.** The production consumers are all in this closure: `mtcollins1_boot_run` (its fleet-converge entry) and the bundle. The test consumers are the witnesses of `mtcollins1_boot_diagnostic_bundle`, `ampere_smpro_observation`, `ampere_dram_console_observation`, `mtcollins1_bmc_sensor_observation`, `kernel_module_decompression_observation`, `megarac_media_convergence` and `mtcollins_firmware_converge`. Each one is migrated in slice A to the typed destination above, with each of its discriminating REDs kept. None is deleted without its claim moving.
 
 ## 7. Reset cause, retry state and the summary's status lines
 

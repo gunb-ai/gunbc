@@ -1,0 +1,64 @@
+module test.claim.machine_intake_bmc_rotation_route_forged_probe_witness
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROTATION ROUTE SEALS, ENROLLED AS EXECUTED REDS (cut O1a). The probe source below authors a
+// grounded BmcRotationRouteStanding, a RouteQualificationLiveResponse and a ModeledRouteQualificationResponse outside their module, and calls
+// the committed-execution and citation mints from a caller neither admits. This witness hands that
+// source to the compiler through the diagnostic-census harness and requires the refusal CLASS at each
+// SUBJECT by name, so a probe refusing for any other reason measures another wall; the class-scoped
+// control shows a clean source reading the same module through its real producer emits neither class.
+data forged_probe_source: String = "module probe_rotation_route_forged\n\nimport std.types { Bool, NonEmptyStr }\nimport std.content_hash { content_hash_of_value }\nimport extdeps.uri { uri_https }\nimport extdeps.external_authority { ExternalAuthority }\nimport gunbc.machine_intake_receipt { EvidenceRef }\nimport gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }\nimport gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }\nimport gunbc.machine_intake_bmc_rotation_route {\n  BmcRotationRouteStanding, RouteQualificationLiveResponse, ModeledRouteQualificationResponse, RouteQualificationSubject, IpmiSetUserPassword, RouteGroundedByExecutedRequest,\n  rotation_route_from_committed_execution, rotation_route_from_citation,\n}\n\nfn forged_grounded_standing() -> BmcRotationRouteStanding {\n  BmcRotationRouteStanding {\n    endpoint: mtcollins1_endpoint,\n    firmware: mtcollins1_firmware,\n    grounding: RouteGroundedByExecutedRequest { request: IpmiSetUserPassword { user: 3 }, request_receipt: mtcollins1_user3_route_evidence, response_receipt: mtcollins1_user3_route_evidence },\n  }\n}\n\nfn forged_subject() -> RouteQualificationSubject {\n  RouteQualificationSubject { endpoint: mtcollins1_endpoint, firmware: mtcollins1_firmware, request: IpmiSetUserPassword { user: 3 } }\n}\n\nfn forged_modeled_response() -> ModeledRouteQualificationResponse {\n  ModeledRouteQualificationResponse {\n    subject: forged_subject(),\n    request_receipt: mtcollins1_user3_route_evidence,\n    response_receipt: mtcollins1_user3_route_evidence,\n    completed: true,\n    readback_accepted: true,\n  }\n}\n\nfn forged_response() -> RouteQualificationLiveResponse {\n  RouteQualificationLiveResponse {\n    subject: forged_subject(),\n    request_receipt: mtcollins1_user3_route_evidence,\n    response_receipt: mtcollins1_user3_route_evidence,\n    completed: true,\n    readback_accepted: true,\n  }\n}\n\nfn forged_committed_execution() -> BmcRotationRouteStanding {\n  rotation_route_from_committed_execution(\n    endpoint: mtcollins1_endpoint,\n    firmware: mtcollins1_firmware,\n    request: IpmiSetUserPassword { user: 3 },\n    request_receipt: mtcollins1_user3_route_evidence,\n    response_receipt: mtcollins1_user3_route_evidence,\n  )\n}\n\nfn forged_citation() -> BmcRotationRouteStanding {\n  rotation_route_from_citation(\n    endpoint: mtcollins1_endpoint,\n    firmware: mtcollins1_firmware,\n    request: IpmiSetUserPassword { user: 3 },\n    citation: ExternalAuthority { uri: uri_https(locator: \"example.invalid/forged\") },\n  )\n}\n"
+
+data harness_control_source: String = "module probe_rotation_route_harness_control\nimport gunbc.machine_intake_bmc_rotation_route { BmcRotationRouteStanding }\nimport gunbc.machine_intake_bmc_rotation_route_evidence { mtcollins1_rotation_route_standing }\nfn standing() -> BmcRotationRouteStanding { mtcollins1_rotation_route_standing() }\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A grounded standing, a live qualification response (which has no mint in this cut) and a modeled
+// response cannot be authored outside their module.
+test fn a_forged_route_standing_and_response_are_refused_at_their_literals() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "BmcRotationRouteStanding") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "RouteQualificationLiveResponse") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ModeledRouteQualificationResponse") >= 1
+}
+
+// The committed-execution and citation mints refuse a caller outside their admitted roots.
+test fn the_grounding_mints_refuse_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "rotation_route_from_committed_execution") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "rotation_route_from_citation") >= 1
+}
