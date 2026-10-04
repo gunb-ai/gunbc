@@ -4042,28 +4042,35 @@ pub fn node_with_children_params_inferred(
     })
 }
 
+pub fn declaration_type_param_names(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if ((item.connective.clone() != Connective::NoConnective)
+        && (item.transport.clone() == std::option::Option::None))
+    {
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        })
+    } else {
+        fn_type_param_names(item.clone(), source_indices.clone())
+    }
+}
+
 pub fn resolve_item_types(
     item: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<ItemResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tp_names = if ((item.connective.clone() != Connective::NoConnective)
-            && (item.transport.clone() == std::option::Option::None))
-        {
-            Rc::new({
-                let mut __result = Vec::new();
-                for p in item.params.clone().iter().cloned() {
-                    __result.push(crate::v1_std_core::generic_param_name_at(
-                        p.clone(),
-                        env.source_indices.clone(),
-                    ));
-                }
-                __result
-            })
-        } else {
-            fn_type_param_names(item.clone(), env.source_indices.clone())
-        };
+        let tp_names = declaration_type_param_names(item.clone(), env.source_indices.clone());
         let collision_diags = match first_duplicate_type_param_name(tp_names.clone()) {
     Some(dup) => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat(v1_rt::concat("the name '".to_string(), dup.clone()), v1_rt::concat("' is bound twice in the header of '".to_string(), crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone()))), "': either a type parameter is repeated (`type Pair<T, T>`), or a value parameter shares a type parameter's name (`fn f<T>(T: T)`). A type parameter's identity is (owner, name), so one header may bind a name once. Rename one of them.".to_string()),

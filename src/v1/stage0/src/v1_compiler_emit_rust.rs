@@ -407,7 +407,10 @@ pub fn render_rust_type(
                     tv.clone(),
                     emit_info.fn_generic_param_names.clone(),
                 ) {
-                    crate::v1_compiler_emit_core_support::to_pascal(tv.clone())
+                    rust_carrier_optional_wrap(
+                        n.clone(),
+                        crate::v1_compiler_emit_core_support::to_pascal(tv.clone()),
+                    )
                 } else {
                     "_".to_string()
                 }
@@ -2280,7 +2283,10 @@ pub fn render_rust_applied_type_arg(
                 match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: tv, .. }) => {
                         if type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
-                            crate::v1_compiler_emit_core_support::to_pascal(tv.clone())
+                            rust_carrier_optional_wrap(
+                                n.clone(),
+                                crate::v1_compiler_emit_core_support::to_pascal(tv.clone()),
+                            )
                         } else {
                             "_".to_string()
                         }

@@ -294,6 +294,12 @@ fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, source_
   render_rust_applied_type_shared(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
+// A TYPE PARAMETER CARRIES ITS OWN CARDINALITY. `K?` on a declared parameter is a TypeVariable node
+// whose return_cardinality is CardOptional, and both type-variable arms (here and in
+// render_rust_applied_type_arg) render it through rust_carrier_optional_wrap like any other leaf.
+// They rendered the bare parameter name, so `get: K?` emitted `K`; a `fn(K) -> V?` field kept its
+// Option only while the parameter resolved through a module-scope binding instead of as a
+// TypeVariable, and lost it when type parameters were scoped to their declaration.
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -304,7 +310,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   }
   match n.inferred {
     Present { value: TypeVariable { id: tv } } =>
-      if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
+      if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: tv)) } else { "_" }
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
@@ -1431,7 +1437,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
   } else {
     match n.inferred {
       Present { value: TypeVariable { id: tv } } =>
-        if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
+        if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { rust_carrier_optional_wrap(n: n, rendered: to_pascal(name: tv)) } else { "_" }
       _ =>
         match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => scalar

@@ -2259,42 +2259,14 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
-pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
-    tp_names
-        .iter()
-        .cloned()
-        .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
-            let tp_binding = Rc::new(TypeBinding {
-                name: tp_name.clone(),
-                resolved: Rc::new(Node {
-                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                    name: tp_name.clone(),
-                    span: crate::v1_std_core::kernel_span(tp_name.clone()),
-                    ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
-                    children: Rc::new(vec![]),
-                    connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: Some(Rc::new(InferredNode::TypeVariable {
-                        id: tp_name.clone(),
-                    })),
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: std::option::Option::None,
-                    transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: std::option::Option::None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                    declaration_marker: DeclarationMarker::Unmarked,
-                    declaration: std::option::Option::None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                }),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                alias_rhs: std::option::Option::None,
-            });
+pub fn env_with_type_parameter_bindings(
+    env: Rc<TypeEnv>,
+    tp_bindings: Rc<Vec<Rc<TypeBinding>>>,
+) -> Rc<TypeEnv> {
+    tp_bindings.iter().cloned().fold(
+        env.clone(),
+        |e: Rc<TypeEnv>, tp_binding: Rc<TypeBinding>| {
+            let tp_name = tp_binding.name.clone();
             let shadowed = effective_visible_binding(
                 e.str_bindings.clone(),
                 e.parents.clone(),
@@ -2337,7 +2309,51 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 unit_variant_index: updated_index.clone(),
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
             })
-        })
+        },
+    )
+}
+
+pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
+    env_with_type_parameter_bindings(
+        env.clone(),
+        Rc::new({
+            let mut __result = Vec::new();
+            for tp_name in tp_names.iter().cloned() {
+                __result.push(Rc::new(TypeBinding {
+                    name: tp_name.clone(),
+                    resolved: Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        name: tp_name.clone(),
+                        span: crate::v1_std_core::kernel_span(tp_name.clone()),
+                        ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
+                        children: Rc::new(vec![]),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: Some(Rc::new(InferredNode::TypeVariable {
+                            id: tp_name.clone(),
+                        })),
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        declaration: std::option::Option::None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                    alias_rhs: std::option::Option::None,
+                }));
+            }
+            __result
+        }),
+    )
 }
 
 pub fn census_declaration_type_env(

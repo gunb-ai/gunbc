@@ -133,16 +133,17 @@ pub use crate::v1_compiler_infer_env::{
     census_declaration_type_env, declaration_node_of_ref, declaration_provenance_of_ref,
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
     declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_with_children, node_with_inferred, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
+    empty_type_env_cache, env_with_type_parameter_bindings, env_with_type_variable_bindings,
+    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_with_children, node_with_inferred,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
+    text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
@@ -197,9 +198,9 @@ pub use crate::v1_compiler_infer_patterns::{
 };
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
-    fn_type_param_names, is_user_generic_use_site, peel_nominal_alias_identity,
-    preserve_nominal_brand_on_resolve, reference_with_declaration, resolve_generic_use_decl,
-    resolve_item_types, resolve_node, resolve_node_bounded,
+    declaration_type_param_names, fn_type_param_names, is_user_generic_use_site,
+    peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, reference_with_declaration,
+    resolve_generic_use_decl, resolve_item_types, resolve_node, resolve_node_bounded,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 use crate::v1_compiler_infer_service::EffectIncompleteness::{
@@ -15968,7 +15969,7 @@ pub fn record_field_type_is_unresolved_param(
                             env.source_indices.clone(),
                             ft.clone(),
                         );
-                        let in_params = {
+                        {
                             let mut __found = false;
                             for pn in param_names.iter().cloned() {
                                 if (pn.clone() == fname.clone()) {
@@ -15977,9 +15978,7 @@ pub fn record_field_type_is_unresolved_param(
                                 }
                             }
                             __found
-                        };
-                        let conv = is_type_variable_name(fname.clone());
-                        (in_params.clone() || conv.clone())
+                        }
                     }
                 }
             } else {
@@ -23234,13 +23233,6 @@ pub fn infer_items(
     })
 }
 
-pub fn is_type_variable_name(name: String) -> bool {
-    (((((name.clone() == "T".to_string()) || (name.clone() == "K".to_string()))
-        || (name.clone() == "V".to_string()))
-        || (name.clone() == "MappedElement".to_string()))
-        || (name.clone() == "FoldAccumulator".to_string()))
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgGenericFoldState {
     pub results: Rc<Vec<Rc<ArgInferResult>>>,
@@ -24160,106 +24152,9 @@ pub fn merge_kernel_variant_locals_low_priority(
     }
 }
 
-pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
-    if (module_path.clone() == "std.types".to_string()) {
-        {
-            let filtered = Rc::new(v1_rt::map_keys(&parent_env.bindings.clone()))
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                    |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
-                        let name = crate::v1_std_core::intern_str(
-                            parent_env.intern_table.clone(),
-                            ident.clone(),
-                        );
-                        if is_type_variable_name(name.clone()) {
-                            acc.clone()
-                        } else {
-                            match v1_rt::map_get(&parent_env.bindings.clone(), ident.clone()) {
-                                Some(binding) => v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    ident.clone(),
-                                    binding.clone(),
-                                ),
-                                std::option::Option::None => acc.clone(),
-                            }
-                        }
-                    },
-                );
-            let filtered_str = Rc::new(v1_rt::map_keys(&parent_env.str_bindings.clone()))
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                    |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if is_type_variable_name(name.clone()) {
-                            acc.clone()
-                        } else {
-                            match v1_rt::map_get(&parent_env.str_bindings.clone(), name.clone()) {
-                                Some(binding) => {
-                                    v1_rt::rc_map_insert(acc.clone(), name.clone(), binding.clone())
-                                }
-                                std::option::Option::None => acc.clone(),
-                            }
-                        }
-                    },
-                );
-            let filtered_ancestry =
-                Rc::new(v1_rt::map_keys(&parent_env.ancestry_str_bindings.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                            if is_type_variable_name(name.clone()) {
-                                acc.clone()
-                            } else {
-                                match v1_rt::map_get(
-                                    &parent_env.ancestry_str_bindings.clone(),
-                                    name.clone(),
-                                ) {
-                                    Some(binding) => v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        name.clone(),
-                                        binding.clone(),
-                                    ),
-                                    std::option::Option::None => acc.clone(),
-                                }
-                            }
-                        },
-                    );
-            let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
-                filtered_str.clone(),
-                parent_env.parents.clone(),
-                parent_env.source_indices.clone(),
-            );
-            Rc::new(TypeEnv {
-                module_path: module_path.clone(),
-                bindings: filtered.clone(),
-                str_bindings: filtered_str.clone(),
-                ancestry_str_bindings: filtered_ancestry.clone(),
-                parents: parent_env.parents.clone(),
-                recursive_types: parent_env.recursive_types.clone(),
-                recursive_type_set: parent_env.recursive_type_set.clone(),
-                inductive_fields: parent_env.inductive_fields.clone(),
-                source_indices: parent_env.source_indices.clone(),
-                intern_table: parent_env.intern_table.clone(),
-                source_visible_names: parent_env.source_visible_names.clone(),
-                authored_import_names: parent_env.authored_import_names.clone(),
-                symbol_index: parent_env.symbol_index.clone(),
-                unit_variant_index: rebuilt_index.clone(),
-                unit_variant_index_observed: true,
-            })
-        }
-    } else {
-        parent_env.clone()
-    }
-}
-
 pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     {
-        let filtered = type_env_for_import(module_path.clone(), parent_env.clone());
+        let filtered = parent_env.clone();
         let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             filtered.str_bindings.clone(),
             Rc::new(vec![]),
@@ -26159,18 +26054,7 @@ pub fn overlay_direct_import_exports(
                     typed_parent.interface.clone().env.clone(),
                 );
                 let selected = if imp.is_all.clone() {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
-                            .iter()
-                            .cloned()
-                        {
-                            if (is_type_variable_name(name.clone()) == false) {
-                                __result.push(name);
-                            }
-                        }
-                        __result
-                    })
+                    Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
                 } else {
                     imp.specific_names.clone()
                 };
@@ -26749,59 +26633,6 @@ pub fn build_type_env(
                     }
                 },
             );
-        let param_bindings = crate::v1_std_core::module_items(module.module.clone())
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
-                    let is_type_decl = match v1_rt::map_get(
-                        &local_bindings,
-                        crate::v1_std_core::intern(
-                            intern_table.clone(),
-                            crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                item.clone(),
-                            ),
-                        )
-                        .id
-                        .clone(),
-                    ) {
-                        Some(_) => true,
-                        std::option::Option::None => false,
-                    };
-                    if ((((item.params.clone().len() as i64) > 0) && is_type_decl.clone())
-                        && (item.body.clone() == std::option::Option::None))
-                    {
-                        {
-                            let result = item.params.clone().iter().cloned().fold(
-                                acc.clone(),
-                                |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| {
-                                    v1_rt::rc_map_insert(
-                                        pacc,
-                                        crate::v1_std_core::intern(
-                                            intern_table.clone(),
-                                            crate::v1_std_core::authored_name_at(
-                                                source_indices.clone(),
-                                                p.clone(),
-                                            ),
-                                        )
-                                        .id
-                                        .clone(),
-                                        nominal_type_binding(crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            p.clone(),
-                                        )),
-                                    )
-                                },
-                            );
-                            result.clone()
-                        }
-                    } else {
-                        acc.clone()
-                    }
-                },
-            );
         let local_name_set = Rc::new(v1_rt::map_keys(&local_bindings))
             .iter()
             .cloned()
@@ -26811,8 +26642,7 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, ident.clone(), true)
                 },
             );
-        let all_local_bindings =
-            v1_rt::rc_map_merge(local_bindings.clone(), param_bindings.clone());
+        let all_local_bindings = local_bindings.clone();
         let kernel_cache = type_env_cache_from_bindings(
             kernel_bindings.clone(),
             source_indices.clone(),
@@ -30510,6 +30340,25 @@ pub fn alias_rhs_reference(pre: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> 
     }
 }
 
+pub fn declaration_body_env(decl: Rc<Node>, env: Rc<TypeEnv>) -> Rc<TypeEnv> {
+    crate::v1_compiler_infer_env::env_with_type_parameter_bindings(
+        env.clone(),
+        Rc::new({
+            let mut __result = Vec::new();
+            for n in crate::v1_compiler_infer_resolve::declaration_type_param_names(
+                decl.clone(),
+                env.source_indices.clone(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(nominal_type_binding(n.clone()));
+            }
+            __result
+        }),
+    )
+}
+
 pub fn resolve_env_bindings(
     env: Rc<TypeEnv>,
     module_name: String,
@@ -30632,7 +30481,7 @@ pub fn topo_resolve_types(
 match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
     Some(binding) => {
                         let pre = binding.resolved.clone();
-let result = crate::v1_compiler_infer_resolve::resolve_node(pre.clone(), env.clone(), module_name.clone());
+let result = crate::v1_compiler_infer_resolve::resolve_node(pre.clone(), declaration_body_env(pre.clone(), env.clone()), module_name.clone());
 let resolved = crate::v1_compiler_infer_resolve::preserve_nominal_brand_on_resolve(pre.clone(), result.resolved.clone(), binding.name.clone(), env.source_indices.clone());
 let updated_binding = Rc::new(TypeBinding {
     name: name.clone(),
@@ -30686,7 +30535,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.p
                         let pre = binding.resolved.clone();
                         let result = crate::v1_compiler_infer_resolve::resolve_node(
                             pre.clone(),
-                            env.clone(),
+                            declaration_body_env(pre.clone(), env.clone()),
                             module_name.clone(),
                         );
                         let resolved =
