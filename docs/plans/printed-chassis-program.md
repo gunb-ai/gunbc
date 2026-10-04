@@ -294,7 +294,7 @@ whether more printers are worth buying.
 | Rack unit | 2x2 block, composable | side-chat ruling |
 | Operator effort | Research component masses online; use explicit model/BOM ranges where needed. Do not request weighing or hardware disassembly for mass inputs. | operator direction, 4 October 2026; [mass assumptions](milk-crate-stack-design.md#mass-is-a-fold-over-components) |
 | Service law | Integrated corner-column stack; proposed temporary supports permit target-only removal, otherwise LIFO (4 October 2026, superseding R9) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
-| PSU placement | one power cassette per column in the cassette format, the column's mains boundary (4 October 2026; supersedes the fixed-frame shared supply) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
+| PSU placement | independent power cassettes assigned to node groups by usable wattage, port count and interface compatibility; mains stays in power cassettes (4 October 2026; supersedes one-per-column allocation) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
 | External bundle | 2 x Ethernet + 1 x protected, isolatable DC feed per node; AC at shared supply | operator acceptance, 4 October 2026 |
 
 ## Standing laws

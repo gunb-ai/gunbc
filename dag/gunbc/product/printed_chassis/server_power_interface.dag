@@ -1,5 +1,5 @@
 module product.printed_chassis.server_power_interface
-import std.types {Int,List,NonEmptyStr,String}
+import std.types {Int,List,NonEmptyStr,String,Bool}
 import std.measure {Watt,watt,watt_count,Volt,volt,volt_count,milliampere_count,Percent,percent,percent_count}
 import v2.std.optional {Present,Absent}
 import extdeps.power.fsp_crps {ServerPowerReference,fsp800_50fs_reference,fsp1200_50fs_reference}
@@ -54,5 +54,32 @@ fn example(reference:ServerPowerReference,input_v:Int,each_node_w:Int) -> JsonVa
 }
 fn server_power_review() -> JsonValue {
  let standing=match integration_standing() {ReferenceArchitectureOnly {open:o}=>count(o)}
- json_object(members:[json_kv(key:"standing",value:json_string(s:"reference architecture; exact S15-550P1A / S550E004L mating interface is unverified")),json_kv(key:"modular_interface_boundaries",value:json_int(n:count(cassette_power_boundaries))),json_kv(key:"open_interface_obligations",value:json_int(n:standing)),json_kv(key:"two_550w_modules_after_largest_loss_w",value:json_int(n:watt_count(w:available_main_power(modules:[watt(count:550),watt(count:550)],path_limit:watt(count:1100),state:LargestModuleUnavailable)))),json_kv(key:"examples",value:json_array(elements:[example(reference:fsp800_50fs_reference,input_v:115,each_node_w:300),example(reference:fsp800_50fs_reference,input_v:115,each_node_w:400),example(reference:fsp1200_50fs_reference,input_v:115,each_node_w:400),example(reference:fsp1200_50fs_reference,input_v:230,each_node_w:400)]))])
+ json_object(members:[json_kv(key:"standing",value:json_string(s:"reference architecture; exact S15-550P1A / S550E004L mating interface is unverified")),json_kv(key:"heterogeneous_node_pairing_example",value:json_string(s:match pairing_example() {PairingCapacityOnly=>"300 W + 200 W + 100 W assigned to independent ports; capacity only" PairingRefused=>"refused"})),json_kv(key:"modular_interface_boundaries",value:json_int(n:count(cassette_power_boundaries))),json_kv(key:"open_interface_obligations",value:json_int(n:standing)),json_kv(key:"two_550w_modules_after_largest_loss_w",value:json_int(n:watt_count(w:available_main_power(modules:[watt(count:550),watt(count:550)],path_limit:watt(count:1100),state:LargestModuleUnavailable)))),json_kv(key:"examples",value:json_array(elements:[example(reference:fsp800_50fs_reference,input_v:115,each_node_w:300),example(reference:fsp800_50fs_reference,input_v:115,each_node_w:400),example(reference:fsp1200_50fs_reference,input_v:115,each_node_w:400),example(reference:fsp1200_50fs_reference,input_v:230,each_node_w:400)]))])
+}
+
+// Named power cassettes and explicit branch assignments replace a fixed board:PSU ratio.
+// Budgets are usable main-rail output at the selected AC input. Interface identity
+// denotes a selected electrical connector/harness contract, not merely its shape.
+type PowerCassetteBudget {id:NonEmptyStr,interface_id:NonEmptyStr,usable_main:Watt,branch_limits:List<Watt>,overhead:Watt,reserve:Percent}
+type NodePowerAssignment {node:NonEmptyStr,power_cassette:NonEmptyStr,interface_id:NonEmptyStr,branch:Int,load:Watt}
+type PairingScreen = PairingCapacityOnly | PairingRefused
+fn pairing_screen(supplies:List<PowerCassetteBudget>,assignments:List<NodePowerAssignment>) -> PairingScreen {
+ let supply_ids_unique=all(supplies,s=>count(filter(supplies,q=>q.id==s.id))==1)
+ let assignments_valid=all(assignments,a=>{
+  let sources=filter(supplies,s=>s.id==a.power_cassette)
+  let node_unique=count(filter(assignments,b=>b.node==a.node))==1
+  let branch_unique=count(filter(assignments,b=>b.power_cassette==a.power_cassette && b.branch==a.branch))==1
+  let compatible=match sources.first() {Absent=>false Present {value:s}=>{
+   let indexed=fold(s.branch_limits,init:0,f:(n,w)=>n+1)
+   let port=fold(s.branch_limits,init:BranchLookup {index:0,matched:false},f:(r,w)=>BranchLookup {index:r.index+1,matched:r.matched || (r.index==a.branch && watt_count(w:a.load)<=watt_count(w:w))})
+   a.interface_id==s.interface_id && a.branch>=0 && a.branch<indexed && port.matched
+  }}
+  node_unique && branch_unique && count(sources)==1 && compatible
+ })
+ let totals_fit=all(supplies,s=>match capacity_screen(node_loads:map(filter(assignments,a=>a.power_cassette==s.id),a=>a.load),overhead:s.overhead,reserve:s.reserve,available:s.usable_main) {PsuAdequate {dc_load:_,rated:_,headroom:_}=>true _=>false})
+ if supply_ids_unique && assignments_valid && totals_fit {PairingCapacityOnly} else {PairingRefused}
+}
+type BranchLookup {index:Int,matched:Bool}
+fn pairing_example() -> PairingScreen {
+ pairing_screen(supplies:[PowerCassetteBudget {id:"power-A",interface_id:"proposed-protected-12v",usable_main:watt(count:780),branch_limits:[watt(count:400),watt(count:400),watt(count:400)],overhead:watt(count:20),reserve:percent(count:20)}],assignments:[NodePowerAssignment {node:"node-A",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:0,load:watt(count:300)},NodePowerAssignment {node:"node-B",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:1,load:watt(count:200)},NodePowerAssignment {node:"node-C",power_cassette:"power-A",interface_id:"proposed-protected-12v",branch:2,load:watt(count:100)}])
 }

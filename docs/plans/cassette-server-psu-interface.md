@@ -8,6 +8,12 @@ The operator selects a single PSU as the default; redundancy is optional only if
 
 FSP separately catalogs PDBs including FSP-PH51A and FSP-FC210CE. The [PH51A product page](https://www.fsp-group.com/en/product/crps/1745379392-1427.html) advertises cable customization, and its [datasheet](https://www.fsp-group.com/download/pro/FSP-PH51A_Datasheet.pdf) states that the wire harness can be customized. This establishes a vendor offering, not an off-the-shelf multi-node harness SKU or included cable set. Exact module compatibility, small-quantity availability, harness part numbers, price and single-module behavior remain procurement obligations. The protected per-node distribution remains our system requirement.
 
+## Independent power-cassette pairing
+
+Power is its own cassette type, independently selectable from the server cassette. There is no fixed one-PSU-per-board or two-boards-per-PSU ratio. A named power cassette advertises usable output at the selected AC input, output-interface identity, independently protected branch limits, overhead and reserve. Each node names one power cassette and one branch and declares its required load. Different node wattages can share a cassette; multiple power cassettes can serve separate node groups in one installation. Their outputs are not implicitly paralleled.
+
+`server_power_interface.pairing_screen` refuses duplicate supply identities, multiply assigned nodes, reused ports, absent supplies/ports, incompatible interface identities, branch overload and aggregate overload. Passing is capacity screening only: it does not retire the existing wiring, protection, startup, thermal, geometry or cable-reach obligations. The executable report includes a heterogeneous 300 + 200 + 100 W example against 780 W usable output with 20 W overhead and 20% reserve. Port ratings are declared example inputs, not selected connector ratings. Changing assignments also requires rerunning harness routing and placed-mass/stack analysis.
+
 ## Boundaries
 
 The cassette should accommodate different power assemblies through **replaceable inserts**, rather than assuming every server PSU has the same connector. Keep the column attachment and node-facing DC interface consistent. Each insert owns its PSU/cage envelope, attachment, insertion/removal clearance, ventilation, cord retention and strain relief. Each electrical adapter owns the exact mating PDB/backplane, enable/sense/standby behavior, output harness and management interface. A change of PSU family requires review of both adapters.

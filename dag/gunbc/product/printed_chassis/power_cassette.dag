@@ -8,7 +8,7 @@ import std.measure { percent_count }
 
 // THE POWER STATION AS A STACK MEMBER. Operator direction, 2026-10-04: a cassette in the same
 // format that stacks with 1..N node cassettes and feeds everything below or beside it. It is the
-// mains boundary of the whole column: the supply stays in its vendor enclosure inside this
+// mains boundary for its assigned node group: the supply stays in its vendor enclosure inside this
 // cassette, the IEC inlet and the protective-earth bond are here, and what leaves it is 12 V on
 // protected branches. Every node cassette below is then a low-voltage zone with no mains part and
 // bonding/ESD obligations to resolve for the selected electrical design. Low voltage alone
@@ -74,7 +74,7 @@ fn units_lifted_to_pop(station: PowerCassette, node_count: Nat, node_index_from_
   }
 }
 
-// Supply telemetry: the board's PSU_SMB1 can monitor ONE supply from ONE host. A shared station
+// Supply telemetry: this legacy route describes one board managing one supply. A shared station
 // is monitored by at most one of its nodes, or by nothing. Stated so a fleet reader does not
 // assume every node sees the supply.
 type StationTelemetryRoute
