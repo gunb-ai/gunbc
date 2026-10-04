@@ -201,6 +201,7 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
             let module_index = build_module_path_index_from_witness_roots();
             let sources =
                 resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+            record_fixture_closure(&sources);
             compile_fixture_rendering_only_what_is_read(sources, None)
         })
     }));
@@ -2054,6 +2055,7 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
 ) -> Result<bool, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+    record_fixture_closure(&sources);
     let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
     let hard_diagnostics = result
         .diagnostics
@@ -2903,5 +2905,287 @@ mod fixture_render_selection_probe {
             t.elapsed().as_millis()
         );
         assert!(r.is_ok());
+    }
+}
+
+/// THE FIXTURE-CLOSURE UNION (retires `gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger`).
+///
+/// Floor C1 (gunbc#13037) stopped rendering every closure module per fixture compile, so a corpus
+/// module's own emit refusal no longer reached any required gate unless the v1 seed mirrors
+/// happened to cover it. The restoration is the deduplicated form of what was removed: each fixture
+/// instrument RECORDS the closure it resolved (every source except the fixture itself, by path and
+/// bytes), and the required floor renders the union of those closures ONCE, after the claims ran
+/// ([`fixture_closure_union_emit_receipt`]).
+///
+/// THE POPULATION IS THE INSTRUMENT'S OUTPUT, NOT A LIST. It is exactly the closures the fixture
+/// instruments resolved on this run, recorded at the one seam both of them pass through
+/// (`resolve_virtual_source_with_imports` over the floor's module index), so it cannot name a module
+/// no fixture reached and cannot omit one a fixture did. Memo hits record nothing because the miss
+/// that filled them already did, for the same source and the same inventory digest.
+///
+/// One path recorded with two different byte contents is not unioned by picking one: it is kept as
+/// a conflict, and the receipt refuses on it (DESIGN §5, refuse rather than widen or choose).
+#[derive(Default)]
+pub(crate) struct FixtureClosureUnion {
+    pub members: BTreeMap<String, String>,
+    pub conflicts: BTreeSet<String>,
+    pub fixture_compiles: usize,
+}
+
+static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(None);
+
+/// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
+/// instruments' uncached paths with the exact source vector they compile.
+pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let mut guard = FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let union = guard.get_or_insert_with(FixtureClosureUnion::default);
+    union.fixture_compiles += 1;
+    for source in sources {
+        if source.path == FIXTURE_SOURCE_PATH {
+            continue;
+        }
+        match union.members.get(&source.path) {
+            Some(existing) if existing != &source.content => {
+                union.conflicts.insert(source.path.clone());
+            }
+            Some(_) => {}
+            None => {
+                union
+                    .members
+                    .insert(source.path.clone(), source.content.clone());
+            }
+        }
+    }
+}
+
+/// Take the union recorded so far, leaving it empty for the next run in this process.
+pub(crate) fn take_fixture_closure_union() -> FixtureClosureUnion {
+    FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+        .unwrap_or_default()
+}
+
+/// What a held union render observed, for the caller's `[floor-phase]` line.
+#[derive(Debug)]
+pub(crate) struct FixtureClosureUnionObserved {
+    pub members: usize,
+    pub digest: String,
+    pub files: usize,
+    pub emit_diagnostics: usize,
+}
+
+/// The digest of a union: path and bytes of every member, in path order. Two runs print the same
+/// digest exactly when they rendered the same population.
+pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash(format!("fixture-closure-union:{}", members.len()));
+    for (path, content) in members {
+        h = hash_combine(h, atom_identity_hash(path.clone()));
+        h = hash_combine(h, atom_identity_hash(content.clone()));
+    }
+    h
+}
+
+/// RENDER THE UNION ONCE THROUGH THE RUST EMITTER AND REFUSE ON ANY PER-MODULE EMIT REFUSAL.
+///
+/// The members are compiled together as one source vector and rendered with `RenderEveryModule`,
+/// so every member owes its own rendering, which is the coverage #13037 removed. The compile is
+/// fresh: the floor's prepared graph is the gate closure with its typecheck caches stripped
+/// (`prepared_graph_without_typecheck_caches`), a different carrier from the `compile_to_resolved`
+/// output the fixture instruments render, and the caller prints how many members lie outside it,
+/// so a reader can see the union is not that closure rather than assume it.
+///
+/// Every failure is a typed, located refusal, never a skip:
+///   * `FixtureClosureUnionConflict`: one path recorded with two contents;
+///   * `FixtureClosureUnionUncompilable`: a blocking compile diagnostic, so no member could be
+///     rendered, named by module;
+///   * `FixtureClosureUnionEmitRefused`: an error diagnostic produced by the render, named by
+///     module and emit reason. These are the render's own diagnostics: a render's diagnostic list
+///     is the compile's list followed by the emitter's (`emit_resolved_for_target_selected`), so
+///     the suffix past the compile's length is exactly what the emitter added.
+pub(crate) fn fixture_closure_union_emit_receipt(
+    union: &FixtureClosureUnion,
+) -> Result<FixtureClosureUnionObserved, String> {
+    let digest = fixture_closure_union_digest(&union.members);
+    let refuse = |cause: &str, what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause={cause} receipt=fixture_closure_union_emit_receipt \
+             members={} digest={digest} -- {what}",
+            union.members.len()
+        )
+    };
+    if !union.conflicts.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionConflict",
+            format!(
+                "paths recorded with two different contents in one run: {:?}",
+                union.conflicts
+            ),
+        ));
+    }
+    if union.members.is_empty() {
+        return Ok(FixtureClosureUnionObserved {
+            members: 0,
+            digest,
+            files: 0,
+            emit_diagnostics: 0,
+        });
+    }
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = union
+        .members
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let located = |d: &Rc<ErrorNode>| {
+        format!(
+            "module={} reason=`{}`",
+            d.module_name,
+            diagnostic_to_message(d.diagnostic.clone())
+        )
+    };
+    if v1_compiler_compile::emittable_graph(resolved.clone()).is_none() {
+        let blocking: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            })
+            .map(located)
+            .collect();
+        return Err(refuse(
+            "FixtureClosureUnionUncompilable",
+            format!(
+                "the union compile produced {} blocking diagnostics, so no member was rendered: {}",
+                blocking.len(),
+                blocking.join(" | ")
+            ),
+        ));
+    }
+    let compile_diagnostics = resolved.diagnostics.len();
+    let rendered = v1_compiler_compile::emit_resolved_for_target(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let emitted: Vec<&Rc<ErrorNode>> = rendered
+        .diagnostics
+        .iter()
+        .skip(compile_diagnostics)
+        .collect();
+    let refusals: Vec<String> = emitted
+        .iter()
+        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| located(d))
+        .collect();
+    if !refusals.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionEmitRefused",
+            format!(
+                "{} per-module emit refusals: {}",
+                refusals.len(),
+                refusals.join(" | ")
+            ),
+        ));
+    }
+    Ok(FixtureClosureUnionObserved {
+        members: union.members.len(),
+        digest,
+        files: rendered.files.len(),
+        emit_diagnostics: emitted.len(),
+    })
+}
+
+#[cfg(test)]
+mod fixture_closure_union_tests {
+    use super::*;
+
+    /// A union built the way a fixture compile builds its closure: the entry's imports resolved
+    /// over the live module index. The entry is given a corpus path (not [`FIXTURE_SOURCE_PATH`]),
+    /// so it is a MEMBER of the union, the way a corpus module reached by a fixture is.
+    fn union_with_member(path: &str, content: &str) -> FixtureClosureUnion {
+        let module_index = build_module_path_index_from_witness_roots();
+        let mut union = FixtureClosureUnion::default();
+        for source in resolve_virtual_source_with_imports(path, content, &module_index) {
+            union
+                .members
+                .insert(source.path.clone(), source.content.clone());
+        }
+        union
+    }
+
+    /// THE DISCRIMINATING RED: a union member whose own emission the rust emitter refuses
+    /// (`EffectfulSelfRecursionUnrealized`, the derived non-tail form exercised by
+    /// `test.claim.effectful_item_kind_collapse_witness_test`) refuses the receipt, typed and
+    /// located at that member's module.
+    #[test]
+    fn a_union_member_with_an_emit_refusal_refuses_the_floor() {
+        let union = union_with_member(
+            "dag/fixture_closure_union_control/efr_member.dag",
+            "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n",
+        );
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("an emit refusal in a union member must refuse the floor");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member"),
+            "refusal must be typed and located at the member: {refusal}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL: the same closure with the self-call in tail position is lowered to a
+    /// loop, so the union renders clean and every member owes a file.
+    #[test]
+    fn a_clean_union_renders_and_holds() {
+        let union = union_with_member(
+            "dag/fixture_closure_union_control/efr_member.dag",
+            "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n",
+        );
+        let members = union.members.len();
+        let observed = fixture_closure_union_emit_receipt(&union)
+            .unwrap_or_else(|refusal| panic!("a clean union must hold: {refusal}"));
+        assert_eq!(observed.members, members);
+        assert!(observed.files >= members, "{observed:?}");
+    }
+
+    /// One path recorded with two contents is refused, never resolved by picking one.
+    #[test]
+    fn a_path_recorded_with_two_contents_refuses() {
+        let mut union = FixtureClosureUnion::default();
+        union.conflicts.insert("dag/x.dag".to_string());
+        let refusal = fixture_closure_union_emit_receipt(&union).expect_err("conflict refuses");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionConflict"),
+            "{refusal}"
+        );
+    }
+
+    /// The recorder skips the fixture source itself and keeps a content conflict.
+    #[test]
+    fn the_recorder_excludes_the_fixture_and_keeps_conflicts() {
+        drop(take_fixture_closure_union());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        record_fixture_closure(&[
+            file("dag/a.dag", "module a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        record_fixture_closure(&[file("dag/a.dag", "module a2\n")]);
+        let union = take_fixture_closure_union();
+        assert_eq!(union.fixture_compiles, 2);
+        assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
+        assert!(union.conflicts.contains("dag/a.dag"));
     }
 }
