@@ -13,7 +13,8 @@ import gunbc.machine_intake_megarac_sensor_observation {
 }
 import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach }
 import gunbc.machine_intake_mtcollins1_power_on_account { SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.measure { byte_size_count }
 

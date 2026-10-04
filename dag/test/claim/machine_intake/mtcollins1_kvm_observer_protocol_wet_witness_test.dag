@@ -30,14 +30,14 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
   KvmStillHashed, KvmTeardownRecorded, KvmHandoffAdmitted, KvmHandoffRefused,
   KvmJournalEvent, KvmJournalNavigated, KvmJournalPageError, kvm_journal_events_at,
-  kvm_observer_launch_in, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, megarac_kvm_observer_finish,
+  kvm_observer_protocol_launch, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, megarac_kvm_observer_finish,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
 import extdeps.bmc.megarac { megarac_ui_features_json }
 import v2.std.algebra { any }
 
 // PROCESS-AND-PROTOCOL EVIDENCE, NOT HARDWARE EVIDENCE (eager-owl-205, 2026-09-28). Each control runs
-// the REAL held observer -- the same kvm_observer_launch_in, triggers, handoff admission and
+// the REAL held observer -- the same launcher (through kvm_observer_protocol_launch), triggers, handoff admission and
 // megarac_kvm_observer_finish the boot runs -- in headless Chromium against a loopback controller
 // (gunbc.bmc_megarac_web_transport) that ENFORCES the transition table gunbc.bmc_megarac_web_adapter
 // derives from gunbc.bmc_model against every actual request. It needs gunbc.runner_browser_toolchain
@@ -114,7 +114,7 @@ fn rig_with(w: BmcWorld, features_json: String) -> Rig {
         TransportServing { port: port, pid: _ } => {
           let obs = concat(dir, "/observer")
           let _made = shell.Mkdir.Parents(path: obs as FilePath)
-          kvm_observer_launch_in(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet", features_json: features_json)
+          kvm_observer_protocol_launch(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet", features_json: features_json)
         }
         TransportNotServing { cause: _ } => KvmObserverNotStarted { reason: "the loopback transport is not serving" }
       }
@@ -364,7 +364,7 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
   let dir = trim(s: made.path as String)
   match runner_browser_toolchain_here_wet() {
     BrowserToolchainReady { location: loc, standing: _ } => {
-      let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel", features_json: "")
+      let start = kvm_observer_protocol_launch(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel", features_json: "")
       let refused = match start {
         KvmObserverStarted { dir: d, subject: _, standing: st, checked_at: _ } => starts_with(s: d as String, prefix: "/") && match st { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
         _ => false

@@ -4,43 +4,42 @@ import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import product.placement_supply { HostIdentity }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
-import extdeps.bmc.megarac {
-  megarac_firmware_0_32, megarac_screen_capture_standing, KvmClientCanvasJpeg,
-  ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued, ScreenCaptureClientSideOnly,
-  ScreenCaptureServedOnDemand, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
-}
+import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
   ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts,
 }
-import gunbc.machine_intake_megarac_ui_features { megarac_ui_features }
+import gunbc.megarac_operation_standing {
+  MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
+  megarac_operation_grounded_at, megarac_current_build,
+}
+import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 
 // A MEGARAC-ONLY OPERATION ON A MANAGED HOST, ADMITTED FROM WHAT THE HOST'S CONTROLLER WAS OBSERVED TO
-// BE (docs/plans/managed-host-untangle.md, cut 3). The BMC stack is read, never assumed: the family and
-// the build come off the access observation gunbc.managed_host managed_host_binding bound, and a host
-// whose binding refuses -- its access unobserved, its controller not secured, its observed endpoint not
-// the secured one -- has no family to read and is refused here before any request. A bound controller
-// of another family is refused by family.
+// BE (docs/plans/managed-host-untangle.md, cut 3). The BMC stack is read, never assumed: the family,
+// baseboard and build come off the access observation gunbc.managed_host managed_host_binding bound,
+// and a host whose binding refuses -- its access unobserved, its controller not secured, its observed
+// endpoint not the secured one -- has no family to read and is refused here before any request. A bound
+// controller of another family is refused by family.
 //
-// THE BUILD IS PART OF THE ADMISSION, PER OPERATION. extdeps.bmc.megarac admits an operation row only as
-// executed, and every MegaRAC operation this fleet drives was executed on one build: the Foxconn Mt.
-// Collins controller reporting firmware 0.32. A second MegaRAC controller of another product line and
-// build -- Mt. Jade's reads as MegaRAC at 2.11 (gunbc.machine_intake_mtjade1_access_observation) -- is
-// a controller none of these operations was ever run against, so each operation names the build its
-// evidence is for and refuses every other build. Widening an operation to a build is an executed
-// request on that build, never an edit of this list.
-type MegaRacOperation
-  = MegaRacVirtualMediaAttach
-  | MegaRacKvmCanvasStill
-  | MegaRacSdrSocketNaming
-
-// THE CARRIER EVERY MEGARAC EFFECT IN THE BOOT CONSUMES. sole_constructor, and admit_megarac_host is its
-// only mint, so an endpoint, account and firmware reach a MegaRAC request only together, only from one
-// managed host's binding, and only for the operation that admission decided. firmware is not a second
-// reading: it is the observation's own identity.firmware, copied once at the mint so a consumer need not
-// re-walk the binding.
+// AN OPERATION IS ADMITTED ONLY WHERE IT IS GROUNDED. gunbc.megarac_operation_standing grounds an
+// operation at an observed controller identity -- baseboard and firmware together -- from committed
+// evidence (gunbc.machine_intake_megarac_operation_evidence): a receipt joined to a reading of that
+// build, or a route recovered from what that build served. A MegaRAC appliance of another product line
+// reporting the same raw version is refused, and so is Mt. Jade's MegaRAC at 2.11, which none of these
+// operations was ever run on.
+//
+// TWO ADMISSIONS, AND ONE OF THEM IS A DECLARED RUNG DROP (gunbc.rung_drop
+// megarac_operations_admitted_through_a_superseded_build_observation). admit_megarac_host grounds the
+// operation at the build the binding's access observation read, and that observation can be historical:
+// mtcollins1's reads 0.32 (2026-09-05) and the controller was reflashed to 0.45.3 on 2026-10-02.
+// admit_megarac_host_at_current_build is the gate that closes it -- it admits only when the observation
+// is the controller's CURRENT build and the operation is grounded at that build -- and it is built in
+// shadow: cutting production over to it refuses mtcollins1's boot until a reading of 0.45.3 and
+// executed evidence at it are committed, so the cut-over is one later transition (staging ruling C).
 type AdmittedMegaRacHost sole_constructor {
   binding: ManagedHostBinding
   operation: MegaRacOperation
@@ -51,63 +50,79 @@ type MegaRacHostRefusal
   = MegaRacHostNotManaged { host: NonEmptyStr }
   | MegaRacHostNotBound { standing: ManagedHostBindingStanding }
   | MegaRacHostNotMegaRac { family: BmcFirmwareFamily }
-  | MegaRacBuildNotExecuted { operation: MegaRacOperation, firmware: BmcFirmwareReleaseIdentity }
+  | MegaRacOperationNotGrounded { operation: MegaRacOperation, identity: BmcObservedIdentity }
+  | MegaRacObservationNotCurrent { observed: BmcFirmwareReleaseIdentity, current: BmcFirmwareReleaseIdentity }
+  | MegaRacCurrentBuildUnobserved { endpoint: BmcControllerEndpoint }
 
 type MegaRacHostAdmission
   = MegaRacHostAdmitted { host: AdmittedMegaRacHost }
   | MegaRacHostRefused { cause: MegaRacHostRefusal }
 
-// VIRTUAL MEDIA: the SP-X media rows of extdeps.bmc.megarac (megarac_op_media_config through
-// megarac_op_media_status) are the interface as executed on the Foxconn Mt. Collins build 0.32
-// (2026-08-29, and every boot since). SDR SOCKET NAMING: the "CPU<n>_" prefix that places a sensor on
-// a socket is that controller's own naming, read from its sdr elist capture
-// (gunbc.machine_intake_mtcollins1_32dimm_bringup_observation mtcollins1_sdr_capture), not from the
-// IPMI specification. Both are build 0.32 and nothing else.
-fn megarac_operation_executed_on(operation: MegaRacOperation, firmware: BmcFirmwareReleaseIdentity) -> Bool {
-  match operation {
-    MegaRacVirtualMediaAttach => bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32)
-    MegaRacSdrSocketNaming => bmc_firmware_release_identity_eq(a: firmware, b: megarac_firmware_0_32)
-    MegaRacKvmCanvasStill => megarac_kvm_still_catalogued(firmware: firmware)
-  }
+// THE ROSTER OF COMMITTED OPERATION EVIDENCE, one unit's rows per line, as managed_hosts is one row per
+// unit. The admission reads it and nothing else.
+fn megarac_operation_evidence() -> MegaRacOperationEvidence {
+  mtcollins1_megarac_operation_evidence()
 }
 
-// THE KVM STILL READS ITS BUILD FROM THE TWO CATALOGS IT ALREADY HAS, NOT A THIRD: the screen-capture
-// route must be the client-side canvas on this build (extdeps.bmc.megarac megarac_screen_capture_standing)
-// and the viewer's feature list must have been observed for it (gunbc.machine_intake_megarac_ui_features).
-fn megarac_kvm_still_catalogued(firmware: BmcFirmwareReleaseIdentity) -> Bool {
-  match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
-    ScreenCaptureFirmwareUncatalogued { firmware: _ } => false
-    ScreenCaptureFactKnown { firmware: _, standing: s } =>
-      match s {
-        ScreenCaptureClientSideOnly =>
-          match megarac_ui_features(firmware: firmware) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        ScreenCaptureServedOnDemand => false
-        ScreenCaptureEventRetainedOnly => false
-        ScreenCaptureAbsent => false
-      }
-  }
-}
+// THE FAMILY AND BINDING STEP BOTH ADMISSIONS SHARE: a bound MegaRAC controller's binding, or the refusal.
+type MegaRacBindingStep
+  = MegaRacBindingAdmissible { binding: ManagedHostBinding }
+  | MegaRacBindingRefused { cause: MegaRacHostRefusal }
 
-fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
+fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
   match managed_host_binding(host: host) {
-    ManagedHostBound { binding: b } => {
-      let firmware = b.observation.identity.firmware
-      match firmware.family {
-        AmiMegaRac =>
-          if megarac_operation_executed_on(operation: operation, firmware: firmware) {
-            MegaRacHostAdmitted { host: AdmittedMegaRacHost { binding: b, operation: operation, firmware: firmware } }
+    ManagedHostBound { binding: b } =>
+      match b.observation.identity.firmware.family {
+        AmiMegaRac => MegaRacBindingAdmissible { binding: b }
+        OpenBmc => MegaRacBindingRefused { cause: MegaRacHostNotMegaRac { family: OpenBmc } }
+      }
+    ManagedHostAccessUnobserved { endpoint: e } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
+    ManagedHostNotSecured { cause: c } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostNotSecured { cause: c } } }
+    ManagedHostEndpointMismatch { observed: o, secured: s } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+  }
+}
+
+fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission {
+  if megarac_operation_grounded_at(evidence: evidence, operation: operation, identity: identity) {
+    MegaRacHostAdmitted { host: AdmittedMegaRacHost { binding: binding, operation: operation, firmware: identity.firmware } }
+  } else {
+    MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: operation, identity: identity } }
+  }
+}
+
+// PRODUCTION, FROZEN UNDER THE DECLARED DROP: grounded at the build the binding's observation read.
+fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
+  admit_megarac_host_observed_in(evidence: megarac_operation_evidence(), host: host, operation: operation)
+}
+
+fn admit_megarac_host_observed_in(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
+  match megarac_binding_step(host: host) {
+    MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
+    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity)
+  }
+}
+
+// THE CURRENT-BUILD GATE (SHADOW). The controller's current build is the latest thing known of it: a
+// reading, or a transition recorded after the latest reading. A binding whose observation reads any
+// other build mints no carrier, and neither does a controller whose current build is known but unread
+// or not known at all. Only then is the operation looked up, at the CURRENT reading's identity.
+fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
+  match megarac_binding_step(host: host) {
+    MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
+    MegaRacBindingAdmissible { binding: b } => {
+      let observed = b.observation.identity.firmware
+      match megarac_current_build(evidence: evidence, endpoint: b.observation.endpoint) {
+        CurrentBuildUnobserved => MegaRacHostRefused { cause: MegaRacCurrentBuildUnobserved { endpoint: b.observation.endpoint } }
+        CurrentBuildKnownUnread { transition: t } =>
+          MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: t.to } }
+        CurrentBuildRead { reading: r } =>
+          if bmc_firmware_release_identity_eq(a: r.identity.firmware, b: observed) {
+            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity)
           } else {
-            MegaRacHostRefused { cause: MegaRacBuildNotExecuted { operation: operation, firmware: firmware } }
+            MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: r.identity.firmware } }
           }
-        OpenBmc => MegaRacHostRefused { cause: MegaRacHostNotMegaRac { family: OpenBmc } }
       }
     }
-    ManagedHostAccessUnobserved { endpoint: e } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
-    ManagedHostNotSecured { cause: c } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostNotSecured { cause: c } } }
-    ManagedHostEndpointMismatch { observed: o, secured: s } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
   }
 }
 
@@ -154,8 +169,11 @@ fn megarac_host_refusal_text(cause: MegaRacHostRefusal) -> NonEmptyStr {
     MegaRacHostNotManaged { host: h } => join(["'", h as String, "' is not a managed host (gunbc.managed_host managed_hosts has no row for it)"], "")
     MegaRacHostNotBound { standing: s } => megarac_binding_refusal_text(standing: s)
     MegaRacHostNotMegaRac { family: f } => join(["the controller is observed as ", megarac_family_text(family: f), ", not AMI MegaRAC"], "")
-    MegaRacBuildNotExecuted { operation: o, firmware: fw } =>
-      join(["MegaRAC ", megarac_operation_text(operation: o), " was never executed on firmware ", fw.raw_version as String], "")
+    MegaRacOperationNotGrounded { operation: o, identity: i } =>
+      join(["MegaRAC ", megarac_operation_text(operation: o), " is not grounded by committed evidence on this baseboard at firmware ", i.firmware.raw_version as String], "")
+    MegaRacObservationNotCurrent { observed: o, current: c } =>
+      join(["the access observation reads firmware ", o.raw_version as String, " but the controller's current build is ", c.raw_version as String], "")
+    MegaRacCurrentBuildUnobserved { endpoint: e } => join(["no reading of the build of the controller at ", e.host as String, " is committed"], "")
   }
   concat(why, "; controller untouched") as NonEmptyStr
 }

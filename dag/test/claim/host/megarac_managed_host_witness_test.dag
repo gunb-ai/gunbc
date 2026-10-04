@@ -8,13 +8,17 @@ import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, Bmc
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host {
   ManagedHost, managed_host_fixture, managed_hosts, ManagedHostAccessUnobserved, ManagedHostEndpointMismatch,
+  ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_account_driving,
 }
-import gunbc.megarac_managed_host {
-  MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
-  MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused,
-  MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacBuildNotExecuted,
-  admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text,
-}
+import extdeps.boards.types { BaseboardModel, GigabyteMp72Hb0 }
+import std.types { EpochMs }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.decl_ref { decl_ref }
+import v2.std.optional { Present, Absent }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
+import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -45,9 +49,13 @@ fn identity_with(o: BmcAccessObservation, firmware: BmcFirmwareReleaseIdentity) 
 }
 
 fn observation_with(o: BmcAccessObservation, host: String, firmware: BmcFirmwareReleaseIdentity) -> BmcAccessObservation {
+  observation_on(o: o, host: host, identity: identity_with(o: o, firmware: firmware))
+}
+
+fn observation_on(o: BmcAccessObservation, host: String, identity: BmcObservedIdentity) -> BmcAccessObservation {
   BmcAccessObservation {
     endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
-    identity: identity_with(o: o, firmware: firmware),
+    identity: identity,
     discovered_surfaces: o.discovered_surfaces,
     boot_control_routes: o.boot_control_routes,
     redfish_virtual_media_probe: o.redfish_virtual_media_probe,
@@ -101,7 +109,7 @@ test fn w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_oper
     BmcAccessObserved { observation: o } => {
       let other = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: o.endpoint.host as String, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11")) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
       refused_for_every_operation(h: other, refused: a => match a {
-        MegaRacHostRefused { cause: MegaRacBuildNotExecuted { operation: _, firmware: fw } } => (fw.raw_version as String) == "2.11"
+        MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: i } } => (i.firmware.raw_version as String) == "2.11"
         _ => false
       })
     }
@@ -132,4 +140,97 @@ test fn w_a_host_that_is_not_managed_is_refused_for_every_operation() -> Bool {
     MegaRacHostRefused { cause: MegaRacHostNotManaged { host: x } } => (x as String) == "mtjade1"
     _ => false
   }) && count(managed_hosts()) == 1
+}
+
+// RED: ANOTHER PRODUCT LINE REPORTING THE SAME BUILD. The real row's binding is kept and its observed
+// baseboard becomes a Gigabyte MP72-HB0 at MegaRAC 0.32: family and raw version match the Mt. Collins
+// controller exactly, and every operation still refuses, because none was grounded on that baseboard.
+test fn w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let other = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_on(o: o, host: o.endpoint.host as String, identity: BmcObservedIdentity { baseboard: GigabyteMp72Hb0, chassis_part_number: none, firmware: o.identity.firmware }) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      (o.identity.firmware.raw_version as String) == "0.32"
+        && refused_for_every_operation(h: other, refused: a => match a {
+          MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: i } } => i.baseboard == GigabyteMp72Hb0
+          _ => false
+        })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+fn fixture_evidence(label: String) -> EvidenceRef {
+  EvidenceRef { label: label as NonEmptyStr, digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }) }
+}
+
+// RED (THE CURRENT-BUILD GATE, SHADOW): THE REAL ROW, A READING OF ITS OBSERVED 0.32 BUILD, EXECUTED
+// EVIDENCE AT 0.32, AND A LATER RECORDED TRANSITION TO 0.45.3. The production admission would admit it
+// (that is the declared drop); the current-build gate mints no carrier for any operation and names the
+// two builds, before any request.
+test fn w_a_historical_observation_beside_a_known_later_build_mints_no_carrier() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let ev = MegaRacOperationEvidence {
+        readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "historical reading"), observed_at: 1000)],
+        receipts: [],
+        transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
+        recoveries: [],
+      }
+      megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: op) {
+        MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } => (ob.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
+        _ => false
+      })
+    }
+  })
+}
+
+// THE SHADOW GATE'S CONTROL: when the latest reading IS the observed build and the operation was
+// executed at it, the gate admits -- so the refusal above is the transition's, not the gate's default.
+test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let ev = MegaRacOperationEvidence {
+        readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "current reading"), observed_at: 5000)],
+        receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: o.endpoint, receipt: fixture_evidence(label: "run"), executed_at: 6000)],
+        transitions: [],
+        recoveries: [],
+      }
+      (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacVirtualMediaAttach) { MegaRacHostAdmitted { host: _ } => true  MegaRacHostRefused { cause: _ } => false })
+        && (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true  _ => false })
+    }
+  })
+}
+
+// THE COMMITTED EVIDENCE THROUGH THE SHADOW GATE, as the staged cut-over will see it today: mtcollins1's
+// only build reading is the 2026-09-05 0.32 observation and the 2026-10-02 reflash is recorded after it,
+// so every operation refuses as not current -- which is why production is not cut over yet.
+test fn w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current() -> Bool {
+  managed_hosts() |> all(h => megarac_operations |> all(op =>
+    match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: op) {
+      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: _, current: c } } => (c.raw_version as String) == "0.45.3"
+      _ => false
+    }))
+    && count(managed_hosts()) == 1
+}
+
+// RED: ONE HOST'S ACCOUNT CANNOT BE DRIVEN AT ANOTHER CONTROLLER. The real lookup releases the account
+// only to a caller driving the controller the binding observed; a caller naming another endpoint gets
+// nothing, and a row whose secured account sits beside another controller's access releases nothing to
+// either controller.
+test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let lookup = managed_host_binding_for(host: h.host as NonEmptyStr)
+      let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let crossed_lookup = ManagedHostFound { standing: managed_host_binding(host: crossed) }
+      (match managed_host_account_driving(lookup: lookup, endpoint: o.endpoint) { Present { value: a } => (a as String) == "gunbc"  Absent => false })
+        && (match managed_host_account_driving(lookup: lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: o.endpoint) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: managed_host_binding_for(host: "mtjade1"), endpoint: o.endpoint) { Present { value: _ } => false  Absent => true })
+    }
+  })
 }

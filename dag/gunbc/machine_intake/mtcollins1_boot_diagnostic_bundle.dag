@@ -28,7 +28,8 @@ import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site
 import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
 import gunbc.machine_intake_megarac_sensor_observation { MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming, megarac_sensor_table_text, megarac_sensor_anomalies }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { MegaRacSdrSocketNaming, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
   RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,

@@ -37,7 +37,8 @@ import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_st
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir }
 import gunbc.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.megarac_managed_host { MegaRacKvmCanvasStill, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff, MtCollins1HandoffResult, handoff_not_issued }

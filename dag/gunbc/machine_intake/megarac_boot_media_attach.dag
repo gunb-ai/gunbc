@@ -7,10 +7,8 @@ import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
-import gunbc.megarac_managed_host {
-  AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacVirtualMediaAttach,
-  admit_megarac_host, megarac_host_refusal_text,
-}
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MediaAttachAttempted,
   MediaAttachNotAttempted,

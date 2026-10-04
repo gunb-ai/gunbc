@@ -4,7 +4,7 @@ import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -20,7 +20,8 @@ import extdeps.bmc.megarac {
   ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
   ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing,
 }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
 import v2.std.optional { Present, Absent }
@@ -893,7 +894,11 @@ fn megarac_kvm_observer_start(
 
 // THE LAUNCH OVER A BASE URL. The boot passes https://<bmc>; the protocol controls pass a local
 // transport. `host` is the host:port the established line must name.
-fn kvm_observer_launch(dir: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart {
+fn kvm_observer_launch(dir: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "megarac_kvm_observer_start"),
+  ]
+{
   let made = shell.Mkdir.Parents(path: dir as FilePath)
   if !made.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
@@ -906,7 +911,12 @@ fn kvm_observer_launch(dir: String, base_url: String, host: String, username: No
 // reads the journal, stills and triggers from and writes the stop request to. A relative directory
 // passed as both working directory and operand would be resolved twice -- <dir>/<dir>/journal -- and the
 // boot and the observer would address different files.
-fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart {
+fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_launch"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_protocol_launch"),
+  ]
+{
   let resolved = shell.Path.Canonical(path: dir_given as FilePath)
   if !resolved.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be resolved: ", concat(dir_given, concat(": ", trim(s: resolved.stderr)))) as NonEmptyStr }
@@ -936,6 +946,20 @@ fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, use
   let subject = KvmObserverSubject { host: host, attempt: attempt }
   let standing = kvm_await_standing(dir: dir, subject: subject, remaining: kvm_polls_within(wait: megarac_kvm_observer_establish_wait))
   KvmObserverStarted { dir: dir as NonEmptyStr, subject: subject, standing: standing, checked_at: clock_now_probed_at_or_unknown() }
+}
+
+// THE PROTOCOL TESTS' LAUNCH, AND ONLY THEIRS. The production launch takes its endpoint and account
+// from an admitted MegaRAC carrier (megarac_kvm_observer_start) and is sealed to it; the protocol
+// witnesses drive the same observer against a local transport they stand up themselves, which has no
+// managed host behind it. This facade is the one door for that, admitted to those witness functions by
+// name, so no production caller reaches the launcher with a raw host and account.
+fn kvm_observer_protocol_launch(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "rig_with"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "a_relative_observer_directory_is_resolved_once"),
+  ]
+{
+  kvm_observer_launch_in(dir_given: dir_given, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt, features_json: features_json)
 }
 
 // A TRIGGER: one file the observer consumes and answers with one still or one acquisition failure,

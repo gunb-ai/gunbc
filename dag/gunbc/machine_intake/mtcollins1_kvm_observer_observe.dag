@@ -11,7 +11,8 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet }
 import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseNotOwned, OwnedNotRecorded, OwnedForeign, owned_process_release, owned_release_text }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacKvmCanvasStill, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }

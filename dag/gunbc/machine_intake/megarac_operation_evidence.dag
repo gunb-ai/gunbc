@@ -1,0 +1,119 @@
+module gunbc.machine_intake_megarac_operation_evidence
+
+import std.types { EpochMs, List, NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.decl_ref { decl_ref }
+import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.megarac_operation_standing {
+  MegaRacOperationEvidence, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition, megarac_operation_source_recovery,
+}
+import gunbc.machine_intake_mtcollins1_access_observation {
+  mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
+}
+import gunbc.machine_intake_mtcollins1_diskless_boot_receipt {
+  mtcollins1_diskless_boot_artifact_path, mtcollins1_diskless_boot_capture_digest, mtcollins1_diskless_boot_observed_at,
+}
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
+
+// THE COMMITTED EVIDENCE OF WHICH MEGARAC OPERATIONS RAN ON WHICH CONTROLLER BUILD, one row per capture
+// (gunbc.megarac_operation_standing joins them). Every row cites a committed artifact by path and
+// digest, except the reflash, whose record is the session that performed it. Adding a controller, or a
+// later build of this one, is a row here beside the capture that grounds it -- never an edit of the
+// join or of the admission.
+//
+// MT. COLLINS UNIT 1, AS OF THIS WRITING:
+//   - BMC 0.32 (Foxconn Mt. Collins), read by the 2026-09-05 intake observation. Virtual media ran on it
+//     (the 2026-09-06 diskless boot) and an SDR read with its CPU<n>_ names ran on it (2026-09-11). The
+//     KVM canvas still's route was recovered from the UI bundle that build served on 2026-09-27; no
+//     committed still from that build exists, so it is grounded as recovered, not as executed.
+//   - Reflashed to BMC 0.45.3 on 2026-10-02 (the firmware converge's recorded credential effect).
+//   - Fleet-converge run 37102391062, 2026-10-03, about 21 h after the reflash, committed its media
+//     attach (diagnostics), its KVM journal with five sha256-bound stills, and a BMC sensor read. Those
+//     are receipts of a run, and NO READING OF THE 0.45.3 BUILD IS COMMITTED: the read-only probe
+//     (mc info / hpm check) is owed. Until it lands as a reading row these receipts join no build, so
+//     no operation is grounded at 0.45.3.
+//   - That run's sensor read was taken with the host off: every CPU0_ and CPU1_ record answered "No
+//     Reading", but the SDR RECORD NAMES are present in the capture, which is what socket naming reads.
+//     So the receipt evidences the naming, not only that a read executed; it still grounds nothing at
+//     0.45.3 until the build is read.
+
+data mtcollins1_intake_reading_evidence: EvidenceRef = EvidenceRef {
+  label: "mtcollins1 intake capture and write exercise (gunbc.machine_intake_mtcollins1_access_observation mtcollins1_evidence_manifest_digest)",
+  digest: mtcollins1_evidence_manifest_digest,
+}
+
+data mtcollins1_diskless_boot_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_diskless_boot_artifact_path,
+  digest: mtcollins1_diskless_boot_capture_digest,
+}
+
+data mtcollins1_sdr_32dimm_evidence: EvidenceRef = EvidenceRef {
+  label: mtcollins1_sdr_capture.artifact_path,
+  digest: mtcollins1_sdr_capture.digest,
+}
+
+// 2026-09-11T00:00:00Z: the 32-DIMM capture names its day, not its instant.
+data mtcollins1_sdr_32dimm_read_on: EpochMs = 1789084800000
+
+data megarac_served_bundle_0_32_evidence: EvidenceRef = EvidenceRef {
+  label: "https://192.168.1.228/source.min.js as served by mtcollins1's BMC 0.32 (gunbc.machine_intake_megarac_served_ui_catalog_observation; bytes not committed)",
+  digest: Sha256Hash(Sha256Digest { hex: megarac_source_min_js_sha256_2026_09_27 as String }),
+}
+
+// 2026-09-27T00:00:00Z: the bundle read names its day.
+data megarac_served_bundle_0_32_read_on: EpochMs = 1790467200000
+
+data mtcollins1_run_37102391062_diagnostics: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/mtcollins1-boot-run-37102391062/mtcollins1-boot-diagnostics.txt",
+  digest: Sha256Hash(Sha256Digest { hex: "d76d874395e4b809a6d70ccbccb4d941012391feeb14e7a8a2241befbf56b2d2" }),
+}
+
+data mtcollins1_run_37102391062_kvm_journal: EvidenceRef = EvidenceRef {
+  label: "artifacts/bmc/mtcollins1-boot-run-37102391062/kvm/journal",
+  digest: Sha256Hash(Sha256Digest { hex: "357c2410a75c2f46e5679bc17f2c5fa46d2444e3379756037adfa57aaf75557c" }),
+}
+
+// The diagnostics' handoff look answered at 1791016730385 with the medium presented, the journal's
+// established line is at 2026-10-03T08:38:30.837Z, and the diagnostics' end-of-attempt look at
+// 1791016934906 bounds the sensor read, which the capture does not timestamp.
+data mtcollins1_run_37102391062_media_at: EpochMs = 1791016730385
+data mtcollins1_run_37102391062_kvm_at: EpochMs = 1791016710837
+data mtcollins1_run_37102391062_sensors_by: EpochMs = 1791016934906
+
+// THE 2026-10-02 REFLASH. The vendor names the release 0.45.3 (extdeps.ampere.mt_collins_firmware_release
+// mt_collins_bmc_0_45_3_hpm); what the controller reports for it is the probe's to read, and a reading
+// row supersedes this name as the current build the moment it lands.
+data mtcollins1_reflash_not_before: EpochMs = 1790899200000
+data mtcollins1_reflash_not_after: EpochMs = 1790985600000
+
+fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
+  MegaRacOperationEvidence {
+    readings: [
+      megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
+    ],
+    receipts: [
+      megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_diskless_boot_evidence, executed_at: mtcollins1_diskless_boot_observed_at),
+      megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_sdr_32dimm_evidence, executed_at: mtcollins1_sdr_32dimm_read_on),
+      megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_media_at),
+      megarac_operation_receipt(operation: MegaRacKvmCanvasStill, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_kvm_journal, executed_at: mtcollins1_run_37102391062_kvm_at),
+      megarac_operation_receipt(operation: MegaRacSdrSocketNaming, endpoint: mtcollins1_endpoint, receipt: mtcollins1_run_37102391062_diagnostics, executed_at: mtcollins1_run_37102391062_sensors_by),
+    ],
+    transitions: [
+      megarac_firmware_transition(
+        endpoint: mtcollins1_endpoint,
+        from: mtcollins1_firmware,
+        to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"),
+        not_before: mtcollins1_reflash_not_before,
+        not_after: mtcollins1_reflash_not_after,
+        record: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "credential_effect_of"),
+      ),
+    ],
+    recoveries: [
+      megarac_operation_source_recovery(operation: MegaRacKvmCanvasStill, identity: mtcollins1_identity, source: megarac_served_bundle_0_32_evidence, read_at: megarac_served_bundle_0_32_read_on),
+    ],
+  }
+}

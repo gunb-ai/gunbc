@@ -11,7 +11,8 @@ import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_access_observation,
   mtcollins1_capability_row,
 }
-import gunbc.managed_host { managed_host_bound_account }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_oob_boot_handoff {
   BootControlIssued,
   BootHandoffNotAdmitted,
@@ -53,7 +54,7 @@ data mtcollins1_cdrom_selection: IpmiBootSelection = aarch64_uefi_once_boot_sele
 // "admin" and never a second spelling of "gunbc". Password remains a caller file-path argument
 // on mtcollins1_netboot_handoff / mtcollins1_cdrom_handoff (CLI names unchanged). Absent means
 // the host is not a bound managed host (no BmcSecured, or access names another controller); the wrappers refuse before any controller write.
-data mtcollins1_bmc_username: NonEmptyStr? = managed_host_bound_account(host: operator_host_mtcollins1 as NonEmptyStr)
+data mtcollins1_bmc_username: NonEmptyStr? = managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint)
 
 // THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment. The first draft
 // read it from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with

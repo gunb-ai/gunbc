@@ -1,7 +1,8 @@
 module test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test
 
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.megarac_managed_host { MegaRacSdrSocketNaming, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming }
 import gunbc.machine_intake_megarac_sensor_observation { SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming }
 import gunbc.machine_intake_megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

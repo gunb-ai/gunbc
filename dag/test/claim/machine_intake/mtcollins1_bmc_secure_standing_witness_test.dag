@@ -1,6 +1,7 @@
 module test.claim.machine_intake_mtcollins1_bmc_secure_standing_witness_test
 
-import gunbc.managed_host { managed_host_bound_account }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import std.types { Bool, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -71,7 +72,7 @@ test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
                       observation: observation,
                       policy: intake_qualification_policy(environment: DevelopmentAndTest),
                     )
-                    && match managed_host_bound_account(host: operator_host_mtcollins1 as NonEmptyStr) {
+                    && match managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint) {
                       Present { value: account } => account == r.account
                       Absent => false
                     }
