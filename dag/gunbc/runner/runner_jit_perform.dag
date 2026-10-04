@@ -139,6 +139,7 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
   decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+  decl_ref(module_path: "test.claim.long.runner_qualification_dispatch_production_workflow_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
 ] {
   match plan_jit_mint(
     binding: binding,

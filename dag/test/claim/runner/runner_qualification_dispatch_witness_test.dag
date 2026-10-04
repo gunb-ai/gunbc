@@ -89,10 +89,9 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 // minted name (ephemeral_slot_unit), and the floor job's name; the dispatch sends exactly the declared
 // input with a label the slot registered; the effect names fleet-converge.yml in gunbc_repository at
 // the pinned revision; the expectation the collection judges against is derived from that subject.
-// The production wrapper qualification_dispatch_subject only supplies fleet_converge_workflow to
-// this same mint; evaluating that whole generated model costs ~600k eval steps, so whether today's
-// model refuses is not asserted here -- the floor admission it would reach is exercised above at
-// its own interface, and the wrapper's consumer is the boot leg's route fold (wiring_owed).
+// The production wrapper qualification_dispatch_subject, over the real fleet_converge_workflow, is
+// its own claim in the long tier (test.claim.long.runner_qualification_dispatch_production_workflow_witness):
+// building that generated model costs ~600k eval steps per claim, which is the measured reason.
 test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>

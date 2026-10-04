@@ -1,0 +1,68 @@
+module test.claim.long.runner_qualification_dispatch_production_workflow_witness
+
+import std.types { Bool, CommitSha, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.managed_host { managed_hosts, managed_host_binding }
+import gunbc.runner.runner_host_unit_slot { host_unit_slot_for }
+import gunbc.runner_jit_mint { HostUnitSlotBinding }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome }
+import gunbc.runner.runner_qualification_dispatch {
+  qualification_selected_workflow, qualification_dispatch_subject,
+  QualificationSubjectAdmitted, QualificationSubjectRefused, SubjectAttemptInputUndeclared,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRODUCTION WRAPPER OVER THE REAL GENERATED WORKFLOW, AND WHY IT IS IN THE LONG TIER.
+//
+// gunbc.runner.runner_qualification_dispatch qualification_dispatch_subject is the production mint:
+// it supplies gunbc.fleet_converge_workflow fleet_converge_workflow to the sealed subject mint. This
+// claim runs it end to end -- the route's JIT mint over the first real managed host, delivered
+// through upstream's 201 fold -- and asserts the ROUTE of today's refusal: the generated
+// fleet-converge model declares no runner_attempt_label input, so the subject refuses at the input
+// check (SubjectAttemptInputUndeclared), before any floor job is read. When the boot leg lands the
+// qualification mode there, this claim turns red and is replaced by the admitted case.
+//
+// THE COST IS THE WORKFLOW VALUE, NOT THE MINT. Measured by the required floor (claim eval steps):
+// with this refusal folded into the module's real-path claim, that claim cost 602,837 eval steps
+// (run 37193378129); the earlier claim carrying three JIT mints, five subject-mint calls and the same
+// refusal cost 604,048 (run 37188293613). The 1,211-step difference is two mints and four subject
+// calls, so ~600k is building fleet_converge_workflow, once per claim -- inherent to reading the real
+// generated model, not a repeated derivation. It exceeds the 72,300-step new-witness budget by
+// construction, so it is homed here under DESIGN section 3's pairing obligation rather than shrunk;
+// the module's own witness (test.claim.runner_qualification_dispatch_witness) keeps the real mint and
+// sealed subject path in budget and exercises the floor admission at its interface.
+
+data attempt: NonEmptyStr = "q-1"
+data branch: NonEmptyStr = "main"
+data revision: CommitSha = "1111111111111111111111111111111111111111"
+
+test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } =>
+      match dispatch_jit_mint(
+        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: branch)) },
+        authority: app_credential,
+        control_plane: observed_grant(perms: runner_grant),
+        organization: gunbai_org_ref,
+        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: branch)),
+        attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+      ) {
+        JitMintDispatchAuthorized { dispatch: d } =>
+          match qualification_dispatch_subject(
+            dispatch: d,
+            delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome),
+            floor_job_id: "qualification-floor",
+            branch: branch,
+            revision: revision,
+          ) {
+            QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: i } } => i == "runner_attempt_label"
+            _ => false
+          }
+        JitMintDispatchRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
