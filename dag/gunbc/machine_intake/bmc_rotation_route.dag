@@ -132,7 +132,7 @@ fn rotation_route_from_citation(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
-    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "lockout_verdict"),
   ]
 {
   BmcRotationRouteStanding {
