@@ -3391,7 +3391,9 @@ fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
         TypeNode { connective: Instantiation } =>
           Node {
             kind: t.kind,
-            children: list_map(xs: t.children, f: fn(e) { Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) } }),
+            children: fold(t.children, init: Empty, f: fn(acc, e) {
+              list_snoc_item(xs: acc, item: Edge { label: e.label, target: infer_type_alias_normalized(t: e.target, declarations: declarations) })
+            }),
             occurrence_id: t.occurrence_id
           }
         TypeNode { connective: _ } => t
