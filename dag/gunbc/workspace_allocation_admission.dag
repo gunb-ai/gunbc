@@ -88,17 +88,9 @@ fn workspace_request_admit(
         policy: policy, deployment_policy: deployment_policy, observed_at: observed_at,
         route_path: "/allocations", action: ServeActionCreateAllocation, csrf_presented: csrf_presented)
       match decision {
-        Permit =>
-          if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: expires_at) { WorkspaceRequestPolicyRefused { reason: "canonical UTC lease instants required" } }
-          else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_bound_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
-          else { match workspace_profile_parse(value: profile_wire) {
-            Absent => WorkspaceRequestPolicyRefused { reason: "choose a supported workspace profile" }
-            Present { value: selected_profile } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
-              owner: session.principal, idempotency_key: idempotency_key.value,
-              profile: selected_profile, image: pinned_image, public_key_ref: enrolled_public_key_ref,
-              expires_at: expires_at, policy: workspace_policy_ref(),
-            } }
-          } }
+        Permit => workspace_request_compose(owner: session.principal, observed_at: observed_at, expires_at: expires_at,
+          idempotency_key: idempotency_key, profile_wire: profile_wire, pinned_image: pinned_image,
+          enrolled_public_key_ref: enrolled_public_key_ref)
         Deny { refusal: r } => WorkspaceRequestAdmissionRefused { decision: Deny { refusal: r } }
       }
     }
@@ -106,4 +98,22 @@ fn workspace_request_admit(
     SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
     AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
   }
+}
+
+// The request-shape policy every producer shares once its owner is authorized: canonical lease
+// instants within the lease bound and a supported profile. Ownership is the caller's admitted
+// principal; image, key and lease policy are server authorities, never caller-chosen.
+fn workspace_request_compose(owner: PrincipalRef, observed_at: Timestamp, expires_at: Timestamp,
+  idempotency_key: WorkspaceAllocationId, profile_wire: String,
+  pinned_image: NonEmptyStr, enrolled_public_key_ref: NonEmptyStr) -> WorkspaceRequestAdmission {
+  if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: expires_at) { WorkspaceRequestPolicyRefused { reason: "canonical UTC lease instants required" } }
+  else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_bound_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
+  else { match workspace_profile_parse(value: profile_wire) {
+    Absent => WorkspaceRequestPolicyRefused { reason: "choose a supported workspace profile" }
+    Present { value: selected_profile } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
+      owner: owner, idempotency_key: idempotency_key.value,
+      profile: selected_profile, image: pinned_image, public_key_ref: enrolled_public_key_ref,
+      expires_at: expires_at, policy: workspace_policy_ref(),
+    } }
+  } }
 }
