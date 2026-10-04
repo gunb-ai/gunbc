@@ -51,6 +51,7 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
+import gunbc.fleet.mtcollins_firmware_converge { hpm_check_converge_reader_frontier_rows }
 import extdeps.linux.usb_gadget { configfs_attr_write_realization_frontier_rows, configfs_rmdir_absent_as_converged_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
@@ -128,6 +129,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cr1000a_delegated_prefix_length_scalar_frontier_rows,
     cr1000a_expires_in_ui_text_frontier_rows,
     sha256_verify_native_transport_frontier_rows,
+    hpm_check_converge_reader_frontier_rows,
     configfs_attr_write_realization_frontier_rows,
     configfs_rmdir_absent_as_converged_frontier_rows,
     pin_frontier_rows,

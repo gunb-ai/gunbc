@@ -215,6 +215,43 @@ fn capability_alias_output_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a fold accumulator never annotates a declaration's own formals (v1.compiler.emit_rust
+// type_node_has_closure_unbound_generic_atom). A fold whose init is a bare constructor carries the
+// parametric DECLARATION as its accumulator type, so the closure was annotated with its formals --
+// `acc: Rc<ControlOutcome<ok, err>>`, E0425 on `ok` and `err`, the shape of extdeps.dns.domain_name
+// parse_dns_label_list folding from `Ok { value: .. }`. The formals are lowercase on purpose: the
+// rendered-string spurious-generic check only recognised single uppercase letters.
+type ControlOutcome<ok, err> = ControlGood { value: ok } | ControlBad { value: err }
+
+fn control_sum_until_negative(xs: List<Int>) -> ControlOutcome<Int, String> {
+  fold(xs, init: ControlGood { value: 0 }, f: (acc, x) => match acc {
+    ControlBad { value: e } => ControlBad { value: e }
+    ControlGood { value: n } => if x < 0 { ControlBad { value: "negative" } } else { ControlGood { value: n + x } }
+  })
+}
+
+fn control_outcome_good_value(o: ControlOutcome<Int, String>) -> Int {
+  match o {
+    ControlGood { value: n } => n
+    ControlBad { value: _ } => 0 - 1
+  }
+}
+
+fn control_outcome_is_bad(o: ControlOutcome<Int, String>) -> Bool {
+  match o {
+    ControlGood { value: _ } => false
+    ControlBad { value: _ } => true
+  }
+}
+
+fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "fold_constructor_init_sums_all_nonnegative", held: control_outcome_good_value(o: control_sum_until_negative(xs: [1, 2, 3])) == 6 },
+    NativeEmissionCase { identity: "fold_constructor_init_red_negative_switches_arm", held: control_outcome_is_bad(o: control_sum_until_negative(xs: [1, 0 - 2, 3])) },
+    NativeEmissionCase { identity: "fold_constructor_init_red_empty_keeps_init", held: control_outcome_good_value(o: control_sum_until_negative(xs: [])) == 0 }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -236,11 +273,14 @@ data native_emission_expected_identities: List<String> = [
   "effectful_fold_step_red_seen_counts_elements",
   "effectful_fold_step_red_empty_keeps_init",
   "capability_alias_output_octet_in_range",
-  "capability_alias_output_red_octet_out_of_range"
+  "capability_alias_output_red_octet_out_of_range",
+  "fold_constructor_init_sums_all_nonnegative",
+  "fold_constructor_init_red_negative_switches_arm",
+  "fold_constructor_init_red_empty_keeps_init"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases())
+  concat(concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

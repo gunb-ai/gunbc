@@ -95,6 +95,7 @@ import gunbc.rung_drop.live_deploy_dark_install_render_new_witness_eval_step_cos
 import gunbc.rung_drop.roadmap_live_forecast_new_witness_eval_step_cost { roadmap_live_forecast_new_witness_eval_step_cost }
 import gunbc.rung_drop.roadmap_page_style_new_witness_eval_step_cost { roadmap_page_style_new_witness_eval_step_cost }
 import gunbc.rung_drop.dag_emit_round_trip_new_witness_eval_step_cost { dag_emit_round_trip_new_witness_eval_step_cost }
+import gunbc.rung_drop.dag_text_round_trip_nested_bind_new_witness_eval_step_cost { dag_text_round_trip_nested_bind_new_witness_eval_step_cost }
 import gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor { dag_emit_real_grammar_round_trips_off_floor }
 import gunbc.rung_drop.app_attest_interpreted_crypto_new_witness_eval_step_cost { app_attest_interpreted_crypto_new_witness_eval_step_cost }
 import gunbc.rung_drop.mtcollins1_boot_matrix_new_witness_eval_step_cost { mtcollins1_boot_matrix_new_witness_eval_step_cost }
@@ -236,6 +237,7 @@ data rung_drop_roster: List<RungDrop> = [
   match_arm_binder_typing_lost_to_lexical_carrier,
   fixture_closure_corpus_emit_refusals_lost_as_passenger,
   native_serve_request_budget_unrealized,
+  dag_text_round_trip_nested_bind_new_witness_eval_step_cost,
   mtcollins1_bmc_secure_standing_predates_reflash,
 ]
 

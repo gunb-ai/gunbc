@@ -2,7 +2,7 @@ module gunbc.spark.serving_subject
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.serving_arm_placement { glm_group_b_serving_arm }
 
