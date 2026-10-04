@@ -4424,6 +4424,23 @@ pub(crate) fn floor_ts() -> String {
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
 }
 
+pub(crate) fn floor_color_enabled() -> bool {
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+    if std::env::var("GUNBC_FLOOR_COLOR")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal()
+        || std::env::var("GITHUB_ACTIONS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+}
+
 /// Live realization view: stream affected witnesses to stderr as they finish, one colored
 /// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
 /// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color

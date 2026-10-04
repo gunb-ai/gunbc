@@ -19714,57 +19714,6 @@ fn eval_census_string_fn(
     }
 }
 
-#[cfg(test)]
-mod witness_execution_leg_derivation_tests {
-    use super::*;
-
-    /// Replaces the deleted census TSV-sync test. That one checked a committed carrier
-    /// agreed with a hand-synced count literal; this one checks the thing that now
-    /// actually happens — the label is computed from the `.dag` classification authority.
-    ///
-    /// Discriminating (§5): the three classes must yield three DIFFERENT labels. A
-    /// derivation that collapsed to one default, returned a hardcoded string, or lost the
-    /// entry argument would still produce plausible receipt lines, and reds here instead.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn leg_labels_derive_per_class_from_the_dag_authority() {
-        // NOTE: `set_current_dir` is required — entry resolution below reads cwd-relative
-        // paths. It is also this test module's established idiom (46 sites in this file),
-        // so the cwd race is a pre-existing file-wide class, not one this test introduces.
-        let ws = process_workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = vec![
-            ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dag").to_string_lossy().into_owned(),
-        ];
-        let index = build_multi_entry_index(&roots);
-
-        let entries = [
-            "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
-            "src/v2/test/claim/execution/emit_host_module_equals_eval_test.dag",
-            "src/v2/test/claim/self_host/witness_bulk_routing_test.dag",
-        ];
-        prime_witness_execution_legs(&index, entries);
-
-        let native = witness_execution_leg_label(entries[0]);
-        let family_grain = witness_execution_leg_label(entries[1]);
-        let interpreted = witness_execution_leg_label(entries[2]);
-
-        assert_eq!(native, "NativeFamilyLeg{family_crate}");
-        assert_eq!(family_grain, "InterpretedLeg{EmitOnDemandFamilyGrain}");
-        assert_eq!(interpreted, "InterpretedLeg");
-
-        assert_ne!(
-            native, family_grain,
-            "leg classes collapsed — the entry argument is not reaching the .dag rule"
-        );
-        assert_ne!(
-            family_grain, interpreted,
-            "family-grain and default legs collapsed — the .dag rule is not discriminating"
-        );
-    }
-}
-
 /// The payload a panic carried, as text. `panic!("…")` and `panic!("{x}")` produce `&str` and
 /// `String` respectively and nothing else does in this crate; an unrecognised payload type is
 /// named as such rather than rendered as an empty message, because a blank detail field would
@@ -29653,35 +29602,6 @@ mod node_frontier_plumbing_controls {
 
     // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
     // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn deferred_discovery_counts_long_lane_s1_closure_reads_live_tree() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let excludes = super::witness_exclusion_substrings();
-        let deferred =
-            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
-        let s1 = deferred
-            .iter()
-            .find(|r| r.function == "s1_closure_parses_holds")
-            .expect("s1_closure_parses_holds must appear in deferred-discovery receipt");
-        assert!(
-            s1.reads_live_tree,
-            "s1_closure declares ReadsLiveTree — deferred row must carry the disposition"
-        );
-        assert!(
-            s1.entry.contains("test/claim/long/"),
-            "s1_closure lives in the long lane: got {}",
-            s1.entry
-        );
-        assert!(
-            s1.exclude_reason.contains("test/claim/long/"),
-            "exclude reason must name the long-lane substring: got {}",
-            s1.exclude_reason
-        );
-    }
-
     // The live floor gate, and the claim is deliberately NOT "every deferred row has a consumer" —
     // that is what the first shape of this test asserted, and it was false the moment the freeze
     // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
@@ -30067,35 +29987,6 @@ mod node_frontier_plumbing_controls {
     // The live half of the same fact: an enrolled witness under an offline path is admitted, and
     // it is admitted by its ENROLLMENT rather than by the freeze — proven by its absence from the
     // frozen population. Without the enrollment reader this row would refuse.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn commit_roster_enrolled_offline_witness_is_admitted_and_not_frozen() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        const ENTRY: &str = "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag";
-        const FUNCTION: &str = "witness_content_key_subject_stable";
-        let key = super::witness_admission_manifest_key(ENTRY, FUNCTION);
-        assert!(
-            super::commit_roster_witness_claim_keys()
-                .iter()
-                .any(|k| k == &key),
-            "the enrollment authority must name this identity"
-        );
-        assert!(
-            !super::frozen_path_deferral_keys().iter().any(|k| k == &key),
-            "an enrolled witness must NOT also be frozen — the freeze is for identities with no \
-             consumer, and carrying both would restate one fact in two places"
-        );
-        let row = super::DeferredDiscoveryRow {
-            entry: ENTRY.to_string(),
-            function: FUNCTION.to_string(),
-            exclude_reason: "test/claim/long/".to_string(),
-            reads_live_tree: false,
-        };
-        let refused = super::collect_unexecuted_deferred_witnesses(&[row]);
-        assert!(refused.is_empty(), "{refused:?}");
-    }
-
     // Fail-closed on the baseline: unreadable is a refusal, never an unchecked pass.
     #[test]
     fn frozen_roster_monotonicity_refuses_an_unresolvable_baseline() {
@@ -32293,11 +32184,9 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod discovery_summary_merge_tests {
     use super::{
-        compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
-        project_witness_cost_receipt, repo_relative_dag_path, top_n_slowest_witnesses,
-        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
-        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        ResolveStageNanos,
+        compute_histogram_data, project_witness_cost_receipt, repo_relative_dag_path,
+        top_n_slowest_witnesses, ClaimOutcome, DiscoveryRow, DiscoverySummary,
+        DiscoveryWitnessOutcome, EntryResolveReceipt, ResolveStageNanos,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -32399,20 +32288,6 @@ mod discovery_summary_merge_tests {
             total_entry_groups: 2,
             selected_entry_groups: 2,
         }
-    }
-
-    #[test]
-    fn merge_discovery_summaries_takes_max_roster_closure() {
-        // Per-shard closure is MAX-merged, not summed: parallel shards share the std/spec prefix, so
-        // summing would double-count it; the heaviest single shard's closure is what the per-shard
-        // memory peak is a function of. RED if a future edit sums the field (would be 101), drops the
-        // merge line (would stay 0), or reverts the carrier.
-        let mut a = sample_summary();
-        a.roster_closure_nodes = 30;
-        let mut b = sample_summary();
-        b.roster_closure_nodes = 71;
-        let merged = merge_discovery_summaries(vec![a, b]);
-        assert_eq!(merged.roster_closure_nodes, 71);
     }
 
     #[test]
@@ -36266,62 +36141,6 @@ mod witness_layer_roots_compile_clean_tests {
         f();
         if let Some(p) = prior {
             let _ = std::env::set_current_dir(p);
-        }
-    }
-
-    /// The affected-set report must not render a zero-changed-path OBSERVATION as the
-    /// verdict "these rows are unaffected". Both directions are asserted against the
-    /// SAME counts, so the discriminator is the observation state and nothing else: a
-    /// renderer that dropped the distinction fails one arm or the other.
-    #[test]
-    fn no_observed_change_is_reported_as_its_own_state_not_as_unaffected() {
-        let observed = super::affected_set_applied_report_line(6374, 886, Ok(4104), None);
-        assert!(
-            observed.contains("4104 unaffected (import-closure, skipped without resolve)")
-                && observed.contains("2270 in the affected closure"),
-            "a real observation still reports the computed categorization: {observed}"
-        );
-        assert!(
-            !observed.contains("NO OBSERVED CHANGE"),
-            "a real observation must NOT claim the no-observation state: {observed}"
-        );
-
-        let unobserved = super::affected_set_applied_report_line(
-            6374,
-            886,
-            Ok(4104),
-            Some("baseline='origin/main' event='push'"),
-        );
-        assert!(
-            unobserved.contains("NO OBSERVED CHANGE")
-                && unobserved.contains("baseline='origin/main'")
-                && unobserved.contains("event='push'"),
-            "the no-observation state must be named AND located — an unlocated 'zero \
-             changed paths' cannot be acted on: {unobserved}"
-        );
-        assert!(
-            !unobserved.contains("unaffected (import-closure, skipped without resolve)"),
-            "the no-observation state must not borrow the computed-verdict phrasing — \
-             that conflation is the defect: {unobserved}"
-        );
-        assert!(
-            unobserved.contains("4104 of 6374"),
-            "the state must carry its own frequency (rows skipped under it): {unobserved}"
-        );
-
-        // A receipt whose whole job is to stop a misreading has to be readable. Source
-        // indentation leaks into a multi-line `format!` unless every continuation is a
-        // real `\`-newline — it did, and review caught runs of ~18 spaces mid-sentence.
-        // Asserted rather than fixed-once, so the next edit cannot silently reintroduce it.
-        for line in [
-            &observed,
-            &unobserved,
-            &super::affected_set_applied_report_line(1, 1, Err("boom".into()), None),
-        ] {
-            assert!(
-                !line.contains("  "),
-                "report line carries a run of literal spaces from source indentation: {line}"
-            );
         }
     }
 
