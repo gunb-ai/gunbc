@@ -4,12 +4,23 @@ import std.types { Int, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.color.srgb { Srgb8, RgbScaled, hsl_to_rgb_scaled, srgb8_to_scaled, srgb8_to_scaled_for_max }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.w3.org/TR/WCAG22/#dfn-relative-luminance"
   }
+}
+
+// Reading: WCAG 2.2's relative-luminance definition owns the linearization constants (0.03928 knee, /12.92, /1.055+0.055, exponent 2.4); fn rgb_scaled_luminance implements exactly that formula, so the function is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.accessibility.wcag_contrast", decl_name: "rgb_scaled_luminance", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Cited upstream: W3C WCAG 2.2, definitions of relative luminance and contrast ratio (retrieved
