@@ -611,6 +611,24 @@ test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
   fps_root_data_projection_reading().resolve_refused_unbound
 }
 
+// THE POSITIVE CONTROL THE ROW ABOVE WAS WAITING FOR. A module-level `data` value is a value, so `cfg.tree`
+// resolves as a projection off it: resolve accepts and the resolved tree carries the projection node.
+test fn fps_a_root_bound_data_value_projects_holds() -> Bool {
+  let r = fps_root_data_projection_reading()
+  r.resolves && r.resolved_carries_projection
+}
+
+// THE RED THAT KEEPS THE CLIMB SCOPED TO VALUES. A root-bound TYPE is a declaration, not a value, so a path
+// through it is a qualified name; `Box.tree` names no declaration and must still refuse unbound rather than
+// be read as a projection off the type.
+fn fps_root_type_projection_source() -> Outcome<ResolvedTree> {
+  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f() -> Int {\n  Box.tree\n}\n")
+}
+
+test fn fps_a_root_bound_type_projected_as_value_refuses_holds() -> Bool {
+  fps_reading_of(o: fps_root_type_projection_source()).resolve_refused_unbound
+}
+
 // BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading
 // decides between a qualified DECLARATION NAME and a value FIELD PROJECTION from the head's ScopeBinding,
 // and the two forms are qualified in one place because the defect was never in either arm -- it was in a
