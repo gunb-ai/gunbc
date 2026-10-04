@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -50,47 +49,47 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // with the name dropped. Three controls must resolve: literal and string lists, an empty list and a
 // nullary call, and declared names in the same positions -- so reading an argument whole is not by
 // itself a refusal. The plain-name module is the neighbour main already read, refusing on both sides.
-data cav_list_named_source: String = "module v2.test.cav_list_named\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: [cav_undeclared_list_named]) }\n"
+data cav_list_named_source: String = "module v2.test.cav_list_named\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: [cav_undeclared_list_named]) }\n"
 
-data cav_list_positional_source: String = "module v2.test.cav_list_positional\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h([cav_undeclared_list_positional]) }\n"
+data cav_list_positional_source: String = "module v2.test.cav_list_positional\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h([cav_undeclared_list_positional]) }\n"
 
-data cav_call_named_source: String = "module v2.test.cav_call_named\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_undeclared_call_named), b: true) }\n"
+data cav_call_named_source: String = "module v2.test.cav_call_named\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_undeclared_call_named), b: true) }\n"
 
-data cav_call_list_source: String = "module v2.test.cav_call_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: true, b: cav_h(xs: [cav_undeclared_call_list])) }\n"
+data cav_call_list_source: String = "module v2.test.cav_call_list\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: true, b: cav_h(xs: [cav_undeclared_call_list])) }\n"
 
-data cav_call_positional_source: String = "module v2.test.cav_call_positional\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(cav_t(p: cav_undeclared_call_positional)) }\n"
+data cav_call_positional_source: String = "module v2.test.cav_call_positional\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(cav_t(p: cav_undeclared_call_positional)) }\n"
 
-data cav_record_source: String = "module v2.test.cav_record\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: cav_undeclared_record }) }\n"
+data cav_record_source: String = "module v2.test.cav_record\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: cav_undeclared_record }) }\n"
 
-data cav_record_list_source: String = "module v2.test.cav_record_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: [cav_undeclared_record_list] }) }\n"
+data cav_record_list_source: String = "module v2.test.cav_record_list\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: CavRecord { f: [cav_undeclared_record_list] }) }\n"
 
-data cav_group_source: String = "module v2.test.cav_group\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: (cav_undeclared_group)) }\n"
+data cav_group_source: String = "module v2.test.cav_group\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_h(xs: (cav_undeclared_group)) }\n"
 
-data cav_literals_source: String = "module v2.test.cav_literals\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_h(xs: \"a\")) }\n"
+data cav_literals_source: String = "module v2.test.cav_literals\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_h(xs: \"a\")) }\n"
 
-data cav_empty_list_source: String = "module v2.test.cav_empty_list\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(), b: 2) }\n"
+data cav_empty_list_source: String = "module v2.test.cav_empty_list\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(), b: 2) }\n"
 
-data cav_declared_inside_source: String = "module v2.test.cav_declared_inside\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\ndata cav_declared: Bool = true\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_declared), b: cav_h(xs: CavRecord { f: cav_declared })) }\n"
+data cav_declared_inside_source: String = "module v2.test.cav_declared_inside\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\ndata cav_declared: Bool = true\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: cav_t(p: cav_declared), b: cav_h(xs: CavRecord { f: cav_declared })) }\n"
 
-data cav_plain_name_source: String = "module v2.test.cav_plain_name\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_undeclared_plain) }\n"
+data cav_plain_name_source: String = "module v2.test.cav_plain_name\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { cav_g(a: 1, b: cav_undeclared_plain) }\n"
 
-data cav_paren_call_operand_source: String = "module v2.test.cav_paren_call_operand\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (cav_t(p: cav_undeclared_paren_call)) }\n"
+data cav_paren_call_operand_source: String = "module v2.test.cav_paren_call_operand\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (cav_t(p: cav_undeclared_paren_call)) }\n"
 
-data cav_paren_call_declared_source: String = "module v2.test.cav_paren_call_declared\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (cav_t(p: c)) }\n"
+data cav_paren_call_declared_source: String = "module v2.test.cav_paren_call_declared\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (cav_t(p: c)) }\n"
 
-data cav_caret_operand_source: String = "module v2.test.cav_caret_operand\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { ^cav_left == ^cav_right }\n"
+data cav_caret_operand_source: String = "module v2.test.cav_caret_operand\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { ^cav_left == ^cav_right }\n"
 
-data cav_as_cast_operand_source: String = "module v2.test.cav_as_cast_operand\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (c as Bool) }\n"
+data cav_as_cast_operand_source: String = "module v2.test.cav_as_cast_operand\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool { c == (c as Bool) }\n"
 
-data cav_else_less_if_source: String = "module v2.test.cav_else_less_if\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  if c {\n    return true\n  }\n  false\n}\n"
+data cav_else_less_if_source: String = "module v2.test.cav_else_less_if\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  if c {\n    return true\n  }\n  false\n}\n"
 
-data cav_match_scrutinee_source: String = "module v2.test.cav_match_scrutinee\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_t(p: cav_undeclared_scrutinee) {\n    true => c\n    false => c\n  }\n}\n"
+data cav_match_scrutinee_source: String = "module v2.test.cav_match_scrutinee\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_t(p: cav_undeclared_scrutinee) {\n    true => c\n    false => c\n  }\n}\n"
 
-data cav_scrutinee_call_source: String = "module v2.test.cav_scrutinee_call\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_t(p: c) {\n    true => c\n    false => c\n  }\n}\n"
+data cav_scrutinee_call_source: String = "module v2.test.cav_scrutinee_call\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_t(p: c) {\n    true => c\n    false => c\n  }\n}\n"
 
-data cav_scrutinee_multiline_source: String = "module v2.test.cav_scrutinee_multiline\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_g(\n    a: c,\n    b: cav_t(p: c)\n  ) {\n    true => c\n    false => c\n  }\n}\n"
+data cav_scrutinee_multiline_source: String = "module v2.test.cav_scrutinee_multiline\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match cav_g(\n    a: c,\n    b: cav_t(p: c)\n  ) {\n    true => c\n    false => c\n  }\n}\n"
 
-data cav_nested_match_arm_source: String = "module v2.test.cav_nested_match_arm\n\nimport v2.std.logic { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match c {\n    true =>\n      match cav_t(p: c) {\n        true => c\n        false => c\n      }\n    false => c\n  }\n}\n"
+data cav_nested_match_arm_source: String = "module v2.test.cav_nested_match_arm\n\nimport std.types { Bool }\n\ntype CavRecord { f: Bool }\n\nfn cav_h(xs: Bool) -> Bool { xs }\n\nfn cav_g(a: Bool, b: Bool) -> Bool { a }\n\nfn cav_t(p: Bool) -> Bool { p }\n\nfn cav_probe(c: Bool) -> Bool {\n  match c {\n    true =>\n      match cav_t(p: c) {\n        true => c\n        false => c\n      }\n    false => c\n  }\n}\n"
 
 fn cav_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

@@ -12,6 +12,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Unavailable,
+  diagnostics_fatal_reason,
   invariant_port_locus
 }
 import v2.std.grammar_choice_ambiguity {
@@ -22,14 +23,13 @@ import v2.compiler.self_host.frontier_probe_assemble_detail {
   assemble_rejection_cause_from_parse_stage,
   frontier_probe_assemble_detail_from_parse_stage,
   frontier_probe_assemble_detail_from_rejection_with_overlap_stage,
-  frontier_probe_assemble_located_reason_from_diagnostics,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
   FrontierProbeDetailAbsent,
   GrammarChoiceOverlap,
-  MaskedAssembleRefusal,
+  OtherAssembleRefusal,
   NoFrontierProbeDetail,
   ProbeStageEmit,
   frontier_probe_receipt_without_assemble_detail,
@@ -37,7 +37,6 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.std.optional { Absent, Present, optional_absent, optional_present }
 import v2.std.algebra { Cons, Empty, length }
-import v2.std.logic { Bool }
 
 fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
   GrammarChoiceAmbiguityRow {
@@ -80,36 +79,55 @@ test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
   }
 }
 
-test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> Bool {
-  let row = sample_overlap_row()
-  let cause = assemble_rejection_cause_from_parse_stage(
-    d: NonEmptyParseStageDiagnostics {
-      head: overlap_residue_stage_diagnostic(row: row),
-      tail: [
-        ParseStageDiagnostic {
-          diagnostic: Diagnostic {
-            reason: ^normalize_rejected,
-            at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^normalize_rejected),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          },
-          evidence: NoParseDiagnosticEvidence
-        }
-      ]
-    }
-  )
-  match cause {
-    MaskedAssembleRefusal {
-      overlap_evidence: overlap_rows,
-      remaining_chain: chain
-    } =>
-      match overlap_rows {
-        NonEmptyGrammarChoiceAmbiguityRows {
-          head: bound,
-          tail: Empty
-        } => (bound.production == row.production)
-          && (chain.head == ^normalize_rejected)
-          && (length(xs: chain.tail) == 0)
+fn residue_headed_stage_chain(row: GrammarChoiceAmbiguityRow, fatal: Symbol) -> NonEmptyParseStageDiagnostics {
+  NonEmptyParseStageDiagnostics {
+    head: overlap_residue_stage_diagnostic(row: row),
+    tail: [
+      ParseStageDiagnostic {
+        diagnostic: Diagnostic {
+          reason: fatal,
+          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: fatal),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        },
+        evidence: NoParseDiagnosticEvidence
       }
+    ]
+  }
+}
+
+// THE PROGRAM'S RED CONTROL AT THE ASSEMBLE CAUSE. Two refusals share the overlap residue as their
+// head and differ in their fatal cause; the cause reader must report the two distinct fatals.
+// Reading the head (or masking on it) gave both the same residue-shaped answer.
+test fn a_shared_residue_head_yields_each_chains_own_fatal_cause_holds() -> Bool {
+  let row = sample_overlap_row()
+  let a = assemble_rejection_cause_from_parse_stage(d: residue_headed_stage_chain(row: row, fatal: ^normalize_rejected))
+  let b = assemble_rejection_cause_from_parse_stage(d: residue_headed_stage_chain(row: row, fatal: ^body_lowering_reason_wrapper_retained_emitted))
+  match a {
+    OtherAssembleRefusal { reason: ra } =>
+      match b {
+        OtherAssembleRefusal { reason: rb } =>
+          (ra == ^normalize_rejected) && (rb == ^body_lowering_reason_wrapper_retained_emitted)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE RENDERING KEEPS THE HEAD. The receipt's rejection_chain is the whole chain in order, so the
+// advisory head stays visible to an operator while the cause above is the fatal element.
+test fn a_residue_headed_receipt_chain_keeps_the_advisory_head_holds() -> Bool {
+  let row = sample_overlap_row()
+  let stage = residue_headed_stage_chain(row: row, fatal: ^normalize_rejected)
+  let receipt = frontier_probe_receipt_from_assemble_rejection(
+    module_path: "src/v2/compiler/example.dag",
+    diagnostics: non_empty_diagnostics_from_parse_stage(d: stage),
+    detail: FrontierProbeDetailAbsent,
+    overlap_residue_stage: optional_present(value: stage)
+  )
+  match receipt.assemble_detail {
+    AssembleRejectionDetail { rejection_chain: chain, cause: OtherAssembleRefusal { reason: r }, at: _ } =>
+      (chain.head == ^parse_grammar_choice_overlap_residue) && (r == ^normalize_rejected)
+        && (receipt.located_reason == ^normalize_rejected)
     _ => false
   }
 }
@@ -194,7 +212,7 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
       }
     ]
   }
-  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: masked)
+  let located = diagnostics_fatal_reason(d: masked)
   located == ^body_lowering_reason_wrapper_retained_emitted
 }
 
@@ -207,7 +225,7 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
     },
     tail: Empty
   }
-  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
+  let located = diagnostics_fatal_reason(d: overlap_only)
   located == ^parse_grammar_choice_overlap_residue
 }
 
@@ -226,5 +244,5 @@ test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
       }
     ]
   }
-  frontier_probe_assemble_located_reason_from_diagnostics(d: masked) == ^resolve_module_not_found
+  diagnostics_fatal_reason(d: masked) == ^resolve_module_not_found
 }
