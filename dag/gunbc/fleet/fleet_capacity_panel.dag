@@ -5,7 +5,7 @@ import std.markup { Fragment }
 import std.measure { ByteSize, byte_size_count, gibibyte_scale_factor_bytes }
 import gunbc.site.markup { txt, el_class }
 import extdeps.languages.css.values { css_ch, css_length_wire }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, provider_kind_label }
 import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, host_width_binding_label }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }

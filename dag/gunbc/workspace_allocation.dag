@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count, Minute, minute, minutes_per_hour, minute_to_second, second_count }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.budget { MoneyAccount }
 import gunbc.workspace_money_codec { workspace_money_json, workspace_money_from_json }

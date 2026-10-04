@@ -2,7 +2,7 @@ module gunbc.spark.vllm_rank_population
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 
 // THE LAW THAT DECIDES WHETHER A SET OF OBSERVED WORKERS IS THE UNIT IT CLAIMS TO BE.
 //

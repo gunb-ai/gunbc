@@ -2,7 +2,7 @@ module test.claim.compile_permit_scope_observe_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { hardware_thread_count, hardware_thread_count_value }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_fifo_path_from_makeflags }
 import gunbc.compile_permit_scope {
