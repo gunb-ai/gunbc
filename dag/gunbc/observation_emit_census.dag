@@ -246,7 +246,7 @@ data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
 
 data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-drain]" as NonEmptyStr,
-  producer: seed_producer(decl_name: "emit_floor_drain_receipt"),
+  producer: seed_producer_in(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "typed_module_cache_cap_derivation"),
   consumption: unresolved_after_in_repo_search(),
   disposition: CountedFrontierSite {
     reason: "schedule-retention / typed-cache drain diagnostics born after the initial census snapshot — retention kit instrumentation, not yet an observation projection" as NonEmptyStr,

@@ -3218,14 +3218,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn discovery_skip_before_resolve_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER,
-            "cli_run_discovery_skip_before_resolve"
-        );
-    }
-
-    #[test]
     fn exclusive_cost_partition_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_EXCLUSIVE_COST_PARTITION_SCAFFOLD_MARKER,
@@ -7279,29 +7271,6 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     }
 }
 
-// HAND-RUST HOST PER-ENTRY COLD-RESOLVE ELISION — `cli_run_discovery_skip_before_resolve`.
-// The entry_file_touched axis uses `entry_file_touched_via_import_closure` (host rendering
-// of `v2.lens.module_graph.entry_affected_by_touched_paths`), which is the consolidated §3
-// authority per the 2026-09-05 replacement migration. The skip-before-resolve logic itself
-// is a PERFORMANCE optimization (eliding cold resolve for entries the diff cannot affect),
-// not a selection mechanism. Its dissolve-on is the modeled `floor_kernel_precompute_would_skip`
-// in `.dag` (ROADMAP `2-provenance-ingest`), which is separate from the §3 consolidation and
-// is not discharged by this change.
-// Receipt: `rg cli_run_discovery_skip_before_resolve src/v1/stage0/src/cli_run.rs` == 1 until
-// deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in module census).
-pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
-    "cli_run_discovery_skip_before_resolve";
-
-/// Module names for one entry at the loader both-closure grain (no resolve) — shared by
-/// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
-fn collect_import_closure_module_names_from_facts(
-    index: &MultiEntryIndex,
-    entry_path: &str,
-    out: &mut HashSet<String>,
-) -> Result<(), String> {
-    collect_both_closure_module_names_for_entry(index, entry_path, out)
-}
-
 fn entry_has_edited_test_fn_in_entry(diff_edits: &FloorDiffEdits, entry_path: &str) -> bool {
     diff_edits
         .edited_test_fns
@@ -7366,13 +7335,6 @@ fn entry_eligible_for_discovery_skip_before_resolve(
         return Ok(false);
     }
     Ok(true)
-}
-
-struct DiscoveryEntryResolve {
-    ctx: v1_interpreter::InterpContext,
-    closure_subject: String,
-    resolve_nanos: u128,
-    stage_nanos: ResolveStageNanos,
 }
 
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
@@ -15512,22 +15474,6 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
     }
 }
 
-fn p1_matrix_cell() -> Option<char> {
-    let raw = std::env::var("GUNBC_P1_MATRIX_CELL")
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_uppercase();
-    if raw.is_empty() {
-        return None;
-    }
-    let cell = raw.chars().next()?;
-    if matches!(cell, 'A' | 'B' | 'C' | 'D') {
-        Some(cell)
-    } else {
-        None
-    }
-}
-
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
 /// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
@@ -15712,22 +15658,6 @@ fn shared_get_typed(
             SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice()).map(Some)
         }
         None => Ok(None),
-    }
-}
-
-/// Accumulate the authored module names of a set of typed modules into `out`.
-///
-/// This is the closure-size primitive: `|out|` after folding every graph a shard resolved is the
-/// distinct-module count of that shard's union closure. It reads the resolved graph, so it is a
-/// fact about the source snapshot — unlike `typecheck_compute_count()`, which reads a cumulative
-/// per-thread miss counter and therefore reports a closure size only when the thread started cold.
-fn collect_typed_module_names(
-    modules: impl IntoIterator<Item = Rc<TypedModule>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    out: &mut HashSet<String>,
-) {
-    for m in modules {
-        out.insert(authored_name_at(source_indices.clone(), m.module.clone()));
     }
 }
 
@@ -19693,25 +19623,6 @@ pub fn seed_runner_bool_false_failure_detail(
     append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
     append_witness_verdict_diagnostic_loudness(&mut detail, ctx, witness_function);
     detail
-}
-
-const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
-    "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
-
-fn eval_census_string_fn(
-    ctx: &v1_interpreter::InterpContext,
-    fn_name: &str,
-    entry: &str,
-) -> Result<String, String> {
-    let args = [(Some("entry".to_string()), str_value(entry.to_string()))];
-    match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
-        Ok(Value::Str(ref s)) => Ok(s.to_string()),
-        Ok(other) => Err(format!(
-            "{fn_name}({entry:?}) returned {}, expected String",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("{fn_name}({entry:?}): {e}")),
-    }
 }
 
 /// The payload a panic carried, as text. `panic!("…")` and `panic!("{x}")` produce `&str` and
@@ -27402,115 +27313,6 @@ fn discovery_rows_runtime_dependency_touched_count(
 // Step 5 (`affected-set-precompute-pruning (plan doc deleted 2026-08-28)`) when the Rust parallel
 // (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
-fn entry_qualifies_for_skip_without_resolve(
-    entry_path: &str,
-    reads_live_tree: bool,
-    facts: &ModuleGraphFactsLive,
-    declared_paths: &HashSet<String>,
-    touched_entry_paths: &[String],
-    stop_line_changed_paths: &[String],
-    diff_edits: &FloorDiffEdits,
-) -> Result<bool, String> {
-    // Fail-closed on the substrate-declared disposition (v2.std.live_tree): a
-    // `ReadsLiveTree` entry never predict-skips. Replaces the deleted entry-text
-    // classifier's per-function `witness_test_fn_uses_live_host_scan` scan; the
-    // disposition is entry-grain, so one flag decides the whole entry.
-    if reads_live_tree {
-        return Ok(false);
-    }
-    if diff_edits
-        .edited_test_fns
-        .iter()
-        .any(|(file, _)| diff_file_matches_entry(file, entry_path))
-    {
-        return Ok(false);
-    }
-    if diff_edits
-        .touched_entry_files
-        .iter()
-        .any(|file| diff_file_matches_entry(file, entry_path))
-    {
-        return Ok(false);
-    }
-    if entry_file_touched_via_import_closure(
-        entry_path,
-        facts,
-        declared_paths,
-        touched_entry_paths,
-    )? {
-        return Ok(false);
-    }
-    if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
-        return Ok(false);
-    }
-    let declared_axis = declared_source_refs_axis_for_entry(
-        entry_path,
-        facts,
-        &default_source_roots(),
-        touched_entry_paths,
-    );
-    if declared_axis != DeclaredSourceRefAxis::Absent {
-        if declared_source_refs_blocks_skip(declared_axis) {
-            return Ok(false);
-        }
-    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
-        return Ok(false);
-    }
-    if compile_clean_broad_stop_line_blocks_skip(entry_path, stop_line_changed_paths) {
-        return Ok(false);
-    }
-    if !diff_edits.overlapping_data_items.is_empty() {
-        let data_item_files: Vec<String> = diff_edits
-            .overlapping_data_items
-            .iter()
-            .map(|(file, _)| file.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
-        if entry_file_touched_via_import_closure(
-            entry_path,
-            facts,
-            declared_paths,
-            &data_item_files,
-        )? {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn discovery_entry_fast_skip_without_resolve(
-    rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
-    declared_paths: &HashSet<String>,
-    touched_entry_paths: &[String],
-    stop_line_changed_paths: &[String],
-    diff_edits: &FloorDiffEdits,
-) -> Result<HashSet<String>, String> {
-    // Entry-grain disposition: OR the rows' `reads_live_tree` per entry (they agree by
-    // construction — one declaration per entry file — but OR fails closed if they ever diverge).
-    let mut by_entry: HashMap<String, bool> = HashMap::new();
-    for row in rows {
-        let live = by_entry.entry(row.entry.clone()).or_insert(false);
-        *live = *live || row.reads_live_tree;
-    }
-    let mut fast = HashSet::new();
-    for (entry, reads_live_tree) in by_entry {
-        if entry_qualifies_for_skip_without_resolve(
-            &entry,
-            reads_live_tree,
-            facts,
-            declared_paths,
-            touched_entry_paths,
-            stop_line_changed_paths,
-            diff_edits,
-        )? {
-            fast.insert(entry);
-        }
-    }
-    Ok(fast)
-}
-
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
 /// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
 /// a genuinely elided resolve stays elided (the skip path must never be the heavy path).
@@ -27736,59 +27538,6 @@ pub fn expand_explicit_witness_entries(
     explicit_entries: &[(String, String)],
 ) -> Result<Vec<(String, String)>, String> {
     test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
-}
-
-/// The ONE line that stands in for every routine witness the fold swallowed.
-///
-/// It emits from `finalize_discovery_summary`, and both halves of that placement were learned the
-/// hard way. Not from `run_discovery_rows`, which runs per entry-group: emitting there produced
-/// 1,112 summaries of one witness each on a real floor — a per-witness line wearing a batch's name
-/// — plus 1,112 resolves of the render module, which put batch 1 over its wall clamp. And not from
-/// `merge_discovery_summaries` either, because the merge is an ARGUMENT to finalize, so
-/// `deferred_rows` is still empty there and the line printed `0 deferred` on a run with 1,078 of
-/// them — a displayed zero standing where the fold had not looked, which is the exact claim this
-/// summary was rewritten to stop making. Finalize is where the summary is complete, and it is also
-/// the one point every path passes through, including the serial path that never merges.
-///
-/// Emitted only when the fold ran: with folding off every witness already printed, and a summary
-/// would be a second telling of the same thing.
-fn emit_batch_summary(merged: &DiscoverySummary) {
-    if !floor_stream_enabled() || !routine_rollup_folds() {
-        return;
-    }
-    let deferred = merged.deferred_rows.len() as u64;
-    // This is not the required floor's narrower unexpected-claim-failure population:
-    // DiscoverySummary::failures also includes non-Bool, runtime-error, unresolved-tool,
-    // timeout, panic, and not-attempted rows. Its denominator is the discovery-row population.
-    let discovery_rows_failed = merged.failures.len() as u64;
-    // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
-    // six plan batches emits four of these, all carrying the same label, because merge time is
-    // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
-    // scope here. The population is passed so the lines are at least distinguishable by what they
-    // covered, and the identity stays honest by not being invented.
-    // Dissolve-on: the summary moves to the floor-plan batch lifecycle and carries the plan's real
-    // run and batch segments.
-    match render_batch_summary_line(
-        0,
-        "witness discovery",
-        merged.total as u64,
-        merged.passed as u64,
-        merged.skipped as u64,
-        deferred,
-        discovery_rows_failed,
-        merged.total_measured_nanos as u64,
-    ) {
-        Some(line) => eprintln!("{line}"),
-        // Fail-closed: the routine lines are already gone, so a silent return would render a batch
-        // that ran thousands of witnesses as one that printed nothing at all.
-        None => eprintln!(
-            "::error::observation render unavailable: could not render the batch summary through \
-             gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
-             folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
-             deferred={deferred} discovery_rows_failed={discovery_rows_failed})",
-            merged.passed, merged.skipped
-        ),
-    }
 }
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
@@ -28767,12 +28516,8 @@ new file mode 100644
                 continue;
             }
             let mut closure_modules = HashSet::new();
-            super::collect_import_closure_module_names_from_facts(
-                &index,
-                &rel,
-                &mut closure_modules,
-            )
-            .expect("carrier census entry resolve");
+            super::collect_both_closure_module_names_for_entry(&index, &rel, &mut closure_modules)
+                .expect("carrier census entry resolve");
             for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
                 if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
                     lying.push((rel.clone(), (*carrier).to_string()));
@@ -29537,69 +29282,11 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn skip_without_resolve_fast_path_eligible_outside_import_closure() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let fixture_abs = abs(&ws, FIXTURE);
-        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
-        let declared = index.module_graph_facts.declared_repo_paths();
-        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        // Substrate-only fixture (reads_live_tree=false) → eligible when unaffected.
-        assert!(
-            super::entry_qualifies_for_skip_without_resolve(
-                &fixture_abs,
-                false,
-                &index.module_graph_facts,
-                &declared,
-                &touched_paths,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "unaffected entry must qualify for skip-before-resolve when diff is outside import closure"
-        );
-    }
-
     // Discriminating RED control (§5 never-skip tooth): a `ReadsLiveTree` entry must NEVER
     // qualify for skip-before-resolve, even in the exact unaffected-diff case that WOULD skip
     // a substrate-only entry. If the `reads_live_tree` guard in
     // `entry_qualifies_for_skip_without_resolve` is removed/bypassed, this goes red — the
     // fail-open (a live-tree witness predicted-skipped → never runs → false green) is caught.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn live_tree_entry_never_qualifies_for_skip_without_resolve() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let fixture_abs = abs(&ws, FIXTURE);
-        // Same unaffected diff as the eligible test above (outside the import closure).
-        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
-        let declared = index.module_graph_facts.declared_repo_paths();
-        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        assert!(
-            !super::entry_qualifies_for_skip_without_resolve(
-                &fixture_abs,
-                true,
-                &index.module_graph_facts,
-                &declared,
-                &touched_paths,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "a ReadsLiveTree entry must NOT qualify for skip-before-resolve even when the diff is outside its import closure (never predict-skip)"
-        );
-    }
-
     // §5 deferred-discovery receipt: long-lane witnesses (s1_closure class) are excluded
     // from per-PR discovery but must be COUNTED in the floor log — never a silent skip.
     // The live floor gate, and the claim is deliberately NOT "every deferred row has a consumer" —
@@ -36921,48 +36608,6 @@ mod witness_layer_roots_compile_clean_tests {
             ),
             "broad stop-line must block shard-a on repair receipt"
         );
-    }
-
-    /// #7915 production-path receipt: data-item-only edits populate `overlapping_data_items`
-    /// (not `touched_entry_files`), so the stop-line must read the full name-status list —
-    /// not the filtered entry-path set — or shard_a fast-skips through the defect.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn stop_line_data_only_dag_edit_blocks_shard_a_fast_skip() {
-        with_workspace_cwd(|| {
-            let index = build_multi_entry_index(&default_source_roots());
-            let mut diff_edits = FloorDiffEdits::default();
-            diff_edits.overlapping_data_items.insert((
-                "dag/extdeps/systems/nvidia.dag".to_string(),
-                "nvidia_catalog_row".to_string(),
-            ));
-            diff_edits.overlapping_data_items.insert((
-                "dag/test/claim/generated_artifact_drift_test.dag".to_string(),
-                "drift_fixture".to_string(),
-            ));
-            let touched_entry_paths: Vec<String> = Vec::new();
-            let changed_paths = repair_receipt_touched_paths();
-            let shard_a_row = DiscoveryRow {
-                label: "shard_a".to_string(),
-                entry: COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY.to_string(),
-                function: "compile_clean_shard_a_exemplar_compile_green".to_string(),
-                reads_live_tree: false,
-            };
-            let declared = index.module_graph_facts.declared_repo_paths();
-            let fast_skip = discovery_entry_fast_skip_without_resolve(
-                &[shard_a_row],
-                &index.module_graph_facts,
-                &declared,
-                &touched_entry_paths,
-                &changed_paths,
-                &diff_edits,
-            )
-            .expect("fast-skip disposition");
-            assert!(
-                !fast_skip.contains(COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY),
-                "shard_a must not fast-skip when name-status lists non-docs .dag data-item edits outside import closure"
-            );
-        });
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
