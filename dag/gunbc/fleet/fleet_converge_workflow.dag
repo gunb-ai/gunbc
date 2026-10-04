@@ -2744,7 +2744,7 @@ fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
 
 fn fleet_converge_approval_keyring_converge_step() -> Step {
   RunStep {
-    name: Present { value: "Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
+    name: Present { value: "Materialize approval MAC keys on the approval broker host (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
     id: Present { value: "approval_keyring_converge" },
     run: gunbc_ci_approval_keyring_converge_invoke(),
     shell: none,
@@ -2760,14 +2760,14 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
 }
 
 // THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_enrolment_code
-// issue_device_enrolment_code on srv1 as the operator's user, from the release the dispatch names;
+// issue_device_enrolment_code on the approval broker host as the operator's user, from the release the dispatch names;
 // the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
 // over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:
 // gunbc.auth.approval_ntfy_deployment's access rows are NoDischargeSiteModeled). No WIF token: the verb needs no secret the host does not
 // already hold.
 fn fleet_converge_approval_device_enrolment_code_issue_step() -> Step {
   RunStep {
-    name: Present { value: "Issue a device enrolment code on srv1 and deliver it to the operator channel (receipt only in this log)" },
+    name: Present { value: "Issue a device enrolment code on the approval broker host and deliver it to the operator channel (receipt only in this log)" },
     id: Present { value: "approval_device_enrolment_code_issue" },
     run: gunbc_ci_approval_device_enrolment_code_issue_invoke(),
     shell: none,
@@ -3136,7 +3136,7 @@ data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converg
 
 fn fleet_converge_approval_broker_dark_install_step() -> Step {
   RunStep {
-    name: Present { value: "Install the approval broker dark on srv1 (additive unit + slice; does not restart gunbc-roadmap.service)" },
+    name: Present { value: "Install the approval broker dark on the approval broker host (additive unit + slice; does not restart gunbc-roadmap.service)" },
     id: Present { value: "approval_broker_dark_install" },
     run: gunbc_ci_approval_broker_dark_install_invoke(),
     shell: none,

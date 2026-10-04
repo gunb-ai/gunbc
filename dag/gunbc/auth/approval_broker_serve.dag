@@ -47,7 +47,9 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_prefix,
   approval_device_request_path_template,
   approval_device_enrollment_path_template,
-  approval_broker_listen_host,, approval_broker_serving_base_url }
+  approval_broker_listen_host,
+  approval_broker_serving_base_url,
+}
 import gunbc.auth.approval_device_wire { approval_device_enrol_path, approval_device_redeem_path, approval_device_pending_path, approval_device_push_path }
 import gunbc.auth.approval_device_routes {
   DeviceRouteResponse,
