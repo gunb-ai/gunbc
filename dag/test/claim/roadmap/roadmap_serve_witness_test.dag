@@ -13,8 +13,8 @@ import gunbc.roadmap_serve {
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueAssigneePickerHandler,
-  serve_issue_assignment_context_over, serve_issue_assignee_picker_over, serve_issue_view_preferences_over,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
+  serve_issue_assignment_context_over, serve_issue_view_preferences_over,
   IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
@@ -659,7 +659,6 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 test fn witness_issue_detail_route_selects() -> Bool {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
     && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
-    && selects(method: GET, path: "/issue/some-node/assignee-picker", want: IssueAssigneePickerHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
@@ -1113,13 +1112,6 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
     && repeated.body == "bad request: duplicate cookie header\n"
 }
 
-test fn anonymous_picker_unknown_issue_refuses_before_host_reads() -> Bool {
-  let response = serve_issue_assignee_picker_over(
-    instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
-    request: ServeHttpRequest { method: GET, path: "/issue/missing/assignee-picker", body: "",
-      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } })
-  response.status == 404 && !string_contains(s: response.body, pattern: "csrf")
-}
 
 test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
   let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }

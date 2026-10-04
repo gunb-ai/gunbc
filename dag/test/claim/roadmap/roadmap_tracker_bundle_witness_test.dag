@@ -8,7 +8,7 @@ import extdeps.google.issue_tracker {
 import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal, principal_ref_label }
 import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label }
-import gunbc.roadmap_inline_assignment { inline_assignment_choices, inline_assignment_context_body, inline_assignment_preview_body }
+import gunbc.roadmap_inline_assignment { inline_assignment_choices, inline_assignment_context_body }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,14 +70,4 @@ test fn assignment_context_mounts_the_shared_form_with_issue_scoped_ids_and_comm
     && string_contains(s: body, pattern: "fixture-operation-assign")
     && string_contains(s: body, pattern: "tracker-fixture-csrf")
     && string_contains(s: body, pattern: "Assigning Fabric starts a workflow run; review before confirming")
-}
-
-// Public picker presentation contains no issued operation, revision, or session proof.
-test fn anonymous_picker_exposes_presentation_without_assignment_authority() -> Bool {
-  let body = inline_assignment_preview_body(node_id: "fixture-issue", recents: [], profiles: [])
-  string_contains(s: body, pattern: "issue-assign-input-fixture-issue")
-    && string_contains(s: body, pattern: "Sign in to save an assignment")
-    && string_contains(s: body, pattern: "Assigning Fabric starts a workflow run; review before confirming")
-    && !string_contains(s: body, pattern: "tracker-fixture-csrf")
-    && !string_contains(s: body, pattern: "fixture-operation")
 }

@@ -2311,7 +2311,8 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
         && string_contains(s: h, pattern: "reply to #comment-1")
         && occurrence_count(s: h, pattern: "class=\"issue-comment issue-comment-deleted\"") == 1
         && string_contains(s: h, pattern: "<div class=\"issue-comment-body\">comment deleted</div>")
-        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 8
+        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 7
+        && occurrence_count(s: h, pattern: "data-avatar=\"unassigned\"") == 1
   }
 }
 

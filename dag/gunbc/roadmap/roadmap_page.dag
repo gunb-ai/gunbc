@@ -1,7 +1,6 @@
 module gunbc.roadmap_page
 import gunbc.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import gunbc.site.status { status_badge, status_tone }
 import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
@@ -548,7 +547,6 @@ fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, vi
         attr(name: "data-node", value: node_id ),
         attr(name: "title", value: "Assigning Fabric starts a workflow run; review before confirming" ),
       ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]),
-      el_attrs("p", concat([attr(name: "class", value: "issue-assign-session"), attr(name: "data-assignment-signin", value: "")], if command_context.csrf == "" { [] } else { [attr(name: "hidden", value: "")] }), [el_attrs("a", [attr(name: "href", value: auth_login_route_path)], [txt("Sign in to save an assignment")])]),
     ]) ]
 }
 

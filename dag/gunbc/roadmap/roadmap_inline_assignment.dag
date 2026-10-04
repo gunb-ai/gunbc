@@ -69,12 +69,3 @@ fn inline_assignment_context_body(session: AuthenticatedSession, events: List<Ro
     json_kv(key: "options", value: json_array(elements: map(inline_assignment_choices(session: session, recents: recents), p => inline_assignment_option(session: session, p: p, profiles: profiles)))),
   ]))
 }
-
-// Public presentation only, matching the anonymous detail page. No mutation proof is minted.
-fn inline_assignment_preview_body(node_id: String, recents: List<EventPrincipal>, profiles: List<PrincipalProfile>) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "picker_html", value: json_string(s: match try_serialize_html_source(node: el_class_wrap(nodes: issue_assign_form_nodes(node_id: node_id, profiles: profiles, viewer: "", recents: recents, expected_revision: "", current_assignee: "", command_context: IssueFormContext { operation: "", csrf: "" }))) {
-      EmitOk { html } => html EmitRejected { reason: _ } => ""
-    })),
-  ]))
-}

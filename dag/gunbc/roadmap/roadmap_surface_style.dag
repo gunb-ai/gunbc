@@ -251,10 +251,12 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: BorderRadius, value: "var(--radius-surface)")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-assign-session" }, decls: [
-      decl(prop: FontSize, value: "var(--text-12)"),
-      decl(prop: LineHeight, value: "1.5"),
-      decl(prop: Padding, value: "var(--space-4) var(--space-8)")
+    StaticRule { selector: RawSelector { text: ".issue-assignment-notice" }, decls: [
+      decl(prop: Position, value: "fixed"), decl(prop: RawProperty { name: "bottom" }, value: scale_var(t: space_24)), decl(prop: RawProperty { name: "left" }, value: "50%"),
+      decl(prop: Transform, value: "translateX(-50%)"), decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-profile)"),
+      decl(prop: MaxWidth, value: "calc(100% - var(--space-24))"), decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)), decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Color, value: "var(--status-blocked-ink)"), decl(prop: Background, value: "color-mix(in srgb, var(--status-blocked-ink) 12%, var(--surface))"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--status-blocked-ink)")),
     ] },
     StaticRule { selector: RawSelector { text: ".issue-assign-input" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
