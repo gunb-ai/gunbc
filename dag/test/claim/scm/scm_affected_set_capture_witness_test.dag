@@ -43,7 +43,7 @@ import gunbc.scm.repository_envelope {
   RepositoryDecoded, RepositoryDecodeRefused,
   encode_repository_checked, encode_repository_appended_checked,
   RepositoryEncoded, RepositoryEncodeRefused, RepositoryEncodeStoreIsPartial,
-  RepositoryIndexHasNoObjectRoster,
+  RepositoryIndexHasNoObjectRoster, RepositoryEncodeAppendShadowsRosteredIdentity,
 }
 import gunbc.scm.repository_load {
   object_demand, ObjectDemandPlanned, ObjectDemandUnderivable,
@@ -501,4 +501,95 @@ test fn a_roster_disagreeing_with_its_shard_is_caught_by_the_whole_load() -> Boo
 // already there.
 test fn the_committed_v8_fixture_is_the_writers_bytes() -> Bool {
   Filesystem.Read(path: scm_sv_v8_fixture_path).content == serialize_json(v: encode_repository_v8(repo: empty_repository()))
+}
+
+// THE COLLISION WALL OVER A PARTIAL STORE (ruling on #13111). A producer that inserts under an
+// identity the roster already holds, WITHOUT reading the persisted object back, cannot have its object
+// compared -- so the append-only save refuses it rather than keeping the roster's row (Old) while the
+// in-memory state was built from New. Planted two ways at the test boundary: the same bytes (the
+// store cannot know they are the same without reading them), and a roster row recording a different
+// KIND under the identity the new object derives.
+test fn an_unmaterialized_insert_under_a_rostered_identity_cannot_be_saved() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let same_bytes = match store_authored_source(store: indexed.store, text: planted_text(i: 3)) {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: shadowed, source: _ } =>
+              match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: shadowed)) {
+                RepositoryEncodeRefused { cause: RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } } => true
+                RepositoryEncodeRefused { cause: _ } => false
+                RepositoryEncoded { value: _ } => false
+              }
+          }
+          let incoming = scm_object_identity(object: authored_source_object(text: "bytes the roster claims are a manifest"))
+          let other_kind = rostered_store(
+            rostered: map_insert(rows_by_digest(rows: store_rostered_rows(store: indexed.store)), incoming.digest as String, RosteredObject { identity: incoming, kind: CorpusManifestKind, shard: "planted-old" }),
+            shards: concat(store_rostered_shards(store: indexed.store), ["planted-old"]),
+          )
+          let different_kind = match store_authored_source(store: other_kind, text: "bytes the roster claims are a manifest") {
+            SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+            SourceStored { store: shadowed, source: _ } =>
+              match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: shadowed)) {
+                RepositoryEncodeRefused { cause: RepositoryEncodeAppendShadowsRosteredIdentity { identity } } => identity.digest == incoming.digest
+                RepositoryEncodeRefused { cause: _ } => false
+                RepositoryEncoded { value: _ } => false
+              }
+          }
+          same_bytes && different_kind
+        }
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: the same insert AFTER materializing the persisted object is compared, dedups,
+// and saves -- rostering nothing new for it.
+test fn a_materialized_insert_under_a_rostered_identity_is_idempotent() -> Bool {
+  match planted_base(n: planted_files) {
+    Absent => false
+    Present { value: whole } =>
+      match indexed_of(whole: whole) {
+        Absent => false
+        Present { value: indexed } => {
+          let held = scm_object_identity(object: authored_source_object(text: planted_text(i: 3)))
+          match object_demand(store: indexed.store, identities: [held]) {
+            ObjectDemandUnderivable { identity: _ } => false
+            ObjectDemandPlanned { shards, wanted } =>
+              match materialize_planned(store: indexed.store, wanted: wanted, contents: planted_read(whole: whole, digests: shards)) {
+                ObjectMaterializationRefused { detail: _ } => false
+                ObjectsMaterialized { store: resident, read_shards: _ } =>
+                  match store_authored_source(store: resident, text: planted_text(i: 3)) {
+                    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+                    SourceStored { store: again, source: _ } =>
+                      match encode_repository_appended_checked(repo: envelope_over(indexed: indexed, store: again)) {
+                        RepositoryEncodeRefused { cause: _ } => false
+                        RepositoryEncoded { value: doc } =>
+                          match decode_repository_v8_index(v: doc) {
+                            ShardedIndexRefused { cause: _ } => false
+                            ShardedIndexDecoded { index } =>
+                              match index.roster {
+                                ObjectRosterAbsentByFormat => false
+                                ObjectRosterDeclared { rows } => count(rows) == count(store_rostered_rows(store: indexed.store))
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn envelope_over(indexed: RepositoryEnvelope, store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: indexed.commits,
+    commit_allocator: indexed.commit_allocator,
+    checked_out: indexed.checked_out,
+    staged: indexed.staged,
+  }
 }

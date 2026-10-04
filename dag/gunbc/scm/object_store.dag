@@ -452,9 +452,20 @@ type RosteredObject {
 // its roster plus the persisted shard roster in document order (carried so an append-only save
 // extends it rather than re-deriving an order from the map, whose traversal order is not a fact).
 // The roster and the shard roster exist together or not at all, so they live in one arm.
+//
+// `materialized` names the rostered identities whose persisted object was READ BACK and admitted
+// (store_admit_materialized), as opposed to an object some producer built in memory. The difference
+// is the collision wall (ruling on #13111, 2026-10-04): insert_admission compares an incoming object
+// only against RESIDENT objects, so a produced object whose identity the roster already holds -- and
+// whose persisted object was never read -- would be admitted unchecked, and the append-only save would
+// then keep the roster's row, so the identity would answer with the OLD object while the in-memory
+// commit was minted against the NEW one. A produced object under a rostered identity that was not
+// materialized is a SHADOW, and the append-only admission refuses every shadow
+// (gunbc.scm.repository_envelope RepositoryEncodeAppendShadowsRosteredIdentity) -- at the one
+// boundary every producer and every kind must cross to persist, so no caller has to remember.
 type StoreResidence
   = WholeResidence
-  | PartialResidence { rostered: Map<String, RosteredObject>, shards: List<String> }
+  | PartialResidence { rostered: Map<String, RosteredObject>, shards: List<String>, materialized: Map<String, Bool> }
 
 type ObjectStore sole_constructor {
   objects: List<ScmObject>
@@ -609,13 +620,13 @@ fn scm_object_kind(object: ScmObject) -> ScmObjectKind {
 // is handed in already decoded and digest-validated (gunbc.scm.repository_envelope
 // decode_object_roster); this module seals the carrier, it does not re-read the document.
 fn rostered_store(rostered: Map<String, RosteredObject>, shards: List<String>) -> ObjectStore {
-  ObjectStore { objects: [], residence: PartialResidence { rostered: rostered, shards: shards } }
+  ObjectStore { objects: [], residence: PartialResidence { rostered: rostered, shards: shards, materialized: empty_map() } }
 }
 
 fn store_rostered_shards(store: ObjectStore) -> List<String> {
   match store.residence {
     WholeResidence => []
-    PartialResidence { rostered: _, shards } => shards
+    PartialResidence { rostered: _, shards, materialized: _ } => shards
   }
 }
 
@@ -623,7 +634,7 @@ fn store_rostered_shards(store: ObjectStore) -> List<String> {
 fn store_roster_map(store: ObjectStore) -> Map<String, RosteredObject> {
   match store.residence {
     WholeResidence => empty_map()
-    PartialResidence { rostered, shards: _ } => rostered
+    PartialResidence { rostered, shards: _, materialized: _ } => rostered
   }
 }
 
@@ -642,11 +653,42 @@ fn store_rostered_lookup(store: ObjectStore, identity: ObjectId) -> RosteredObje
 fn store_unrostered_objects(store: ObjectStore) -> List<ScmObject> {
   match store.residence {
     WholeResidence => store.objects
-    PartialResidence { rostered, shards: _ } =>
+    PartialResidence { rostered, shards: _, materialized: _ } =>
       filter(store.objects, o => match map_lookup(m: rostered, key: scm_object_identity(object: o).digest as String) {
         Present { value: _ } => false
         Absent => true
       })
+  }
+}
+
+// THE SHADOWS: resident objects under a rostered identity that were produced, not materialized. An
+// append-only save refuses while any exists; a whole store has none by construction.
+fn store_shadowing_objects(store: ObjectStore) -> List<ScmObject> {
+  match store.residence {
+    WholeResidence => []
+    PartialResidence { rostered, shards: _, materialized } =>
+      filter(store.objects, o => {
+        let key = scm_object_identity(object: o).digest as String
+        match map_lookup(m: rostered, key: key) {
+          Absent => false
+          Present { value: _ } =>
+            match map_lookup(m: materialized, key: key) {
+              Present { value: _ } => false
+              Absent => true
+            }
+        }
+      })
+  }
+}
+
+fn store_with_materialized(store: ObjectStore, identity: ObjectId) -> ObjectStore {
+  match store.residence {
+    WholeResidence => store
+    PartialResidence { rostered, shards, materialized } =>
+      ObjectStore {
+        objects: store.objects,
+        residence: PartialResidence { rostered: rostered, shards: shards, materialized: map_insert(materialized, identity.digest as String, true) },
+      }
   }
 }
 
@@ -669,7 +711,7 @@ fn store_admit_materialized(store: ObjectStore, object: ScmObject) -> Materializ
         MaterializedKindDisagrees { identity: identity, rostered: entry.kind, found: scm_object_kind(object: object) }
       } else {
         match insert_admission(store: store, object: object) {
-          AdmitStored(next) => MaterializedAdmitted { store: next }
+          AdmitStored(next) => MaterializedAdmitted { store: store_with_materialized(store: next, identity: identity) }
           AdmitCollision { existing: _ } => MaterializedCollision { identity: identity }
         }
       }
@@ -1715,6 +1757,12 @@ fn insert_canonical_manifest(
         incoming: object,
       }
   }
+}
+
+// The identity a path-unique manifest WILL have, derived exactly as insert_canonical_manifest derives
+// it -- so a producer can materialize a rostered identity before inserting under it.
+fn path_unique_manifest_identity(unique: PathUniqueManifestEntries) -> ObjectId {
+  corpus_manifest_identity(entries: admit_path_unique_entries(unique: unique).entries)
 }
 
 fn store_path_unique_manifest(

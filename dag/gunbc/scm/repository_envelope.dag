@@ -135,7 +135,7 @@ import gunbc.scm.object_store {
   CorpusManifestRefLookup, CorpusManifestRefFound, CorpusManifestRefAbsent,
   CorpusManifestRefIsSemanticNode, CorpusManifestRefIsAuthoredSource,
   find_corpus_manifest_ref,
-  WholeResidence, PartialResidence, store_unrostered_objects, store_rostered_rows, store_rostered_shards,
+  WholeResidence, PartialResidence, store_unrostered_objects, store_shadowing_objects, store_rostered_rows, store_rostered_shards,
   store_rostered_lookup, store_object_index, find_object_via,
   authored_source_target_locator, scm_object_kind,
 }
@@ -527,6 +527,7 @@ type RepositoryEncodeRefusal
   | RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: RepositoryCommitRef }
   | RepositoryEncodeStoreIsPartial { rostered_shards: Int }
   | RepositoryEncodeAppendCarriesSemanticNode { target: ObjectId }
+  | RepositoryEncodeAppendShadowsRosteredIdentity { identity: ObjectId }
 
 // THE SAME MISATTRIBUTION THIS TYPE ALREADY CLOSED ONCE, CLOSED AGAIN ONE LAYER OVER. The
 // member-read arm below exists because dropping the envelope's own identity_rule member used to
@@ -1735,6 +1736,14 @@ fn appended_manifest_refusal(
 }
 
 fn appended_object_refusal(store: ObjectStore) -> RepositoryEncodeRefusal? {
+  match (store_shadowing_objects(store: store)).first() {
+    Present { value: shadow } =>
+      Present { value: RepositoryEncodeAppendShadowsRosteredIdentity { identity: scm_object_identity(object: shadow) } }
+    Absent => appended_new_object_refusal(store: store)
+  }
+}
+
+fn appended_new_object_refusal(store: ObjectStore) -> RepositoryEncodeRefusal? {
   let index = store_object_index(store: store)
   fold(store_unrostered_objects(store: store), init: none, f: fn(found, object) {
     match found {
@@ -1932,7 +1941,7 @@ fn an_uncontained_target(census: ClosureCensus) -> ObjectId? {
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   match repo.store.residence {
     WholeResidence => encode_repository_checked_whole(repo: repo)
-    PartialResidence { rostered: _, shards } =>
+    PartialResidence { rostered: _, shards, materialized: _ } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeStoreIsPartial { rostered_shards: count(shards) } }
   }
 }

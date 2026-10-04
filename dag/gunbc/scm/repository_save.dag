@@ -362,7 +362,7 @@ fn sharded_save_plan(repo: RepositoryEnvelope) -> ShardedSavePlan {
         objects: repo.store.objects,
         shards: shard_roster_of(objects: repo.store.objects),
       }
-    PartialResidence { rostered: _, shards: _ } =>
+    PartialResidence { rostered: _, shards: _, materialized: _ } =>
       ShardedSavePlan {
         encoded: encode_repository_appended_checked(repo: repo),
         objects: store_unrostered_objects(store: repo.store),

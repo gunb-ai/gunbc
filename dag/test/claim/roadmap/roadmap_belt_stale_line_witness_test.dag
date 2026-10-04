@@ -7,7 +7,7 @@ module test.claim.roadmap.roadmap_belt_stale_line_witness_test
 // their observed capture bases -- is witnessed here with the bases supplied as values; the effectful
 // shell (belt_head_line_standing) only reads each source attempt's spawn-destination base_sha.
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope }
@@ -18,7 +18,9 @@ import gunbc.roadmap_belt_actuate {
   belt_line_standing, BeltObservedLineSource, BeltLineSource,
   LineClean, LineIntegratesStale, LineStandingUnderivable,
   BaseShaObserved, BaseShaUnobserved,
+  belt_publish_plan, belt_publish_apply, belt_publish_tree_of, belt_publish_binds, belt_publish_deletes, PublishBind,
 }
+import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, scm_object_identity, authored_source_object }
 import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -129,4 +131,46 @@ test fn the_candidate_message_reads_back_its_attempt_and_nothing_else() -> Bool 
     Absent => true
   }
   round_trip && foreign
+}
+
+// PUBLICATION REALIZES THE HEAD'S TREE EXACTLY (ruling on #13111): the base tree with the publish plan
+// applied equals the head's tree for an add, a modify, a delete, a rename (delete + bind) and a
+// delete below a nested directory. The discriminating control applies the binds alone -- the earlier
+// revision's behaviour -- and does NOT reach the head: the deleted and renamed-away paths resurrect.
+fn publish_entry(path: String, text: String) -> CorpusManifestEntry {
+  CorpusManifestEntry {
+    path: path as NonEmptyStr,
+    source: AuthoredSourceTarget { locator: scm_object_identity(object: authored_source_object(text: text)) },
+  }
+}
+
+fn publish_base() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "before"),
+    publish_entry(path: "src/deleted.dag", text: "gone"),
+    publish_entry(path: "src/old_name.dag", text: "moved"),
+    publish_entry(path: "src/deep/nested/leaf.dag", text: "nested"),
+  ]
+}
+
+fn publish_head() -> List<CorpusManifestEntry> {
+  [
+    publish_entry(path: "src/kept.dag", text: "kept"),
+    publish_entry(path: "src/modified.dag", text: "after"),
+    publish_entry(path: "src/new_name.dag", text: "moved"),
+    publish_entry(path: "src/added.dag", text: "new"),
+  ]
+}
+
+test fn publication_applies_binds_and_deletes_to_reach_the_heads_tree() -> Bool {
+  let plan = belt_publish_plan(head: publish_head(), root: publish_base())
+  belt_publish_apply(base: publish_base(), plan: plan) == belt_publish_tree_of(entries: publish_head())
+    && count(belt_publish_deletes(plan: plan)) == 3
+    && count(belt_publish_binds(plan: plan)) == 3
+}
+
+test fn publication_without_deletes_resurrects_removed_paths() -> Bool {
+  let binds_only = map(belt_publish_binds(plan: belt_publish_plan(head: publish_head(), root: publish_base())), e => PublishBind { entry: e })
+  belt_publish_apply(base: publish_base(), plan: binds_only) != belt_publish_tree_of(entries: publish_head())
 }
