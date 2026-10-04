@@ -9,7 +9,6 @@ import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_nod
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }

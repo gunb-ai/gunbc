@@ -21,9 +21,8 @@ import extdeps.filesystem.filesystem_io {
 
 // A HOLDER THAT IS A PROCESS ON THIS HOST: its identity as this process reads it, its rendering into a
 // hold owner, and whether it still runs -- observed, never aged. Moved MECHANICALLY out of
-// gunbc.machine_intake_mtcollins1_maintenance_hold when the materialization store became a second
-// holder of the same kind; only the codec's unit_hold_ prefix became process_hold_, and the bodies
-// are unchanged.
+// gunbc.managed_host_unit_hold when the materialization store became a second holder of the same
+// kind; only the codec's unit_hold_ prefix became process_hold_, and the bodies are unchanged.
 
 // THE PROCESS PART OF A BOOT OWNER, rendered after the run id and decoded back here and nowhere else:
 // `@boot=<boot_id>,pid=<pid>,start=<starttime ticks>,pidns=<namespace link target>`.
@@ -74,9 +73,9 @@ fn process_hold_decode(text: String) -> ProcessHoldHolder? {
 }
 
 // ── WHETHER A HOLDING PROCESS STILL RUNS, OBSERVED ─────────────────────────────────────────────
-// A consumer whose store and recoverable holders run on one host (the unit hold:
-// mtcollins1_unit_hold_store_host; the materialization store: one root per host) observes the
-// holder's process through this host's procfs. Three reads decide it, each typed by the host's own error kind:
+// The store and every holder that can be recovered run on one host (the admitted subject's
+// store_host; each hold-owning root refuses any other), so the holder's process is observable through this host's
+// procfs. Three reads decide it, each typed by the host's own error kind:
 //   - /proc/sys/kernel/random/boot_id differs from the holder's boot -> the host rebooted since, so
 //     every process of that boot is gone: OBSERVED DEAD;
 //   - same boot, /proc/<pid>/stat is ABSENT (the host answered NotFound) -> no such process: DEAD;

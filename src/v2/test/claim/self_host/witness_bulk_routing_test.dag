@@ -10,7 +10,6 @@ import v2.compiler.self_host.witness_bulk_routing {
   witness_bulk_routing_zero_native_at_landing_holds
 }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.witness_execution_routing {
   InterpretedRetained,

@@ -17,7 +17,6 @@ import v2.workflow.floor_pure_producer_share {
   pending_share_producers,
   share_roster_pending_collisions
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -19,7 +19,6 @@ import v2.workflow.bootstrap {
 }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.logic { Bool }
 import v2.std.diagnostic { Accepted, Rejected, None }
 
 // MOVED OUT OF src/v2/test/claim/execution/ INTO dag/test/claim/ (review 47620), and the move is
