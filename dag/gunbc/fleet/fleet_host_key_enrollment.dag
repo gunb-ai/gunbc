@@ -514,8 +514,6 @@ fn pin_readback_block(staged: String) -> String {
     ], "")
   }), "")
 }
-  }
-}
 
 fn fleet_host_key_enroll_wet() -> ProcessExit
 {
