@@ -2,7 +2,7 @@ module gunbc.spark.fabric_serving_assignment
 
 import std.types { NonEmptyStr }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
