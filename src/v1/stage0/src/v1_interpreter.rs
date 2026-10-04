@@ -2174,11 +2174,51 @@ thread_local! {
     /// retaining it would spend the tier's byte budget on values nobody reads (floor probe
     /// 37142207751: 638 stores declined at the byte budget, each leaving its fill on the claim).
     /// The fill is measured and netted from the claim exactly as a retained one is.
-    static CROSS_CLAIM_NET_ONLY_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
-        RefCell::new(std::collections::HashSet::new());
+    static CROSS_CLAIM_NET_ONLY_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
     /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
-    static CROSS_CLAIM_ADMITTED_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
-        RefCell::new(std::collections::HashSet::new());
+    static CROSS_CLAIM_ADMITTED_SITES: RefCell<CrossClaimSiteSet> =
+        RefCell::new(CrossClaimSiteSet::default());
+}
+
+/// A set of call sites, indexed so that MEMBERSHIP COSTS NO ALLOCATION. The check runs on every
+/// call of every site-gated producer, admitted site or not; keyed on `(String, i64, i64)` it
+/// allocated and hashed the file path each time, which same-revision floor pairs showed as about
+/// 30% more native time per evaluator step across the whole claim fold. The byte span is hashed
+/// first (two integers), and the file is compared as a borrowed string only on a span match.
+#[derive(Default)]
+struct CrossClaimSiteSet {
+    by_span: std::collections::HashMap<(i64, i64), Vec<String>>,
+}
+
+impl CrossClaimSiteSet {
+    fn from_sites(sites: std::collections::HashSet<(String, i64, i64)>) -> CrossClaimSiteSet {
+        let mut by_span: std::collections::HashMap<(i64, i64), Vec<String>> =
+            std::collections::HashMap::new();
+        for (file, start, end) in sites {
+            by_span.entry((start, end)).or_default().push(file);
+        }
+        CrossClaimSiteSet { by_span }
+    }
+
+    fn contains(&self, file: &str, start: i64, end: i64) -> bool {
+        self.by_span
+            .get(&(start, end))
+            .is_some_and(|files| files.iter().any(|f| f == file))
+    }
+
+    fn remove(&mut self, file: &str, start: i64, end: i64) {
+        if let Some(files) = self.by_span.get_mut(&(start, end)) {
+            files.retain(|f| f != file);
+            if files.is_empty() {
+                self.by_span.remove(&(start, end));
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.by_span.clear();
+    }
 }
 
 /// Clears stored values, roster and observer together: the tier's lifetime is ONE prepared
@@ -2241,7 +2281,8 @@ pub fn install_cross_claim_derived_share_with_net_only<I: IntoIterator<Item = Rc
     sites: std::collections::HashSet<(String, i64, i64)>,
     net_only_sites: std::collections::HashSet<(String, i64, i64)>,
 ) {
-    CROSS_CLAIM_NET_ONLY_SITES.with(|n| *n.borrow_mut() = net_only_sites);
+    CROSS_CLAIM_NET_ONLY_SITES
+        .with(|n| *n.borrow_mut() = CrossClaimSiteSet::from_sites(net_only_sites));
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
     // REPLACES the previous derivation rather than adding to it: a producer dropped from the
     // derived set must leave the roster too, or it would remain admitted with no site gate --
@@ -2270,7 +2311,7 @@ pub fn install_cross_claim_derived_share_with_net_only<I: IntoIterator<Item = Rc
         gated
     });
     CROSS_CLAIM_SITE_GATED.with(|g| *g.borrow_mut() = gated.into_iter().collect());
-    CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = sites);
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = CrossClaimSiteSet::from_sites(sites));
     for node in &nodes {
         keep_cross_claim_fn(node);
     }
@@ -2283,25 +2324,39 @@ fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
         CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
     !gated
         || CROSS_CLAIM_ADMITTED_SITES.with(|a| {
-            a.borrow().contains(&(
-                call_node.span.file.to_string(),
+            a.borrow().contains(
+                &call_node.span.file,
                 call_node.span.start,
                 call_node.span.end,
-            ))
+            )
         })
 }
 
 /// Whether this call site is a net-only (single-claim fill debt) site.
 fn cross_claim_site_is_net_only(call_node: &Node) -> bool {
     CROSS_CLAIM_NET_ONLY_SITES.with(|n| {
-        let n = n.borrow();
-        !n.is_empty()
-            && n.contains(&(
-                call_node.span.file.to_string(),
-                call_node.span.start,
-                call_node.span.end,
-            ))
+        n.borrow().contains(
+            &call_node.span.file,
+            call_node.span.start,
+            call_node.span.end,
+        )
     })
+}
+
+/// Retire a derived producer's call site for the rest of the run after its fill came in below the
+/// cost floor. A site carries one closed argument row, so one identity, so the same small work on
+/// every later call; leaving it admitted would make every such call pay the tier's key (argument
+/// hash and total reification), open a fill and be declined again -- several hundred thousand
+/// declined publications on a planning probe. A producer admitted without a site gate is untouched.
+fn retire_cross_claim_site_below_cost_floor(fn_node: &Rc<Node>, call_node: &Node) {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    if !gated {
+        return;
+    }
+    let (start, end) = (call_node.span.start, call_node.span.end);
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().remove(&call_node.span.file, start, end));
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().remove(&call_node.span.file, start, end));
 }
 
 /// A fill's work in evaluator-step units: the larger of the steps it performed and its thread CPU
@@ -2325,6 +2380,7 @@ fn cross_claim_fill_work_steps(guard: &CrossClaimFillGuard) -> u64 {
 /// below it is neither retained nor netted. Every declined outcome is counted by producer.
 fn publish_cross_claim_fill(
     ctx: &InterpContext,
+    call_node: &Node,
     fn_node: &Rc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
@@ -2341,6 +2397,7 @@ fn publish_cross_claim_fill(
                     func_name,
                     &CrossClaimStoreOutcome::RefusedBelowCostFloor,
                 );
+                retire_cross_claim_site_below_cost_floor(fn_node, call_node);
             } else {
                 guard.mark_stored();
             }
@@ -2349,6 +2406,9 @@ fn publish_cross_claim_fill(
     }
     let outcome = store_cross_claim_pure_memo(ctx, fn_node, func_name, args, value, fill_guard);
     note_cross_claim_store_outcome(func_name, &outcome);
+    if outcome == CrossClaimStoreOutcome::RefusedBelowCostFloor {
+        retire_cross_claim_site_below_cost_floor(fn_node, call_node);
+    }
 }
 
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
@@ -3860,6 +3920,7 @@ mod cross_claim_memo_tests {
         publish_cross_claim_fill(
             &ctx,
             &derived,
+            &derived,
             "tm_debt",
             &[],
             &Value::Int(1),
@@ -3879,6 +3940,7 @@ mod cross_claim_memo_tests {
         let guard = CrossClaimFillGuard::enter("tm_debt");
         publish_cross_claim_fill(
             &ctx,
+            &derived,
             &derived,
             "tm_debt",
             &[],
@@ -4087,6 +4149,31 @@ mod cross_claim_memo_tests {
             cross_claim_site_admitted(&ungated, &node_at(200, 240)),
             "control: a producer admitted without a site gate is unaffected"
         );
+        // A SITE WHOSE FILL CAME IN BELOW THE COST FLOOR IS RETIRED, so its later calls skip the
+        // tier instead of keying and being declined again. Only the site named is retired, a
+        // same-span site in another file is a different site, and an ungated producer keeps all.
+        let mut two = std::collections::HashSet::new();
+        two.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        two.insert(("workspace/src/n7.dag".to_string(), 300, 340));
+        two.insert(("workspace/src/other.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], two);
+        super::retire_cross_claim_site_below_cost_floor(&derived, &node_at(100, 140));
+        assert!(!cross_claim_site_admitted(&derived, &node_at(100, 140)));
+        assert!(cross_claim_site_admitted(&derived, &node_at(300, 340)));
+        let other_file = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            Rc::new(crate::std_types::SourceSpan {
+                file: "workspace/src/other.dag".to_string(),
+                start: 100,
+                end: 140,
+            }),
+        );
+        assert!(cross_claim_site_admitted(&derived, &other_file));
+        super::retire_cross_claim_site_below_cost_floor(&ungated, &node_at(200, 240));
+        assert!(cross_claim_site_admitted(&ungated, &node_at(200, 240)));
         super::clear_cross_claim_pure_memos();
         assert!(
             cross_claim_site_admitted(&derived, &node_at(200, 240)),
@@ -10473,6 +10560,7 @@ fn eval_pure_named_call(
                 // call recomputes on a refusal exactly as if never enrolled.
                 publish_cross_claim_fill(
                     ctx,
+                    call_node,
                     fn_node,
                     func_name,
                     args,
@@ -10507,6 +10595,7 @@ fn eval_pure_named_call(
                     if ctx.effect_dispatch_count.get() == effects_before {
                         publish_cross_claim_fill(
                             ctx,
+                            call_node,
                             fn_node,
                             func_name,
                             args,
@@ -10548,6 +10637,7 @@ fn eval_pure_named_call(
         if share_site && ctx.effect_dispatch_count.get() == effects_before {
             publish_cross_claim_fill(
                 ctx,
+                call_node,
                 fn_node,
                 func_name,
                 args,

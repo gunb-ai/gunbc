@@ -29,6 +29,8 @@ data floor_call_site_demand_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "install_cross_claim_cost_floor_steps", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "install_cross_claim_cost_floor_cpu_rate", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_fill_work_steps", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimSiteSet", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "retire_cross_claim_site_below_cost_floor", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "install_cross_claim_in_flight_wall_bound", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "in_flight_cross_claim_fill_wall_nanos", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_below_cost_floor_count", field: WholeDeclaration },
