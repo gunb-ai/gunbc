@@ -32,6 +32,8 @@ import gunbc.emitted_subject_build_gate {
 }
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
+import extdeps.filesystem.filesystem_io
+import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
 // WHAT THIS FILE DISCRIMINATES. Three facts, and each has a red that is authorable HERE rather
 // than only by a future edit to the workflow: the aggregate-enrollment predicate refuses a lane
@@ -464,4 +466,22 @@ test fn the_notice_is_the_last_step_in_the_lane() -> Bool {
     init: "",
     f: (acc, b) => b.step_name
   ) == "Why this lane is red, and what would be a real finding"
+}
+
+// THE SEED'S TWO LANE ENTRIES AGREE WITH THE INSTRUMENT ROWS. The emit-build lane's census subject is
+// read from gunbc.instrument_targets, while the producer that actually emits is the seed's native
+// lane runner, whose entries are Rust constants that cannot read a .dag row yet. This joins them, so
+// moving either entry on one side alone reds here rather than leaving the census reporting a closure
+// the lane no longer compiles. Each constant is matched as its whole declaration line, so the join
+// pins the NAME to the VALUE, not two substrings that could come from different lines.
+data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
+
+fn rust_str_const_line(name: String, value: String) -> String {
+  join(["const ", name, ": &str = \"", value, "\";"], "")
+}
+
+test fn the_seed_lane_entries_are_the_instrument_rows() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: rust_str_const_line(name: "NATIVE_COMPILE_ENTRY", value: self_host_entry()))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "V2_NATIVE_CLI_ENTRY", value: v2_native_cli_entry()))
 }
