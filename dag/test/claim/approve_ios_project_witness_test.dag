@@ -15,7 +15,7 @@ import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_on }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap_dashboard_instance { prod_role_realization }
 import gunbc.fleet_tailnet { fleet_tailnet_domain }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.auth.approval_ntfy_publish { approval_ntfy_serve_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
