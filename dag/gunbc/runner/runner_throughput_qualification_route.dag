@@ -33,10 +33,8 @@ import gunbc.runner_throughput_qualification {
 // derivation takes its payload as a parameter. The boot leg is not, and not for want of a landing:
 // the boot run on main (`gunbc.machine_intake_mtcollins1_boot_run`) boots exactly two media, the
 // census image and the stock installer, and its terminal is the census program's, so it cannot boot a
-// runner and observe it ready. The JIT registration authority
-// (`gunbc.runner.runner_jit_perform dispatch_jit_mint`) is shaped for a MicroVmCellBinding, and
-// `extdeps.github.workflows CreateDispatch` has no production caller and a heal-specific input
-// contract. Each unbound leg names the CAPABILITY missing now and what it must be SUFFICIENT FOR
+// runner and observe it ready. `extdeps.github.workflows CreateDispatch` has no production caller
+// and a heal-specific input contract. The registration and deregistration legs are bound. Each unbound leg names the CAPABILITY missing now and what it must be SUFFICIENT FOR
 // (section 4b(3)), never a pull request, because a pull request can merge while the capability stays
 // missing -- which is exactly what happened to the boot leg.
 
@@ -219,12 +217,17 @@ data mtcollins1_image_leg: RouteLegStanding = LegBoundToAuthority {
   authority: decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput"),
 }
 
-// THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration are one JIT contract --
-// an ephemeral JIT runner is removed by GitHub when its one job ends -- so both name the same
-// authority; dispatch names the cited REST operation that has no production caller yet.
-data mtcollins1_registration_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "gunbc.runner.runner_jit_perform dispatch_jit_mint generalized over a slot binding that is a transient unit on a live host rather than a MicroVmCellBinding, minting the JIT config whose labels are ephemeral_slot_labels" as NonEmptyStr,
-  sufficient_for: "registering exactly one ephemeral runner for one attempt label with the gunbc runner-slot shape, refused before any launch on an inadmissible envelope" as NonEmptyStr,
+// THE THREE GITHUB CONTROL-PLANE LEGS. Registration is the one JIT mint, taken over the slot sum
+// whose host-unit arm (gunbc.runner.runner_host_unit_slot host_unit_slot_for) is this route's own
+// ephemeral_slot_unit / ephemeral_slot_argv / ephemeral_slot_labels on a gunbc.managed_host host.
+// Deregistration is NOT left to GitHub's ephemeral removal, which holds only when the one job ran:
+// it is an ensure over every slot exit whose success is the runner absent from the organization's
+// listing, with the host-side teardown carried by gunbc.runner.runner_teardown_receipt
+// RunnerTeardownRequest over a host-unit inventory. Both are pre-approved under the dispatching
+// run's authorization (operator ruling 2026-10-03), rowed in gunbc.auth.privileged_effect_census.
+// Dispatch names the cited REST operation that has no production caller yet.
+data mtcollins1_registration_leg: RouteLegStanding = LegBoundToAuthority {
+  authority: decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
 }
 
 data mtcollins1_dispatch_leg: RouteLegStanding = LegAwaitingAuthority {
@@ -232,9 +235,8 @@ data mtcollins1_dispatch_leg: RouteLegStanding = LegAwaitingAuthority {
   sufficient_for: "dispatching the floor to the one registration whose runs-on names the attempt label, so the run is unservicable by any other runner" as NonEmptyStr,
 }
 
-data mtcollins1_deregistration_leg: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "the same JIT contract as mtcollins1_registration_leg: GitHub removes the ephemeral runner when its one job ends, and gunbc.runner.runner_teardown_receipt RunnerTeardownRequest carries the host-side teardown" as NonEmptyStr,
-  sufficient_for: "the registration being gone from the organization and the unit torn down after the one job, observed rather than assumed" as NonEmptyStr,
+data mtcollins1_deregistration_leg: RouteLegStanding = LegBoundToAuthority {
+  authority: decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
 }
 
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to

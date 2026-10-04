@@ -11,12 +11,12 @@ import gunbc.runner.runner_usage_receipt {
 }
 
 // Expected resources come from the launch allocation, not the observer's discovered population.
-// The product requires all eight declared inventory fields at construction. Coverage of the
+// The microVM product requires all eight declared inventory fields at construction. Coverage of the
 // teardown fold is checked separately by the independent resource fixtures; adding a resource
 // class requires extending both the inventory/readback and that coverage contract. The VMM
 // identity includes boot and start time; names and exit status cannot prove its absence.
 // The cgroup covers its descendants.
-type RunnerEnvironmentInventory {
+type MicroVmEnvironmentInventory {
   vmm: ProcessIdentity
   cgroup: NonEmptyStr
   jail: NonEmptyStr
@@ -27,8 +27,36 @@ type RunnerEnvironmentInventory {
   firewall_table: NonEmptyStr
 }
 
+// A SLOT IS REALIZED AS A microVM ATTEMPT OR AS A TRANSIENT systemd UNIT ON A MANAGED HOST
+// (gunbc.runner_jit_mint JitSlot), and the teardown is one fold over both. The host-unit arm owns
+// no jail, jail mount, JIT drive, tap or firewall table -- the unit is the host's own process tree
+// in its own cgroup -- so its inventory names only what its launch allocates, rather than filling
+// five fields with paths that never existed. Which classes a teardown positive-controls is derived
+// from the inventory's arm (runner_resource_classes_for), so a host-unit teardown is not refused
+// for a jail it never had, and a microVM teardown still requires all eight.
+type HostUnitEnvironmentInventory {
+  unit_process: ProcessIdentity
+  unit: NonEmptyStr
+  cgroup: NonEmptyStr
+  workspace: NonEmptyStr
+}
+
+type RunnerEnvironmentInventory
+  = MicroVmInventory { inventory: MicroVmEnvironmentInventory }
+  | HostUnitInventory { inventory: HostUnitEnvironmentInventory }
+
+// THE PROCESS WHOSE ABSENCE PROVES THE ENVIRONMENT GONE: the VMM for a microVM, the unit's main
+// process for a host unit. Both carry boot and start time, so a reused pid cannot stand in.
+fn runner_environment_process(inventory: RunnerEnvironmentInventory) -> ProcessIdentity {
+  match inventory {
+    MicroVmInventory { inventory: m } => m.vmm
+    HostUnitInventory { inventory: h } => h.unit_process
+  }
+}
+
 type RunnerResourceClass
   = RunnerVmm
+  | RunnerTransientUnit
   | RunnerCgroup
   | RunnerJail
   | RunnerJailMount
@@ -51,6 +79,15 @@ data runner_resource_classes: List<RunnerResourceClass> = [
   RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
 ]
 
+data host_unit_resource_classes: List<RunnerResourceClass> = [RunnerTransientUnit, RunnerCgroup, RunnerWorkspace]
+
+fn runner_resource_classes_for(inventory: RunnerEnvironmentInventory) -> List<RunnerResourceClass> {
+  match inventory {
+    MicroVmInventory { inventory: _ } => runner_resource_classes
+    HostUnitInventory { inventory: _ } => host_unit_resource_classes
+  }
+}
+
 type RunnerResourceReading
   = RunnerResourcePresent
   | RunnerResourceAbsent
@@ -58,6 +95,7 @@ type RunnerResourceReading
 
 type RunnerEnvironmentReadback {
   vmm: RunnerResourceReading
+  unit: RunnerResourceReading
   cgroup: RunnerResourceReading
   jail: RunnerResourceReading
   jail_mount: RunnerResourceReading
@@ -115,6 +153,24 @@ type RunnerTeardownResult<P>
   | RunnerTeardownRefused { cause: RunnerTeardownRefusal }
 
 fn runner_environment_inventory_eq(a: RunnerEnvironmentInventory, b: RunnerEnvironmentInventory) -> Bool {
+  match a {
+    MicroVmInventory { inventory: x } =>
+      match b {
+        MicroVmInventory { inventory: y } => micro_vm_environment_inventory_eq(a: x, b: y)
+        HostUnitInventory { inventory: _ } => false
+      }
+    HostUnitInventory { inventory: x } =>
+      match b {
+        HostUnitInventory { inventory: y } =>
+          process_identity_eq(a: x.unit_process, b: y.unit_process) &&
+          (x.unit as String) == (y.unit as String) && (x.cgroup as String) == (y.cgroup as String) &&
+          (x.workspace as String) == (y.workspace as String)
+        MicroVmInventory { inventory: _ } => false
+      }
+  }
+}
+
+fn micro_vm_environment_inventory_eq(a: MicroVmEnvironmentInventory, b: MicroVmEnvironmentInventory) -> Bool {
   process_identity_eq(a: a.vmm, b: b.vmm) &&
   (a.cgroup as String) == (b.cgroup as String) && (a.jail as String) == (b.jail as String) &&
   (a.jail_mount as String) == (b.jail_mount as String) &&
@@ -133,6 +189,7 @@ type RunnerResourceTransition {
 fn readback_reading(class: RunnerResourceClass, readback: RunnerEnvironmentReadback) -> RunnerResourceReading {
   match class {
     RunnerVmm => readback.vmm
+    RunnerTransientUnit => readback.unit
     RunnerCgroup => readback.cgroup
     RunnerJail => readback.jail
     RunnerJailMount => readback.jail_mount
@@ -143,8 +200,12 @@ fn readback_reading(class: RunnerResourceClass, readback: RunnerEnvironmentReadb
   }
 }
 
-fn runner_resource_transitions(before: RunnerEnvironmentReadback, after: RunnerEnvironmentReadback) -> List<RunnerResourceTransition> {
-  runner_resource_classes |> map(class => RunnerResourceTransition {
+fn runner_resource_transitions(
+  classes: List<RunnerResourceClass>,
+  before: RunnerEnvironmentReadback,
+  after: RunnerEnvironmentReadback,
+) -> List<RunnerResourceTransition> {
+  classes |> map(class => RunnerResourceTransition {
     resource: class,
     before: readback_reading(class: class, readback: before),
     after: readback_reading(class: class, readback: after),
@@ -179,14 +240,14 @@ fn runner_teardown_from_observations<P>(
   } else if process_identity_eq(a: request.destroyer, b: before.observer) ||
             process_identity_eq(a: request.destroyer, b: after.observer) {
     RunnerTeardownRefused { cause: TeardownSelfObservation }
-  } else if process_identity_eq(a: request.inventory.vmm, b: before.observer) ||
-            process_identity_eq(a: request.inventory.vmm, b: after.observer) {
+  } else if process_identity_eq(a: runner_environment_process(inventory: request.inventory), b: before.observer) ||
+            process_identity_eq(a: runner_environment_process(inventory: request.inventory), b: after.observer) {
     RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment }
   } else if !declaration_ref_eq(a: before.evidence.producer, b: after.evidence.producer) {
     RunnerTeardownRefused { cause: TeardownInstrumentChanged }
   } else if !process_identity_eq(a: before.observer, b: after.observer) {
     RunnerTeardownRefused { cause: TeardownObserverChanged }
-  } else if (request.inventory.vmm.boot_id as String) != (request.subject.boot_id as String) ||
+  } else if (runner_environment_process(inventory: request.inventory).boot_id as String) != (request.subject.boot_id as String) ||
             (request.destroyer.boot_id as String) != (request.subject.boot_id as String) ||
             (after.observer.boot_id as String) != (request.subject.boot_id as String) {
     RunnerTeardownRefused { cause: TeardownBootMismatch }
@@ -197,7 +258,7 @@ fn runner_teardown_from_observations<P>(
     ]) {
       Present { value: d } => RunnerTeardownRefused { cause: TeardownObservationOrderRefused { diagnostic: d } }
       Absent => {
-        let refusal = runner_resource_transitions(before: before.readback, after: after.readback)
+        let refusal = runner_resource_transitions(classes: runner_resource_classes_for(inventory: request.inventory), before: before.readback, after: after.readback)
           |> fold(init: Absent, f: fn(found, row) {
             match found {
               Present { value: _ } => found
