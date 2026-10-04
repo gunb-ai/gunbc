@@ -1,0 +1,294 @@
+module product.capacity.redemption
+
+import std.types { String, Bool, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string }
+import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
+  ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, EventDecode,
+}
+import product.capacity.lease { QuiescenceFact, Quiescent, QuiescenceUnobserved }
+
+// ── USING A GRANT IS A TRANSITION, NOT A READ ────────────────────────────────────────────────
+//
+// A lease grant says a holder MAY use a unit of capacity. It does not say how many uses are running
+// on it: a check that the grant is held, performed once per use, admits any number of concurrent uses
+// of one grant, and a holder that releases the grant while a use is still running frees capacity the
+// use is still consuming. Both were real in the serving front door's first shape (operator ruling on
+// gunbc#13129, 2026-10-03).
+//
+// So a use of a grant is REDEEMED: the resource's own gate (the party that actually lets the use
+// reach the resource) appends a redemption to a chain beside the grant's partition, by the same
+// compare-and-set every pool event is appended with, and the chain answers per grant reference:
+//
+//   Unredeemed -> InFlight { request, holder } -> UseEnded { request, outcome }
+//
+// Exactly one redemption can be admitted per reference, because a redemption is proposed only from
+// Unredeemed and is appended against the head it was decided at: two gates that read the same head
+// both propose, one append wins, the other is stale, re-reads, and finds InFlight. While InFlight the
+// grant's release belongs to the gate, not the holder (redemption_release_owner), and only the gate's
+// end-of-use transition moves it on. A gate that dies after redeeming leaves InFlight standing: the
+// grant stays held, attributed to that request and holder, and it is ended only on OBSERVED quiescence
+// (redemption_recovery) -- never by a timer, which would free capacity behind a possibly running use.
+//
+// This is a second chain on the same fabric event log, keyed beside the grant's partition, not a
+// second ledger: the grant's own history stays in the pool partition, and the redemption chain
+// carries only the facts the pool does not -- which use is running on which grant.
+
+data redemption_event_schema: String = "capacity-redemption-event/v1"
+
+type RedemptionEvent
+  = GrantRedeemed { reference: NonEmptyStr, request: NonEmptyStr, holder: NonEmptyStr }
+  | GrantUseEnded { reference: NonEmptyStr, request: NonEmptyStr, outcome: NonEmptyStr }
+
+// THE CHAIN'S PARTITION IS DERIVED FROM THE GRANT'S, never authored: a gate holding a pool partition
+// can name exactly one redemption chain for it, and no pool partition has this prefix.
+fn redemption_partition_of(pool_partition: PartitionId) -> PartitionId {
+  join(["redemption:", pool_partition as String], "") as PartitionId
+}
+
+fn redemption_event_kind_word(e: RedemptionEvent) -> String {
+  match e {
+    GrantRedeemed { reference: _, request: _, holder: _ } => "redeemed"
+    GrantUseEnded { reference: _, request: _, outcome: _ } => "use-ended"
+  }
+}
+
+fn redemption_event_kind_members(e: RedemptionEvent) -> List<JsonKeyValue> {
+  match e {
+    GrantRedeemed { reference: r, request: q, holder: h } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "request", value: json_string(s: q as String)),
+      json_kv(key: "holder", value: json_string(s: h as String)),
+    ]
+    GrantUseEnded { reference: r, request: q, outcome: o } => [
+      json_kv(key: "reference", value: json_string(s: r as String)),
+      json_kv(key: "request", value: json_string(s: q as String)),
+      json_kv(key: "outcome", value: json_string(s: o as String)),
+    ]
+  }
+}
+
+fn redemption_event_wire_text(event: ChainEvent<RedemptionEvent>) -> String {
+  chain_event_wire_text(schema: redemption_event_schema, e: event, kind: redemption_event_kind_word(e: event.payload), members: redemption_event_kind_members(e: event.payload))
+}
+
+fn redemption_event_kind_decode(doc: JsonValue, word: String) -> RedemptionEvent? {
+  match member_nonempty(doc: doc, key: "reference") {
+    Absent => none
+    Present { value: r } =>
+      match member_nonempty(doc: doc, key: "request") {
+        Absent => none
+        Present { value: q } =>
+          if word == "redeemed" {
+            match member_nonempty(doc: doc, key: "holder") {
+              Absent => none
+              Present { value: h } => Present { value: GrantRedeemed { reference: r, request: q, holder: h } }
+            }
+          } else if word == "use-ended" {
+            match member_nonempty(doc: doc, key: "outcome") {
+              Absent => none
+              Present { value: o } => Present { value: GrantUseEnded { reference: r, request: q, outcome: o } }
+            }
+          } else {
+            none
+          }
+      }
+  }
+}
+
+fn redemption_event_decode(text: String) -> EventDecode<RedemptionEvent> {
+  chain_event_decode(text: text, schema: redemption_event_schema, kind_decode: fn(doc, word) { redemption_event_kind_decode(doc: doc, word: word) })
+}
+
+// ── The state of one grant's use ─────────────────────────────────────────────────────────────
+
+// A CHAIN THAT SAYS TWO CONTRADICTORY THINGS ABOUT ONE REFERENCE IS NOT A STATE. Every arm the fold
+// cannot reach from Unredeemed by the transitions above is reported as corrupt with the event that
+// broke it, never resolved in favour of either reading.
+type RedemptionState
+  = Unredeemed
+  | InFlight { request: NonEmptyStr, holder: NonEmptyStr, redeemed_at: EpochSecs, by: EventId }
+  | UseEnded { request: NonEmptyStr, outcome: NonEmptyStr }
+  | RedemptionCorrupt { at_event: EventId, detail: String }
+  | RedemptionUnread { detail: String }
+
+fn redemption_apply(state: RedemptionState, env: ChainEnvelope<RedemptionEvent>, reference: NonEmptyStr) -> RedemptionState {
+  match state {
+    RedemptionCorrupt { at_event: _, detail: _ } => state
+    RedemptionUnread { detail: _ } => state
+    Unredeemed =>
+      match env.event.payload {
+        GrantRedeemed { reference: r, request: q, holder: h } =>
+          if (r as String) == (reference as String) { InFlight { request: q, holder: h, redeemed_at: env.event.recorded_at, by: env.id } } else { state }
+        GrantUseEnded { reference: r, request: _, outcome: _ } =>
+          if (r as String) == (reference as String) { RedemptionCorrupt { at_event: env.id, detail: "a use ended on a grant that was never redeemed" } } else { state }
+      }
+    InFlight { request: running, holder: _, redeemed_at: _, by: _ } =>
+      match env.event.payload {
+        GrantRedeemed { reference: r, request: _, holder: _ } =>
+          if (r as String) == (reference as String) { RedemptionCorrupt { at_event: env.id, detail: "a second redemption of a grant that is already in flight" } } else { state }
+        GrantUseEnded { reference: r, request: q, outcome: o } =>
+          if (r as String) != (reference as String) {
+            state
+          } else if (q as String) != (running as String) {
+            RedemptionCorrupt { at_event: env.id, detail: join(["a use ended for request ", q as String, " while ", running as String, " was in flight"], "") }
+          } else {
+            UseEnded { request: q, outcome: o }
+          }
+      }
+    UseEnded { request: _, outcome: _ } =>
+      match env.event.payload {
+        GrantRedeemed { reference: r, request: _, holder: _ } =>
+          if (r as String) == (reference as String) { RedemptionCorrupt { at_event: env.id, detail: "a redemption after the grant's one use ended" } } else { state }
+        GrantUseEnded { reference: r, request: _, outcome: _ } =>
+          if (r as String) == (reference as String) { RedemptionCorrupt { at_event: env.id, detail: "a second end of one use" } } else { state }
+      }
+  }
+}
+
+fn redemption_state_of(walk: ChainWalk<RedemptionEvent>, reference: NonEmptyStr) -> RedemptionState {
+  match walk {
+    ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+      RedemptionUnread { detail: join(["the redemption chain is missing event ", m as String], "") }
+    ChainBudgetExhausted { at: a } =>
+      RedemptionUnread { detail: join(["the redemption chain exceeded its read budget at ", a as String], "") }
+    ChainWalked { oldest_first: xs } =>
+      fold(xs, init: Unredeemed, f: (st, env) => redemption_apply(state: st, env: env, reference: reference))
+  }
+}
+
+// ── Proposals: what may be appended, decided against one head ────────────────────────────────
+
+type RedemptionRefusal
+  = GrantAlreadyRedeemed { request: NonEmptyStr, holder: NonEmptyStr }
+  | GrantUseAlreadyEnded { request: NonEmptyStr }
+  | GrantNotInFlight
+  | GrantInFlightForAnotherRequest { running: NonEmptyStr, presented: NonEmptyStr }
+  | RedemptionChainCorrupt { at_event: EventId, detail: String }
+  | RedemptionChainUnread { detail: String }
+
+type RedemptionProposal
+  = RedemptionProposed { event: ChainEvent<RedemptionEvent>, expected: HeadExpectation }
+  | RedemptionRefused { cause: RedemptionRefusal }
+
+fn redemption_parent(head: HeadExpectation) -> EventId? {
+  match head {
+    HeadAbsent => none
+    HeadAt { id: h } => Present { value: h }
+  }
+}
+
+fn redemption_event_at(partition: PartitionId, head: HeadExpectation, at: EpochSecs, actor: NonEmptyStr, payload: RedemptionEvent) -> ChainEvent<RedemptionEvent> {
+  ChainEvent { partition: partition, parent: redemption_parent(head: head), recorded_at: at, actor: actor, payload: payload }
+}
+
+fn redemption_state_refusal(state: RedemptionState) -> RedemptionRefusal? {
+  match state {
+    Unredeemed => none
+    InFlight { request: q, holder: h, redeemed_at: _, by: _ } => Present { value: GrantAlreadyRedeemed { request: q, holder: h } }
+    UseEnded { request: q, outcome: _ } => Present { value: GrantUseAlreadyEnded { request: q } }
+    RedemptionCorrupt { at_event: e, detail: d } => Present { value: RedemptionChainCorrupt { at_event: e, detail: d } }
+    RedemptionUnread { detail: d } => Present { value: RedemptionChainUnread { detail: d } }
+  }
+}
+
+// REDEEM ONLY FROM UNREDEEMED. A replayed or concurrent redemption of one grant finds it in flight
+// (or ended) and refuses naming the use that holds it; it never starts a second use.
+fn propose_redemption(state: RedemptionState, head: HeadExpectation, partition: PartitionId, at: EpochSecs, actor: NonEmptyStr, reference: NonEmptyStr, request: NonEmptyStr, holder: NonEmptyStr) -> RedemptionProposal {
+  match redemption_state_refusal(state: state) {
+    Present { value: why } => RedemptionRefused { cause: why }
+    Absent =>
+      RedemptionProposed {
+        event: redemption_event_at(partition: partition, head: head, at: at, actor: actor, payload: GrantRedeemed { reference: reference, request: request, holder: holder }),
+        expected: head,
+      }
+  }
+}
+
+// END ONLY THE USE THAT IS RUNNING. A second end, or an end naming another request, refuses -- which
+// is what makes the release that follows an end happen once.
+fn propose_use_end(state: RedemptionState, head: HeadExpectation, partition: PartitionId, at: EpochSecs, actor: NonEmptyStr, reference: NonEmptyStr, request: NonEmptyStr, outcome: NonEmptyStr) -> RedemptionProposal {
+  match state {
+    InFlight { request: running, holder: _, redeemed_at: _, by: _ } =>
+      if (running as String) != (request as String) {
+        RedemptionRefused { cause: GrantInFlightForAnotherRequest { running: running, presented: request } }
+      } else {
+        RedemptionProposed {
+          event: redemption_event_at(partition: partition, head: head, at: at, actor: actor, payload: GrantUseEnded { reference: reference, request: request, outcome: outcome }),
+          expected: head,
+        }
+      }
+    Unredeemed => RedemptionRefused { cause: GrantNotInFlight }
+    UseEnded { request: q, outcome: _ } => RedemptionRefused { cause: GrantUseAlreadyEnded { request: q } }
+    RedemptionCorrupt { at_event: e, detail: d } => RedemptionRefused { cause: RedemptionChainCorrupt { at_event: e, detail: d } }
+    RedemptionUnread { detail: d } => RedemptionRefused { cause: RedemptionChainUnread { detail: d } }
+  }
+}
+
+fn redemption_refusal_wire(r: RedemptionRefusal) -> String {
+  match r {
+    GrantAlreadyRedeemed { request: q, holder: h } => join(["the grant is already in flight for request ", q as String, " through ", h as String], "")
+    GrantUseAlreadyEnded { request: q } => join(["the grant's one use (request ", q as String, ") has already ended"], "")
+    GrantNotInFlight => "the grant has no use in flight"
+    GrantInFlightForAnotherRequest { running: q, presented: p } => join(["request ", p as String, " is not the use in flight (", q as String, ")"], "")
+    RedemptionChainCorrupt { at_event: e, detail: d } => join(["the redemption chain is contradictory at ", e as String, ": ", d], "")
+    RedemptionChainUnread { detail: d } => join(["the redemption chain could not be read: ", d], "")
+  }
+}
+
+// ── Who may release the grant ────────────────────────────────────────────────────────────────
+
+// WHILE A USE IS IN FLIGHT THE HOLDER MAY NOT RELEASE. The gate that redeemed it owns the release and
+// performs it after the use's end is recorded. An unreadable or contradictory chain refuses the
+// release too: releasing behind a use that may be running is the oversubscription this exists to
+// prevent, and a held seat is the fail-closed direction.
+type RedemptionReleaseOwner
+  = ReleaseOpen
+  | ReleaseOwnedByGate { request: NonEmptyStr, holder: NonEmptyStr }
+  | ReleaseUndecidable { detail: String }
+
+fn redemption_release_owner(state: RedemptionState) -> RedemptionReleaseOwner {
+  match state {
+    Unredeemed => ReleaseOpen
+    UseEnded { request: _, outcome: _ } => ReleaseOpen
+    InFlight { request: q, holder: h, redeemed_at: _, by: _ } => ReleaseOwnedByGate { request: q, holder: h }
+    RedemptionCorrupt { at_event: e, detail: d } => ReleaseUndecidable { detail: join(["contradictory at ", e as String, ": ", d], "") }
+    RedemptionUnread { detail: d } => ReleaseUndecidable { detail: d }
+  }
+}
+
+// ── Recovery after the gate dies ─────────────────────────────────────────────────────────────
+
+// A USE WHOSE GATE DIED STAYS IN FLIGHT, HELD AND CHARGED, UNTIL ITS QUIESCENCE IS OBSERVED. The
+// redemption record is the attribution -- which request, through which holder, since when -- so the
+// held capacity is charged to that use rather than becoming nobody's. Only an observation that the use
+// is quiescent lets recovery end it, after which the ordinary release follows.
+//
+// NEVER-REDEEMED AND ALREADY-ENDED ARE DIFFERENT STATES AND RECOVERY KEEPS THEM APART (ruling on
+// gunbc#13129 at e544220f602). An Unredeemed grant has had no use: it still belongs to its holder,
+// who may present it or release it, and recovery has nothing to do with it -- releasing it would
+// revoke an untouched grant. Only UseEnded owes a release: its use is over and the gate's release may
+// not have landed.
+type RedemptionRecovery
+  = RecoveryNoUseToRecover
+  | RecoveryReleaseOwed { request: NonEmptyStr }
+  | RecoveryHoldCharged { request: NonEmptyStr, holder: NonEmptyStr, since: EpochSecs }
+  | RecoveryEndThenRelease { request: NonEmptyStr }
+  | RecoveryUndecidable { detail: String }
+
+fn redemption_recovery(state: RedemptionState, quiescence: QuiescenceFact) -> RedemptionRecovery {
+  match state {
+    Unredeemed => RecoveryNoUseToRecover
+    UseEnded { request: q, outcome: _ } => RecoveryReleaseOwed { request: q }
+    InFlight { request: q, holder: h, redeemed_at: at, by: _ } =>
+      match quiescence {
+        QuiescenceUnobserved => RecoveryHoldCharged { request: q, holder: h, since: at }
+        Quiescent { observed_at: _ } => RecoveryEndThenRelease { request: q }
+      }
+    RedemptionCorrupt { at_event: e, detail: d } => RecoveryUndecidable { detail: join(["contradictory at ", e as String, ": ", d], "") }
+    RedemptionUnread { detail: d } => RecoveryUndecidable { detail: d }
+  }
+}

@@ -26,7 +26,6 @@ import gunbc.ci_materialization {
   ci_floor_declared_resolve_count,
 }
 import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
-import v2.std.logic { Bool }
 import std.measure { nanosecond }
 
 // Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor

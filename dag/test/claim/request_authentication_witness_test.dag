@@ -16,10 +16,7 @@ import extdeps.auth.oidc {
   OidcIdTokenVerdictPolicy, verify_oidc_id_token,
   OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath,
 }
-import extdeps.http.server {
-  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev,
-  RequestSecurityContext, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
-}
+import extdeps.http.server { RequestSecurityContext }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import extdeps.tailscale.serve {
   TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable,
@@ -43,6 +40,7 @@ import gunbc.auth.request_authentication {
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
+  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -207,11 +205,11 @@ test fn an_empty_header_behind_the_proxy_is_local_dev() -> Bool {
 
 // ── The human-write law: the conjunction is the only Permit ────────────────────────────────────
 
-fn local_dev_absent_security() -> RequestSecurityContext<RequestAuthenticationEvidence> {
+fn local_dev_absent_security() -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent }
 }
 
-fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+fn session_security(session: AuthenticatedSession) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: session } }
 }
 

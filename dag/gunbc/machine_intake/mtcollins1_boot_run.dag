@@ -26,9 +26,10 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
   MtCollins1BootSubject,
   mtcollins1_boot_subject,
 }
-import gunbc.machine_intake_mtcollins1_maintenance_hold {
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused,
-  mtcollins1_boot_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal, mtcollins1_unit_hold_key,
+  boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
 import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_attach_diskless_image, mtcollins1_stale_power_off_allowance, mtcollins1_media_gate, mtcollins1_observe_presentation }
 import gunbc.machine_intake_megarac_media_attach { PresentationStillReady, presentation_still_served }
@@ -319,7 +320,7 @@ fn mtcollins1_sol_release(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_release_sol"),
   ]
 {
-  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL release") {
+  match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: "mtcollins1 SOL release") {
     Present { value: _ } => return false
     Absent => {}
   }
@@ -564,7 +565,7 @@ fn mtcollins1_sol_activate_held(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_acquire_under_unit_hold"),
   ]
 {
-  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: "mtcollins1 SOL activate") {
+  match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: "mtcollins1 SOL activate") {
     Present { value: why } => return exit_failure(reason: why)
     Absent => {}
   }
@@ -2436,7 +2437,7 @@ fn mtcollins1_boot_under_live_unit_hold(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_on_srv1_resolving_toolchain"),
   ]
 {
-  match mtcollins1_boot_acquire_unit_hold(run_id: run_id) {
+  match boot_run_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id) {
     UnitHoldRefused { reason: r } => actuation_not_powered_on(outcome: exit_failure(reason: concat("mtcollins1 boot: ", r as String)), reason: "the unit hold was refused, so nothing was written")
     UnitHeld { proof: p } => {
       let act = mtcollins1_boot_actuate(

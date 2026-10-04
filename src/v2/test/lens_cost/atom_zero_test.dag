@@ -2,7 +2,6 @@ module v2.test.lens_cost.atom_zero
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { cost_lens, zero_cost }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.witness { Holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

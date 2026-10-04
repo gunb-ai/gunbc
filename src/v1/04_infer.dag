@@ -14,7 +14,7 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous
@@ -117,7 +117,8 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  is_empty_map_constructor, is_empty_set_constructor
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
@@ -8012,16 +8013,6 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
           )
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
       }
-    BooleanUnfold { true_variant: t, false_variant: f } =>
-      match lit {
-        LitBool { value: b } =>
-          elaborated_expr_node(
-            name: if b { t.decl_name as String } else { f.decl_name as String },
-            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String, parent_identity: VariantParentIdentified { key: VariantParentDeclaration { declaration: elaboration.destination } } } } },
-            children: [], destination_type: destination_type, span: span
-          )
-        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
-      }
   }
 }
 
@@ -8713,7 +8704,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
-        } else if !callee_is_body_binding && func_name == "empty_map" {
+        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -8781,7 +8772,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && func_name == "empty_set" {
+        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
