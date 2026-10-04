@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, byte_size_count }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.deepseek.deepseek_v4_1_flash { DeepseekV41PublishedFile, deepseek_v4_1_flash_safetensors_tree_file_bytes }
 import gunbc.artifact_acquisition {
   ContentDigestSha256, UpstreamRevision, SourceArgv, SourceUrl, AcquisitionSource, AcquisitionFoldState, AttemptRejected,

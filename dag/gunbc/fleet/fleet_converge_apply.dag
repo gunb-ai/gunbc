@@ -1,7 +1,7 @@
 module gunbc.fleet_converge_apply
 
 import std.types { String, List, Bool, Int }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_converge {
   ConvergePolicy,
   ConvergePolicyDerived,

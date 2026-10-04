@@ -1,0 +1,98 @@
+module gunbc.workspace_commissioning_transaction
+
+import v2.std.algebra { any, filter }
+import std.types { String, NonEmptyStr, Bool }
+import std.measure { ByteSize, HardwareThreadCount }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.workspace_commissioning { WorkspaceCommissionedSlot }
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, CellAttemptInFlight,
+  CellReadinessWrite, WriteCommissioned, record_cell,
+ record_ready_cell_at, StoreNotRootOwned, StoreUnreadable,
+}
+import product.fabric.sanitation { CellReady }
+
+// Immutable commissioning provenance is distinct from the cell's advancing attempt generation.
+// The installed slot controller is the sole readiness writer. The persistence adapter must CAS
+// this record under that same exclusive controller invocation; an observed phase is not a lock.
+type WorkspaceCommissioningProvenance {
+  slot: RunnerSlotIdentity
+  plan_hash: NonEmptyStr
+  source_revision: NonEmptyStr
+  installed_tree_digest: NonEmptyStr
+  controller_digest: NonEmptyStr
+  guest_image_digest: NonEmptyStr
+  cpu_budget: HardwareThreadCount
+  attempt_envelope: ByteSize
+  no_swap: Bool
+  sanitation_observation: NonEmptyStr
+}
+
+type WorkspaceCommissioningRecord
+  = WorkspaceCommissioningPrepared { provenance: WorkspaceCommissioningProvenance }
+  | WorkspaceCommissioningCommitted { provenance: WorkspaceCommissioningProvenance }
+
+type WorkspaceCommissioningRecordReading
+  = WorkspaceCommissioningRecordAbsent
+  | WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningRecord }
+  | WorkspaceCommissioningRecordUnreadable { reason: String }
+
+type WorkspaceCommissioningTransition
+  = WorkspaceCommissioningPrepare { record: WorkspaceCommissioningRecord }
+  | WorkspaceCommissioningWriteReadiness { write: CellReadinessWrite }
+  | WorkspaceCommissioningCommit { record: WorkspaceCommissioningRecord }
+  | WorkspaceCommissioningAlreadyCommitted
+  | WorkspaceCommissioningTransitionRefused { reason: String }
+
+fn workspace_commissioning_provenance_matches(
+  admitted: WorkspaceCommissionedSlot, provenance: WorkspaceCommissioningProvenance,
+) -> Bool {
+  provenance.slot == admitted.slot && provenance.plan_hash == admitted.commissioning_plan_hash
+    && provenance.cpu_budget == admitted.cpu_budget && provenance.attempt_envelope == admitted.attempt_envelope
+    && provenance.no_swap && admitted.settled_generation == 0
+    && (provenance.source_revision as String) != "" && (provenance.controller_digest as String) != ""
+    && (provenance.guest_image_digest as String) != "" && (provenance.sanitation_observation as String) != ""
+}
+
+// Every call consumes a fresh pair of reads. Prepared is never supply admission. Recovery after
+// the readiness write completes only the matching transaction; it cannot recreate generation zero.
+fn workspace_commissioning_next(
+  admitted: WorkspaceCommissionedSlot, provenance: WorkspaceCommissioningProvenance,
+  transaction: WorkspaceCommissioningRecordReading, readiness: CellReadinessStoreRead,
+) -> WorkspaceCommissioningTransition {
+  if !workspace_commissioning_provenance_matches(admitted: admitted, provenance: provenance) {
+    WorkspaceCommissioningTransitionRefused { reason: "commissioning provenance contradicts the admitted slot, budget or artifact identities" }
+  } else { match transaction {
+    WorkspaceCommissioningRecordUnreadable { reason } => WorkspaceCommissioningTransitionRefused { reason: reason }
+    other => match readiness {
+      StoreRead { ownership: StoreRootOwned, records } => {
+        let own = filter(records, r => (record_cell(record: r) as String) == (runner_slot_instance_name(slot: admitted.slot) as String))
+        match transaction {
+          WorkspaceCommissioningRecordAbsent => if own.count() == 0 {
+            WorkspaceCommissioningPrepare { record: WorkspaceCommissioningPrepared { provenance: provenance } }
+          } else { WorkspaceCommissioningTransitionRefused { reason: "readiness exists without commissioning provenance; recover history instead of initializing it" } }
+          WorkspaceCommissioningRecordRead { record } => match record {
+            WorkspaceCommissioningPrepared { provenance: stored } => if stored != provenance {
+              WorkspaceCommissioningTransitionRefused { reason: "another commissioning subject owns the prepared transition" }
+            } else if own.count() == 0 {
+              WorkspaceCommissioningWriteReadiness { write: WriteCommissioned { permit: admitted.initial_readiness } }
+            } else if own.count() == 1 && any(own, r => match record_ready_cell_at(record: r, generation: 0) {
+              Present { value: ready_cell } => (ready_cell as String) == (runner_slot_instance_name(slot: admitted.slot) as String)
+              Absent => false
+            }) {
+              WorkspaceCommissioningCommit { record: WorkspaceCommissioningCommitted { provenance: provenance } }
+            } else { WorkspaceCommissioningTransitionRefused { reason: "prepared commissioning cannot overwrite an attempt, quarantine or advanced generation" } }
+            WorkspaceCommissioningCommitted { provenance: stored } => if stored != provenance {
+              WorkspaceCommissioningTransitionRefused { reason: "committed commissioning belongs to a different plan or installed artifact" }
+            } else if own.count() == 1 {
+              WorkspaceCommissioningAlreadyCommitted
+            } else { WorkspaceCommissioningTransitionRefused { reason: "committed commissioning has missing or ambiguous readiness history" } }
+          }
+          WorkspaceCommissioningRecordUnreadable { reason } => WorkspaceCommissioningTransitionRefused { reason: reason }
+        }
+      }
+      StoreRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ }, records: _ } => WorkspaceCommissioningTransitionRefused { reason: "readiness is unreadable or not root-owned" }
+      StoreUnreadable { reason: _ } => WorkspaceCommissioningTransitionRefused { reason: "readiness is unreadable or not root-owned" }
+    }
+  } }
+}

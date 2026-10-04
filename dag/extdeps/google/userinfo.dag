@@ -1,0 +1,38 @@
+module extdeps.google.userinfo
+
+import std.types { String, Email, Bool, Secret }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.ietf.http_semantics { GET }
+import extdeps.cloud.gcp.errors { GcpOAuth2ErrorShape }
+import std.resources { Network }
+
+// Flat wire projection of OIDC standard claims. Claim semantics remain in extdeps.auth.oidc.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "developers.google.com/identity/openid-connect/reference" }
+}
+
+type GoogleUserInfoWire {
+  subject: String from "sub"
+  email: Email?
+  email_verified: Bool?
+}
+
+service google.OidcUserInfo {
+  config { endpoint: "https://openidconnect.googleapis.com", auth: Bearer, auth_input: access_token }
+  operation Get {
+    requires Network
+    input { access_token: Secret }
+    output { subject: String from "sub", email: Email?, email_verified: Bool?, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/v1/userinfo" }
+    response {
+      200 => GoogleUserInfoWire
+      400 => GcpOAuth2ErrorShape
+      401 => GcpOAuth2ErrorShape
+      403 => GcpOAuth2ErrorShape
+      5xx => GcpOAuth2ErrorShape
+    }
+  }
+}

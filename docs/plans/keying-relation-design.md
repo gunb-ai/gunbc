@@ -141,6 +141,41 @@ instance. "Wrong grain" and "wrong key arity" are one statement, and the refutin
 why the distinction must be *declared* before it can be *checked* — today the correct and
 defective cases are byte-identical in source.
 
+### 3e. Infer's facts keyed by site — v2 infer's facts table
+
+**Status** (2026-10-04): ruled, not built. This text is ported from the orphaned branch
+`eager-newt-412/facts-site-key`, because `infer-checking-mode-plan.md` and
+`derived-node-identity-design.md` cite it. The branch's model (`InferSite`, `InferFactsTrie` in
+`v2.compiler.inferred_tree`) is **not** on main and is not landed by this text: no site type
+exists yet, and `v2.compiler.infer` `inferred_facts_map_enter` is still first-wins on a
+structural `Node` key. The debt is carried by `gunbc.rung_drop`
+`infer_facts_key_conflict_reverted_to_first_wins`, whose restoration trigger is this relation
+built and consumed. The conversion has no owner; it is v2 work and does not gate
+derived-node identity step 2, which is v1 infer.
+
+**Ruling** 2026-10-01 (neat-boar-16, option B, which supersedes its earlier option A).
+
+**Specimen.** Infer keyed its facts by STRUCTURAL `Node` equality, and the first entry won. A childless synthetic `Conj` ends both a qualified-name spine and an int literal's digit list. Those are two sites with two different facts but one structural key, so a consumer at either site read whichever fact the gather produced first. A refusal on that key (#12582) cannot tell this case from a real conflict, which is why it was reverted (#12852). The defect is the key, not the refusal.
+
+**The relation, in §3b terms.**
+- *Relation:* "this fact is about this site of this tree."
+- *Scope:* exactly one `InferredTree`. The key carries the content hash of the tree's root, and a lookup refuses a key minted for another root. It is never persisted and never compared across trees, runs or stages.
+- *Preimage:* the path of edges from that root, one `(label, ordinal)` step per edge. The ordinal is the edge's position among its parent's children, so siblings with equal labels (every `Positional` child, repeated list-spine labels) and structurally equal subtrees still get distinct keys. The path is injective by construction.
+- *Equality:* path equality within one root.
+- *Collision disposition:* one site that receives two DIFFERENT facts refuses `infer_facts_key_conflict`, located at that site. The same fact entered twice at one site merges. Equal facts at two different sites are two entries, never a collision.
+
+**Why occurrence identity (`std.occurrence_identity`, #12790) cannot key this.** Occurrence identity answers "which AUTHORED occurrence". Normalize is the only seam with an allocator. Resolve and the later stages rebuild nodes as `OccurrenceSynthetic`, and infer types the RESOLVED tree, so the colliding nodes have no occurrence to key by. Allocating one for them (option A) would infer each node's cause from its shape, and would change the readers that treat "synthetic" as "no origin". Occurrence identity stays the authority for authored provenance. The site key does not replace it and is not a second occurrence authority.
+
+**Consumers.** Every reader of `InferredTree.facts` takes the site it is standing at:
+- Eval threads a site down its interpreter. A callee body is reached through a child edge of the call node, so it has a site in the same tree.
+- The structural-resolution, effect and parallelism lenses and `program_partition` derive the site from the traversal that produced their node.
+
+No reader keeps a lookup on the structural `Node`. Hand-built fixture trees go through one shared constructor that answers a site by resolving it to the node at that site in the fixture's root. A supplied input stays a supplied input (DESIGN §3 witness rule).
+
+**Kept condition.** No builder may share one node object across two different meanings. The site key must not paper over a builder that does, so such a builder remains a defect to report. The control is that the two empty `Conj` children of the E1 `Arrow` are distinct objects at distinct sites.
+
+**Declared model item (A').** Identity for EVERY node at infer's input, with each builder naming its cause, is a separate model and not an extension of #12790. Trigger: a consumer needs node identity at infer's input beyond facts, for example provenance of a synthetic node across stages. It does not land under this row.
+
 ## 4. Where each layer's authority sits
 
 Causality runs upward from reality, not downward from a product taxonomy:

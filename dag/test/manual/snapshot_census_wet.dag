@@ -1,0 +1,105 @@
+module test.manual.snapshot_census_wet
+
+import std.types { String, FilePath, Bool, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout, roadmap_event_snapshot_template, roadmap_event_snapshot_close,
+  carrier_exec, CarrierExecOk, CarrierExecFailed, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed,
+}
+import gunbc.roadmap.roadmap_event_snapshot_census {
+  RoadmapSnapshotCensusPass, SnapshotCensusRecorded, SnapshotCensusRefused, roadmap_snapshot_census_at,
+  SnapshotCensusPriorRead, SnapshotCensusPriorAbsent, SnapshotCensusPriorUnreadable, belt_tick_exit_with_snapshot_census,
+}
+
+// THE CENSUS PASS THROUGH ITS REAL PATH, on a throwaway local repository only: the previous
+// receipt read from disk, git's worktree registry listed, the receipt written, six times in a row
+// so each census reads the receipt the one before it wrote. Snapshots are created the way the
+// carrier creates them (the layout's mktemp template, then `git worktree add --detach
+// --no-checkout`) for two layouts sharing the one repository, and removed with the carrier's own
+// close. The tick's join is then applied to the real passes: a recorded one, and one taken over a
+// directory that is not a repository.
+//   mkdir /tmp/gunbc-snapshot-census-<x> && git -C /tmp/gunbc-snapshot-census-<x> init -q \
+//     && git -C /tmp/gunbc-snapshot-census-<x> commit -q --allow-empty -m root
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/test/manual/snapshot_census_wet.dag \
+//     --function snapshot_census_wet --arg repo=/tmp/gunbc-snapshot-census-<x>
+fn census_wet_text(pass: RoadmapSnapshotCensusPass) -> String {
+  match pass {
+    SnapshotCensusRefused { step, reason } => join(["REFUSED ", step, ": ", reason], "")
+    SnapshotCensusRecorded { receipt } => join([
+      "snapshots=", to_string(value: count(receipt.snapshots)),
+      " present_across=", to_string(value: count(receipt.present_across_censuses)),
+      " prior=", match receipt.prior {
+        SnapshotCensusPriorRead { snapshots } => concat("read:", to_string(value: count(snapshots)))
+        SnapshotCensusPriorAbsent => "absent"
+        SnapshotCensusPriorUnreadable { reason } => concat("unreadable:", reason)
+      },
+    ], "")
+  }
+}
+
+fn census_wet_snapshot(layout: RoadmapEventCarrierLayout) -> RoadmapEventCarrierLayout {
+  let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))
+  let added = carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"])
+  match added {
+    CarrierExecOk { stdout: _ } => RoadmapEventCarrierLayout { repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
+    CarrierExecFailed { exit_code: _, stderr: _ } => RoadmapEventCarrierLayout { repo_root: layout.repo_root, worktree: "/nonexistent/worktree-add-failed" as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
+  }
+}
+
+fn census_wet_closed(layout: RoadmapEventCarrierLayout) -> String {
+  match roadmap_event_snapshot_close(layout: layout) {
+    SnapshotClosed => "closed"
+    SnapshotNotOpened => "not-opened"
+    SnapshotCloseFailed { worktree: _, exit_code, stderr } => join(["close-failed ", to_string(value: exit_code), " ", stderr], "")
+  }
+}
+
+fn snapshot_census_wet(repo: String, git_program: String = "/usr/bin/git") -> ProcessExit {
+  if !starts_with(s: repo, prefix: "/tmp/gunbc-snapshot-census-") { exit_failure(reason: "temporary fixture required") }
+  else {
+    let blue = roadmap_event_carrier_layout(repo_root: repo as FilePath, instance_root: concat(repo, "/blue") as FilePath, git_program: git_program, directory_program: "/usr/bin/install")
+    let green = roadmap_event_carrier_layout(repo_root: repo as FilePath, instance_root: concat(repo, "/green") as FilePath, git_program: git_program, directory_program: "/usr/bin/install")
+    let blue_receipt = concat(repo, "/blue-census.json")
+    let green_receipt = concat(repo, "/green-census.json")
+    let first = census_wet_text(pass: roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t1"))
+    let blue_snapshot = census_wet_snapshot(layout: blue)
+    let green_snapshot = census_wet_snapshot(layout: green)
+    let second = census_wet_text(pass: roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t2"))
+    let third_pass = roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t3")
+    let third = census_wet_text(pass: third_pass)
+    let other = census_wet_text(pass: roadmap_snapshot_census_at(layout: green, receipt_path: green_receipt, observed_at: "t3"))
+    let blue_closed = census_wet_closed(layout: blue_snapshot)
+    let fourth = census_wet_text(pass: roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t4"))
+    let emptied = Filesystem.Write(path: blue_receipt, content: "")
+    let fifth = census_wet_text(pass: roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t5"))
+    let sixth = census_wet_text(pass: roadmap_snapshot_census_at(layout: blue, receipt_path: blue_receipt, observed_at: "t6"))
+    let green_closed = census_wet_closed(layout: green_snapshot)
+    let not_a_repository = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-snapshot-census-norepo.XXXXXXXXXX" as FilePath)
+    let unread_pass = roadmap_snapshot_census_at(
+      layout: roadmap_event_carrier_layout(repo_root: not_a_repository.path as FilePath, instance_root: concat(not_a_repository.path, "/blue") as FilePath, git_program: git_program, directory_program: "/usr/bin/install"),
+      receipt_path: concat(not_a_repository.path, "/census.json"), observed_at: "t7")
+    let joined_recorded = match belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: third_pass) { ExitSuccess => "exit-success"  ExitFailure { code: _, reason } => concat("EXIT-FAILURE ", reason) }
+    let joined_unread = match belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: unread_pass) { ExitSuccess => "EXIT-SUCCESS"  ExitFailure { code: _, reason } => if string_contains(s: reason, pattern: "worktree-list") { "exit-failure-names-worktree-list" } else { concat("EXIT-FAILURE-UNNAMED ", reason) } }
+    let observed = join([
+      "1:", first, " | 2:", second, " | 3:", third, " | other:", other, " | ", blue_closed, " | 4:", fourth,
+      " | emptied:", if emptied.success { "yes" } else { "NO" }, " | 5:", fifth, " | 6:", sixth, " | ", green_closed,
+      " | join-recorded:", joined_recorded, " | join-unread:", joined_unread,
+    ], "")
+    let expected = join([
+      "1:snapshots=0 present_across=0 prior=absent",
+      " | 2:snapshots=1 present_across=0 prior=read:0",
+      " | 3:snapshots=1 present_across=1 prior=read:1",
+      " | other:snapshots=1 present_across=0 prior=absent",
+      " | closed",
+      " | 4:snapshots=0 present_across=0 prior=read:1",
+      " | emptied:yes",
+      " | 5:snapshots=0 present_across=0 prior=unreadable:the snapshot census receipt exists and is empty",
+      " | 6:snapshots=0 present_across=0 prior=read:0",
+      " | closed",
+      " | join-recorded:exit-success | join-unread:exit-failure-names-worktree-list",
+    ], "")
+    if observed == expected { ExitSuccess } else { exit_failure(reason: join(["snapshot census wet control failed\nobserved: ", observed, "\nexpected: ", expected], "")) }
+  }
+}

@@ -1,0 +1,67 @@
+module v2.test.claim.self_host_contract.body_producer_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.body_producer { body_producer_dispatch_structured_body, produce_arrow_with_structured_body }
+import v2.std.diagnostic { Outcome, Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { Node, Edge, Positional, Atom, Arrow, TypeNode, ComputationNode, Transform, Value, node_synthetic }
+
+// THE 03_body_producer ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.body_producer accepts a structured body that is a computation node (a Transform with
+// its one child) and refuses, with body_producer_reason_resolved_shape, a body that is a type atom
+// -- both at the dispatch and through produce_arrow_with_structured_body.
+fn bpc_transform_body() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge {
+      label: Positional,
+      target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+    }]
+  )
+}
+
+fn bpc_atom_body() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^residual } }, children: [])
+}
+
+fn bpc_arrow_signature() -> Node {
+  node_synthetic(kind: TypeNode { connective: Arrow }, children: [])
+}
+
+type BpcReading = BpcAccepted | BpcRefusedAsResolvedShape | BpcRefusedOtherwise
+
+fn bpc_reading(outcome: Outcome<Node>) -> BpcReading {
+  match outcome {
+    Accepted { value: _, diagnostics: _ } => BpcAccepted
+    Rejected { diagnostics: d } =>
+      if diagnostics_fatal_reason(d: d) == ^body_producer_reason_resolved_shape {
+        BpcRefusedAsResolvedShape
+      } else {
+        BpcRefusedOtherwise
+      }
+  }
+}
+
+fn bpc_produce(body: Node) -> BpcReading {
+  bpc_reading(outcome: produce_arrow_with_structured_body(signature: bpc_arrow_signature(), structured_body: body))
+}
+
+fn bpc_dispatch(body: Node) -> BpcReading {
+  bpc_reading(outcome: body_producer_dispatch_structured_body(body: body))
+}
+
+// The planted fault asserts ONLY the wrong acceptance: an arrow produced over an atom body.
+fn body_producer_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  if inject_fault {
+    bpc_produce(body: bpc_atom_body()) == BpcAccepted
+  } else {
+    bpc_dispatch(body: bpc_transform_body()) == BpcAccepted
+      && bpc_dispatch(body: bpc_atom_body()) == BpcRefusedAsResolvedShape
+      && bpc_produce(body: bpc_transform_body()) == BpcAccepted
+      && bpc_produce(body: bpc_atom_body()) == BpcRefusedAsResolvedShape
+  }
+}
+
+test fn body_producer_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  body_producer_emitted_contract_holds(inject_fault: false)
+    && !body_producer_emitted_contract_holds(inject_fault: true)
+}

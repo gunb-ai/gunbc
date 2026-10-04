@@ -9,7 +9,7 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix,
   needrestart_unit_name_prefix_regex,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
 import gunbc.runner_width_transition { transition_population_agreement, TransitionPopulationAgrees, TransitionPopulationDisagrees, TransitionPopulationUndecidable }
