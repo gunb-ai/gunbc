@@ -1,7 +1,7 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,

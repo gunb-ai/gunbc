@@ -426,16 +426,18 @@ fn prepare_emitted_compiler_for_entry(
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
     // below are the run's own; a verdict of any other shape refused above.
-    let (exit_status, warning_count, warning_headers) = match &verdict {
+    let (exit_status, warning_count, warning_headers, cargo_network_retries) = match &verdict {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
             status,
             warning_count,
             warning_headers,
+            cargo_network_retries,
             ..
         } => (
             i64::from(*status),
             *warning_count as i64,
             warning_headers.clone(),
+            *cargo_network_retries,
         ),
         other => {
             return Err(format!(
@@ -456,7 +458,8 @@ fn prepare_emitted_compiler_for_entry(
     };
     eprintln!(
         "v2-native-route: emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
-         exit_status={exit_status} warning_count={warning_count} rustc={}",
+         exit_status={exit_status} warning_count={warning_count} \
+         cargo_network_retries={cargo_network_retries} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
     // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
@@ -2504,6 +2507,165 @@ pub fn run_native_claim_program(
     })
 }
 
+/// ONE RUN OF A `std.compiler_entry` `NativeServeDriver` SERVICE, as the observation
+/// `gunbc.native_serve_probe` `native_serve_probe_standing` needs and nothing it decides: the line
+/// the service announced once bound, the bytes each request got back (in request order), and the
+/// status and stderr of a second launch the door must refuse before binding. `refused_status` is
+/// `None` when that launch did not exit by itself within the deadline (it was killed), which the
+/// reader receives as a negative status and so as a start that was not refused.
+pub struct NativeServeProgramRun {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub warning_count: i64,
+    pub announcement: String,
+    pub responses: Vec<String>,
+    pub refused_status: Option<i32>,
+    pub refused_stderr: String,
+    pub stderr: String,
+}
+
+/// How long a launch, an announcement or one exchange may take before the run stops waiting. A
+/// deadline here is the instrument refusing to hang, not a budget the service is judged by.
+const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+    vec![
+        "--host".to_string(),
+        "127.0.0.1".to_string(),
+        "--port".to_string(),
+        "0".to_string(),
+        "--release-revision".to_string(),
+        release_revision.to_string(),
+    ]
+}
+
+/// The launch that must refuse: wait for it to exit by itself, killing it at the deadline.
+fn native_serve_refused_launch(
+    binary: &Path,
+    refused_revision: &str,
+) -> Result<(Option<i32>, String), String> {
+    use std::io::Read;
+    let mut child = Command::new(binary)
+        .args(native_serve_launch_args(refused_revision))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|cause| format!("NATIVE-SERVE REFUSAL cause=SpawnFailed — {cause}"))?;
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            Err(cause) => return Err(format!("NATIVE-SERVE REFUSAL cause=WaitFailed — {cause}")),
+        }
+    };
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_string(&mut stderr);
+    }
+    Ok((status, stderr))
+}
+
+/// One request written to a fresh connection, and every byte the service sent before closing it.
+fn native_serve_exchange(address: &str, request: &str) -> String {
+    use std::io::{Read, Write};
+    let mut stream = match std::net::TcpStream::connect(address) {
+        Ok(stream) => stream,
+        Err(cause) => return format!("connect failed: {cause}"),
+    };
+    let _ = stream.set_read_timeout(Some(NATIVE_SERVE_DEADLINE));
+    let _ = stream.set_write_timeout(Some(NATIVE_SERVE_DEADLINE));
+    if let Err(cause) = stream.write_all(request.as_bytes()) {
+        return format!("write failed: {cause}");
+    }
+    let mut bytes = Vec::new();
+    if let Err(cause) = stream.read_to_end(&mut bytes) {
+        return format!("read failed after {} bytes: {cause}", bytes.len());
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeServeDriver` ENTRY. Preparation is the same
+/// `prepare_emitted_compiler_for_entry` every native route uses. The host reads the bound address
+/// off the announcement (the service binds port 0, so the OS chooses and the announcement is the
+/// only place the choice is published) and otherwise carries bytes. A refusal here -- emission,
+/// build, spawn, or no announcement -- is the subject never having been reached.
+pub fn run_native_serve_program(
+    source_roots: &[String],
+    entry: &str,
+    release_revision: &str,
+    refused_revision: &str,
+    requests: &[String],
+) -> Result<NativeServeProgramRun, String> {
+    use std::io::{BufRead, Read};
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
+    eprintln!(
+        "native-serve: {entry} built (closure {}) -- starting {}",
+        prepared.closure_identity,
+        prepared.binary_path.display()
+    );
+    let (refused_status, refused_stderr) =
+        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+    let mut child = Command::new(&prepared.binary_path)
+        .args(native_serve_launch_args(release_revision))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
+    let pipe = child
+        .stderr
+        .take()
+        .ok_or("NATIVE-SERVE REFUSAL cause=NoStderrPipe")?;
+    let (lines, announced) = std::sync::mpsc::channel::<String>();
+    let reader = std::thread::spawn(move || {
+        let mut pipe = std::io::BufReader::new(pipe);
+        let mut first = String::new();
+        let _ = pipe.read_line(&mut first);
+        let _ = lines.send(first.trim_end().to_string());
+        let mut rest = String::new();
+        let _ = pipe.read_to_string(&mut rest);
+        rest
+    });
+    let announcement = announced
+        .recv_timeout(NATIVE_SERVE_DEADLINE)
+        .unwrap_or_default();
+    let address = announcement
+        .strip_prefix("native-serve listening on ")
+        .and_then(|rest| rest.split(' ').next())
+        .map(str::to_string);
+    let responses = match &address {
+        Some(address) => requests
+            .iter()
+            .map(|request| native_serve_exchange(address, request))
+            .collect(),
+        None => Vec::new(),
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    let stderr = reader.join().unwrap_or_default();
+    Ok(NativeServeProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        announcement,
+        responses,
+        refused_status,
+        refused_stderr,
+        stderr,
+    })
+}
+
 /// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
 ///
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
@@ -3011,6 +3173,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: host::first_rustc_error(stderr).map(Box::new),
         };
         let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");

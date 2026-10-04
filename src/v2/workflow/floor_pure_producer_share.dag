@@ -14,7 +14,8 @@ import std.materialization_ladder {
   RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
   AcceptedEffectIsTheUse, RefusedNatureConflict
 }
-import std.measure { Nanosecond, byte_size, nanosecond, nanosecond_count }
+import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
+import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
@@ -494,6 +495,30 @@ fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
   5000
 }
 
+// THE FLOOR HAS A CPU ARM, as declared policy: a fill is below the floor only when it is below the
+// step floor above AND its thread CPU is below this one. Steps alone undercount a fill whose cost
+// is native. The measured case: dag_prepared_grammar is a nullary wrapper over
+// prepare_grammar(grammar: dag_grammar()); once prepare_grammar is served the wrapper performs a
+// handful of steps and still pays the content hash and total reification of the whole grammar
+// value to key that lookup -- 466 ms and 1140 ms on two measured fills (probe runs 37160051963 and
+// 37199261433). Judged on steps it was declined (205 times on probe 37160050318), so every claim
+// that reached it re-paid that keying natively, outside its step budget.
+//
+// WHY THE VALUE IS THE NEW-WITNESS ENVELOPE AND NOT THE STEP FLOOR CONVERTED TO TIME. Converting
+// 5000 steps at the calibration rate gives about 7 ms, and that was tried: it retained some sixty
+// further producers whose fills are tens of milliseconds and whose values are large trees, the
+// tier reached its byte budget, and seven claims ran over budget only with this change (probe
+// 37199261433). The arm exists for a fill whose native cost by itself is a claim's whole
+// allowance, so its value is that allowance: v2.workflow.required_floor
+// required_floor_new_witness_envelope_ms, one authority, not a second literal.
+fn floor_cross_claim_share_cost_floor_cpu() -> Millisecond {
+  required_floor_new_witness_envelope_ms()
+}
+
+fn floor_cross_claim_share_cost_floor_cpu_millisecond_count() -> Int {
+  millisecond_count(m: floor_cross_claim_share_cost_floor_cpu())
+}
+
 // THE IN-FLIGHT FILL WALL CEILING: a declared POLICY budget, in nanoseconds of wall per evaluator
 // step. A claim that first-touches an admitted fill has the fill's wall excused from its own wall
 // safety deadline only while the fill is DOING WORK: the excused wall is at most the fill's steps
@@ -646,6 +671,9 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // the one claim demanding a nullary producer that roster had warmed.
 // Five more were added from probe 37186494805, for the six rows gunbc#13060 added to the hand roster
 // (v2.test.claim.algebra_operator_derivation), on the same ground.
+// Four more were added from the probe pair 37204679518 against 37204680949 (main 072c37b6cf): claims
+// over budget only without the roster after main's corpus moved, each in a module with a producer
+// only it demands.
 // Re-derive with that probe; do not extend by hand.
 //
 // THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
@@ -661,6 +689,12 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_nested_reference_survives_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.callexec.synthetic_facts_key_collision",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "sfk_the_separation_is_not_specific_to_one_fixture_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -937,6 +971,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.kernel_value_type_roster_witness_test",
     claims: [
+      SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_a_bool_is_accepted_and_decided_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_declared_bool_return_holding_an_int_refuses_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_is_counted_not_judged_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds", standing: ActiveFillDebt }
@@ -983,6 +1018,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.field_projection.field_projection_stages",
     claims: [
+      SingleClaimFillDebtClaim { claim: "fps_a_root_bound_data_value_projects_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_cross_module_record_projection_infers_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_a_qualified_declaration_path_resolves_holds", standing: ActiveFillDebt },
@@ -1303,6 +1339,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.execution.infer_declaration_formation",
     claims: [
+      SingleClaimFillDebtClaim { claim: "an_authored_empty_record_is_not_grounded_by_the_opaque_rule_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_coproduct_with_a_fielded_alternative_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_payloadless_coproduct_forms_a_sum_and_grounds_holds", standing: ActiveFillDebt }
     ]
