@@ -45,7 +45,7 @@ import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg }
 import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_read_order, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, BmcAnomaly, MemoryBelowRecordedPopulation, SlotRow, PopulationOperatorAttested, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 

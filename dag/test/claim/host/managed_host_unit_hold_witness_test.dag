@@ -12,7 +12,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
   FileHoldReleased, FileHoldReleaseLost,
 }
-import gunbc.fleet_intent_network { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
 import gunbc.managed_host_unit_hold {
   UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,

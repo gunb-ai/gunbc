@@ -5,11 +5,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import gunbc.fleet_intent { srv1_host, srv2_host, ComputeHost }
 import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
   srv3_bmc_endpoint,
   operator_lan_segment,
 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import product.network_topology {
   HostLan,
   BmcManagement,
