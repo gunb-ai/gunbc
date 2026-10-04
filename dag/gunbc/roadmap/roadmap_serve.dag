@@ -40,7 +40,7 @@ import gunbc.auth.request_authentication {
   SessionStandingInvalid,
   request_access_path_of_standing,
   TailnetReadbackNotDemanded,
-  RequestIngress, IngressUnattested, request_ingress_is_the_proxy,
+  RequestIngress, IngressUnattested, IngressAttestedPeer, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
@@ -1858,9 +1858,9 @@ fn roadmap_serve_handle_over(
   }
 }
 
-// EVERY ENTRY BELOW IS LAUNCHED ON A TCP LISTENER, which attests no peer, so each hands the seam
-// IngressUnattested: its requests cannot mint the tailnet path and the tailnet-required writes
-// answer unavailable there.
+// EVERY ENTRY THAT DECLARES NO peer_user IS LAUNCHED ON A TCP LISTENER, which attests no peer, so
+// each hands the seam IngressUnattested: its requests cannot mint the tailnet path and the
+// tailnet-required writes answer unavailable there. roadmap_serve_handle_door is the one that can.
 fn roadmap_serve_handle(
   method: String,
   path: String,
@@ -1890,6 +1890,33 @@ fn roadmap_serve_handle(
 // the repo root at request time would make the served identity depend on where the binary happened
 // to be launched, which is an ambient fact, and it would re-answer per request a question that is
 // fixed for a process's whole life.
+// THE PRODUCTION INSTANCE'S TAILNET DOOR ENTRY, launched on the unix socket its serve route
+// targets (gunbc.live_deploy.spec deployment_tailnet_door_socket). The listener attests the peer of
+// each connection and this entry hands it to the seam as the request's ingress, which is what lets
+// a proxied request mint the tailnet path and a local account dialing the socket not.
+fn roadmap_serve_handle_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_live_dashboard_instance(),
+    plan: fn() { roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
 fn roadmap_serve_handle_macbook_local(
   method: String,
   path: String,

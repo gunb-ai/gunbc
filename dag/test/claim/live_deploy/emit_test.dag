@@ -24,6 +24,7 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   ensured_subject_identity,
   deployment_fabric_storage_steps,
+  deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
@@ -874,11 +875,16 @@ fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
 // are named by the functions that decide them and subtracted from production by path; every other
 // production member must have a twin member of the same kind and vice versa, and the twin must own
 // no host singleton at all. The count form this replaces (`twin + fabric == live`) went red the day
-// #12747 added a second host-scoped member, though nothing about the twin was wrong.
+// #12747 added a second host-scoped member, though nothing about the twin was wrong. Production's
+// tailnet door unit is subtracted the same way: it exists because production's serve route targets
+// a socket, which the twin's derived route does not, and the twin must own none.
 fn live_host_singleton_paths(live: DeploymentSpec) -> List<String> {
   concat(
     deployment_fabric_storage_steps(instance: srv1_live_dashboard_instance(), names: live.names),
-    deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+    concat(
+      deployment_approval_broker_front_door_steps(instance: srv1_live_dashboard_instance()),
+      deployment_tailnet_door_steps(names: live.names),
+    ),
   ) |> map(s => s.path as String)
 }
 
@@ -901,6 +907,7 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && all(twin_steps, t => any(live_instance_scoped, l => l.kind == t.kind))
     && count(deployment_fabric_storage_steps(instance: srv1_lab_dashboard_instance(), names: twin.names)) == 0
     && count(deployment_approval_broker_front_door_steps(instance: srv1_lab_dashboard_instance())) == 0
+    && count(deployment_tailnet_door_steps(names: twin.names)) == 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 

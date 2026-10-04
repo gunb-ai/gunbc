@@ -138,7 +138,8 @@ import gunbc.live_deploy.spec {
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, EnsuredManagedHostDirectory, ensured_subject_identity,
   deployment_provider_state_step,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit,
+  deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
@@ -498,11 +499,25 @@ fn user_manager_environment_directives(uid: Int) -> List<SystemdServiceDirective
 // entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact.
 fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
-  let port = to_string(svc.listen.port)
-  let host = svc.listen.host
+  live_deploy_serve_unit_file_over(
+    spec: spec, revision: revision,
+    description: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr,
+    function: svc.serve_function,
+    listener: join([" --host ", svc.listen.host, " --port ", to_string(svc.listen.port)], ""),
+  )
+}
+
+// One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
+// manager environment and evaluation caps are the same value, and the two differ only in the
+// entry function they launch and the listener they bind.
+fn live_deploy_serve_unit_file_over(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding,
+  description: NonEmptyStr, function: NonEmptyStr, listener: String,
+) -> SystemdUnitFile {
+  let svc = spec.service
   ServiceUnitFile {
     unit: [
-      Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
+      Description { text: description },
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
       Wants { target: "network-online.target" as NonEmptyStr },
     ],
@@ -516,8 +531,8 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
-        " --host ", host, " --port ", port,
+        " --entry ", svc.serve_entry as String, " --function ", function as String,
+        listener,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
         eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
@@ -525,6 +540,33 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       Restart { policy: "on-failure" as NonEmptyStr },
     ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+// THE TAILNET DOOR'S UNIT: the same server as the unit above, launched on the door entry and bound
+// to the socket the deployment's serve route targets (gunbc.live_deploy.spec
+// deployment_tailnet_door_socket). Absent for a deployment whose route targets a port.
+fn live_deploy_tailnet_door_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_serve_unit_file_over(
+      spec: spec, revision: revision,
+      description: "gunbc roadmap tailnet door (gunbc serve)" as NonEmptyStr,
+      function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+      listener: concat(" --unix-socket ", socket as String),
+    ) }
+  }
+}
+
+// A step of this kind exists only where the door does (deployment_tailnet_door_steps), so the
+// absent arm is a spec whose steps and names disagree: it writes a refusal marker, never a unit.
+fn apply_tailnet_door_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
+  match live_deploy_tailnet_door_unit_file(spec: spec, revision: revision) {
+    Absent => deploy_raw(command: "__GUNBC_TAILNET_DOOR_REFUSED__ TailnetDoorServeUnit step on a deployment whose serve route targets no unix socket")
+    Present { value: unit } => deploy_raw(command: deploy_stage_write_command(
+      stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+      content: render(doc: doc_text(text: serialize_systemd_unit_file(file: unit)), proto: live_deploy_protocol),
+    ))
   }
 }
 
@@ -1070,6 +1112,7 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       FabricStorageServeUnit => none
       FabricStorageServeMapping => none
       ApprovalBrokerFrontDoor => none
+      TailnetDoorServeUnit => none
     }
     Dependency { step: _ } => none
   }
@@ -2806,6 +2849,17 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
         argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: deployment_fabric_storage_serve_endpoint())),
       )),
     ]
+    TailnetDoorServeUnit => [
+      apply_tailnet_door_unit_write_step(spec: spec, revision: revision),
+      deploy_raw(command: deploy_stage_install_command(
+        stage_name: deployment_tailnet_door_unit_name(names: spec.names) as String,
+        mode: install_file_shared_mode,
+        dest: art.path as String,
+      )),
+      deploy_effect(inv: systemctl_daemon_reload_effect()),
+      deploy_effect(inv: systemctl_enable_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+      deploy_effect(inv: systemctl_restart_effect(unit: deployment_tailnet_door_unit_name(names: spec.names))),
+    ]
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: e)))),
@@ -2861,6 +2915,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     ApprovalBrokerFrontDoor => map(
       deployment_approval_broker_front_door_endpoints(),
       e => deploy_raw(command: shell_privileged_command_text_of_argv(argv: concat(["tailscale"], tailscale_serve_off_argv(endpoint: e)))),
+    )
+    TailnetDoorServeUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_tailnet_door_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [art.path as String])),
+        deploy_effect(inv: systemctl_daemon_reload_effect()),
+      ]
     )
     FabricStorageServeUnit => concat(
       systemctl_disable_now_if_present_steps(unit: deployment_fabric_storage_unit_name(names: spec.names), privileged: true),
