@@ -196,6 +196,10 @@ fn tw_profile() -> ServingLaunchProfile {
 }
 
 // ALL ROUTES IN ONE PRODUCER, so the fold runs once per offload choice and each claim reads a field.
+// host_tier_is_not_walled_by_the_device_envelope: about 284 GiB of experts sit on the host tier,
+// well above the device envelope (84% of 96 GiB). If the envelope wrongly walled that tier, the
+// all-host choice would refuse and not prove, so the first field already discriminates the route.
+// This field names it, and checks that the host row's tier really is the link tier.
 type TwVerdicts {
   all_experts_on_host_proves_on_the_device_tier: Bool
   too_few_offloaded_refuses_naming_only_the_device_tier: Bool
@@ -230,10 +234,6 @@ fn tw_verdicts() -> TwVerdicts {
         }
       Absent => false
     },
-    // About 284 GiB of experts sit on the host tier, well above the device envelope (84% of 96 GiB).
-    // If the envelope wrongly walled that tier, the all-host choice would refuse and not prove. So the
-    // first field already discriminates the route. This one names it, and checks the host row's tier
-    // is really the link tier.
     host_tier_is_not_walled_by_the_device_envelope: match all_host {
       Present { value: v } =>
         match v {
