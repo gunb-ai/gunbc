@@ -2498,6 +2498,8 @@ pub struct NativeServeProgramRun {
     pub seed_identity: String,
     pub warning_count: i64,
     pub announcement: String,
+    pub peer_announcement: String,
+    pub peer_port: i64,
     pub responses: Vec<String>,
     pub refused_status: Option<i32>,
     pub refused_stderr: String,
@@ -2582,9 +2584,8 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
-    requests: &[String],
+    requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
-    use std::io::{BufRead, Read};
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
         "native-serve: {entry} built (closure {}) -- starting {}",
@@ -2593,18 +2594,94 @@ pub fn run_native_serve_program(
     );
     let (refused_status, refused_stderr) =
         native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
-    let mut child = Command::new(&prepared.binary_path)
+    // The PEER is a second instance of the same entry: the local server the entry's bound REST
+    // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
+    // one fact only it can publish, so the reader module is asked for the requests only after it.
+    let mut peer = native_serve_start(&prepared.binary_path, entry, release_revision)?;
+    let peer_port = peer
+        .address
+        .as_deref()
+        .and_then(|address| address.rsplit(':').next())
+        .and_then(|port| port.parse::<i64>().ok())
+        .unwrap_or(0);
+    let requests = match requests_for_peer_port(peer_port) {
+        Ok(requests) => requests,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let mut subject = match native_serve_start(&prepared.binary_path, entry, release_revision) {
+        Ok(subject) => subject,
+        Err(cause) => {
+            peer.stop();
+            return Err(cause);
+        }
+    };
+    let responses = match &subject.address {
+        Some(address) => requests
+            .iter()
+            .map(|request| native_serve_exchange(address, request))
+            .collect(),
+        None => Vec::new(),
+    };
+    let stderr = subject.stop();
+    let peer_stderr = peer.stop();
+    Ok(NativeServeProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        announcement: subject.announcement,
+        peer_announcement: peer.announcement,
+        peer_port,
+        responses,
+        refused_status,
+        refused_stderr,
+        stderr: format!("{stderr}{peer_stderr}"),
+    })
+}
+
+/// One started instance of a served entry: its announcement, the address read off it, and the
+/// process to stop. The host reads the address because the service binds port 0.
+struct NativeServeInstance {
+    child: std::process::Child,
+    reader: Option<std::thread::JoinHandle<String>>,
+    announcement: String,
+    address: Option<String>,
+}
+
+impl NativeServeInstance {
+    fn stop(&mut self) -> String {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.reader
+            .take()
+            .and_then(|reader| reader.join().ok())
+            .unwrap_or_default()
+    }
+}
+
+fn native_serve_start(
+    binary: &Path,
+    entry: &str,
+    release_revision: &str,
+) -> Result<NativeServeInstance, String> {
+    use std::io::{BufRead, Read};
+    let mut child = Command::new(binary)
         .args(native_serve_launch_args(release_revision))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|cause| {
-            format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
-        })?;
-    let pipe = child
-        .stderr
-        .take()
-        .ok_or("NATIVE-SERVE REFUSAL cause=NoStderrPipe")?;
+        .map_err(|cause| format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}"))?;
+    let pipe = match child.stderr.take() {
+        Some(pipe) => pipe,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("NATIVE-SERVE REFUSAL cause=NoStderrPipe".to_string());
+        }
+    };
     let (lines, announced) = std::sync::mpsc::channel::<String>();
     let reader = std::thread::spawn(move || {
         let mut pipe = std::io::BufReader::new(pipe);
@@ -2622,26 +2699,11 @@ pub fn run_native_serve_program(
         .strip_prefix("native-serve listening on ")
         .and_then(|rest| rest.split(' ').next())
         .map(str::to_string);
-    let responses = match &address {
-        Some(address) => requests
-            .iter()
-            .map(|request| native_serve_exchange(address, request))
-            .collect(),
-        None => Vec::new(),
-    };
-    let _ = child.kill();
-    let _ = child.wait();
-    let stderr = reader.join().unwrap_or_default();
-    Ok(NativeServeProgramRun {
-        closure_identity: prepared.closure_identity,
-        binary_identity: prepared.binary_identity,
-        seed_identity: prepared.seed_identity,
-        warning_count: prepared.build.warning_count,
+    Ok(NativeServeInstance {
+        child,
+        reader: Some(reader),
         announcement,
-        responses,
-        refused_status,
-        refused_stderr,
-        stderr,
+        address,
     })
 }
 

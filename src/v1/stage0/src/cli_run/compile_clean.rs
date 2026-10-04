@@ -1700,7 +1700,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { symbol, .. } => symbol.clone(),
-        CompilerDiagnostic::NativeEffectRealizationRefused { entry, .. } => entry.clone(),
+        CompilerDiagnostic::NativeEffectRealizationRefused { entry, refusals, .. } => format!(
+            "{entry}: {}",
+            refusals.iter().cloned().collect::<Vec<_>>().join("; ")
+        ),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),

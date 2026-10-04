@@ -1,0 +1,100 @@
+module test.claim.native_effect_realization_admission_witness
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_rows_of_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: v1.compiler.emit NativeEffectRealizationAdmission, computed by v1.compiler.emit_rust
+// native_entry_effects for a native entry's function. An effect it does not admit REFUSES EMISSION
+// with NativeEffectRealizationRefused, typed and naming the arm; before it, the rendered main wrote
+// its handles by hand, and an effect it did not write surfaced only as a rustc error at the handler
+// call, or for a resource trait with no implementor as a link failure. The executed half -- that
+// the handlers it admits are bound and answer -- is gunbc test //gunbc/instruments:native-serve.
+//
+// The fixtures are isolated (tools.multi_module_compile_fixture), so each declares the vocabulary
+// the emitter reads by name: the entry driver data row and the resources and services demanded.
+
+data fx_entry_driver_source: String = "module nefx.entry_driver\ntype CompilerEntryDriver = NativeServeDriver | NativeCliDriver\ntype ServeWireResponse { status: Int, body: String }\n"
+
+// A resource with a capability renders as a trait with no implementor: Unavailable.
+data fx_serve_resource_trait_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nresource Clock {\n  kind: Observation\n  mode: Read\n  acquire {}\n  release {}\n  capability now {\n    input {}\n    output { timestamp: String }\n  }\n}\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n  uses clk: Clock\n{\n  ServeWireResponse { status: 200, body: \"\" }\n}\n"
+
+// Entropy is outside both native denominators by ruling: OutsideProductionDenominator.
+data fx_serve_entropy_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nresource Entropy {\n  kind: Observation\n  mode: Read\n  acquire {}\n  release {}\n}\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n  uses rng: Entropy\n{\n  ServeWireResponse { status: 200, body: \"\" }\n}\n"
+
+// The compiler route keeps the 2026-09-16 exclusion whole, so a clock SERVICE is refused there
+// even though the service route binds the same service on its shell transport.
+data fx_clock_service_source: String = "module nefx.clock\nservice Clock {\n  operation Now {\n    requires none\n    input {}\n    output { timestamp: String from \"stdout\" }\n    readonly\n    transport shell { argv: [\"date\", \"-u\", \"+%Y-%m-%dT%H:%M:%SZ\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"date command failed\"\n    }\n  }\n}\n"
+
+data fx_cli_clock_source: String = "module nefx.cli\nimport nefx.entry_driver { CompilerEntryDriver, NativeCliDriver }\nimport nefx.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver\nfn v2_cli_main(argv: List<String>) -> String {\n  let r = Clock.Now()\n  r.timestamp\n}\n"
+
+// The positive control: the same clock service under a serve entry is admitted (Bound on the shell
+// transport), and the entry function takes its handle.
+data fx_serve_clock_source: String = "module nefx.serve\nimport nefx.entry_driver { CompilerEntryDriver, NativeServeDriver, ServeWireResponse }\nimport nefx.clock { Clock }\ndata compiler_pipeline_entry: CompilerEntryDriver = NativeServeDriver\nfn native_serve_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse {\n  let r = Clock.Now()\n  ServeWireResponse { status: 200, body: r.timestamp }\n}\n"
+
+fn fx_run(entry_path: String, entry_source: String, with_clock: Bool) -> MultiModuleCompileFixtureOutcome {
+  let base = [fixture_source("nefx/entry_driver.dag", fx_entry_driver_source), fixture_source(entry_path, entry_source)]
+  compile_fixture(MultiModuleCompileFixture {
+    sources: if with_clock { concat(base, [fixture_source("nefx/clock.dag", fx_clock_service_source)]) } else { base },
+    entry: entry_path
+  })
+}
+
+fn refusal_rows(o: MultiModuleCompileFixtureOutcome) -> List<CompileDiagnosticCensusRow> {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_rows_of_class(rows, "NativeEffectRealizationRefused")
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_rows_of_class(rows, "NativeEffectRealizationRefused")
+    FixtureInstrumentRefused { cause: _ } => []
+  }
+}
+
+// Refused by the admission, on the arm named by `marker` -- not merely "something refused", which a
+// typo in the fixture would also satisfy.
+fn refused_naming(o: MultiModuleCompileFixtureOutcome, marker: String) -> Bool {
+  let rows = refusal_rows(o: o)
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (rows |> filter(r => r.blocking && contains(r.subject_name, marker)) |> count) == 1
+    _ => false
+  }
+}
+
+test fn serve_entry_demanding_a_resource_trait_refuses_as_unavailable() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_resource_trait_source, with_clock: false),
+    marker: "resource Clock (uses clk) has no native realization: it is a resource trait with 1 capabilities and no native implementor")
+}
+
+test fn serve_entry_demanding_entropy_refuses_as_outside_the_denominator() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_entropy_source, with_clock: false),
+    marker: "resource Entropy (uses rng) is outside the native production denominator: native service route")
+}
+
+test fn cli_entry_reaching_a_clock_service_refuses_as_outside_the_compiler_route() -> Bool {
+  refused_naming(o: fx_run(entry_path: "nefx/cli.dag", entry_source: fx_cli_clock_source, with_clock: true),
+    marker: "service Clock is outside the native production denominator: native compiler route")
+}
+
+// THE POSITIVE CONTROL. Without it every RED above is satisfied by an admission that refuses
+// everything: the same clock service under a serve entry is not refused by the admission.
+test fn serve_entry_reaching_a_clock_service_is_admitted() -> Bool {
+  let o = fx_run(entry_path: "nefx/serve.dag", entry_source: fx_serve_clock_source, with_clock: true)
+  match o {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
+      (refusal_rows(o: o) |> count) == 0 && (files |> count) > 0
+    _ => false
+  }
+}
