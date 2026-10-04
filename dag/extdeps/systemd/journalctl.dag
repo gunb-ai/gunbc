@@ -93,3 +93,9 @@ service systemd.Journalctl {
 fn journalctl_kernel_current_boot_argv() -> List<String> {
   ["journalctl", "-k", "-b", "--no-pager", "-o", "short-unix"]
 }
+
+// ONE UNIT'S JOURNAL FOR THE CURRENT BOOT, AS AN ARGV. journalctl(1): `-u` (`--unit`) shows messages
+// for the named unit; `-b` the current boot. Same consumer-side filtering rule as above.
+fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
+  ["journalctl", "-u", unit as String, "-b", "--no-pager", "-o", "short-unix"]
+}

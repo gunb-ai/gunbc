@@ -1,5 +1,6 @@
 module v2.test.lens_vacuity.vacuity_test
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.vacuity {
   HelperAlias,
@@ -23,7 +24,6 @@ import v2.lens.vacuity {
   vacuity_evidence_eq
 }
 import v2.std.algebra { count_where, length, list_map }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -31,7 +31,6 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Atom,

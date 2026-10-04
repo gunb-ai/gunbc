@@ -31,7 +31,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { QualifiedName }
@@ -53,9 +52,9 @@ import extdeps.communication.medium { Lossless, Medium }
 // arm deleted the reference reads as a record construct, the module fails well_formed, and
 // real_test is refused eval_rejected_invalid_node instead of passing (the native lane canary,
 // 2026-09-26).
-data collision_module_source: String = "module v2.test.collision\n\nimport v2.std.logic { Bool }\n\ntype Shade = Light | Dark\n\ndata default_shade: Shade = Light\n\ntest fn real_test() -> Bool { true }\n"
+data collision_module_source: String = "module v2.test.collision\n\nimport std.types { Bool }\n\ntype Shade = Light | Dark\n\ndata default_shade: Shade = Light\n\ntest fn real_test() -> Bool { true }\n"
 
-data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport v2.std.logic { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
+data collision_sibling_source: String = "module v2.test.collision_sibling\n\nimport std.types { Bool }\n\ntest fn shared_name() -> Bool { true }\n"
 
 fn collision_read() -> DagSourceReadWitness {
   DagSourceReadWitness {

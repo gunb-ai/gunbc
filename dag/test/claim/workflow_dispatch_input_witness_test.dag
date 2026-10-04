@@ -18,9 +18,10 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
   fleet_converge_build_job_own_steps,
   fleet_converge_job_edges, fleet_converge_release_bins_job_id, FleetConvergeJobEdge, fleet_converge_mode_job_id,
+  fleet_converge_in_job_compiler_pair_jobs, fleet_converge_mtcollins1_boot_pair_build_step,
   fleet_converge_microvm_network_observe_step, fleet_converge_mode_fleet_ssh_key_demand,
   MicrovmNetworkObserve, FleetSshKeyNotConsumed, FleetSshKeyConsumed,
-  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, fleet_converge_mutation_group_for,
+  fleet_converge_pair_serving_d0_step, fleet_converge_pair_serving_d0_admit_step, PairServingD0, SparkServingApply, SparkV41CheckpointMaterialize, SparkV41RuntimeImageBuild, SparkRuntimeImageProbe, SparkNativeServingApply, FleetApply, ApprovalKeyringConverge, ApprovalBrokerDarkInstall, ApprovalDeviceEnrolmentCodeIssue, fleet_converge_mutation_group_for,
   fleet_converge_mutation_concurrency_group_expression,
   fleet_converge_reset_subject_mutation_concurrency_group_expression, fleet_converge_reset_subject_map_json,
   reset_subject_map_json,
@@ -282,6 +283,8 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     && fleet_converge_job_roster_duplicated(edges: edges) == []
     && all(edges, e => if (e.id as String) == (fleet_converge_release_bins_job_id as String) {
       e.needs == []
+    } else if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
+      e.needs == []
     } else {
       e.needs == build
     })
@@ -310,6 +313,26 @@ test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
     [FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [] }])
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
     && fleet_converge_job_roster_duplicated(edges: edges) == ["namecheap-observe", "namecheap-observe"]
+}
+
+// A JOB ROSTERED AS BUILDING ITS OWN PAIR IS HELD TO DOING SO: its edge needs nothing, and the step
+// it builds with is the compiler pair product's own build line. The red: a rostered job that still
+// waits on `build` (two binary sources, one of them unread) breaks the edge property.
+test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> Bool {
+  fleet_converge_in_job_compiler_pair_jobs != []
+    && all(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) { e.needs == [] } else { true })
+    && match fleet_converge_mtcollins1_boot_pair_build_step() {
+      RunStep { name: _, id: i, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        string_contains(s: r, pattern: "--bin claim_executor") && string_contains(s: r, pattern: "--bin gunbc")
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    }
+}
+
+test fn fleet_converge_job_roster_red_on_a_pair_job_that_still_waits_on_build() -> Bool {
+  let edges = map(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
+    FleetConvergeJobEdge { id: e.id, needs: [fleet_converge_release_bins_job_id as String] }
+  } else { e })
+  !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
 }
 
 test fn fleet_converge_job_roster_red_on_an_edge_that_skips_build() -> Bool {
@@ -858,11 +881,29 @@ test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -
   string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+// The boot prelude is bash_build nodes rendered by v2.workflow.bash_emit bash_emit_stmts, which quotes
+// every literal word, so the bound is read as the two quoted words that render emits -- the same
+// argv pair the committed fleet-converge.yml boot step carries -- not as the space-joined spelling
+// the hand-composed preludes above print. A prelude that drops or rebinds the bound still goes red.
 test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
 }
 
 test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+// THE LOCK KEY IS THE MUTATED SUBJECT, NOT THE DISPATCH HOST, IN BOTH DIRECTIONS: the enrolment-code
+// issue (the approval device store alone) leaves srv1's key, so a Spark V4.1 or D0 dispatch can no
+// longer supersede a pending enrolment; two issues still share one group; and the keyring converge,
+// which D0 must serialise with, still shares D0's group. Reverting the mode's row to the executor
+// domain turns the first conjunct red.
+test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool {
+  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1")
+  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41RuntimeImageBuild, host: "srv1")
+    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2")
+    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+    && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+}

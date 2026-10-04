@@ -1561,21 +1561,29 @@ fn dispatch_current_attempt_events_path_for_instance(
   ], "")
 }
 
-fn dispatch_current_attempt_events_projection_argv_for_instance(
+// THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
+// through the node's current pointer; a reader of a named attempt names it by the attempt's own key.
+// One argv, two addressings.
+fn dispatch_events_projection_argv_at(
   instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  events_path: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: ProviderEventProjectionCapability,
     ),
-    args: codex_provider_event_projection_args(
-      path: dispatch_current_attempt_events_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ) as FilePath,
-    ),
+    args: codex_provider_event_projection_args(path: events_path as FilePath),
+  )
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  dispatch_events_projection_argv_at(
+    instance: instance,
+    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
   )
 }
 

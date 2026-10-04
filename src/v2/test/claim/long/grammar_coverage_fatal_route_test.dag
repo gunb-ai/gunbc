@@ -1,0 +1,23 @@
+module v2.test.claim.long.grammar_coverage_fatal_route
+
+import v2.lens.enforcement.grammar_coverage { ParseRejected, grammar_coverage_ingest_source_text }
+import v2.std.logic { Bool }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL ROUTE for advisories step 2's grammar-coverage reader: real source text through the real
+// tokenize -> parse front end into the classifier. The parse refuses on the leftover `2`, and the
+// reported reason must be that fatal cause, whatever advisory the parse prepended to the chain. The
+// classifier's own discrimination is supplied-chain claim
+// v2.test.claim.advisories.fatal_first_readers grammar_coverage_stage_rejected_reports_each_chains_fatal_holds.
+// It lives in the long home because one real front-end run exceeds the new-witness CPU margin.
+data grammar_coverage_fatal_route_source: String = "module m.gc\n\ndata x: Int = 1 2\n"
+
+test fn real_parse_refusal_is_classified_by_its_fatal_cause_holds() -> Bool {
+  grammar_coverage_ingest_source_text(
+    source_text: grammar_coverage_fatal_route_source,
+    file: symbol_intern_lexeme(lexeme: "grammar_coverage_fatal_route.dag")
+  ) == ParseRejected { stage: "parse", reason: ^parse_g0_tokens_remain }
+}

@@ -5,6 +5,7 @@ import gunbc.primitive_egress_census_seed_growth { primitive_egress_census_seed_
 import gunbc.operation_requires_query_seed_growth { operation_requires_query_seed_growth_justification }
 import gunbc.required_lane_resolution_census_seed_growth { required_lane_resolution_census_seed_growth_justification }
 import gunbc.bare_reference_channel_outcome_seed_growth { bare_reference_channel_outcome_seed_growth_justification }
+import gunbc.type_declaration_use_census_seed_growth { type_declaration_use_census_seed_growth_justification }
 import gunbc.unimported_bare_provider_gate_seed_growth { unimported_bare_provider_gate_seed_growth_justification }
 import gunbc.native_cache_root_seed_growth { native_cache_root_seed_growth_justification }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
@@ -27,6 +28,8 @@ import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_jus
 import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
+import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
+import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -123,6 +126,7 @@ import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_jus
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
+import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
@@ -299,6 +303,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     census_memo_seed_growth_justification,
     fixture_render_selection_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,
+    serve_cookie_header_seed_growth_justification,
+    serve_declared_binding_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
@@ -308,6 +314,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_memory_instrumentation_seed_growth_justification,
     portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
+    filesystem_link_create_new_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
@@ -340,6 +347,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     operation_requires_query_seed_growth_justification,
     required_lane_resolution_census_seed_growth_justification,
     bare_reference_channel_outcome_seed_growth_justification,
+    type_declaration_use_census_seed_growth_justification,
     floor_corpus_census_allowance_seed_growth_justification,
     unimported_bare_provider_gate_seed_growth_justification,
     native_cache_root_seed_growth_justification,
@@ -467,12 +475,26 @@ fn seed_growth_live_lookup(live: Map<String, Bool>, key: String) -> Bool? {
 }
 
 fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
+  seed_growth_stale_declarations(live_items: live_items)
+    |> map(r => declaration_ref_display_key(ref: r))
+}
+
+// THE ROSTER BINDING IS ONE STEP AND THE KEY RENDERING ANOTHER. The real-roster binding is its own
+// function so a witness can hold it to the COMPLETE roster (every row reported stale against a live
+// population that names none of them) without paying the display-key render of every row, which is
+// the expense and which no completeness assertion inspects.
+fn seed_growth_stale_declarations(live_items: List<DeclarationRef>) -> List<DeclarationRef> {
+  seed_growth_stale_over(roster: seed_growth_roster_all_declarations(), live_items: live_items)
+}
+
+// THE STALENESS RELATION OVER A SUPPLIED ROSTER. A witness of the relation's shape supplies a
+// small roster (DESIGN section 3, a witness discriminates at one interface).
+fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<DeclarationRef> {
   let live = seed_growth_live_set(live_items: live_items)
   filter(
-    xs: seed_growth_roster_all_declarations(),
+    xs: roster,
     predicate: fn(r) { !seed_growth_live_has(live: live, r: r) }
   )
-    |> map(r => declaration_ref_display_key(ref: r))
 }
 
 fn seed_growth_unjustified_additions(added: List<DeclarationRef>) -> List<String> {

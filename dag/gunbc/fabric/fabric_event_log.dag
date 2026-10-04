@@ -1,5 +1,7 @@
 module gunbc.fabric_event_log
 
+import gunbc.fabric_storage_binding { fabric_storage_binding_for }
+
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { Count, One, Measure }
@@ -13,7 +15,7 @@ import std.fabric_storage {
   FabricClosureRead, FabricClosureBudgetExhausted, FabricClosureRefused, FabricStoredObject,
 }
 import gunbc.fabric_storage_placement { fabric_storage_placement }
-import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_binding_for, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
+import gunbc.fabric_storage_client { FabricStorageBinding, fabric_storage_head, fabric_storage_put, fabric_storage_advance, fabric_storage_closure }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at, PoolOutcome, PoolAdvanced, PoolRefused, pool_release, pool_refusal_wire }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
@@ -26,6 +28,11 @@ import product.capacity.pool_events {
   PoolReleased,
 }
 import product.capacity.lease { LeasePolicy, LeaseGrant, release_law_eq, release_law_wire }
+import product.capacity.redemption {
+  RedemptionEvent, RedemptionState, RedemptionRefusal, RedemptionProposal, RedemptionProposed, RedemptionRefused,
+  redemption_partition_of, redemption_event_wire_text, redemption_event_decode, redemption_state_of,
+  propose_redemption, propose_use_end, redemption_refusal_wire,
+}
 
 // THE FABRIC EVENT LOG: THE CARRIER FOR EVERY CAPACITY TRANSACTION, REALIZED ON THE FABRIC DB.
 // One immutable object per event, addressed by its content; one named head per partition, advanced
@@ -511,3 +518,80 @@ fn seat_acquisition_wire(a: SeatAcquisition) -> String {
   }
 }
 
+
+// ── GRANT REDEMPTION, WET: the use transitions of product.capacity.redemption on this log ─────
+//
+// The same read -> fold -> propose -> append the seat transaction runs, on the redemption chain beside
+// a pool partition (redemption_partition_of). A stale append re-reads and decides again, and because a
+// redemption is proposed only from Unredeemed, the writer that lost the race re-reads InFlight and is
+// refused -- exactly one use per grant, decided by the store's compare-and-set and not by a lock in the
+// gate. Exhaustion is its own outcome rather than a use.
+type GrantRedemption
+  = GrantRedemptionAdmitted { id: EventId, attempts_used: Nat }
+  | GrantRedemptionRefused { cause: RedemptionRefusal }
+  | GrantRedemptionContended { attempts: Nat }
+  | GrantRedemptionStoreRefused { cause: EventLogRefusal }
+
+type RedemptionReading
+  = RedemptionReadAt { head: HeadExpectation, state: RedemptionState }
+  | RedemptionReadRefused { cause: EventLogRefusal }
+
+fn fabric_redemption_read(store: FabricStorageBinding, pool_partition: PartitionId, reference: NonEmptyStr) -> RedemptionReading {
+  match event_log_read_partition_with(store: store, partition: redemption_partition_of(pool_partition: pool_partition), budget: event_log_read_budget(), decode: fn(t) { redemption_event_decode(text: t) }) {
+    PartitionReadRefused { cause: c } => RedemptionReadRefused { cause: c }
+    PartitionReadOk { head: h, walk: w } => RedemptionReadAt { head: h, state: redemption_state_of(walk: w, reference: reference) }
+  }
+}
+
+fn redemption_transition_attempt(store: FabricStorageBinding, pool_partition: PartitionId, reference: NonEmptyStr, attempt: Nat, propose: fn(RedemptionState, HeadExpectation) -> RedemptionProposal) -> GrantRedemption? {
+  match fabric_redemption_read(store: store, pool_partition: pool_partition, reference: reference) {
+    RedemptionReadRefused { cause: c } => Present { value: GrantRedemptionStoreRefused { cause: c } }
+    RedemptionReadAt { head: h, state: s } =>
+      match propose(s, h) {
+        RedemptionRefused { cause: why } => Present { value: GrantRedemptionRefused { cause: why } }
+        RedemptionProposed { event: e, expected: x } =>
+          match event_log_append_with(store: store, partition: redemption_partition_of(pool_partition: pool_partition), event: e, expected: x, encode: fn(ev) { redemption_event_wire_text(event: ev) }) {
+            EventAppended { id: i } => Present { value: GrantRedemptionAdmitted { id: i, attempts_used: attempt } }
+            EventAppendStale { expected: _, observed: _ } => none
+            EventAppendRefused { cause: c } => Present { value: GrantRedemptionStoreRefused { cause: c } }
+          }
+      }
+  }
+}
+
+type RedemptionAttemptState {
+  done: GrantRedemption?
+}
+
+fn fabric_redemption_transition(store: FabricStorageBinding, pool_partition: PartitionId, reference: NonEmptyStr, attempts: Nat, propose: fn(RedemptionState, HeadExpectation) -> RedemptionProposal) -> GrantRedemption {
+  let st = fold(nat_range_inclusive(lo: 1, hi: attempts), init: RedemptionAttemptState { done: none }, f: (acc, i) =>
+    match acc.done {
+      Present { value: _ } => acc
+      Absent => RedemptionAttemptState { done: redemption_transition_attempt(store: store, pool_partition: pool_partition, reference: reference, attempt: i, propose: propose) }
+    })
+  match st.done {
+    Present { value: done } => done
+    Absent => GrantRedemptionContended { attempts: attempts }
+  }
+}
+
+fn fabric_grant_redeem(store: FabricStorageBinding, pool_partition: PartitionId, reference: NonEmptyStr, request: NonEmptyStr, holder: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> GrantRedemption {
+  fabric_redemption_transition(store: store, pool_partition: pool_partition, reference: reference, attempts: 3, propose: fn(state, head) {
+    propose_redemption(state: state, head: head, partition: redemption_partition_of(pool_partition: pool_partition), at: at, actor: actor, reference: reference, request: request, holder: holder)
+  })
+}
+
+fn fabric_grant_use_end(store: FabricStorageBinding, pool_partition: PartitionId, reference: NonEmptyStr, request: NonEmptyStr, outcome: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> GrantRedemption {
+  fabric_redemption_transition(store: store, pool_partition: pool_partition, reference: reference, attempts: 3, propose: fn(state, head) {
+    propose_use_end(state: state, head: head, partition: redemption_partition_of(pool_partition: pool_partition), at: at, actor: actor, reference: reference, request: request, outcome: outcome)
+  })
+}
+
+fn grant_redemption_wire(r: GrantRedemption) -> String {
+  match r {
+    GrantRedemptionAdmitted { id: i, attempts_used: n } => join(["redemption transition admitted as ", i as String, " on attempt ", to_string(n)], "")
+    GrantRedemptionRefused { cause: c } => redemption_refusal_wire(r: c)
+    GrantRedemptionContended { attempts: n } => join(["the redemption compare-and-set was contended ", to_string(n), " times"], "")
+    GrantRedemptionStoreRefused { cause: c } => join(["fabric DB: ", event_log_refusal_wire(cause: c)], "")
+  }
+}

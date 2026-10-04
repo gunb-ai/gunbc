@@ -1,11 +1,9 @@
 module v2.workflow.floor_eval_step_cost_drop
 
 import v2.std.algebra { any, count_where, list_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE POLICY HALF OF DECLARED 4b(3) EVAL-STEP COST DROPS. Nine independently declared, bounded
 // populations share one membership test (`floor_eval_step_cost_drop_members` / `_holds`), one list
@@ -34,6 +32,8 @@ import std.types { NonEmptyStr }
 //     build-job step list (`fleet_build_job_membership_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dag_emit_round_trip_rows`: the one real-route round trip of the dag
 //     target's emit (`dag_emit_round_trip_new_witness_eval_step_cost`).
+//   - `floor_eval_step_cost_drop_approval_intent_digest_rows`: the one real-path claim of each
+//     approval-request constructor (`approval_intent_digest_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
@@ -225,6 +225,17 @@ data floor_eval_step_cost_drop_span_program_rows: List<EvalStepCostDropMeasureme
   },
 ]
 
+data floor_eval_step_cost_drop_approval_intent_digest_rows: List<EvalStepCostDropMeasurement> = [
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.auth.approved_secret_grants_witness_test.the_real_request_digests_its_intent_and_admits_only_that_revision" as NonEmptyStr,
+    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.auth.approved_secret_grants secret_grants_approval_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
+  },
+  EvalStepCostDropMeasurement {
+    identity: "test.claim.auth.fabric_state_provision_witness_test.the_real_material_request_admits_only_its_own_revision" as NonEmptyStr,
+    measured_by: "gunbc#13004, the required floor's ENROLMENT-MARGIN lines of PR run 37062802746 over the sibling claims that each paid this digest (1.4M-2.6M eval steps, new-witness budget 72,300) and the run that follows at this identity. The billed work is the one interpreted SHA-256 of gunbc.fabric_storage_state_provision fabric_state_provision_request over its real intent, which this claim is the only execution of; its siblings read the intent as a supplied value" as NonEmptyStr,
+  },
+]
+
 data floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "v2.test.long.inhabitant_neutralization_e2e_witness.inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds" as NonEmptyStr,
@@ -390,7 +401,7 @@ data floor_eval_step_cost_drop_dag_emit_round_trip_rows: List<EvalStepCostDropMe
 ]
 
 fn floor_eval_step_cost_drop_all_rows() -> List<EvalStepCostDropMeasurement> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows)
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(floor_eval_step_cost_drop_rows, floor_eval_step_cost_drop_apply_render_rows), floor_eval_step_cost_drop_live_forecast_rows), floor_eval_step_cost_drop_page_style_rows), floor_eval_step_cost_drop_interpreted_crypto_rows), floor_eval_step_cost_drop_app_attest_verifier_rows), floor_eval_step_cost_drop_span_program_rows), floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows), floor_eval_step_cost_drop_boot_matrix_rows), floor_eval_step_cost_drop_dark_install_render_rows), floor_eval_step_cost_drop_build_job_membership_rows), floor_eval_step_cost_drop_dag_emit_round_trip_rows), floor_eval_step_cost_drop_approval_intent_digest_rows)
 }
 
 // THE PROJECTION THE SEED RUNNER READS AND THE MODEL TESTS AGAINST. The runner refuses an empty or

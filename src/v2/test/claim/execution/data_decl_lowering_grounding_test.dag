@@ -1,5 +1,6 @@
 module v2.test.execution.data_decl_lowering_grounding
 
+import std.types { List }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
 import extdeps.communication.medium { Lossless, Medium }
@@ -21,10 +22,9 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   OrderLabels,
   arrow_signature_order_read,

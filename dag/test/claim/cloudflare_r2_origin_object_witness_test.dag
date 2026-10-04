@@ -1,6 +1,7 @@
 module test.claim.cloudflare_r2_origin_object
 
 import std.types { Bool, String, NonEmptyStr, List, FilePath, Int }
+import v2.std.optional { Present, Absent }
 import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
 import extdeps.shell.exec { process_observation }
@@ -28,7 +29,11 @@ import extdeps.tools.curl {
   curl_aws_sigv4_cli_tool,
   curl_aws_sigv4_min_version,
   curl_cli_tool,
+  curl_s3_entity_tag_cli_tool,
+  ReportStatus,
+  ReportStatusAndEntityTag,
 }
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
 import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_account_id,
   fabric_durable_origin_read_access_key_id,
@@ -50,11 +55,20 @@ import gunbc.cloudflare.r2_permission_group_observe {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
-import gunbc.cloudflare.r2_origin_object {
+import gunbc.cloudflare.r2_staged_transfer {
   S3TransferAnswer,
   S3Answered,
   S3NotAnswered,
   classify_s3_transfer,
+  classify_r2_put,
+  R2ObjectStored,
+  R2ObjectAlreadyPresent,
+  R2ObjectTagMoved,
+  R2PutRefused,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
+}
+import gunbc.cloudflare.r2_origin_object {
   classify_origin_put,
   classify_origin_fetch,
   OriginPutOutcome,
@@ -73,8 +87,6 @@ import gunbc.cloudflare.r2_origin_object {
   resolve_origin_target,
   resolve_origin_target_under,
   OriginPut,
-  WriteCredentialShredded,
-  WriteCredentialResidueRemains,
   put_is_clean,
 }
 import gunbc.fabric_m0_origin_readback {
@@ -139,13 +151,14 @@ test fn r2_object_url_is_path_style_under_the_jurisdiction_host() -> Bool {
     && curl_aws_sigv4_s3_provider(region: r2_s3_sigv4_region) == "aws:amz:auto:s3"
 }
 
-fn words_of_upload(create_only: Bool) -> List<String> {
+fn words_of_upload(precondition: ObjectPutPrecondition) -> List<String> {
   argv_words(command: curl_sigv4_s3_upload_command(
     url: "https://h/b/k",
     local_path: "/work/obj",
     netrc_path: "/private/netrc" as FilePath,
     sigv4_region: r2_s3_sigv4_region,
-    create_only: create_only,
+    precondition: precondition,
+    report: ReportStatus,
   ))
 }
 
@@ -161,7 +174,7 @@ fn last_word(words: List<String>) -> String {
 // carry a secret, so this asserts the positive half -- the netrc file and the SigV4 provider are
 // on the line -- and the negative half that --user, the documented argv form, is never emitted.
 test fn curl_sigv4_upload_signs_through_the_netrc_and_never_through_argv() -> Bool {
-  let words = words_of_upload(create_only: true)
+  let words = words_of_upload(precondition: PutIfAbsent)
   has_word(words: words, word: "--netrc-file")
     && has_word(words: words, word: "/private/netrc")
     && has_word(words: words, word: "--aws-sigv4")
@@ -186,7 +199,7 @@ test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
     Present { value: v } =>
       (v as String) == (curl_aws_sigv4_min_version as String)
         && (curl_aws_sigv4_min_version as String) == ">= 7.75"
-        && first_word(words: words_of_upload(create_only: true)) == (curl_aws_sigv4_cli_tool.program.invocation as String)
+        && first_word(words: words_of_upload(precondition: PutIfAbsent)) == (curl_aws_sigv4_cli_tool.program.invocation as String)
         && match curl_cli_tool.min_version {
           Present { value: fleet } => (fleet as String) == ">= 7.68"
           none => false
@@ -195,10 +208,57 @@ test fn curl_sigv4_builders_require_the_sigv4_curl_pin() -> Bool {
   }
 }
 
-// CREATE-IF-ABSENT IS A PARAMETER: the conditional header is present exactly when asked for.
-test fn curl_sigv4_upload_emits_the_conditional_header_only_when_create_only() -> Bool {
-  has_word(words: words_of_upload(create_only: true), word: "If-None-Match: *")
-    && !has_word(words: words_of_upload(create_only: false), word: "If-None-Match: *")
+// THE PRECONDITION IS ONE CLOSED VALUE: create-only sends If-None-Match: *, replace-matching sends
+// If-Match with the tag verbatim (quotes included), unconditional sends neither -- and no value sends
+// both, because the two are arms of one type rather than two flags.
+test fn curl_sigv4_upload_emits_exactly_the_precondition_asked_for() -> Bool {
+  let tagged = words_of_upload(precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"abc\"" } })
+  has_word(words: words_of_upload(precondition: PutIfAbsent), word: "If-None-Match: *")
+    && !has_word(words: words_of_upload(precondition: PutUnconditional), word: "If-None-Match: *")
+    && !any(words_of_upload(precondition: PutUnconditional), w => string_contains(s: w, pattern: "If-Match"))
+    && has_word(words: tagged, word: "If-Match: \"abc\"")
+    && !has_word(words: tagged, word: "If-None-Match: *")
+}
+
+// THE TAG-REPORTING FORM ASKS curl FOR THE ETag HEADER ON A SECOND LINE AND NAMES THE 7.84 PIN; the
+// status-only form every existing consumer reads is unchanged.
+test fn the_entity_tag_report_is_a_second_write_out_line_on_its_own_pin() -> Bool {
+  let tagged = argv_words(command: curl_sigv4_s3_upload_command(
+    url: "https://h/b/k", local_path: "/work/obj", netrc_path: "/private/netrc" as FilePath,
+    sigv4_region: r2_s3_sigv4_region, precondition: PutIfAbsent, report: ReportStatusAndEntityTag,
+  ))
+  has_word(words: tagged, word: "%\{http_code\}\n%header\{etag\}")
+    && has_word(words: words_of_upload(precondition: PutIfAbsent), word: "%\{http_code\}")
+    && match curl_s3_entity_tag_cli_tool.min_version { Present { value: v } => (v as String) == ">= 7.84"  none => false }
+}
+
+fn tag_read(stdout: String) -> String {
+  match classify_s3_transfer(observation: process_observation(exit_code: 0, stdout: stdout, stderr: "")) {
+    S3Answered { status: _, tag: Present { value: t } } => t.value as String
+    S3Answered { status: _, tag: Absent } => "<none>"
+    S3NotAnswered { cause: _ } => "<unanswered>"
+  }
+}
+
+// THE TAG IS THE SECOND LINE; NO SECOND LINE OR AN EMPTY ONE IS NO TAG, NEVER AN EMPTY TAG.
+test fn the_entity_tag_is_read_from_the_second_line_or_is_absent() -> Bool {
+  tag_read(stdout: "200\n\"abc\"\n") == "\"abc\""
+    && tag_read(stdout: "200\n") == "<none>"
+    && tag_read(stdout: "200") == "<none>"
+    && tag_read(stdout: "412\n\n") == "<none>"
+}
+
+// WHAT A 412 MEANS IS THE PRECONDITION'S: present under If-None-Match, moved under If-Match, and not
+// this protocol at all under no precondition. The If-Match arm is the compare-and-set's lost race.
+test fn a_412_is_classified_by_the_precondition_that_was_sent() -> Bool {
+  let p412 = S3Answered { status: 412, tag: none }
+  (match classify_r2_put(precondition: PutIfAbsent, answer: p412, stderr: "") { R2ObjectAlreadyPresent => true  other => false })
+    && (match classify_r2_put(precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"abc\"" } }, answer: p412, stderr: "") { R2ObjectTagMoved => true  other => false })
+    && (match classify_r2_put(precondition: PutUnconditional, answer: p412, stderr: "") { R2PutRefused { cause: _ } => true  other => false })
+    && (match classify_r2_put(precondition: PutIfMatch { tag: ObjectEntityTag { value: "\"abc\"" } }, answer: S3Answered { status: 200, tag: Present { value: ObjectEntityTag { value: "\"def\"" } } }, stderr: "") {
+          R2ObjectStored { tag: Present { value: t } } => (t.value as String) == "\"def\""
+          other => false
+        })
 }
 
 test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bool {
@@ -207,6 +267,7 @@ test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bo
     destination: "/staged/dir/object",
     netrc_path: "/private/netrc" as FilePath,
     sigv4_region: r2_s3_sigv4_region,
+    report: ReportStatus,
   ))
   has_word(words: words, word: "-o")
     && has_word(words: words, word: "/staged/dir/object")
@@ -220,14 +281,14 @@ test fn curl_sigv4_download_names_the_destination_and_reports_the_status() -> Bo
 
 fn answered(status: Int) -> Bool {
   match classify_s3_transfer(observation: process_observation(exit_code: 22, stdout: concat(to_string(status), "\n"), stderr: "")) {
-    S3Answered { status: s } => s == status
+    S3Answered { status: s, tag: _ } => s == status
     S3NotAnswered { cause: _ } => false
   }
 }
 
 fn not_answered(stdout: String) -> Bool {
   match classify_s3_transfer(observation: process_observation(exit_code: 7, stdout: stdout, stderr: "could not connect")) {
-    S3Answered { status: _ } => false
+    S3Answered { status: _, tag: _ } => false
     S3NotAnswered { cause: _ } => true
   }
 }
@@ -252,23 +313,23 @@ fn put_of(answer: S3TransferAnswer) -> OriginPutOutcome {
 // token mint mapped every non-2xx to refused and classified a possibly-committed write as safely
 // retryable.
 test fn origin_put_classifies_stored_present_refused_and_unknown() -> Bool {
-  match put_of(answer: S3Answered { status: 200 }) {
+  match put_of(answer: S3Answered { status: 200, tag: none }) {
        OriginObjectStored { key: k } => k == "k"
        other => false
      }
-    && match put_of(answer: S3Answered { status: 412 }) {
+    && match put_of(answer: S3Answered { status: 412, tag: none }) {
          OriginObjectAlreadyPresent { key: _ } => true
          other => false
        }
-    && match put_of(answer: S3Answered { status: 403 }) {
+    && match put_of(answer: S3Answered { status: 403, tag: none }) {
          OriginPutRefused { key: _, cause: _ } => true
          other => false
        }
-    && match put_of(answer: S3Answered { status: 500 }) {
+    && match put_of(answer: S3Answered { status: 500, tag: none }) {
          OriginPutOutcomeUnknown { key: _, cause: _ } => true
          other => false
        }
-    && match put_of(answer: S3Answered { status: 503 }) {
+    && match put_of(answer: S3Answered { status: 503, tag: none }) {
          OriginPutOutcomeUnknown { key: _, cause: _ } => true
          other => false
        }
@@ -297,19 +358,19 @@ fn fetch_of(answer: S3TransferAnswer) -> OriginFetchVerdict {
 // THE FETCH'S THREE ARMS, AND 404 IS ABSENCE ONLY BECAUSE THE ORIGIN SAID SO: a refused 403 and a
 // transport that never answered are both UNAVAILABLE, never absent.
 test fn origin_fetch_classifies_staged_absent_and_refused() -> Bool {
-  match fetch_of(answer: S3Answered { status: 200 }) {
+  match fetch_of(answer: S3Answered { status: 200, tag: none }) {
        OriginFetchStagedAt { staged_path: p } => p == "/staged/object"
        other => false
      }
-    && match fetch_of(answer: S3Answered { status: 404 }) {
+    && match fetch_of(answer: S3Answered { status: 404, tag: none }) {
          OriginFetchAbsent => true
          other => false
        }
-    && match fetch_of(answer: S3Answered { status: 403 }) {
+    && match fetch_of(answer: S3Answered { status: 403, tag: none }) {
          OriginFetchRefused { cause: _ } => true
          other => false
        }
-    && match fetch_of(answer: S3Answered { status: 500 }) {
+    && match fetch_of(answer: S3Answered { status: 500, tag: none }) {
          OriginFetchRefused { cause: _ } => true
          other => false
        }
@@ -352,8 +413,8 @@ fn declared_bucket_name() -> String {
 test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential() -> Bool {
   match resolve_origin_target(direction: OriginRead, key: "fabric-m0/v1/commit/attempt-1") {
     OriginTargetRefused { cause: _ } => false
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, create_only: create_only } =>
-      create_only &&
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, precondition: precondition } =>
+      (match precondition { PutIfAbsent => true  other => false }) &&
       (locator.bucket_name as String) == declared_bucket_name()
         && locator.endpoint.account_id == (fleet_cloudflare_account_id as String)
         && (locator.key as String) == "fabric-m0/v1/commit/attempt-1"
@@ -371,8 +432,8 @@ test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential()
 test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential() -> Bool {
   match resolve_origin_target(direction: OriginWrite, key: "fabric-m0/v1/commit/attempt-1") {
     OriginTargetRefused { cause: _ } => false
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, create_only: create_only } =>
-      create_only
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, precondition: precondition } =>
+      (match precondition { PutIfAbsent => true  other => false })
         && (locator.bucket_name as String) == declared_bucket_name()
         && (access_key_id as String) == (fabric_durable_origin_write_access_key_id as String)
         && (locus.secret as String) == (fabric_durable_origin_write_secret_id as String)
@@ -395,11 +456,12 @@ test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> 
       },
       write_credential: OriginCredentialUnminted {
         mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_object_write"),
+        secret_id: "witness-write",
       },
     },
   }
   match resolve_origin_target_under(direction: OriginWrite, key: "k", origin: origin) {
-    OriginTargetReady { locator: _, access_key_id: _, token_value: _, create_only: _ } => false
+    OriginTargetReady { locator: _, access_key_id: _, token_value: _, precondition: _ } => false
     OriginTargetRefused { cause: cause } =>
       string_contains(s: cause as String, pattern: "run_object_write")
         && string_contains(s: cause as String, pattern: "gunbc.cloudflare.r2_token_mint_run")
