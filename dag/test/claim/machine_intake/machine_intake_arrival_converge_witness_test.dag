@@ -11,10 +11,12 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.machine_intake_phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, IntakePhase }
 import gunbc.machine_intake_subject {
-  AssemblyManifest, BoardSerialObservation, BmcFru, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
+  AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
+  BoardSerialContradictory, BoardSerialsObserved, BoardSerialCaptureRefused, FirmwareEntry, FirmwareManifest, UnitKey,
+  qualification_subject_of,
 }
 import gunbc.machine_intake_mtjade1_access_observation {
-  CurrentManagerRead, RecordedManagerIdentityObservation, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
+  CurrentManagerRead, RecordedManagerIdentityObservation, board_serial_reading_of, read_mtjade1_fru_observation, read_mtjade1_smbios_type2, ControllerClockRendered, ControllerClockUnread, read_mtjade1_current_manager_read,
 }
 import gunbc.machine_intake_bmc_rotation_route {
   BmcRotationRouteStanding, RouteQualificationCandidate, RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteUngrounded,
@@ -39,7 +41,7 @@ import gunbc.fleet.convergence_fold {
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, ArrivalStepRefusal,
-  IdentityBindObserveRefused, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
+  IdentityBindObserveRefused, IdentityObserveRefusal, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
   IdentityBindInputs, AccessDiscoverEstablished,
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
@@ -49,11 +51,11 @@ import gunbc.machine_intake_arrival_converge {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// CUT O1c-1, THE ARRIVAL PREFIX OVER THE CONVERGENCE FOLD. The first claim is the ONE execution of
-// the real path (DESIGN §3 pairing obligation): mtjade1's committed current read goes through both
-// protocol steps, the census-joined and rank-checked plan, and the fold, and the claim asserts the
-// ROUTE -- which instance converged with which receipt fields, and the typed refusal the line stopped
-// on -- not only the verdict. The controls after it reuse that real read; where one supplies a value
+// CUT O1c-1, THE ARRIVAL PREFIX OVER THE CONVERGENCE FOLD. The real-path claim is the ONE execution of
+// the real path (DESIGN §3 pairing obligation): mtjade1's committed Manager, FRU and SMBIOS captures go
+// through both protocol steps, the census-joined and rank-checked plan, and the fold, and the claim
+// asserts the ROUTE -- which instance converged with which receipt fields -- not only the verdict.
+// The controls after it reuse the real Manager read; where one supplies a value
 // (a board serial, an approval, a census with a doubled row) the comment beside it says which.
 
 data run_a: ConvergenceRunId = "o1c1-witness-run-a" as ConvergenceRunId
@@ -117,24 +119,98 @@ fn identity_refused_board_serial_absent(s: StepInstanceStanding<ArrivalStepRecei
   }
 }
 
-// THE REAL PATH. mtjade1 establishes AccessDiscover from its committed 2026-10-04 read at
-// 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock kept as a reading, and a
-// CANDIDATE Redfish account-write route on that read), and the line stops at IdentityBindProvisional
-// with the typed missing observation: no committed board serial, so no unit key.
-test fn w_mtjade1_establishes_access_and_stops_at_identity_bind_board_serial_absent() -> Bool {
+fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref)
+        && match r {
+          IdentityBindReceipt { receipt: i } =>
+            ((i.subject.subject.unit_key as NonEmptyStr) as String) == "B810301000412080005AJ0C1"
+              && ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
+              && declaration_ref_eq(a: i.consumed_access.step_identity, b: access_discover_step_ref)
+              && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
+          AccessDiscoverReceipt { receipt: _ } => false
+        }
+    InstanceRefused { key: _, cause: _ } => false
+    InstanceNotReached { key: _, blocked_by: _ } => false
+  }
+}
+
+// What the provisional manifests must contain, from which capture: the assembly from the FRU capture
+// (chassis part number, chassis serial), the firmware manifest from the Manager read (bmc build only).
+data expected_mtjade1_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "B60.0300E.0001",
+  components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: "21000012N0A1" }],
+}
+
+data expected_mtjade1_firmware: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "2.11.104000" }],
+  configuration_digests: [],
+}
+
+// THE REAL PATH. mtjade1 passes both read-only phases from its committed captures: AccessDiscover from
+// the 2026-10-04 Manager read at 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock
+// kept as a reading, a CANDIDATE Redfish account-write route), and IdentityBindProvisional binding the
+// unit key from the FRU and SMBIOS board serials, which agree, and minting the MachineIntakeSubject
+// over the FRU's provisional assembly and the read's live firmware manifest, with this run as its one
+// intake attempt.
+test fn w_mtjade1_converges_both_read_only_phases_from_its_committed_captures() -> Bool {
   match converge_mtjade1_arrival_prefix(run: run_a) {
     ArrivalRunFolded { verdict: v } =>
       match v {
-        RunStopped { ledger: l, at: at } =>
-          declaration_ref_eq(a: at.step_identity, b: identity_bind_provisional_step_ref)
-            && length(xs: l.instances) == 2
+        RunConverged { ledger: l } =>
+          length(xs: l.instances) == 2
             && match l.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
-            && match l.instances.last() { Present { value: s } => identity_refused_board_serial_absent(s: s)  Absent => false }
-        RunConverged { ledger: _ } => false
+            && match l.instances.last() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+        RunStopped { ledger: _, at: _ } => false
         RunOutcomesRefused { cause: _ } => false
       }
     ArrivalPlanRefused { cause: _ } => false
     ArrivalPrefixUnstepped { phase: _ } => false
+  }
+}
+
+// BOTH SOURCES ARE READ, each from its own capture: one BMC FRU and one host SMBIOS observation.
+test fn w_mtjade1_board_serials_are_read_from_fru_and_smbios() -> Bool {
+  match board_serial_reading_of(fru: read_mtjade1_fru_observation(), smbios: read_mtjade1_smbios_type2()) {
+    BoardSerialsObserved { observations: obs } =>
+      length(xs: obs) == 2
+        && match obs.first() { Present { value: o } => (match o.source { BmcFru => true  _ => false }) && (o.serial as String) == "B810301000412080005AJ0C1"  Absent => false }
+        && match obs.last() { Present { value: o } => (match o.source { HostSmbios => true  _ => false }) && (o.serial as String) == "B810301000412080005AJ0C1"  Absent => false }
+    BoardSerialCaptureRefused { cause: _ } => false
+  }
+}
+
+fn identity_refusal_with(serials: List<BoardSerialObservation>) -> IdentityObserveRefusal? {
+  match established_access(o: real_access(run: run_a, subject: mtjade1_key, read: read_mtjade1_current_manager_read())) {
+    Absent => none
+    Present { value: a } =>
+      match step_outcome_refusal(outcome: identity_bind_provisional(
+        key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key),
+        access: a,
+        inputs: IdentityBindInputs { board_serials: BoardSerialsObserved { observations: serials }, other_units: [], assembly: Present { value: expected_mtjade1_assembly } },
+      )) {
+        Present { value: c } => match c { IdentityBindObserveRefused { cause: i } => Present { value: i }  _ => none }
+        Absent => none
+      }
+  }
+}
+
+// SUPPLIED: an empty observation list. With no board serial the step refuses with the typed missing
+// observation, never a fabricated key.
+test fn w_no_board_serial_refuses_with_board_serial_absent() -> Bool {
+  match identity_refusal_with(serials: []) {
+    Present { value: i } => match i { UnitKeyNotBound { cause: u } => match u { BoardSerialAbsent => true  _ => false }  _ => false }
+    Absent => false
+  }
+}
+
+// SUPPLIED: a FRU and an SMBIOS serial that disagree. The second source is meaningful only because
+// disagreement refuses: BoardSerialContradictory, carrying both observations.
+test fn w_disagreeing_board_serials_refuse_as_contradictory() -> Bool {
+  match identity_refusal_with(serials: [BoardSerialObservation { source: BmcFru, serial: "B810301000412080005AJ0C1" }, BoardSerialObservation { source: HostSmbios, serial: "SUPPLIED-OTHER-BOARD" }]) {
+    Present { value: i } => match i { UnitKeyNotBound { cause: u } => match u { BoardSerialContradictory { observations: os } => length(xs: os) == 2  _ => false }  _ => false }
+    Absent => false
   }
 }
 
@@ -243,11 +319,10 @@ fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>) ->
   }
 }
 
-// SUPPLIED at the IdentityBindProvisional boundary: a board serial and a provisional assembly, so the
-// step can be shown to converge and to bind the run's attempt. Neither is a fact about mtjade1; the
-// real path (first claim) is the BoardSerialAbsent refusal.
+// SUPPLIED at the IdentityBindProvisional boundary: a board serial and a provisional assembly that are
+// not mtjade1's, used where a claim needs an identity receipt independent of the real captures.
 data supplied_identity_inputs: IdentityBindInputs = IdentityBindInputs {
-  board_serials: [BoardSerialObservation { source: BmcFru, serial: "SUPPLIED-SERIAL-0001" }],
+  board_serials: BoardSerialsObserved { observations: [BoardSerialObservation { source: BmcFru, serial: "SUPPLIED-SERIAL-0001" }] },
   other_units: [],
   assembly: Present { value: AssemblyManifest { chassis_part_number: "SUPPLIED-CHASSIS", components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: "SUPPLIED-CHASSIS" }] } },
 }
