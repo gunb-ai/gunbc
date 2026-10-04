@@ -312,7 +312,7 @@ fn approval_ntfy_run(read: NtfyRuntimeRead, pid: String, revision: ReleaseRevisi
 fn approval_ntfy_runtime_reading(revision: ReleaseRevisionBinding) -> NtfyRuntimeReading
   uses net: Network
   admit_callers: [
-    decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+    decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
   ]
 {
   let unit_before = approval_ntfy_run(read: ReadUnitBefore, pid: "", revision: revision)
@@ -511,7 +511,7 @@ fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
 // ── THE CLASSIFIER: the fixture seam, and nothing but a verdict ────────────────────────────
 // Pure over one reading. It returns AclEstablished or AclRefused and carries no value an effectful
 // function could accept in place of the reads: the only caller that turns AclEstablished into an
-// effect is gunbc.auth.approval_device_routes issue_device_enrolment_code, which took the reading
+// effect is gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, which took the reading
 // itself immediately before it asks. AclEstablished is reached only at the end of the chain: every
 // read held, the listing is the exact ACL, AND the process joins bound it to the running server.
 fn approval_ntfy_channel_verdict(reading: NtfyRuntimeReading) -> ApprovalNtfyAclVerdict {

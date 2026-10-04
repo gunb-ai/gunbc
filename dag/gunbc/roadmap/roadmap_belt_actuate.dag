@@ -64,7 +64,7 @@ import gunbc.roadmap_launch_admission {
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
   LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved, launch_graph_of_projection, launch_graph_of_document,
-  LaunchIdentity, launch_identity_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
+  LaunchIdentity, launch_identity_json, attempt_launch_record_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
   launch_cause_label, LaunchCensusRow, occurrence_census_row,
   launch_identity_exemplar,
   launch_admission, launch_refusal_label, launch_refusal_reason, launch_refusal_exemplars,
@@ -800,7 +800,7 @@ fn belt_attempt_state_initialize_for_instance(
         node_id: node.node,
         attempt_key: attempt_key,
       ),
-      content: serialize_json(v: launch_identity_json(id: launch)),
+      content: serialize_json(v: attempt_launch_record_json(id: launch, attempt_key: attempt_key as NonEmptyStr)),
     )
     if !launch_write.success {
       AttemptStateInitializationFailed {

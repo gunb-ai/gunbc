@@ -1,6 +1,7 @@
 module gunbc.spark.v41_group_a_launch
 
 import std.types { String, Bool, Int, List, NonEmptyStr, Port, EpochSecs, FilePath }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
 import std.algebra { trim }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
@@ -405,6 +406,7 @@ fn v41_group_a_launch_plan(inputs: V41GroupALaunchInputs) -> V41GroupALaunchPlan
                   profile: launch_profile,
                   deployment_env: v41_group_a_deployment_env(),
                   container: v41_group_a_arm_container,
+                  promotion_receipts: no_promotion_receipts,
                 ) {
                   ArmLaunchRefused { cause: c } => V41GroupALaunchRefused { causes: [c as String] }
                   ArmLaunchPlanned { lines: ls, master: m } =>
