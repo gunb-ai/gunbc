@@ -2,7 +2,6 @@ module v2.test.claim.body_lowering.anonymous_record_algebra
 
 import std.algebra { ordered_ring_templates, free_monoid_scalar_templates }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 
 // THE REAL CORPUS'S HEADLESS LIST ROWS ELABORATE ON THE NATIVE ROUTE (docs/plans/anonymous-record-literal-design.md, Pure-renaming aliases). std.algebra writes its algebra templates as headless records inside list literals
 // under `-> List<AlgebraFieldTemplate>`, and List is the pure-renaming alias

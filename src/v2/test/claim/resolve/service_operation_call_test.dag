@@ -7,11 +7,11 @@ import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_surface_edge, namespace_graft_namespace_body_node }
 import v2.std.algebra { fold_list_node }
 import v2.std.arrow_signature { declared_signature }
-import v2.std.collection { List, empty_map }
+import std.types { List }
+import v2.std.collection { empty_map }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.resolution_policy { NamespaceOnlyY }

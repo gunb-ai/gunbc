@@ -1,6 +1,6 @@
 module v2.test.claim.roster_registry_test
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -20,8 +20,6 @@ import v2.lens.roster_registry {
   nonstandard_registrations_from
 }
 import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 

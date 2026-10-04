@@ -1,13 +1,12 @@
 module v2.test.claim.host_build_environment_row
 
+import std.types { List }
 import v2.std.host_transport { HostBuildEnvironment, HostTransportDescriptor }
 import v2.extdeps.languages.rust { rust_host_transport_descriptor, rust_host_build_environment }
 import v2.extdeps.languages.python { python_host_transport_descriptor }
 import v2.extdeps.languages.go { go_host_transport_descriptor }
 import v2.extdeps.languages.typescript { ts_host_transport_descriptor }
 import v2.std.algebra { any, contains, fold_list }
-import v2.std.logic { Bool }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

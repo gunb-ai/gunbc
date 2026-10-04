@@ -16,7 +16,6 @@ pub use crate::std_occurrence_binding_candidates::{
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceId, OccurrenceTransport, ReferenceOccurrence,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{

@@ -1,5 +1,6 @@
 module v2.compiler.infer
 
+import std.types { List }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
@@ -48,7 +49,6 @@ import v2.extdeps.languages.typescript {
 import v2.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -138,7 +138,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   rejected_with_pending
 }
-import v2.std.logic { Bool }
+import v2.std.logic { bool_node }
 import v2.std.node {
   StructuralLabel,
   host_text_type_node,
@@ -1694,16 +1694,23 @@ fn refinement_declaration(index: SymbolIndex, reference: Node) -> Optional<Refin
     Present { value: path } =>
       match symbol_index_lookup(index: index, qualified_path: path) {
         Absent => Absent
-        Present { value: decl } =>
-          match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
-            Rejected { diagnostics: _ } => Absent
-            Accepted { value: clause, diagnostics: _ } =>
-              match find_named_child(root: decl, name: ^dag_surface_type_expr) {
-                Rejected { diagnostics: _ } => Absent
-                Accepted { value: head, diagnostics: _ } =>
-                  Present { value: RefinementDeclaration { carrier: head, where_clause: clause } }
-              }
-          }
+        Present { value: decl } => refinement_declaration_of_node(decl: decl)
+      }
+  }
+}
+
+// A REFINEMENT DECLARATION READ FROM ITS DECLARED NODE: the where-clause production edge and the
+// carrier's type expression, or Absent when the node is not a refinement. The one reader of that
+// shape -- refinement_declaration above reaches it through the symbol index, and
+// gunbc.instruments.type_declaration_use_census reaches it from a module member it already holds.
+fn refinement_declaration_of_node(decl: Node) -> Optional<RefinementDeclaration> {
+  match find_labeled_child(root: decl, label: production_edge_label(language: ^dag_language_model_surface_id, edge: ^dag_surface_where_refinement_clause)) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: clause, diagnostics: _ } =>
+      match find_named_child(root: decl, name: ^dag_surface_type_expr) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: head, diagnostics: _ } =>
+          Present { value: RefinementDeclaration { carrier: head, where_clause: clause } }
       }
   }
 }

@@ -1,6 +1,6 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 import std.witness_admission {
   DiscoverySelection,
@@ -35,8 +35,6 @@ import v2.workflow.witness_admission {
   witness_exclusion_frontier_carries_no_admission_holds
 }
 import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 

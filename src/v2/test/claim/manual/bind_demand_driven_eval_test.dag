@@ -1,5 +1,6 @@
 module v2.test.manual.bind_demand_driven_eval
 
+import std.types { List }
 import v2.std.arrow_signature { declared_signature }
 import std.occurrence_identity { OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.eval {
@@ -26,7 +27,6 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
-  List,
   Map,
   map_get,
   map_insert
@@ -51,7 +51,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

@@ -1,6 +1,6 @@
 module v2.extdeps.coordination
 
-import v2.std.collection { List }
+import std.types { List }
 import std.nat { Nat }
 import v2.std.network { NetworkAddress }
 import v2.std.node { Symbol }

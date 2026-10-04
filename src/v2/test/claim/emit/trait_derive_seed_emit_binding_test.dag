@@ -33,16 +33,11 @@ import std.trait_derive_shape {
   ReprDeriveElemSymbolWrappedOrdCarrier,
   ReprDeriveElemKernelInt,
   repr_grounding_derive_completeness_predicate,
-  repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target
+  repr_grounding_group_completion_carrier
 }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_group_completion,
-  rust_supplemental_impls_bool_coproduct
-}
-import v2.std.logic {
-  Bool
+  rust_supplemental_impls_group_completion
 }
 
 // Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates →
@@ -161,26 +156,3 @@ test fn group_completion_neg_swaps_components() -> Bool {
   supplemental.contains("pos: self.neg,")
     && supplemental.contains("neg: self.pos,")
 }
-
-test fn bool_supplemental_impl_present() -> Bool {
-  let supplemental = rust_supplemental_impls_bool_coproduct()
-  let target_ok = repr_grounding_supplemental_bool_host_bridge_target(
-    module_path: "std.types",
-    name: "Bool"
-  )
-  let predicate_ok = repr_grounding_derive_completeness_predicate(
-    rust_capability_shape_table(),
-    nullary_coproduct_derive_traits(),
-    ReprDeriveElemNullaryEnumCopy
-  )
-  let wrong_module = repr_grounding_supplemental_bool_host_bridge_target(
-    module_path: "std.logic",
-    name: "Bool"
-  )
-  let wrong_name = repr_grounding_supplemental_bool_host_bridge_target(
-    module_path: "std.types",
-    name: "Quantity"
-  )
-  target_ok && predicate_ok && supplemental != "" && wrong_module == false && wrong_name == false
-}
-

@@ -1,5 +1,6 @@
 module v2.test.claim.long.native_routing_membership_receipt_test
 
+import std.types { List }
 import v2.compiler.self_host.native_routing_frontier {
   NativeRoutingFrontierRow,
   NativeRoutingEntryClosure,
@@ -13,8 +14,6 @@ import v2.compiler.self_host.native_routing_frontier {
 }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.algebra { length, any }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
