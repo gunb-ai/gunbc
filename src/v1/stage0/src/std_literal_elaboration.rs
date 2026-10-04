@@ -3,6 +3,7 @@
 
 use self::KernelGroundingLookup::*;
 use self::KernelMintDeclarationLookup::*;
+use self::KernelMintOwnership::*;
 use self::LiteralElaborationOutcome::*;
 use self::LiteralElaborationRefusal::*;
 use self::LiteralHomomorphismLookup::*;
@@ -368,6 +369,53 @@ pub fn kernel_mint_declaration_for(
                     },
                 )
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum KernelMintOwnership {
+    DeclarationOwnsTheMint,
+    DeclarationDoesNotOwnTheMint,
+    KernelMintOwnershipAmbiguous { row_count: i64 },
+}
+impl KernelMintOwnership {
+    pub fn row_count(&self) -> i64 {
+        match self {
+            KernelMintOwnership::DeclarationOwnsTheMint => panic!("no row_count on unit variant"),
+            KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
+                panic!("no row_count on unit variant")
+            }
+            KernelMintOwnership::KernelMintOwnershipAmbiguous {
+                row_count: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn kernel_mint_ownership(
+    rows: Rc<Vec<Rc<KernelMintDeclaration>>>,
+    minted_name: String,
+    declaration: Rc<DeclarationRef>,
+) -> Rc<KernelMintOwnership> {
+    match (*kernel_mint_declaration_for(rows.clone(), minted_name.clone())).clone() {
+        KernelMintDeclarationLookup::KernelMintDeclarationFound {
+            declaration: bound, ..
+        } => {
+            if crate::std_decl_ref::declaration_ref_eq(bound.clone(), declaration.clone()) {
+                Rc::new(KernelMintOwnership::DeclarationOwnsTheMint)
+            } else {
+                Rc::new(KernelMintOwnership::DeclarationDoesNotOwnTheMint)
+            }
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+            Rc::new(KernelMintOwnership::DeclarationDoesNotOwnTheMint)
+        }
+        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: n, .. } => {
+            Rc::new(KernelMintOwnership::KernelMintOwnershipAmbiguous {
+                row_count: n.clone(),
+            })
         }
     }
 }

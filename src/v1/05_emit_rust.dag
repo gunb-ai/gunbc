@@ -1,7 +1,7 @@
 module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list, declaration_ref_eq }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_in_list }
 import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
   VariantParentIdentity, VariantParentUnrecovered, VariantParentBeforeInference, VariantRealizesAsTargetValue, VariantRealizesStructurally, VariantTargetValueUnbound,
   VariantTargetValueAmbiguous, VariantParentIdentityUnavailable, variant_value_realization_refusal_message,
@@ -195,7 +195,7 @@ import std.operator_realization {
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
 import gunbc.rust_source_type_bindings { rust_host_option_carrier_declarations }
-import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
+import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_ownership, DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -10022,13 +10022,10 @@ fn host_option_arm_reading(identity: VariantParentIdentity, bare_name: String, i
     VariantParentIdentified { key: key } =>
       match key {
         VariantParentDeclaration { declaration: d } =>
-          match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: kernel_optional_mint_name) {
-            KernelMintDeclarationAmbiguous { row_count: _ } => HostOptionArmBindingAmbiguous
-            KernelMintDeclarationFound { declaration: bound } =>
-              if declaration_ref_eq(a: bound, b: d) { HostOptionArmIsHostOption }
-              else if declaration_ref_in_list(target: d, refs: rust_host_option_carrier_declarations) { HostOptionArmIsHostOption }
-              else { HostOptionArmIsNot }
-            KernelMintDeclarationAbsent =>
+          match kernel_mint_ownership(rows: kernel_mint_declaration_rows, minted_name: kernel_optional_mint_name, declaration: d) {
+            KernelMintOwnershipAmbiguous { row_count: _ } => HostOptionArmBindingAmbiguous
+            DeclarationOwnsTheMint => HostOptionArmIsHostOption
+            DeclarationDoesNotOwnTheMint =>
               if declaration_ref_in_list(target: d, refs: rust_host_option_carrier_declarations) { HostOptionArmIsHostOption }
               else { HostOptionArmIsNot }
           }

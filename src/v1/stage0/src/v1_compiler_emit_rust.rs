@@ -77,20 +77,20 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, declaration_ref_in_list};
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
-use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
-    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+use crate::std_literal_elaboration::KernelMintOwnership::{
+    DeclarationDoesNotOwnTheMint, DeclarationOwnsTheMint, KernelMintOwnershipAmbiguous,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_declaration_for};
+pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership};
 pub use crate::std_literal_elaboration::{
-    KernelGroundingLookup, KernelMintDeclarationLookup, LiteralSourceKind,
+    KernelGroundingLookup, KernelMintOwnership, LiteralSourceKind,
 };
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -21157,34 +21157,20 @@ pub fn host_option_arm_reading(
                 .clone()
             {
                 VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+                    match (*crate::std_literal_elaboration::kernel_mint_ownership(
                         kernel_mint_declaration_rows(),
                         kernel_optional_mint_name(),
+                        d.clone(),
                     ))
                     .clone()
                     {
-                        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
-                            row_count: _,
-                            ..
+                        KernelMintOwnership::KernelMintOwnershipAmbiguous {
+                            row_count: _, ..
                         } => HostOptionArmReading::HostOptionArmBindingAmbiguous,
-                        KernelMintDeclarationLookup::KernelMintDeclarationFound {
-                            declaration: bound,
-                            ..
-                        } => {
-                            if crate::std_decl_ref::declaration_ref_eq(bound.clone(), d.clone()) {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            } else {
-                                if crate::std_decl_ref::declaration_ref_in_list(
-                                    d.clone(),
-                                    rust_host_option_carrier_declarations(),
-                                ) {
-                                    HostOptionArmReading::HostOptionArmIsHostOption
-                                } else {
-                                    HostOptionArmReading::HostOptionArmIsNot
-                                }
-                            }
+                        KernelMintOwnership::DeclarationOwnsTheMint => {
+                            HostOptionArmReading::HostOptionArmIsHostOption
                         }
-                        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+                        KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
                             if crate::std_decl_ref::declaration_ref_in_list(
                                 d.clone(),
                                 rust_host_option_carrier_declarations(),
