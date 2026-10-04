@@ -188,7 +188,7 @@ test fn a_body_matching_its_entry_is_served_with_stored_status_and_media_type() 
       listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "workflow.json", error: "unused on success"),
       name: "workflow.json",
       path: "/srv/gunbc/served/workflow.json",
-      read: FilesystemReadSucceeded { content: "{\\"refused\\":\\"tmux unavailable\\"}" },
+      read: FilesystemReadSucceeded { content: "{\"refused\":\"tmux unavailable\"}" },
     ),
   ),
   )

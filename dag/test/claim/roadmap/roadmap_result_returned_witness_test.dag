@@ -318,9 +318,6 @@ test fn the_binding_record_round_trips_and_a_malformed_one_is_unreadable() -> Bo
     RequestBindingUndecodable { reason } => string_length(s: reason) > 0
     RequestBindingDecoded { binding: _ } => false
   })
-  // The absent arm is driven through the owner's producers: the listing omits the record, so the
-  // absence is established, not inferred from a failed read. The unreadable arm is listed-but-
-  // refused; the undecodable arm is present and read but not a binding.
   let absent_observed = filesystem_file_observation(
     listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "other-attempt.json", error: "unused on success"),
     name: "request.json",
