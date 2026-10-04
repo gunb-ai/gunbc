@@ -26,7 +26,7 @@ import extdeps.languages.json.parse {
   JsonMemberPresence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable, json_member_presence,
 }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank, dimm_figure_banks }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank, dimm_figure_banks, dimm_figure_connector_label_prefix }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
@@ -89,10 +89,11 @@ type AttemptReceiptRoute {
 }
 
 // Mt. Collins: the 32 memory connectors of the Getting Started Guide's Figure 9
-// (extdeps.ampere.mt_collins_getting_started_guide.dimm_layout dimm_figure_banks), labelled by
-// connector number and placed on the socket of the bank that carries them.
+// (extdeps.ampere.mt_collins_getting_started_guide.dimm_layout dimm_figure_banks), labelled as the guide
+// labels them -- its connector prefix (dimm_figure_connector_label_prefix, "J") and the connector number,
+// the same derivation gunbc.mt_collins_dimm_physical_identity uses -- on the socket of their bank.
 fn mt_collins_slot_roster(banks: List<MtCollinsDimmFigureBank>) -> List<RosterSlot> {
-  flat_map(banks, b => map(b.connectors_left_to_right, c => RosterSlot { label: to_string(c as Int) as NonEmptyStr, socket: b.processor_socket as Int }))
+  flat_map(banks, b => map(b.connectors_left_to_right, c => RosterSlot { label: concat(dimm_figure_connector_label_prefix as String, to_string(c as Int)) as NonEmptyStr, socket: b.processor_socket as Int }))
 }
 
 fn attempt_receipt_route(host: ManagedHost) -> AttemptReceiptRoute? {

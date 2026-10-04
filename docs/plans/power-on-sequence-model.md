@@ -392,7 +392,7 @@ Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspectio
 
 **Populations join exactly, or the receipt refuses.**
 - **CPUs:** the CPU rows name exactly the plan's expected sockets.
-- **DIMMs:** the DIMM rows name exactly the host's slot roster. For Mt. Collins that is the Getting Started Guide's 32 connectors (`dimm_figure_banks`), labelled by connector number and placed on their bank's socket. Every label must be known and on its roster socket, and every slot must appear, populated or not.
+- **DIMMs:** the DIMM rows name exactly the host's slot roster. For Mt. Collins that is the Getting Started Guide's 32 connectors (`dimm_figure_banks`), labelled as the guide labels them (its `J` prefix and the connector number) and placed on their bank's socket. Every label must be known and on its roster socket, and every slot must appear, populated or not.
 - **Refusal causes:** a missing socket, an unknown label, a label on another socket, and an omitted slot each refuse with their own cause.
 
 **The slot store** is `/var/lib/gunbc/boot-attempts`, provisioned by `gunbc.runner_host_grants` `unit_hold_store_operations` beside the unit-hold store: same hosts, owner and mode. It is a separate directory, so a hold's release or recovery cannot reach it. Its executed control on the real store host is the first grant convergence followed by a receipt-carrying boot on srv1.

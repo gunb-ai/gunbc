@@ -36,7 +36,7 @@ fn q(s: String) -> String {
 }
 
 fn receipt_text(subject: String, attempt: String, plan_subject: String, plan_attempt: String, requested: String, fixed_at: String, completed_at: String) -> String {
-  receipt_text_with(subject: subject, attempt: attempt, plan_subject: plan_subject, plan_attempt: plan_attempt, requested: requested, fixed_at: fixed_at, completed_at: completed_at, cpus: cpus_json(sockets: [0, 1]), dimms: dimms_json(rows: [dimm(label: "1", socket: 0), dimm(label: "17", socket: 1)]))
+  receipt_text_with(subject: subject, attempt: attempt, plan_subject: plan_subject, plan_attempt: plan_attempt, requested: requested, fixed_at: fixed_at, completed_at: completed_at, cpus: cpus_json(sockets: [0, 1]), dimms: dimms_json(rows: [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 1)]))
 }
 
 fn receipt_text_with(subject: String, attempt: String, plan_subject: String, plan_attempt: String, requested: String, fixed_at: String, completed_at: String, cpus: String, dimms: String) -> String {
@@ -72,7 +72,7 @@ fn dimms_json(rows: List<DimmFixture>) -> String {
 
 // A TWO-SLOT ROSTER keeps each claim's parse small; one claim below joins the real 32-connector roster.
 fn small_roster() -> List<RosterSlot> {
-  [RosterSlot { label: "1", socket: 0 }, RosterSlot { label: "17", socket: 1 }]
+  [RosterSlot { label: "J1", socket: 0 }, RosterSlot { label: "J25", socket: 1 }]
 }
 
 fn a_digest() -> Sha256FileDigest {
@@ -318,19 +318,20 @@ fn with_rows(cpus: List<Int>, dimms: List<DimmFixture>) -> String {
 }
 
 test fn w_a_population_that_does_not_join_its_roster_refuses() -> Bool {
-  let full = [dimm(label: "1", socket: 0), dimm(label: "17", socket: 1)]
+  let full = [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 1)]
   with_rows(cpus: [0], dimms: full) == "ReceiptCpusNotTheExpectedSockets"
-    && with_rows(cpus: [0, 1], dimms: [dimm(label: "1", socket: 0), dimm(label: "99", socket: 1)]) == "ReceiptDimmUnknownSlot"
-    && with_rows(cpus: [0, 1], dimms: [dimm(label: "1", socket: 0), dimm(label: "17", socket: 0)]) == "ReceiptDimmOnWrongSocket"
-    && with_rows(cpus: [0, 1], dimms: [dimm(label: "1", socket: 0)]) == "ReceiptDimmSlotOmitted"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0), dimm(label: "25", socket: 1)]) == "ReceiptDimmUnknownSlot"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0), dimm(label: "J25", socket: 0)]) == "ReceiptDimmOnWrongSocket"
+    && with_rows(cpus: [0, 1], dimms: [dimm(label: "J1", socket: 0)]) == "ReceiptDimmSlotOmitted"
     && with_rows(cpus: [0, 1], dimms: full) == "none"
 }
 
-// THE REAL ROSTER: 32 connectors, 1-16 on socket 0 and 17-32 on socket 1, from the guide's Figure 9.
+// THE REAL ROSTER: 32 connectors, J1-J16 on socket 0 and J17-J32 on socket 1, from the guide's Figure 9.
 test fn w_the_mt_collins_roster_is_the_guides_32_connectors_by_socket() -> Bool {
   let roster = mt_collins_slot_roster(banks: dimm_figure_banks)
   count(roster) == 32
     && count(filter(roster, r => r.socket == 0)) == 16
-    && any(roster, r => (r.label as String) == "17" && r.socket == 1)
-    && any(roster, r => (r.label as String) == "16" && r.socket == 0)
+    && any(roster, r => (r.label as String) == "J25" && r.socket == 1)
+    && any(roster, r => (r.label as String) == "J16" && r.socket == 0)
+    && !any(roster, r => (r.label as String) == "25")
 }
