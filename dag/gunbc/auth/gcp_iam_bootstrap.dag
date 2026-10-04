@@ -3,6 +3,7 @@ module gunbc.auth.gcp_iam_bootstrap
 import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe, Timestamp }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import std.list { distinct_by_key }
 import extdeps.google.userinfo
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
@@ -176,16 +177,49 @@ fn custody_journal_wire(secret: NonEmptyStr, operation: String) -> String {
   join([fleet_secrets_project_id as String, "\n", iam_bootstrap_resource_key(resource: BootstrapSecret { secret: secret }), "\n", operation, "\n"], "")
 }
 
-// THE JOURNAL AS A RUN READS IT, from the target/ listing: every elected operation of this secret
-// that carries no closing, refusing or disposing mark is unresolved.
-fn custody_journal_of(secret: NonEmptyStr, listing: String) -> CustodyCreateJournal {
-  let names = split(s: listing, delimiter: "\n")
+// THE LISTING ONLY DISCOVERS CANDIDATE OPERATIONS: every operation with any mark of this secret. No
+// mark is believed from its name; each is read below.
+fn custody_candidate_operations(secret: NonEmptyStr, listing: String) -> List<String> {
   let prefix = custody_journal_prefix(secret: secret)
-  let suffix = custody_journal_mark_suffix(mark: CustodyMarkElected)
-  let elected = map(filter(names, n => starts_with(s: n, prefix: prefix) && ends_with(s: n, suffix: suffix)),
-    n => substring(s: n, start: string_length(s: prefix), end: string_length(s: n) - string_length(s: suffix)))
-  CustodyJournalRead { unresolved: filter(elected, op => !any([CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed], m =>
-    filesystem_listing_names_entry(listing: listing, name: custody_journal_name(secret: secret, operation: op, mark: m)))) }
+  let found = flat_map(split(s: listing, delimiter: "\n"), n => if !starts_with(s: n, prefix: prefix) { [] } else {
+    flat_map([CustodyMarkElected, CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed], m => {
+      let suffix = custody_journal_mark_suffix(mark: m)
+      if ends_with(s: n, suffix: suffix) { [substring(s: n, start: string_length(s: prefix), end: string_length(s: n) - string_length(s: suffix))] } else { [] }
+    })
+  })
+  distinct_by_key(xs: found, key: x => x)
+}
+
+// ONE OPERATION'S MARKS AS READ, each through iam_authority_record, as the authority journal reads its.
+type CustodyOperationRecords {
+  operation: String
+  elected: IamAuthorityRecord
+  closed: IamAuthorityRecord
+  refused: IamAuthorityRecord
+  disposed: IamAuthorityRecord
+}
+
+// A MARK COUNTS ONLY WHEN ITS BYTES ARE THIS SECRET'S AND OPERATION'S WIRE. A marker interrupted after
+// WriteCreateNew, corrupt, or restored from elsewhere is not a resolution: it makes the journal
+// unreadable, which refuses, rather than settling an election and admitting a re-create.
+fn custody_record_valid(record: IamAuthorityRecord, wire: String) -> Bool {
+  iam_authority_record_matches(record: record, wire: wire)
+}
+
+fn custody_journal_of(secret: NonEmptyStr, records: List<CustodyOperationRecords>) -> CustodyCreateJournal {
+  let invalid = filter(records, r => {
+    let wire = custody_journal_wire(secret: secret, operation: r.operation)
+    let marks = [r.elected, r.closed, r.refused, r.disposed]
+    !path_segment_is_safe(raw: r.operation)
+      || !all(marks, m => custody_record_valid(record: m, wire: wire))
+      || (!iam_authority_record_present(record: r.elected) && any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m)))
+  })
+  if count(invalid) > 0 {
+    CustodyJournalUnreadable { cause: join(["create journal records are unreadable, carry other bytes, or close an election that is absent: ", join(map(invalid, r => r.operation), ",")], "") }
+  } else {
+    CustodyJournalRead { unresolved: map(filter(records, r => iam_authority_record_present(record: r.elected)
+      && !any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m))), r => r.operation) }
+  }
 }
 
 fn custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation, journal: CustodyCreateJournal) -> CustodyContainerStep {
@@ -227,7 +261,14 @@ fn custody_create_outcome_of(c: SecretContainerCreation) -> CustodyContainerCrea
 
 fn custody_journal_read(secret: NonEmptyStr) -> CustodyCreateJournal {
   let listed = Filesystem.List(path: "target")
-  if listed.success { custody_journal_of(secret: secret, listing: listed.entries) } else { CustodyJournalUnreadable { cause: "target/ could not be listed" } }
+  if !listed.success { CustodyJournalUnreadable { cause: "target/ could not be listed" } }
+  else { custody_journal_of(secret: secret, records: map(custody_candidate_operations(secret: secret, listing: listed.entries), op => CustodyOperationRecords {
+    operation: op,
+    elected: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)),
+    closed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkClosed)),
+    refused: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkRefused)),
+    disposed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkDisposed)),
+  })) }
 }
 
 fn custody_journal_close(secret: NonEmptyStr, operations: List<String>) -> String {
