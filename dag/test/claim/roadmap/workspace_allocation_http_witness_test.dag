@@ -2,11 +2,11 @@ module test.claim.workspace_allocation_http_witness_test
 
 import test.claim.request_authentication_witness_test { witness_mint_session }
 import gunbc.auth.session { SessionMinted, SessionRefused }
-import gunbc.auth.request_authentication { GoogleOidcSession, DeploymentAccessPolicy, ServeActionCreateAllocation, RequestAuthenticationEvidence, request_access_path_of }
+import gunbc.auth.request_authentication { RequestAccessPath, AccessPathLocalDev, GoogleOidcSession, DeploymentAccessPolicy, ServeActionCreateAllocation, RequestAuthenticationEvidence, request_access_path_of }
 import gunbc.auth.session { AuthenticatedSession }
 import extdeps.tailscale.serve { ServeStatusProxies, TailscaleServeRouteKey, ServeRootMount }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
-import extdeps.http.server { RequestSecurityContext, AccessPathLocalDev }
+import extdeps.http.server { RequestSecurityContext }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission }
 import std.access { Permit, Deny }
 
@@ -26,7 +26,7 @@ test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
   }
 }
 
-fn allocation_tailnet_security(session: AuthenticatedSession, route_observed: Bool) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+fn allocation_tailnet_security(session: AuthenticatedSession, route_observed: Bool) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: request_access_path_of(
       listen_host: "127.0.0.1",

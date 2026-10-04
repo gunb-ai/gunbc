@@ -6,7 +6,7 @@ import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_se
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
-import gunbc.auth.request_authentication {
+import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
   ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
@@ -16,7 +16,7 @@ import gunbc.auth.request_authentication {
 type WorkspaceAuthorizationPolicy { principals: List<PrincipalRef> }
 
 fn workspace_owner_admission(
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   owner: PrincipalRef,
   policy: WorkspaceAuthorizationPolicy,
   observed_at: Timestamp,
@@ -37,7 +37,7 @@ fn workspace_owner_admission(
 }
 
 fn workspace_write_admission(
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   owner: PrincipalRef,
   policy: WorkspaceAuthorizationPolicy,
   deployment_policy: DeploymentAccessPolicy,
@@ -56,7 +56,7 @@ fn workspace_write_admission(
 }
 
 fn workspace_mutation_admission(
-  security: RequestSecurityContext<RequestAuthenticationEvidence>, owner: PrincipalRef,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>, owner: PrincipalRef,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
   observed_at: Timestamp, route_path: NonEmptyStr, action: ServeRouteAction, csrf_presented: String,
 ) -> AccessDecision {
@@ -76,7 +76,7 @@ type WorkspaceRequestAdmission
   | WorkspaceRequestPolicyRefused { reason: NonEmptyStr }
 
 fn workspace_request_admit(
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
   observed_at: Timestamp, expires_at: Timestamp, csrf_presented: String,
   idempotency_key: WorkspaceAllocationId, profile_wire: String,

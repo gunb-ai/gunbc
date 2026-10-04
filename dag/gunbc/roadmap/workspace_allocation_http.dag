@@ -7,7 +7,7 @@ import std.access { Permit, Deny, access_refusal_reason }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, ServeResponseHeaderNoStore, application_json_utf8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, json_object, json_kv, json_string, json_array, json_int, json_bool, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy, ServeActionCreateAllocation, ServeActionReleaseAllocation }
+import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy, ServeActionCreateAllocation, ServeActionReleaseAllocation }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, workspace_write_admission, workspace_owner_admission, workspace_request_admit, WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_profile_wire }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json }
@@ -34,7 +34,7 @@ fn workspace_http_write(result: WorkspaceStoreWrite, observed_at: Timestamp) -> 
 
 // Provisioning supplies the fabric binding and pinned image; this adapter never selects a host.
 fn workspace_http_create_over(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>, store: FabricStorageBinding,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
   observed_at: Timestamp, new_expires_at: Timestamp, pinned_image: NonEmptyStr, public_key_ref: NonEmptyStr,
 ) -> ServeHttpResponse {
@@ -79,7 +79,7 @@ fn workspace_http_create_over(
 }
 
 // Owner admission precedes loading the ledger. GET only reads persisted observations.
-fn workspace_http_list_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, store: FabricStorageBinding, policy: WorkspaceAuthorizationPolicy, observed_at: Timestamp) -> ServeHttpResponse {
+fn workspace_http_list_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding, policy: WorkspaceAuthorizationPolicy, observed_at: Timestamp) -> ServeHttpResponse {
   match request.security.authentication {
     GoogleOidcSession { session } => match workspace_owner_admission(security: request.security, owner: session.principal, policy: policy, observed_at: observed_at, route_path: "/allocations", action: ServeActionCreateAllocation) {
       Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
@@ -96,7 +96,7 @@ fn workspace_http_list_over(request: ServeHttpRequest<RequestAuthenticationEvide
 
 // Release is intent only; generation zero names an as-yet unreserved request.
 fn workspace_http_release_over(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>, store: FabricStorageBinding,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding,
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
   observed_at: Timestamp, allocation_id: NonEmptyStr,
 ) -> ServeHttpResponse {
@@ -143,7 +143,7 @@ fn workspace_http_snapshot(allocation: WorkspaceAllocation, now: Timestamp) -> J
 }
 
 // Identity is looked up only inside the admitted owner's ledger; another owner's ID discloses nothing.
-fn workspace_http_get_over(request: ServeHttpRequest<RequestAuthenticationEvidence>, store: FabricStorageBinding,
+fn workspace_http_get_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, store: FabricStorageBinding,
   policy: WorkspaceAuthorizationPolicy, observed_at: Timestamp, allocation_id: NonEmptyStr) -> ServeHttpResponse {
   match request.security.authentication {
     GoogleOidcSession { session } => match workspace_owner_admission(security: request.security, owner: session.principal, policy: policy, observed_at: observed_at, route_path: "/allocations", action: ServeActionCreateAllocation) {
