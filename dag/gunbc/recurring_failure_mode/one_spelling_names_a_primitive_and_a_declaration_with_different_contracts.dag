@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.one_spelling_names_a_primitive_and_a_declaration_with_different_contracts
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data one_spelling_names_a_primitive_and_a_declaration_with_different_contracts: RecurringFailureMode = RecurringFailureMode {
+  identity: "one_spelling_names_a_primitive_and_a_declaration_with_different_contracts" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: one bare spelling names two materially different contracts, and which contract a call gets is decided by the caller's import scope, not by anything at the call. The interpreter primitive map_get(m, key) returns the value as Optional; v2.std.collection map_get takes named arguments and returns Outcome<Optional<V>>. map_insert and empty_map have the same split. v1.compiler.infer call inference binds a declared signature in scope first and the builtin only otherwise, so adding or removing one import line silently moves every such call from one contract to the other (DESIGN 3: a materially different contract needs a materially different name).",
+    "HARM: a change that is about something else entirely can rebind or unbind these calls. The specimen below shows the reachable worst case: a gate's refusal told authors to ADD the import that would rebind their working primitive calls to the declaration's different contract. An author following the tool would have broken or silently changed correct code, and nothing at the call would show which contract it had.",
+    "SPECIMEN, gunbc#12951 (2026-10-03): main 776c52f (#13048) moved v2.std.orchestration and v2.std.qualified_name to import List from std.types instead of v2.std.collection, which dropped v2.std.collection out of the import closure of 8 dag/ files. Their positional map_get / map_insert / empty_map() calls kept binding the primitive. The unimported-bare-provider gate, which chose a provider by census spelling ahead of the builtin, then reported 13 of them as unimported reads of the declarations and advised `import v2.std.collection { map_get }`. The gate is repaired to read v1.compiler.infer_method bare_call_non_declaration_binding, the compiler's own predicate, so that advice is no longer reachable for these names. The fork itself is untouched by that repair.",
+    "DISTINGUISHING FACTS: the spelling is in v1.compiler.infer_method's non-declaration set (builtin_signature, the empty-collection constructors or the kernel-method roster) AND some module declares a function of the same name with a different signature or return contract. A declaration that only re-exports the primitive's own contract is not this class.",
+    "RUNG FOUND AT: silent -- found by attribution of a gate refusal, not by any check of the fork. RUNG NOW: still silent for the fork itself; the gate repair removes one harmful consequence only. CEILING: structurally impossible -- one name, one contract: either the declaration is renamed so it no longer shares the primitive's spelling, or the primitive becomes a declared member of the module that owns the name so there is exactly one contract. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a check over the declaration census that refuses a declared function whose name is in the non-declaration set with a contract that differs from the primitive's. That check makes the class unwritable for new spellings, and lists the existing ones (map_get, map_insert, empty_map at least) as a bounded population to rename.",
+  ],
+
+  evidence: [],
+}

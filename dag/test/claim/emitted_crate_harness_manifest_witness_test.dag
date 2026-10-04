@@ -1,6 +1,13 @@
 module test.claim.emitted_crate_harness_manifest_witness
 
 import std.logic { Bool }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_read_outcome,
+  filesystem_established_absence_path,
+}
 import tools.emitted_crate_harness_manifest {
   HarnessCrateTarget,
   WitnessBinTarget,
@@ -9,19 +16,48 @@ import tools.emitted_crate_harness_manifest {
   SeedLinked,
   SeedAbsent,
   HarnessManifestPlanned,
-  EmittedManifestNotUsable,
+  PlanEmittedNotUsable,
+  PlanEmittedAbsentConfirmed,
+  PlanEmittedUnobservable,
+  HarnessEmittedManifestObservation,
+  harness_emitted_manifest_observation_of,
   harness_manifest_over_emitted,
   plan_harness_manifest
 }
 
 // THE EMITTED MANIFEST IS SUPPLIED, NOT PRODUCED. These claims are about one boundary -- what a
 // harness manifest is, given the manifest an emission wrote -- so the emitted text is a designed
-// value carrying a dependency no harness has ever named. The real emitter's manifest reaching this
-// function is the behavioral transport roster's fact (its rows build through the derived
-// manifest), not something a claim here re-executes.
+// value carrying a dependency no harness has ever named, and the observation of that file is
+// likewise assembled through the owning module's own producers (a listing observation and a read
+// outcome), never by constructing a sealed carrier. The real emitter's manifest reaching this
+// function is the behavioral transport roster's fact (its rows build through the derived manifest),
+// not something a claim here re-executes.
 data supplied_emitted_manifest: String = "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[features]\ndefault = []\n\n[dependencies]\nim = \"15.1\"\nzz-harness-never-named-this = \"9.9\"\n"
 
 data supplied_dependency_line: String = "zz-harness-never-named-this = \"9.9\"\n"
+
+// The observation supplier: every world a claim asserts is assembled from a listing observation and
+// a read outcome through the owning module's constructors. A listing whose success channel is true
+// mints the sealed directory listing; the file fold then mints established absence itself when the
+// listing does not name the subject and the read was refused. No sealed value is ever written here.
+fn supplied_observation(
+  listing_success: Bool,
+  entries: String,
+  read_succeeded: Bool,
+  content: String,
+) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/c",
+      success: listing_success,
+      entries: entries,
+      error: "permission denied",
+    ),
+    name: "Cargo.toml",
+    path: "/c/Cargo.toml",
+    read: filesystem_read_outcome(content: content, success: read_succeeded, error: "host refused the read"),
+  )
+}
 
 fn derived_over_supplied(target: HarnessCrateTarget, linkage: HarnessSeedLinkage) -> String {
   harness_manifest_over_emitted(emitted: supplied_emitted_manifest, target: target, linkage: linkage)
@@ -63,31 +99,74 @@ test fn only_the_witness_target_declares_the_witness_binary() -> Bool {
     && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "[[bin]]")
 }
 
-fn plan_refuses(read_succeeded: Bool, emitted: String) -> Bool {
-  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
-    EmittedManifestNotUsable => true
+fn plan_refuses(o: HarnessEmittedManifestObservation) -> Bool {
+  match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    PlanEmittedNotUsable => true
+    PlanEmittedAbsentConfirmed(e) => true
+    PlanEmittedUnobservable { cause: _ } => true
     HarnessManifestPlanned { content: _ } => false
   }
 }
 
-// The reading is supplied: a read that failed, and a read that returned nothing, both refuse, and
-// neither yields a manifest made of the overlay alone. The effectful wrapper that performs the
-// real read is exercised by the transports that build through it.
-test fn an_unread_or_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool {
-  plan_refuses(read_succeeded: false, emitted: supplied_emitted_manifest)
-    && plan_refuses(read_succeeded: false, emitted: "")
-    && plan_refuses(read_succeeded: true, emitted: "")
+fn plan_is_unobservable_refusal(o: HarnessEmittedManifestObservation) -> Bool {
+  match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    PlanEmittedUnobservable { cause: _ } => true
+    PlanEmittedNotUsable => false
+    PlanEmittedAbsentConfirmed(e) => false
+    HarnessManifestPlanned { content: _ } => false
+  }
 }
 
-fn planned_content(read_succeeded: Bool, emitted: String) -> String {
-  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
-    EmittedManifestNotUsable => ""
+fn planned_content(o: HarnessEmittedManifestObservation) -> String {
+  match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    PlanEmittedNotUsable => ""
+    PlanEmittedAbsentConfirmed(e) => ""
+    PlanEmittedUnobservable { cause: _ } => ""
     HarnessManifestPlanned { content: c } => c
   }
 }
 
+// The reading is supplied: a read that returned nothing usable refuses, and no refusal yields a
+// manifest made of the overlay alone. The effectful wrapper that performs the real observation is
+// exercised by the transports that build through it.
+test fn an_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool {
+  plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: "")))
+    && !plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
+}
+
+// RED WITNESS FOR THE ADOPTION, POSITIVE CONTROL FOR THE SPLIT. Before the adoption this decision
+// consumed a bare success Bool, so a COULD-NOT-LOOK (listing refused, subject refused, observations
+// disagreeing) and a confirmed absence landed in one arm, and the stage reported the candidate as
+// carrying no emitted Cargo manifest -- an absence claim inferred from a failed look. Without this
+// change the assertion below is red: the old decision could produce no unobservable refusal at all,
+// and the conflated arm is exactly what this assertion refuses to accept. Both worlds here come
+// through the owning module's producers -- a refused listing mints an indeterminate observation, a
+// listed subject that could not be read mints another one, and neither is an absence.
+test fn an_unobservable_manifest_refuses_as_unobservable_never_as_an_established_absence() -> Bool {
+  plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: false, entries: "", read_succeeded: false, content: "")))
+    && plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: false, content: "")))
+    && !plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
+    && plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: false, entries: "", read_succeeded: false, content: "")))
+}
+
+// The absence world stays its own world, and it is only reachable the way the owning module mints
+// it: a listing that succeeded and did not name the subject, with a read that was refused. It
+// refuses as absence, never as an observation failure, and it never plans.
+test fn an_established_absence_refuses_as_absence_and_never_plans() -> Bool {
+  match plan_harness_manifest(emitted: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "some_other_file.rs", read_succeeded: false, content: "")), target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    PlanEmittedAbsentConfirmed(e) =>
+      plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "some_other_file.rs", read_succeeded: false, content: "")))
+        && !plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "some_other_file.rs", read_succeeded: false, content: "")))
+        && filesystem_established_absence_path(absence: e) == "/c/Cargo.toml"
+    PlanEmittedNotUsable => false
+    PlanEmittedUnobservable { cause: _ } => false
+    HarnessManifestPlanned { content: _ } => false
+  }
+}
+
+// The planned world is unchanged: bytes the emitter wrote, plus exactly the overlay.
 test fn a_read_emitted_manifest_plans_the_emitted_text_plus_the_overlay() -> Bool {
-  let planned = planned_content(read_succeeded: true, emitted: supplied_emitted_manifest)
+  let planned = planned_content(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
   planned == derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
     && string_contains(s: planned, pattern: supplied_dependency_line)
 }

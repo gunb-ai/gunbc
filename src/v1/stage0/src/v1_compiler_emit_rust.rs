@@ -6,6 +6,7 @@ use self::ClosedAliasPeelVerdict::*;
 use self::FmArmAnalysis::*;
 use self::FmLoweringRefusal::*;
 use self::IterOwnedReceiverCloneDisposition::*;
+use self::NativeClaimEffectDemand::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo::CargoFeature;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
@@ -275,10 +276,12 @@ pub use crate::v1_compiler_trait_derive_emit::{
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
     v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
-    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
-    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_emit_type_params_with_clone_bounds, v1_fn_signature_set_element_param_names,
+    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
+    v1_item_clone_undecided_head, v1_item_field_type_exprs,
     v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_head_names_in_type_expr,
-    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_map_key_required_type_names, v1_set_element_bound_spellings, v1_trait_derive_refuse,
+    v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -7078,6 +7081,7 @@ pub fn emit_rust_selected(
             typed.modules.clone(),
             has_services.clone(),
             crate_name.clone(),
+            ctx.registry.clone(),
         );
         let cli_dispatch_file = if has_pipeline.clone() {
             Rc::new(vec![emit_gunbc_cli_dispatch_generated(crate_name.clone())])
@@ -18447,6 +18451,7 @@ pub fn v1_fn_bounds_by_param(
     clone_param_names: Rc<Vec<String>>,
     eq_param_names: Rc<Vec<String>>,
     map_key_param_names: Rc<Vec<String>>,
+    set_element_param_names: Rc<Vec<String>>,
     static_param_names: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
@@ -18486,8 +18491,27 @@ pub fn v1_fn_bounds_by_param(
                 }
             },
         );
-        static_param_names.iter().cloned().fold(
+        let with_set = set_element_param_names.iter().cloned().fold(
             with_key.clone(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
+                Some(traits) => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                        traits.clone(),
+                        crate::v1_compiler_trait_derive_emit::v1_set_element_bound_spellings(),
+                    )),
+                ),
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    crate::v1_compiler_trait_derive_emit::v1_set_element_bound_spellings(),
+                ),
+            },
+        );
+        static_param_names.iter().cloned().fold(
+            with_set.clone(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
             {
                 Some(traits) => v1_rt::rc_map_insert(
@@ -19154,6 +19178,22 @@ pub fn emit_fn_def(
             generic_param_names.clone(),
             si.clone(),
         );
+        let set_element_param_names =
+            crate::v1_compiler_trait_derive_emit::v1_fn_signature_set_element_param_names(
+                v1_rt::rc_list_push(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in value_params.iter().cloned() {
+                            __result.push(crate::v1_std_core::param_node_type_expr(p.clone()));
+                        }
+                        __result
+                    }),
+                    inferred.clone(),
+                ),
+                generic_param_names.clone(),
+                emit_info.type_decl_items.clone(),
+                si.clone(),
+            );
         let returns_fn_field_record = type_has_fn_fields(
             rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
             emit_info.clone(),
@@ -19177,11 +19217,13 @@ pub fn emit_fn_def(
             clone_param_names.clone(),
             eq_param_names.clone(),
             map_key_param_names.clone(),
+            set_element_param_names.clone(),
             static_param_names.clone(),
         );
-        let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
+        let needs_bound = ((((((clone_param_names.clone().len() as i64) > 0)
             || ((eq_param_names.clone().len() as i64) > 0))
             || ((map_key_param_names.clone().len() as i64) > 0))
+            || ((set_element_param_names.clone().len() as i64) > 0))
             || ((static_param_names.clone().len() as i64) > 0));
         let type_params_str = if needs_bound.clone() {
             crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
@@ -25398,6 +25440,18 @@ pub fn rust_param_type_is_type_variable(
     }
 }
 
+pub fn rust_call_arg_is_function_value(arg: Rc<Node>) -> bool {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprLambda => true,
+        _ => {
+            (crate::v1_compiler_infer_types::resolved_type(arg.clone())
+                .connective
+                .clone()
+                == Connective::Arrow)
+        }
+    }
+}
+
 pub fn rust_call_arg_fail_closed_unwrap(
     arg_str: String,
     arg: Rc<Node>,
@@ -25422,10 +25476,11 @@ pub fn rust_call_arg_fail_closed_unwrap(
                         param_type.clone(),
                         source_indices.clone(),
                     ));
-                let arg_optional = (crate::v1_compiler_infer_types::resolved_type(arg.clone())
+                let arg_optional = ((crate::v1_compiler_infer_types::resolved_type(arg.clone())
                     .return_cardinality
                     .clone()
-                    == Cardinality::CardOptional);
+                    == Cardinality::CardOptional)
+                    && !rust_call_arg_is_function_value(arg.clone()));
                 if (param_required.clone() && arg_optional.clone()) {
                     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(arg_str.clone(), ".expect(\"fail-closed: an optional value flowed into non-optional parameter ".to_string()), crate::v1_compiler_emit_core_support::to_string(idx.clone())), " of ".to_string()), func.clone()), " (empty Optional at runtime)\")".to_string())
                 } else {
@@ -40177,6 +40232,7 @@ pub fn emit_main_rs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
@@ -40212,6 +40268,10 @@ pub fn emit_main_rs(
                     return emit_native_claim_driver_main_rs(
                         crate_name.clone(),
                         pipeline_module.clone(),
+                        native_claim_report_effect_demand(
+                            registry.clone(),
+                            pipeline_module.clone(),
+                        ),
                     );
                 }
                 if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
@@ -40292,18 +40352,129 @@ pub fn emit_host_source_root_read_rs(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {\n".to_string(), "    let filesystem = ".to_string()), crate_name.clone()), "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());\n".to_string()), "    let runtime = match tokio::runtime::Builder::new_current_thread().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native filesystem executor: {}\", cause); std::process::exit(2); } };\n".to_string()), "    let observed = runtime.block_on(".to_string()), crate_name.clone()), "::gunbc_source_root_read::source_root_read(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n".to_string()), "    match observed {\n".to_string()), "        Ok(files) => match &*files {\n".to_string()), "            ".to_string()), crate_name.clone()), "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRead { files } =>\n".to_string()), "                ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::source_root_ingest_from_files(files.clone()).iter().cloned().collect(),\n".to_string()), "            ".to_string()), crate_name.clone()), "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRefused { path, kind, cause } => {\n".to_string()), "                eprintln!(\"REFUSED: could not read source root at {} [{}]: {}\", path, kind, cause); std::process::exit(2);\n".to_string()), "            }\n".to_string()), "        },\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeClaimEffectDemand {
+    NativeClaimPure,
+    NativeClaimFilesystem,
+    NativeClaimUndeclaredEffect { detail: String },
+}
+impl NativeClaimEffectDemand {
+    pub fn detail(&self) -> String {
+        match self {
+            NativeClaimEffectDemand::NativeClaimPure => panic!("no detail on unit variant"),
+            NativeClaimEffectDemand::NativeClaimFilesystem => panic!("no detail on unit variant"),
+            NativeClaimEffectDemand::NativeClaimUndeclaredEffect { detail: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+pub fn native_claim_report_effect_demand(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pipeline_module: String,
+) -> Rc<NativeClaimEffectDemand> {
+    match crate::v1_compiler_emit::lookup_item_by_identity(
+        registry.clone(),
+        Rc::new(DeclaredCallableIdentity {
+            owner_module_path: pipeline_module.clone(),
+            decl_name: "native_claim_report".to_string(),
+        }),
+    ) {
+        Some(info) => {
+            if !crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone()) {
+                Rc::new(NativeClaimEffectDemand::NativeClaimPure)
+            } else {
+                if ((((crate::v1_compiler_infer_items::item_resource_names(info.clone()).len()
+                    as i64)
+                    == 0)
+                    && ((info.service_names.clone().len() as i64) == 1))
+                    && {
+                        let mut __all = true;
+                        for sn in info.service_names.clone().iter().cloned() {
+                            if !(crate::v1_compiler_emit_core_support::service_var_name(sn.clone())
+                                == "filesystem".to_string())
+                            {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
+                {
+                    Rc::new(NativeClaimEffectDemand::NativeClaimFilesystem)
+                } else {
+                    Rc::new(NativeClaimEffectDemand::NativeClaimUndeclaredEffect {
+                        detail: v1_rt::concat(
+                            "services [".to_string(),
+                            v1_rt::concat(
+                                info.service_names.clone().join(&", ".to_string()),
+                                v1_rt::concat(
+                                    "] resources [".to_string(),
+                                    v1_rt::concat(
+                                        crate::v1_compiler_infer_items::item_resource_names(
+                                            info.clone(),
+                                        )
+                                        .join(&", ".to_string()),
+                                        "]".to_string(),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    })
+                }
+            }
+        }
+        std::option::Option::None => {
+            Rc::new(NativeClaimEffectDemand::NativeClaimUndeclaredEffect {
+                detail: "native_claim_report has no registry row".to_string(),
+            })
+        }
+    }
+}
+
 pub fn emit_native_claim_driver_main_rs(
     crate_name: String,
     pipeline_module: String,
+    demand: Rc<NativeClaimEffectDemand>,
 ) -> Rc<TextFile> {
     {
         let pipeline_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
-        Rc::new(TextFile {
+        match (*demand.clone()).clone() {
+    NativeClaimEffectDemand::NativeClaimPure => emit_native_claim_driver_pure_main_rs(crate_name.clone(), pipeline_mod.clone()),
+    NativeClaimEffectDemand::NativeClaimFilesystem => emit_native_claim_driver_filesystem_main_rs(crate_name.clone(), pipeline_mod.clone()),
+    NativeClaimEffectDemand::NativeClaimUndeclaredEffect { detail: detail, .. } => Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let report = native_claim_report();".to_string()), "\n".to_string()), "    print!(\"{}\", report.stdout);".to_string()), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
-})
+    content: v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\ncompile_error!(\"REFUSED: a NativeClaimDriver report may demand only the Filesystem service; ".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::escape_string_literal_body(detail.clone()), "\");\n".to_string())),
+}),
+}
     }
+}
+
+pub fn native_claim_terminal_exit_lines() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    print!(\"{}\", report.stdout);".to_string(), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
+}
+
+pub fn emit_native_claim_driver_filesystem_main_rs(
+    crate_name: String,
+    pipeline_mod: String,
+) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), "    let filesystem = ".to_string()), crate_name.clone()), "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());".to_string()), "\n".to_string()), "    let report = match native_claim_report(&filesystem).await {".to_string()), "\n".to_string()), "        Ok(report) => report,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"NO OBSERVATION: native filesystem transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
+})
+}
+
+pub fn emit_native_claim_driver_pure_main_rs(
+    crate_name: String,
+    pipeline_mod: String,
+) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let report = native_claim_report();".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
+})
 }
 
 pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> Rc<TextFile> {
