@@ -111,6 +111,44 @@ test fn kvn_pattern_pun_refuses_at_the_keyword_holds() -> Bool {
   )
 }
 
+data kvn_pattern_pun_true_source: String = "module m.t\ndata d: Int = match r {\n  R { true } => 0\n}\n"
+
+// A PUNNED field pattern named `true` is a value BINDER, not a literal pattern (the field pattern is
+// `name [":" pattern]`), and a binder named `true` is unreferenceable, so it refuses at the keyword:
+// bytes 41..45. Only the position after `:` reads `true` / `false` as literals.
+test fn kvn_pattern_pun_true_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_pun_true_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_pun_true,
+    start: 41,
+    end: 45
+  )
+}
+
+data kvn_pattern_pun_false_source: String = "module m.t\ndata d: Int = match r {\n  R { false } => 0\n}\n"
+
+// The same for `false`: bytes 41..46.
+test fn kvn_pattern_pun_false_refuses_at_the_keyword_holds() -> Bool {
+  g_fatal_at(
+    parsed: supplied_stream_parse(tokens: kvn_pattern_pun_false_stream()),
+    reason: KeywordAsValueName,
+    file: ^probe_kvn_pattern_pun_false,
+    start: 41,
+    end: 46
+  )
+}
+
+data kvn_bool_label_source: String = "module m.t\ndata d: Int = match r {\n  R { true: x } => 0\n}\n"
+
+// Control: `true` as an explicit field-pattern LABEL is a label, not a binder, so it still parses.
+test fn kvn_bool_label_control_holds() -> Bool {
+  match supplied_stream_parse(tokens: kvn_bool_label_stream()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 data kvn_label_keywords_source: String = "module m.t\ndata d: R = R { module: r.then }\n"
 
 // Control: keyword LABELS still parse: a record-init label and a projection (a field-pattern label is in
@@ -516,5 +554,91 @@ fn kvn_contextual_pattern_binder_stream() -> TokenStream {
     Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_contextual_pattern_binder, start: 61, end: 62 },
     Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_contextual_pattern_binder, start: 63, end: 64 }
   ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 63, gap_start: 62))
+}
+
+test fn kvn_pattern_pun_true_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_pun_true_source, file: ^probe_kvn_pattern_pun_true, supplied: kvn_pattern_pun_true_stream())
+}
+
+test fn kvn_pattern_pun_false_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_pattern_pun_false_source, file: ^probe_kvn_pattern_pun_false, supplied: kvn_pattern_pun_false_stream())
+}
+
+test fn kvn_bool_label_stream_is_the_tokenizer_output_holds() -> Bool {
+  kvn_stream_matches_tokenize(text: kvn_bool_label_source, file: ^probe_kvn_bool_label, supplied: kvn_bool_label_stream())
+}
+
+fn kvn_pattern_pun_true_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_pun_true, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_pun_true, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_pun_true, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_pun_true, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_pun_true, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_pun_true, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_pun_true, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_pun_true, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_pun_true, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_pun_true, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_pun_true, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_true, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_pun_true, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_true, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_pattern_pun_true, start: 41, end: 45 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_true, start: 46, end: 47 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_pun_true, start: 48, end: 50 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_pun_true, start: 51, end: 52 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_true, start: 53, end: 54 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 53, gap_start: 52))
+}
+
+fn kvn_pattern_pun_false_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_pattern_pun_false, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_pattern_pun_false, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_pattern_pun_false, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_pattern_pun_false, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_pattern_pun_false, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_pattern_pun_false, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_pattern_pun_false, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_pattern_pun_false, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_pattern_pun_false, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_pattern_pun_false, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_pattern_pun_false, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_false, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_pattern_pun_false, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_pattern_pun_false, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_false, lexeme: "false", file: ^probe_kvn_pattern_pun_false, start: 41, end: 46 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_false, start: 47, end: 48 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_pattern_pun_false, start: 49, end: 51 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_pattern_pun_false, start: 52, end: 53 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_pattern_pun_false, start: 54, end: 55 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 54, gap_start: 53))
+}
+
+fn kvn_bool_label_stream() -> TokenStream {
+  token_stream_lexed(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^probe_kvn_bool_label, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^probe_kvn_bool_label, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^probe_kvn_bool_label, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^probe_kvn_bool_label, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^probe_kvn_bool_label, start: 11, end: 15 },
+    Token { class: ^dag_token_ident, lexeme: "d", file: ^probe_kvn_bool_label, start: 16, end: 17 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_label, start: 17, end: 18 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^probe_kvn_bool_label, start: 19, end: 22 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^probe_kvn_bool_label, start: 23, end: 24 },
+    Token { class: ^dag_token_kw_match, lexeme: "match", file: ^probe_kvn_bool_label, start: 25, end: 30 },
+    Token { class: ^dag_token_ident, lexeme: "r", file: ^probe_kvn_bool_label, start: 31, end: 32 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_label, start: 33, end: 34 },
+    Token { class: ^dag_token_ident, lexeme: "R", file: ^probe_kvn_bool_label, start: 37, end: 38 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^probe_kvn_bool_label, start: 39, end: 40 },
+    Token { class: ^dag_token_kw_true, lexeme: "true", file: ^probe_kvn_bool_label, start: 41, end: 45 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^probe_kvn_bool_label, start: 45, end: 46 },
+    Token { class: ^dag_token_ident, lexeme: "x", file: ^probe_kvn_bool_label, start: 47, end: 48 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_label, start: 49, end: 50 },
+    Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^probe_kvn_bool_label, start: 51, end: 53 },
+    Token { class: ^dag_token_int_literal, lexeme: "0", file: ^probe_kvn_bool_label, start: 54, end: 55 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^probe_kvn_bool_label, start: 56, end: 57 }
+  ], layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_with_break(layout: stream_layout_empty(), token_start: 11, gap_start: 10), token_start: 37, gap_start: 34), token_start: 56, gap_start: 55))
 }
 

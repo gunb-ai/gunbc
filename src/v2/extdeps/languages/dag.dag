@@ -962,11 +962,14 @@ fn dag_grammar_value_name_unconditional() -> GrammarExpr {
   )
 }
 
-// A field-pattern binder: refuses a keyword that ends the field (`,` or `}`) and is not a literal pattern.
-fn dag_grammar_field_pattern_binder_guard() -> GrammarExpr {
+// A field-pattern binder: refuses a keyword that ends the field (`,` or `}`). After `:` the position is a
+// pattern, where `true` / `false` are literal patterns, so they are admitted there (admit_bool_literals: true).
+// Before the field name a keyword ending the field is a PUN -- `R { true }` binds a value named `true`, which
+// no reference can name -- so there they refuse like every other keyword (admit_bool_literals: false).
+fn dag_grammar_field_pattern_binder_guard(admit_bool_literals: Bool) -> GrammarExpr {
   dag_grammar_value_name_guard(
     binder: dag_grammar_sequence(
-      left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: true),
+      left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: admit_bool_literals),
       right: dag_grammar_choice(
         left: dag_grammar_terminal(token_class: ^dag_token_comma),
         right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
@@ -2114,14 +2117,14 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
 // choice of the two forms, both led by the same name). A punned field captures `(name, <empty>)`.
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_field_pattern_binder_guard(),
+    left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: false),
     right: dag_grammar_sequence(
       left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_optional(
         element: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_colon),
           right: dag_grammar_sequence(
-            left: dag_grammar_field_pattern_binder_guard(),
+            left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: true),
             right: dag_grammar_nonterminal(production: ^dag_production_pattern)
           )
         )
