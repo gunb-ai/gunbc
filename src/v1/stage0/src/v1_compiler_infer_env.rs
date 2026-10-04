@@ -3195,26 +3195,40 @@ pub fn text_representation_is_text_arm(r: TextRepresentation) -> bool {
 pub fn host_text_into_structural_sequence(
     formal: Rc<Node>,
     actual: Rc<Node>,
+    unpeeled_actual: Rc<Node>,
     env: Rc<TypeEnv>,
 ) -> bool {
-    match text_representation_by_identity(actual.clone(), env.clone()) {
-        TextRepresentation::HostText => match (*type_reference_declaration_reading(
-            formal.clone(),
-            env.source_indices.clone(),
-            env.clone(),
-        ))
-        .clone()
-        {
-            TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
-                declaration: d,
-                ..
-            } => crate::std_decl_ref::declaration_ref_eq(
-                d.clone(),
-                text_identity_std_algebra_free_monoid(),
-            ),
-            _ => false,
-        },
-        _ => false,
+    {
+        let unpeeled_is_structural =
+            match text_representation_by_identity(unpeeled_actual.clone(), env.clone()) {
+                TextRepresentation::CodePointSequence => true,
+                TextRepresentation::HostText => false,
+                TextRepresentation::NotText => false,
+                TextRepresentation::TextRepresentationUnidentified => false,
+            };
+        if unpeeled_is_structural.clone() {
+            false
+        } else {
+            match text_representation_by_identity(actual.clone(), env.clone()) {
+                TextRepresentation::HostText => match (*type_reference_declaration_reading(
+                    formal.clone(),
+                    env.source_indices.clone(),
+                    env.clone(),
+                ))
+                .clone()
+                {
+                    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+                        declaration: d,
+                        ..
+                    } => crate::std_decl_ref::declaration_ref_eq(
+                        d.clone(),
+                        text_identity_std_algebra_free_monoid(),
+                    ),
+                    _ => false,
+                },
+                _ => false,
+            }
+        }
     }
 }
 
