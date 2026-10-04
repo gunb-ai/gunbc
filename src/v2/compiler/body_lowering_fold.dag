@@ -4769,7 +4769,7 @@ fn body_lower_admit_operator_edge(children: List<Edge>) -> Optional<Edge> {
 fn body_lower_admit_string_field(call: Node, field: Symbol) -> Optional<Symbol> {
   match sugar_named_child_optional(root: call, name: field) {
     Absent => optional_absent()
-    Present { value: literal } => dag_string_literal_value_symbol_optional(n: literal)
+    Present { value: literal } => dag_string_literal_value_symbol_optional(node: literal)
   }
 }
 
