@@ -1,0 +1,163 @@
+module test.claim.fleet.fleet_posix_cutover_witness_test
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.fleet_probe_identity_observe {
+  passwd_home_observation,
+  passwd_home_of,
+  passwd_home_receipt_text,
+  adc_env_value,
+  adc_file_observation_text,
+  PasswdHomeObserved,
+  PasswdHomeAbsent,
+  PasswdHomeRefused,
+}
+import gunbc.fleet_host_key_enrollment {
+  authorized_keys_admits_line,
+  pinned_config_content,
+  PinConfigAlreadyPinned,
+  PinConfigNextContent,
+  cwd_capture_stdout,
+}
+
+// WITNESSES FOR THE FLEET PROBE/ENROLLMENT POSIX CUTOVER (DP-M2, PR3). Every shell row these
+// retire — the getent|cut pipeline, `echo "$HOME"`, `command -v gcloud || echo absent`, the
+// compound gcloud auth-list probe, ${GOOGLE_APPLICATION_CREDENTIALS:-absent}, the `test -f` ADC
+// check, the two authorized_keys grep verdicts, the ssh-config pin, the mkdir/chmod/touch/cat>>
+// bootstrap — is replaced by a typed carrier whose DECISION lives in a pure function. These
+// witnesses supply the values (DESIGN 3: a witness discriminates at one interface) and pin each
+// decision: each one goes red if its carrier is deleted or degraded, and the positive controls
+// pin the admitted side. No witness here runs a process, an ssh leg, sudo, or DNS.
+
+// POSITIVE CONTROL: a whoami admission and a well-formed passwd line admit the home.
+test fn witness_passwd_home_observation_admits_the_database_line() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+  ) {
+    PasswdHomeObserved { home: h } =>
+      h == "/home/srvuser"
+        && passwd_home_of(obs: passwd_home_observation(
+          user: ProcessOutputPresent { text: "srvuser\n" },
+          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+        )) == "/home/srvuser"
+        && passwd_home_receipt_text(obs: passwd_home_observation(
+          user: ProcessOutputPresent { text: "srvuser\n" },
+          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+        )) == "/home/srvuser"
+    _ => false
+  }
+}
+
+// RED WITHOUT THE ARM: a passwd line with no sixth field is refused, not truncated to "".
+test fn witness_passwd_home_refuses_a_line_without_a_home_field() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User\n" } },
+  ) {
+    PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "no home field")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE GUARD: the account database is keyed only by an admitted user probe. The
+// deleted pipeline keyed it with whatever the substitution produced, including nothing.
+test fn witness_passwd_home_refuses_when_the_user_probe_was_not_admitted() -> Bool {
+  match passwd_home_observation(user: ProcessOutputPresent { text: "" }, passwd: Absent) {
+    PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "account database not keyed")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE ARM: an empty home field answers absent, and no path is opened from it.
+test fn witness_passwd_home_absent_when_the_home_field_is_empty() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+  ) {
+    PasswdHomeAbsent => passwd_home_of(obs: passwd_home_observation(
+      user: ProcessOutputPresent { text: "srvuser\n" },
+      passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+    )) == ""
+    _ => false
+  }
+}
+
+// ${VAR:-absent} (POSIX 2.6.2): the default answers for unset AND for empty; a non-empty value
+// passes through trimmed. Three vectors, one decision.
+test fn witness_adc_env_default_answers_unset_or_empty() -> Bool {
+  adc_env_value(v: Absent) == "absent"
+    && adc_env_value(v: Present { value: "" }) == "absent"
+    && adc_env_value(v: Present { value: " /home/srvuser/adc.json\n" }) == "/home/srvuser/adc.json"
+}
+
+// test -f ANSWERS IN ITS EXIT STATUS (test(1)): exit zero is "present" even though the utility
+// prints nothing (the capture's Absent arm), exit 1 IS the answer "absent" -- not a refusal --
+// and a status the question does not use is a refusal. Red without the exit-code split.
+test fn witness_adc_file_exit_one_is_the_answer_absent() -> Bool {
+  adc_file_observation_text(outcome: ProcessOutputAbsent) == "present"
+    && adc_file_observation_text(outcome: ProcessRefused { exit_code: 1, stderr: "" }) == "absent"
+    && string_contains(s: adc_file_observation_text(outcome: ProcessRefused { exit_code: 126, stderr: "permission denied" }), pattern: "refused")
+}
+
+// POSITIVE CONTROL: the enrolled line, exactly, is admitted.
+test fn witness_authorized_keys_admits_the_enrolled_line() -> Bool {
+  authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+}
+
+// RED WITHOUT THE -x SEMANTICS: substring containment must not count. The scan-side test uses
+// string_contains deliberately; the enrollment verdict requires a WHOLE line to equal the key
+// line, so a line that merely contains the material (a key with an appended comment, a foreign
+// line quoting it) is not the enrolled line the registry wrote.
+test fn witness_authorized_keys_requires_the_whole_line() -> Bool {
+  !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai rotated-2026\nforeign line\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(content: "", line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai")
+}
+
+// RED WITHOUT THE MARKER GUARD: a config already carrying the pin is left byte-identical. This
+// is the idempotence the shell's `if ! grep -q` gave the pin; degrading the check to
+// always-append would double the Host block and go red here.
+test fn witness_pinned_config_is_idempotent() -> Bool {
+  match pinned_config_content(
+    existing: "# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n",
+    endpoints: "srv2.invalid srv3.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigAlreadyPinned => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: an unpinned config's next content is the existing bytes PLUS the four pin
+// lines, in the order the shell's grouped echo-redirect added them, with the absolute fragment
+// path in the fourth. Pinned as a full-equality pin, not a containment hint.
+test fn witness_pinned_config_next_content_carries_the_four_lines() -> Bool {
+  match pinned_config_content(
+    existing: "Host github.com\n  User git\n",
+    endpoints: "srv2.invalid srv3.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { next: next } =>
+      next == "Host github.com\n  User git\n# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
+        && string_contains(s: next, pattern: "# gunbc-fleet-pin")
+        && string_contains(s: next, pattern: "StrictHostKeyChecking yes")
+        && string_contains(s: next, pattern: "UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE GUARD: a refused pwd capture yields "" -- the pin refuses an absolute path it
+// cannot establish rather than pinning a relative UserKnownHostsFile that ssh would resolve
+// against the user's home. The deleted script's $(pwd) could silently pin an empty substitution.
+test fn witness_cwd_capture_answers_empty_unless_admitted() -> Bool {
+  cwd_capture_stdout(outcome: ProcessOutputPresent { text: " /run/checkout \n" }) == "/run/checkout"
+    && cwd_capture_stdout(outcome: ProcessRefused { exit_code: 1, stderr: "no tty" }) == ""
+    && trim(s: cwd_capture_stdout(outcome: ProcessOutputAbsent)) == ""
+}
