@@ -34,6 +34,7 @@ import gunbc.serving.turn_admission {
   ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
 }
 import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_json }
+import gunbc.serving.caller_retry_contract { caller_backlog_wire, serving_route_caller_backlog }
 import gunbc.harness.harness_seat { harness_turn_request, harness_seat_pointer_of,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
   HarnessSeatRelease, HarnessSeatReleased, HarnessSeatReleaseRefused, harness_release_seat,
@@ -314,8 +315,10 @@ fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
 // group is occupied by an interactive turn already in flight, so placing this one beside it would
 // stall a decode somebody is reading. The remedy is to run again in a moment, and an operator or a
 // belt reading this line needs to be able to tell that apart from a fleet that is broken.
+// THE WAIT IS THE CALLER'S (gunbc.serving.caller_retry_contract): there is no server queue, and the line
+// names whether what the caller holds is a durable backlog or only an external retry obligation.
 fn harness_placement_pending_exit(detail: String) -> ProcessExit {
-  ExitFailure { code: 1, reason: join(["harness placement pending: ", detail], "") }
+  ExitFailure { code: 1, reason: join(["harness placement pending: ", detail, " (", caller_backlog_wire(s: serving_route_caller_backlog()), ")"], "") }
 }
 
 // A BELT-SPAWNED TURN WAITS IN LINE FOR ITS SEAT. The belt's turns are BatchQualityTolerant work

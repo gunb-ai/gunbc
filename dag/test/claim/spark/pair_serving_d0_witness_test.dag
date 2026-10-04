@@ -9,7 +9,7 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_co
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }

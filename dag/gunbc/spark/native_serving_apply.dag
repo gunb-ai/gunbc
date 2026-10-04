@@ -554,9 +554,19 @@ fn spark_native_mount_source_checks(spec: DockerCreateSpec) -> String {
   }), "")
 }
 
+// THE GPU CHECK ASKS FOR THE MECHANISM `--gpus all` ACTUALLY USES ON THIS FLEET. These hosts run Docker 29
+// with the NVIDIA Container Toolkit's CDI spec (/var/run/cdi/nvidia.yaml) and register NO runtime named
+// nvidia: `docker info` lists runc only, and the live Group B arm runs under runc with a gpu device
+// request the daemon satisfies from the CDI device it discovered. The earlier check grepped the runtime
+// roster for `nvidia`, so it refused every host that could serve -- read on srv6, spark-0c75 and
+// spark-b66c on 2026-10-04, where `docker run --gpus all ... nvidia-smi` printed the GB10 while the
+// check refused (fleet-converge 37171223963). It had been skipped on a dev branch by a never-merge
+// commit (38287c7b61, 2026-09-30) rather than corrected, so main kept a wall no host could pass. The
+// daemon's own discovered-device list is the reading: without nvidia.com/gpu=all in it, `--gpus all`
+// has nothing to bind and the restart would fail after the incumbent was stopped.
 fn spark_native_gpu_runtime_check(spec: DockerCreateSpec) -> String {
   if spec.gpus_all {
-    "if ! docker info --format '\{\{.Runtimes}}' 2>/dev/null | grep -q nvidia; then echo PREFLIGHT-REFUSED-no-nvidia-runtime; exit 1; fi\n"
+    "if ! docker info --format '\{\{range .DiscoveredDevices}}\{\{.ID}} \{\{end}}' 2>/dev/null | grep -q 'nvidia.com/gpu=all'; then echo PREFLIGHT-REFUSED-no-gpu-cdi-device; exit 1; fi\n"
   } else {
     ""
   }
