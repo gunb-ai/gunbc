@@ -5624,7 +5624,11 @@ fn direct_call_structured_application_mismatch_diags(
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
           let host_into_sequence = !type_node_is_callable(n: formal)
-            && host_text_into_structural_sequence(formal: formal, actual: resolved_type(n: actual_expr), env: type_env)
+            && host_text_into_structural_sequence(
+              formal: formal,
+              actual: peel_nominal_alias_identity(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
+              unpeeled_actual: resolved_type(n: actual_expr),
+              env: type_env)
           if host_into_sequence {
             [text_crossing_route_error(expected: formal, got: resolved_type(n: actual_expr), route: "unicode_scalar_unfold", si: source_indices, span: actual_expr.span, module_name: module_name)]
           } else if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
