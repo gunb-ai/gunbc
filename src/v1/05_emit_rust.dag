@@ -17584,14 +17584,18 @@ fn native_effect_decl_sites(modules: List<TypedModule>, kind: ParsedModuleItemKi
   })
 }
 
+fn native_entry_denominator(modules: List<TypedModule>) -> NativeEffectDenominator {
+  if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator }
+  else if compiler_pipeline_entry_is_native_claim(modules: modules) { native_claim_route_denominator }
+  else { native_compiler_route_denominator }
+}
+
 fn native_entry_effects(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> NativeEntryEffects? {
   match native_entry_function_name(modules: modules) {
     Absent => none
     Present { value: entry_fn } => {
       let entry_module = compiler_pipeline_entry_module_name(modules: modules)
-      let denominator = if compiler_pipeline_entry_is_native_serve(modules: modules) { native_service_route_denominator }
-        else if compiler_pipeline_entry_is_native_claim(modules: modules) { native_claim_route_denominator }
-        else { native_compiler_route_denominator }
+      let denominator = native_entry_denominator(modules: modules)
       let entry_si = modules
         |> filter(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module) == entry_module)
         |> map(tm => tm.type_env.source_indices)
