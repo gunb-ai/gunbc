@@ -1,15 +1,38 @@
 module gunbc.runner.runner_qualification_dispatch
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import extdeps.github.actions { DispatchInput, InputString }
+import product.placement_supply { HostIdentity }
+import extdeps.transports.rest {
+  RestExchangePerformance, RestExchangeSucceeded, RestExchangeStatusRefused,
+  RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
+}
+import extdeps.github.effect { GitHubEffect, DispatchWorkflow, GitHubWorkflowRef }
+import extdeps.github.actions {
+  Workflow, Job, DispatchInput, InputString, WorkflowDispatch, RunnerSpec, RunsOnExpression,
+}
+import extdeps.github.expressions { ingest_template, Interpolation, ContextAccess, Inputs }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential {
+  GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
+}
+import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
+import gunbc.runner.runner_jit_perform { JitCredentialDelivery, JitCredentialBoundToAttempt }
+import gunbc.runner.runner_jit_deregistration { JitRegistration }
+import gunbc.managed_host_unit_hold { UnitHoldProof }
+import gunbc.github_effect_perform {
+  ControllerInstallationToken, dispatch_workflow_with, read_run_with, read_attempt_jobs_with,
+  WorkflowJobLogRead, read_job_log_with, list_run_artifacts_with, download_artifact_with,
 }
 import gunbc.runner_throughput_qualification_route {
   QualificationInstrument, qualification_instruments,
@@ -20,244 +43,484 @@ import gunbc.required_ci_phase_roster {
   FloorPhaseRow, FloorPhaseTimed, FloorPhaseUntimed, FloorPhaseRowReading, FloorPhaseRowRead, FloorPhaseRowGarbled,
   read_floor_phase_row,
 }
-import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
-import gunbc.runner.runner_jit_deregistration { JitRegistration }
-import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
-import gunbc.runner_jit_mint { MicroVmJitSlot, HostUnitJitSlot }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.host_budget_source {
   FloorCgroupLevelRow, FloorCgroupRowReading, FloorCgroupLevelRead, FloorCgroupRowGarbled,
   read_floor_cgroup_level_row,
 }
+import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
+import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
-// The route registers one ephemeral slot whose label set carries a per-boot attempt label
-// (gunbc.runner_throughput_qualification_route ephemeral_slot_labels). Dispatching the floor to that
-// slot is a workflow_dispatch whose input IS the attempt label, so the target workflow's runs-on can
-// name it and no other registration in the organization can serve the job. This module is the
-// production caller of extdeps.github.workflows github.Workflows CreateDispatch; its landing is what
-// dissolved that module's unconsumed-operation frontier.
+// The route registers one ephemeral JIT runner whose label set carries a per-boot attempt label
+// (gunbc.runner_throughput_qualification_route ephemeral_slot_labels). Dispatching the floor to it is
+// a workflow_dispatch whose input IS that attempt label, read by the floor job's runs-on, so no other
+// registration can serve the job. This module is the production caller of extdeps.github.workflows
+// github.Workflows CreateDispatch.
 //
-// WHICH WORKFLOW IS A PARAMETER. The fleet-converge mode that becomes this route belongs to
-// gunbc.fleet_converge_workflow and lands with the boot leg; naming a workflow file here before that
-// mode exists would be a second spelling of a fact whose home is not yet written. What this module
-// does own is the input the target workflow must declare: qualification_attempt_dispatch_input is
-// the DispatchInput row the workflow side consumes, and the dispatch map is keyed by its name, so
-// the key the dispatch sends and the key the workflow declares are one declaration.
+// THE SUBJECT IS SEALED AND ITS SCOPE IS FIXED BY CONSTRUCTION. QualificationDispatchSubject is
+// minted only by qualification_dispatch_subject_over, and only from:
+//   - the JIT registration the route minted and the credential delivered for that same slot -- so
+//     the attempt is the slot's own and the runner the collection joins on is that registration's;
+//   - the qualification workflow, which is not a parameter of the request: its path is the generated
+//     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
+//     supplies its model as gunbc.fleet_converge_workflow fleet_converge_workflow, where the route's
+//     mode lands with the boot leg. A slot restricted to any other workflow refuses;
+//   - a floor job in that workflow whose runs-on is exactly the declared attempt input, so the job
+//     can be served by the attempt's runner and nothing else. A literal label, another input, or a
+//     composed expression refuses.
+// The repository is gunbc_repository; a caller cannot name another.
 //
-// AUTHORIZATION IS THE DISPATCHING RUN'S (operator ruling 2026-10-03): CreateDispatch authenticates
-// with the running job's GITHUB_TOKEN (the service config's auth_source), with no per-dispatch
-// approval. gunbc.auth.privileged_effect_census rows dispatch_qualification_floor through
-// gunbc.auth.authorization_pattern_selection.
+// AUTHORIZATION. The dispatch runs under the gunbai-ci installation token the registration was
+// minted with (gunbc.github_effect_perform ControllerInstallationToken, App key read over WIF); the
+// credential is checked against the DispatchWorkflow effect (actions: write) before any request, and
+// a token for another App or installation refuses. The operator's 2026-10-03 ruling, as interpreted
+// to cover this dispatch (gunbc.auth.privileged_effect_census
+// runner_lifecycle_ruling_scope_interpretation), stands only beside its interlock:
+// dispatch_qualification_floor takes the host-generic unit hold proof
+// (gunbc.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.
 
 data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   name: "runner_attempt_label",
-  description: Present { value: "the per-boot attempt label the ephemeral qualification slot registered with; runs-on names it" },
+  description: Present { value: "the per-boot attempt label the ephemeral qualification slot registered with; the floor job's runs-on reads it" },
   required: true,
   default: none,
   type: InputString,
 }
 
-type QualificationWorkflowTarget {
-  owner: NonEmptyStr
-  repo: NonEmptyStr
-  workflow_id: NonEmptyStr
-  ref: NonEmptyStr
+fn qualification_workflow_path() -> NonEmptyStr {
+  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
+}
+
+fn qualification_workflow_file_name() -> NonEmptyStr {
+  match last(split(qualification_workflow_path() as String, "/")) {
+    Present { value: f } => f as NonEmptyStr
+    Absent => qualification_workflow_path()
+  }
+}
+
+// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
+// form gunbc.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
+fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
+  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
 }
 
 fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
   map_insert(m: empty_map(), key: qualification_attempt_dispatch_input.name, value: attempt as String)
 }
 
-// A DISPATCH IS ONE ATTEMPT AND ITS ANSWER IS THE RECEIPT OR THE REFUSAL, never a run assumed to
-// exist. The run id comes from GitHub's 2026-03-10 response (WorkflowDispatchReceipt); a refused or
-// unreached request carries its RestOutcome and mints no run.
-//
-// THE DISPATCHED RUN IS SEALED, AND THAT IS WHAT PUTS COLLECTION CAUSALLY AFTER DISPATCH.
-// WorkflowDispatchReceipt is a plain upstream record anyone can write, so a collect fold taking one
-// would read back whatever run id a caller named. DispatchedQualificationRun is sole_constructor:
-// only this file can write it, and in this file only dispatch_qualification_floor does, from a
-// RestOk answer. collect_qualification_run takes that value, so no run is collected that this
-// module did not dispatch, for this target and this attempt.
-type DispatchedQualificationRun sole_constructor {
-  target: QualificationWorkflowTarget
+// ── THE SUBJECT ───────────────────────────────────────────────────────────────────────────────
+
+type QualificationDispatchSubject sole_constructor {
+  registration: JitRegistration
+  host: HostIdentity
   attempt: NonEmptyStr
+  branch: NonEmptyStr
+  revision: CommitSha
+  floor_job_name: NonEmptyStr
+}
+
+type QualificationSubjectRefusal
+  = SubjectCredentialNotDelivered { delivery: JitCredentialDelivery }
+  | SubjectDeliveryForAnotherSlot
+  | SubjectSlotNotHostUnit
+  | SubjectSlotForAnotherWorkflow { slot_workflow: NonEmptyStr, qualification_workflow: NonEmptyStr }
+  | SubjectAttemptInputUndeclared { input: String }
+  | SubjectFloorJobAbsent { job_id: NonEmptyStr }
+  | SubjectFloorRunsOnNotTheAttemptInput { job_id: NonEmptyStr, runs_on: String }
+
+type QualificationSubjectStanding
+  = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
+  | QualificationSubjectRefused { refusal: QualificationSubjectRefusal }
+
+fn workflow_declares_dispatch_input(workflow: Workflow, input: DispatchInput) -> Bool {
+  workflow.on |> any(t =>
+    match t {
+      WorkflowDispatch { inputs: ins } => ins |> any(i => i.name == input.name)
+      _ => false
+    })
+}
+
+// EXACTLY `${{ inputs.<name> }}` and nothing else: one interpolation segment reading the input.
+fn runs_on_is_exactly_the_input(runner: RunnerSpec, input: DispatchInput) -> Bool {
+  match runner {
+    RunsOnExpression { expression: e } =>
+      match ingest_template(src: e) {
+        Present { value: t } =>
+          count(t.segments) == 1 && (t.segments |> all(s =>
+            match s {
+              Interpolation { expression: ContextAccess { context: Inputs, path: p } } =>
+                count(p) == 1 && (p |> all(x => x == input.name))
+              _ => false
+            }))
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn runner_spec_text(runner: RunnerSpec) -> String {
+  match runner {
+    RunsOnExpression { expression: e } => e
+    _ => "a runs-on that is not an expression"
+  }
+}
+
+fn job_display_name(job: Job) -> NonEmptyStr {
+  match job.name {
+    Present { value: n } => n as NonEmptyStr
+    Absent => job.id as NonEmptyStr
+  }
+}
+
+// THE PURE JOIN, OVER A SUPPLIED WORKFLOW MODEL. Production reaches it only through
+// qualification_dispatch_subject, which supplies fleet_converge_workflow; the witness claims supply a
+// model carrying the floor job the boot leg's mode will add. An admit list constrains the call edge,
+// not where the result goes, so every admitted witness entry is a `test fn` returning Bool.
+fn qualification_dispatch_subject_over(
+  registration: JitRegistration,
+  delivery: JitCredentialDelivery,
+  workflow: Workflow,
+  floor_job_id: NonEmptyStr,
+  branch: NonEmptyStr,
+  revision: CommitSha,
+) -> QualificationSubjectStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_subject_binds_the_minted_runner_and_the_attempt_input"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "no_other_workflow_or_label_can_be_dispatched_through_the_ruling"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_collection_joins_the_floor_job_to_the_minted_runner"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_rerun_or_another_run_cannot_be_collected_as_the_dispatch"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_unpinned_or_unreadable_run_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_dispatch_has_three_standings_and_an_interlock"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "slot_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "runs_on_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "undeclared_input_refuses"),
+  ]
+{
+  match delivery {
+    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: _ } =>
+      if delivered_slot != registration.slot {
+        QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherSlot }
+      } else {
+        match registration.slot {
+          MicroVmJitSlot { attempt: _ } => QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
+          HostUnitJitSlot { slot: h } =>
+            if (h.workflow as String) != (qualification_selected_workflow(branch: branch) as String) {
+              QualificationSubjectRefused {
+                refusal: SubjectSlotForAnotherWorkflow { slot_workflow: h.workflow, qualification_workflow: qualification_selected_workflow(branch: branch) },
+              }
+            } else if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_attempt_dispatch_input) {
+              QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
+            } else {
+              match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
+                Absent => QualificationSubjectRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
+                Present { value: job } =>
+                  if !runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
+                    QualificationSubjectRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: floor_job_id, runs_on: runner_spec_text(runner: job.runner) } }
+                  } else {
+                    QualificationSubjectAdmitted {
+                      subject: QualificationDispatchSubject {
+                        registration: registration,
+                        host: h.host.host.host,
+                        attempt: h.attempt,
+                        branch: branch,
+                        revision: revision,
+                        floor_job_name: job_display_name(job: job),
+                      },
+                    }
+                  }
+              }
+            }
+        }
+      }
+    other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }
+  }
+}
+
+// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model. Until the
+// boot leg lands the route's mode there, it has no floor job reading the attempt input and this
+// refuses -- the wiring the route leg owes, refused rather than faked.
+fn qualification_dispatch_subject(
+  registration: JitRegistration,
+  delivery: JitCredentialDelivery,
+  floor_job_id: NonEmptyStr,
+  branch: NonEmptyStr,
+  revision: CommitSha,
+) -> QualificationSubjectStanding {
+  qualification_dispatch_subject_over(
+    registration: registration,
+    delivery: delivery,
+    workflow: fleet_converge_workflow,
+    floor_job_id: floor_job_id,
+    branch: branch,
+    revision: revision,
+  )
+}
+
+fn qualification_dispatch_effect(subject: QualificationDispatchSubject) -> GitHubEffect {
+  DispatchWorkflow {
+    repository: gunbc_repository,
+    workflow: GitHubWorkflowRef { file_name: qualification_workflow_file_name() },
+    subject: subject.revision,
+  }
+}
+
+// ── THE DISPATCH ──────────────────────────────────────────────────────────────────────────────
+//
+// A DISPATCH IS A MUTATION AND HAS THREE STANDINGS, NOT TWO. GitHub's 2026-03-10 answer (200 with
+// the run id) is the only one that mints a DispatchedQualificationRun. A decided 4xx is refused: no
+// run exists. A 5xx, a request that got no response, or a 200 this client could not decode is
+// commit-ambiguous (extdeps.transports.rest classify_rest_outcome over RestMutationExchange): a run
+// may exist with no receipt here, so the standing keeps the subject for reconciliation and is not a
+// refusal a caller may retry as if nothing were created.
+//
+// THE DISPATCHED RUN IS SEALED, AND THAT IS WHAT PUTS COLLECTION CAUSALLY AFTER DISPATCH: only
+// dispatch_qualification_floor writes one, from a succeeded exchange, carrying the sealed subject.
+type DispatchedQualificationRun sole_constructor {
+  subject: QualificationDispatchSubject
   receipt: WorkflowDispatchReceipt
 }
 
+type QualificationDispatchRefusal
+  = DispatchCredentialRefused { unsatisfied: List<CredentialCapability> }
+  | DispatchTokenForAnotherInstallation
+  | DispatchHoldForAnotherHost { held: HostIdentity, slot: HostIdentity }
+  | DispatchStatusRefused { status: Int, body: String }
+
+type QualificationDispatchStanding
+  = DispatchStandingSucceeded
+  | DispatchStandingRefused { status: Int, body: String }
+  | DispatchStandingCommitAmbiguous { detail: NonEmptyStr }
+
 type QualificationDispatch
   = QualificationDispatched { run: DispatchedQualificationRun }
-  | QualificationDispatchRefused { attempt: NonEmptyStr, outcome: RestOutcome }
+  | QualificationDispatchRefused { subject: QualificationDispatchSubject, refusal: QualificationDispatchRefusal }
+  | QualificationDispatchCommitAmbiguous { subject: QualificationDispatchSubject, detail: NonEmptyStr }
 
-fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: NonEmptyStr) -> QualificationDispatch uses net: Network {
-  let answered = github.Workflows.CreateDispatch(
-    owner: target.owner as String,
-    repo: target.repo as String,
-    workflow_id: target.workflow_id as String,
-    ref: target.ref as String,
-    inputs: qualification_dispatch_inputs(attempt: attempt),
-  )
-  match answered.outcome {
-    RestOk =>
-      QualificationDispatched {
-        run: DispatchedQualificationRun {
-          target: target,
-          attempt: attempt,
-          receipt: WorkflowDispatchReceipt {
-            workflow_run_id: answered.workflow_run_id,
-            run_url: answered.run_url,
-            html_url: answered.html_url,
-          },
-        },
-      }
-    other => QualificationDispatchRefused { attempt: attempt, outcome: other }
+// The standing of one dispatch exchange, decided from the mutation classifier and nothing else. An
+// Unreached or Undecodable performance is not produced for a mutation; were one ever passed here, it
+// is the ambiguous side, never a refusal.
+fn qualification_dispatch_standing(performance: RestExchangePerformance) -> QualificationDispatchStanding {
+  match performance {
+    RestExchangeSucceeded => DispatchStandingSucceeded
+    RestExchangeStatusRefused { status: s, body: b } => DispatchStandingRefused { status: s as Int, body: b }
+    RestExchangeCommitAmbiguous { detail: d } => DispatchStandingCommitAmbiguous { detail: d }
+    RestExchangeUnreached { cause: c } => DispatchStandingCommitAmbiguous { detail: c }
+    RestExchangeUndecodable { status: _, cause: c } => DispatchStandingCommitAmbiguous { detail: c }
+  }
+}
+
+// THE INTERLOCK, as a pure comparison: the proof's admitted host against the slot's host.
+fn hold_covers_subject(held: HostIdentity, subject: QualificationDispatchSubject) -> Bool {
+  (held as String) == (subject.host as String)
+}
+
+fn dispatch_qualification_floor(
+  subject: QualificationDispatchSubject,
+  hold: UnitHoldProof,
+  token: ControllerInstallationToken,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+) -> QualificationDispatch uses net: Network {
+  let effect = qualification_dispatch_effect(subject: subject)
+  if !hold_covers_subject(held: hold.subject.host.host, subject: subject) {
+    QualificationDispatchRefused { subject: subject, refusal: DispatchHoldForAnotherHost { held: hold.subject.host.host, slot: subject.host } }
+  } else if token.app != subject.registration.app || token.installation != subject.registration.installation {
+    QualificationDispatchRefused { subject: subject, refusal: DispatchTokenForAnotherInstallation }
+  } else if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
+    QualificationDispatchRefused {
+      subject: subject,
+      refusal: DispatchCredentialRefused { unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect) },
+    }
+  } else {
+    let answer = dispatch_workflow_with(
+      token: token,
+      owner: gunbc_repository.owner as NonEmptyStr,
+      repo: gunbc_repository.name as NonEmptyStr,
+      workflow_id: qualification_workflow_file_name(),
+      git_ref: subject.branch,
+      inputs: qualification_dispatch_inputs(attempt: subject.attempt),
+    )
+    match qualification_dispatch_standing(performance: answer.performance) {
+      DispatchStandingSucceeded => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: answer.receipt } }
+      DispatchStandingRefused { status: s, body: b } => QualificationDispatchRefused { subject: subject, refusal: DispatchStatusRefused { status: s, body: b } }
+      DispatchStandingCommitAmbiguous { detail: d } => QualificationDispatchCommitAmbiguous { subject: subject, detail: d }
+    }
   }
 }
 
 // ── COLLECT: THE RUN READ BACK, ENSURE-STYLE ──────────────────────────────────────────────────
 //
-// THE SUBJECT IS THE DISPATCHED RUN, CHECKED ON THE READBACK: the run read must carry the id the
-// dispatch returned and the workflow_dispatch event, and every job listed must belong to it;
-// anything else is RunSubjectMismatch, never a collection of some other run.
+// THE SUBJECT IS THE DISPATCHED RUN AT ITS FIRST ATTEMPT. A dispatch creates attempt 1; a re-run
+// reuses the run id and mints attempt 2 with new jobs and a new conclusion. So the run read must
+// carry the dispatched id, the workflow_dispatch event, the qualification workflow's path, the pinned
+// revision and run_attempt 1; the jobs are read through the attempt-scoped endpoint for attempt 1
+// and every one must carry that run id and attempt. A run that has advanced past attempt 1 refuses:
+// its conclusion is no longer the dispatch's.
 //
-// A DISPATCH RECEIPT SAYS A RUN EXISTS, NOT THAT THE ATTEMPT'S RUNNER SERVED IT. The collection
-// therefore decides only from what GitHub reports about the run now: the run must be Completed with
-// a conclusion, and at least one of its jobs must carry the attempt label and have started -- that
-// is, been taken by a runner registered under the attempt. A run that finished without that is the
-// typed refusal RunNeverReachedAttemptRunner, carrying every job's labels so the cause is located;
-// it is never collected as a measurement of a host that did not run it.
+// THE RUNNER IS JOINED BY IDENTITY, NOT BY LABEL. Two runners can carry the same labels, and a
+// helper job on the attempt's runner says nothing about where the floor ran. So the collection takes
+// the one job whose runner_name is the registration's minted name (job_ran_on), and requires it to
+// be the floor job the subject fixed, and to have started. An ephemeral JIT runner takes exactly one
+// job, so no job on it, several, or a different job are each a typed refusal carrying what was seen.
 //
 // THE CONCLUSION IS READ BACK AND CARRIED, NOT FILTERED: a failed floor on the attempt's runner is
-// still a run of this host and the receipt says how it ended.
+// still a run of this host. The collected payload keeps the sealed dispatch and the whole observed
+// WorkflowRun, so extraction and assessment read the revision, workflow, event and attempt from
+// here rather than re-reading GitHub.
 
 type QualificationRunRefusal
-  = RunReadUnreadable { outcome: RestOutcome }
+  = RunReadUnreadable { performance: RestExchangePerformance }
+  | RunSubjectMismatch { observed_run_id: Int, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
+  | RunAdvancedPastDispatchedAttempt { observed_attempt: Int }
+  | RunRevisionNotPinned { pinned: CommitSha, observed: CommitSha }
   | RunNotCompleted { status: WorkflowRunStatus }
   | RunCompletedWithoutConclusion
-  | RunJobsUnreadable { outcome: RestOutcome }
+  | RunJobsUnreadable { performance: RestExchangePerformance }
   | RunJobsTruncated { returned: Int, total: Int }
-  | RunNeverReachedAttemptRunner { job_labels: List<List<String>> }
-  | RunSubjectMismatch { observed_run_id: Int, observed_event: String, foreign_job_run_ids: List<Int> }
+  | RunFloorJobNotUnique { floor_job_name: NonEmptyStr, matching: Int }
+  | RunNeverReachedAttemptRunner { registered_runner: NonEmptyStr, runner_names_seen: List<String> }
+  | RunRegisteredRunnerRanAnotherJob { registered_runner: NonEmptyStr, job_name: String }
+  | RunFloorJobNotStarted { job_id: Int }
 
-// A COLLECTED RUN IS A RUN THE ATTEMPT'S RUNNER SERVED, AND NOTHING YET ABOUT WHAT IT MEASURED. The
-// instruments are read from it afterwards (extract_qualification_instruments), because reading them
-// costs one log download per served job and that is only owed once the run is known to be this host's.
-//
-// THE SUCCESS PAYLOAD IS SEALED: CollectedQualificationRun is sole_constructor, written only by
-// conclude_qualification_run, whose callers are admitted by name -- the one production reader,
-// collect_qualification_run, and the witness claims that supply readbacks at that interface. An
-// admit list constrains the call edge, not where the result goes, so every admitted witness entry
-// is a `test fn` returning Bool that consumes the collection internally; a helper returning the
-// collection would be a public constructor proxy, and none is admitted. collect_qualification_run
-// returns the collection, but only from a sealed DispatchedQualificationRun.
-// A module elsewhere cannot mint "this host ran the floor" without a readback.
+// A COLLECTED RUN SAYS WHICH JOB IS THE FLOOR AND NOTHING YET ABOUT WHAT IT MEASURED. The instruments
+// are read from it afterwards by collect_qualification_instruments, from floor_job alone.
 type CollectedQualificationRun sole_constructor {
-  attempt: NonEmptyStr
-  run_id: Int
+  dispatched: DispatchedQualificationRun
+  run: WorkflowRun
+  floor_job: WorkflowJobRun
   conclusion: WorkflowRunConclusion
-  attempt_jobs: List<WorkflowJobRun>
 }
 
 type QualificationRunCollection
   = QualificationRunCollected { collected: CollectedQualificationRun }
-  | QualificationRunRefused { attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal }
-
-fn job_served_by_attempt(job: WorkflowJobRun, attempt: NonEmptyStr) -> Bool {
-  (job.labels |> any(l => l == (attempt as String)))
-    && (match job.started_at { Present { value: _ } => true Absent => false })
-}
-
-fn refuse_run(attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal) -> QualificationRunCollection {
-  QualificationRunRefused { attempt: attempt, run_id: run_id, refusal: refusal }
-}
-
-fn conclude_qualification_run(
-  attempt: NonEmptyStr,
-  run_id: Int,
-  run_outcome: RestOutcome,
-  run: WorkflowRun,
-  jobs_outcome: RestOutcome,
-  jobs: WorkflowJobRunList,
-) -> QualificationRunCollection
-  admit_callers: [
-    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_run"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_or_unconcluded_run_refuses_rather_than_collecting"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_truncated_or_unreadable_readback_refuses"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_readback_of_another_run_refuses_on_the_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_floor_job_is_the_one_the_registered_runner_ran"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_dispatch_of_another_run_refuses_the_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_slot_of_another_attempt_refuses_the_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "zero_or_two_jobs_on_the_registered_runner_refuse"),
-  ]
-{
-  match run_outcome {
-    RestOk =>
-      if run.id != run_id || run.event != "workflow_dispatch" {
-        refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: [] })
-      } else {
-      match run.status {
-        Completed =>
-          match run.conclusion {
-            Absent => refuse_run(attempt: attempt, run_id: run_id, refusal: RunCompletedWithoutConclusion)
-            Present { value: conclusion } =>
-              match jobs_outcome {
-                RestOk =>
-                  if count(jobs.jobs) != jobs.total_count {
-                    refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count })
-                  } else {
-                    let foreign = jobs.jobs |> filter(j => j.run_id != run_id) |> map(j => j.run_id)
-                    if count(foreign) != 0 {
-                      refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: foreign })
-                    } else {
-                    let served = jobs.jobs |> filter(j => job_served_by_attempt(job: j, attempt: attempt))
-                    if count(served) == 0 {
-                      refuse_run(attempt: attempt, run_id: run_id, refusal: RunNeverReachedAttemptRunner { job_labels: jobs.jobs |> map(j => j.labels) })
-                    } else {
-                      QualificationRunCollected {
-                        collected: CollectedQualificationRun {
-                          attempt: attempt,
-                          run_id: run_id,
-                          conclusion: conclusion,
-                          attempt_jobs: served,
-                        },
-                      }
-                    }
-                    }
-                  }
-                other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsUnreadable { outcome: other })
-              }
-          }
-        other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunNotCompleted { status: other })
-      }
-      }
-    other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunReadUnreadable { outcome: other })
-  }
-}
+  | QualificationRunRefused { run_id: Int, refusal: QualificationRunRefusal }
 
 fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
   match c {
     QualificationRunCollected { collected: _ } => true
-    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
+    QualificationRunRefused { run_id: _, refusal: _ } => false
   }
 }
 
-fn collect_qualification_run(dispatched: DispatchedQualificationRun) -> QualificationRunCollection uses net: Network {
-  let target = dispatched.target
-  let run_id = dispatched.receipt.workflow_run_id as String
-  let read = github.WorkflowRuns.GetRun(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
-  let jobs = github.WorkflowRuns.ListJobs(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
-  conclude_qualification_run(
-    attempt: dispatched.attempt,
-    run_id: dispatched.receipt.workflow_run_id,
-    run_outcome: read.outcome,
+data dispatched_run_attempt: Int = 1
+
+fn optional_text_is(o: String?, expected: String) -> Bool {
+  match o { Present { value: v } => v == expected Absent => false }
+}
+
+// THE ONE JOIN FROM A JOB TO A JIT REGISTRATION: the runner GitHub reports took the job is the
+// name the authorized mint fixed (gunbc.runner.runner_jit_deregistration JitRegistration name).
+// Labels cannot make this join -- two runners can carry identical labels.
+fn job_ran_on(job: WorkflowJobRun, runner_name: NonEmptyStr) -> Bool {
+  optional_text_is(o: job.runner_name, expected: runner_name as String)
+}
+
+fn job_runner_name_seen(job: WorkflowJobRun) -> String {
+  match job.runner_name { Present { value: n } => n Absent => "(no runner assigned)" }
+}
+
+fn job_started(job: WorkflowJobRun) -> Bool {
+  match job.started_at { Present { value: _ } => true Absent => false }
+}
+
+// THE DECISION, WITHOUT I/O, over what was read. Its verdict carries the evidence and no sealed
+// payload: minting CollectedQualificationRun is collect_qualification_run's alone, so this fold is
+// open to supplied readbacks and has no success constructor to proxy.
+type QualificationRunVerdict
+  = RunVerdictCollected { run: WorkflowRun, floor_job: WorkflowJobRun, conclusion: WorkflowRunConclusion }
+  | RunVerdictRefused { refusal: QualificationRunRefusal }
+
+fn decide_floor_job(subject: QualificationDispatchSubject, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
+  let registered = subject.registration.name.value
+  let on_runner = jobs |> filter(j => job_ran_on(job: j, runner_name: registered))
+  match first(on_runner) {
+    Absent => RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner: registered, runner_names_seen: jobs |> map(j => job_runner_name_seen(job: j)) } }
+    Present { value: job } =>
+      if count(on_runner) != 1 {
+        RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: count(on_runner) } }
+      } else if job.name != (subject.floor_job_name as String) {
+        RunVerdictRefused { refusal: RunRegisteredRunnerRanAnotherJob { registered_runner: registered, job_name: job.name } }
+      } else if !job_started(job: job) {
+        RunVerdictRefused { refusal: RunFloorJobNotStarted { job_id: job.id } }
+      } else {
+        RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion }
+      }
+  }
+}
+
+fn decide_qualification_run(
+  subject: QualificationDispatchSubject,
+  run_id: Int,
+  run_performance: RestExchangePerformance,
+  run: WorkflowRun,
+  jobs_performance: RestExchangePerformance,
+  jobs: WorkflowJobRunList,
+) -> QualificationRunVerdict {
+  match run_performance {
+    RestExchangeSucceeded =>
+      if run.id != run_id || run.event != "workflow_dispatch" || !optional_text_is(o: run.path, expected: qualification_workflow_path() as String) {
+        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: [] } }
+      } else if run.run_attempt != dispatched_run_attempt {
+        RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: run.run_attempt } }
+      } else if (run.head_sha as String) != (subject.revision as String) {
+        RunVerdictRefused { refusal: RunRevisionNotPinned { pinned: subject.revision, observed: run.head_sha } }
+      } else {
+        match run.status {
+          Completed =>
+            match run.conclusion {
+              Absent => RunVerdictRefused { refusal: RunCompletedWithoutConclusion }
+              Present { value: conclusion } =>
+                match jobs_performance {
+                  RestExchangeSucceeded =>
+                    if count(jobs.jobs) != jobs.total_count {
+                      RunVerdictRefused { refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count } }
+                    } else {
+                      let foreign = jobs.jobs |> filter(j => j.run_id != run_id || j.run_attempt != dispatched_run_attempt) |> map(j => j.id)
+                      if count(foreign) != 0 {
+                        RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: foreign } }
+                      } else {
+                        decide_floor_job(subject: subject, run: run, conclusion: conclusion, jobs: jobs.jobs)
+                      }
+                    }
+                  other => RunVerdictRefused { refusal: RunJobsUnreadable { performance: other } }
+                }
+            }
+          other => RunVerdictRefused { refusal: RunNotCompleted { status: other } }
+        }
+      }
+    other => RunVerdictRefused { refusal: RunReadUnreadable { performance: other } }
+  }
+}
+
+fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
+  let run_id = dispatched.receipt.workflow_run_id
+  let owner = gunbc_repository.owner as NonEmptyStr
+  let repo = gunbc_repository.name as NonEmptyStr
+  let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
+  let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: dispatched_run_attempt)
+  match decide_qualification_run(
+    subject: dispatched.subject,
+    run_id: run_id,
+    run_performance: read.performance,
     run: read.run,
-    jobs_outcome: jobs.outcome,
-    jobs: jobs.result,
-  )
+    jobs_performance: jobs.performance,
+    jobs: jobs.jobs,
+  ) {
+    RunVerdictRefused { refusal: r } => QualificationRunRefused { run_id: run_id, refusal: r }
+    RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion } =>
+      QualificationRunCollected {
+        collected: CollectedQualificationRun {
+          dispatched: dispatched,
+          run: run,
+          floor_job: floor,
+          conclusion: conclusion,
+        },
+      }
+  }
 }
 
 // ── EXTRACT: THE INSTRUMENTS READ FROM THE COLLECTED RUN ──────────────────────────────────────
@@ -292,116 +555,6 @@ fn qualification_instrument_read_from_job_log(i: QualificationInstrument) -> Boo
     ReadFromClaimCostArtifact => false
     ReadFromBootLegReadback => false
     ReadFromCohortObservation => false
-  }
-}
-
-// ── THE SUBJECT: ONE RUN, ONE REGISTERED RUNNER, ONE JOB ──────────────────────────────────────
-//
-// EVERY IDENTITY THE READS USE COMES FROM ONE SEALED VALUE, never from caller-supplied strings. The
-// repository and workflow are the dispatch's (DispatchedQualificationRun target), the run is the one
-// that dispatch returned and conclude_qualification_run collected, and the slot is the authorized
-// JIT registration's own host-unit slot (gunbc.runner.runner_jit_deregistration JitRegistration,
-// minted only from an authorized mint), so the cgroup unit the rows are filtered to is that slot's
-// unit and no other. A target from run B beside a collection of run A, or a slot minted for
-// another attempt, refuses here, before any network read.
-//
-// THE FLOOR JOB IS THE ONE JOB THE REGISTERED RUNNER RAN. The collection's served jobs carry the
-// attempt label and started; among them, the designated job is the one whose runner_name is the
-// name the authorized mint fixed. Zero such jobs, or more than one, refuses: reading every served
-// job and pooling their rows would let phase rows from one job and a cgroup row from another
-// stand as one measurement.
-type QualificationExtractionSubject sole_constructor {
-  dispatched: DispatchedQualificationRun
-  collected: CollectedQualificationRun
-  registration: JitRegistration
-  slot: HostUnitSlot
-  floor_job: WorkflowJobRun
-}
-
-type ExtractionSubjectRefusal
-  = SubjectRunNotCollected { refusal: QualificationRunRefusal }
-  | SubjectRunMismatch { dispatched_run_id: Int, collected_run_id: Int }
-  | SubjectAttemptMismatch { dispatched_attempt: NonEmptyStr, other_attempt: NonEmptyStr }
-  | SubjectSlotNotAHostUnit
-  | NoJobOnRegisteredRunner { runner_name: NonEmptyStr, runner_names_seen: List<String> }
-  | SeveralJobsOnRegisteredRunner { runner_name: NonEmptyStr, job_ids: List<Int> }
-
-type DesignatedFloorJob
-  = FloorJobDesignated { job: WorkflowJobRun }
-  | FloorJobRefused { refusal: ExtractionSubjectRefusal }
-
-fn job_ran_on(job: WorkflowJobRun, runner_name: NonEmptyStr) -> Bool {
-  match job.runner_name {
-    Present { value: n } => n == (runner_name as String)
-    Absent => false
-  }
-}
-
-fn job_runner_name_seen(job: WorkflowJobRun) -> String {
-  match job.runner_name {
-    Present { value: n } => n
-    Absent => "<none>"
-  }
-}
-
-// THE PURE JOIN, over the identities alone, so each refusal is witnessable without a network read.
-fn designated_floor_job(
-  dispatched_run_id: Int,
-  dispatched_attempt: NonEmptyStr,
-  collected: CollectedQualificationRun,
-  slot_attempt: NonEmptyStr,
-  runner_name: NonEmptyStr,
-) -> DesignatedFloorJob {
-  if collected.run_id != dispatched_run_id {
-    FloorJobRefused { refusal: SubjectRunMismatch { dispatched_run_id: dispatched_run_id, collected_run_id: collected.run_id } }
-  } else if collected.attempt != dispatched_attempt {
-    FloorJobRefused { refusal: SubjectAttemptMismatch { dispatched_attempt: dispatched_attempt, other_attempt: collected.attempt } }
-  } else if slot_attempt != dispatched_attempt {
-    FloorJobRefused { refusal: SubjectAttemptMismatch { dispatched_attempt: dispatched_attempt, other_attempt: slot_attempt } }
-  } else {
-    let on_runner = collected.attempt_jobs |> filter(j => job_ran_on(job: j, runner_name: runner_name))
-    if count(on_runner) == 0 {
-      FloorJobRefused { refusal: NoJobOnRegisteredRunner { runner_name: runner_name, runner_names_seen: collected.attempt_jobs |> map(j => job_runner_name_seen(job: j)) } }
-    } else if count(on_runner) > 1 {
-      FloorJobRefused { refusal: SeveralJobsOnRegisteredRunner { runner_name: runner_name, job_ids: on_runner |> map(j => j.id) } }
-    } else {
-      match on_runner |> first {
-        Present { value: j } => FloorJobDesignated { job: j }
-        Absent => FloorJobRefused { refusal: NoJobOnRegisteredRunner { runner_name: runner_name, runner_names_seen: [] } }
-      }
-    }
-  }
-}
-
-type ExtractionSubjectStanding
-  = ExtractionSubjectMinted { subject: QualificationExtractionSubject }
-  | ExtractionSubjectRefused { refusal: ExtractionSubjectRefusal }
-
-fn qualification_extraction_subject(
-  dispatched: DispatchedQualificationRun,
-  collection: QualificationRunCollection,
-  registration: JitRegistration,
-) -> ExtractionSubjectStanding {
-  match collection {
-    QualificationRunRefused { attempt: _, run_id: _, refusal: r } => ExtractionSubjectRefused { refusal: SubjectRunNotCollected { refusal: r } }
-    QualificationRunCollected { collected: collected } =>
-      match registration.slot {
-        MicroVmJitSlot { attempt: _ } => ExtractionSubjectRefused { refusal: SubjectSlotNotAHostUnit }
-        HostUnitJitSlot { slot: slot } =>
-          match designated_floor_job(
-            dispatched_run_id: dispatched.receipt.workflow_run_id,
-            dispatched_attempt: dispatched.attempt,
-            collected: collected,
-            slot_attempt: slot.attempt,
-            runner_name: registration.name.value,
-          ) {
-            FloorJobRefused { refusal: r } => ExtractionSubjectRefused { refusal: r }
-            FloorJobDesignated { job: j } =>
-              ExtractionSubjectMinted {
-                subject: QualificationExtractionSubject { dispatched: dispatched, collected: collected, registration: registration, slot: slot, floor_job: j },
-              }
-          }
-      }
   }
 }
 
@@ -485,11 +638,11 @@ fn decode_job_log_instruments(log: String, slot_unit: NonEmptyStr) -> JobLogInst
 // id, and the join below is what a supplied log of any other job fails.
 type AttemptJobLog
   = AttemptJobLogRead { job_id: Int, log: String }
-  | AttemptJobLogUnreadable { job_id: Int, outcome: RestOutcome }
+  | AttemptJobLogUnreadable { job_id: Int, performance: RestExchangePerformance }
 
 type JobLogReadRefusal
   = JobLogOfAnotherJob { designated_job_id: Int, read_job_id: Int }
-  | JobLogUnreadable { job_id: Int, outcome: RestOutcome }
+  | JobLogUnreadable { job_id: Int, performance: RestExchangePerformance }
   | JobLogEmpty { job_id: Int }
   | JobLogUndecodable { job_id: Int, refusal: InstrumentReadRefusal }
 
@@ -499,11 +652,11 @@ type DesignatedJobLog
 
 fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJobLog {
   match log {
-    AttemptJobLogUnreadable { job_id: j, outcome: o } =>
+    AttemptJobLogUnreadable { job_id: j, performance: o } =>
       if j != designated_job_id {
         DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: designated_job_id, read_job_id: j } }
       } else {
-        DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: j, outcome: o } }
+        DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: j, performance: o } }
       }
     AttemptJobLogRead { job_id: j, log: text } =>
       if j != designated_job_id {
@@ -518,16 +671,17 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 
 // THE SUCCESS RECEIPT IS SEALED AND CARRIES ITS EVIDENCE. Only collect_qualification_instruments
 // writes it, and only after reading the designated job's log over the network: the subject it
-// names, the length (in Unicode code points, as the transport hands the body over) and the content
+// names (the collection, which carries the sealed dispatch and the joined floor job, and the slot whose
+// unit the cgroup rows are filtered to), the length (in Unicode code points, as the transport hands the body over) and the content
 // digest of the complete log body the rows came from, and the rows. A later assessment does not
 // have to trust rows detached from the job and the bytes that produced them. The decoder above is
 // open; this record is not.
 //
 // RUNG OF THE SEAL, STATED AT ITS EVIDENCE (DESIGN 4b(1)): CHECKED ONCE, NOT ENROLLED. The seal is
-// the compiler's sole_constructor and admit_callers walls applied to this record, the subject above
-// and job_log_standing. On 2026-10-04, compile_dag_diagnostic_census probes run once with the
-// interpreter gave one SoleConstructorViolation for a forged receipt literal, one for a forged
-// subject literal, one ConstructorCallAdmissionRefused for an outside call to job_log_standing, and
+// the compiler's sole_constructor and admit_callers walls applied to this record and
+// job_log_standing. On 2026-10-04, compile_dag_diagnostic_census probes run once with the
+// interpreter gave one SoleConstructorViolation for a forged receipt literal (and one for a since-
+// deleted subject record, whose role the sealed CollectedQualificationRun now plays), one ConstructorCallAdmissionRefused for an outside call to job_log_standing, and
 // zero for a module that only calls the decoder. Nothing re-runs those probes. A probe that compiles
 // against these declarations must import this module, so it is ReadsLiveTree, and the required
 // floor declines ReadsLiveTree claims rather than executing them
@@ -535,10 +689,11 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 // self-contained modules, which would test the compiler's generic wall rather than this seal.
 // NEXT-RUNG TRIGGER, A CAPABILITY: the required floor can enrol and execute a ReadsLiveTree
 // compile-refusal probe, SUFFICIENT FOR those four probes running on every required run, so that
-// removing sole_constructor from either record or the admit list from job_log_standing turns a
+// removing sole_constructor from the record or the admit list from job_log_standing turns a
 // required lane red.
 type QualificationJobLogReceipt sole_constructor {
-  subject: QualificationExtractionSubject
+  collected: CollectedQualificationRun
+  slot: HostUnitSlot
   log_code_points: Int
   log_digest: Fnv1a64Structural
   readings: QualificationLogReadings
@@ -557,43 +712,34 @@ type QualificationCollectStage {
   claim_cost: ClaimCostArtifactRead
 }
 
-type QualificationCollectOutcome
-  = QualificationCollected { stage: QualificationCollectStage }
-  | QualificationCollectRefused { refusal: ExtractionSubjectRefusal }
-
-fn read_attempt_job_log(target: QualificationWorkflowTarget, job: WorkflowJobRun) -> AttemptJobLog uses net: Network {
-  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(
-    auth_token: "",
-    owner: target.owner as String,
-    repo: target.repo as String,
-    job_id: job.id as String,
-  )
-  match read.outcome {
-    RestOk => AttemptJobLogRead { job_id: job.id, log: read.log }
-    other => AttemptJobLogUnreadable { job_id: job.id, outcome: other }
-  }
-}
-
-fn job_log_standing(subject: QualificationExtractionSubject, log: AttemptJobLog) -> JobLogInstrumentStanding
+fn job_log_standing(collected: CollectedQualificationRun, slot: HostUnitSlot, log: AttemptJobLog) -> JobLogInstrumentStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
   ]
 {
-  match designated_job_log(designated_job_id: subject.floor_job.id, log: log) {
+  match designated_job_log(designated_job_id: collected.floor_job.id, log: log) {
     DesignatedJobLogRefused { refusal: r } => QualificationJobLogInstrumentsRefused { refusal: r }
     DesignatedJobLogText { job_id: j, log: text } =>
-      match decode_job_log_instruments(log: text as String, slot_unit: subject.slot.unit) {
+      match decode_job_log_instruments(log: text as String, slot_unit: slot.unit) {
         JobLogInstrumentsUndecodable { refusal: r } => QualificationJobLogInstrumentsRefused { refusal: JobLogUndecodable { job_id: j, refusal: r } }
         JobLogInstrumentsDecoded { readings: rd } =>
           QualificationJobLogInstrumentsRead {
             receipt: QualificationJobLogReceipt {
-              subject: subject,
+              collected: collected,
+              slot: slot,
               log_code_points: string_length(s: text as String),
               log_digest: content_hash_atom(value: text),
               readings: rd,
             },
           }
       }
+  }
+}
+
+fn attempt_job_log_of(read: WorkflowJobLogRead) -> AttemptJobLog {
+  match read.performance {
+    RestExchangeSucceeded => AttemptJobLogRead { job_id: read.job_id, log: read.log }
+    other => AttemptJobLogUnreadable { job_id: read.job_id, performance: other }
   }
 }
 
@@ -606,98 +752,89 @@ fn job_log_standing(subject: QualificationExtractionSubject, log: AttemptJobLog)
 // parse_claim_cost_tsv row of qualification_instrument_extraction_frontier_rows names, at which point
 // this read hands the member to gunbc.floor_cost_distribution parse_claim_cost_tsv.
 type ClaimCostArtifactRead
-  = ClaimCostArtifactListUnreadable { outcome: RestOutcome }
+  = ClaimCostArtifactListUnreadable { performance: RestExchangePerformance }
   | ClaimCostArtifactListTruncated { returned: Int, total: Int }
   | ClaimCostArtifactAbsent { names_seen: List<String> }
   | ClaimCostArtifactExpired { artifact_id: Int }
-  | ClaimCostArchiveUnreadable { artifact_id: Int, outcome: RestOutcome }
+  | ClaimCostArchiveUnreadable { artifact_id: Int, performance: RestExchangePerformance }
   | ClaimCostArchiveNotInflatable { artifact_id: Int }
 
-fn claim_cost_artifact_listed(outcome: RestOutcome, listed: ActionsArtifactList) -> ActionsArtifact? {
-  match outcome {
-    RestOk => listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name) |> first
-    RestStatusRefused { status: _, body: _ } => none
-    RestTransportRefused { cause: _ } => none
-    RestBodyUndecodable { status: _, cause: _ } => none
-  }
+fn claim_cost_artifact_listed(listed: ActionsArtifactList) -> ActionsArtifact? {
+  listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name) |> first
 }
 
-fn conclude_claim_cost_listing(outcome: RestOutcome, listed: ActionsArtifactList) -> ClaimCostArtifactRead? {
-  match outcome {
-    RestOk =>
+// none: the listing names an unexpired claim-cost artifact and the download is owed.
+fn conclude_claim_cost_listing(performance: RestExchangePerformance, listed: ActionsArtifactList) -> ClaimCostArtifactRead? {
+  match performance {
+    RestExchangeSucceeded =>
       if count(listed.artifacts) != listed.total_count {
         Present { value: ClaimCostArtifactListTruncated { returned: count(listed.artifacts), total: listed.total_count } }
       } else {
-        match claim_cost_artifact_listed(outcome: outcome, listed: listed) {
+        match claim_cost_artifact_listed(listed: listed) {
           Absent => Present { value: ClaimCostArtifactAbsent { names_seen: listed.artifacts |> map(a => a.name) } }
           Present { value: a } =>
             if a.expired { Present { value: ClaimCostArtifactExpired { artifact_id: a.id } } } else { none }
         }
       }
-    other => Present { value: ClaimCostArtifactListUnreadable { outcome: other } }
+    other => Present { value: ClaimCostArtifactListUnreadable { performance: other } }
   }
 }
 
 // A 410 ON THE DOWNLOAD IS UPSTREAM'S EXPIRY ANSWER (actions/download-artifact documents 410 Gone for
 // an expired artifact), so it is ClaimCostArtifactExpired like the listing's own flag, not a generic
 // unreadable archive.
-fn conclude_claim_cost_download(artifact_id: Int, outcome: RestOutcome) -> ClaimCostArtifactRead {
-  match outcome {
-    RestOk => ClaimCostArchiveNotInflatable { artifact_id: artifact_id }
-    RestStatusRefused { status: st, body: bd } =>
+fn conclude_claim_cost_download(artifact_id: Int, performance: RestExchangePerformance) -> ClaimCostArtifactRead {
+  match performance {
+    RestExchangeSucceeded => ClaimCostArchiveNotInflatable { artifact_id: artifact_id }
+    RestExchangeStatusRefused { status: st, body: bd } =>
       if st == 410 {
         ClaimCostArtifactExpired { artifact_id: artifact_id }
       } else {
-        ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestStatusRefused { status: st, body: bd } }
+        ClaimCostArchiveUnreadable { artifact_id: artifact_id, performance: RestExchangeStatusRefused { status: st, body: bd } }
       }
-    RestTransportRefused { cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestTransportRefused { cause: c } }
-    RestBodyUndecodable { status: st, cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: RestBodyUndecodable { status: st, cause: c } }
+    RestExchangeCommitAmbiguous { detail: d } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, performance: RestExchangeCommitAmbiguous { detail: d } }
+    RestExchangeUnreached { cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, performance: RestExchangeUnreached { cause: c } }
+    RestExchangeUndecodable { status: st, cause: c } => ClaimCostArchiveUnreadable { artifact_id: artifact_id, performance: RestExchangeUndecodable { status: st, cause: c } }
   }
 }
 
-fn read_claim_cost_artifact(target: QualificationWorkflowTarget, run_id: Int) -> ClaimCostArtifactRead uses net: Network {
-  let listed = github.Artifacts.ListWorkflowRunArtifacts(
-    auth_token: "",
-    owner: target.owner as String,
-    repo: target.repo as String,
-    run_id: run_id as String,
-  )
-  match conclude_claim_cost_listing(outcome: listed.outcome, listed: listed.result) {
+fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> ClaimCostArtifactRead uses net: Network {
+  let listed = list_run_artifacts_with(token: token, owner: owner, repo: repo, run_id: run_id)
+  match conclude_claim_cost_listing(performance: listed.performance, listed: listed.listed) {
     Present { value: refused } => refused
     Absent =>
-      match claim_cost_artifact_listed(outcome: listed.outcome, listed: listed.result) {
+      match claim_cost_artifact_listed(listed: listed.listed) {
         Absent => ClaimCostArtifactAbsent { names_seen: [] }
         Present { value: a } => {
-          let archive = github.Artifacts.DownloadArtifact(
-            auth_token: "",
-            owner: target.owner as String,
-            repo: target.repo as String,
-            artifact_id: a.id as String,
-          )
-          conclude_claim_cost_download(artifact_id: a.id, outcome: archive.outcome)
+          let archive = download_artifact_with(token: token, owner: owner, repo: repo, artifact_id: a.id)
+          conclude_claim_cost_download(artifact_id: a.id, performance: archive.performance)
         }
       }
   }
 }
 
-// THE PRODUCTION ENTRY. It takes the sealed dispatch, the collection and the authorized
-// registration -- no target, run or unit argument a caller could cross-wire -- mints the subject
-// (refusing before any read when the three disagree), reads the designated job's log and the
-// claim-cost artifact, and returns a standing per instrument source. Its consumer is the route's
-// collect stage (gunbc.runner_throughput_qualification_route CollectInstruments, standing
-// mtcollins1_collect_leg), which does not invoke it yet: that edge is the row below.
-fn collect_qualification_instruments(
-  dispatched: DispatchedQualificationRun,
-  collection: QualificationRunCollection,
-  registration: JitRegistration,
-) -> QualificationCollectOutcome uses net: Network {
-  match qualification_extraction_subject(dispatched: dispatched, collection: collection, registration: registration) {
-    ExtractionSubjectRefused { refusal: r } => QualificationCollectRefused { refusal: r }
-    ExtractionSubjectMinted { subject: subject } => {
-      let target = subject.dispatched.target
-      let log = read_attempt_job_log(target: target, job: subject.floor_job)
-      let claim_cost = read_claim_cost_artifact(target: target, run_id: subject.collected.run_id)
-      QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(subject: subject, log: log), claim_cost: claim_cost } }
+// THE PRODUCTION ENTRY. It takes the sealed collection and the controller token, and nothing a caller
+// could cross-wire: the repository is gunbc_repository, the run, revision and attempt are the
+// collection's, the floor job is the one collect_qualification_run joined to the minted runner, and
+// the slot is that registration's own host-unit slot. It reads the floor job's log and the claim-cost
+// artifact and returns a standing per instrument source. Its consumer is the route's collect stage
+// (gunbc.runner_throughput_qualification_route CollectInstruments, standing mtcollins1_collect_leg),
+// which does not invoke it yet: that edge is the row below.
+// The microVM arm is refused by the dispatch subject already (SubjectSlotNotHostUnit), so no collected
+// run carries one; the arm exists because the slot sum does, and it reads nothing.
+type QualificationCollectOutcome
+  = QualificationCollected { stage: QualificationCollectStage }
+  | QualificationCollectSlotNotAHostUnit
+
+fn collect_qualification_instruments(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
+  let owner = gunbc_repository.owner as NonEmptyStr
+  let repo = gunbc_repository.name as NonEmptyStr
+  match collected.dispatched.subject.registration.slot {
+    MicroVmJitSlot { attempt: _ } => QualificationCollectSlotNotAHostUnit
+    HostUnitJitSlot { slot: slot } => {
+      let log = attempt_job_log_of(read: read_job_log_with(token: token, owner: owner, repo: repo, job_id: collected.floor_job.id))
+      let claim_cost = read_claim_cost_artifact(token: token, owner: owner, repo: repo, run_id: collected.dispatched.receipt.workflow_run_id)
+      QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(collected: collected, slot: slot, log: log), claim_cost: claim_cost } }
     }
   }
 }
@@ -710,13 +847,13 @@ fn collect_qualification_instruments(
 data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
-    reason: "FloorPhaseRows and FloorCgroupRows have an implemented extraction authority and no production consumer. collect_qualification_instruments reads the designated floor job's log and mints the sealed QualificationJobLogReceipt, but nothing on the route calls it: the collect stage's standing is gunbc.runner_throughput_qualification_route mtcollins1_collect_leg, LegAuthorityImplemented, and only witnesses reach the decoder. Its subject also needs the runner name the authorized mint fixed to name exactly one served job, which is the JitRegistration the route's registration leg (itself LegAuthorityImplemented) would hand it",
-    dissolution: unbound_dissolution(description: "the qualification route's collect stage invokes collect_qualification_instruments with the DispatchedQualificationRun its dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration its registration leg minted, on an executed route, so mtcollins1_collect_leg is LegWired and FloorPhaseRows and FloorCgroupRows are read from a real run's designated job. NOT satisfied by a witness calling the decoder or the subject join, nor by the collector compiling"),
+    reason: "FloorPhaseRows and FloorCgroupRows have an implemented extraction authority and no production consumer. collect_qualification_instruments reads the designated floor job's log and mints the sealed QualificationJobLogReceipt, but nothing on the route calls it: the collect stage's standing is gunbc.runner_throughput_qualification_route mtcollins1_collect_leg, LegAuthorityImplemented, and only witnesses reach the decoder. Its input is the CollectedQualificationRun the dispatch leg's collect_qualification_run returns, whose floor job is already joined to the minted runner",
+    dissolution: unbound_dissolution(description: "the qualification route's collect stage invokes collect_qualification_instruments with the CollectedQualificationRun collect_qualification_run returned and the controller token, on an executed route, so mtcollins1_collect_leg is LegWired and FloorPhaseRows and FloorCgroupRows are read from a real run's designated job. NOT satisfied by a witness calling the decoder or the subject join, nor by the collector compiling"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv"),
     reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt), there are zero [witness] lines and zero occurrences of the specimen identity test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument and is not read as one. Two capabilities are missing. FIRST, the required workflow no longer uploads the artifact: cli_run write_required_floor_claim_cost_tsv still writes the TSV, but the emission of .github/workflows/witnesses.yml by gunbc.compiler_gate_workflow carries no upload step for it, and recent required runs publish only required-ci-measurement-receipt and compiler-pair-candidate. SECOND, an uploaded artifact is always a zip, and the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so extdeps.github.actions_artifacts github.Artifacts DownloadArtifact answers RestBodyUndecodable. read_claim_cost_artifact attempts the read on every collection and carries the result as a typed ClaimCostArtifactRead refusal (ClaimCostArtifactAbsent while nothing uploads it)",
-    dissolution: unbound_dissolution(description: "BOTH capabilities hold. (1) The required workflow uploads required-floor-claim-cost again, as an upload step in the existing floor job emitted by gunbc.compiler_gate_workflow under gunbc.witness_floor_workflow required_floor_claim_cost_artifact_name -- an emission change, not a new job. (2) The REST transport carries a binary body and an inflate reader can take one member out of one upload-artifact zip. Together these are SUFFICIENT FOR extract_qualification_instruments to read ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same collected run through parse_claim_cost_tsv, and for qualification_instrument_source to place both on that read. NOT satisfied by either capability alone, by the [over-cost] preview or any other truncated view, by a new print of eval_steps into the log, or by an artifact downloaded outside this route"),
+    dissolution: unbound_dissolution(description: "BOTH capabilities hold. (1) The required workflow uploads required-floor-claim-cost again, as an upload step in the existing floor job emitted by gunbc.compiler_gate_workflow under gunbc.witness_floor_workflow required_floor_claim_cost_artifact_name -- an emission change, not a new job. (2) The REST transport carries a binary body and an inflate reader can take one member out of one upload-artifact zip. Together these are SUFFICIENT FOR collect_qualification_instruments to read ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same collected run through parse_claim_cost_tsv, and for qualification_instrument_source to place both on that read. NOT satisfied by either capability alone, by the [over-cost] preview or any other truncated view, by a new print of eval_steps into the log, or by an artifact downloaded outside this route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.runner_throughput_qualification_route", decl_name: "mtcollins1_boot_leg"),

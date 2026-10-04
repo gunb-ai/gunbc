@@ -28,6 +28,12 @@ import extdeps.github.app
 import extdeps.github.actions_jit_runner
 import extdeps.github.actions_self_hosted_runners
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
+import extdeps.github.workflows
+import extdeps.github.workflows { WorkflowDispatchReceipt }
+import extdeps.github.workflow_runs
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
+import extdeps.github.actions_artifacts
+import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -293,4 +299,92 @@ fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmpty
 {
   let deleted = github.ActionsSelfHostedRunners.DeleteOrganizationRunner(installation_token: token.token, org: organization, runner_id: runner_id)
   classify_rest_outcome(standing: RestMutationExchange { rest: deleted.outcome })
+}
+
+// THE QUALIFICATION DISPATCH AND ITS READBACK, under the same controller installation token
+// (gunbc.runner.runner_qualification_dispatch). The dispatch is a mutation and is classified as one,
+// so a 5xx, a lost response or an undecodable 200 is commit-ambiguous rather than refused; the two
+// reads are reads. Each answer is sealed so the decision module receives only what GitHub returned.
+type WorkflowDispatchAnswer sole_constructor {
+  performance: RestExchangePerformance
+  receipt: WorkflowDispatchReceipt
+}
+
+fn dispatch_workflow_with(
+  token: ControllerInstallationToken,
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  workflow_id: NonEmptyStr,
+  git_ref: NonEmptyStr,
+  inputs: Map<String, String>,
+) -> WorkflowDispatchAnswer uses net: Network {
+  let answered = github.Workflows.CreateDispatch(
+    auth_token: token.token,
+    owner: owner as String,
+    repo: repo as String,
+    workflow_id: workflow_id as String,
+    ref: git_ref as String,
+    inputs: inputs,
+  )
+  WorkflowDispatchAnswer {
+    performance: classify_rest_outcome(standing: RestMutationExchange { rest: answered.outcome }),
+    receipt: WorkflowDispatchReceipt { workflow_run_id: answered.workflow_run_id, run_url: answered.run_url, html_url: answered.html_url },
+  }
+}
+
+type WorkflowRunRead sole_constructor {
+  performance: RestExchangePerformance
+  run: WorkflowRun
+}
+
+fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunRead uses net: Network {
+  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+  WorkflowRunRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), run: read.run }
+}
+
+type WorkflowAttemptJobsRead sole_constructor {
+  performance: RestExchangePerformance
+  jobs: WorkflowJobRunList
+}
+
+fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
+  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String, attempt_number: attempt)
+  WorkflowAttemptJobsRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), jobs: read.result }
+}
+
+// THE QUALIFICATION RUN'S OUTPUTS, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF. One job's
+// log (actions/download-job-logs-for-workflow-run, followed through its redirect by the bound REST
+// handler), the run's artifact listing, and one artifact's archive. Each answer is sealed beside its
+// classified performance, like the run and job reads above, so a consumer cannot pair a body with a
+// performance it did not come with. The archive is Bytes and today's handler reads bodies as text,
+// so a real download answers RestExchangeUndecodable (extdeps.github.actions_artifacts).
+type WorkflowJobLogRead sole_constructor {
+  performance: RestExchangePerformance
+  job_id: Int
+  log: String
+}
+
+fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, job_id: Int) -> WorkflowJobLogRead uses net: Network {
+  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: job_id as String)
+  WorkflowJobLogRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), job_id: job_id, log: read.log }
+}
+
+type WorkflowRunArtifactsRead sole_constructor {
+  performance: RestExchangePerformance
+  listed: ActionsArtifactList
+}
+
+fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunArtifactsRead uses net: Network {
+  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+  WorkflowRunArtifactsRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), listed: read.result }
+}
+
+type ArtifactArchiveRead sole_constructor {
+  performance: RestExchangePerformance
+  artifact_id: Int
+}
+
+fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
+  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: artifact_id as String)
+  ArtifactArchiveRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), artifact_id: artifact_id }
 }

@@ -239,7 +239,7 @@ data mtcollins1_registration_leg: RouteLegStanding = LegAuthorityImplemented {
 
 data mtcollins1_dispatch_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-  wiring_owed: "the gunbc.fleet_converge_workflow mode that lands with the boot leg: a route fold calling dispatch_qualification_floor with a QualificationWorkflowTarget naming the qualification workflow, whose workflow_dispatch declares qualification_attempt_dispatch_input and whose runs-on reads it, then collect_qualification_run over the DispatchedQualificationRun it returns; SUFFICIENT FOR the floor run of each attempt being served only by that attempt's registration and read back as collected or as a typed refusal" as NonEmptyStr,
+  wiring_owed: "the gunbc.fleet_converge_workflow mode that lands with the boot leg: a floor job in fleet_converge_workflow whose runs-on is exactly the qualification_attempt_dispatch_input it declares, and a route fold that takes the slot host's unit hold, mints the registration, builds qualification_dispatch_subject from it, calls dispatch_qualification_floor and then collect_qualification_run over the DispatchedQualificationRun it returns, reconciling a commit-ambiguous dispatch before any retry; SUFFICIENT FOR the floor run of each attempt being served only by the runner minted for that attempt and read back as collected or as a typed refusal" as NonEmptyStr,
 }
 
 data mtcollins1_deregistration_leg: RouteLegStanding = LegAuthorityImplemented {

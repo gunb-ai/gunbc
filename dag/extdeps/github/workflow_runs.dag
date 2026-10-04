@@ -177,13 +177,6 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // original ground, which was right both times. DESIGN section 4c is the rule: an annotation is
 // never evidence that a machine claim holds.
 //
-// RETURNED 2026-10-04 WITH ITS CONSUMER IN THE SAME CHANGE, exactly as the trigger below required:
-// gunbc.runner.runner_qualification_dispatch designated_floor_job reads it to find the one job a
-// JIT-registered runner ran, by the name the authorized mint fixed (JitRegistration name). Upstream
-// publishes runner_name as nullable -- null until a runner takes the job -- so it is optional here,
-// and every record in this tree written before the field returned carries none rather than a
-// guessed name.
-//
 // The example survives the deletion because it is the part that was worth keeping.
 // "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's fleet, so any
 // provenance reading with two arms folds a paying provider customer in with a team running its own
@@ -202,6 +195,11 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
+// runner_name IS WHICH RUNNER TOOK THE JOB, a third fact beside the declared runs-on and the
+// observed labels: two runners can carry identical labels, and the runner's name is what a JIT
+// registration fixes before GitHub answers (gunbc.runner.runner_qualification_dispatch job_ran_on
+// joins on it). Upstream publishes it as nullable -- null until a runner takes the job -- and every
+// record in this tree written before the field existed carries none rather than a guessed name.
 type WorkflowJobRun {
   id: Int
   run_id: Int
