@@ -88,31 +88,19 @@ test fn a_row_adds_its_interpreted_contract_to_the_claim_runs() -> Bool {
     && !names_the_interpreted_contract(runs: declared)
 }
 
-fn row_contract_is_a_floor_claim(cfg: ModuleBehavioralTransportConfig) -> Bool {
+fn row_contract_is_under_the_contract_directory(cfg: ModuleBehavioralTransportConfig) -> Bool {
   string_contains(s: cfg.driver.contract_entry_rel, pattern: "src/v2/test/claim/self_host_contract/")
     && string_contains(s: cfg.driver.contract_module, pattern: "v2.test.claim.self_host_contract.")
     && cfg.driver.contract_function != ""
 }
 
-fn row_contract_declares_the_long_home(cfg: ModuleBehavioralTransportConfig) -> Bool {
-  string_contains(s: cfg.driver.contract_entry_rel, pattern: "src/v2/test/claim/long/")
-    && string_contains(s: cfg.driver.contract_module, pattern: "v2.test.claim.long.")
-    && cfg.driver.contract_function != ""
-}
-
 // The real roster inhabits the carrier: every row names a contract module and function, and no
 // two rows share one. A row with an empty contract, or two rows pointed at one contract, would
-// make a held verdict say nothing about its own subject. Fourteen contracts are floor claims; the
-// one that declares the long home is program_assembly, whose single assembly costs the floor's
-// whole per-claim budget, and it is named here so a second row drifting off the floor is a red.
+// make a held verdict say nothing about its own subject.
 test fn every_roster_row_names_its_own_contract() -> Bool {
   let rows = compiler_module_behavioral_transport_roster
   (rows |> count) == 15
-    && (rows |> filter(cfg => row_contract_is_a_floor_claim(cfg: cfg)) |> count) == 14
-    && (rows
-      |> filter(cfg => row_contract_declares_the_long_home(cfg: cfg)
-        && cfg.module_path == "src/v2/compiler/program_assembly.dag")
-      |> count) == 1
+    && (rows |> filter(cfg => row_contract_is_under_the_contract_directory(cfg: cfg)) |> count) == 15
     && (rows
       |> filter(cfg => (rows |> filter(other => other.driver.contract_function == cfg.driver.contract_function) |> count) == 1)
       |> count) == 15

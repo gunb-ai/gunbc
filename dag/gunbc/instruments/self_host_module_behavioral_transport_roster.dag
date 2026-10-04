@@ -190,8 +190,8 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_assembly.dag",
     driver: CsslWitnessDriver {
-      contract_entry_rel: "src/v2/test/claim/long/program_assembly_emitted_contract_test.dag",
-      contract_module: "v2.test.claim.long.program_assembly_emitted_contract",
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_assembly_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.program_assembly_emitted_contract",
       contract_function: "program_assembly_emitted_contract_holds"
     },
     pass_marker: "SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS",

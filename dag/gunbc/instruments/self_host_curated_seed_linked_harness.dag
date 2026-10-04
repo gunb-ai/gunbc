@@ -343,6 +343,11 @@ fn cssl_contract_driver_main_source(
 // that moved the emitted contract and its subject together shows up as disagreement here. The
 // claim's name is the contract function's plus a fixed suffix, so a contract module that does not
 // declare it fails the claim run and the row has no verdict.
+//
+// The named function is usually also a floor claim (a test fn), which adds a per-change
+// interpreted run; it need not be. The claim run executes it by name either way, and one contract
+// (program_assembly) is deliberately not a floor claim because a single assembly costs the floor's
+// whole per-claim budget -- its note says so.
 fn cssl_contract_interpreted_claim_function(contract_function: String) -> String {
   concat(contract_function, "_and_its_planted_fault_does_not")
 }
