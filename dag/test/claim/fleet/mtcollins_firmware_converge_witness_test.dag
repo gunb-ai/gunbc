@@ -47,7 +47,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SelSnapshotReadi
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
+import gunbc.machine_intake_ampere_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
