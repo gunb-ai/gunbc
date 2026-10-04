@@ -3236,15 +3236,7 @@ fn infer_judge_declared_position(
             reason: undecidable_argument_type_not_derived()
           )
         Holds { value: produced } =>
-          let obligation = DeclaredTypeObligation {
-            position: position,
-            parameter_identity: formal.parameter_identity,
-            declared: infer_type_alias_normalized(t: infer_declared_type_denotation(declared: formal.declared), declarations: declarations),
-            produced: infer_type_alias_normalized(t: produced, declarations: declarations),
-            produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
-            application: application,
-            type_variables: type_params
-          }
+          let obligation = infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: formal.declared), produced: produced, application: application, type_variables: type_params, declarations: declarations)
           match declared_type_inhabitance(obligation: obligation) {
             Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
             InhabitanceUndecidable { reason: reason } =>
@@ -3414,6 +3406,34 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
   }
 }
 
+// THE ONE PRODUCER OF A DeclaredTypeObligation in infer: every obligation -- a call argument, a declared return, a
+// fold member or carrier, a generic formal -- is built here, so the ONE alias rule (infer_type_alias_normalized)
+// reaches every judgment: the declared type, the produced type and the produced type's refinement carrier are
+// all presented with transparent aliases unfolded. The carrier is READ from the produced type as written (a
+// refinement is never unfolded, so its declaration is still the one found), then normalized like the rest.
+fn infer_declared_type_obligation(
+  position: DeclaredTypePosition,
+  parameter_identity: Symbol,
+  declared: Node,
+  produced: Node,
+  application: Node,
+  type_variables: List<Symbol>,
+  declarations: SymbolIndex
+) -> DeclaredTypeObligation {
+  DeclaredTypeObligation {
+    position: position,
+    parameter_identity: parameter_identity,
+    declared: infer_type_alias_normalized(t: declared, declarations: declarations),
+    produced: infer_type_alias_normalized(t: produced, declarations: declarations),
+    produced_declared_carrier: match refinement_declared_carrier(index: declarations, source_type: produced) {
+      Present { value: c } => Present { value: infer_type_alias_normalized(t: c, declarations: declarations) }
+      Absent => Absent
+    },
+    application: application,
+    type_variables: type_variables
+  }
+}
+
 // A REFINEMENT IS NOT A TRANSPARENT ALIAS. `type Pos = Int where positive` -- and a nominal brand, which is
 // spelled the same way (`where brand(..)`, std.types WherePredicateMarker) -- denotes a type distinct from its
 // carrier, so it never unfolds: normalizing it would admit a raw carrier where the refined or branded type is
@@ -3495,15 +3515,7 @@ fn infer_judge_generic_formal(
         InferFormalShapeMismatch =>
           outcome_rejected(
             application_argument_does_not_inhabit_diagnostic(
-              obligation: DeclaredTypeObligation {
-                position: position,
-                parameter_identity: formal.parameter_identity,
-                declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)),
-                produced: produced,
-                produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
-                application: application,
-                type_variables: type_params
-              },
+              obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations),
               find_witness_reason: ^find_witness_reason_no_candidate
             )
           )
@@ -6019,15 +6031,7 @@ fn infer_fold_member_formal_frame(frame: InferFrame, formal: FoldMemberFormal, m
 }
 
 fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, member: Node, step: Node, resolved: ResolvedTree) -> InferFrame {
-  let obligation = DeclaredTypeObligation {
-    position: PositionDirectCallArgument,
-    parameter_identity: formal.formal.name,
-    declared: infer_declared_type_denotation(declared: formal.formal.type_node),
-    produced: member,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: member),
-    application: formal.formal.type_node,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: PositionDirectCallArgument, parameter_identity: formal.formal.name, declared: infer_declared_type_denotation(declared: formal.formal.type_node), produced: member, application: formal.formal.type_node, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, entering: InferFrameEnteredPlain }
     InhabitanceUndecidable { reason: _ } =>
@@ -6152,15 +6156,7 @@ fn infer_fold_bind_check(node: Node, entries: List<InferredFactsEntry>, resolved
 }
 
 fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolved: ResolvedTree) -> Outcome<Bool> {
-  let obligation = DeclaredTypeObligation {
-    position: position_declared_return(),
-    parameter_identity: ^fold_carrier,
-    declared: infer_declared_type_denotation(declared: declared),
-    produced: produced,
-    produced_declared_carrier: refinement_declared_carrier(index: resolved.resolved_declarations, source_type: produced),
-    application: at,
-    type_variables: type_param_names(n: step)
-  }
+  let obligation = infer_declared_type_obligation(position: position_declared_return(), parameter_identity: ^fold_carrier, declared: infer_declared_type_denotation(declared: declared), produced: produced, application: at, type_variables: type_param_names(n: step), declarations: resolved.resolved_declarations)
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
