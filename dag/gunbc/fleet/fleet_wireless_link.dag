@@ -20,7 +20,7 @@ import extdeps.networkmanager.nmcli {
   nmcli_connection_property_get_argv, nmcli_wireless_powersave_modify_argv,
 }
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_intent_network {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11,
@@ -105,6 +105,7 @@ type WirelessLinkObservation {
 fn argv_run_failure(run: ArgvRun) -> String? {
   match run {
     ArgvLegDidNotRun { cause: c } => Present { value: join(["leg did not run: ", c], "") }
+    ArgvLegMayHaveRun { cause: c } => Present { value: join(["leg may have run, no result received (read back before retrying): ", c], "") }
     ArgvRan { exit_code: code, stdout: _, stderr: err } =>
       if code != 0 { Present { value: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } } else { none }
   }
@@ -113,6 +114,7 @@ fn argv_run_failure(run: ArgvRun) -> String? {
 fn argv_run_stdout(run: ArgvRun) -> String {
   match run {
     ArgvLegDidNotRun { cause: _ } => ""
+    ArgvLegMayHaveRun { cause: _ } => ""
     ArgvRan { exit_code: _, stdout: o, stderr: _ } => o
   }
 }

@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.content_hash { content_hash_atom }
 import product.placement_supply { HostIdentity }
 import std.algebra { trim }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -63,41 +63,47 @@ type SparkRemoteRun
   = RemoteRan { exit_code: Int, stdout: String, stderr: String }
   | RemoteUnreachable { cause: String, reach: SparkLegUnreachability }
 
-// WHY A LEG DID NOT RUN, TYPED, AND THE ARM THAT IS DELIBERATELY ABSENT. Every Spark reaches the
-// executor only over its management Wi-Fi (wlP9s9). On 2026-10-03 that link went dark on srv8 and
+// WHY A LEG'S RESULT DID NOT ARRIVE, TYPED, AND THE TWO CLAIMS IT DOES NOT MAKE. Every Spark reaches
+// the executor only over its management Wi-Fi (wlP9s9). On 2026-10-03 that link went dark on srv8 and
 // Group B spark-3336 (NetworkManager left it DISCONNECTED after a failed 4-way handshake) and srv7
 // stayed associated but forwarded nothing 05:33-06:53 EDT; none of the hosts rebooted or wedged, yet
-// the runs reported them as down. From ONE ssh leg the executor cannot tell a dark LAN leg from a host
-// that is off: both are a connect that times out or a session that stops answering. So there is no
-// HostDown arm here -- this boundary holds no observation that grounds it, and minting one is the
-// over-assertion DESIGN §4d forbids. What it CAN say, and now says by name:
+// the runs reported them as down.
 //
-//   LegNotAttempted  -- nothing was sent: no endpoint, an inexpressible command, a refused password
-//                       prerequisite. A fact about this run, not about the host or the LAN.
-//   LegNeverBegan    -- ssh exited with its own 255 and the remote shell never reported beginning
-//                       (spark_remote_leg_began_word). The LAN leg is dark OR the host is down,
-//                       UNDECIDED. The FIRST settling readback is a probe of the host's fabric-rail
-//                       address (enp1s0f1np1, 192.168.110.x) from a same-group peer: rail answers ->
-//                       LAN dark, host up; rail dark too -> host down or both links down, still
-//                       undecided. Uptime and the wlP9s9 NetworkManager journal come after, since they
-//                       need a session. This is how the 2026-10-03 incident was closed by hand, as
-//                       LAN-dark every time. NEXT RUNG: an automatic rail-jump classifier with its own
-//                       consumer turns LegNeverBegan into LanLegDark / RailAlsoDark; not built here.
+//   LegNotAttempted     -- nothing was sent: no endpoint, an inexpressible command, a refused password
+//                          prerequisite. The only arm that may be read as "did not run".
+//   LegBeginUnobserved  -- ssh exited with its own 255 and the remote shell's began-line
+//                          (spark_remote_leg_began_word) never ARRIVED. That is not "never began": the
+//                          marker and the command travel in one unacknowledged stream, so the path can
+//                          go dark after the shell wrote the marker, or after the command started,
+//                          before the marker reached the client. The command MAY HAVE RUN.
 //
-// A leg that BEGAN and then lost its session is not here: it ran to an unknown point, so it stays
-// RemoteRan with ssh's 255 -- retrying it as if nothing ran is the opposite, non-idempotent decision
-// (gunbc.recurring_failure_mode an_unreached_effect_leg_reads_as_one_that_ran_and_refused).
+// FIRST CLAIM NOT MADE: "host down". From one leg the executor cannot tell a dark LAN leg from a host
+// that is off (DESIGN §4d), so there is no HostDown arm. The FIRST settling readback is a probe of the
+// host's fabric-rail address (enp1s0f1np1, 192.168.110.x) from a same-group peer: rail answers -> LAN
+// dark, host up; rail dark too -> host down or both links down, still undecided. Uptime and the wlP9s9
+// NetworkManager journal come after, since they need a session. This is how the 2026-10-03 incident
+// was closed by hand, as LAN-dark every time.
+//
+// SECOND CLAIM NOT MADE: "did not run". spark_remote_argv_run projects LegBeginUnobserved to
+// ArgvLegMayHaveRun, never ArgvLegDidNotRun, so an effect consumer reads the host back before retrying
+// a non-idempotent effect.
+//
+// NEXT RUNGS, not built here: (1) a two-phase protocol -- the client receives an acknowledgement before
+// it sends the effect command -- after which a NeverBegan arm is supportable; (2) an automatic
+// rail-jump classifier with its own consumer, splitting LegBeginUnobserved into LAN-dark-host-up vs
+// rail-also-dark.
 type SparkLegUnreachability
   = LegNotAttempted { cause: String }
-  | LegNeverBegan { endpoint: String, stderr: String }
+  | LegBeginUnobserved { endpoint: String, stderr: String }
 
 fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
   match u {
     LegNotAttempted { cause: c } => c
-    LegNeverBegan { endpoint: e, stderr: err } =>
+    LegBeginUnobserved { endpoint: e, stderr: err } =>
       join([
-        "the ssh leg to ", e, " never began (ssh exit 255, no remote began-line): management LAN leg dark ",
-        "or host down, UNDECIDED from this leg -- settle it first by probing the host's fabric-rail address from a same-group peer, then uptime and the wlP9s9 journal; stderr=",
+        "the ssh leg to ", e, " lost its session before the remote began-line arrived (ssh exit 255): the command MAY HAVE RUN; ",
+        "management LAN leg dark or host down, UNDECIDED from this leg -- settle it first by probing the host's fabric-rail address ",
+        "from a same-group peer, then uptime and the wlP9s9 journal; stderr=",
         err,
       ], "")
   }
@@ -121,11 +127,11 @@ fn spark_remote_leg_command_stdout(stdout: String) -> String {
 }
 
 // THE READING OF ONE LANDED SESSION RESULT, pure so a witness can supply the result rather than a
-// host. 255 with no began-line is the only case read as unreached; 255 WITH a began-line is a
-// command that ran (or a session lost after it began) and is reported as ran.
+// host. 255 with no began-line received is LegBeginUnobserved (may have run); 255 WITH a began-line
+// is a command that ran (or a session lost after it began) and is reported as ran.
 fn spark_remote_run_of_session(endpoint: String, exit_code: Int, stdout: String, stderr: String) -> SparkRemoteRun {
   if exit_code == ssh_client_error_exit_status && !spark_remote_leg_reported_began(stdout: stdout) {
-    spark_remote_unreachable(u: LegNeverBegan { endpoint: endpoint, stderr: trim(s: stderr) })
+    spark_remote_unreachable(u: LegBeginUnobserved { endpoint: endpoint, stderr: trim(s: stderr) })
   } else {
     RemoteRan { exit_code: exit_code, stdout: spark_remote_leg_command_stdout(stdout: stdout), stderr: trim(s: stderr) }
   }
@@ -840,9 +846,17 @@ fn spark_materialize_seed(
 // declares that container as host-effect residue, and the fleet agent cannot read the docker socket,
 // so the lane hands this leg to gunbc.spark.host_commitment release_host_effect_live_over /
 // host_effect_recover_over and its release observes with the privilege its effect used.
+// THE PROJECTION, and the arm it must not take: only a leg that sent nothing is ArgvLegDidNotRun.
+fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -> ArgvRun {
+  match reach {
+    LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
+    LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
+  }
+}
+
 fn spark_remote_argv_run(ctx: SparkMaterializeContext, argv: List<String>) -> ArgvRun {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: why, reach: _ } => ArgvLegDidNotRun { cause: why as String }
+    RemoteUnreachable { cause: why, reach: r } => spark_argv_run_of_unreachable(cause: why, reach: r)
     RemoteRan { exit_code: c, stdout: o, stderr: e } => ArgvRan { exit_code: c, stdout: o, stderr: e }
   }
 }
