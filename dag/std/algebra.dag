@@ -416,7 +416,7 @@ fn collection_all_shape() -> AlgebraFieldTemplate {
 }
 
 // THE FREE-MONOID CONCATENATION, NAMED so a v2 call head binds to it: v2.compiler.fold_lowering
-// collection_roster_rows carries it as a RosterPrimitiveCall row, and v2.compiler.infer types the call by
+// collection_roster_rows carries it as a RosterFreeMonoidPrimitiveCall row, and v2.compiler.infer types the call by
 // this row's param_types/return_type with ReceiverSelf instantiated at the free monoid. The realization is
 // the declared primitive (std.primitives concat_contract), whose persistent-carrier cost log(n + m) is the
 // cost authority; this row's ShapeLinearScan disagrees with it, and that is
