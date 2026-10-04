@@ -75,3 +75,7 @@ The geometry is not fully generalized yet: the current realization remains the f
 ## Consolidation
 
 PR #13295 becomes the main-targeted cassette design PR and includes #13222's joinery ancestry. #13283's extra-frame design is superseded by the integrated-column direction and is not merged back. The print-day preparation/physical receipts are retained in this consolidated branch. Slicing (#13223) and printer authorization (#13149 and its approval-client dependency) remain separate operational changes, preserving the earlier review's requested separation from mechanical design.
+
+### Feature-aware planning cells
+
+The shared allocator now accounts separately for outer edges, donor joints, rail/socket protrusions, front handles, brim and bed-edge clearance. Under the proposed process allowances it yields 3 × 4 for Jade/Collins, while preserving the Altra 2 × 2 split. See the current [completion queue](cassette-completion-tasks.md) for spans and validation boundaries. These counts replace the old blanket feature-budget estimate; larger-board solids are still required.

@@ -7,6 +7,7 @@ import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
+import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um}
 import product.printed_chassis.cassette_layout {CassetteLayout,current_layout}
 import product.printed_chassis.fan_mount {
   arctic_p8_fan_mount, FanMountAdmitted, FanMountBoreReachesMountingHoles, FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
@@ -24,7 +25,7 @@ data margin: Int = printed_configuration_layout.edge_margin
 data tray_w: Int = printed_configuration_layout.tray_width
 data tray_d: Int = printed_configuration_layout.tray_depth
 data panel_t: Int = 8000
-data seam: Int = 400
+data seam: Int = panel_seam_um
 data panel_w: Int = (tray_w-seam)/2
 data panel_d: Int = (tray_d-seam)/2
 data bay_pitch: Int = 140000
@@ -43,14 +44,14 @@ fn lap_joints() -> List<LapJoint> {
  let cz=(tray_d+seam)/4
  let dx=panel_w/2-36000
  let dz=panel_d/2-36000
- [LapJoint {id:"rear-row",donor:"P1",receiver:"P2",x:9500-seam/2,z:0-cz,along_x:true,span:dz,clamp_x:10000,clamp_z:0-cz+dz},
-  LapJoint {id:"front-row",donor:"P3",receiver:"P4",x:9500-seam/2,z:cz,along_x:true,span:dz,clamp_x:10000,clamp_z:cz+dz},
-  LapJoint {id:"left-column",donor:"P1",receiver:"P3",x:0-cx,z:9500-seam/2,along_x:false,span:dx,clamp_x:0-cx-dx,clamp_z:10000},
-  LapJoint {id:"right-column",donor:"P2",receiver:"P4",x:cx,z:9500-seam/2,along_x:false,span:dx,clamp_x:cx+dx,clamp_z:10000}]
+ [LapJoint {id:"rear-row",donor:"P1",receiver:"P2",x:lap_center_offset_um-seam/2,z:0-cz,along_x:true,span:dz,clamp_x:10000,clamp_z:0-cz+dz},
+  LapJoint {id:"front-row",donor:"P3",receiver:"P4",x:lap_center_offset_um-seam/2,z:cz,along_x:true,span:dz,clamp_x:10000,clamp_z:cz+dz},
+  LapJoint {id:"left-column",donor:"P1",receiver:"P3",x:0-cx,z:lap_center_offset_um-seam/2,along_x:false,span:dx,clamp_x:0-cx-dx,clamp_z:10000},
+  LapJoint {id:"right-column",donor:"P2",receiver:"P4",x:cx,z:lap_center_offset_um-seam/2,along_x:false,span:dx,clamp_x:cx+dx,clamp_z:10000}]
 }
 fn lap_features(j:LapJoint,receiver:Bool,cx:Int,cz:Int) -> List<Primitive> {
  let clearance=if receiver {joint_clearance} else {0}
- flat_map([-1,1],fn(sign){[block(w:(if j.along_x {21000} else {28000})+2*clearance,h:4000+2*clearance,d:(if j.along_x {28000} else {21000})+2*clearance,x:j.x-cx+(if j.along_x {0} else {sign*j.span}),y:2000,z:j.z-cz+(if j.along_x {sign*j.span} else {0}))]})
+ flat_map([-1,1],fn(sign){[block(w:(if j.along_x {lap_along_joint_um} else {28000})+2*clearance,h:4000+2*clearance,d:(if j.along_x {28000} else {lap_along_joint_um})+2*clearance,x:j.x-cx+(if j.along_x {0} else {sign*j.span}),y:2000,z:j.z-cz+(if j.along_x {sign*j.span} else {0}))]})
 }
 fn hole_y(d:Int,x:Int,z:Int) -> Primitive {round(diameter:d,length:50000,axis:Axis3Y,x:x,y:0,z:z)}
 fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
@@ -68,11 +69,11 @@ fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
   let half=(panel_d-65000-width)/2
   [block(w:width,h:12000,d:2*half,x:x,y:4000,z:0),round(diameter:width,length:12000,axis:Axis3Y,x:x,y:4000,z:half),round(diameter:width,length:12000,axis:Axis3Y,x:x,y:4000,z:0-half)]
  })
- let rails=[block(w:14000,h:4000,d:panel_d,x:sx*(panel_w/2-1000),y: -2000,z:0),block(w:6000,h:12000,d:panel_d,x:sx*(panel_w/2+2000),y:4000,z:0)]
- let handle=if sz==1 {[block(w:54800,h:8000,d:10000,x:sx*27600-cx,y:4000,z:tray_d/2+22000-cz),block(w:10000,h:8000,d:28000,x:sx*50000-cx,y:4000,z:tray_d/2+13000-cz)]} else {[]}
- let dock_x=sx*(tray_w/2-7000)-cx
+ let rails=[block(w:rail_foot_width_um,h:4000,d:panel_d,x:sx*(panel_w/2-rail_foot_inset_um),y: -2000,z:0),block(w:rail_wall_width_um,h:12000,d:panel_d,x:sx*(panel_w/2+rail_wall_offset_um),y:4000,z:0)]
+ let handle=if sz==1 {[block(w:54800,h:8000,d:handle_depth_um,x:sx*27600-cx,y:4000,z:tray_d/2+handle_center_from_edge_um-cz),block(w:10000,h:8000,d:handle_support_depth_um,x:sx*50000-cx,y:4000,z:tray_d/2+handle_support_center_from_edge_um-cz)]} else {[]}
+ let dock_x=sx*(tray_w/2-rear_socket_inset_um)-cx
  let dock_z=0-tray_d/2+24000-cz
- let socket=if sz== -1 {[block(w:27000,h:3000,d:42000,x:dock_x,y: -13500,z:dock_z),block(w:3000,h:11000,d:42000,x:dock_x-12000,y: -6500,z:dock_z),block(w:3000,h:11000,d:42000,x:dock_x+12000,y: -6500,z:dock_z)]} else {[]}
+ let socket=if sz== -1 {[block(w:rear_socket_width_um,h:3000,d:42000,x:dock_x,y: -13500,z:dock_z),block(w:rear_socket_wall_width_um,h:11000,d:42000,x:dock_x-(rear_socket_width_um-rear_socket_wall_width_um)/2,y: -6500,z:dock_z),block(w:rear_socket_wall_width_um,h:11000,d:42000,x:dock_x+(rear_socket_width_um-rear_socket_wall_width_um)/2,y: -6500,z:dock_z)]} else {[]}
  let pin=if sz== -1 {[hole_y(d:4400,x:dock_x,z:0-tray_d/2+22000-cz)]} else {[]}
  part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:panel_w,h:panel_t,d:panel_d,x:0,y:4000,z:0)],concat(laps,concat(rails,concat(handle,socket)))),cuts:concat(pockets,concat(vents,concat(clamps,pin))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Two keyed laps per seam register and carry shear; one M3 clamp per seam, four total. Rail and front handle features are integral. Rear sockets accept the slide-in support arms. Joint clearance is a proposal; first assembly is unpowered.")
 }

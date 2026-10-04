@@ -3,7 +3,7 @@ import std.types {Bool}
 import std.measure {micrometer,micrometer_count}
 import product.printed_chassis.cassette_profiles {mt_collins_profile,mt_jade_profile,altra_profile,gh200_p4261_profile}
 import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutlineKnown,BoardOutlinePending}
-import product.printed_chassis.cassette_layout {partition_layout,layout_from_outline,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline}
+import product.printed_chassis.cassette_layout {partition_layout,layout_from_outline,proposed_panel_print_policy,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline}
 import product.printed_chassis.board_mechanical_reference {jade_image_mount_reading,jade_raster_calibration,CandidateMountPixel,image_from_left_um,image_from_front_um,placement_admitted,mounting_reference_json,MountingReferencePending,ImageLocationReference,StandardLocationReference}
 import product.printed_chassis.platform_projects_review {platform_projects_review}
 import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
@@ -46,10 +46,12 @@ test fn whole_review_emits_mounting_evidence_for_every_profile() -> Bool {
  match platform_projects_review() {JsonArray {elements:e}=>count(e)>0 && all(e,p=>has_reference(v:p)) JsonObject {members:_}=>false JsonNull=>false JsonBool {value:_}=>false JsonNumber {lexeme:_}=>false JsonString {value:_}=>false}
 }
 fn columns_for(width:Int) -> Int {
- match partition_layout(layout:layout_from_outline(width_um:width,depth_um:200000,edge_margin_um:14000),bed_um:180000,feature_budget_um:30000) {TrayPartitionKnown {partition:p}=>p.columns TrayPartitionInvalid=>0 TrayPartitionNeedsOutline=>0}
+ match partition_layout(layout:layout_from_outline(width_um:width,depth_um:200000,edge_margin_um:14000),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>p.columns TrayPartitionInvalid=>0 TrayPartitionNeedsOutline=>0}
 }
 test fn partition_threshold_is_visible_at_one_micrometre_not_hidden_by_rounding() -> Bool {
- let boundary=3*(180000-30000)-2*14000
+ let a=proposed_panel_print_policy.along_width
+ let process=2*(a.brim_each_side_um+a.edge_clearance_each_side_um)
+ let boundary=3*(a.bed_um-process)-a.outer_low_um-a.outer_high_um-2*a.internal_low_um-2*a.internal_high_um-2*14000
  columns_for(width:boundary)==3 && columns_for(width:boundary+1)==4
 }
 

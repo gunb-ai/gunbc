@@ -1,7 +1,11 @@
 module product.printed_chassis.cassette_layout
 import std.types {Int,List}
 import std.nat {nat_range_inclusive}
-import std.measure {micrometer_count}
+import std.measure {micrometer_count,millimeter_count}
+import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
+import extdeps.printing.fdm {build_envelope_x,build_envelope_y}
+import product.printed_chassis.tray_panel_features {donor_joint_overhang_um,side_panel_overhang_um,front_handle_overhang_um}
+import product.printed_chassis.bed_partition {AxisPrintAllowance,allocate_axis,AxisAllocated,AxisAllocationInvalid,AxisAllocationNoFit}
 import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutlineKnown,BoardOutlinePending}
 import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth}
 type CassetteLayout {board_width:Int,board_depth:Int,edge_margin:Int,tray_width:Int,tray_depth:Int}
@@ -21,25 +25,41 @@ fn current_layout() -> CassetteLayout {
  layout_from_outline(width_um:micrometer_count(m:asrock_altrad8ud_extent_along_rear_io),depth_um:micrometer_count(m:asrock_altrad8ud_extent_depth),edge_margin_um:14000)
 }
 
-// Bed allocation includes an explicit budget for protruding joints, handles and brim.
-// This graph is shared across board profiles; solid realization still owes local keep-outs.
-type TrayCell {index:Int,column:Int,row:Int,x0_um:Int,x1_um:Int,z0_um:Int,z1_um:Int}
-type TrayEdge = AcrossColumns {donor:Int,receiver:Int} | AcrossRows {donor:Int,receiver:Int}
-type TrayPartition {columns:Int,rows:Int,cells:List<TrayCell>,edges:List<TrayEdge>,feature_budget_um:Int}
-type TrayPartitionReading = TrayPartitionKnown {partition:TrayPartition} | TrayPartitionInvalid | TrayPartitionNeedsOutline
-fn partition_layout(layout:CassetteLayout,bed_um:Int,feature_budget_um:Int) -> TrayPartitionReading {
- let usable=bed_um-feature_budget_um
- if usable<=0 || feature_budget_um<0 || layout.tray_width<=0 || layout.tray_depth<=0 {return TrayPartitionInvalid}
- let cols=(layout.tray_width+usable-1)/usable
- let rows=(layout.tray_depth+usable-1)/usable
- let cells=flat_map(nat_range_inclusive(lo:0,hi:rows-1),r=>map(nat_range_inclusive(lo:0,hi:cols-1),c=>TrayCell {index:r*cols+c,column:c,row:r,x0_um:c*layout.tray_width/cols,x1_um:(c+1)*layout.tray_width/cols,z0_um:r*layout.tray_depth/rows,z1_um:(r+1)*layout.tray_depth/rows}))
- let edges=flat_map(cells,c=>concat(if c.column+1<cols {[AcrossColumns {donor:c.index,receiver:c.index+1}]} else {[]},if c.row+1<rows {[AcrossRows {donor:c.index,receiver:c.index+cols}]} else {[]}))
- TrayPartitionKnown {partition:TrayPartition {columns:cols,rows:rows,cells:cells,edges:edges,feature_budget_um:feature_budget_um}}
+// The allocator accounts for the actual retained panel feature dimensions. The
+// new multi-cell solid generator must still realize and validate these envelopes.
+type TrayPrintPolicy {along_width:AxisPrintAllowance,along_depth:AxisPrintAllowance}
+fn panel_print_policy(brim_each_side_um:Int,edge_clearance_each_side_um:Int) -> TrayPrintPolicy {
+ TrayPrintPolicy {
+ along_width:AxisPrintAllowance {bed_um:1000*millimeter_count(m:build_envelope_x(e:a1_mini_build_envelope)),brim_each_side_um:brim_each_side_um,edge_clearance_each_side_um:edge_clearance_each_side_um,outer_low_um:side_panel_overhang_um(),outer_high_um:side_panel_overhang_um(),internal_low_um:0,internal_high_um:donor_joint_overhang_um()},
+ along_depth:AxisPrintAllowance {bed_um:1000*millimeter_count(m:build_envelope_y(e:a1_mini_build_envelope)),brim_each_side_um:brim_each_side_um,edge_clearance_each_side_um:edge_clearance_each_side_um,outer_low_um:0,outer_high_um:front_handle_overhang_um(),internal_low_um:0,internal_high_um:donor_joint_overhang_um()}
+ }
 }
-fn partition_profile(profile:CassetteProfile,edge_margin_um:Int,bed_um:Int,feature_budget_um:Int) -> TrayPartitionReading {
+// Proposed slicing allowances, not a statement about previously printed jobs.
+// A larger required brim must be supplied here and causes the layout to recompute.
+data proposed_panel_print_policy:TrayPrintPolicy = panel_print_policy(brim_each_side_um:2000,edge_clearance_each_side_um:500)
+type TrayCell {index:Int,column:Int,row:Int,x0_um:Int,x1_um:Int,z0_um:Int,z1_um:Int,print_width_um:Int,print_depth_um:Int}
+type TrayEdge = AcrossColumns {donor:Int,receiver:Int} | AcrossRows {donor:Int,receiver:Int}
+type TrayPartition {columns:Int,rows:Int,cells:List<TrayCell>,edges:List<TrayEdge>,policy:TrayPrintPolicy}
+type TrayPartitionReading = TrayPartitionKnown {partition:TrayPartition} | TrayPartitionInvalid | TrayPartitionNeedsOutline
+fn partition_layout(layout:CassetteLayout,policy:TrayPrintPolicy) -> TrayPartitionReading {
+ match allocate_axis(span_um:layout.tray_width,allowance:policy.along_width) {
+ AxisAllocationInvalid=>TrayPartitionInvalid AxisAllocationNoFit=>TrayPartitionInvalid
+ AxisAllocated {cells:xs}=>match allocate_axis(span_um:layout.tray_depth,allowance:policy.along_depth) {
+ AxisAllocationInvalid=>TrayPartitionInvalid AxisAllocationNoFit=>TrayPartitionInvalid
+ AxisAllocated {cells:zs}=>{
+ let cols=count(xs)
+ let rows=count(zs)
+ let cells=flat_map(enumerate(zs),r=>map(enumerate(xs),c=>TrayCell {index:r.first*cols+c.first,column:c.first,row:r.first,x0_um:c.second.start_um,x1_um:c.second.end_um,z0_um:r.second.start_um,z1_um:r.second.end_um,print_width_um:c.second.occupied_with_process_um,print_depth_um:r.second.occupied_with_process_um}))
+ let edges=flat_map(cells,c=>concat(if c.column+1<cols {[AcrossColumns {donor:c.index,receiver:c.index+1}]} else {[]},if c.row+1<rows {[AcrossRows {donor:c.index,receiver:c.index+cols}]} else {[]}))
+ TrayPartitionKnown {partition:TrayPartition {columns:cols,rows:rows,cells:cells,edges:edges,policy:policy}}
+ }
+ }
+ }
+}
+fn partition_profile(profile:CassetteProfile,edge_margin_um:Int,policy:TrayPrintPolicy) -> TrayPartitionReading {
  match layout_for(profile:profile,edge_margin_um:edge_margin_um) {
-  LayoutKnown {layout:l}=>partition_layout(layout:l,bed_um:bed_um,feature_budget_um:feature_budget_um)
-  LayoutNeedsBoardOutline=>TrayPartitionNeedsOutline
-  InvalidEdgeMargin=>TrayPartitionInvalid
+ LayoutKnown {layout:l}=>partition_layout(layout:l,policy:policy)
+ LayoutNeedsBoardOutline=>TrayPartitionNeedsOutline
+ InvalidEdgeMargin=>TrayPartitionInvalid
  }
 }

@@ -6,7 +6,7 @@ This is the current queue; dated gauge and rack-frame plans are historical. No n
 | ID | Task | Depends on | State |
 | --- | --- | --- | --- |
 | CAS-1 | Restore green required CI | — | Known declaration/catch-all failures corrected; validation pending |
-| CAS-2 | Finish shared cassette generation | CAS-1 | Shared profiles, layout and bed-allocation graph implemented; solid feature generalization open |
+| CAS-2 | Finish shared cassette generation | CAS-1 | Shared profiles and feature-aware minimum-cell allocation implemented; solid feature generalization open |
 | CAS-3 | Size rear fans from cassette opening | CAS-2 | Selector, keyed 140 mm rear mount and guard modeled; geometry checks pass; cooling/retention qualification open |
 | CAS-4 | Complete integrated stacking geometry | CAS-2, CAS-3 | Cassette-owned clip shoes, hollow posts and stack keys modeled; one/two-unit printed collision checks pass; load/retention qualification open |
 | CAS-5 | Complete power cassette and harness layout | CAS-2, CAS-4 | Electrical/interface planning exists; physical placement open |
@@ -19,7 +19,7 @@ Correct the source reference in the Bambu filament scope and explicitly enumerat
 
 ## CAS-2 — Shared cassette generation
 
-One profile-driven generator supports ALTRAD8UD, GH200 P4261 / 694-24261-000-100 K1, Mt. Collins and Mt. Jade. Profiles own component/mounting evidence and retained power/management assemblies. The shared partition graph divides the board-plus-margin footprint into cells with one edge per adjacent pair, reserving a declared bed budget for local features. Altra remains four cells; Jade requires 4 × 4 at 180 mm beds with a 30 mm feature allowance (the earlier 3 × 3 number was board-only).
+One profile-driven generator supports ALTRAD8UD, GH200 P4261 / 694-24261-000-100 K1, Mt. Collins and Mt. Jade. Profiles own component/mounting evidence and retained power/management assemblies. The shared partition graph divides the board-plus-margin footprint into cells with one edge per adjacent pair, accounting for joint, rail/socket, handle, brim and bed-edge envelopes separately. The allocator derives minimum axis counts and balances cuts, allowing edge cells to be narrower. With the proposed 2 mm brim and 0.5 mm bed-edge clearance per side, Altra remains four equal cells; Jade and Collins use 3 × 4 planning cells. The old blanket 30 mm deduction produced 4 × 4 and is superseded.
 
 Remaining: make the existing panel/joinery solid generator consume this graph, then parameterize supports, underside keep-outs, perimeter handles and sockets. Preserve the exact r06 Altra geometry as the printed compatibility fixture. The missing GH200 outline, provisional Collins outline and unverified mounting coordinates must not borrow Altra geometry or become printable through defaults. Accept when the same generator realizes both the Altra fixture and a larger synthetic profile, with bed/collision/mate checks and refusal controls.
 
@@ -67,4 +67,20 @@ Remaining before fabrication release: complete power and cable reservations, con
 
 ## Provisional board references — 4 October 2026
 
-The operator supplied a mechanical-source survey and authorized provisional inference. [Reference ledger](cassette-board-mechanical-references.md) records 13 Jade candidate mount positions derived from OCP Figure 1 and a separate provisional Collins outline (424.2 mm width × 512 mm depth). Collins now gets a 4 × 4 planning partition from the shared kernel. Hole-map completeness, feature identity and later verification remain explicit; no Jade pattern is substituted for Collins.
+The operator supplied a mechanical-source survey and authorized provisional inference. [Reference ledger](cassette-board-mechanical-references.md) records 13 Jade candidate mount positions derived from OCP Figure 1 and a separate provisional Collins outline (424.2 mm width × 512 mm depth). Collins now gets a 3 × 4 planning partition from the shared feature-aware allocator under the proposed process allowances. Hole-map completeness, feature identity and later verification remain explicit; no Jade pattern is substituted for Collins.
+
+## Feature-aware cell allocation — 4 October 2026
+
+`bed_partition` owns the axis allocation calculation, used both for board-only counts and actual panel-envelope planning. For two or more cells, capacity is first + last + (count − 2) × interior; this gives the minimum count directly. A logarithmic balancing search chooses cut widths, saturating constrained edge cells first. Integer remainders preserve exact coverage, and zero-width cells refuse. No repeated growing-list concatenation is used.
+
+`tray_panel_features` owns the existing joint/rail/socket/handle dimensions; the retained Altra CAD and the allocator both read these values. This preserves the existing solids while removing the separate feature-budget estimate. `platform_projects_review` emits every cell's panel span and print envelope, including the proposed brim and bed-edge clearances.
+
+| Profile | Planning grid | Column spans, mm | Row span, mm | Adjacent joins |
+| --- | --- | --- | --- | --- |
+| Altra | 2 × 2 | 135.92 / 135.92 | 147.35 | 4 |
+| Collins | 3 × 4 | 148.5 / 151.85 / 151.85 | 135 | 17 |
+| Jade | 3 × 4 | 148.5 / 153.75 / 153.75 | 126.84 | 17 |
+
+This is 12 planned panels instead of 16 for Collins/Jade, and 17 adjacent joins instead of 24. It is the minimum axis-aligned grid under the declared side envelopes, not an unrestricted nesting optimum. A different brim, bed, feature envelope or board outline recomputes the count. Multi-cell solid realization remains open; no change to printer jobs or to fabrication admission follows from this plan.
+
+Validation of this allocator change: six allocation checks, eight mechanical-reference/emitter checks and five platform checks passed. The combined review emitter succeeded. All 34 Altra part descriptions and its emitted CAD program are identical to the prior reviewed bundle, including P1–P4. Full required CI remains separate and pending.
