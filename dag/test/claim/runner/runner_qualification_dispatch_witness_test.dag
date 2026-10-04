@@ -2,11 +2,12 @@ module test.claim.runner_qualification_dispatch_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
 }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, qualification_instruments }
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.runner.runner_qualification_dispatch {
   qualification_attempt_dispatch_input, qualification_dispatch_inputs,
@@ -14,6 +15,21 @@ import gunbc.runner.runner_qualification_dispatch {
   RunReadUnreadable, RunNotCompleted, RunCompletedWithoutConclusion, RunJobsUnreadable,
   RunJobsTruncated, RunNeverReachedAttemptRunner,
   conclude_qualification_run, qualification_run_collected,
+  AttemptJobLog, AttemptJobLogRead, AttemptJobLogUnreadable,
+  QualificationInstrumentExtraction, QualificationInstrumentsRead, QualificationInstrumentsRefused, QualificationRunNotCollected,
+  QualificationLogReadings, JobLogUnreadable, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
+  FloorPhaseRowsAbsent, SlotCgroupLevelAbsent,
+  extract_qualification_instruments, qualification_instrument_read_from_job_log,
+  ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
+  ClaimCostArchiveUnreadable, ClaimCostArchiveNotInflatable,
+  conclude_claim_cost_listing, conclude_claim_cost_download,
+  qualification_instrument_extraction_frontier_rows,
+}
+import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited }
+import std.measure { byte_size_count }
+import test.fixture.recorded_required_floor_log_excerpt {
+  recorded_required_floor_log_excerpt, recorded_floor_log_job_id, recorded_floor_log_slot_unit,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -84,15 +100,12 @@ fn conclude(run_completed: Bool, concluded: Bool, js: WorkflowJobRunList) -> Qua
 }
 
 // THE POSITIVE CONTROL: a completed run whose job was taken under the attempt label is collected,
-// its conclusion is the one read back (a FAILED floor is still collected and says so), and every
-// qualification_instrument is carried as unextracted -- the declared extraction frontier, not a
-// silent empty reading.
+// and its conclusion is the one read back (a FAILED floor is still collected and says so).
 test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion() -> Bool {
   match conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
-    QualificationRunCollected { attempt: a, run_id: r, conclusion: c, attempt_jobs: served, instruments_unextracted: u } =>
+    QualificationRunCollected { attempt: a, run_id: r, conclusion: c, attempt_jobs: served } =>
       a == attempt && r == 77 && count(served) == 1
         && (match c { Failure => true _ => false })
-        && count(u) == count(qualification_instruments)
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
@@ -145,6 +158,162 @@ test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
       jobs_outcome: RestTransportRefused { cause: "unreached" }, jobs: jobs(js: []),
     ) {
       QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsUnreadable { outcome: _ } } => true
+      _ => false
+    })
+}
+
+// ── EXTRACTION, OVER SUPPLIED LOGS ─────────────────────────────────────────────────────────────
+//
+// These claims are about extract_qualification_instruments alone, so the collection and the logs are
+// supplied values. The real producer's bytes are exercised once, by the inhabitance claim at the end.
+
+data no_claim_cost: ClaimCostArtifactRead = ClaimCostArtifactAbsent { names_seen: ["required-ci-measurement-receipt"] }
+
+data slot: NonEmptyStr = "gunbc-qualification-mtcollins1-q-20261004-1.service"
+
+fn served_collection() -> QualificationRunCollection {
+  conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: [attempt as String], started: true)]))
+}
+
+data phase_line: String = "2026-10-04T00:10:00.0000000Z [floor-phase] phase=gate-closure state=completed wall_ms=22194 prefixes=0"
+data started_line: String = "2026-10-04T00:09:00.0000000Z [floor-phase] phase=strict-preparation state=started"
+data slot_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-q-20261004-1.service max=17179869184 high=16106127360 current=8949473280 peak=10444185600 events=[low,0]"
+data slice_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice max=max high=max current=1 peak=364675248128"
+
+fn log_of(lines: List<String>) -> List<AttemptJobLog> {
+  [AttemptJobLogRead { job_id: 500, log: join(lines, "\n") }]
+}
+
+fn extract(lines: List<String>) -> QualificationInstrumentExtraction {
+  extract_qualification_instruments(collection: served_collection(), logs: log_of(lines: lines), claim_cost: no_claim_cost, slot_unit: slot)
+}
+
+test fn the_job_log_instruments_are_the_two_the_extraction_reads() -> Bool {
+  qualification_instrument_read_from_job_log(i: FloorPhaseRows)
+    && qualification_instrument_read_from_job_log(i: FloorCgroupRows)
+    && count(qualification_instruments |> filter(i => qualification_instrument_read_from_job_log(i: i))) == 2
+    && count(qualification_instrument_extraction_frontier_rows) == 3
+}
+
+// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, and only the slot's own level
+// is taken as the cgroup reading -- the slice above it has a larger peak and must not be read as the
+// slot's.
+test fn a_log_with_phase_rows_and_the_slot_level_is_read() -> Bool {
+  match extract(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]) {
+    QualificationInstrumentsRead { attempt: a, run_id: r, conclusion: _, readings: rd, claim_cost: cc } =>
+      a == attempt && r == 77
+        && (match cc { ClaimCostArtifactAbsent { names_seen: _ } => true _ => false })
+        && count(rd.floor_phase_rows) == 2
+        && count(rd.slot_cgroup_rows) == 1
+        && (rd.slot_cgroup_rows |> all(l => byte_size_count(b: l.peak) == 10444185600))
+    _ => false
+  }
+}
+
+test fn a_garbled_row_refuses_rather_than_being_skipped() -> Bool {
+  (match extract(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]) {
+    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorPhaseRowGarbledInLog { job_id: 500, line: _, cause: _ } } => true
+    _ => false
+  })
+    && (match extract(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]) {
+      QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorCgroupRowGarbledInLog { job_id: 500, line: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+test fn a_log_missing_either_reading_refuses_with_what_it_saw() -> Bool {
+  (match extract(lines: [started_line, slot_level_line]) {
+    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorPhaseRowsAbsent } => true
+    _ => false
+  })
+    && (match extract(lines: [phase_line, slice_level_line]) {
+      QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } } =>
+        u == slot && count(seen) == 1
+      _ => false
+    })
+}
+
+test fn an_unreadable_log_or_an_uncollected_run_reads_nothing() -> Bool {
+  (match extract_qualification_instruments(
+    collection: served_collection(),
+    logs: [AttemptJobLogUnreadable { job_id: 500, outcome: RestStatusRefused { status: 410, body: "Gone" } }],
+    claim_cost: no_claim_cost,
+    slot_unit: slot,
+  ) {
+    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: JobLogUnreadable { job_id: 500, outcome: _ } } => true
+    _ => false
+  })
+    && (match extract_qualification_instruments(
+      collection: conclude(run_completed: false, concluded: false, js: jobs(js: [])),
+      logs: log_of(lines: [phase_line, slot_level_line]),
+      claim_cost: no_claim_cost,
+      slot_unit: slot,
+    ) {
+      QualificationRunNotCollected { collection: _ } => true
+      _ => false
+    })
+}
+
+// ── INHABITANCE: THE REAL PRODUCER'S BYTES ─────────────────────────────────────────────────────
+//
+// The supplied lines above are designed against the row shapes; this claim is what keeps them
+// readings. It hands extract_qualification_instruments the verbatim [floor-phase] and [floor-cgroup]
+// lines claim_executor printed on a recorded required-floor run (test.fixture
+// recorded_required_floor_log_excerpt), under that run's real slot unit, and asserts the ROUTE as well
+// as the answer: every one of the 79 phase rows is read (none garbled, none dropped), the timed rows
+// carry the gate-closure wall the log printed, and of the 12 level rows only the 4 at the slot's own
+// level -- floor entry and three heartbeats -- are taken, with the slot's memory.high read as a byte
+// bound and floor entry's memory.peak as printed. If the host's row encoding moves, this goes red
+// while the designed fixtures above stay green.
+test fn the_extraction_reads_a_recorded_required_floor_log() -> Bool {
+  match extract_qualification_instruments(
+    collection: served_collection(),
+    logs: [AttemptJobLogRead { job_id: recorded_floor_log_job_id, log: recorded_required_floor_log_excerpt }],
+    claim_cost: no_claim_cost,
+    slot_unit: recorded_floor_log_slot_unit as NonEmptyStr,
+  ) {
+    QualificationInstrumentsRead { attempt: _, run_id: _, conclusion: _, readings: rd, claim_cost: _ } =>
+      count(rd.floor_phase_rows) == 79
+        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: ph, wall_ms: ms } => (ph as String) == "gate-closure" && ms == 22194 _ => false }))
+        && (rd.floor_phase_rows |> any(p => match p { FloorPhaseUntimed { phase: ph } => (ph as String) == "strict-preparation" _ => false }))
+        && count(rd.slot_cgroup_rows) == 4
+        && (rd.slot_cgroup_rows |> all(l => match l.high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 16106127360 _ => false }))
+        && (rd.slot_cgroup_rows |> any(l => (l.when as String) == "floor-entry" && byte_size_count(b: l.peak) == 10444185600))
+    _ => false
+  }
+}
+
+// ── THE CLAIM-COST READ'S REFUSALS ─────────────────────────────────────────────────────────────
+//
+// Every way the artifact read can end today is a typed arm, and none of them is a reading: the
+// listing truncated, the artifact absent (with the names that were there), expired, the archive
+// unreadable (the RestBodyUndecodable a zip body produces), or an archive that arrived with no
+// inflate reader to open it.
+fn artifact(name: String, expired: Bool) -> ActionsArtifact {
+  ActionsArtifact { id: 9001, name: name, size_in_bytes: 4096, archive_download_url: "https://api.github.com/x", expired: expired, created_at: none, expires_at: none }
+}
+
+test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
+  let present = ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: false)] }
+  (match conclude_claim_cost_listing(outcome: RestOk, listed: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-ci-measurement-receipt", expired: false)] }) {
+    Present { value: ClaimCostArtifactAbsent { names_seen: ns } } => count(ns) == 1
+    _ => false
+  })
+    && (match conclude_claim_cost_listing(outcome: RestOk, listed: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: true)] }) {
+      Present { value: ClaimCostArtifactExpired { artifact_id: 9001 } } => true
+      _ => false
+    })
+    && (match conclude_claim_cost_listing(outcome: RestOk, listed: ActionsArtifactList { total_count: 3, artifacts: [] }) {
+      Present { value: ClaimCostArtifactListTruncated { returned: 0, total: 3 } } => true
+      _ => false
+    })
+    && (match conclude_claim_cost_listing(outcome: RestOk, listed: present) { Absent => true _ => false })
+    && (match conclude_claim_cost_download(artifact_id: 9001, outcome: RestBodyUndecodable { status: 200, cause: "stream did not contain valid UTF-8" }) {
+      ClaimCostArchiveUnreadable { artifact_id: 9001, outcome: _ } => true
+      _ => false
+    })
+    && (match conclude_claim_cost_download(artifact_id: 9001, outcome: RestOk) {
+      ClaimCostArchiveNotInflatable { artifact_id: 9001 } => true
       _ => false
     })
 }

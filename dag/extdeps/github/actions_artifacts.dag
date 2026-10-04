@@ -1,0 +1,124 @@
+module extdeps.github.actions_artifacts
+
+import extdeps.github.github { default_api_base, max_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.credentials { EnvVar }
+import std.types { Bool, Bytes, Int, List, String, Timestamp }
+import std.resources { Network }
+
+// THE GITHUB ACTIONS ARTIFACTS REST API, as the upstream names it: "List workflow run artifacts"
+// (operationId actions/list-workflow-run-artifacts) and "Download an artifact"
+// (actions/download-artifact), docs.github.com/en/rest/actions/artifacts, read 2026-10-04.
+//
+// THE DOWNLOAD IS A REDIRECT TO A ZIP, AND BOTH HALVES ARE UPSTREAM FACTS. GitHub answers
+// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}` with `302 Found` and a
+// `Location` header naming a short-lived storage URL (about one minute), and `410 Gone` once the
+// artifact has expired; `archive_format` admits exactly `zip`, and the body at the Location is the
+// artifact as a zip archive -- upload-artifact always archives, even a single file. Following the
+// redirect is the bound REST realization's work, not this interface's: the seed handler
+// (v1_interpreter observe_rest_exchange, over ureq's redirect policy) follows it and decides on the
+// final response, so the response block below names the answer at the end of the redirect.
+//
+// THE ARCHIVE IS Bytes AND NO BOUND REALIZATION CAN YET CARRY IT. The REST handler reads every body
+// as UTF-8 text (RestBodyObservation carries body: String), so a zip arrives as a body that could not
+// be read and the call answers RestBodyUndecodable with the status it came under. That refusal is the
+// honest answer today and it is typed; reading a member out of the archive needs a binary body
+// carrier on the REST transport and an inflate reader, which is
+// the trigger of gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows'
+// parse_claim_cost_tsv row. Its production caller is that module's read_claim_cost_artifact.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/artifacts"
+  }
+}
+
+// The fields a reader of a run's artifacts asks of one: which artifact (id, name), how big, and
+// whether it can still be downloaded. `expired` is upstream's own flag; a download of an expired
+// artifact is answered 410, and a reader that checks the flag first refuses without the round trip.
+type ActionsArtifact {
+  id: Int
+  name: String
+  size_in_bytes: Int
+  archive_download_url: String
+  expired: Bool
+  created_at: Timestamp?
+  expires_at: Timestamp?
+}
+
+type ActionsArtifactList {
+  total_count: Int
+  artifacts: List<ActionsArtifact>
+}
+
+// `archive_format` IS A PATH SEGMENT WHOSE UPSTREAM VOCABULARY HAS ONE MEMBER, `zip`, so the path
+// carries it as the literal upstream spelling rather than as an input. An input would make every
+// other spelling representable, and a coproduct input interpolated into a path is rendered by the
+// seed with its AUTHORED variant name (the regression extdeps.github.workflow_runs
+// WorkflowJobAttemptFilter records), so neither would be more faithful than the literal.
+service github.Artifacts {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+  }
+
+  operation ListWorkflowRunArtifacts {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+      per_page: Int = max_per_page
+    }
+    output {
+      result: ActionsArtifactList
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/artifacts",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => ActionsArtifactList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+
+  operation DownloadArtifact {
+    requires Network
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      artifact_id: String
+    }
+    output {
+      archive: Bytes
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/artifacts/\{artifact_id\}/zip",
+      response_format: "Text"
+    }
+    response {
+      200 => Bytes
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      410 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+}

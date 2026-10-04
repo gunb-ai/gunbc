@@ -11,7 +11,21 @@ import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
-import gunbc.runner_throughput_qualification_route { QualificationInstrument, qualification_instruments }
+import gunbc.runner_throughput_qualification_route {
+  QualificationInstrument, qualification_instruments,
+  FloorPhaseRows, FloorCgroupRows, ClaimCostArtifactEvalSteps, CalibrationSpecimenWitnessLine,
+  GuestIdleMeminfoAndNproc, ConcurrentCohortSeatWindows,
+}
+import gunbc.required_ci_phase_roster {
+  FloorPhaseRow, FloorPhaseTimed, FloorPhaseUntimed, FloorPhaseRowReading, FloorPhaseRowRead, FloorPhaseRowGarbled,
+  read_floor_phase_row,
+}
+import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
+import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
+import gunbc.host_budget_source {
+  FloorCgroupLevelRow, FloorCgroupRowReading, FloorCgroupLevelRead, FloorCgroupRowGarbled,
+  read_floor_cgroup_level_row,
+}
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
@@ -102,15 +116,15 @@ type QualificationRunRefusal
   | RunJobsTruncated { returned: Int, total: Int }
   | RunNeverReachedAttemptRunner { job_labels: List<List<String>> }
 
-// INSTRUMENT EXTRACTION IS A DECLARED FRONTIER, carried on the collected arm as the instruments the
-// run was read for and not yet extracted from (qualification_instrument_extraction_frontier_rows).
+// A COLLECTED RUN IS A RUN THE ATTEMPT'S RUNNER SERVED, AND NOTHING YET ABOUT WHAT IT MEASURED. The
+// instruments are read from it afterwards (extract_qualification_instruments), because reading them
+// costs one log download per served job and that is only owed once the run is known to be this host's.
 type QualificationRunCollection
   = QualificationRunCollected {
       attempt: NonEmptyStr
       run_id: Int
       conclusion: WorkflowRunConclusion
       attempt_jobs: List<WorkflowJobRun>
-      instruments_unextracted: List<QualificationInstrument>
     }
   | QualificationRunRefused { attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal }
 
@@ -152,7 +166,6 @@ fn conclude_qualification_run(
                         run_id: run_id,
                         conclusion: conclusion,
                         attempt_jobs: served,
-                        instruments_unextracted: qualification_instruments,
                       }
                     }
                   }
@@ -167,7 +180,7 @@ fn conclude_qualification_run(
 
 fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
   match c {
-    QualificationRunCollected { attempt: _, run_id: _, conclusion: _, attempt_jobs: _, instruments_unextracted: _ } => true
+    QualificationRunCollected { attempt: _, run_id: _, conclusion: _, attempt_jobs: _ } => true
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
@@ -190,13 +203,271 @@ fn collect_qualification_run(
   )
 }
 
-// THE EXTRACTION FRONTIER, NAMED AT THE CAPABILITY GRAIN. Four instruments are run outputs and are
-// reached through the run's artifacts and job logs; two are not run outputs at all and their sources
-// are named here so the extraction leg does not go looking for them in the run.
+
+// ── EXTRACT: THE INSTRUMENTS READ FROM THE COLLECTED RUN ──────────────────────────────────────
+//
+// WHERE EACH INSTRUMENT IS READ FROM IS A TOTAL MATCH, so adding an instrument to
+// gunbc.runner_throughput_qualification_route QualificationInstrument refuses to compile here until it
+// says where its reading comes from. Two are this run's job log, read now. Two are this run's
+// required-floor-claim-cost artifact, whose read is attempted on every collection and today ends in a
+// typed refusal (read_claim_cost_artifact); two are not outputs of this run at all. Each of those four
+// is carried by a row below with the capability that would read it.
+type QualificationInstrumentSource
+  = ReadFromAttemptJobLog
+  | ReadFromClaimCostArtifact
+  | ReadFromBootLegReadback
+  | ReadFromCohortObservation
+
+fn qualification_instrument_source(i: QualificationInstrument) -> QualificationInstrumentSource {
+  match i {
+    FloorPhaseRows => ReadFromAttemptJobLog
+    FloorCgroupRows => ReadFromAttemptJobLog
+    ClaimCostArtifactEvalSteps => ReadFromClaimCostArtifact
+    CalibrationSpecimenWitnessLine => ReadFromClaimCostArtifact
+    GuestIdleMeminfoAndNproc => ReadFromBootLegReadback
+    ConcurrentCohortSeatWindows => ReadFromCohortObservation
+  }
+}
+
+fn qualification_instrument_read_from_job_log(i: QualificationInstrument) -> Bool {
+  match qualification_instrument_source(i: i) {
+    ReadFromAttemptJobLog => true
+    _ => false
+  }
+}
+
+// ONE SERVED JOB'S LOG, AS GITHUB ANSWERED IT. An unreadable log carries the RestOutcome it came with
+// -- a 410 for a log past retention, RestBodyUndecodable for a body the handler could not read whole --
+// and is never read as an empty log.
+type AttemptJobLog
+  = AttemptJobLogRead { job_id: Int, log: String }
+  | AttemptJobLogUnreadable { job_id: Int, outcome: RestOutcome }
+
+// THE READINGS. Phase rows are every [floor-phase] row the served jobs printed, timed and untimed, in
+// log order; the cgroup rows are only the [floor-cgroup] rows at the SLOT's own level, because the
+// levels above it (the runner slice, the system slice) are other subjects' memory and a qualification
+// of this slot must not take their peak for its own.
+type QualificationLogReadings {
+  floor_phase_rows: List<FloorPhaseRow>
+  slot_cgroup_rows: List<FloorCgroupLevelRow>
+}
+
+type InstrumentReadRefusal
+  = JobLogUnreadable { job_id: Int, outcome: RestOutcome }
+  | FloorPhaseRowGarbledInLog { job_id: Int, line: String, cause: NonEmptyStr }
+  | FloorCgroupRowGarbledInLog { job_id: Int, line: String, cause: NonEmptyStr }
+  | FloorPhaseRowsAbsent
+  | SlotCgroupLevelAbsent { slot_unit: NonEmptyStr, levels_seen: List<String> }
+
+type QualificationInstrumentExtraction
+  = QualificationInstrumentsRead {
+      attempt: NonEmptyStr
+      run_id: Int
+      conclusion: WorkflowRunConclusion
+      readings: QualificationLogReadings
+      claim_cost: ClaimCostArtifactRead
+    }
+  | QualificationInstrumentsRefused { attempt: NonEmptyStr, run_id: Int, refusal: InstrumentReadRefusal }
+  | QualificationRunNotCollected { collection: QualificationRunCollection }
+
+// One log's rows, or the first row that could not be read. A garbled row stops the read: a reading
+// assembled around a row it skipped would report a phase or a level as absent that the run printed.
+type JobLogRowsReading
+  = JobLogRowsRead { phases: List<FloorPhaseRow>, levels: List<FloorCgroupLevelRow> }
+  | JobLogRowsRefused { refusal: InstrumentReadRefusal }
+
+fn read_job_log_line(acc: JobLogRowsReading, job_id: Int, line: String) -> JobLogRowsReading {
+  match acc {
+    JobLogRowsRefused { refusal: _ } => acc
+    JobLogRowsRead { phases: ps, levels: ls } =>
+      match read_floor_phase_row(line: line) {
+        Present { value: FloorPhaseRowGarbled { line: l, cause: c } } =>
+          JobLogRowsRefused { refusal: FloorPhaseRowGarbledInLog { job_id: job_id, line: l, cause: c } }
+        Present { value: FloorPhaseRowRead { row: r } } => JobLogRowsRead { phases: list_push(ps, r), levels: ls }
+        Absent =>
+          match read_floor_cgroup_level_row(line: line) {
+            Present { value: FloorCgroupRowGarbled { line: l, cause: c } } =>
+              JobLogRowsRefused { refusal: FloorCgroupRowGarbledInLog { job_id: job_id, line: l, cause: c } }
+            Present { value: FloorCgroupLevelRead { row: r } } => JobLogRowsRead { phases: ps, levels: list_push(ls, r) }
+            Absent => acc
+          }
+      }
+  }
+}
+
+fn read_job_log_rows(acc: JobLogRowsReading, log: AttemptJobLog) -> JobLogRowsReading {
+  match acc {
+    JobLogRowsRefused { refusal: _ } => acc
+    JobLogRowsRead { phases: _, levels: _ } =>
+      match log {
+        AttemptJobLogUnreadable { job_id: j, outcome: o } => JobLogRowsRefused { refusal: JobLogUnreadable { job_id: j, outcome: o } }
+        AttemptJobLogRead { job_id: j, log: text } =>
+          fold(split(s: text, delimiter: "\n"), init: acc, f: (a, line) => read_job_log_line(acc: a, job_id: j, line: line))
+      }
+  }
+}
+
+fn level_is_slot(row: FloorCgroupLevelRow, slot_unit: NonEmptyStr) -> Bool {
+  ends_with(s: row.level as String, suffix: concat("/", slot_unit as String))
+}
+
+// THE SUPPLIED-INPUT BOUNDARY. Everything the extraction decides is decided here from the run's
+// collection and the logs as read; collect_qualification_instruments below is the only caller that
+// reaches the network, and it does nothing but read the logs and hand them in.
+fn extract_qualification_instruments(
+  collection: QualificationRunCollection,
+  logs: List<AttemptJobLog>,
+  claim_cost: ClaimCostArtifactRead,
+  slot_unit: NonEmptyStr,
+) -> QualificationInstrumentExtraction {
+  match collection {
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => QualificationRunNotCollected { collection: collection }
+    QualificationRunCollected { attempt: attempt, run_id: run_id, conclusion: conclusion, attempt_jobs: _ } =>
+      match fold(logs, init: JobLogRowsRead { phases: [], levels: [] }, f: (acc, l) => read_job_log_rows(acc: acc, log: l)) {
+        JobLogRowsRefused { refusal: r } => QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: r }
+        JobLogRowsRead { phases: phases, levels: levels } => {
+          let slot_levels = levels |> filter(l => level_is_slot(row: l, slot_unit: slot_unit))
+          let timed = phases |> filter(p => match p { FloorPhaseTimed { phase: _, wall_ms: _ } => true FloorPhaseUntimed { phase: _ } => false })
+          if count(timed) == 0 {
+            QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: FloorPhaseRowsAbsent }
+          } else if count(slot_levels) == 0 {
+            QualificationInstrumentsRefused {
+              attempt: attempt,
+              run_id: run_id,
+              refusal: SlotCgroupLevelAbsent { slot_unit: slot_unit, levels_seen: levels |> map(l => l.level as String) },
+            }
+          } else {
+            QualificationInstrumentsRead {
+              attempt: attempt,
+              run_id: run_id,
+              conclusion: conclusion,
+              readings: QualificationLogReadings { floor_phase_rows: phases, slot_cgroup_rows: slot_levels },
+              claim_cost: claim_cost,
+            }
+          }
+        }
+      }
+  }
+}
+
+fn read_attempt_job_log(target: QualificationWorkflowTarget, job: WorkflowJobRun) -> AttemptJobLog uses net: Network {
+  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(
+    auth_token: "",
+    owner: target.owner as String,
+    repo: target.repo as String,
+    job_id: job.id as String,
+  )
+  match read.outcome {
+    RestOk => AttemptJobLogRead { job_id: job.id, log: read.log }
+    other => AttemptJobLogUnreadable { job_id: job.id, outcome: other }
+  }
+}
+
+// THE CLAIM-COST ARTIFACT, READ AS FAR AS ANY BOUND REALIZATION CAN READ IT. It is looked up by the
+// name the floor workflow uploads it under (gunbc.witness_floor_workflow
+// required_floor_claim_cost_artifact_name), downloaded through GitHub's redirect, and every way that
+// can fail is its own arm. An archive that DID arrive is still not a reading: it is a zip, and no
+// inflate reader exists to take the TSV out of it, so that arm says so instead of passing bytes on
+// as if they were the TSV. There is deliberately no parsed arm yet; it lands with the capability the
+// parse_claim_cost_tsv row of qualification_instrument_extraction_frontier_rows names, at which point
+// this read hands the member to gunbc.floor_cost_distribution parse_claim_cost_tsv.
+type ClaimCostArtifactRead
+  = ClaimCostArtifactListUnreadable { outcome: RestOutcome }
+  | ClaimCostArtifactListTruncated { returned: Int, total: Int }
+  | ClaimCostArtifactAbsent { names_seen: List<String> }
+  | ClaimCostArtifactExpired { artifact_id: Int }
+  | ClaimCostArchiveUnreadable { artifact_id: Int, outcome: RestOutcome }
+  | ClaimCostArchiveNotInflatable { artifact_id: Int }
+
+fn claim_cost_artifact_listed(outcome: RestOutcome, listed: ActionsArtifactList) -> ActionsArtifact? {
+  match outcome {
+    RestOk => listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name) |> first
+    _ => none
+  }
+}
+
+fn conclude_claim_cost_listing(outcome: RestOutcome, listed: ActionsArtifactList) -> ClaimCostArtifactRead? {
+  match outcome {
+    RestOk =>
+      if count(listed.artifacts) != listed.total_count {
+        Present { value: ClaimCostArtifactListTruncated { returned: count(listed.artifacts), total: listed.total_count } }
+      } else {
+        match claim_cost_artifact_listed(outcome: outcome, listed: listed) {
+          Absent => Present { value: ClaimCostArtifactAbsent { names_seen: listed.artifacts |> map(a => a.name) } }
+          Present { value: a } =>
+            if a.expired { Present { value: ClaimCostArtifactExpired { artifact_id: a.id } } } else { none }
+        }
+      }
+    other => Present { value: ClaimCostArtifactListUnreadable { outcome: other } }
+  }
+}
+
+fn conclude_claim_cost_download(artifact_id: Int, outcome: RestOutcome) -> ClaimCostArtifactRead {
+  match outcome {
+    RestOk => ClaimCostArchiveNotInflatable { artifact_id: artifact_id }
+    other => ClaimCostArchiveUnreadable { artifact_id: artifact_id, outcome: other }
+  }
+}
+
+fn read_claim_cost_artifact(target: QualificationWorkflowTarget, run_id: Int) -> ClaimCostArtifactRead uses net: Network {
+  let listed = github.Artifacts.ListWorkflowRunArtifacts(
+    auth_token: "",
+    owner: target.owner as String,
+    repo: target.repo as String,
+    run_id: run_id as String,
+  )
+  match conclude_claim_cost_listing(outcome: listed.outcome, listed: listed.result) {
+    Present { value: refused } => refused
+    Absent =>
+      match claim_cost_artifact_listed(outcome: listed.outcome, listed: listed.result) {
+        Absent => ClaimCostArtifactAbsent { names_seen: [] }
+        Present { value: a } => {
+          let archive = github.Artifacts.DownloadArtifact(
+            auth_token: "",
+            owner: target.owner as String,
+            repo: target.repo as String,
+            artifact_id: a.id as String,
+          )
+          conclude_claim_cost_download(artifact_id: a.id, outcome: archive.outcome)
+        }
+      }
+  }
+}
+
+fn collect_qualification_instruments(
+  target: QualificationWorkflowTarget,
+  collection: QualificationRunCollection,
+  slot_unit: NonEmptyStr,
+) -> QualificationInstrumentExtraction uses net: Network {
+  match collection {
+    QualificationRunCollected { attempt: _, run_id: run_id, conclusion: _, attempt_jobs: served } => {
+      let logs = served |> map(j => read_attempt_job_log(target: target, job: j))
+      let claim_cost = read_claim_cost_artifact(target: target, run_id: run_id)
+      extract_qualification_instruments(collection: collection, logs: logs, claim_cost: claim_cost, slot_unit: slot_unit)
+    }
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => QualificationRunNotCollected { collection: collection }
+  }
+}
+
+// ── THE INSTRUMENTS THIS RUN'S LOG DOES NOT CARRY, EACH WITH THE CAPABILITY THAT WOULD READ IT ──
+//
+// The extraction above reads every instrument qualification_instrument_source places on the job
+// log. The remaining four are three facts, so three rows: one per missing capability, so that each
+// row is retired by its own trigger and by nothing else.
 data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "QualificationRunCollection"),
-    reason: "a collected qualification run carries every qualification_instrument as unextracted: extdeps.github has no Actions artifacts or job-logs read operation, no path that follows the logs redirect or opens the artifact archive, and no parser for the [floor-phase] and [floor-cgroup] log rows. Two instruments are not run outputs: GuestIdleMeminfoAndNproc comes from the boot leg's runner-host-up readback, and ConcurrentCohortSeatWindows from product.capacity.cohort_observation seal_cohort",
-    dissolution: unbound_dissolution(description: "the Actions artifacts and job-logs read path (list and download a run's artifacts, download a job's log text) plus the floor row parsers are SUFFICIENT to populate FloorPhaseRows, FloorCgroupRows, ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from one collected run through the producer each instrument names, with GuestIdleMeminfoAndNproc read from the boot leg's runner-host-up readback and ConcurrentCohortSeatWindows from product.capacity.cohort_observation seal_cohort, so QualificationRunCollected carries readings for every qualification_instrument and no unextracted list. NOT satisfied by an artifacts operation with no parser, nor by a parser exercised only on a fixture"),
-  )
+    ref: decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv"),
+    reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding), and neither reaches the job log in complete form: measured on a recorded required-floor log, eval_steps appear only on the 25-row [over-cost] preview and the per-claim [floor-shared-fill] rows, and the calibration specimen's [witness] line does not appear at all. Two capabilities are missing. The seed still writes the TSV (cli_run write_required_floor_claim_cost_tsv) but no workflow uploads it as an artifact today -- recent required runs publish only required-ci-measurement-receipt and compiler-pair-candidate. And an uploaded artifact is always a zip, while the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so extdeps.github.actions_artifacts github.Artifacts DownloadArtifact answers RestBodyUndecodable. read_claim_cost_artifact attempts the read on every collection and carries that as a typed ClaimCostArtifactRead refusal (ClaimCostArtifactAbsent while nothing uploads it)",
+    dissolution: unbound_dissolution(description: "the workflow the qualification dispatch targets uploads required-floor-claim-cost (gunbc.witness_floor_workflow carries the upload step under required_floor_claim_cost_artifact_name), AND the REST transport carries a binary body with an inflate reader SUFFICIENT FOR reading one member out of one upload-artifact zip, so extract_qualification_instruments reads ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same collected run through parse_claim_cost_tsv and qualification_instrument_source places both on that read. NOT satisfied by a new print of eval_steps into the log, by a 25-row preview, by an artifact downloaded outside this route, or by the zip read alone while no workflow uploads the artifact"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner_throughput_qualification_route", decl_name: "mtcollins1_boot_leg"),
+    reason: "GuestIdleMeminfoAndNproc is not a run output: the guest's idle MemTotal, MemAvailable (extdeps.linux.proc_meminfo), nproc and uname -m are read before the job starts, by the boot leg's runner-host-up readback, and that leg is gunbc.runner_throughput_qualification_route mtcollins1_boot_leg, still LegAwaitingAuthority",
+    dissolution: unbound_dissolution(description: "the boot leg's terminal is the runner host observed up and its readback carries the guest's idle meminfo, nproc and machine word, SUFFICIENT FOR this route to hand that readback to the qualification receipt beside this run's extraction. NOT satisfied by a meminfo read inside the floor job, which is a loaded guest rather than an idle one"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "product.capacity.cohort_observation", decl_name: "seal_cohort"),
+    reason: "ConcurrentCohortSeatWindows is sealed by product.capacity.cohort_observation seal_cohort over a roster of seats released at one barrier, each with ready, start and end instants and a settlement. This route registers ONE ephemeral slot and dispatches one floor, so there is no cohort and no barrier to read; one job's started_at and completed_at are not a seat window",
+    dissolution: unbound_dissolution(description: "a qualification route that registers a roster of concurrent seats on the host, releases them at a barrier, and reads each seat's ready, start and end back, SUFFICIENT FOR seal_cohort to seal that reading for this host. NOT satisfied by a cohort of one, nor by job timestamps standing in for seat readiness"),
+  ),
 ]
