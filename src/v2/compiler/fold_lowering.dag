@@ -77,7 +77,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
-import v2.std.type_binder { type_param_names, type_params_edge }
+import v2.std.type_binder { type_binder_set_children, type_param_names, type_params_edge }
 import v2.std.list_introduction { list_introduction_head_path }
 import std.algebra { AlgebraTypeTemplate, AlgebraTypeVariable, CallableOf, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -353,7 +353,7 @@ fn collection_roster_signature_arrow(row: CollectionRosterRow) -> Optional<Node>
               let arrow = anonymous_signature_arrow(domain_types: domain_types, codomain: codomain, source: collection_roster_element_type())
               let binders = node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: [Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }]
+                children: type_binder_set_children(binders: [Edge { label: Authored { name: ^collection_roster_element }, target: collection_roster_element_type() }], source: collection_roster_element_type())
               )
               optional_present(value: node_synthetic(kind: arrow.kind, children: list_snoc_item(xs: arrow.children, item: type_params_edge(conj: binders))))
           }
