@@ -500,35 +500,32 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
 fn scan_string_body(source: SourceRef, pos: Int, acc: List<Int>) -> StringScanResult {
   match source.source_chars[pos] {
     Absent => UnterminatedString { content: acc, end_pos: pos }
-    Present { value: ch } => scan_string_body_at(source: source, pos: pos, ch: ch, acc: acc)
-  }
-}
-
-fn scan_string_body_at(source: SourceRef, pos: Int, ch: Int, acc: List<Int>) -> StringScanResult {
-  if ch == 34 {
-    ClosedString { content: acc, end_pos: pos }
-  } else if ch == 92 {
-    match source.source_chars[pos + 1] {
-      Present { value: escaped } =>
-        if escaped == 117 && code_point_is(cp: source.source_chars[pos + 2], want: 123) {
-          scan_string_body(
-            source: source,
-            pos: pos + 3,
-            acc: list_push(list_push(list_push(acc, 92), 117), 123)
-          )
-        } else {
-          scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, 92), escaped))
+    Present { value: ch } =>
+      if ch == 34 {
+        ClosedString { content: acc, end_pos: pos }
+      } else if ch == 92 {
+        match source.source_chars[pos + 1] {
+          Present { value: escaped } =>
+            if escaped == 117 && code_point_is(cp: source.source_chars[pos + 2], want: 123) {
+              scan_string_body(
+                source: source,
+                pos: pos + 3,
+                acc: list_push(list_push(list_push(acc, 92), 117), 123)
+              )
+            } else {
+              scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, 92), escaped))
+            }
+          Absent => UnterminatedString { content: list_push(acc, 92), end_pos: pos + 1 }
         }
-      Absent => UnterminatedString { content: list_push(acc, 92), end_pos: pos + 1 }
-    }
-  } else if ch == 123 {
-    if should_start_interpolation(source: source, pos: pos) {
-      InterpolationStart { content: acc, end_pos: pos }
-    } else {
-      scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, 123))
-    }
-  } else {
-    scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
+      } else if ch == 123 {
+        if should_start_interpolation(source: source, pos: pos) {
+          InterpolationStart { content: acc, end_pos: pos }
+        } else {
+          scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, 123))
+        }
+      } else {
+        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
+      }
   }
 }
 
@@ -639,61 +636,52 @@ fn process_escapes_loop(source: List<Int>, pos: Int, acc: List<Int>) -> EscapePr
   match source[pos] {
     Absent => EscapesProcessed { text: chars_to_string(chars: acc, start: 0, end: count(acc)) }
     Present { value: ch } =>
-      if ch == 92 {
+      if ch != 92 {
+        process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
+      } else {
         match source[pos + 1] {
           Absent => EscapeProcessingRefused {}
-          Present { value: next } => process_escape_after_backslash(source: source, pos: pos, next: next, acc: acc)
+          Present { value: next } =>
+            match escape_decoding(source: source, pos: pos, next: next) {
+              Present { value: decoded } => process_escapes_loop(source: source, pos: decoded.next_pos, acc: list_push(acc, decoded.code_point))
+              Absent => EscapeProcessingRefused {}
+            }
         }
-      } else {
-        process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
       }
   }
 }
 
-fn process_escape_after_backslash(source: List<Int>, pos: Int, next: Int, acc: List<Int>) -> EscapeProcessResult {
+// What the escape starting at the backslash `pos` decodes to and where scanning resumes; absent
+// when the escape is malformed or truncated. Not recursive, so the loop above stays one
+// self-recursive function and its tail call lowers to a loop.
+fn escape_decoding(source: List<Int>, pos: Int, next: Int) -> UnicodeEscape? {
   if next == 120 {
     match source[pos + 2] {
       Present { value: hi } => match source[pos + 3] {
         Present { value: lo } => match hex_escape_char(hi: hi, lo: lo) {
-          Present { value: decoded } =>
-            process_escapes_loop(source: source, pos: pos + 4, acc: list_push(acc, decoded))
-          Absent => EscapeProcessingRefused {}
+          Present { value: decoded } => Present { value: UnicodeEscape { code_point: decoded, next_pos: pos + 4 } }
+          Absent => none
         }
-        Absent => process_simple_escape(source: source, pos: pos, next: next, acc: acc)
+        Absent => none
       }
-      Absent => process_simple_escape(source: source, pos: pos, next: next, acc: acc)
+      Absent => none
     }
   } else if next == 117 && code_point_is(cp: source[pos + 2], want: 123) {
-    match unicode_escape_at(source: source, pos: pos + 3, digit_count: 0, value: 0) {
-      Present { value: decoded } => process_escapes_loop(
-        source: source,
-        pos: decoded.next_pos,
-        acc: list_push(acc, decoded.code_point)
-      )
-      Absent => EscapeProcessingRefused {}
-    }
+    unicode_escape_at(source: source, pos: pos + 3, digit_count: 0, value: 0)
   } else {
-    process_simple_escape(source: source, pos: pos, next: next, acc: acc)
-  }
-}
-
-fn process_simple_escape(source: List<Int>, pos: Int, next: Int, acc: List<Int>) -> EscapeProcessResult {
-  let decoded = if next == 34 { Present { value: 34 } }
-    else if next == 48 { Present { value: 0 } }
-    else if next == 92 { Present { value: 92 } }
-    else if next == 110 { Present { value: 10 } }
-    else if next == 114 { Present { value: 13 } }
-    else if next == 116 { Present { value: 9 } }
-    else if next == 123 { Present { value: 123 } }
-    else if next == 125 { Present { value: 125 } }
-    else { none }
-  match decoded {
-    Present { value: code_point } => process_escapes_loop(
-      source: source,
-      pos: pos + 2,
-      acc: list_push(acc, code_point)
-    )
-    Absent => EscapeProcessingRefused {}
+    let simple = if next == 34 { Present { value: 34 } }
+      else if next == 48 { Present { value: 0 } }
+      else if next == 92 { Present { value: 92 } }
+      else if next == 110 { Present { value: 10 } }
+      else if next == 114 { Present { value: 13 } }
+      else if next == 116 { Present { value: 9 } }
+      else if next == 123 { Present { value: 123 } }
+      else if next == 125 { Present { value: 125 } }
+      else { none }
+    match simple {
+      Present { value: code_point } => Present { value: UnicodeEscape { code_point: code_point, next_pos: pos + 2 } }
+      Absent => none
+    }
   }
 }
 
