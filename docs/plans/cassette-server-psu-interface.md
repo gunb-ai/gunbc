@@ -2,6 +2,12 @@
 
 Investigation and design intent, 4 October 2026; PR #13295. This is a reference architecture, not a selected electrical assembly or released mount CAD.
 
+## Power availability preference
+
+The operator selects a single PSU as the default; redundancy is optional only if the incremental cost is worthwhile. FSP remains a reference, not a required supplier. Do not require a two-module redundant set for the first cassette. A redundant-capable PDB must have documented single-module operation, enable behavior and unused-slot airflow handling before being used with one module.
+
+FSP separately catalogs PDBs including FSP-PH51A and FSP-FC210CE. The [PH51A product page](https://www.fsp-group.com/en/product/crps/1745379392-1427.html) advertises cable customization, and its [datasheet](https://www.fsp-group.com/download/pro/FSP-PH51A_Datasheet.pdf) states that the wire harness can be customized. This establishes a vendor offering, not an off-the-shelf multi-node harness SKU or included cable set. Exact module compatibility, small-quantity availability, harness part numbers, price and single-module behavior remain procurement obligations. The protected per-node distribution remains our system requirement.
+
 ## Boundaries
 
 The cassette should accommodate different power assemblies through **replaceable inserts**, rather than assuming every server PSU has the same connector. Keep the column attachment and node-facing DC interface consistent. Each insert owns its PSU/cage envelope, attachment, insertion/removal clearance, ventilation, cord retention and strain relief. Each electrical adapter owns the exact mating PDB/backplane, enable/sense/standby behavior, output harness and management interface. A change of PSU family requires review of both adapters.
