@@ -90,3 +90,8 @@ test fn ccc_size_result_is_the_stated_int() -> Bool {
   let r = ccc_declared_bool_reading()
   r.binds_row && r.reason != ^accepted
 }
+
+// PROBES (temporary)
+test fn cccp_plain_nat_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport std.nat { Nat, Zero }\n\nfn mk() -> Nat {\n  Zero\n}\n\nfn f() -> Bool {\n  mk()\n}\n").reason != ^accepted }
+test fn cccp_generic_nat_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport v2.std.collection { List }\nimport std.nat { Nat, Zero }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  Zero\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs: xs)\n}\n").reason != ^accepted }
+test fn cccp_generic_int_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport v2.std.collection { List }\n\nfn mk<T>(xs: List<T>) -> Int {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs: xs)\n}\n").reason != ^accepted }
