@@ -164,6 +164,13 @@ type TypeDeclIndex {
 // position denotes is the text-boundary question (DESIGN section 4, gunbc.rung_drop
 // text_boundary_identity_wall), not one this index can answer; it reports the state and its readers
 // take no bound from it.
+// THIS ARM IS A DECLARED INTERIM STATE WITH ITS OWN TRIGGER, separate from the spelling arm's: it
+// has no producer once resolve identifies a kernel-spelled reference -- as the kernel type, or as
+// the corpus declaration the position's scope binds -- at every type position the emitter reads.
+// That capability belongs to the text-boundary identity work, not to the emitter. Until then every
+// occurrence is one census row (emitter_decl_route ...:KernelSpellingUndecided:<leaf>), and the one
+// thing a reader does with it is the map-key marking of every declarer of the leaf, which is what
+// the leaf-keyed set did.
 type TypeDeclResolution
   = TypeDeclResolved { identity: String, decl: Node }
   | TypeDeclLeafAmbiguous { leaf: String }
