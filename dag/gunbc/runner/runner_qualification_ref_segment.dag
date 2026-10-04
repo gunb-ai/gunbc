@@ -1,0 +1,41 @@
+module gunbc.runner.runner_qualification_ref_segment
+
+import std.types { Bool, String }
+
+// ONE PREDICATE FOR WHAT FOLLOWS refs/heads/qualification/, shared by the branch the pin creates
+// (gunbc.runner.runner_qualification_ref_pin qualification_branch_name) and the selected workflow a
+// pinned group may carry (gunbc.runner_group_restriction_observation pinned_selected_workflow). Two
+// spellings of it let the group admit a ref the pin could never have created, or the reverse.
+//
+// A SINGLE VALID REF SEGMENT: non-empty, no slash, no `..`, no leading dot, no `.lock` suffix, and
+// none of the characters git refuses in a ref name (space, ~, ^, :, ?, *, [, \, and the @{ sequence).
+fn qualification_ref_segment_admissible(segment: String) -> Bool {
+  string_length(s: segment) > 0
+    && !starts_with(s: segment, prefix: ".")
+    && !string_contains(s: segment, pattern: "/")
+    && !string_contains(s: segment, pattern: "..")
+    && !string_contains(s: segment, pattern: " ")
+    && !string_contains(s: segment, pattern: "~")
+    && !string_contains(s: segment, pattern: "^")
+    && !string_contains(s: segment, pattern: ":")
+    && !string_contains(s: segment, pattern: "?")
+    && !string_contains(s: segment, pattern: "*")
+    && !string_contains(s: segment, pattern: "[")
+    && !string_contains(s: segment, pattern: "\\")
+    && !string_contains(s: segment, pattern: "@{")
+    && !ends_with(s: segment, suffix: ".lock")
+}
+
+// THE GROUP'S RESTING PIN NAMES A BRANCH THAT CANNOT EXIST. GitHub requires a selected workflow when
+// the dedicated group is created, and the group must admit no run until an attempt pins it. A ref
+// path component may not begin with a dot (git-check-ref-format, "no slash-separated component can
+// begin with a dot", git-scm.com/docs/git-check-ref-format, read 2026-10-04), so
+// refs/heads/qualification/.unpinned can never be created: its absence is structural, needing no
+// reserved name, no precondition read and no ruleset. Attempt branches are admissible segments, which
+// this sentinel is not, so no attempt can name it.
+data qualification_resting_segment: String = ".unpinned"
+
+// WHAT A PINNED GROUP MAY CARRY: an admissible attempt segment, or exactly the resting sentinel.
+fn qualification_pin_segment_in_family(segment: String) -> Bool {
+  qualification_ref_segment_admissible(segment: segment) || segment == qualification_resting_segment
+}

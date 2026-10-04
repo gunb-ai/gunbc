@@ -17,7 +17,7 @@ import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow
 import test.claim.github_app_registry { group_restricted_to }
 import gunbc.runner.runner_qualification_ref_pin {
   qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref,
-  qualification_selected_workflow, qualification_runner_group_name,
+  qualification_selected_workflow, qualification_runner_group_name, qualification_unpinned_selected_workflow,
   qualification_group_target, QualificationGroupTargeted, QualificationGroupNotTargetable,
   branch_create_refusal, PinBranchPreexisting, PinBranchCreateRefused, PinBranchCreateAmbiguous,
   qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused, PinBranchReadbackMismatch, PinGroupReadbackRefused, PinRulesetNotEnforced,
@@ -64,6 +64,8 @@ test fn a_ref_outside_refs_heads_qualification_cannot_be_named() -> Bool {
     && named_refused(attempt: ".hidden")
     && named_refused(attempt: "q-1.lock")
     && named_refused(attempt: "q 1")
+    && named_refused(attempt: "q..1")
+    && named_refused(attempt: ".unpinned")
 }
 
 // RED: CREATE-ONCE. GitHub's 422 on CreateRef (the ref exists) is the pre-existing refusal, never an
@@ -86,12 +88,13 @@ test fn a_preexisting_branch_refuses_and_a_lost_create_is_ambiguous() -> Bool {
 }
 
 fn group_row(id: Int, name: NonEmptyStr) -> RunnerGroupIdentity {
-  RunnerGroupIdentity { id: id, name: name, visibility: SelectedRepositories, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: [] }
+  RunnerGroupIdentity { id: id, name: name, visibility: SelectedRepositories, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: [qualification_unpinned_selected_workflow()] }
 }
 
 // RED: A WRITE TO ANY OTHER GROUP. Only the dedicated qualification group can become a write target:
-// the shakedown group refuses even when it is present, as do an absent or duplicated dedicated group.
-// Positive control: the dedicated group found once.
+// the shakedown group refuses even when it is present, as do an absent or duplicated dedicated group,
+// and a same-named group whose selection is another workflow (re-pinning it would repurpose it).
+// Positive controls: the dedicated group found once, at rest or already pinned to an attempt.
 test fn a_restriction_write_to_any_other_group_refuses() -> Bool {
   let listed = RunnerGroupListDecoded { groups: [group_row(id: 1, name: "microvm-shakedown"), group_row(id: 3, name: qualification_runner_group_name)] }
   (match qualification_group_target(requested: "microvm-shakedown", listed: listed) { QualificationGroupNotTargetable { cause: _ } => true _ => false })
@@ -108,6 +111,19 @@ test fn a_restriction_write_to_any_other_group_refuses() -> Bool {
       QualificationGroupTargeted { target: t } => t.group_id == 3
       QualificationGroupNotTargetable { cause: _ } => false
     })
+    && (match qualification_group_target(requested: qualification_runner_group_name, listed: RunnerGroupListDecoded { groups: [group_selecting(id: 3, selected: [qualification_selected_workflow(branch: "qualification/q-7")])] }) {
+      QualificationGroupTargeted { target: t } => t.group_id == 3
+      QualificationGroupNotTargetable { cause: _ } => false
+    })
+    && (match qualification_group_target(requested: qualification_runner_group_name, listed: RunnerGroupListDecoded { groups: [group_selecting(id: 3, selected: ["gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main"])] }) {
+      QualificationGroupNotTargetable { cause: _ } => true
+      QualificationGroupTargeted { target: _ } => false
+    })
+}
+
+// A same-named, scope-valid group whose selection the pin may or may not take over.
+fn group_selecting(id: Int, selected: List<NonEmptyStr>) -> RunnerGroupIdentity {
+  RunnerGroupIdentity { id: id, name: qualification_runner_group_name, visibility: SelectedRepositories, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: selected }
 }
 
 // THE PIN IS MINTED ONLY FROM A READBACK AT THE EXACT REVISION, A GROUP OBSERVED PINNED TO THE BRANCH,

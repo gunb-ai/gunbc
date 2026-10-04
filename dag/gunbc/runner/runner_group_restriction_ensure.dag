@@ -183,11 +183,16 @@ type RunnerGroupCreateReadback
   = CreatedGroupRestricted { restriction: RestrictedRunnerGroup }
   | CreatedGroupNotRestricted { cause: NonEmptyStr }
 
+// THE READBACK JUDGES THE EXACT BODY THAT WAS SENT, whatever the subject's later policy: a group
+// created pinned to qualification/unpinned must read back pinned to exactly that, not to any member of
+// the pin family -- a readback naming some attempt's branch is not the group this create made.
+// PinnedPerAttempt governs only the no-op planning of an existing group.
 fn readback_after_create(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupCreateReadback {
-  match plan_runner_group_ensure(subject: subject, listed: listed) {
-    GroupAlreadyRestricted { restriction } => CreatedGroupRestricted { restriction: restriction }
-    GroupCreateRequired { subject: _ } =>
+  match observe_runner_group_restriction(name: subject.name, selected_workflow: subject.selected_workflow, listed: listed) {
+    RunnerGroupRestrictedToWorkflow { restriction } => CreatedGroupRestricted { restriction: restriction }
+    RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } =>
       CreatedGroupNotRestricted { cause: "RunnerGroupAbsentAfterCreate: the create returned success and the readback names no such group" as NonEmptyStr }
-    GroupEnsureRefused { cause } => CreatedGroupNotRestricted { cause: cause }
+    RunnerGroupRestrictionRefused { name: n, cause: c } =>
+      CreatedGroupNotRestricted { cause: join(["RunnerGroupCreateReadbackMismatch: ", n as String, ": ", runner_group_restriction_refusal_text(cause: c)], "") as NonEmptyStr }
   }
 }

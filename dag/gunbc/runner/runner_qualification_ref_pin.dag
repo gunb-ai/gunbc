@@ -8,11 +8,12 @@ import extdeps.transports.rest {
   RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
 import gunbc.repository { gunbc_repository }
+import gunbc.runner.runner_qualification_ref_segment { qualification_ref_segment_admissible, qualification_resting_segment }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, RestrictedRunnerGroup,
-  observe_runner_group_restriction, scope_refusal, runner_group_restriction_refusal_text,
+  observe_runner_group_restriction, scope_refusal, runner_group_restriction_refusal_text, pinned_selected_workflow,
 }
 import gunbc.runner.runner_qualification_ruleset {
   read_qualification_ruleset, QualificationRulesetEnforced, QualificationRulesetRefused, QualificationRulesetRefusal,
@@ -84,14 +85,11 @@ fn qualification_pin_prefix() -> NonEmptyStr {
   join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", qualification_branch_prefix as String], "") as NonEmptyStr
 }
 
-// THE GROUP IS CREATED PINNED TO A BRANCH NO ATTEMPT CAN NAME. GitHub requires a selected workflow
-// at creation; this reserved segment is refused as an attempt label (attempt_is_one_ref_segment), so
-// no qualification branch with it is ever created and the freshly created group admits no run until
-// the first attempt pins it.
-data qualification_unpinned_attempt: NonEmptyStr = "unpinned"
-
+// THE GROUP IS CREATED AT REST: pinned to refs/heads/qualification/.unpinned, a branch git refuses to
+// create (gunbc.runner.runner_qualification_ref_segment qualification_resting_segment), so the freshly
+// created group admits no run until the first attempt pins it.
 fn qualification_unpinned_selected_workflow() -> NonEmptyStr {
-  qualification_selected_workflow(branch: concat(qualification_branch_prefix as String, qualification_unpinned_attempt as String) as NonEmptyStr)
+  qualification_selected_workflow(branch: concat(qualification_branch_prefix as String, qualification_resting_segment) as NonEmptyStr)
 }
 data qualification_runner_group_name: NonEmptyStr = "runner-qualification"
 
@@ -110,21 +108,7 @@ type QualificationBranchNameStanding
 // metacharacter or a leading dot would address a ref outside refs/heads/qualification/<attempt> or an
 // invalid one, so it refuses rather than being escaped.
 fn attempt_is_one_ref_segment(attempt: String) -> Bool {
-  string_length(s: attempt) > 0
-    && attempt != (qualification_unpinned_attempt as String)
-    && !starts_with(s: attempt, prefix: ".")
-    && !string_contains(s: attempt, pattern: "/")
-    && !string_contains(s: attempt, pattern: "..")
-    && !string_contains(s: attempt, pattern: " ")
-    && !string_contains(s: attempt, pattern: "~")
-    && !string_contains(s: attempt, pattern: "^")
-    && !string_contains(s: attempt, pattern: ":")
-    && !string_contains(s: attempt, pattern: "?")
-    && !string_contains(s: attempt, pattern: "*")
-    && !string_contains(s: attempt, pattern: "[")
-    && !string_contains(s: attempt, pattern: "\\")
-    && !string_contains(s: attempt, pattern: "@{")
-    && !ends_with(s: attempt, suffix: ".lock")
+  qualification_ref_segment_admissible(segment: attempt)
 }
 
 fn qualification_branch_name(attempt: NonEmptyStr) -> QualificationBranchNameStanding {
@@ -174,7 +158,12 @@ fn qualification_group_target(requested: NonEmptyStr, listed: RunnerGroupListDec
               match scope_refusal(row: row) {
                 Present { value: cause } =>
                   QualificationGroupNotTargetable { cause: concat("the group holding the dedicated name is another shape: ", runner_group_restriction_refusal_text(cause: cause)) as NonEmptyStr }
-                Absent => QualificationGroupTargeted { target: QualificationGroupWriteTarget { group_id: row.id } }
+                Absent =>
+                  if count(row.selected_workflows) == 1 && (row.selected_workflows |> all(w => pinned_selected_workflow(pin_prefix: qualification_pin_prefix(), entry: w))) {
+                    QualificationGroupTargeted { target: QualificationGroupWriteTarget { group_id: row.id } }
+                  } else {
+                    QualificationGroupNotTargetable { cause: "the group holding the dedicated name selects something other than the qualification workflow at qualification/unpinned or a qualification pin, so re-pinning it would repurpose it" as NonEmptyStr }
+                  }
               }
             }
         }

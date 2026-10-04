@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import extdeps.github.org_actions { RunnerGroupVisibility, AllRepositories, SelectedRepositories, PrivateRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository }
+import gunbc.runner.runner_qualification_ref_segment { qualification_pin_segment_in_family }
 import gunbc.generated_artifact { artifact_path, MicrovmShakedownYamlArtifact }
 import gunbc.fleet.org_actions_inspection {
   RunnerGroupIdentity, RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused,
@@ -161,8 +162,7 @@ fn pinned_selected_workflow(pin_prefix: NonEmptyStr, entry: NonEmptyStr) -> Bool
   let e = entry as String
   let p = pin_prefix as String
   starts_with(s: e, prefix: p)
-    && string_length(s: e) > string_length(s: p)
-    && !string_contains(s: substring(s: e, start: string_length(s: p), end: string_length(s: e)), pattern: "/")
+    && qualification_pin_segment_in_family(segment: substring(s: e, start: string_length(s: p), end: string_length(s: e)))
 }
 
 fn observe_pinned_runner_group(name: NonEmptyStr, pin_prefix: NonEmptyStr, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {

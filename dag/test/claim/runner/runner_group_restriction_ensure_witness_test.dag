@@ -184,7 +184,7 @@ test fn the_qualification_group_is_created_when_absent_and_left_alone_when_pinne
     && (match qualification_planned(groups: [default_group()]) {
       GroupCreateRequired { subject: g } =>
         (match g.visibility { SelectedRepositories => true _ => false }) && !g.allows_public_repositories && g.restricted_to_workflows
-          && string_contains(s: g.selected_workflow as String, pattern: "@refs/heads/qualification/unpinned")
+          && string_contains(s: g.selected_workflow as String, pattern: "@refs/heads/qualification/.unpinned")
       _ => false
     })
     && (match qualification_planned(groups: [default_group(), qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]) {
@@ -195,7 +195,9 @@ test fn the_qualification_group_is_created_when_absent_and_left_alone_when_pinne
 
 // RED: SAME NAME, DIFFERENT SHAPE. A group holding the dedicated name that is visible to all or to
 // private repositories, admits public repositories, is unrestricted, selects another workflow, or
-// selects a ref outside the qualification/<attempt> family is REFUSED -- never adopted or edited.
+// selects a ref outside the qualification/<attempt> family is REFUSED -- never adopted or edited. The
+// family is the ONE segment predicate the pin's branch names use
+// (gunbc.runner.runner_qualification_ref_segment): .hidden, q..1, "q 1" and q.lock are outside it.
 test fn a_same_named_group_of_another_shape_refuses() -> Bool {
   refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "all", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]))
     && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "private", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]))
@@ -204,6 +206,10 @@ test fn a_same_named_group_of_another_shape_refuses() -> Bool {
     && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [shakedown()])]))
     && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7/extra")])]))
     && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7"), pinned_to(attempt: "q-8")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: ".hidden")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q..1")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q 1")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q.lock")])]))
 }
 
 // RED: A CREATE REQUEST THAT IS NOT CLOSED REFUSES BEFORE IT IS SENT -- visibility all or private,
@@ -223,9 +229,10 @@ test fn a_create_request_with_visibility_all_refuses() -> Bool {
     && (match runner_group_create_refusal(subject: open_public) { Present { value: _ } => true Absent => false })
 }
 
-// RED: THE READBACK MISMATCH. After a create, the group must read back with the shape the subject
-// asked for; one that reads back visible to all, pinned outside the family, or absent refuses.
-// Positive control: read back pinned to the reserved unpinned branch.
+// RED: THE READBACK MISMATCH. After a create, the group must read back with EXACTLY the body sent:
+// visible to all, pinned to another workflow, pinned to some attempt's branch (q-7 is in the pin family,
+// but it is not what this create made), or absent each refuse. Positive control: read back at rest,
+// pinned to qualification/.unpinned.
 test fn the_qualification_group_readback_must_match_the_create() -> Bool {
   let subject = qualification_runner_group_subject()
   (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "selected", public: false, restricted: true, selected: [subject.selected_workflow as String])])) {
@@ -237,6 +244,10 @@ test fn the_qualification_group_readback_must_match_the_create() -> Bool {
       _ => false
     })
     && (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "selected", public: false, restricted: true, selected: [shakedown()])])) {
+      CreatedGroupNotRestricted { cause: _ } => true
+      _ => false
+    })
+    && (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])])) {
       CreatedGroupNotRestricted { cause: _ } => true
       _ => false
     })
