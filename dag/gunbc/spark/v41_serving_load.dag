@@ -121,11 +121,12 @@ data v41_serving_load_qualification_frontier: ClientRateQualificationFrontier = 
 // serving_subject_for_launch from the profile the Group A launch renders (v41_group_a_launch
 // v41_group_a_profile), the same constructor the GLM subject uses; the kv dtype is therefore the
 // fp8_ds_mla the launch requests rather than unread.
-fn v41_serving_load_live_subject() -> ServingPerformanceSubject {
+fn v41_serving_load_live_subject() -> ServingPerformanceSubject? {
   let shape = v41_measurement_launch_shape()
   let image = v41_production_produced_image
-  serving_subject_for_launch(
-    checkpoint: DeepseekV41FlashDba1be0a,
+  match v41_group_a_profile(shape: shape) {
+   Absent => none
+   Present { value: launch_profile } => Present { value: serving_subject_for_launch(
     checkpoint_revision: Present { value: deepseek_v41_flash_row.revision },
     runtime: GunbcDeepseekV41EngramProduced {
       artifact: runtime_artifact_identity(
@@ -138,28 +139,34 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject {
     },
     runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
     topology: FourSparkTp4,
-    profile: v41_group_a_profile(shape: shape),
+    profile: launch_profile,
     collective_transport: none,
-  )
+  ) }
+  }
 }
 
-fn v41_serving_load_subject_standing() -> ServingPerformanceSubjectStanding {
-  serving_subject_standing(
-    subject: v41_serving_load_live_subject(),
-    believed: "the running Group A arm is believed to be the production image at the capacity measurement's launch shape; collective transport, KV cache dtype and speculative policy are unread" as NonEmptyStr,
-    would_settle: "read the head container's image Id and launch argv on this incarnation, and the NCCL transport announcement on every rank" as NonEmptyStr,
-  )
+fn v41_serving_load_subject_standing() -> ServingPerformanceSubjectStanding? {
+  match v41_serving_load_live_subject() {
+    Absent => none
+    Present { value: subject } => Present { value: serving_subject_standing(
+      subject: subject,
+      believed: "the running Group A arm is believed to be the production image at the profile the launch derives; collective transport is unread; speculation is off (the launch renders none)" as NonEmptyStr,
+      would_settle: "read the head container's image Id and launch argv on this incarnation, and the NCCL transport announcement on every rank" as NonEmptyStr,
+    ) }
+  }
 }
 
-fn v41_serving_load_subject() -> ServingLoadSubject {
-  ServingLoadSubject {
+fn v41_serving_load_subject() -> ServingLoadSubject? {
+  match v41_serving_load_subject_standing() {
+   Absent => none
+   Present { value: standing } => Present { value: ServingLoadSubject {
     host: v41_serving_load_head,
     host_address: srv6_host_lan_endpoint.address,
     group: FabricGroupA,
     container: v41_group_a_container_name,
     base_url: v41_serve_base_url(),
     served_alias: v41_group_a_served_alias,
-    standing: v41_serving_load_subject_standing(),
+    standing: standing,
     admission: AdmissionCostUnestablished {
       cause: "V4.1's per-request KV cost is unread: no cache-group roster is observed for the measurement serve, so cold_admission_blocks cannot establish it; the startup receipt's pool is the capacity measurement's KV-admission axis, not a per-request cost" as NonEmptyStr,
     },
@@ -167,6 +174,7 @@ fn v41_serving_load_subject() -> ServingLoadSubject {
     principal: "group-A administrator" as NonEmptyStr,
     receipt_heading: "v41 serving-load staircase" as NonEmptyStr,
     receipt_path: v41_serving_load_receipt_path,
+  } }
   }
 }
 
@@ -446,7 +454,9 @@ fn v41_projected_readings(ps: List<V41StepProjection>) -> List<V41StaircaseStepR
 // the bench and the scrape address 127.0.0.1 on the session host. Exit zero means every step was
 // observed and the staircase ran; its verdict (a capacity or a stop) is in the receipt, not the exit.
 fn v41_serving_load_session(run_id: NonEmptyStr, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
-  let subject = v41_serving_load_subject()
+  match v41_serving_load_subject() {
+   Absent => SparkBuildHostWork { receipt: "v41 serving-load refused: the V4.1 measurement shape's cold intent refused, so no launched profile exists to measure\n", converged: false }
+   Present { value: subject } =>
   match serving_load_records(ctx: ctx, subject: subject, steps: v41_serving_load_steps(), host_read: v41_read_step_pressure) {
     ServingLoadRunRefused { reason: r } => SparkBuildHostWork { receipt: join(["v41 serving-load refused: ", r, "\n"], ""), converged: false }
     ServingLoadRunObserved { records: rs } => {
@@ -461,7 +471,9 @@ fn v41_serving_load_session(run_id: NonEmptyStr, ctx: SparkMaterializeContext) -
       SparkBuildHostWork { receipt: serving_load_receipt_body(subject: subject, records: rs, extra: extra), converged: true }
     }
   }
+  }
 }
+
 
 fn v41_serving_load_ci_wet() -> ProcessExit
 {

@@ -1,8 +1,9 @@
 module test.claim.roadmap_serve_witness
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler,
+  roadmap_serve_handle_over,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
@@ -13,7 +14,7 @@ import gunbc.roadmap_serve {
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over,
-  AuthSessionHandler,
+  AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
   roadmap_serve_own_route_specs,
@@ -54,8 +55,10 @@ import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
-  RequestSecurityContext, AccessPathLocalDev,
-  ServedRouteTable,
+  ServeWireResponse, ServeRequestHeader,
+  ServeRequestHeaderReading, ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
+  RequestSecurityContext, ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   serve_build_route_table,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
@@ -192,7 +195,7 @@ test fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
   ServeHttpRequest {
     method: method,
     path: path,
@@ -924,11 +927,11 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
   }
 }
 
-// THE SESSION ROUTE IS SERVED AND THE LOGIN ROUTES ARE NOT: the OIDC login, callback and
-// logout routes moved to a follow-up (their redirect and Set-Cookie answers need a socket
-// runtime that writes response headers, which this revision's seed does not), so each path
-// selects no route rather than reaching a handler whose headers would be dropped.
-test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
+// THE SESSION AND LOGIN ROUTES ARE SERVED, EACH BY ITS OWN HANDLER: the OIDC login, callback and
+// logout routes land with the seed's response-header transport (cli_run serve_write_response
+// writes the handler's Location and Set-Cookie lines), so each path selects its handler rather
+// than no route. RED if a login path stops selecting, or selects another handler.
+test fn the_session_and_login_routes_select_their_handlers() -> Bool {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     ServedRouteTableBuilt { table: t } =>
@@ -937,15 +940,15 @@ test fn the_session_route_is_served_and_the_login_routes_are_not() -> Bool {
         _ => false
       }
         && match serve_select_route(table: t, method: GET, path: "/auth/login") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLoginHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: GET, path: "/auth/google/callback") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthGoogleCallbackHandler, params: _ } => true
           _ => false
         }
         && match serve_select_route(table: t, method: POST, path: "/auth/logout") {
-          NoRouteMatched => true
+          SelectedDynamic { handler: AuthLogoutHandler, params: _ } => true
           _ => false
         }
   }
@@ -1048,4 +1051,61 @@ test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
     && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
+}
+
+// PLANTED REQUEST HEADERS AT THE READING: a field is selected by its name and nothing else, and
+// the three answers stay apart -- absent, one value, repeated with its count. A field whose name
+// merely contains the one asked for is not it.
+test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool {
+  let headers = [
+    ServeRequestHeader { name: "accept", value: "text/html" },
+    ServeRequestHeader { name: "x-cookie", value: "gunbc_session=planted" },
+    ServeRequestHeader { name: "cookie", value: "theme=dark" },
+  ]
+  serve_request_header_reading(headers: headers, name: "cookie") == ServeRequestHeaderSingle { value: "theme=dark" }
+    && serve_request_header_reading(headers: headers, name: "authorization") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(headers: [], name: "cookie") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(
+      headers: concat(headers, [ServeRequestHeader { name: "cookie", value: "theme=light" }]),
+      name: "cookie",
+    ) == ServeRequestHeaderRepeated { occurrences: 2 }
+}
+
+fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { caller_supplied_plan_fixture() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: "GET",
+    path: "/issue/demo-node/assignment",
+    body: "",
+    tailscale_identity: "",
+    request_headers: headers,
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// THE SERVED ENTRY, declared request headers to wire record, on the real assignment-context
+// route. That route answers from the authentication evidence alone when no human session is
+// present, so the claim performs no host read: no Cookie field and a Cookie field carrying no
+// session both answer the signed-out 401; a malformed session cookie answers the invalid-session
+// 401, so the field's VALUE reached the cookie decode; two Cookie fields answer 400 before any
+// route runs. Deleting the header reading from the entry, or handing it a field other than
+// Cookie, makes this fail.
+test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool {
+  let absent = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
+  let other = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
+  let malformed = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
+  let repeated = witness_assignment_context_over_headers(headers: [
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=a" },
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=b" },
+  ])
+  absent.status == 401
+    && absent.body == "Sign in to assign this issue."
+    && other.status == 401
+    && other.body == absent.body
+    && malformed.status == 401
+    && malformed.body == "Your session has expired or is unavailable. Sign in again."
+    && repeated.status == 400
+    && repeated.body == "bad request: duplicate cookie header\n"
 }

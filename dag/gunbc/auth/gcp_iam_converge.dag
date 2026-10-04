@@ -26,8 +26,8 @@ import gunbc.auth.heal_publisher_provision {
   rest_ok, rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
-import gunbc.auth.mtcollins1_boot_federation_provision { mtcollins1_boot_dedicated_federation }
-import gunbc.auth.mtcollins1_boot_federation { pinned_version_accessor_grant_for }
+import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
+import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
@@ -208,13 +208,15 @@ fn gcp_iam_observe_dedicated_federation() -> DedicatedFederation {
 // gunbc-private's publisher is a target so that it is created and granted under one operator
 // approval, never by a supplied token (operator 2026-09-27). Its resource-local bindings for
 // iam-converge -- the provider role on its pool, the account-policy role on its account -- are the
-// bootstrap's, like every other target's.
-data gcp_iam_converge_targets: List<DedicatedFederation> = [
-  heal_publisher_dedicated_federation(),
-  private_heal_publisher_dedicated_federation(),
-  mtcollins1_boot_dedicated_federation(),
-  namecheap_dedicated_federation(),
-]
+// bootstrap's, like every other target's. Every provisioned managed-host boot federation is a target
+// (gunbc.auth.managed_host_boot_federation provisioned_boot_federations), in managed-host order.
+data gcp_iam_converge_targets: List<DedicatedFederation> = concat(
+  concat(
+    [heal_publisher_dedicated_federation(), private_heal_publisher_dedicated_federation()],
+    map(provisioned_boot_federations(), f => boot_dedicated_federation(f: f)),
+  ),
+  [namecheap_dedicated_federation()],
+)
 
 fn service_account_resource(email: ServiceAccountEmail) -> String {
   join(["projects/", fleet_secrets_project_id as String, "/serviceAccounts/", email as String], "")

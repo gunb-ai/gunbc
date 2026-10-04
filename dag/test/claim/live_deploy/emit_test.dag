@@ -63,11 +63,10 @@ import gunbc.live_deploy.spec {
   gunbc_service_user,
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
+import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
-  srv1_attempt_state_directory,
 }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,

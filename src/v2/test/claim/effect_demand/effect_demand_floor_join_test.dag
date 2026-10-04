@@ -1,5 +1,6 @@
 module v2.test.claim.effect_demand.effect_demand_floor_join_test
 
+import std.types { List }
 import v2.compiler.effect_demand_floor_join {
   DuplicateClaimIdentity,
   EntryPathUndeclared,
@@ -16,9 +17,7 @@ import v2.compiler.effect_demand { effect_demand_seam_roster }
 import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { Cons, Empty, any, filter, length }
-import v2.std.collection { List }
 import v2.std.live_tree { SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
 import v2.workflow.required_floor {

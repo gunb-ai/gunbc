@@ -118,7 +118,6 @@ fn glm_native_live_subject() -> ServingPerformanceSubject? {
       match serving_runtime_row(r: a.runtime) {
         Absent => none
         Present { value: rrow } => Present { value: serving_subject_for_launch(
-          checkpoint: a.checkpoint,
           checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
           runtime: a.runtime,
           runtime_image_reference: runtime_artifact_wire(a: rrow.artifact),

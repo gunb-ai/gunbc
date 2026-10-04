@@ -3,7 +3,6 @@ module v2.test.std_grounding.runtime_value_node_projection
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

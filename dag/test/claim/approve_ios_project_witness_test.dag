@@ -11,9 +11,9 @@ import extdeps.apple.xcode { XcodeRelease, xcode_26_6, xcode_release_text }
 import extdeps.xcodegen.project_spec { xcodegen_last_upgrade_check }
 import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequiredLane, approve_ios_build_unexecuted_frontier }
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.auth.approval_ntfy_deployment { approval_ntfy_serve_port }
+import gunbc.auth.approval_ntfy_publish { approval_ntfy_serve_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -241,7 +241,7 @@ fn generated_server_host(g: ApproveIosProjectGeneration) -> String? {
 // https:// plus the projected host IS gunbc.auth.approval_broker_endpoint approval_broker_base_url.
 test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
   match generated_server_host(g: expected_approve_ios_project_yml()) {
-    Present { value: h } => concat("https://", h) == (approval_broker_base_url() as String)
+    Present { value: h } => concat("https://", h) == approval_broker_base_url_text()
     Absent => false
   }
 }
@@ -251,7 +251,7 @@ test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
 test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool {
   match generated_server_host(g: approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: none)) {
     Present { value: h } => (h == join([operator_host_srv1 as String, ".other-tailnet.example"], ""))
-      && (concat("https://", h) != (approval_broker_base_url() as String))
+      && (concat("https://", h) != approval_broker_base_url_text())
     Absent => false
   }
 }
@@ -270,5 +270,13 @@ test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
   match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: approval_ntfy_serve_port }) {
     ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: to_string(approval_ntfy_serve_port))
     ApproveIosProjectGenerated { content: _ } => false
+  }
+}
+
+// The resolved link base under today's selection; a refused one is "" and fails every comparison.
+fn approval_broker_base_url_text() -> String {
+  match approval_broker_base_url() {
+    ApprovalBrokerAddressResolved { value } => value as String
+    ApprovalBrokerAddressRefused { cause: _ } => ""
   }
 }

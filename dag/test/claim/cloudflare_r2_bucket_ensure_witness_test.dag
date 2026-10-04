@@ -204,6 +204,7 @@ test fn every_allocated_purpose_converges_against_its_own_bucket() -> Bool {
 test fn an_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
   let unminted = OriginCredentialUnminted {
     mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_bucket_admin"),
+    secret_id: "witness-bucket-admin",
   }
   match r2_ensure_signing_locus(credential: unminted) {
     R2EnsureSigningRefused { cause: cause } => string_contains(s: cause as String, pattern: "run_bucket_admin")

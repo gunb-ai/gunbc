@@ -78,8 +78,6 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 // renamed variant is a changed row, never a stale spelling inside the compiler.
 //   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
 //                  n deep around the nullary `zero`.
-//   BooleanUnfold  a kernel bool unfolds to the destination's nullary true or false constructor
-//                  (v2.std.logic Bool = True | False, declared structural on purpose).
 //   UnicodeScalarSequenceUnfold
 //                  a kernel string literal unfolds to the sequence of its Unicode scalar values
 //                  (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
@@ -96,11 +94,10 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 //                  scalar values, not its UTF-8 encoding.
 type LiteralUnfolding
   = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
-  | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
   | UnicodeScalarSequenceUnfold
 
 // THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
-// boundary type actually presents. For a nominal destination (v2.std.nat.Nat, v2.std.logic.Bool)
+// boundary type actually presents. For a nominal destination (v2.std.nat.Nat)
 // that is the declaration itself and `element` is Absent. For the text carrier the resolver
 // deliberately peels every `type X = FreeMonoid<Char>` spelling to the one structural carrier
 // (String is a container-alias spelling, `std.types` `container_template_alias_rows`, so no

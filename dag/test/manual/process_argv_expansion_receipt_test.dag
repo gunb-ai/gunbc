@@ -1,9 +1,9 @@
 module test.manual.process_argv_expansion_receipt
 
 import std.algebra { Cons, Empty, list_snoc_item }
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, String, List }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, empty_map }
+import v2.std.collection { empty_map }
 import v2.std.compilers.cli_surface {
   CliArgumentSyntax,
   cli_argument_text,

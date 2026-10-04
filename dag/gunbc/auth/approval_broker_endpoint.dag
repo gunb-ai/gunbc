@@ -5,11 +5,11 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from, srv1_tailnet_host_from }
-import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
 import gunbc.roadmap_dashboard_instance {
   ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
+  prod_role_realization_refusal_detail,
 }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
@@ -246,15 +246,37 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 // (gunbc.approve_ios_project) -- read one port rather than each assuming 443.
 data approval_broker_public_port: Port? = none
 
-fn approval_broker_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: domain, port: approval_broker_public_port)
+// THE ADDRESS FOLLOWS THE BROKER'S HOST, which follows the prod role (approval_broker_host_under):
+// the links, the device enrolment notification and the approvals app all name the host the broker
+// actually runs on, and under a refused realization there is no address -- each reader carries the
+// refusal into its own refusal arm rather than naming srv1.
+type ApprovalBrokerAddress
+  = ApprovalBrokerAddressResolved { value: NonEmptyStr }
+  | ApprovalBrokerAddressRefused { cause: ProdRoleRealizationRefusal }
+
+fn approval_broker_address_refusal_detail(cause: ProdRoleRealizationRefusal) -> NonEmptyStr {
+  join(["approval broker address unresolved: ", prod_role_realization_refusal_detail(cause: cause)], "") as NonEmptyStr
 }
 
-fn approval_broker_base_url() -> NonEmptyStr {
-  approval_broker_base_url_from(domain: fleet_intent_network.tailnet_domain)
+fn approval_broker_base_url_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: tailnet_base_url_from(host: host, domain: domain, port: approval_broker_public_port) }
+    ApprovalBrokerHostRefused { cause } => ApprovalBrokerAddressRefused { cause: cause }
+  }
+}
+
+fn approval_broker_base_url() -> ApprovalBrokerAddress {
+  approval_broker_base_url_under(realization: prod_role_realization(), domain: fleet_tailnet_domain)
 }
 
 // THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
-fn approval_broker_public_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_host_from(domain: domain)
+fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: tailnet_host_from(host: host, domain: domain) }
+    ApprovalBrokerHostRefused { cause } => ApprovalBrokerAddressRefused { cause: cause }
+  }
+}
+
+fn approval_broker_public_host_from(domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  approval_broker_public_host_under(realization: prod_role_realization(), domain: domain)
 }

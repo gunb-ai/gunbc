@@ -8,7 +8,13 @@ import std.scoped_authorization {
   AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
 }
 import extdeps.clock { Clock }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import extdeps.http.client
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.github.actions_environment { github_runner_temp_variable_name }
@@ -267,10 +273,11 @@ fn approval_file_stored_request_at(origin: NonEmptyStr, stored: StoredApprovalRe
     ApprovalFilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the request cannot be filed"], "") }
   } else {
     let key_read = Filesystem.Read(path: sub_path)
-    if !key_read.success {
-      ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
-    } else {
-      match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+    match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+      FilesystemReadRefused { error } =>
+        ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", error], "") }
+      FilesystemReadSucceeded { content } =>
+      match sign_stored_request(key_material: trim(s: content), request: stored) {
         SubmissionMacKeyNotHex { key_id: k } => ApprovalFilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
         SubmissionMacReady { tag_hex: tag } => {
           let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
@@ -289,6 +296,6 @@ fn approval_file_stored_request_at(origin: NonEmptyStr, stored: StoredApprovalRe
           }
         }
       }
+      }
     }
   }
-}

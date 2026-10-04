@@ -1,5 +1,6 @@
 module v2.workflow.floor_prepared_effect_input_ladder
 
+import std.types { List }
 import std.cache_interface {
   AtCapacityDisposition, ByteCapacity, CapacityBounded, CapacityLimit, CapacityPolicy,
   CapacityValue, ExactLimit, ProviderRetention, ReleasePolicy, ReleasedAtProviderScopeExit,
@@ -12,7 +13,6 @@ import std.materialization_ladder {
   verdict_is_accepted_single_recompute, verdict_is_authored_duplication
 }
 import std.measure { byte_size }
-import v2.std.collection { List }
 import v2.workflow.floor_pure_producer_share {
   CarriedInputWarmRow, PreparedEffectInput, carried_input_warm_producers,
   floor_cross_claim_carried_input_warm_rows, floor_cross_claim_prepared_effect_inputs,

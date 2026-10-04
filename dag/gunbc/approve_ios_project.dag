@@ -14,7 +14,7 @@ import extdeps.apple.build_settings {
   MarketingVersion, CurrentProjectVersion
 }
 import gunbc.auth.approval_app_attest_config { approval_app_bundle_id, approval_app_bundle_version }
-import gunbc.auth.approval_broker_endpoint { approval_broker_public_host_from, approval_broker_public_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_public_host_from, approval_broker_public_port, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused, approval_broker_address_refusal_detail }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
@@ -194,9 +194,12 @@ fn approve_ios_project_yml_from(domain: NonEmptyStr?, port: Port?) -> ApproveIos
       "gunbc.approve_ios_project: approval_broker_public_port is ", to_string(p),
       " and the app's ServerConfig carries no port; project it (an ApproveServerPort Info.plist key read by gunbc.approve_ios_swift_wire ServerConfig) before publishing the broker off the default TLS listener"
     ], "") }
-    Absent => match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec(server_host: approval_broker_public_host_from(domain: domain)))) {
-      EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
-      YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }
+    Absent => match approval_broker_public_host_from(domain: domain) {
+      ApprovalBrokerAddressRefused { cause } => ApproveIosProjectRefused { reason: join(["gunbc.approve_ios_project: ", approval_broker_address_refusal_detail(cause: cause) as String], "") }
+      ApprovalBrokerAddressResolved { value: host } => match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec(server_host: host))) {
+        EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
+        YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }
+      }
     }
   }
 }

@@ -15,7 +15,8 @@ import gunbc.spark.bootstrap_provision {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
-import gunbc.auth.mtcollins1_boot_federation { mtcollins1_boot_service_account_member }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.auth.managed_host_boot_federation { BootFederationProvisioned, BootFederationUnprovisioned, boot_federation_for, boot_federation_service_account_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
   WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
@@ -238,12 +239,13 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 // interlock is rostered in privileged_effect_interlocks below, and a ruling whose interlock is not
 // rostered against its site is red (rulings_without_a_rostered_interlock).
 // MINTS NO CREDENTIAL: it reads the pinned BMC credential and the pinned fleet key.
-// WORKLOAD IDENTITY: the dedicated account of gunbc.auth.mtcollins1_boot_federation for the boot;
+// WORKLOAD IDENTITY: the admitted boot federation's dedicated account
+// (gunbc.auth.managed_host_boot_federation) for the boot, unbindable when the pair is unprovisioned;
 // the fleet-converge run's principal for host reset-return.
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
@@ -269,7 +271,11 @@ fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity:
 fn mtcollins1_boot_effect() -> PrivilegedEffect {
   mtcollins1_destructive_controller_effect(
     root_subject: "the mtcollins1_boot mode (attach, boot device, power, SOL; census medium readback over the pinned fleet key)" as NonEmptyStr,
-    identity: WorkloadIdentityBindable { member: mtcollins1_boot_service_account_member() as NonEmptyStr },
+    identity: match boot_federation_for(host: operator_host_mtcollins1) {
+      BootFederationProvisioned { federation: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+      BootFederationUnprovisioned { host: _, cause: _ } =>
+        WorkloadIdentityUnbindable { cause: "mtcollins1 has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for)" as NonEmptyStr }
+    },
   )
 }
 
@@ -347,14 +353,14 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
@@ -590,9 +596,9 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.auth.mtcollins1_boot_federation_provision", decl_name: "mtcollins1_boot_federation_provision_with_supplied_token"),
+    site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),
     effect: PrivilegedEffect {
-      subject: "create the mtcollins1 boot's dedicated pool, provider and service account, bind who may act as it, and its two version-pinned accessor cells" as NonEmptyStr,
+      subject: "create each provisioned managed-host boot's dedicated pool, provider and service account, bind who may act as it, and its version-pinned accessor cells" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -884,6 +890,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.spark.host_commitment", decl_name: "settle_host_effect_live_over"),
     effect: PrivilegedEffect {
       subject: "release a bounded host effect on the host-placement partition of the fabric DB when its lane settles" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityBindable { member: "ghrunner on srv1, the dispatched fleet-converge run's host principal on the placed fabric DB host" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: fabric_store_write_unverified },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.standing_host_effect_recover", decl_name: "standing_host_effect_recover_ci_wet"),
+    effect: PrivilegedEffect {
+      subject: "release a dead lane's host-effect claim on a Group A host under the committed standing grant: exactly one unreleased claim derived from the live partition, a typed claimant disposition, a fresh quiescence read of that claim's residue, and a readback" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

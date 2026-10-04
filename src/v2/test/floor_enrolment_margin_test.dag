@@ -1,5 +1,6 @@
 module v2.test.floor_enrolment_margin
 
+import std.types { List }
 import v2.workflow.floor_enrolment_margin {
   floor_enrolment_margin_envelope_permille,
   floor_enrolment_margin_budget_ms,
@@ -29,9 +30,7 @@ import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
 }
-import v2.std.collection { List }
 import v2.workflow.floor_enrolment_dead_band { app_attest_verifier_enrolment_dead_band_observed_only, mtcollins1_boot_matrix_enrolment_dead_band_observed_only }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

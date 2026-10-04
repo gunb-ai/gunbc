@@ -8,7 +8,6 @@ import v2.test.parse.supplied_token_stream_support {
   supplied_stream_parse
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.logic { Bool }
 import v2.std.node { Node, NodeFold, Symbol, fold_node, name_occurrences }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -86,7 +85,7 @@ test fn empty_admit_callers_refuses_as_in_v1_holds() -> Bool {
   }
 }
 
-// A -- dag_grammar_else_less_if_stmt_expr (extdeps.uri_path guards): an early-return guard
+// A -- an else-less if_expr at statement position (dag_grammar_if_expr_expr; extdeps.uri_path guards): an early-return guard
 // followed by a statement parses and lowers, to Branch(c, arm, rest of the spine)
 // (v2.compiler.body_lowering_fold body_lower_guard_branch). It refused
 // body_lowering_reason_else_less_if_unlowered until the guard had a lowered form; a guard that falls

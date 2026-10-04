@@ -1,0 +1,246 @@
+module v2.test.claim.native_census.cascade_root_fan_out
+
+import v2.compiler.compile {
+  NativeCensusCascadeMemberOf,
+  NativeCensusCascadeNone,
+  NativeCensusCascadeUnattributed,
+  NativeCensusCascadeRoot,
+  NativeCensusCauseMember,
+  NativeCensusClosureFanOutAtLeast,
+  NativeCensusClosureFanOutCounted,
+  NativeCensusClosureFanOutUnavailable,
+  native_census_cause_group_rows,
+  native_census_cause_groups_add_module,
+  native_census_cause_groups_from_file_refusals,
+  native_census_closure_index,
+  native_census_module_resolution,
+  native_census_modules,
+  native_census_roots_ranked,
+  native_lane_file_refusal_index,
+  native_test_context_from_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.optional { Absent, Present }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CENSUS C'S TWO DISCRIMINATING CONTROLS, OVER THE REAL ROUTE. The sources are supplied (DESIGN
+// section 3: the input at this boundary is source bytes) and everything above them is the
+// production fold the census-resolve driver runs: native_test_context_from_ingest, the census
+// roster, the closure index, native_census_module_resolution per module, and the grouping and
+// ranking folds. Deleting any of those reds both claims.
+//
+// IN BOTH SHAPES `a` IS REFUSED AT INGEST (an unterminated string), b and c import a declaration
+// of a, and RESOLVE REFUSES ONLY THE DIRECT IMPORTERS: an importer of b binds b's declarations,
+// which are indexed, so c (linear) and d (diamond) resolve. They are still BLOCKED -- neither
+// compiles as a program while a is refused -- which is what closure_fan_out counts, while
+// resolve_refused_importers counts only the refusals this run observed (parent ruling, option A).
+
+data cascade_a_source: String = "module v2.census_cascade_a\n\ndata census_cascade_a_broken: String = \"this string never terminates\n"
+
+data cascade_b_source: String = "module v2.census_cascade_b\n\nimport v2.std.logic { Bool }\nimport v2.census_cascade_a { census_cascade_a_value }\n\nfn census_cascade_b_value(p: Bool) -> Bool { census_cascade_a_value(p: p) }\n"
+
+// b REFUSED AT INGEST TOO, with the import header it would have had: its imports are never read.
+data cascade_b_refused_source: String = "module v2.census_cascade_b\n\nimport v2.census_cascade_a { census_cascade_a_value }\n\ndata census_cascade_b_broken: String = \"this string never terminates\n"
+
+data cascade_c_on_a_source: String = "module v2.census_cascade_c\n\nimport v2.std.logic { Bool }\nimport v2.census_cascade_a { census_cascade_a_value }\n\nfn census_cascade_c_value(p: Bool) -> Bool { census_cascade_a_value(p: p) }\n"
+
+data cascade_c_on_b_source: String = "module v2.census_cascade_c\n\nimport v2.std.logic { Bool }\nimport v2.census_cascade_b { census_cascade_b_value }\n\nfn census_cascade_c_value(p: Bool) -> Bool { census_cascade_b_value(p: p) }\n"
+
+data cascade_d_source: String = "module v2.census_cascade_d\n\nimport v2.std.logic { Bool }\nimport v2.census_cascade_b { census_cascade_b_value }\nimport v2.census_cascade_c { census_cascade_c_value }\n\nfn census_cascade_d_value(p: Bool) -> Bool { census_cascade_c_value(p: census_cascade_b_value(p: p)) }\n"
+
+fn cascade_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+// c -> b -> a.
+data cascade_linear_ingest: SourceRootIngest = [
+  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu, path: "dag/census_cascade_a.dag"),
+  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu, path: "dag/census_cascade_b.dag"),
+  cascade_read(source: cascade_c_on_b_source, unit: ^census_cascade_c_cu, path: "dag/census_cascade_c.dag")
+]
+
+// c -> b -> a WITH a AND b BOTH REFUSED (review 75118): the edge b -> a is in a file with no tree.
+data cascade_double_refused_ingest: SourceRootIngest = [
+  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu, path: "dag/census_cascade_a.dag"),
+  cascade_read(source: cascade_b_refused_source, unit: ^census_cascade_b_cu, path: "dag/census_cascade_b.dag"),
+  cascade_read(source: cascade_c_on_b_source, unit: ^census_cascade_c_cu, path: "dag/census_cascade_c.dag")
+]
+
+// d -> {b, c} -> a. Two import paths reach a from d; d is one module.
+data cascade_diamond_ingest: SourceRootIngest = [
+  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu, path: "dag/census_cascade_a.dag"),
+  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu, path: "dag/census_cascade_b.dag"),
+  cascade_read(source: cascade_c_on_a_source, unit: ^census_cascade_c_cu, path: "dag/census_cascade_c.dag"),
+  cascade_read(source: cascade_d_source, unit: ^census_cascade_d_cu, path: "dag/census_cascade_d.dag")
+]
+
+// WHAT THE CENSUS REPORTED, reduced to what the claims read. `walls` counts every member that is
+// NOT a cascade member -- a root, a refusal that is its own root, or an unattributed one -- so a
+// census that reported b as a wall of its own (or c, had it refused) is counted there.
+type CascadeCensus
+  = CascadeCensusContextRefused
+  | CascadeCensusReported {
+      walls: Int
+      roots: List<NativeCensusCauseMember>
+      cascade_members_of_a: Int
+    }
+
+fn cascade_census(ingest: SourceRootIngest) -> CascadeCensus {
+  match native_test_context_from_ingest(ingest: ingest) {
+    Rejected { diagnostics: _ } => CascadeCensusContextRefused
+    Accepted { value: context, diagnostics: _ } =>
+      {
+        let refusal_index = native_lane_file_refusal_index(refusals: context.file_refusals)
+        let modules = native_census_modules(ingest: ingest)
+        let closure = native_census_closure_index(context: context, refusal_index: refusal_index, modules: modules)
+        let groups = fold_list(
+          xs: modules,
+          empty: native_census_cause_groups_from_file_refusals(refusals: context.file_refusals, closure: closure, resolves: true),
+          cons: fn(acc, entry) {
+            native_census_cause_groups_add_module(
+              groups: acc,
+              entry: entry,
+              step: native_census_module_resolution(context: context, refusal_index: refusal_index, entry: entry)
+            )
+          }
+        )
+        let rows = native_census_cause_group_rows(groups: groups)
+        CascadeCensusReported {
+          walls: fold_list(xs: rows, empty: 0, cons: fn(n, g) {
+            fold_list(xs: g.members, empty: n, cons: fn(k, m) {
+              match m.cascade {
+                NativeCensusCascadeMemberOf { root: _, root_reason: _ } => k
+                NativeCensusCascadeNone => k + 1
+                NativeCensusCascadeUnattributed { reason: _ } => k + 1
+                NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => k + 1
+              }
+            })
+          }),
+          roots: native_census_roots_ranked(rows: rows),
+          cascade_members_of_a: fold_list(xs: rows, empty: 0, cons: fn(n, g) {
+            fold_list(xs: g.members, empty: n, cons: fn(k, m) {
+              match m.cascade {
+                NativeCensusCascadeMemberOf { root: r, root_reason: _ } => if r == ^census_cascade_a_cu { k + 1 } else { k }
+                NativeCensusCascadeNone => k
+                NativeCensusCascadeUnattributed { reason: _ } => k
+                NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => k
+              }
+            })
+          })
+        }
+      }
+  }
+}
+
+// ONE NULLARY PRODUCER PER SHAPE, forced once and shared by its claims (the warm-row precedent
+// v2.test.claim.native_census.whole_tree_census_resolve census_probe_outcomes states).
+// THE LINEAR PRODUCER CARRIES BOTH LINEAR SHAPES, one refused file and two, so the second shape
+// rides the warm row this producer already has.
+type CascadeLinearCensuses {
+  single: CascadeCensus
+  double_refused: CascadeCensus
+}
+
+fn cascade_linear_census() -> CascadeLinearCensuses {
+  CascadeLinearCensuses {
+    single: cascade_census(ingest: cascade_linear_ingest),
+    double_refused: cascade_census(ingest: cascade_double_refused_ingest)
+  }
+}
+
+fn cascade_diamond_census() -> CascadeCensus { cascade_census(ingest: cascade_diamond_ingest) }
+
+// THE ONE ROOT IS a, WITH THE GIVEN FAN-OUT AND OBSERVED IMPORTER COUNT.
+fn cascade_single_root_is_a(roots: List<NativeCensusCauseMember>, fan_out: Int, observed: Int) -> Bool {
+  match roots {
+    Empty => false
+    Cons { head: m, tail: rest } =>
+      length(xs: rest) == 0 && m.path == ^census_cascade_a_cu && match m.cascade {
+        NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: o } =>
+          match f {
+            NativeCensusClosureFanOutUnavailable { reason: _ } => false
+            NativeCensusClosureFanOutAtLeast { modules: _, unread_refused_files: _ } => false
+            NativeCensusClosureFanOutCounted { modules: n } =>
+              n == fan_out && match o {
+                Absent => false
+                Present { value: k } => k == observed
+              }
+          }
+        NativeCensusCascadeNone => false
+        NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+        NativeCensusCascadeUnattributed { reason: _ } => false
+      }
+  }
+}
+
+// CONTROL 1, LINEAR c -> b -> a. Exactly ONE wall, a, with closure fan-out 2 ({b, c}) and one
+// observed resolve refusal (b). RED if the census reports three walls -- b's resolve refusal filed as
+// its own cause, or c counted as a refused root -- because `walls` would read 2 or 3; RED if the
+// fan-out counted only observed refusals (1) or included a itself (3).
+test fn census_linear_cascade_is_one_wall_with_fan_out_two_holds() -> Bool {
+  match cascade_linear_census().single {
+    CascadeCensusContextRefused => false
+    CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: members } =>
+      w == 1 && members == 1 && cascade_single_root_is_a(roots: roots, fan_out: 2, observed: 1)
+  }
+}
+
+// CONTROL 2, DIAMOND d -> {b, c} -> a. ONE wall, fan-out 3 ({b, c, d}) with two observed resolve
+// refusals (b and c). RED if paths are counted: d is reached from a along two paths, so a path
+// count reads 4.
+test fn census_diamond_cascade_counts_modules_not_paths_holds() -> Bool {
+  match cascade_diamond_census() {
+    CascadeCensusContextRefused => false
+    CascadeCensusReported { walls: w, roots: roots, cascade_members_of_a: members } =>
+      w == 1 && members == 2 && cascade_single_root_is_a(roots: roots, fan_out: 3, observed: 2)
+  }
+}
+
+// THE ROOT AT `path` HAS A LOWER-BOUND FAN-OUT OF `modules` WITH `unread` REFUSED FILES UNREAD.
+fn cascade_root_is_at_least(roots: List<NativeCensusCauseMember>, path: Symbol, modules: Int, unread: Int) -> Bool {
+  fold_list(xs: roots, empty: false, cons: fn(found, m) {
+    found || (m.path == path && match m.cascade {
+      NativeCensusCascadeRoot { closure_fan_out: f, resolve_refused_importers: _ } =>
+        match f {
+          NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: u } => n == modules && u == unread
+          NativeCensusClosureFanOutCounted { modules: _ } => false
+          NativeCensusClosureFanOutUnavailable { reason: _ } => false
+        }
+      NativeCensusCascadeNone => false
+      NativeCensusCascadeMemberOf { root: _, root_reason: _ } => false
+      NativeCensusCascadeUnattributed { reason: _ } => false
+    })
+  })
+}
+
+// CONTROL 3 (review 75118), c -> b -> a WITH a AND b BOTH REFUSED AT INGEST. b's import of a is in a
+// file with no tree, so a's known closure is empty -- and the census must NOT report that as an
+// exact Counted 0: a is AtLeast 0 with one refused file (b) unread, and b is AtLeast 1 ({c}) with
+// one (a) unread. RED under the pre-fix fold, which answered Counted 0 for a.
+test fn census_hidden_refused_importer_makes_fan_out_a_lower_bound_holds() -> Bool {
+  match cascade_linear_census().double_refused {
+    CascadeCensusContextRefused => false
+    CascadeCensusReported { walls: _, roots: roots, cascade_members_of_a: _ } =>
+      length(xs: roots) == 2
+        && cascade_root_is_at_least(roots: roots, path: ^census_cascade_a_cu, modules: 0, unread: 1)
+        && cascade_root_is_at_least(roots: roots, path: ^census_cascade_b_cu, modules: 1, unread: 1)
+  }
+}

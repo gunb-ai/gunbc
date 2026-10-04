@@ -1,5 +1,8 @@
 module gunbc.fabric_storage_client
 
+import gunbc.fabric_storage_state_auth_io { fabric_state_signed_request }
+import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
+
 import std.types { String, NonEmptyStr, Int, List }
 import std.nat { Nat }
 import extdeps.http.client
@@ -20,9 +23,6 @@ import gunbc.fabric_storage_wire {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused, fabric_storage_route_prefix }
-import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
-import product.placement_supply { HostIdentity, host_identity_eq }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of
 // three handlers. The binding is realization and sits here, at the periphery (DESIGN 3: the dispatch
@@ -49,20 +49,12 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 // arm. Only a 200 body is decoded, and decoding refuses anything that is not fabric_storage/1.
 type FabricStorageBinding
   = FabricStorageLocalFiles { root: FabricStorageFileRoot }
-  | FabricStorageDoorSocket { socket: NonEmptyStr }
+  | FabricStorageDoorSocket { socket: NonEmptyStr, route_prefix: NonEmptyStr }
   | FabricStorageServed { endpoint: NonEmptyStr }
   | FabricStorageBindingUnplaced
   | FabricStorageBindingRefused { detail: NonEmptyStr }
 
-fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
-  match placement {
-    FabricStorageUnplaced => FabricStorageBindingUnplaced
-    FabricStoragePlacementRefused { cause } => FabricStorageBindingRefused { detail: prod_role_realization_refusal_detail(cause: cause) as NonEmptyStr }
-    FabricStoragePlaced { host: h, store_root: _, endpoint: e, door_socket: k } =>
-      if host_identity_eq(a: h, b: executor) { FabricStorageDoorSocket { socket: k } }
-      else { FabricStorageServed { endpoint: e } }
-  }
-}
+
 
 data fabric_storage_unplaced_detail: NonEmptyStr = "the fabric DB is unplaced" as NonEmptyStr
 
@@ -97,7 +89,7 @@ fn served_reply_from_status(stdout: String) -> ServedReply {
   }
 }
 
-fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+fn served_post_raw(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
   let r = http.Client.PostStdinWithin(
     url: join([endpoint as String, "/", operation], "") as NonEmptyStr,
     request_body: request,
@@ -109,10 +101,19 @@ fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> Ser
 
 // The socket carries the same protocol at the same route; the authority in the URL is only what
 // HTTP requires to be present, and the door routes on the path alone.
-fn door_post(socket: NonEmptyStr, operation: String, request: String) -> ServedReply {
+fn door_post(socket: NonEmptyStr, route_prefix: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  if (route_prefix as String).ends_with(suffix: fabric_storage_state_suffix) {
+    match fabric_state_signed_request(operation: operation, request: request) {
+      Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
+      Present { value: envelope } => door_post_raw(socket: socket, route_prefix: route_prefix, operation: "authenticated", request: envelope)
+    }
+  } else { door_post_raw(socket: socket, route_prefix: route_prefix, operation: operation, request: request) }
+}
+
+fn door_post_raw(socket: NonEmptyStr, route_prefix: NonEmptyStr, operation: String, request: String) -> ServedReply {
   let r = http.Client.PostStdinWithinUnixSocket(
     socket: socket,
-    url: join(["http://localhost", fabric_storage_route_prefix, "/", operation], "") as NonEmptyStr,
+    url: join(["http://localhost", route_prefix as String, "/", operation], "") as NonEmptyStr,
     request_body: request,
     connect_seconds: http_client_max_time_flag(max_time: fabric_storage_connect_bound),
     max_seconds: http_client_max_time_flag(max_time: fabric_storage_request_bound),
@@ -134,8 +135,8 @@ fn fabric_storage_head(binding: FabricStorageBinding, name: NonEmptyStr) -> Fabr
     FabricStorageBindingUnplaced => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_head(root: r, name: name)
-    FabricStorageDoorSocket { socket: k } =>
-      match door_post(socket: k, operation: "head", request: name as String) {
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "head", request: name as String) {
         ServedFault { fault: f } => FabricHeadReadRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_head(text: b)
       }
@@ -152,8 +153,8 @@ fn fabric_storage_put(binding: FabricStorageBinding, object: FabricObject) -> Fa
     FabricStorageBindingUnplaced => FabricPutRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricPutRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_put(root: r, object: object)
-    FabricStorageDoorSocket { socket: k } =>
-      match door_post(socket: k, operation: "put", request: fabric_object_preimage(object: object) as String) {
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "put", request: fabric_object_preimage(object: object) as String) {
         ServedFault { fault: f } => FabricPutRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_put(text: b)
       }
@@ -170,8 +171,8 @@ fn fabric_storage_advance(binding: FabricStorageBinding, name: NonEmptyStr, expe
     FabricStorageBindingUnplaced => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_advance(root: r, name: name, expected: expected, target: target)
-    FabricStorageDoorSocket { socket: k } =>
-      match door_post(socket: k, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "advance", request: join([name as String, " ", expectation_request_words(expected: expected), " ", fabric_object_ref_wire(object: target) as String], "")) {
         ServedFault { fault: f } => FabricHeadAdvanceRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_advance(text: b)
       }
@@ -188,8 +189,8 @@ fn fabric_storage_closure(binding: FabricStorageBinding, name: NonEmptyStr, boun
     FabricStorageBindingUnplaced => FabricClosureRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricClosureRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: r } => fabric_storage_file_closure(root: r, name: name, bound: bound)
-    FabricStorageDoorSocket { socket: k } =>
-      match door_post(socket: k, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "closure", request: join([name as String, " ", to_string(bound)], "")) {
         ServedFault { fault: f } => FabricClosureRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_closure(text: b)
       }
@@ -211,8 +212,8 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
     FabricStorageBindingUnplaced => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: fabric_storage_unplaced_detail } }
     FabricStorageBindingRefused { detail: d } => FabricIdentityReadRefused { fault: FabricStoreUnreachable { detail: d } }
     FabricStorageLocalFiles { root: _ } => FabricIdentityUnproxied
-    FabricStorageDoorSocket { socket: k } =>
-      match door_post(socket: k, operation: "identity", request: "") {
+    FabricStorageDoorSocket { socket: k, route_prefix: route } =>
+      match door_post(socket: k, route_prefix: route, operation: "identity", request: "") {
         ServedFault { fault: f } => FabricIdentityReadRefused { fault: f }
         ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
       }
@@ -222,4 +223,17 @@ fn fabric_storage_presented_identity(binding: FabricStorageBinding) -> FabricIde
         ServedAnswered { body: b } => fabric_storage_unwire_identity(text: b)
       }
   }
+}
+
+// All state clients reach the one authenticated service, including the placed host's controller.
+// A file binding is reserved for injected local fixtures, never production state placement.
+
+
+fn served_post(endpoint: NonEmptyStr, operation: String, request: String) -> ServedReply {
+  if (endpoint as String).ends_with(suffix: fabric_storage_state_suffix) {
+    match fabric_state_signed_request(operation: operation, request: request) {
+      Absent => ServedFault { fault: FabricStoreUnreachable { detail: "fabric state credential or clock unavailable" } }
+      Present { value: envelope } => served_post_raw(endpoint: endpoint, operation: "authenticated", request: envelope)
+    }
+  } else { served_post_raw(endpoint: endpoint, operation: operation, request: request) }
 }

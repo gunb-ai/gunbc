@@ -370,13 +370,6 @@ pub fn repr_grounding_group_completion_carrier(module_path: String, name: String
         && (name.clone() == "GroupCompletion".to_string()))
 }
 
-pub fn repr_grounding_supplemental_bool_host_bridge_target(
-    module_path: String,
-    name: String,
-) -> bool {
-    ((module_path.clone() == "std.types".to_string()) && (name.clone() == "Bool".to_string()))
-}
-
 pub fn pair_completion_shape_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
@@ -390,15 +383,6 @@ pub fn pair_completion_uses_rhs_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
             crate::std_dissolution::unbound_dissolution("dissolve-on: std.trait_derive_shape.pair_completion_arm_uses_rhs / pair_completion_body_uses_rhs — variant-discriminating Bool predicates over PairCompletionOperand / PairCompletionBody, retained only because operand arity is DERIVED from the formula rather than stored (storing an arity field would be a second representation of what the arms already say). They dissolve into an arity projection car".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
-}
-
-pub fn repr_grounding_bool_host_bridge_dissolve_on() -> Rc<DissolutionCondition> {
-    thread_local! {
-        static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: repr_grounding_supplemental_bool_host_bridge_target / v1_emit_enum_supplemental_impls — Bool↔host-bool bridge door. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split). Kept as the remaining half of the old supplemental door; do not ground the bridge in an emitter cleanup (§3).".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

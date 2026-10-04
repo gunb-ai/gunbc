@@ -2275,7 +2275,7 @@ fn approval_broker_release_locus(spec: DeploymentSpec) -> HelperLocus {
   }
 }
 
-// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_routes
+// THE GRANTEE IS THE ACCOUNT THE VERB RUNS AS: the operator's (gunbc.auth.approval_device_enrolment_code
 // runs as fleet_posix_operator_user, which owns the device store and reads the publisher token).
 fn approval_broker_helper_grantee() -> NonEmptyStr {
   fleet_posix_operator_user.name

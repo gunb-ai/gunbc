@@ -8,13 +8,12 @@ import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMater
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
-import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
 import gunbc.auth.approval_notification { approval_notification }
-import gunbc.auth.approval_ntfy_deployment
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix }
+import gunbc.auth.approval_ntfy_publish
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, approval_broker_confirm_path_prefix, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused, approval_broker_address_refusal_detail }
 import std.algebra { trim }
 import gunbc.auth.approval_status_wire {
   FiledApprovalStatus, StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
@@ -88,7 +87,7 @@ type PublisherTokenRead
 
 fn read_publisher_token() -> PublisherTokenRead admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
 ] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
@@ -202,7 +201,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
 // exactly the fact nothing reads back, so the derivation moved to the authority that now owns the
 // endpoint (gunbc.auth.approval_broker_endpoint approval_broker_base_url) rather than being left
 // here with its reason rewritten. The undeclared-domain `.invalid` arm still lives with
-// srv1_tailnet_base_url_from and is not restated at either site.
+// gunbc.fleet_tailnet tailnet_base_url_from and is not restated at either site.
 
 fn approval_link(base: NonEmptyStr, request: StoredApprovalRequest, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
   join([base as String, approval_broker_confirm_path_prefix as String, capability_path_segment(escalation_id: request.escalation_id, decision: decision, tag_hex: tag_hex) as String], "") as NonEmptyStr
@@ -253,6 +252,7 @@ type SubmissionOutcome
   | SubmissionFiledNotNotified { escalation_id: NonEmptyStr, publish: NtfyPublishOutcome }
   | SubmissionFiledPublisherTokenUnavailable { escalation_id: NonEmptyStr, detail: String }
   | SubmissionFiledLinksNotIssued { escalation_id: NonEmptyStr, key_id: MacKeyId }
+  | SubmissionFiledBrokerAddressRefused { escalation_id: NonEmptyStr, detail: NonEmptyStr }
   | SubmissionAlreadyFiled { escalation_id: NonEmptyStr }
   | SubmissionStoreRefused { detail: NonEmptyStr }
   | SubmissionRefused { refusal: SubmissionRefusal }
@@ -264,6 +264,7 @@ fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
     SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
     SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
+    SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => false
     SubmissionAlreadyFiled { escalation_id: _ } => true
     SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => false
     SubmissionStoreRefused { detail: _ } => false
@@ -281,6 +282,7 @@ fn submission_outcome_reason(o: SubmissionOutcome) -> String {
     SubmissionFiledNotNotified { escalation_id: e, publish: p } => join(["filed ", e as String, " but the notification is not confirmed published (a re-submission re-notifies the same request): ", ntfy_publish_outcome_sentence(o: p)], "")
     SubmissionFiledPublisherTokenUnavailable { escalation_id: e, detail: d } => join(["filed ", e as String, " but the publisher token is unavailable: ", d], "")
     SubmissionFiledLinksNotIssued { escalation_id: e, key_id: k } => join(["filed ", e as String, " but no link could be issued under key ", k as String], "")
+    SubmissionFiledBrokerAddressRefused { escalation_id: e, detail: d } => join(["filed ", e as String, " but no link could be issued: ", d as String], "")
     SubmissionAlreadyFiled { escalation_id: e } => join(["escalation ", e as String, " is already filed"], "")
     SubmissionStoreRefused { detail: d } => join(["approval store refused the filing: ", d as String], "")
     SubmissionRefused { refusal: v } => match v {
@@ -309,7 +311,9 @@ fn notify_filed(
 ) -> SubmissionOutcome {
   match capability_keyring {
     ApprovalKeyringRefused { cause: c } => SubmissionFiledCapabilityKeyUnavailable { escalation_id: request.escalation_id, cause: c }
-    ApprovalKeyLoaded { key: key } => match issue_links(capability_key: key, base: approval_broker_base_url(), request: request) {
+    ApprovalKeyLoaded { key: key } => match approval_broker_base_url() {
+     ApprovalBrokerAddressRefused { cause } => SubmissionFiledBrokerAddressRefused { escalation_id: request.escalation_id, detail: approval_broker_address_refusal_detail(cause: cause) }
+     ApprovalBrokerAddressResolved { value: base } => match issue_links(capability_key: key, base: base, request: request) {
       LinksNotIssued { key_id: k } => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: k }
       links => match approval_message(request: request, links: links) {
         Absent => SubmissionFiledLinksNotIssued { escalation_id: request.escalation_id, key_id: key.id }
@@ -321,6 +325,7 @@ fn notify_filed(
           }
         }
       }
+    }
     }
   }
 }
@@ -342,7 +347,7 @@ type NotificationPublish
 
 fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "deliver_enrolment_code"),
 ] {
   match publisher {
     PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }

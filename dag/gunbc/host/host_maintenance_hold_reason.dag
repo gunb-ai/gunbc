@@ -1,0 +1,20 @@
+module gunbc.host_maintenance_hold_reason
+
+import std.types { NonEmptyStr }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.managed_host { ManagedHost }
+
+// THE VARIABLE AN OPERATOR NAMES THEIR MAINTENANCE REASON THROUGH IS MAINTENANCE POLICY, not a fact
+// about the host, so it lives beside the maintenance operation rather than on gunbc.managed_host
+// ManagedHost, and this is its one authority: gunbc.managed_host_unit_hold admit_maintenance_hold_in
+// reads it to admit a host to the operator's take and release. Mt. Collins unit 1's variable keeps
+// the name operators already export. A host with no row here has no maintenance entry, however its
+// hold is declared: the admission refuses it instead of deriving a variable name from its label.
+fn maintenance_hold_reason_env(host: ManagedHost) -> NonEmptyStr? {
+  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
+    Present { value: "GUNBC_MTCOLLINS1_MAINTENANCE_REASON" as NonEmptyStr }
+  } else {
+    none
+  }
+}

@@ -2,7 +2,7 @@ module v2.compiler.effect_demand_floor_join
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import gunbc.ci_layer_roots { witness_exclusion_substrings }
 import v2.compiler.effect_demand { SeamStanding, effect_demand_seam_roster }
 import v2.lens.module_graph {
@@ -16,9 +16,8 @@ import v2.lens.module_graph {
   strip_leading_dot_slash
 }
 import v2.std.algebra { Cons, Empty, any, contains, fold_list, length, list_reverse }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.workflow.floor_discovery_row { FloorDiscoveryRow }
