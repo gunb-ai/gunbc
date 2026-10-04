@@ -32,7 +32,7 @@ import gunbc.spark.fabric_serving_assignment { FabricServingAssignment }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held_by_subject_among, spark_serving_admissible_hosts }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
-import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
+import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
 import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
@@ -844,7 +844,37 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
     gpu_process_lines(ctx: ctx, h: h),
     group_host_link_health(ctx: c, h: h),
     checkpoint_cache_bytes_lines(ctx: c),
+    if host_identity_eq(a: h, b: ctx.host) { group_arm_runtime_source_lines(ctx: c) } else { "" },
   ], "")
+}
+
+// THE PINNED RUNTIME'S OWN SOURCES, read-only, on the session host only: the modules that decide
+// admission (scheduler, KV cache manager and coordinator, scheduler config), the metrics that expose
+// waiting reasons, and the warmup that set NVFP4's cold-start time. `python3 -m inspect <module>` in a
+// throwaway container of the Group A runtime's pinned digest prints the module's source -- no GPU, no
+// running arm, no quoting. What the capacity plan cites is read from here, never from memory of
+// upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
+data group_arm_runtime_source_modules: List<String> = [
+  "vllm.config.scheduler",
+  "vllm.v1.core.sched.scheduler",
+  "vllm.v1.core.sched.request_queue",
+  "vllm.v1.core.kv_cache_manager",
+  "vllm.v1.core.kv_cache_coordinator",
+  "vllm.v1.core.single_type_kv_cache_manager",
+  "vllm.v1.core.kv_cache_utils",
+  "vllm.v1.metrics.loggers",
+  "vllm.v1.metrics.stats",
+  "vllm.model_executor.warmup.kernel_warmup",
+  "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+]
+
+fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
+  match serving_runtime_row(r: GunbcGlm53KvplanV2GroupAProduced) {
+    Absent => "  runtime sources: the Group A runtime has no row\n"
+    Present { value: row } =>
+      join(map(group_arm_runtime_source_modules, m =>
+        observe_leg(ctx: ctx, what: join(["pinned runtime source ", m], ""), argv: ["docker", "run", "--rm", "--network", "none", "--entrypoint", "python3", runtime_artifact_wire(a: row.artifact) as String, "-m", "inspect", m])), "")
+  }
 }
 
 // THE CHECKPOINTS' HOST-VISIBLE BYTES, read-only. This hf keeps completed files in a HUB-LEVEL store
