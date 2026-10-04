@@ -25,7 +25,7 @@ import gunbc.secret_provision_actuator {
   observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
-import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
   FederationClassified, FederationUnclassified, rest_ok, rest_refusal_text, outcome_is_not_found,
@@ -561,11 +561,6 @@ fn iam_bootstrap_positive_probes(token: Secret) -> String {
   })
 }
 
-// ON A GRANT-SET SECRET iam-converge GRANTS AND NEVER READS OR WRITES THE PAYLOAD: no allow it holds
-// may admit these. The project deny policy forbids them independently; this probe establishes that
-// no allow was bound beside it.
-data iam_bootstrap_custody_payload_permissions: List<String> = ["secretmanager.versions.access", "secretmanager.versions.add"]
-
 fn iam_bootstrap_negative_probes(token: Secret) -> String {
   let accounts = fold([iam_observe_service_account, iam_converge_service_account], init: "", f: (prior, account) =>
     if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: ["iam.serviceAccounts.setIamPolicy"], expected: [], token: token) })
@@ -573,7 +568,7 @@ fn iam_bootstrap_negative_probes(token: Secret) -> String {
     iam_bootstrap_check_probe(resource: BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token)
   }
   if pool != "" { pool } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
-    if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: iam_bootstrap_custody_payload_permissions, expected: [], token: token) }) }
+    if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: grant_set_payload_permissions, expected: [], token: token) }) }
 }
 
 fn iam_bootstrap_is_forbidden(outcome: RestOutcome) -> Bool {

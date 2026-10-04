@@ -314,6 +314,12 @@ fn gcp_iam_converge_grant_set_secrets() -> List<NonEmptyStr> {
   )
 }
 
+// ON A GRANT-SET SECRET iam-converge GRANTS AND NEVER READS OR WRITES THE PAYLOAD. The project deny
+// policy forbids these (iam_converge_denied_permissions, in their deny-API spelling); this is their
+// IAM-permission spelling, which the bootstrap readback expects denied and the bootstrap probe
+// expects unheld on every grant-set secret.
+data grant_set_payload_permissions: List<String> = ["secretmanager.versions.access", "secretmanager.versions.add"]
+
 fn grant_set_bindings() -> List<ResourceLocalBinding> {
   map(gcp_iam_converge_grant_set_secrets(), id => ResourceLocalBinding {
     resource: gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id),
@@ -366,7 +372,7 @@ fn iam_converge_bootstrap_readback() -> List<ReachProbe> {
       ExpectDenied { resource: pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id), permission: "iam.workloadIdentityPoolProviders.create" },
       ExpectDenied { resource: service_account_resource(email: iam_converge_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
       ExpectDenied { resource: service_account_resource(email: iam_observe_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
-    ] + flat_map(gcp_iam_converge_grant_set_secrets(), id => map(["secretmanager.versions.access", "secretmanager.versions.add"], p =>
+    ] + flat_map(gcp_iam_converge_grant_set_secrets(), id => map(grant_set_payload_permissions, p =>
       ExpectDenied { resource: gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id), permission: p })),
   )
 }

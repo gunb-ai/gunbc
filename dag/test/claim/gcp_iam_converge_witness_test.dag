@@ -28,7 +28,7 @@ import gunbc.auth.gcp_iam_converge {
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
   GrantSet, SecretPolicyReading, gcp_iam_converge_grant_sets, grant_set_secrets, gcp_iam_converge_grant_set_secrets,
-  plan_grant_set, gcp_iam_estate_labels_unique,
+  plan_grant_set, gcp_iam_estate_labels_unique, grant_set_payload_permissions,
 }
 import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.github_gcp_federation { federated_service_account_member }
@@ -522,7 +522,7 @@ test fn custody_secrets_are_bound_per_secret_and_their_payload_stays_denied() ->
     && iam_converge_reach_excludes_its_own_trust()
     && all(secrets, x =>
       any(bs, b => match b.role { ConvergeSecretPolicyRole => string_contains(s: b.resource, pattern: concat("/secrets/", x))  ConvergeCreateRole => false  ConvergeProviderRole => false  ConvergeAccountPolicyRole => false })
-        && all(["secretmanager.versions.access", "secretmanager.versions.add"], q => any(rb, r => match r {
+        && all(grant_set_payload_permissions, q => any(rb, r => match r {
           ExpectDenied { resource: res, permission: perm } => perm == q && string_contains(s: res, pattern: concat("/secrets/", x))
           ExpectAdmitted { resource: _, permission: _ } => false
         })))
