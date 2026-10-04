@@ -3,7 +3,6 @@ module v2.test.claim.loop_domain_edge
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.compilers.target_model { target_value_expr_loop_gate }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   ComputationNode,

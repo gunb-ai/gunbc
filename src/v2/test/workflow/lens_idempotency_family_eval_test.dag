@@ -1,6 +1,5 @@
 module v2.test.workflow.lens_idempotency_family_eval
 
-import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates }
 import v2.lens.idempotency { idempotency_witness }
 import v2.test.lens_idempotency.write_effect { idempotency_claim_tree }

@@ -43,7 +43,6 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Symbol }
-import v2.std.logic { Bool }
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_closure_refs,
   host_source_root_ingest_coverage_receipt
