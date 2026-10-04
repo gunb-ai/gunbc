@@ -2,6 +2,7 @@ module test.claim.deployment_risk_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, List, Bool }
+import v2.std.collection { Present, Absent }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
@@ -15,14 +16,14 @@ import gunbc.deployment_risk {
   NoProdRole,
   ProdRoleHeldBy,
   DeploymentExternalBindingSet,
+  DeploymentExternalBindingTable,
   DeploymentBindingResolution,
   DeploymentBindingsResolved,
   DeploymentBindingSetAbsent,
-  DeploymentBindingSetAmbiguous,
   deployment_risk_class,
   resolve_deployment_bindings,
   prod_role_selection,
-  deployment_external_binding_sets,
+  deployment_external_binding_table,
   srv1_daily_workspace_deployment,
   srv1_lab_codex_feedback_deployment,
   srv2_deploy_deployment,
@@ -69,7 +70,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn a_test_deployment_refuses_rather_than_resolving_the_prod_bindings() -> Bool {
   match resolve_deployment_bindings(
     selection: prod_role_selection,
-    sets: deployment_external_binding_sets,
+    table: deployment_external_binding_table,
     deployment: srv1_lab_codex_feedback_deployment,
   ) {
     DeploymentBindingSetAbsent { deployment: d, class: TestRisk } => d == srv1_lab_codex_feedback_deployment
@@ -82,10 +83,10 @@ test fn a_test_deployment_refuses_rather_than_resolving_the_prod_bindings() -> B
 test fn the_prod_role_holder_resolves_the_prod_topic_and_app() -> Bool {
   match resolve_deployment_bindings(
     selection: prod_role_selection,
-    sets: deployment_external_binding_sets,
+    table: deployment_external_binding_table,
     deployment: srv1_daily_workspace_deployment,
   ) {
-    DeploymentBindingsResolved { deployment: _, bindings: b } =>
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } =>
       b.approval_ntfy_topic == approval_ntfy_topic && b.publication_app == gunbai_bot_declared
     _ => false
   }
@@ -96,38 +97,27 @@ test fn the_prod_role_holder_resolves_the_prod_topic_and_app() -> Bool {
 // returned "the first set" or "the prod set" would fail one of the two conjuncts.
 data fx_test_topic: NtfyTopic = "gunbc-approvals-test" as NtfyTopic
 
-data fx_prod_set: DeploymentExternalBindingSet = DeploymentExternalBindingSet { class: ProdRisk, approval_ntfy_topic: approval_ntfy_topic, publication_app: gunbai_bot_declared }
-
-data fx_both_classes: List<DeploymentExternalBindingSet> = [
-  fx_prod_set,
-  DeploymentExternalBindingSet { class: TestRisk, approval_ntfy_topic: fx_test_topic, publication_app: gunbai_ci_declared },
-]
+data fx_both_classes: DeploymentExternalBindingTable = DeploymentExternalBindingTable {
+  prod: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: approval_ntfy_topic, publication_app: gunbai_bot_declared } },
+  test: Present { value: DeploymentExternalBindingSet { approval_ntfy_topic: fx_test_topic, publication_app: gunbai_ci_declared } },
+}
 
 test fn each_class_resolves_only_its_own_set() -> Bool {
-  let test_side = match resolve_deployment_bindings(selection: prod_role_selection, sets: fx_both_classes, deployment: srv1_lab_codex_feedback_deployment) {
-    DeploymentBindingsResolved { deployment: _, bindings: b } => b.approval_ntfy_topic == fx_test_topic && b.publication_app != gunbai_bot_declared
+  let test_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_lab_codex_feedback_deployment) {
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == fx_test_topic && b.publication_app != gunbai_bot_declared
     _ => false
   }
-  let prod_side = match resolve_deployment_bindings(selection: prod_role_selection, sets: fx_both_classes, deployment: srv1_daily_workspace_deployment) {
-    DeploymentBindingsResolved { deployment: _, bindings: b } => b.approval_ntfy_topic == approval_ntfy_topic
+  let prod_side = match resolve_deployment_bindings(selection: prod_role_selection, table: fx_both_classes, deployment: srv1_daily_workspace_deployment) {
+    DeploymentBindingsResolved { deployment: _, class: _, bindings: b } => b.approval_ntfy_topic == approval_ntfy_topic
     _ => false
   }
   test_side && prod_side
 }
 
-// TWO SETS FOR ONE CLASS IS A REFUSAL, not a first-match.
-test fn two_sets_for_one_class_refuse_as_ambiguous() -> Bool {
-  let doubled = [fx_prod_set, fx_prod_set]
-  match resolve_deployment_bindings(selection: prod_role_selection, sets: doubled, deployment: srv1_daily_workspace_deployment) {
-    DeploymentBindingSetAmbiguous { deployment: _, class: ProdRisk, count: 2 } => true
-    _ => false
-  }
-}
-
 // ── The switch: one row moves prod, or turns it off ─────────────────────────────────────────────
 test fn no_prod_role_makes_the_former_holder_test_risk_and_it_refuses() -> Bool {
   deployment_risk_class(selection: NoProdRole, deployment: srv1_daily_workspace_deployment) == TestRisk
-    && match resolve_deployment_bindings(selection: NoProdRole, sets: deployment_external_binding_sets, deployment: srv1_daily_workspace_deployment) {
+    && match resolve_deployment_bindings(selection: NoProdRole, table: deployment_external_binding_table, deployment: srv1_daily_workspace_deployment) {
       DeploymentBindingSetAbsent { deployment: _, class: TestRisk } => true
       _ => false
     }
