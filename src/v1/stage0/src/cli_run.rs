@@ -100,11 +100,12 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_type_declaration_use_census_runs, run_v2_demand_census, run_v2_native_census,
-    run_v2_native_cli, run_v2_native_frontier, CensusInferRun, NativeCensusRun,
-    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
-    SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
+    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    run_required_v2_native, run_self_host, run_type_declaration_use_census_runs,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
+    CensusInferRun, NativeCensusRun, NativeClaimProgramRun, NativeFrontierRun,
+    NativeMemberTermination, NativeRouteOutcome, NativeServeProgramRun, SelfHostHeld,
+    TypeDeclarationUseRuns, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -21894,6 +21895,27 @@ pub fn handle_serve(
             .unwrap_or_else(|| "unset".to_string()),
     );
     let listener_attests_peer = matches!(listener, ServeListener::Unix(..));
+    // THE ARGUMENT PLAN IS DERIVED ONCE FROM THE ENTRY'S DECLARED PARAMETERS. A parameter naming
+    // no request fact, or naming an attested peer on a listener that attests none, refuses here,
+    // before the first connection, rather than as a per-request 500.
+    let handler_facts = match v1_interpreter::declared_parameter_names(
+        &ctx,
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
+    )
+    .ok_or_else(|| {
+        format!(
+            "no function `{}` in the entry closure",
+            serve_budget_refusal::serve_contract_entry(&armed_contract)
+        )
+    })
+    .and_then(|declared| serve_handler_fact_plan(&declared, listener_attests_peer))
+    {
+        Ok(plan) => plan,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    };
     v1_interpreter::with_active_context(&ctx, || {
         loop {
             let (mut conn, peer_user) = match listener.accept() {
@@ -21935,8 +21957,8 @@ pub fn handle_serve(
                 // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
                 // deadline around a `format!` would be ceremony, and reaching the evaluator at all
                 // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some((method, path, _body, _identity, _cookie_header)))
-                    if method == "GET" && path == SERVE_LIVENESS_PATH =>
+                Ok(Some(request))
+                    if request.method == "GET" && request.path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
                         &mut *stream,
@@ -21955,15 +21977,13 @@ pub fn handle_serve(
                         &[],
                     )
                 }
-                Ok(Some((method, path, body, tailscale_identity, cookie_header))) => {
+                Ok(Some(request)) => {
                     let args = serve_handler_args(
-                        method,
-                        path,
-                        body,
-                        tailscale_identity,
-                        release_revision.clone(),
-                        cookie_header,
-                        if listener_attests_peer { Some(peer_user.clone()) } else { None },
+                        &ctx,
+                        &handler_facts,
+                        request,
+                        &release_revision,
+                        &peer_user,
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
@@ -22113,15 +22133,6 @@ pub fn handle_serve(
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
 
-/// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
-/// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
-/// browser can present it back. A request WITHOUT the header passes no `cookie_header` argument
-/// at all (the read yields `None`, never an empty string), and the `.dag` side's
-/// request-security context reads no session cookie as AuthAbsent, never as anonymous success
-/// (control: test.claim.auth.request_cookie_evidence_witness_test). Every other header stays out
-/// of the handlers exactly as before.
-const SERVE_COOKIE_HEADER: &str = "cookie";
-
 // ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
 // bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
 trait ServeConnection: std::io::Read + std::io::Write {
@@ -22224,41 +22235,129 @@ impl ServeListener {
     }
 }
 
-// THE HANDLER'S ARGUMENTS, NAMED. The tailscale identity is empty when the header was absent (the
-// `.dag` side refuses on empty rather than treating it as anonymous); the release revision is fixed
-// for the process lifetime. THE PEER IS AN ARGUMENT ONLY WHERE THE KERNEL ATTESTS ONE: a named
-// argument the handler does not declare is a call-contract refusal, not a dropped value, so handing
-// peer_user to a TCP handler (the roadmap's) refused every request with a 500 on srv1
-// (dashboard_deploy run 36584004074). Only the --unix-socket listener passes Some.
-fn serve_handler_args(
+// THE HANDLER'S ARGUMENTS ARE DERIVED FROM THE ENTRY'S DECLARED PARAMETERS. The seam offers a
+// closed vocabulary of request facts and an entry receives exactly the facts it declares, by name.
+// A named argument the handler does not declare is a call-contract refusal, not a dropped value
+// (srv1 500, dashboard_deploy run 36584004074), so a host-side list of names -- pushed
+// unconditionally, or conditioned per fact on the listener or on the request -- is a second
+// authority for the handler's signature that refuses every handler it disagrees with. The
+// tailscale identity is empty when the header was absent (the `.dag` side refuses on empty rather
+// than treating it as anonymous); the release revision is fixed for the process lifetime;
+// `request_headers` is every header field of the request as `ServeRequestHeader { name, value }`
+// with the name lowercased (field names are case-insensitive, RFC 9110 section 5.1) and nothing
+// interpreted -- which field carries a session, and whether a repeated field is admissible, are
+// the handler's facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ServeRequestFact {
+    Method,
+    Path,
+    Body,
+    TailscaleIdentity,
+    ReleaseRevision,
+    PeerUser,
+    RequestHeaders,
+}
+
+impl ServeRequestFact {
+    const ALL: [ServeRequestFact; 7] = [
+        ServeRequestFact::Method,
+        ServeRequestFact::Path,
+        ServeRequestFact::Body,
+        ServeRequestFact::TailscaleIdentity,
+        ServeRequestFact::ReleaseRevision,
+        ServeRequestFact::PeerUser,
+        ServeRequestFact::RequestHeaders,
+    ];
+
+    fn parameter_name(self) -> &'static str {
+        match self {
+            ServeRequestFact::Method => "method",
+            ServeRequestFact::Path => "path",
+            ServeRequestFact::Body => "body",
+            ServeRequestFact::TailscaleIdentity => "tailscale_identity",
+            ServeRequestFact::ReleaseRevision => "release_revision",
+            ServeRequestFact::PeerUser => "peer_user",
+            ServeRequestFact::RequestHeaders => "request_headers",
+        }
+    }
+}
+
+// THE PEER IS A FACT ONLY WHERE THE KERNEL ATTESTS ONE: an entry declaring `peer_user` behind a
+// listener that attests none is refused, never handed an empty peer.
+fn serve_handler_fact_plan(
+    declared: &[String],
+    listener_attests_peer: bool,
+) -> Result<Vec<ServeRequestFact>, String> {
+    declared
+        .iter()
+        .map(|name| {
+            let fact = ServeRequestFact::ALL
+                .iter()
+                .copied()
+                .find(|fact| fact.parameter_name() == name)
+                .ok_or_else(|| {
+                    format!(
+                        "serve entry declares parameter `{}`, which names no request fact (offered: {})",
+                        name,
+                        ServeRequestFact::ALL
+                            .iter()
+                            .map(|fact| fact.parameter_name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                })?;
+            if fact == ServeRequestFact::PeerUser && !listener_attests_peer {
+                return Err(
+                    "serve entry declares `peer_user`, but only the --unix-socket listener attests a peer"
+                        .to_string(),
+                );
+            }
+            Ok(fact)
+        })
+        .collect()
+}
+
+struct ServeRequest {
     method: String,
     path: String,
     body: String,
     tailscale_identity: String,
-    release_revision: String,
-    cookie_header: Option<String>,
-    attested_peer: Option<String>,
+    headers: Vec<(String, String)>,
+}
+
+fn serve_handler_args(
+    ctx: &v1_interpreter::InterpContext,
+    plan: &[ServeRequestFact],
+    request: ServeRequest,
+    release_revision: &str,
+    peer_user: &str,
 ) -> Vec<(Option<String>, v1_interpreter::Value)> {
-    let mut args = vec![
-        (Some("method".to_string()), str_value(method)),
-        (Some("path".to_string()), str_value(path)),
-        (Some("body".to_string()), str_value(body)),
-        (
-            Some("tailscale_identity".to_string()),
-            str_value(tailscale_identity),
-        ),
-        (
-            Some("release_revision".to_string()),
-            str_value(release_revision),
-        ),
-    ];
-    if let Some(cookie) = cookie_header {
-        args.push((Some("cookie_header".to_string()), str_value(cookie)));
-    }
-    if let Some(peer) = attested_peer {
-        args.push((Some("peer_user".to_string()), str_value(peer)));
-    }
-    args
+    plan.iter()
+        .map(|fact| {
+            let value = match fact {
+                ServeRequestFact::Method => str_value(&request.method),
+                ServeRequestFact::Path => str_value(&request.path),
+                ServeRequestFact::Body => str_value(&request.body),
+                ServeRequestFact::TailscaleIdentity => str_value(&request.tailscale_identity),
+                ServeRequestFact::ReleaseRevision => str_value(release_revision),
+                ServeRequestFact::PeerUser => str_value(peer_user),
+                ServeRequestFact::RequestHeaders => list_value_from_vec(
+                    request
+                        .headers
+                        .iter()
+                        .map(|(name, value)| v1_interpreter::Value::Record {
+                            type_name: ctx.sym("ServeRequestHeader"),
+                            fields: Rc::new(v1_interpreter::sorted_fields(vec![
+                                (ctx.sym("name"), str_value(name)),
+                                (ctx.sym("value"), str_value(value)),
+                            ])),
+                        })
+                        .collect(),
+                ),
+            };
+            (Some(fact.parameter_name().to_string()), value)
+        })
+        .collect()
 }
 
 fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
@@ -22292,9 +22391,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
     Ok(name.to_string_lossy().into_owned())
 }
 
-fn serve_read_request(
-    stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String, Option<String>)>, String> {
+fn serve_read_request(stream: &mut dyn ServeConnection) -> Result<Option<ServeRequest>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22342,7 +22439,7 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
-    let mut cookie_header: Option<String> = None;
+    let mut headers: Vec<(String, String)> = Vec::new();
     loop {
         let mut line = String::new();
         let n = reader
@@ -22363,6 +22460,7 @@ fn serve_read_request(
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
+            headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
             if name.eq_ignore_ascii_case("content-length") {
                 if content_length.is_some() {
                     return Err("duplicate Content-Length header".to_string());
@@ -22383,12 +22481,6 @@ fn serve_read_request(
                 }
                 tailscale_identity = Some(value.trim().to_string());
             }
-            if name.eq_ignore_ascii_case(SERVE_COOKIE_HEADER) {
-                if cookie_header.is_some() {
-                    return Err(format!("duplicate {} header", SERVE_COOKIE_HEADER));
-                }
-                cookie_header = Some(value.trim().to_string());
-            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -22403,13 +22495,13 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some((
+    Ok(Some(ServeRequest {
         method,
-        target,
+        path: target,
         body,
-        tailscale_identity.unwrap_or_default(),
-        cookie_header,
-    )))
+        tailscale_identity: tailscale_identity.unwrap_or_default(),
+        headers,
+    }))
 }
 
 fn serve_write_response(
@@ -47058,64 +47150,61 @@ mod serve_unix_socket_door_tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
     }
 
-    // A TCP handler is handed exactly the five arguments every existing handler declares -- never
-    // peer_user, whose presence refuses a handler that does not declare it (srv1 500, run 36584004074).
+    // A TCP handler that declares the five standard parameters is handed exactly those five --
+    // never peer_user, whose presence refused a handler that does not declare it (srv1 500, run
+    // 36584004074). The plan is the declaration, so there is no listener-conditioned push left to
+    // get wrong: declaring peer_user behind TCP refuses at startup, and behind the unix socket it
+    // is the last fact because it is the last declared parameter.
     #[test]
     fn a_tcp_handler_is_not_handed_peer_user() {
-        let names = |a: &Vec<(Option<String>, v1_interpreter::Value)>| -> Vec<String> {
-            a.iter()
-                .map(|(n, _)| n.clone().unwrap_or_default())
-                .collect()
-        };
-        let tcp = serve_handler_args(
-            "GET".into(),
-            "/x".into(),
-            String::new(),
-            String::new(),
-            "r".into(),
-            None,
-            None,
-        );
+        let declared =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| n.to_string()).collect() };
+        let five = [
+            "method",
+            "path",
+            "body",
+            "tailscale_identity",
+            "release_revision",
+        ];
+        let tcp = serve_handler_fact_plan(&declared(&five), false).unwrap();
         assert_eq!(
-            names(&tcp),
-            vec![
-                "method",
-                "path",
-                "body",
-                "tailscale_identity",
-                "release_revision"
-            ]
+            tcp.iter().map(|f| f.parameter_name()).collect::<Vec<_>>(),
+            five.to_vec()
         );
-        let unix = serve_handler_args(
-            "GET".into(),
-            "/x".into(),
-            String::new(),
-            String::new(),
-            "r".into(),
-            None,
-            Some("ghrunner".into()),
-        );
-        assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
+        let mut six = five.to_vec();
+        six.push("peer_user");
+        assert!(serve_handler_fact_plan(&declared(&six), false)
+            .unwrap_err()
+            .contains("attests a peer"));
+        let unix = serve_handler_fact_plan(&declared(&six), true).unwrap();
+        assert_eq!(unix.last(), Some(&ServeRequestFact::PeerUser));
     }
 
+    // The plan follows the declaration in both directions: an entry declaring three parameters is
+    // handed three facts whatever the request carries, an entry declaring request_headers is
+    // handed the header list, and a declared name outside the vocabulary refuses rather than
+    // being left unbound. `cookie_header` is such a name: no fact is conditioned on one header.
     #[test]
-    fn cookie_context_does_not_manufacture_a_tcp_peer() {
-        let args = serve_handler_args(
-            "GET".into(),
-            "/allocations".into(),
-            String::new(),
-            String::new(),
-            "revision".into(),
-            Some("session=opaque".into()),
-            None,
+    fn handler_facts_follow_the_declared_parameters() {
+        let declared =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| n.to_string()).collect() };
+        assert_eq!(
+            serve_handler_fact_plan(&declared(&["method", "path", "body"]), false).unwrap(),
+            vec![
+                ServeRequestFact::Method,
+                ServeRequestFact::Path,
+                ServeRequestFact::Body
+            ]
         );
-        assert!(args
-            .iter()
-            .any(|(name, value)| name.as_deref() == Some("cookie_header")
-                && format!("{value:?}").contains("session=opaque")));
-        assert!(!args
-            .iter()
-            .any(|(name, _)| name.as_deref() == Some("peer_user")));
+        assert_eq!(
+            serve_handler_fact_plan(&declared(&["request_headers"]), false).unwrap(),
+            vec![ServeRequestFact::RequestHeaders]
+        );
+        assert!(
+            serve_handler_fact_plan(&declared(&["cookie_header"]), false)
+                .unwrap_err()
+                .contains("names no request fact")
+        );
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.

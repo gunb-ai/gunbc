@@ -6,7 +6,7 @@ import gunbc.live_deploy.member_identity {
   ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess, DirectoryRoot,
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, apply_emitted_steps_text, apply_empty_host_effects }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
@@ -86,7 +86,8 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
@@ -135,6 +136,8 @@ import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
   deploy_apply_preamble_steps,
+  apply_intent_from_effects,
+  deploy_apply_frame_steps,
   deploy_publication_principal_ensure_command,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
@@ -151,7 +154,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -159,7 +162,7 @@ import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_from_authorization,
   derived_runner_memory_cap_members,
   cap_converge_decision,
-  CapConvergeDecision,
+  CapConvergeDecision, CapConvergeWithheld,
   CapConvergeAuthorized,
   SurplusSlotsObserved,
   runner_slot_service_units_for_host,
@@ -347,37 +350,87 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
-test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
-  let sh = witness_apply_script()
-  !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: sh, pattern: "whoami")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
-    && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
-    && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
-    && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
+// THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
+// node built by gunbc.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
+// fleet's visudo row; this is that same node with the same argv, rendered by the same serializer, so
+// the needle is the producer's own words rather than a hand spelling of them. The hand spelling
+// `sudo -n /usr/sbin/visudo -cf` went stale twice without the step changing meaning: #12602 spelled
+// sudo by its absolute path (extdeps.sudo sudo_program), and #12525 moved the install onto the bash
+// builder, which quotes every literal word. The stage path is a variable word the claim does not name.
+fn witness_sudoers_stage_visudo_check_text() -> String {
+  shell_command_text_of_node(stmt: deploy_sudoers_elevated(command: [ci_runner_sudo_binary_path(b: SudoVisudo) as String, "-cf"], tail: []))
 }
 
-// THE TWO HALVES THIS CLAIM JOINS ARE NOW READ AT THEIR OWN PRODUCERS.
-//
-// The acknowledgement is a line in the retract fold's comment block; the sudoers install is a step in
-// the preamble. Rendering the whole retract program to find both cost 86,034 eval steps against a
-// per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
-// this claim names.
-//
-// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
-// rather than merely cost less: `live_deploy_retract_intent` concatenates
-// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
-// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
-// own remaining steps are artifact teardowns, which carry neither.
+// THE APPLY CLAIM IS RE-ROOTED AT ONE INTERFACE EACH (DESIGN §3, a witness discriminates at one
+// interface). It used to read the whole rendered apply script for five absence facts and two
+// presence facts about ONE step -- the sudoers install in the preamble -- so it paid the full apply
+// render (~271k eval steps against 72,300) for facts about a few hundred bytes of it. Now:
+//   - the preamble text is SUPPLIED as a value (witness_apply_preamble_text, the same producer the
+//     apply fold calls) to two sub-claims, one per absence/presence fact family;
+//   - ONE inhabitance claim builds the real apply pipeline through apply_intent_from_effects and
+//     asserts the ROUTE: the steps immediately after the frame ARE the preamble, so a fact proved of
+//     the preamble is a fact of the apply script and deleting the preamble from the fold reds it.
+// The two old probe negatives (`visudo -V`, `-l /usr/bin/tailscale`) are deleted rather than
+// re-spelled: under the quoting serializer neither spelling can occur, and since #12168 those probes
+// are emitted on purpose AFTER the drop-in lands (gunbc.ci_deploy_sudoers
+// deploy_sudoers_post_install_roster_probe_stmts); their ORDER is owned by
+// test.claim.deploy_mutation_gate_witness.
+test fn witness_apply_preamble_has_no_embedded_preflight() -> Bool {
+  let pre = witness_apply_preamble_text()
+  !string_contains(s: pre, pattern: "deploy-access-bootstrap-preflight")
+    && !string_contains(s: pre, pattern: "whoami")
+    && !string_contains(s: pre, pattern: "deploy-access-preflight: PASS")
+}
+
+test fn witness_apply_preamble_installs_only_the_deploy_sudoers() -> Bool {
+  let pre = witness_apply_preamble_text()
+  string_contains(s: pre, pattern: witness_sudoers_stage_visudo_check_text())
+    && string_contains(s: pre, pattern: "/etc/sudoers.d/gunbc-deploy")
+    && !string_contains(s: pre, pattern: "gunbc-deploy-privileged")
+}
+
+// THE ROUTE. This is the one claim that runs the real apply assembly, apply_intent_from_effects,
+// and it asserts that the steps immediately after the frame (gunbc.live_deploy.emit
+// deploy_apply_frame_steps, whose length is the offset) ARE deploy_apply_preamble_steps. Deleting the preamble from
+// the fold, or moving it, reds it. Its supplied inputs are the ones the route does not read: the
+// srv1 spec with its member steps emptied, the empty host's effects over it
+// (apply_empty_host_effects), and a withheld cap decision. The
+// member flat_map is what made the full render cost ~271k floor steps, and the preamble never
+// reads it. The member population's own emission is claimed through
+// test.claim.live_deploy.apply_emission_projection.
+test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
+  let real = deployment_spec_srv1()
+  let spec = DeploymentSpec {
+    target: real.target,
+    steps: [],
+    service: real.service,
+    approval_broker: real.approval_broker,
+    names: real.names,
+    instance_id: real.instance_id,
+  }
+  match ci_deploy_srv1_access_or_refusal() {
+    DeployAccessReady { access: a } =>
+      let pre = deploy_apply_preamble_steps(access: a, spec: spec)
+      let p = apply_intent_from_effects(
+        spec: spec,
+        effects: apply_empty_host_effects(spec: spec),
+        access: a,
+        plan: deploy_witness_full_install_plan(spec: spec),
+        cap_authorization: CapConvergeWithheld { cause: "the route claim is not about the cap step" },
+      )
+      pipeline_steps_text(steps: p.steps.skip(n: deploy_apply_frame_steps(spec: spec).length()).take(n: pre.length())) == pipeline_steps_text(steps: pre)
+    DeployAccessJobPrincipalRefused { refusal: _ } => false
+  }
+}
+
+// THE RETRACT FRAME ACKNOWLEDGES THE SHARED SUDOERS INSTALL. `live_deploy_retract_intent`
+// concatenates `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so the facts
+// about that preamble are owned once, by witness_apply_preamble_has_no_embedded_preflight and
+// witness_apply_preamble_installs_only_the_deploy_sudoers; this claim keeps only the retract
+// frame's own comment.
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
-  let preamble = witness_apply_preamble_text()
   string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
-    && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
@@ -1794,4 +1847,5 @@ test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_i
     && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
+
 

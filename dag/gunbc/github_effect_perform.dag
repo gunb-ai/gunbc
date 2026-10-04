@@ -65,8 +65,8 @@ import v2.std.optional { Absent, Present }
 // (gunbc.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
 // job does not select the microVM path. Its witnesses supply RestOutcomes and establish the
 // decision, never that GitHub has minted through it. The same holds for
-// gunbc.runner_attempt_launch stage_jit_device. The trigger is the CAPABILITY, not an import.
-data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_jit_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestOutcomes, nor by an import of these functions." as NonEmptyStr)
+// gunbc.runner_attempt_launch stage_bootstrap_device. The trigger is the CAPABILITY, not an import.
+data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestOutcomes, nor by an import of these functions." as NonEmptyStr)
 
 // THE KEY THE MINT SIGNS WITH IS ONE MODELED PATH, NOT A CALLER PARAMETER. It is deliberately NOT
 // gunbc.runner_unit_file runner_host_app_pem_path: that file is owned by the runner user, which is
