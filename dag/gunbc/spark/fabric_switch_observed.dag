@@ -17,10 +17,7 @@ import product.cable_plant_assessment {
   CablePlant, cable_plant, CableLegReading, LegReadingTaken, LegNeverRead, CablePlantInspection,
   inspect_cable_plant,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-}
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 
 // THE SWITCHED FABRIC AS OBSERVED FROM BOTH ENDS ON 2026-09-05. Every Spark carries ONE leg of an FS
 // QDD-400G-4QPC015 breakout in its bottom cage; the switch's LLDP neighbour table names each Spark

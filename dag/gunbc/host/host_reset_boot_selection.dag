@@ -2,7 +2,7 @@ module gunbc.host_reset_boot_selection
 
 import product.placement_supply { host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.managed_host { ManagedHost }
 

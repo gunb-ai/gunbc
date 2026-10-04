@@ -1,0 +1,81 @@
+module test.claim.record_field_distinct_product_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+
+// gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value: a record or variant
+// field declared as one nominal product refuses a NON-LITERAL value of a distinct product, located
+// at the field value, under the class the direct call argument emits for the same pair. The
+// controls keep the wall from over-refusing: the declared product itself, a transparent alias of
+// it, and the declared product at an optional field stay clean.
+
+fn blocking_of_class(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_total(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data field_call_red_source: String = "module probe_record_field_call_red\ntype RfA { a: Int }\ntype RfB { b: String }\ntype RfHolderB { f: RfB }\nfn rf_a() -> RfA { RfA { a: 1 } }\nfn rf_field_distinct_product() -> RfHolderB { RfHolderB { f: rf_a() } }\n"
+data field_call_green_source: String = "module probe_record_field_call_green\ntype RfA { a: Int }\ntype RfB { b: String }\ntype RfHolderB { f: RfB }\nfn rf_b() -> RfB { RfB { b: \"x\" } }\nfn rf_field_same_product() -> RfHolderB { RfHolderB { f: rf_b() } }\n"
+data field_binding_red_source: String = "module probe_record_field_binding_red\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfHolderB { f: RfB }\nfn rf_hold(t: RfA) -> RfHolderB { RfHolderB { f: t } }\n"
+data field_binding_green_source: String = "module probe_record_field_binding_green\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfHolderB { f: RfB }\nfn rf_hold(t: RfB) -> RfHolderB { RfHolderB { f: t } }\n"
+data variant_field_red_source: String = "module probe_variant_field_red\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfChoice = RfLeft { f: RfB } | RfRight\nfn rf_choose(t: RfA) -> RfChoice { RfLeft { f: t } }\n"
+data variant_field_green_source: String = "module probe_variant_field_green\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfChoice = RfLeft { f: RfB } | RfRight\nfn rf_choose(t: RfB) -> RfChoice { RfLeft { f: t } }\n"
+data optional_field_red_source: String = "module probe_optional_field_red\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfHolderOpt { f: RfB? }\nfn rf_hold(t: RfA) -> RfHolderOpt { RfHolderOpt { f: t } }\n"
+data optional_field_green_source: String = "module probe_optional_field_green\ntype RfA { a: Int }\ntype RfB { b: Int }\ntype RfHolderOpt { f: RfB? }\nfn rf_hold(t: RfB) -> RfHolderOpt { RfHolderOpt { f: t } }\n"
+data alias_field_green_source: String = "module probe_alias_field_green\ntype RfB { b: Int }\ntype RfBAlias = RfB\ntype RfHolderB { f: RfB }\nfn rf_hold(t: RfBAlias) -> RfHolderB { RfHolderB { f: t } }\n"
+
+test fn record_field_call_of_distinct_product_refuses_at_the_field() -> Bool {
+  blocking_of_class(source: field_call_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+    && blocking_total(source: field_call_red_source) == 1
+}
+
+test fn record_field_call_of_declared_product_is_clean() -> Bool {
+  blocking_total(source: field_call_green_source) == 0
+}
+
+test fn record_field_binding_of_distinct_product_refuses_at_the_field() -> Bool {
+  blocking_of_class(source: field_binding_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+    && blocking_total(source: field_binding_red_source) == 1
+}
+
+test fn record_field_binding_of_declared_product_is_clean() -> Bool {
+  blocking_total(source: field_binding_green_source) == 0
+}
+
+test fn variant_field_of_distinct_product_refuses_at_the_field() -> Bool {
+  blocking_of_class(source: variant_field_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+    && blocking_total(source: variant_field_red_source) == 1
+}
+
+test fn variant_field_of_declared_product_is_clean() -> Bool {
+  blocking_total(source: variant_field_green_source) == 0
+}
+
+test fn optional_field_of_distinct_product_refuses_at_the_field() -> Bool {
+  blocking_of_class(source: optional_field_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+    && blocking_total(source: optional_field_red_source) == 1
+}
+
+test fn optional_field_of_declared_product_is_clean() -> Bool {
+  blocking_total(source: optional_field_green_source) == 0
+}
+
+test fn record_field_of_transparent_alias_is_clean() -> Bool {
+  blocking_total(source: alias_field_green_source) == 0
+}

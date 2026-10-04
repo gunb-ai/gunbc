@@ -11,6 +11,9 @@ import v2.std.bounded_lattice_completeness {
   partial_bounded_lattice_instances_in_tree
 }
 import v2.std.compilers.target_model {
+  AlgebraPrimitive,
+  CanonicalOperation,
+  canonical_operation_from_wire_node,
   canonical_operation_op_add,
   canonical_operation_op_coerce,
   canonical_operation_wire_matches_operation,
@@ -26,7 +29,11 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_reading }
+import v2.std.model_core { AlgebraInhabitanceDecl }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
+  dag_algebra_inhabitance_decls,
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
   DagCanonicalSymbolLiteral,
@@ -868,7 +875,8 @@ fn infer_declaration_wrapper_facts_from_entries(
 // already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
 // TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
 // for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
-// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
+// constructor -- a use's arity and kinds are checked at resolve by the binder authority
+// (v2.std.type_binder type_application_conformance). It is not the empty product: an
 // authored empty record is a member, and forms through product introduction.
 fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
@@ -2874,39 +2882,108 @@ fn infer_loop_iteration(
   }
 }
 
-// First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
-// add derives the unified Int type as the expression result — the add_probe body vertical. Operator
-// recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
-// (03_resolve.resolve_transform_operator_child). Every reached Transform awaits the transform row
-// so application-argument inhabitance runs; add-shape result derivation is selected inside
-// infer_gather_transform_row_on_entries, and non-add Transforms stay GroundingNotDerived as the
-// application's result type after the inhabitance judgment. dissolve-on: general operator/operand
-// typing table subsumes the add-only result rule.
+// Binary algebra-operator derivation (v2-inferred-tree-completeness): a binary infix Transform whose
+// operator is an algebra primitive derives its result through the operand type's structure, by the one
+// route below (infer_binary_algebra_field, infer_algebra_field_result_type) -- `+` and `||` alike, with no
+// per-operator or per-type arm. Operator recognition accepts dag_token_plus pre-resolve and the canonical
+// operation wire post-resolve (03_resolve.resolve_transform_operator_child). Every reached Transform awaits
+// the transform row so application-argument inhabitance runs; this derivation is selected inside
+// infer_gather_transform_row_on_entries, and a Transform that is not a binary algebra primitive stays
+// GroundingNotDerived as the application's result type after the inhabitance judgment.
 
-fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
-  match op_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^dag_token_plus
-        || canonical_operation_wire_matches_operation(
-          wire: op_node,
-          operation: canonical_operation_op_add()
-        )
-    _ =>
-      canonical_operation_wire_matches_operation(
-        wire: op_node,
-        operation: canonical_operation_op_add()
-      )
+// A BINARY ALGEBRA OPERATOR NAMES ONE FIELD OF A STRUCTURE, and the field is the whole of what it says: the
+// lowered operator is a canonical-operation wire (v2.std.compilers.target_model canonical_operation_from_wire_node)
+// whose AlgebraPrimitive carries the signature field -- ^ring_field_add for `+`, ^lattice_field_join for `||`,
+// ^lattice_field_meet for `&&`. The bare `+` token is the add field's surface spelling
+// (canonical_operation_op_add). Anything else is not an algebra primitive and stays out of this arm.
+fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
+  if infer_operator_is_plus_token(op_node: op_node) {
+    infer_canonical_operation_field(operation: canonical_operation_op_add())
+  } else {
+    infer_wire_algebra_field(wire: op_node)
   }
 }
 
-fn infer_transform_is_binary_infix_int_add_shape(node: Node) -> Bool {
+fn infer_operator_is_plus_token(op_node: Node) -> Bool {
+  match node_atom_identity_optional(node: op_node) {
+    Present { value: id } => id == ^dag_token_plus
+    Absent => false
+  }
+}
+
+fn infer_wire_algebra_field(wire: Node) -> Optional<Symbol> {
+  match canonical_operation_from_wire_node(wire: wire) {
+    Accepted { value: decoded, diagnostics: _ } => infer_canonical_operation_field(operation: decoded)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Symbol> {
+  match operation {
+    AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
+    OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
+    EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+    CoercionCrossing { homomorphism_rule: _ } => optional_absent()
+  }
+}
+
+// THE OPERAND TYPE CARRIES THE FIELD WHEN ITS LANGUAGE MODEL SAYS SO: a row in
+// v2.extdeps.languages.dag dag_algebra_inhabitance_decls inhabits a structure that DECLARES the field, read
+// through v2.std.algebra_structure_signature algebra_inhabitance_field_reading (the structure's binders and
+// the sub-structures it composes -- never a name found inside an operation's signature). The row is SELECTED by
+// the carrier its own inhabitance node is over (the ^inhabitant_edge target, read in the same call), never by the
+// row's outer `inhabitant` field: that field is a second copy of the carrier, and selecting by it let a row whose
+// copy disagreed with its structure lend the structure's fields to a type the structure is not over. The result is the
+// operand type because every binary algebra primitive these structures carry is closed on the carrier: a
+// lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
+// abelian group the ring composes. This replaces the Int-only arm that hard-coded `+` over
+// ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
+// boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
+// an operand mismatch exactly as a non-Int `+` was.
+// What the operand type's row answers for the field: the result type, no row carrying it, or a row whose
+// inhabitance node is malformed -- the last refused with ITS cause, never as an operand mismatch.
+type InferAlgebraFieldResult
+  = AlgebraFieldResultType { result: Node }
+  | AlgebraFieldNotCarried
+  | AlgebraFieldRowMalformed { cause: Symbol }
+
+fn infer_algebra_field_result_type(rows: List<AlgebraInhabitanceDecl>, operand_type: Node, field: Symbol) -> InferAlgebraFieldResult {
+  fold(rows, init: AlgebraFieldNotCarried, f: fn(acc, decl) {
+    match acc {
+      AlgebraFieldResultType { result: _ } => acc
+      AlgebraFieldRowMalformed { cause: _ } => acc
+      AlgebraFieldNotCarried =>
+        match algebra_inhabitance_field_reading(inhabitance: decl.algebra, field: field) {
+          InhabitanceFieldReadMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+          InhabitanceFieldRead { carrier: carrier, declaration: declaration } =>
+            if infer_branch_type_atoms_equal(a: carrier, b: operand_type) {
+              match declaration {
+                FieldDeclared => AlgebraFieldResultType { result: operand_type }
+                FieldNotDeclared => AlgebraFieldNotCarried
+                InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+              }
+            } else {
+              AlgebraFieldNotCarried
+            }
+        }
+    }
+  })
+}
+
+
+fn infer_transform_is_binary_infix_algebra_shape(node: Node) -> Bool {
   let positional_targets = node_positional_child_targets(node: node)
   if !all_edges_positional(children: node.children) || length(xs: positional_targets) != 3 {
     false
   } else {
     match list_at_optional(xs: positional_targets, index: 0) {
       Absent => false
-      Present { value: op_target } => infer_transform_operator_is_int_add(op_node: op_target)
+      Present { value: op_target } =>
+        match infer_binary_algebra_field(op_node: op_target) {
+          Present { value: _ } => true
+          Absent => false
+        }
     }
   }
 }
@@ -3807,9 +3884,9 @@ fn infer_transform_binary_infix(
             match list_at_optional(xs: positional_targets, index: 2) {
               Absent => outcome_rejected(infer_transform_shape_invalid_diagnostic(node: node))
               Present { value: right_target } =>
-                if !infer_transform_operator_is_int_add(op_node: op_target) {
-                  outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
-                } else {
+                match infer_binary_algebra_field(op_node: op_target) {
+                  Absent => outcome_rejected(infer_transform_operator_unsupported_diagnostic(node: node))
+                  Present { value: field } =>
                   match lookup_inferred_facts_in_entries(entries: entries, key: left_target) {
                     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: left_target))
                     Present { value: left_facts } =>
@@ -3829,11 +3906,18 @@ fn infer_transform_binary_infix(
                               ) {
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                 Accepted { value: unified_type, diagnostics: ud } =>
-                                  if !infer_branch_type_is_int(type_node: unified_type) {
-                                    outcome_rejected(
-                                      infer_transform_operand_type_mismatch_diagnostic(node: node)
-                                    )
-                                  } else {
+                                  match infer_algebra_field_result_type(rows: dag_algebra_inhabitance_decls(), operand_type: unified_type, field: field) {
+                                    AlgebraFieldNotCarried =>
+                                      outcome_rejected(
+                                        infer_transform_operand_type_mismatch_diagnostic(node: node)
+                                      )
+                                    AlgebraFieldRowMalformed { cause: cause } =>
+                                      outcome_rejected(Diagnostic {
+                                        reason: cause,
+                                        at: node_locus(node: node),
+                                        correction: Unavailable { reason: CorrectionNotModeled }
+                                      })
+                                    AlgebraFieldResultType { result: result_type } =>
                                     match infer_descent_witness_for_node(n: node) {
                                       Violates { diagnostic: d } =>
                                         Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -3841,7 +3925,7 @@ fn infer_transform_binary_infix(
                                         bind_outcome(
                                           o: inferred_facts_from_derived_type(
                                             node: node,
-                                            derived_type: unified_type,
+                                            derived_type: result_type,
                                             descent: Holds { value: descent_proof }
                                           ),
                                           f: fn(facts) {
@@ -4443,7 +4527,7 @@ fn infer_transform_derived_optional(
   resolved: ResolvedTree,
   arguments_decided: Bool,
 ) -> Optional<Outcome<InferredFacts>> {
-  if infer_transform_is_binary_infix_int_add_shape(node: node) {
+  if infer_transform_is_binary_infix_algebra_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, resolved: resolved))
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries, resolved: resolved)

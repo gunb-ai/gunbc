@@ -12,7 +12,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
   FileHoldReleased, FileHoldReleaseLost,
 }
-import gunbc.fleet_intent_network { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
 import gunbc.managed_host_unit_hold {
   UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
@@ -96,8 +96,8 @@ test fn w_a_host_that_is_not_a_managed_host_is_refused_by_name() -> Bool {
 // hold-less, neither contributes a store host, and the operator's maintenance admission refuses it.
 test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool {
   managed_hosts() |> all(h => {
-    let unheld = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold)
-    let other = managed_host_fixture(host: "fixture-unheld-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold)
+    let unheld = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
+    let other = managed_host_fixture(host: "fixture-unheld-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
     let direct = match admit_unit_hold_subject(host: unheld) {
       UnitHoldNotRequired { host: x } => (x as String) == (h.host as String)
       UnitHoldSubjectAdmitted { subject: _ } => false
@@ -133,7 +133,7 @@ test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool
 // Three rows naming one store host yield that host once (unit_hold_store_hosts_of).
 test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bool {
   managed_hosts() |> all(h => {
-    let unnamed = managed_host_fixture(host: "fixture-no-reason-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+    let unnamed = managed_host_fixture(host: "fixture-no-reason-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let held = match unit_hold_admission_in(hosts: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
       UnitHoldHostAdmitted { subject: _ } => true
       UnitHoldHostNotManaged { host: _ } => false
@@ -232,7 +232,7 @@ test fn w_the_executor_carrier_is_minted_only_from_this_process_own_hostname() -
 // gunbc.hostname_allocation has no row for cannot establish where it runs, whatever it observes.
 test fn w_a_store_host_with_no_allocated_hostname_refuses_the_executor() -> Bool {
   managed_hosts() |> all(h => {
-    let adrift = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetUnitHoldRequired { key: h.host as NonEmptyStr, store_host: "fixture-unallocated-store" as NonEmptyStr })
+    let adrift = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetUnitHoldRequired { key: h.host as NonEmptyStr, store_host: "fixture-unallocated-store" as NonEmptyStr }, smpro: h.smpro)
     match unit_hold_admission_in(hosts: [adrift], host: h.host as NonEmptyStr) {
       UnitHoldHostNotManaged { host: _ } => false
       UnitHoldHostNotRequired { host: _ } => false

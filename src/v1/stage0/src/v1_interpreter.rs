@@ -63,16 +63,16 @@ use crate::v1_std_core::{
     binop_right, block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_file_transport, is_rest_transport,
-    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    param_node_default_value, param_node_name_at, qualified_last_segment, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    field_init_node_value, find_property, foreach_body, foreach_collection, foreach_variable_at,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
+    param_node_name_at, qualified_last_segment, record_lit_type_name_at, return_value, slice_base,
+    slice_end, slice_start, transport_stdin, type_name_compatible, unaryop_operand, CallSemantics,
+    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -6168,6 +6168,20 @@ pub fn run_in_context_with_args(
         };
         with_lexical_base_env(&env, || call_function(ctx, &item_node, args, &env))
     })
+}
+
+/// The authored parameter names `entry_fn` declares, in declaration order; `None` when the
+/// closure holds no such function. A host seam that calls one entry reads this to supply
+/// arguments from the entry's declaration rather than from a host-side list of names.
+pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<Vec<String>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
@@ -19080,12 +19094,35 @@ fn dispatch_rest(
             None => None,
         };
 
-    let response_format = find_property_string(
-        transport.properties.clone(),
-        "response_format".to_string(),
+    // THE RESPONSE FORMAT IS THE AUTHORED std.serialization WireFormat VARIANT, READ THE WAY THE
+    // EMITTER READS IT (v1.compiler.emit_rust emit_plain_response_body: transport_response_format,
+    // then authored_name_at), so the interpreter and emitted code cannot disagree on one
+    // declaration. This site used to read only a string literal and default every other spelling
+    // to Json, so `response_format: Text` -- the typed spelling github.Pulls.Diff writes -- was
+    // silently JSON-decoded here while emitted code read it as text
+    // (gunbc.recurring_failure_mode response_format_variant_silently_read_as_json). Absent is
+    // Json, as before; a present value that is not a WireFormat variant refuses rather than
+    // defaulting.
+    let response_format = match crate::v1_std_core::transport_response_format(
+        transport.clone(),
         si.clone(),
-    )
-    .unwrap_or_else(|| "Json".to_string());
+    ) {
+        None => "Json".to_string(),
+        Some(node) => {
+            let authored = crate::v1_std_core::authored_name_at(si.clone(), node.clone());
+            if authored == "Text" || authored == "Json" {
+                authored
+            } else {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "transport rest response_format must be a std.serialization WireFormat variant (Json or Text); \
+                         found {:?} on {}",
+                        authored, op_node.name
+                    ),
+                });
+            }
+        }
+    };
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
