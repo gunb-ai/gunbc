@@ -84,7 +84,7 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
 test fn the_collecting_transient_builder_emits_unit_collect_then_properties() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "fci1-order.service",
-    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { reason: _ } => false
@@ -103,7 +103,7 @@ test fn the_collecting_transient_builder_emits_unit_collect_then_properties() ->
 test fn the_retained_transient_builder_omits_collect() -> Bool {
   match systemd_run_transient_retained_unit_command(
     unit: "fci1-retained.service",
-    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { reason: _ } => false
@@ -120,7 +120,7 @@ test fn the_retained_transient_builder_omits_collect() -> Bool {
 test fn the_user_wait_builder_renders_the_old_order() -> Bool {
   match systemd_run_user_wait_command(
     unit: "fci1-user.service",
-    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
@@ -140,7 +140,7 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
 // properties, then --.
 test fn the_scope_builder_leads_with_user_and_scope() -> Bool {
   match systemd_run_system_scope_command(
-    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
     SystemdRunCommandRefused { reason: _ } => false
