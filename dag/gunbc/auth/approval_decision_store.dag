@@ -18,7 +18,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, Files
 import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, prod_role_realization, prod_role_realization_refusal_detail }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -213,7 +213,7 @@ type IdentityTrustStanding
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
 // (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
-// gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
+// gunbc.roadmap_dashboard_instance prod_role_realization (the holder's listen_host) is the one fact
 // live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
@@ -229,21 +229,34 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
     Ipv4Parsed { address: a } =>
       if ip_address_is_loopback(addr: IpV4 { v4: a }) {
         IdentityHeaderUnattributed {
-          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the record names the capability's bearer"], "") as NonEmptyStr,
+          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (the prod-role holder's listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the record names the capability's bearer"], "") as NonEmptyStr,
         }
       } else {
         IdentityHeaderTrustNotEstablished {
-          blocker: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host), so a Tailscale-User-Login header can be set by anyone who reaches the port; the gate opens when the row binds loopback"], "") as NonEmptyStr,
+          blocker: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (the prod-role holder's listen_host), so a Tailscale-User-Login header can be set by anyone who reaches the port; the gate opens when the row binds loopback"], "") as NonEmptyStr,
         }
       }
     Ipv4ParseFailed { error: _ } =>
       IdentityHeaderTrustNotEstablished {
-        blocker: join(["srv1_live_dashboard_instance.listen_host '", listen_host as String, "' is not an IPv4 address, so the bind cannot be classified as loopback"], "") as NonEmptyStr,
+        blocker: join(["the prod-role holder's listen_host '", listen_host as String, "' is not an IPv4 address, so the bind cannot be classified as loopback"], "") as NonEmptyStr,
       }
   }
 }
 
-data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+// THE TRUST OF THE INSTANCE THAT SERVES APPROVALS -- the prod-role holder's realization
+// (gunbc.roadmap_dashboard_instance prod_role_realization). Under a refused realization no instance
+// serves approvals, so trust is NOT established and names the refusal; it is never srv1's by default.
+fn approval_identity_trust_under(realization: ProdRoleRealization) -> IdentityTrustStanding {
+  match realization {
+    ProdRoleRealizedBy { instance } => approval_identity_trust_for(listen_host: instance.listen_host)
+    ProdRoleRealizationRefused { cause } =>
+      IdentityHeaderTrustNotEstablished {
+        blocker: join(["no instance serves approvals: ", prod_role_realization_refusal_detail(cause: cause)], "") as NonEmptyStr,
+      }
+  }
+}
+
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_under(realization: prod_role_realization())
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 

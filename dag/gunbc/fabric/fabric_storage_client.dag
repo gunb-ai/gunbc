@@ -20,7 +20,8 @@ import gunbc.fabric_storage_wire {
 import gunbc.fabric_storage_file_store {
   FabricStorageFileRoot, fabric_storage_file_head, fabric_storage_file_put, fabric_storage_file_advance, fabric_storage_file_closure,
 }
-import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, fabric_storage_door_socket, fabric_storage_route_prefix }
+import gunbc.fabric_storage_placement { FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused, fabric_storage_route_prefix }
+import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import product.placement_supply { HostIdentity, host_identity_eq }
 
 // THE FABRIC DB AS A CALLER REACHES IT: std.fabric_storage's four operations, each bound to one of
@@ -56,8 +57,9 @@ type FabricStorageBinding
 fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
   match placement {
     FabricStorageUnplaced => FabricStorageBindingUnplaced
-    FabricStoragePlaced { host: h, store_root: _, endpoint: e } =>
-      if host_identity_eq(a: h, b: executor) { FabricStorageDoorSocket { socket: fabric_storage_door_socket() } }
+    FabricStoragePlacementRefused { cause } => FabricStorageBindingRefused { detail: prod_role_realization_refusal_detail(cause: cause) as NonEmptyStr }
+    FabricStoragePlaced { host: h, store_root: _, endpoint: e, door_socket: k } =>
+      if host_identity_eq(a: h, b: executor) { FabricStorageDoorSocket { socket: k } }
       else { FabricStorageServed { endpoint: e } }
   }
 }

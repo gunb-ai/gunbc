@@ -10,7 +10,7 @@ import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, a
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target }
 import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.os.types { Apt }
-import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
+import gunbc.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -26,6 +26,7 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_steps,
   deployment_approval_broker_front_door_steps,
   deployment_fabric_storage_serve_endpoint,
+  deployment_fabric_storage_door_socket,
   EnsuredPackage,
   EnsuredManagedHostDirectory,
   TailscalePackage,
@@ -1363,7 +1364,7 @@ test fn the_fabric_storage_areas_are_the_services_and_the_door_admits_the_claim_
   let files = fabric_storage_file_root(root: dashboard_instance_fabric_storage_root(instance: srv1_live_dashboard_instance()) as String as NonEmptyStr)
   let objects = srv1_fabric_area_ensure(path: files.objects as String)
   let heads = srv1_fabric_area_ensure(path: files.heads as String)
-  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path() as String)
+  let door = srv1_fabric_area_ensure(path: fabric_storage_door_directory_path(instance: srv1_live_dashboard_instance()) as String)
   string_contains(s: objects, pattern: "0700") && string_contains(s: objects, pattern: "briansrls") && !string_contains(s: objects, pattern: "ghrunner") && !string_contains(s: objects, pattern: "REFUSED")
     && string_contains(s: heads, pattern: "0700") && !string_contains(s: heads, pattern: "ghrunner") && !string_contains(s: heads, pattern: "REFUSED")
     && string_contains(s: door, pattern: "2710") && string_contains(s: door, pattern: "ghrunner") && !string_contains(s: door, pattern: "REFUSED")
@@ -1393,7 +1394,7 @@ test fn the_fabric_storage_area_ensure_leaves_the_services_own_entries_alone() -
 // the refusal when a directory grants o+x, are witnessed on synthetic principals in
 // test.claim.managed_directory_witness.
 test fn the_placed_fabric_store_derives_entry_mode_0400() -> Bool {
-  match fabric_storage_entry_mode() {
+  match fabric_storage_entry_mode(store_root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) {
     FabricStorageEntryModeDerived { mode } => file_mode_octal(mode: mode) == "0400"
     FabricStorageEntryModeRefused { detail: _ } => false
   }
@@ -1785,14 +1786,17 @@ test fn the_receipt_command_substitutes_the_digest_rather_than_splicing_it() -> 
 // port any local account could reach with a forged identity header), and its route is tailscale
 // serve's 10000 listener at the root mount, proxying to exactly that socket.
 test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
-  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }))
-  let route = deployment_fabric_storage_serve_endpoint()
+  let socket = fabric_storage_door_socket(instance: srv1_live_dashboard_instance())
+  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, door_socket: socket))
+  let route = deployment_fabric_storage_serve_endpoint(door_socket: socket)
+  let derived = match deployment_fabric_storage_door_socket(spec: deployment_spec_srv1()) { Present { value: k } => (k as String) == (socket as String)  Absent => false }
   unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket() as String], ""))
+    && derived
+    && unit.contains(join(["--unix-socket ", socket as String], ""))
     && !unit.contains("--host")
     && !unit.contains("--port")
     && route.https_port == fabric_storage_https_port
-    && (route.backend as String) == join(["unix:", fabric_storage_door_socket() as String], "")
+    && (route.backend as String) == join(["unix:", socket as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
 }
 

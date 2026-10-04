@@ -6,6 +6,7 @@ import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
 import gunbc.deployment_risk {
+  deployment_id,
   DeploymentId,
   DeploymentRiskClass,
   TestRisk,
@@ -36,6 +37,26 @@ import gunbc.roadmap_dashboard_instance {
   srv2_preview_dashboard_instance,
   srv2_deploy_dashboard_instance,
   srv2_lab_dashboard_instance,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleUnheld,
+  ProdRoleHolderUnrealized,
+  prod_role_realization,
+  prod_role_realization_in,
+  public_builtin_dashboard_instances,
+}
+import gunbc.live_deploy.spec { instance_owns_the_host_approval_broker_under }
+import gunbc.fabric_storage_placement {
+  FabricStoragePlacementRefused,
+  fabric_storage_placed_on_under,
+  fabric_storage_placement_under,
+}
+import gunbc.auth.approval_request_client {
+  ApprovalLoopbackOriginResolved,
+  ApprovalLoopbackOriginRefused,
+  approval_loopback_origin_under,
+  approval_loopback_origin_of,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -140,4 +161,87 @@ test fn exactly_one_dashboard_instance_derives_prod_risk_and_it_is_the_daily_wor
 // leave the row citing a declaration that no longer exists.
 test fn the_wrong_instance_failure_mode_row_cites_this_red() -> Bool {
   any(a_test_deployment_acts_on_the_prod_deployments_state.evidence, r => r.decl_name == "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings")
+}
+
+// ── The role-following singletons: broker owner, fabric storage placement, approval origin ──────
+// THE DISCRIMINATING RED (deployment-risk plan, deliverable 2). A FIXTURE selection moves the role
+// to srv2-deploy over the REAL instance roster, and every singleton that follows the role moves with
+// it: the broker owner is srv2-deploy and no longer srv1-live, the fabric store is placed on
+// srv2-deploy and not on srv1-live, and approvals are reached at srv2-deploy's listen address. A pin
+// back to srv1 by name -- an instance_id literal, srv1_live_dashboard_instance(), operator_host_srv1
+// -- keeps answering srv1-live and fails the srv1-negative conjuncts.
+fn fx_moved_realization() -> ProdRoleRealization {
+  prod_role_realization_in(
+    selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment },
+    instances: public_builtin_dashboard_instances(),
+  )
+}
+
+test fn moving_the_prod_role_moves_the_broker_owner_and_the_fabric_storage_placement() -> Bool {
+  let moved = fx_moved_realization()
+  let srv2 = srv2_deploy_dashboard_instance()
+  let srv1 = srv1_live_dashboard_instance()
+  let origin_moved = match approval_loopback_origin_under(realization: moved) {
+    ApprovalLoopbackOriginResolved { origin } =>
+      (origin as String) == (approval_loopback_origin_of(instance: srv2) as String)
+        && !((origin as String) == (approval_loopback_origin_of(instance: srv1) as String))
+    ApprovalLoopbackOriginRefused { cause: _ } => false
+  }
+  instance_owns_the_host_approval_broker_under(realization: moved, instance_id: srv2.instance_id)
+    && !instance_owns_the_host_approval_broker_under(realization: moved, instance_id: srv1.instance_id)
+    && fabric_storage_placed_on_under(realization: moved, instance: srv2)
+    && !fabric_storage_placed_on_under(realization: moved, instance: srv1)
+    && origin_moved
+}
+
+// UNDER NoProdRole EVERY ROLE-FOLLOWER REFUSES WITH THE TYPED CAUSE -- nobody owns the broker, the
+// store is not placed anywhere, and approvals have no origin. A fallback to srv1 fails every conjunct.
+test fn under_no_prod_role_the_broker_owner_and_the_fabric_storage_placement_refuse() -> Bool {
+  let none = prod_role_realization_in(selection: NoProdRole, instances: public_builtin_dashboard_instances())
+  let realization_refused = match none {
+    ProdRoleRealizationRefused { cause: ProdRoleUnheld } => true
+    _ => false
+  }
+  let placement_refused = match fabric_storage_placement_under(realization: none) {
+    FabricStoragePlacementRefused { cause: ProdRoleUnheld } => true
+    _ => false
+  }
+  let origin_refused = match approval_loopback_origin_under(realization: none) {
+    ApprovalLoopbackOriginRefused { cause: ProdRoleUnheld } => true
+    _ => false
+  }
+  realization_refused
+    && placement_refused
+    && origin_refused
+    && all(public_builtin_dashboard_instances(), i =>
+      !instance_owns_the_host_approval_broker_under(realization: none, instance_id: i.instance_id)
+        && !fabric_storage_placed_on_under(realization: none, instance: i)
+    )
+}
+
+// A HOLDER WITH NO REALIZATION REFUSES TOO, rather than resolving "the first instance".
+test fn a_prod_role_holder_with_no_instance_refuses_as_unrealized() -> Bool {
+  let ghost = deployment_id(name: "no-such-deployment" as NonEmptyStr)
+  match prod_role_realization_in(selection: ProdRoleHeldBy { deployment: ghost }, instances: public_builtin_dashboard_instances()) {
+    ProdRoleRealizationRefused { cause: ProdRoleHolderUnrealized { deployment: d } } => d == ghost
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL, over the REAL selection and the production entry points: today srv1-live
+// realizes the holder, owns the broker and holds the placement, and srv1's lab does neither. Without
+// it the REDs above would pass for resolvers that refuse everyone.
+test fn the_real_selection_places_the_broker_and_the_store_on_its_holder() -> Bool {
+  let real = prod_role_realization()
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let holder_is_live = match real {
+    ProdRoleRealizedBy { instance } => (instance.instance_id as String) == (live.instance_id as String)
+    ProdRoleRealizationRefused { cause: _ } => false
+  }
+  holder_is_live
+    && instance_owns_the_host_approval_broker_under(realization: real, instance_id: live.instance_id)
+    && !instance_owns_the_host_approval_broker_under(realization: real, instance_id: lab.instance_id)
+    && fabric_storage_placed_on_under(realization: real, instance: live)
+    && !fabric_storage_placed_on_under(realization: real, instance: lab)
 }

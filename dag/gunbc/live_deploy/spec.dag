@@ -45,6 +45,13 @@ import gunbc.fabric_storage_placement { fabric_storage_store_directories, fabric
 import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
+  DashboardInstanceForId,
+  DashboardInstanceIdUnknown,
+  dashboard_instance_for_id,
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  prod_role_realization,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
   dashboard_instance_compute_root,
@@ -410,20 +417,15 @@ data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_br
 //
 // SO OWNERSHIP IS DECLARED AND THE EMITTER READS IT. One instance per host owns the broker unit;
 // every other spec emits no broker step at all, writes nothing and restarts nothing.
-// THE INSTANCE THAT OWNS THE HOST'S BROKER. It is srv1-live because that is where the approval
-// store is: gunbc.auth.approval_decision_store approval_decision_store_root is one path on one
-// host, and the whole point of a single-writer store is that exactly one process opens it.
+// THE INSTANCE THAT OWNS THE HOST'S BROKER IS THE REALIZATION OF THE PROD-ROLE HOLDER
+// (gunbc.deployment_risk prod_role_selection, resolved by gunbc.roadmap_dashboard_instance
+// prod_role_realization). The approval store is the prod deployment's state -- one single-writer
+// path that exactly one process opens -- so the broker follows the role, not a host or an
+// instance_id literal. Moving prod is an edit to the selection row and to nothing here.
 //
-// IT IS A DECLARED OWNER RATHER THAN A DERIVATION FROM THE INSTANCE because "which deployment runs
-// the approval loop" is not recoverable from any field an instance carries -- srv1-live and
-// srv1-lab are the same shape on the same host, and the only thing that distinguishes them for this
-// purpose is that one of them was chosen. Deriving it would mean inventing a rule that happens to
-// select production today.
-//
-// A SECOND HOST SERVING APPROVALS IS WHAT RETIRES THIS ROW, at which point the owner becomes a
-// per-host lookup and the store root becomes host-derived with it. Until then a single row is the
-// honest shape: there is one approval loop, and it has one home.
-data gunbc_approval_broker_owning_instance: NonEmptyStr = "srv1-live"
+// UNDER NoProdRole NOBODY OWNS IT. The realization refuses with a typed cause and every spec emits
+// no broker step; there is no fallback to srv1. A second host serving approvals still retires the
+// single-owner shape, at which point ownership becomes per-host.
 
 data gunbc_approval_broker_unit_name: NonEmptyStr = "gunbc-approval-broker.service"
 
@@ -453,7 +455,22 @@ fn deployment_owns_the_host_approval_broker(spec: DeploymentSpec) -> Bool {
 // THE ONE OWNERSHIP COMPARISON, read by the spec-level predicate above and by the front-door member,
 // which is built before a spec exists and so holds only the instance.
 fn instance_owns_the_host_approval_broker(instance_id: NonEmptyStr) -> Bool {
-  (instance_id as String) == (gunbc_approval_broker_owning_instance as String)
+  instance_owns_the_host_approval_broker_under(
+    realization: prod_role_realization(),
+    instance_id: instance_id,
+  )
+}
+
+// THE SAME COMPARISON OVER A SUPPLIED REALIZATION, so a witness can move the selection and watch
+// ownership follow without editing the production row.
+fn instance_owns_the_host_approval_broker_under(
+  realization: ProdRoleRealization,
+  instance_id: NonEmptyStr,
+) -> Bool {
+  match realization {
+    ProdRoleRealizedBy { instance: holder } => (holder.instance_id as String) == (instance_id as String)
+    ProdRoleRealizationRefused { cause: _ } => false
+  }
 }
 
 fn gunbc_approval_broker_unit_path() -> NonEmptyStr {
@@ -645,11 +662,22 @@ fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
-fn deployment_fabric_storage_serve_endpoint() -> TailscaleServeEndpoint {
+// THE DOOR SOCKET OF THIS SPEC'S OWN INSTANCE, by the roster's id lookup. Apply reaches it only on
+// the instance that holds the placement (deployment_fabric_storage_steps); a teardown after prod has
+// moved still names the socket of the instance being torn down, not the new holder's. An unknown id
+// is Absent and the emitter refuses.
+fn deployment_fabric_storage_door_socket(spec: DeploymentSpec) -> NonEmptyStr? {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceForId { instance } => Present { value: fabric_storage_door_socket(instance: instance) }
+    DashboardInstanceIdUnknown { instance_id: _ } => none
+  }
+}
+
+fn deployment_fabric_storage_serve_endpoint(door_socket: NonEmptyStr) -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
     https_port: fabric_storage_https_port,
     mount: ServeRootMount,
-    backend: tailscale_serve_unix_target(path: fabric_storage_door_socket()),
+    backend: tailscale_serve_unix_target(path: door_socket),
   }
 }
 
@@ -1085,7 +1113,7 @@ fn deployment_fabric_storage_steps(instance: HostDashboardInstance, names: Deplo
   if fabric_storage_placed_on(instance: instance) {
     [
       DeploymentArtifactStep { kind: FabricStorageServeUnit, path: deployment_fabric_storage_unit_path(names: names) },
-      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint()) },
+      DeploymentArtifactStep { kind: FabricStorageServeMapping, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: instance))) },
     ]
   } else {
     []

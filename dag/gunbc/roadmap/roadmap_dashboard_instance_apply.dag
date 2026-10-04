@@ -65,6 +65,7 @@ import gunbc.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
+import gunbc.deployment_risk { ProdRoleSelection, ProdRisk, deployment_risk_class, prod_role_selection }
 import gunbc.roadmap_dashboard_instance {
   dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
@@ -91,7 +92,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceConverged,
   DashboardInstanceApply,
   DashboardInstanceRefused,
-  srv1_live_dashboard_instance,
+  public_builtin_dashboard_instances,
   srv1_lab_dashboard_instance,
   srv2_lab_dashboard_instance,
   dashboard_instance_provider_state_root,
@@ -769,81 +770,90 @@ fn dashboard_production_snapshots_equal(
     && before.health == after.health
 }
 
-// PRODUCTION IS A PEER ON THE APPLYING HOST, and until this type existed the parameter forced every
-// apply to name one whether the host had one or not. Both uses assume locality without saying so:
-// the isolation check compares owned paths on one filesystem, and the liveness read-back curls
-// 127.0.0.1 at production's declared port. Passing a remote instance satisfies neither — it
-// compares this machine's paths against another machine's declarations, then probes a loopback port
-// nobody here is serving.\n\nThat is exactly how srv2's first apply failed. srv1-live was passed as
-// production because the parameter demanded an instance; its repo_root happened to exist here as a
-// hand-made symlink so the git half of the probe SUCCEEDED, and the refusal surfaced only as a curl
-// connection error against port 8080 — a true message about a check that should never have run. The
-// remedy for that refusal is not to start a server; it is to stop claiming srv1 is a peer of
-// anything on srv2.\n\nNoProductionPeer is a DECLARATION, not a skipped check. A host with no
-// production dashboard has nothing to be disjoint from and nothing whose liveness could be
-// disturbed, so both obligations are discharged by the shape of the argument rather than silently
-// bypassed inside the checks — and the reading below stays type-distinct across before and after,
-// so an apply cannot pair a real snapshot with an absent one and call the difference untouched.
+// THE APPLYING HOST'S PROTECTED SIBLINGS, DERIVED -- never passed by name. A sibling is another
+// instance on the SAME host (host_identity), and it is protected exactly when its deployment derives
+// ProdRisk through gunbc.deployment_risk prod_role_selection. Moving prod moves which sibling an
+// apply must stay disjoint from and leave untouched; under NoProdRole no sibling is protected.
+//
+// Both obligations assume locality: the isolation check compares owned paths on one filesystem, and
+// the liveness read-back curls 127.0.0.1 at the sibling's declared port. That is why the population
+// is filtered by host rather than taken from the whole roster: srv2's first apply failed when
+// srv1-live was passed as its "production peer" -- a hand-made symlink let the git half of the probe
+// succeed and the refusal surfaced as a curl error against a port nobody on srv2 serves. A sibling
+// on another host is not a sibling, and an empty population is a derived fact, not a skipped check.
+// The readings are paired by instance_id across before and after, so an apply cannot pair a real
+// snapshot with a missing one and call the difference untouched.
+type DashboardProtectedSibling {
+  instance: HostDashboardInstance
+}
 
-type DashboardProductionPeer
-  = ProductionPeer { instance: HostDashboardInstance }
-  | NoProductionPeer { host: NonEmptyStr }
-
-type DashboardProductionReading
-  = ProductionRead { snapshot: DashboardProductionSnapshot }
-  | ProductionUnpeered { host: NonEmptyStr }
-
-fn dashboard_peer_isolation_ok(
+fn dashboard_protected_siblings_in(
+  selection: ProdRoleSelection,
+  instances: List<HostDashboardInstance>,
   instance: HostDashboardInstance,
-  peer: DashboardProductionPeer,
+) -> List<DashboardProtectedSibling> {
+  instances
+    |> filter(s =>
+      (s.host_identity as String) == (instance.host_identity as String)
+        && !((s.instance_id as String) == (instance.instance_id as String))
+        && deployment_risk_class(selection: selection, deployment: s.deployment) == ProdRisk
+    )
+    |> map(s => DashboardProtectedSibling { instance: s })
+}
+
+fn dashboard_protected_siblings(instance: HostDashboardInstance) -> List<DashboardProtectedSibling> {
+  dashboard_protected_siblings_in(
+    selection: prod_role_selection,
+    instances: public_builtin_dashboard_instances(),
+    instance: instance,
+  )
+}
+
+type DashboardProtectedSiblingReading {
+  instance_id: NonEmptyStr
+  snapshot: DashboardProductionSnapshot
+}
+
+fn dashboard_sibling_isolation_ok(
+  instance: HostDashboardInstance,
+  siblings: List<DashboardProtectedSibling>,
 ) -> Bool {
-  match peer {
-    ProductionPeer { instance: production } =>
-      dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
-        && !(instance.listen_port == production.listen_port)
-    NoProductionPeer { host: _ } => true
+  all(siblings, s =>
+    dashboard_instances_have_disjoint_owned_paths(a: instance, b: s.instance)
+      && !(instance.listen_port == s.instance.listen_port)
+  )
+}
+
+fn dashboard_protected_sibling_read(siblings: List<DashboardProtectedSibling>) -> List<DashboardProtectedSiblingReading> {
+  map(siblings, s => DashboardProtectedSiblingReading {
+    instance_id: s.instance.instance_id,
+    snapshot: dashboard_production_snapshot(production: s.instance),
+  })
+}
+
+fn dashboard_protected_sibling_reading_refused(readings: List<DashboardProtectedSiblingReading>) -> Bool {
+  any(readings, r => !r.snapshot.observed)
+}
+
+fn dashboard_protected_sibling_reading_detail(readings: List<DashboardProtectedSiblingReading>) -> String {
+  if count(readings) == 0 {
+    "no protected sibling on this host"
+  } else {
+    join(map(readings, r => join([r.instance_id as String, ": ", r.snapshot.detail], "")), "; ")
   }
 }
 
-fn dashboard_production_read(peer: DashboardProductionPeer) -> DashboardProductionReading {
-  match peer {
-    ProductionPeer { instance: production } =>
-      ProductionRead { snapshot: dashboard_production_snapshot(production: production) }
-    NoProductionPeer { host } => ProductionUnpeered { host: host }
-  }
-}
-
-fn dashboard_production_reading_refused(reading: DashboardProductionReading) -> Bool {
-  match reading {
-    ProductionRead { snapshot } => !snapshot.observed
-    ProductionUnpeered { host: _ } => false
-  }
-}
-
-fn dashboard_production_reading_detail(reading: DashboardProductionReading) -> String {
-  match reading {
-    ProductionRead { snapshot } => snapshot.detail
-    ProductionUnpeered { host } => join(["no production peer on ", host as String], "")
-  }
-}
-
-fn dashboard_production_readings_equal(
-  before: DashboardProductionReading,
-  after: DashboardProductionReading,
+fn dashboard_protected_sibling_readings_equal(
+  before: List<DashboardProtectedSiblingReading>,
+  after: List<DashboardProtectedSiblingReading>,
 ) -> Bool {
-  match before {
-    ProductionRead { snapshot: b } =>
-      match after {
-        ProductionRead { snapshot: a } =>
-          dashboard_production_snapshots_equal(before: b, after: a)
-        ProductionUnpeered { host: _ } => false
-      }
-    ProductionUnpeered { host: bh } =>
-      match after {
-        ProductionRead { snapshot: _ } => false
-        ProductionUnpeered { host: ah } => bh == ah
-      }
-  }
+  count(before) == count(after)
+    && all(before, b =>
+      count(after |> filter(a =>
+        (a.instance_id as String) == (b.instance_id as String)
+          && dashboard_production_snapshots_equal(before: b.snapshot, after: a.snapshot)
+      )) == 1
+    )
 }
 
 fn dashboard_source_anchor_matches(
@@ -1301,24 +1311,24 @@ fn dashboard_bootstrap_parent_decision(
 
 fn dashboard_instance_apply_preflight(
   instance: HostDashboardInstance,
-  production: DashboardProductionPeer,
+  siblings: List<DashboardProtectedSibling>,
 ) -> DashboardApplyPreflightResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
-      || !dashboard_peer_isolation_ok(instance: instance, peer: production) {
+      || !dashboard_sibling_isolation_ok(instance: instance, siblings: siblings) {
     dashboard_apply_preflight_refused(
       instance: instance,
       step: "isolation-preflight",
       detail: "instance path or port isolation failed",
     )
   } else {
-    let production_read = dashboard_production_read(peer: production)
-    if dashboard_production_reading_refused(reading: production_read) {
+    let production_read = dashboard_protected_sibling_read(siblings: siblings)
+    if dashboard_protected_sibling_reading_refused(readings: production_read) {
       dashboard_apply_preflight_refused(
         instance: instance,
         step: "production-preflight",
         detail: join([
           "production read-back refused: ",
-          dashboard_production_reading_detail(reading: production_read),
+          dashboard_protected_sibling_reading_detail(readings: production_read),
         ], ""),
       )
     } else {
@@ -1641,11 +1651,11 @@ fn dashboard_apply_refused(
 
 fn dashboard_instance_apply_after_preflight(
   instance: HostDashboardInstance,
-  production: DashboardProductionPeer,
+  siblings: List<DashboardProtectedSibling>,
   desired_source_revision: CommitSha,
 ) -> DashboardInstanceApplyResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
-      || !dashboard_peer_isolation_ok(instance: instance, peer: production) {
+      || !dashboard_sibling_isolation_ok(instance: instance, siblings: siblings) {
     dashboard_apply_refused(
       instance: instance,
       step: "isolation-preflight",
@@ -1653,14 +1663,14 @@ fn dashboard_instance_apply_after_preflight(
       receipts: [],
     )
   } else {
-    let production_before = dashboard_production_read(peer: production)
-    if dashboard_production_reading_refused(reading: production_before) {
+    let production_before = dashboard_protected_sibling_read(siblings: siblings)
+    if dashboard_protected_sibling_reading_refused(readings: production_before) {
       dashboard_apply_refused(
         instance: instance,
         step: "production-preflight",
         detail: join([
           "production read-back refused before mutation: ",
-          dashboard_production_reading_detail(reading: production_before),
+          dashboard_protected_sibling_reading_detail(readings: production_before),
         ], ""),
         receipts: [],
       )
@@ -1718,8 +1728,8 @@ fn dashboard_instance_apply_after_preflight(
                 receipts: applied.receipts,
               )
             } else {
-              let production_after = dashboard_production_read(peer: production)
-              let untouched = dashboard_production_readings_equal(
+              let production_after = dashboard_protected_sibling_read(siblings: siblings)
+              let untouched = dashboard_protected_sibling_readings_equal(
                 before: production_before,
                 after: production_after,
               )
@@ -1816,11 +1826,11 @@ fn dashboard_apply_bootstrap_then_escalate(
 
 fn dashboard_instance_apply(
   instance: HostDashboardInstance,
-  production: DashboardProductionPeer,
+  siblings: List<DashboardProtectedSibling>,
 ) -> DashboardInstanceApplyResult {
   match dashboard_instance_apply_preflight(
     instance: instance,
-    production: production,
+    siblings: siblings,
   ) {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
       dashboard_apply_refused(
@@ -1846,7 +1856,7 @@ fn dashboard_instance_apply(
     } =>
       dashboard_instance_apply_after_preflight(
         instance: instance,
-        production: production,
+        siblings: siblings,
         desired_source_revision: source_revision,
       )
   }
@@ -1954,14 +1964,14 @@ fn srv2_deploy_ensure_roots_cli() -> ProcessExit {
 fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
     instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+    siblings: dashboard_protected_siblings(instance: srv1_lab_dashboard_instance()),
   )
 }
 
 fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
   dashboard_instance_apply_preflight(
     instance: srv1_lab_dashboard_instance(),
-    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
+    siblings: dashboard_protected_siblings(instance: srv1_lab_dashboard_instance()),
   )
 }
 
@@ -2018,26 +2028,24 @@ fn srv1_lab_dashboard_apply_wet() -> ProcessExit {
 // witness: the mechanism was real, general, and complete, and it was simply never bound to the
 // second instance. An instance row declared without an actuation entry reads exactly like one that
 // has been provisioned and is refusing for a good reason, and the page cannot tell the operator
-// which it is looking at.\n\nsrv1's lab passes srv1_live as its peer; srv2's lab passes
-// NoProductionPeer, and the difference is not a convenience. An earlier draft of this very row
-// asserted the opposite — that srv1_live was the right peer for both labs because /opt/gunbc exists
-// on this machine too — and that reasoning was wrong in the way dashboard_production_peer_note now
-// records: the paths here are hand-made symlinks, not a production dashboard, so the isolation
-// check compared srv2's paths against srv1's declarations and the liveness probe curled a loopback
-// port nobody serves. Being disjoint from something that is not there is not a property worth
-// checking; declaring that it is not there is.
+// which it is looking at.\n\nEach lab's protected siblings are DERIVED (dashboard_protected_siblings):
+// today srv1's lab derives srv1-live, the prod-role holder on its host, and srv2's lab derives none.
+// An earlier draft asserted srv1_live was the right peer for both labs because /opt/gunbc exists on
+// srv2 too; the paths there are hand-made symlinks, not a dashboard, so the isolation check compared
+// srv2's paths against srv1's declarations and the liveness probe curled a loopback port nobody
+// serves. The host filter is what keeps that from recurring.
 
 fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
     instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+    siblings: dashboard_protected_siblings(instance: srv2_lab_dashboard_instance()),
   )
 }
 
 fn srv2_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
   dashboard_instance_apply_preflight(
     instance: srv2_lab_dashboard_instance(),
-    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+    siblings: dashboard_protected_siblings(instance: srv2_lab_dashboard_instance()),
   )
 }
 

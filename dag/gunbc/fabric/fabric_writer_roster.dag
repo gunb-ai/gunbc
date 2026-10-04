@@ -6,6 +6,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles, fabric_storage_binding_for }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.fabric_storage { FabricStoreUnreachable, FabricWriterRefusal, WriterLoginAbsent, WriterLoginUnrostered, WriterPeerUnrostered, WriterPeerUnattested }
 import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested }
 import gunbc.fabric_writer_identity_observe {
@@ -50,10 +51,12 @@ fn door_unresolved() -> NonEmptyStr {
   "could not resolve the placed host's tailnet name (curl exit 6)" as NonEmptyStr
 }
 
+// RECEIPTS NAME WHAT WAS OBSERVED, not who holds the prod role now: the 2026-09-27 srv1 read was of
+// srv1-live's store root, so the row names that instance rather than following prod_role_selection.
 fn fabric_writer_identity_observations() -> List<FabricWriterIdentityObservation> {
   [
     FabricWriterIdentityObservation { run: "36347411725" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
-      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root()) },
+      host: "srv1" as HostIdentity, binding: FabricStorageLocalFiles { root: fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance())) },
       read: FabricIdentityUnproxied, observed_at: "2026-09-27T20:29Z" as NonEmptyStr } },
     FabricWriterIdentityObservation { run: "36347414620" as NonEmptyStr, receipt: FabricWriterIdentityReceipt {
       host: "srv3" as HostIdentity, binding: recorded_binding(host: "srv3"),
