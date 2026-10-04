@@ -330,6 +330,27 @@ fn dbg_same_listed_locus() -> ProcessExit {
 }
 
 // DBG-PROBE (temporary): faithful anatomy of the entry node — kind marker + edge descriptors.
+// DBG-PROBE (temporary): run the carrier's reader on the normalized clause directly.
+fn dbg_reader_on_normalized() -> ProcessExit {
+  match aca_normalized(text: aca_cross_peer_text()) {
+    Rejected { diagnostics: _ } => exit_failure(reason: "normalize-rejected")
+    Accepted { value: t, diagnostics: _ } =>
+      match body_lower_find_production_shell_optional(root: t.root, emitted: ^dag_surface_admit_callers_clause) {
+        Absent => exit_failure(reason: "no-clause-shell")
+        Present { value: clause } =>
+          match body_lower_admit_roster_node(clause: clause) {
+            Absent => exit_failure(reason: "reader-absent")
+            Present { value: roster } =>
+              match infer_admit_clause_entries(r: roster) {
+                Rejected { diagnostics: d } => exit_failure(reason: symbol_lexeme(sym: d.head.reason))
+                Accepted { value: _, diagnostics: _ } =>
+                  exit_failure(reason: "reader-ok")
+              }
+          }
+      }
+  }
+}
+
 fn dbg_anat_label(n: Node) -> String {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } => concat("atom:", symbol_lexeme(sym: id))
