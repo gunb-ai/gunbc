@@ -75,7 +75,7 @@ fn vfp_find_match(n: Node) -> Optional<Node> {
 }
 
 fn vfp_find_construction(n: Node) -> Optional<Node> {
-  match construct_tag_optional(node: n) {
+  match construct_tag_optional(n: n) {
     Present { value: _ } => Present { value: n }
     Absent => fold(n.children, init: Absent, f: fn(acc, e) {
       match acc {
@@ -114,13 +114,17 @@ fn vfp_type_name(t: Node) -> Symbol {
   }
 }
 
-fn vfp_construction_tag_carrier(n: Node) -> Symbol {
-  match construct_tag_path_optional(node: n) {
-    Absent => ^vfp_tag_unresolved
-    Present { value: p } =>
-      match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
-        Present { value: s } => s
-        Absent => ^vfp_tag_no_carrier
+fn vfp_construction_tag_carrier(n: Optional<Node>) -> Symbol {
+  match n {
+    Absent => ^vfp_subject_absent
+    Present { value: node } =>
+      match construct_tag_path_optional(n: node) {
+        Absent => ^vfp_tag_unresolved
+        Present { value: p } =>
+          match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
+            Present { value: s } => s
+            Absent => ^vfp_tag_no_carrier
+          }
       }
   }
 }

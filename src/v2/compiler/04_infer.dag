@@ -1751,7 +1751,24 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
 // native_infer_accepts_only_bool_and_int_match_scrutinees: the enrolled variant claims' scrutinees
 // are let-bound). A pattern binder or any other declared-less binding that is not a Bind still
 // falls through to the facts.
+// THE PUBLIC READ stays three-argument: an external caller holds the InferredTree only, whose
+// facts are an opaque partial function, so the construct-facts entries thread is not recoverable
+// there and the read falls back to the facts alone (the let-typed rule needs the entries). The
+// four-argument read below is the inference-internal form, threaded through construct reads.
 fn infer_branch_operand_resolved_type_in_tree(
+  node: Node,
+  facts: InferredFacts,
+  resolved: ResolvedTree,
+) -> Witness<Node> {
+  infer_branch_operand_resolved_type_with_entries(
+    node: node,
+    facts: facts,
+    entries: Empty,
+    resolved: resolved
+  )
+}
+
+fn infer_branch_operand_resolved_type_with_entries(
   node: Node,
   facts: InferredFacts,
   entries: List<InferredFactsEntry>,
@@ -2311,7 +2328,7 @@ fn infer_match_bool(
                     match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: _, diagnostics: cd } =>
-                        match infer_branch_operand_resolved_type_in_tree(
+                        match infer_branch_operand_resolved_type_with_entries(
                           node: scrutinee_target,
                           facts: scrutinee_facts,
                           entries: entries,
@@ -2743,7 +2760,7 @@ fn infer_coproduct_arm_body_types(
     let body_type = match lookup_inferred_facts_in_entries(entries: entries, key: row.body) {
       Absent => Absent
       Present { value: facts } =>
-        match infer_branch_operand_resolved_type_in_tree(node: row.body, facts: facts, entries: entries, resolved: resolved) {
+        match infer_branch_operand_resolved_type_with_entries(node: row.body, facts: facts, entries: entries, resolved: resolved) {
           Holds { value: t } => Present { value: t }
           Violates { diagnostic: _ } => Absent
         }
@@ -2858,7 +2875,7 @@ fn infer_match_coproduct(
                 match lookup_inferred_facts_in_entries(entries: entries, key: scrutinee_target) {
                   Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: scrutinee_target))
                   Present { value: scrutinee_facts } =>
-                    match infer_branch_operand_resolved_type_in_tree(node: scrutinee_target, facts: scrutinee_facts, entries: entries, resolved: resolved) {
+                    match infer_branch_operand_resolved_type_with_entries(node: scrutinee_target, facts: scrutinee_facts, entries: entries, resolved: resolved) {
                       Violates { diagnostic: _ } =>
                         infer_match_frontier(
                           node: node,
@@ -3116,10 +3133,10 @@ fn infer_unify_transform_operand_types(
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
 ) -> Outcome<Node> {
-  match infer_branch_operand_resolved_type_in_tree(node: left_node, facts: left_facts, entries: entries, resolved: resolved) {
+  match infer_branch_operand_resolved_type_with_entries(node: left_node, facts: left_facts, entries: entries, resolved: resolved) {
     Violates { diagnostic: d } => outcome_rejected(d)
     Holds { value: left_type } =>
-      match infer_branch_operand_resolved_type_in_tree(
+      match infer_branch_operand_resolved_type_with_entries(
         node: right_node,
         facts: right_facts,
         entries: entries,
@@ -4374,7 +4391,7 @@ fn infer_list_element_type(element: Node, entries: List<InferredFactsEntry>, res
   match lookup_inferred_facts_in_entries(entries: entries, key: element) {
     Absent => outcome_rejected(infer_facts_lookup_miss_diagnostic(key: element))
     Present { value: facts } =>
-      match infer_branch_operand_resolved_type_in_tree(node: element, facts: facts, entries: entries, resolved: resolved) {
+      match infer_branch_operand_resolved_type_with_entries(node: element, facts: facts, entries: entries, resolved: resolved) {
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: t } => outcome_accepted(value: t)
       }
