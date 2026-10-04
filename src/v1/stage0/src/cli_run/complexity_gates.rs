@@ -182,10 +182,14 @@ pub(crate) fn frozen_path_deferral_qualified_identities_from_source(
     for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
         let file_content = match std::fs::read_to_string(root.join(&entry)) {
             Ok(c) => c,
-            // A frozen row naming a file the tree no longer carries is stale-path debt, not a
-            // roster-intersection question — `collect_stale_frozen_path_deferrals` already owns
-            // that disposition, so this join skips it rather than panicking a second authority.
-            Err(_) => continue,
+            // Unreachable on the required route: `run_required_floor` refuses every stale row
+            // (`collect_stale_frozen_path_deferrals`, which includes an absent file) BEFORE this
+            // scan runs. A missing file here is therefore an ordering bug, and it says so rather
+            // than skipping the row (DESIGN 5: no absorbing arm).
+            Err(e) => panic!(
+                "witness deferral freeze: frozen row names {entry}, which is not readable ({e}); \
+                 the stale-row refusal must run before the intersection scan"
+            ),
         };
         let module = match extract_module_path(&file_content) {
             Some(m) => m,
