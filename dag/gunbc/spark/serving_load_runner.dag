@@ -116,7 +116,7 @@ fn bench_exec_argv(subject: ServingLoadSubject, req: VllmBenchServeRequest) -> L
 
 fn scrape_metrics(ctx: SparkMaterializeContext, subject: ServingLoadSubject, step: String) -> MetricsScrape {
   match spark_remote_run(ctx: ctx, argv: curl_metrics_argv(subject: subject)) {
-    RemoteUnreachable { cause: c } => ScrapeUnreachable { step: step, cause: c }
+    RemoteUnreachable { cause: c, reach: _ } => ScrapeUnreachable { step: step, cause: c }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         ScrapeExitedNonZero { step: step, exit_code: code, stdout: out, stderr: err }

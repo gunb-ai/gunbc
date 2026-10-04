@@ -629,7 +629,7 @@ type ImageLegOutcome
 fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
-    RemoteUnreachable { cause: why } => ImageLegFailed { step: step, cause: why }
+    RemoteUnreachable { cause: why, reach: _ } => ImageLegFailed { step: step, cause: why }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         ImageLegFailed { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") }
@@ -1310,7 +1310,7 @@ fn vllm_image_held_of_inspect(step: NonEmptyStr, stdout: String) -> VllmImageHel
 
 fn vllm_image_read_held(ctx: SparkMaterializeContext, step: NonEmptyStr, tag: NonEmptyStr) -> VllmImageHeld {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: tag))) {
-    RemoteUnreachable { cause: why } => VllmImageHeldUnread { step: step, cause: why }
+    RemoteUnreachable { cause: why, reach: _ } => VllmImageHeldUnread { step: step, cause: why }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code == 0 {
         vllm_image_held_of_inspect(step: step, stdout: out)
@@ -1344,7 +1344,7 @@ fn vllm_image_disk_refusal(step: NonEmptyStr, place: String, required: ByteSize,
 fn vllm_image_remote_disk_refusal(ctx: SparkMaterializeContext, step: NonEmptyStr, path: NonEmptyStr, required: ByteSize) -> String? {
   let place = join([ctx.host as String, ":", path as String], "")
   match spark_remote_run(ctx: ctx, argv: host_disk_free_space_argv(path: path as String)) {
-    RemoteUnreachable { cause: why } => Present { value: join([step as String, ": the free-space read at ", place, " did not run: ", why], "") }
+    RemoteUnreachable { cause: why, reach: _ } => Present { value: join([step as String, ": the free-space read at ", place, " did not run: ", why], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       vllm_image_disk_refusal(step: step, place: place, required: required,
         reading: host_disk_observation_of_df(exit_code: code, stdout: out, stderr: err, observed_on: ctx.host as NonEmptyStr))

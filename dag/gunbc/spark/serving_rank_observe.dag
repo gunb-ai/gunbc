@@ -164,7 +164,7 @@ fn rank_leg(
 ) -> RankLegOutcome
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
-    RemoteUnreachable { cause: why } =>
+    RemoteUnreachable { cause: why, reach: _ } =>
       RankLegFailed { refusal: rank_observation_refusal(subject: subject, step: step, cause: why as NonEmptyStr), stderr: "" }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {

@@ -38,7 +38,7 @@ fn spark_serving_units() -> List<NonEmptyStr> {
 fn spark_ctx_argv_run(ctx: SparkMaterializeContext) -> fn(List<String>) -> ArgvRun {
   fn(argv) {
     match spark_remote_run(ctx: ctx, argv: argv) {
-      RemoteUnreachable { cause: c } => ArgvLegDidNotRun { cause: c }
+      RemoteUnreachable { cause: c, reach: _ } => ArgvLegDidNotRun { cause: c }
       RemoteRan { exit_code: code, stdout: out, stderr: err } => ArgvRan { exit_code: code, stdout: out, stderr: err }
     }
   }

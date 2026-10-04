@@ -1,6 +1,6 @@
 module extdeps.ssh.client_options
 
-import std.types { NonEmptyStr, String, Bool, List }
+import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -99,7 +99,16 @@ type UpdateHostKeysValue
   | UpdateHostKeysAsk
 
 // One variant per keyword, each carrying the value domain THAT keyword admits, so a nonsensical
-// pairing has no constructor. ConnectTimeout takes an Int because ssh_config(5) specifies seconds;
+// pairing has no constructor. ServerAliveInterval and ServerAliveCountMax are the LIVENESS half of a
+// deadline, distinct from ConnectTimeout, which bounds only the TCP connect: ssh_config(5) --
+// ServerAliveInterval "Sets a timeout interval in seconds after which if no data has been received
+// from the server, ssh(1) will send a message through the encrypted channel to request a response",
+// default 0 (never); ServerAliveCountMax "Sets the number of server alive messages ... which may be
+// sent without ssh(1) receiving any messages back from the server. If this threshold is reached while
+// server alive messages are being sent, ssh will disconnect from the server, terminating the session",
+// default 3. With the interval at its default of 0 an established session whose path goes dark waits
+// on TCP alone, which is how fleet-converge run 37156689444 sat ~1h inside one leg.
+// ConnectTimeout takes an Int because ssh_config(5) specifies seconds;
 // BatchMode takes a Bool because its domain is yes|no and Bool is that domain already grounded
 // (section 2: no net new concepts by re-invention).
 type SshClientOption
@@ -112,6 +121,8 @@ type SshClientOption
   | BatchMode { enabled: Bool }
   | ExitOnForwardFailure { enabled: Bool }
   | ConnectTimeout { seconds: Second }
+  | ServerAliveInterval { seconds: Second }
+  | ServerAliveCountMax { count: Int }
   | ConfigFile { path: NonEmptyStr }
   | IdentityFile { path: NonEmptyStr }
   | IdentitiesOnly { enabled: Bool }
@@ -134,6 +145,8 @@ fn ssh_client_option_keyword(option: SshClientOption) -> String {
     BatchMode { enabled: _ } => "BatchMode"
     ExitOnForwardFailure { enabled: _ } => "ExitOnForwardFailure"
     ConnectTimeout { seconds: _ } => "ConnectTimeout"
+    ServerAliveInterval { seconds: _ } => "ServerAliveInterval"
+    ServerAliveCountMax { count: _ } => "ServerAliveCountMax"
     ConfigFile { path: _ } => "ConfigFile"
     IdentityFile { path: _ } => "IdentityFile"
     IdentitiesOnly { enabled: _ } => "IdentitiesOnly"
@@ -182,6 +195,8 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
     ExitOnForwardFailure { enabled: e } => if e { "yes" } else { "no" }
     ConnectTimeout { seconds: s } => to_string(second_count(s: s))
+    ServerAliveInterval { seconds: s } => to_string(second_count(s: s))
+    ServerAliveCountMax { count: n } => to_string(n)
     ConfigFile { path: p } => p as String
     IdentityFile { path: p } => p as String
     IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }
@@ -338,6 +353,8 @@ fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
     BatchMode { enabled: _ } => serialize_ssh_client_option(option: option)
     ExitOnForwardFailure { enabled: _ } => serialize_ssh_client_option(option: option)
     ConnectTimeout { seconds: _ } => serialize_ssh_client_option(option: option)
+    ServerAliveInterval { seconds: _ } => serialize_ssh_client_option(option: option)
+    ServerAliveCountMax { count: _ } => serialize_ssh_client_option(option: option)
     IdentityFile { path: _ } => serialize_ssh_client_option(option: option)
     IdentitiesOnly { enabled: _ } => serialize_ssh_client_option(option: option)
     IdentityAgent { path: _ } => serialize_ssh_client_option(option: option)

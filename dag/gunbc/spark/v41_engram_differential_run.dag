@@ -235,11 +235,11 @@ fn v41_judge_occupancy(meminfo: String, compute_csv: String) -> V41HostOccupancy
 
 fn v41_read_occupancy(ctx: SparkMaterializeContext) -> V41HostOccupancy {
   match spark_remote_run(ctx: ctx, argv: ["cat", "/proc/meminfo"]) {
-    RemoteUnreachable { cause: why } => V41HostOccupied { cause: join(["/proc/meminfo could not be read: ", why as String], "") as NonEmptyStr }
+    RemoteUnreachable { cause: why, reach: _ } => V41HostOccupied { cause: join(["/proc/meminfo could not be read: ", why as String], "") as NonEmptyStr }
     RemoteRan { exit_code: c, stdout: mem, stderr: e } =>
       if c != 0 { V41HostOccupied { cause: join(["/proc/meminfo exited ", to_string(c), ": ", trim(s: e)], "") as NonEmptyStr } } else {
         match spark_remote_run(ctx: ctx, argv: ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory", "--format=csv"]) {
-          RemoteUnreachable { cause: why } => V41HostOccupied { cause: join(["nvidia-smi could not run: ", why as String], "") as NonEmptyStr }
+          RemoteUnreachable { cause: why, reach: _ } => V41HostOccupied { cause: join(["nvidia-smi could not run: ", why as String], "") as NonEmptyStr }
           RemoteRan { exit_code: c2, stdout: apps, stderr: e2 } =>
             if c2 != 0 { V41HostOccupied { cause: join(["nvidia-smi exited ", to_string(c2), ": ", trim(s: e2)], "") as NonEmptyStr } } else { v41_judge_occupancy(meminfo: mem, compute_csv: apps) }
         }
@@ -250,12 +250,12 @@ fn v41_read_occupancy(ctx: SparkMaterializeContext) -> V41HostOccupancy {
 // ── ASKING IT ───────────────────────────────────────────────────────────────────────────────────
 fn v41_differential_remove_containers(ctx: SparkMaterializeContext) -> String? {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_ps_running_command(filter: DockerPsByLabel { label: v41_differential_lane_label }))) {
-    RemoteUnreachable { cause: why } => Present { value: join(["docker ps did not run: ", why as String], "") }
+    RemoteUnreachable { cause: why, reach: _ } => Present { value: join(["docker ps did not run: ", why as String], "") }
     RemoteRan { exit_code: c, stdout: out, stderr: e } =>
       if c != 0 { Present { value: join(["docker ps exited ", to_string(c), ": ", trim(s: e)], "") } } else {
         let failures = flat_map(filter(split(s: out, delimiter: "\n"), w => trim(s: w) != ""), id =>
           match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_remove_force_command(name: trim(s: id) as NonEmptyStr))) {
-            RemoteUnreachable { cause: why } => [join(["docker rm -f ", trim(s: id), " did not run: ", why as String], "")]
+            RemoteUnreachable { cause: why, reach: _ } => [join(["docker rm -f ", trim(s: id), " did not run: ", why as String], "")]
             RemoteRan { exit_code: rc, stdout: _, stderr: re } => if rc == 0 { [] as List<String> } else { [join(["docker rm -f ", trim(s: id), " exited ", to_string(rc), ": ", trim(s: re)], "")] }
           })
         if length(failures) != 0 { Present { value: join(failures, "; ") } } else { none }
@@ -265,7 +265,7 @@ fn v41_differential_remove_containers(ctx: SparkMaterializeContext) -> String? {
 
 fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, image: NonEmptyStr, manifest: String, owed: List<V41StoreKey>) -> V41DifferentialOutcome {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: docker_image_inspect_command(image: image))) {
-    RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteUnreachable { cause: why, reach: _ } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
     RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
       if code != 0 {
         if docker_image_inspect_names_no_such_image(stderr: err) {
@@ -278,7 +278,7 @@ fn v41_differential_on(ctx: SparkMaterializeContext, claim: NonEmptyStr, image: 
           DockerImageInspectIdUnreadable { cause: why } => V41DifferentialRefused { step: "image-config-id" as NonEmptyStr, cause: why }
           DockerImageInspectId { id: config_id } => {
             let outcome = match spark_remote_run(ctx: ctx, argv: v41_differential_argv(image: config_id, claim: claim, manifest: manifest)) {
-              RemoteUnreachable { cause: why } => V41DifferentialRefused { step: "differential-run" as NonEmptyStr, cause: why }
+              RemoteUnreachable { cause: why, reach: _ } => V41DifferentialRefused { step: "differential-run" as NonEmptyStr, cause: why }
               RemoteRan { exit_code: c, stdout: out, stderr: e } =>
                 if c == 0 || c == 1 {
                   v41_admit_differential(image_config: config_id, owed: owed, stdout: out)

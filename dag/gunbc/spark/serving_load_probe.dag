@@ -746,7 +746,7 @@ type BenchServeExecution
 
 fn bench_serve_from_remote(protocol: VllmBenchServeRequest, remote: SparkRemoteRun) -> BenchServeExecution {
   match remote {
-    RemoteUnreachable { cause: c } =>
+    RemoteUnreachable { cause: c, reach: _ } =>
       BenchServeUnreachable { protocol: protocol, cause: c as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       BenchServeRan { protocol: protocol, exit_code: code, stdout: out, stderr: err }
