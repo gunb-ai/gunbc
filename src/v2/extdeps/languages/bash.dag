@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_flat_map, list_map }
@@ -36,7 +37,7 @@ import v2.std.compilers.target_model {
   target_model_make_with_emit_transforms,
   concrete_syntax_token_to_node
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective, Outcome, bind_outcome, outcome_accepted }
 import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }

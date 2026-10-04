@@ -1,7 +1,7 @@
 module test.fixture.grounded_shared_carrier
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
 
 // THE ONE SHAPE THIS FIXTURE EXISTS FOR: a Cons whose tail is the grounded FreeMonoid empty. The
 // emitter renders `Empty {}` as the already-shared carrier value, and the record-literal sites used

@@ -1,5 +1,6 @@
 module v2.compiler.source_authority_read
 
+import std.types { List }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { Empty, list_snoc_item }
 import std.content_hash {
@@ -19,7 +20,6 @@ import v2.compiler.source_authority {
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
