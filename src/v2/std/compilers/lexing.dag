@@ -229,6 +229,10 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
   )
 }
 
+// TOKEN STARTS STRICTLY INCREASE ALONG A STREAM. A token's start is its stream position: the parse
+// keys its memo and decides repeat progress by it (v2.compiler.parse parse_current_position), and
+// refuses a stream that breaks the order at its entry (parse_token_start_order_violation,
+// TokenStartsNotIncreasing) rather than serve one position's answer for another.
 type Token {
   class: Symbol
   lexeme: Lexeme
