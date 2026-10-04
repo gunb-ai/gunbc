@@ -11,6 +11,7 @@ import extdeps.uri_validation {
   validate_href, SafeHref, RejectedHref, RejectedUrlScheme,
 }
 import std.render_repeat_string_bootstrap { repeat_string }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
@@ -28,8 +29,6 @@ import std.markup {
   Rejected,
 }
 import std.markdown {
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
   MarkdownDocument,
   MarkdownBlock,
   MarkdownInline,
