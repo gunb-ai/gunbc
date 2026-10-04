@@ -449,13 +449,17 @@ test fn swapped_worker_and_reviewer_pointers_refuse_through_the_reader() -> Bool
 
 // ONE CRITERION AT TWO HEADS, AND THE AUDITOR AT TWO HEADS: their seat owners differ by head, so
 // exchanging their pointers refuses through the reader; the matching pointers are accepted.
-test fn swapped_pointers_across_heads_refuse_through_the_reader() -> Bool {
+test fn swapped_reviewer_pointers_across_heads_refuse_through_the_reader() -> Bool {
   let c_h1 = MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h1" as NonEmptyStr }
   let c_h2 = MeteredReviewer { criterion_key: "r1-c1" as NonEmptyStr, head: "h2" as NonEmptyStr }
-  let a_h1 = MeteredAuditor { head: "h1" as NonEmptyStr }
-  let a_h2 = MeteredAuditor { head: "h2" as NonEmptyStr }
   swapped(a: c_h1, a_stream: reviewer_stream(), b: c_h2, b_stream: reviewer_stream()) == "refused"
-    && swapped(a: a_h1, a_stream: reviewer_stream(), b: a_h2, b_stream: reviewer_stream()) == "refused"
     && owner_of(role: c_h1) != owner_of(role: c_h2)
     && !refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: c_h2, stamp: "2"), owner: owner_of(role: c_h2)))
+}
+
+test fn swapped_auditor_pointers_across_heads_refuse_through_the_reader() -> Bool {
+  let a_h1 = MeteredAuditor { head: "h1" as NonEmptyStr }
+  let a_h2 = MeteredAuditor { head: "h2" as NonEmptyStr }
+  swapped(a: a_h1, a_stream: reviewer_stream(), b: a_h2, b_stream: reviewer_stream()) == "refused"
+    && !refused(cause: seat_pointer_owned_by(pointer: pointer_for(role: a_h2, stamp: "2"), owner: owner_of(role: a_h2)))
 }
