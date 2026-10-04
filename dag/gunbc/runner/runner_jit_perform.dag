@@ -1,6 +1,7 @@
 module gunbc.runner.runner_jit_perform
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.decl_ref { decl_ref }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -96,14 +97,22 @@ type JitDispatchRefusal
 // a witness over it would be permanently green by construction and worse than absent, because it
 // would be cited as coverage. It is recorded here as a totality arm and counted as none.
 type JitMintDispatch
-  = JitMintDispatchAuthorized {
-      slot: JitSlot
-      app: DeclaredGitHubApp
-      installation: GitHubAppInstallationId
-      organization: GitHubOrganizationRef
-      request: JitRunnerConfigRequest
-    }
+  = JitMintDispatchAuthorized { dispatch: AuthorizedJitMintDispatch }
   | JitMintDispatchRefused { refusal: JitDispatchRefusal }
+
+// THE AUTHORIZED PAYLOAD IS SEALED. An open arm could be authored by any module naming any runner,
+// and every consumer downstream -- the delivery, the generate gate, the deregistration subject
+// (gunbc.runner.runner_jit_deregistration jit_registration_of) -- would take it as a plan that
+// passed the gates. dispatch_jit_mint is its only constructor, and dispatch_jit_mint is itself
+// admit_callers-sealed, as is every admitted caller that returns the dispatch onward: an admitted
+// call edge does not confine a value an exported wrapper hands back.
+type AuthorizedJitMintDispatch sole_constructor {
+  slot: JitSlot
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+  organization: GitHubOrganizationRef
+  request: JitRunnerConfigRequest
+}
 
 type AuthorityInstallation {
   app: DeclaredGitHubApp
@@ -125,7 +134,18 @@ fn dispatch_jit_mint(
   organization: GitHubOrganizationRef,
   runner_group: MicrovmRunnerGroupStanding,
   attempt_binding: JitAdmissionAxisStanding
-) -> JitMintDispatch {
+) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "attempt_dispatch"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_subject_binds_the_minted_runner_and_the_attempt_input"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "slot_refuses"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "no_other_workflow_or_label_can_be_dispatched_through_the_ruling"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_dispatch_has_three_standings_and_an_interlock"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_collection_joins_the_floor_job_to_the_minted_runner"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_rerun_or_another_run_cannot_be_collected_as_the_dispatch"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_unpinned_or_unreadable_run_refuses"),
+] {
   match plan_jit_mint(
     binding: binding,
     authority: authority,
@@ -161,11 +181,13 @@ fn dispatch_jit_mint(
           }
         Present { value: held } =>
           JitMintDispatchAuthorized {
-            slot: slot,
-            app: held.app,
-            installation: held.installation,
-            organization: organization,
-            request: request,
+            dispatch: AuthorizedJitMintDispatch {
+              slot: slot,
+              app: held.app,
+              installation: held.installation,
+              organization: organization,
+              request: request,
+            },
           }
       }
   }
@@ -201,13 +223,8 @@ fn receive_jit_mint(
 ) -> JitCredentialDelivery {
   match dispatch {
     JitMintDispatchRefused { refusal: r } => JitCredentialNotDispatched { refusal: r }
-    JitMintDispatchAuthorized {
-      slot: slot,
-      app: _,
-      installation: _,
-      organization: _,
-      request: _,
-    } =>
+    JitMintDispatchAuthorized { dispatch: authorized } => {
+      let slot = authorized.slot
       match outcome {
         JitConfigMinted { config: config, runner_id: runner_id } =>
           JitCredentialBoundToAttempt {
@@ -228,6 +245,7 @@ fn receive_jit_mint(
             outcome: JitConfigMintValidationFailed { reason: reason },
           }
       }
+    }
   }
 }
 

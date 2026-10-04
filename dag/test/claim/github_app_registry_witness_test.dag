@@ -16,7 +16,7 @@ import extdeps.github.actions_token {
   ActionsRepositoryPolicyUnobserved,
 }
 import extdeps.github.effect { contents_write, workflows_write }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
@@ -63,7 +63,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_argv }
-import gunbc.runner.runner_jit_deregistration { jit_registration_of }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of, readback_subject_refusal, DeregistrationReadbackForAnotherSubject }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotRefused, HostUnitSlotHostNotBound, host_unit_slot_for, host_unit_slot_listener_argv,
 }
@@ -1158,7 +1158,21 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
 // proof named. The performer is gunbc.github_effect_perform, and its consumer frontier records that
 // no production route runs it yet.
 
-fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch {
+// EGRESS-SEALED: this helper returns the sealed authorized dispatch, so it is admitted only to the
+// claims that consume it -- an exported wrapper would otherwise be the open door the seal closes.
+fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_an_unowned_cell_before_naming_a_token_url"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_a_credential_missing_the_runner_permission"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_authorizes_and_names_both_steps_of_the_app_path"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_refused_dispatch_delivers_nothing_even_from_a_minted_credential"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_created"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_minted_credential_is_bound_to_the_dispatched_attempt"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_deregistration_subject_exists_only_for_an_authorized_dispatch"),
+  decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_readback_for_another_subject_is_refused"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_a_dispatch_for_another_app_is_refused_before_signing"),
+  decl_ref(module_path: "test.claim.github_effect_perform_witness", decl_name: "witness_a_refused_dispatch_performs_no_mint"),
+] {
   dispatch_jit_mint(
     binding: jit_binding(owned: owned),
     authority: app_credential,
@@ -1236,17 +1250,14 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
 // plan authorized, so a dispatch cannot address another organization's runners.
 test fn witness_jit_dispatch_authorizes_and_names_both_steps_of_the_app_path() -> Bool {
   match dispatched(owned: true, perms: runner_grant) {
-    JitMintDispatchAuthorized {
-      slot: MicroVmJitSlot { attempt: a },
-      app: app,
-      installation: installation,
-      organization: org,
-      request: req,
-    } =>
-      installation.value == 999
-        && app == gunbai_bot_declared
-        && (org.login as String) == "gunb-ai"
-        && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+    JitMintDispatchAuthorized { dispatch: d } =>
+      d.installation.value == 999
+        && d.app == gunbai_bot_declared
+        && (d.organization.login as String) == "gunb-ai"
+        && match d.slot {
+          MicroVmJitSlot { attempt: a } => (d.request.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+          _ => false
+        }
     _ => false
   }
 }
@@ -1301,7 +1312,7 @@ test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool
         runner_id: id,
       } =>
         match dispatched(owned: true, perms: runner_grant) {
-          JitMintDispatchAuthorized { slot: d, app: _, installation: _, organization: _, request: _ } => a == d
+          JitMintDispatchAuthorized { dispatch: d } => a == d.slot
           _ => false
         }
           && (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln"
@@ -1428,12 +1439,37 @@ test fn witness_a_deregistration_subject_exists_only_for_an_authorized_dispatch(
     Present { value: _ } => false
   }
   refused_none && match dispatched(owned: true, perms: runner_grant) {
-    JitMintDispatchAuthorized { slot: _, app: app, installation: i, organization: _, request: req } =>
+    JitMintDispatchAuthorized { dispatch: d } =>
       match jit_registration_of(dispatch: dispatched(owned: true, perms: runner_grant)) {
         Present { value: reg } =>
-          (reg.name.value as String) == (req.name.value as String) && reg.app == app && reg.installation == i
+          (reg.name.value as String) == (d.request.name.value as String) && reg.app == d.app && reg.installation == d.installation
         Absent => false
       }
     _ => false
+  }
+}
+
+// RED: A READBACK FOR ANOTHER SUBJECT IS NOT EVIDENCE ABOUT THIS ONE. A real, empty listing for
+// `other-name` -- or one taken in another organization or with another installation's token -- must
+// refuse before its answer is read, and the registration's own subject must pass.
+fn readback_for_another_subject_refuses(reg: JitRegistration, org: NonEmptyStr, name: NonEmptyStr, app: DeclaredGitHubApp, i: GitHubAppInstallationId) -> Bool {
+  match readback_subject_refusal(registration: reg, organization: org, name: name, app: app, installation: i) {
+    Present { value: DeregistrationReadbackForAnotherSubject { organization: _, name: _, app: _, installation: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_a_readback_for_another_subject_is_refused() -> Bool {
+  match jit_registration_of(dispatch: dispatched(owned: true, perms: runner_grant)) {
+    Absent => false
+    Present { value: reg } =>
+      (match readback_subject_refusal(registration: reg, organization: reg.organization.login, name: reg.name.value, app: reg.app, installation: reg.installation) {
+        Absent => true
+        Present { value: _ } => false
+      })
+        && readback_for_another_subject_refuses(reg: reg, org: reg.organization.login, name: "other-name", app: reg.app, i: reg.installation)
+        && readback_for_another_subject_refuses(reg: reg, org: "another-org", name: reg.name.value, app: reg.app, i: reg.installation)
+        && readback_for_another_subject_refuses(reg: reg, org: reg.organization.login, name: reg.name.value, app: gunbai_ci_declared, i: reg.installation)
+        && readback_for_another_subject_refuses(reg: reg, org: reg.organization.login, name: reg.name.value, app: reg.app, i: other_installation_id)
   }
 }

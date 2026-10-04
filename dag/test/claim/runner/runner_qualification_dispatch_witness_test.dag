@@ -14,10 +14,9 @@ import extdeps.github.workflow_runs {
 }
 import gunbc.managed_host { ManagedHost, managed_hosts, managed_host_binding }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_for }
-import gunbc.runner_jit_mint { HostUnitSlotBinding }
+import gunbc.runner_jit_mint { JitSlotBinding, HostUnitSlotBinding }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
-import gunbc.runner.runner_jit_perform { JitMintDispatch, JitCredentialDelivery, dispatch_jit_mint, receive_jit_mint }
-import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, JitCredentialDelivery, dispatch_jit_mint, receive_jit_mint }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome }
 import gunbc.runner.runner_qualification_dispatch {
@@ -60,25 +59,20 @@ data floor_job_id: NonEmptyStr = "qualification-floor"
 
 // ── THE SUBJECT, THROUGH THE REAL MINT ──────────────────────────────────────────────────────────
 // The registration and the delivered credential come from the route's own JIT mint over the real
-// managed-host roster: dispatch_jit_mint, jit_registration_of, and receive_jit_mint over a 201
+// managed-host roster: each claim calls dispatch_jit_mint itself (admitted by name), and the subject mint takes its sealed AuthorizedJitMintDispatch with receive_jit_mint over a 201
 // decoded by upstream's own outcome fold (runner id 4242). Nothing below constructs a registration,
 // and every caller of the sealed subject mint is a claim returning Bool (no constructor proxy).
 
 
-fn minted(h: ManagedHost, slot_workflow: NonEmptyStr) -> JitMintDispatch {
-  dispatch_jit_mint(
-    binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: slot_workflow) },
-    authority: app_credential,
-    control_plane: observed_grant(perms: runner_grant),
-    organization: gunbai_org_ref,
-    runner_group: group_restricted_to(workflow: slot_workflow),
-    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
-  )
+
+
+
+fn slot_binding(h: ManagedHost, slot_workflow: NonEmptyStr) -> JitSlotBinding {
+  HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: slot_workflow) }
 }
 
-
-fn delivery(h: ManagedHost, slot_workflow: NonEmptyStr) -> JitCredentialDelivery {
-  receive_jit_mint(dispatch: minted(h: h, slot_workflow: slot_workflow), outcome: minted_outcome)
+fn delivered(d: AuthorizedJitMintDispatch) -> JitCredentialDelivery {
+  receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome)
 }
 
 fn qualification_slot() -> NonEmptyStr {
@@ -123,10 +117,10 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 // generated fleet-converge workflow file in gunbc_repository at the pinned revision.
 test fn the_subject_binds_the_minted_runner_and_the_attempt_input() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } =>
@@ -146,29 +140,29 @@ test fn the_subject_binds_the_minted_runner_and_the_attempt_input() -> Bool {
     QualificationSubjectRefused { refusal: _ } => false
   }
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }
 }
 
 fn slot_refuses(h: ManagedHost, slot_workflow: NonEmptyStr) -> Bool {
-  match jit_registration_of(dispatch: minted(h: h, slot_workflow: slot_workflow)) {
-    Present { value: other_reg } =>
+  match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: slot_workflow), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: slot_workflow), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+    JitMintDispatchAuthorized { dispatch: other } =>
       match qualification_dispatch_subject_over(
-        registration: other_reg, delivery: delivery(h: h, slot_workflow: slot_workflow),
+        dispatch: other, delivery: delivered(d: other),
         workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
       ) {
         QualificationSubjectRefused { refusal: SubjectSlotForAnotherWorkflow { slot_workflow: sw, qualification_workflow: _ } } => (sw as String) == (slot_workflow as String)
         _ => false
       }
-    Absent => false
+    JitMintDispatchRefused { refusal: _ } => false
   }
 }
 
-fn runs_on_refuses(h: ManagedHost, reg: JitRegistration, runs_on: RunnerSpec) -> Bool {
+fn runs_on_refuses(h: ManagedHost, d: AuthorizedJitMintDispatch, runs_on: RunnerSpec) -> Bool {
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: true, runs_on: runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: _, runs_on: _ } } => true
@@ -176,9 +170,9 @@ fn runs_on_refuses(h: ManagedHost, reg: JitRegistration, runs_on: RunnerSpec) ->
   }
 }
 
-fn undeclared_input_refuses(h: ManagedHost, reg: JitRegistration) -> Bool {
+fn undeclared_input_refuses(h: ManagedHost, d: AuthorizedJitMintDispatch) -> Bool {
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: false, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: _ } } => true
@@ -197,24 +191,24 @@ fn undeclared_input_refuses(h: ManagedHost, reg: JitRegistration) -> Bool {
 //     refuses rather than admitting anything.
 test fn no_other_workflow_or_label_can_be_dispatched_through_the_ruling() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   slot_refuses(h: h, slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
     && slot_refuses(h: h, slot_workflow: qualification_selected_workflow(branch: "feature"))
-    && runs_on_refuses(h: h, reg: reg, runs_on: SelfHosted { labels: [attempt as String] })
-    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
-    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
-    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "gunbc-qualification" })
-    && undeclared_input_refuses(h: h, reg: reg)
+    && runs_on_refuses(h: h, d: d, runs_on: SelfHosted { labels: [attempt as String] })
+    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
+    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
+    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "gunbc-qualification" })
+    && undeclared_input_refuses(h: h, d: d)
     && (match qualification_dispatch_subject(
-      registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+      dispatch: d, delivery: delivered(d: d),
       floor_job_id: floor_job_id, branch: branch, revision: revision,
     ) {
       QualificationSubjectAdmitted { subject: _ } => false
       QualificationSubjectRefused { refusal: _ } => true
     })
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }
@@ -233,15 +227,15 @@ fn ambiguous(s: QualificationDispatchStanding) -> Bool {
 // the hold covers the slot's own host and no other.
 test fn the_dispatch_has_three_standings_and_an_interlock() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   (match mutation_standing(rest: RestStatusRefused { status: 422, body: "Unexpected inputs provided" }) { DispatchStandingRefused { status: st, body: _ } => st == 422 _ => false })
     && ambiguous(s: mutation_standing(rest: RestTransportRefused { cause: "fixture: connection reset after send" }))
     && ambiguous(s: mutation_standing(rest: RestStatusRefused { status: 503, body: "fixture" }))
     && ambiguous(s: mutation_standing(rest: RestBodyUndecodable { status: 200, cause: "fixture: truncated body" }))
     && (match mutation_standing(rest: RestOk) { DispatchStandingSucceeded => true _ => false })
     && match qualification_dispatch_subject_over(
-      registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+      dispatch: d, delivery: delivered(d: d),
       workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
     ) {
       QualificationSubjectAdmitted { subject: s } =>
@@ -249,7 +243,7 @@ test fn the_dispatch_has_three_standings_and_an_interlock() -> Bool {
       QualificationSubjectRefused { refusal: _ } => false
     }
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }
@@ -339,10 +333,10 @@ fn mismatch(v: QualificationRunVerdict) -> Bool {
 // on the minted runner that never started; two jobs answering to the floor's name.
 test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
@@ -370,7 +364,7 @@ test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
     QualificationSubjectRefused { refusal: _ } => false
   }
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }
@@ -381,11 +375,11 @@ test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
 // another event; another workflow path.
 test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
@@ -402,7 +396,7 @@ test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
     QualificationSubjectRefused { refusal: _ } => false
   }
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }
@@ -410,11 +404,11 @@ test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
 
 test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
   match first(managed_hosts()) {
-    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
-      Present { value: reg } => {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => {
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
-    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
+    dispatch: d, delivery: delivered(d: d),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
@@ -447,7 +441,7 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
     QualificationSubjectRefused { refusal: _ } => false
   }
     }
-      Absent => false
+      JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
   }

@@ -2,6 +2,7 @@ module gunbc.runner.runner_jit_deregistration
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
+import std.decl_ref { decl_ref }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.transports.rest { RestExchangePerformance, RestExchangeSucceeded }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -57,8 +58,8 @@ type JitRegistration sole_constructor {
 fn jit_registration_of(dispatch: JitMintDispatch) -> JitRegistration? {
   match dispatch {
     JitMintDispatchRefused { refusal: _ } => none
-    JitMintDispatchAuthorized { slot: s, app: a, installation: i, organization: o, request: r } =>
-      Present { value: JitRegistration { organization: o, name: r.name, slot: s, app: a, installation: i } }
+    JitMintDispatchAuthorized { dispatch: d } =>
+      Present { value: JitRegistration { organization: d.organization, name: d.request.name, slot: d.slot, app: d.app, installation: d.installation } }
   }
 }
 
@@ -108,6 +109,7 @@ type JitDeregistrationRefusal
   | DeregistrationAuthorityForAnotherInstallation
   | DeregistrationCredentialRefused { unsatisfied: List<CredentialCapability> }
   | DeregistrationListingUnreadable { performance: RestExchangePerformance, cause: NonEmptyStr }
+  | DeregistrationReadbackForAnotherSubject { organization: NonEmptyStr, name: NonEmptyStr, app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
   | DeregistrationRunnerStillListed { ids: List<Int>, deletes: List<JitRunnerDeleteAttempt> }
 
 // THE VERDICT OVER A READBACK, decided without I/O and witnessable on supplied listings. It carries
@@ -140,12 +142,50 @@ type JitDeregistration
   = JitRunnerDeregistered { receipt: JitDeregistrationReceipt }
   | JitDeregistrationRefused { registration: JitRegistration, exit: JitSlotExit, refusal: JitDeregistrationRefusal }
 
+// A READBACK IS EVIDENCE ONLY ABOUT ITS OWN QUERY. Pure over the subject fields, so the refusal is
+// witnessable on supplied values; the receipt path applies it to the sealed read before anything
+// else is read from it.
+fn readback_subject_refusal(
+  registration: JitRegistration,
+  organization: NonEmptyStr,
+  name: NonEmptyStr,
+  app: DeclaredGitHubApp,
+  installation: GitHubAppInstallationId,
+) -> JitDeregistrationRefusal? {
+  if (organization as String) != (registration.organization.login as String)
+    || (name as String) != (registration.name.value as String)
+    || app != registration.app
+    || installation != registration.installation {
+    Present { value: DeregistrationReadbackForAnotherSubject { organization: organization, name: name, app: app, installation: installation } }
+  } else {
+    none
+  }
+}
+
+// THE RECEIPT'S ONLY CONSTRUCTOR, AND IT IS ADMITTED ONLY TO THE ENSURE: a caller holding some real
+// listing cannot hand it here beside a registration of its choosing.
 fn conclude_from_readback(
   registration: JitRegistration,
   exit: JitSlotExit,
   deletes: List<JitRunnerDeleteAttempt>,
   readback: OrganizationRunnerListRead,
-) -> JitDeregistration {
+) -> JitDeregistration admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+] {
+  match readback_subject_refusal(registration: registration, organization: readback.organization, name: readback.name, app: readback.app, installation: readback.installation) {
+    Present { value: r } => JitDeregistrationRefused { registration: registration, exit: exit, refusal: r }
+    Absent => conclude_after_subject_check(registration: registration, exit: exit, deletes: deletes, readback: readback)
+  }
+}
+
+fn conclude_after_subject_check(
+  registration: JitRegistration,
+  exit: JitSlotExit,
+  deletes: List<JitRunnerDeleteAttempt>,
+  readback: OrganizationRunnerListRead,
+) -> JitDeregistration admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "conclude_from_readback"),
+] {
   match classify_jit_deregistration(readback: jit_runner_listing_of_read(name: registration.name, read: readback), deletes: deletes) {
     ReadbackShowsAbsent =>
       JitRunnerDeregistered { receipt: JitDeregistrationReceipt { registration: registration, exit: exit, deletes: deletes, readback: readback } }
@@ -172,7 +212,9 @@ fn readback_after_deletes(
   token: ControllerInstallationToken,
   registration: JitRegistration,
   deletes: List<JitRunnerDeleteAttempt>,
-) -> DeletesThenReadback uses net: Network {
+) -> DeletesThenReadback uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+] {
   DeletesThenReadback {
     deletes: deletes,
     readback: list_runners_by_name_with(token: token, organization: registration.organization.login, name: registration.name.value),
