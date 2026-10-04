@@ -44933,8 +44933,6 @@ fn witness_eval_verdict_from_claim_outcome(
     })
 }
 
-pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
-
 /// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
 ///
 /// The predicate is here rather than in the test body because a test that pattern-matched the
@@ -44971,13 +44969,6 @@ pub fn run_required_regen_scoped(
     let workspace = workspace_root();
     let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
     required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
-}
-
-pub fn run_required_regen_fixed_point(
-    receipt_rel: &str,
-    pass1_digest: Option<String>,
-) -> Result<required_regen_host::RequiredRegenOutcome, String> {
-    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
 /// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --
