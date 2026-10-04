@@ -1,97 +1,416 @@
 module test.claim.machine_intake_bmc_rotation_route_witness_test
 
-import std.types { Bool, NonEmptyStr }
-import std.decl_ref { NamedField, decl_field_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
-import gunbc.machine_intake_bmc_secure {
-  CredentialRotationApplication, AccountManagementUnavailable,
-  RotationApplied, RotationNotAttempted,
+import std.types { Bool, NonEmptyStr, String, Timestamp }
+import std.decl_ref { decl_field_ref }
+import std.scoped_authorization { AttemptIdentity }
+import std.content_hash { content_hash_of_value }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.algebra { filter, length }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.crypto.mac { MacKeyId }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceManagerIdentity, SurfaceAccountManagement }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, ProposeDeny, approval_capability_protocol }
+import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
+import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
+import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
+import gunbc.machine_intake_mtjade1_access_observation { read_mtjade1_recorded_manager_identity }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding, BmcAccountWriteRequest, IpmiSetUserPassword, RedfishAccountPasswordWrite,
+  ObservedSurfaceRead, PublicStandardOperation,
+  RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteQualificationCandidate, RouteUngrounded,
+  RouteQualified, RouteQualificationRefused, RouteQualificationSubject, HistoricalRotationRouteObservation,
+  ModeledQualificationWouldQualify, ModeledQualificationRefused, RouteQualificationRefusal,
+  QualificationSubjectNotACandidate, QualificationApprovalRefused, QualificationApprovalDenied,
+  QualificationApprovalForAnotherAuthority, QualificationApprovalForAnotherRequest,
+  QualificationResponseForAnotherSubject, QualificationRequestUnrealized,
+  QualificationRequestNotCompleted, QualificationReadbackRefused,
+  RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
+  RotationApplyRouteForAnotherBuild, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
+  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest,
+  route_qualification_authority, rotation_apply_authority,
+  rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
+  rotation_route_request_identity, rotation_route_is_grounded,
+  dry_route_qualification_request, qualify_rotation_route, classify_modeled_route_qualification, admit_rotation_apply,
+  account_write_request_eq, redfish_account_password_write,
 }
-import gunbc.bmc_implementation_dispatch {
-  BmcRotationRoute, RotationRouteRedfishAccountService, RotationRouteUnavailable,
-  rotation_route_for_family,
+import gunbc.machine_intake_bmc_rotation_route_evidence {
+  mtcollins1_rotation_route_standing, mtjade1_historical_rotation_route_observation, historical_route_observation_from_manager_read,
 }
-import gunbc.machine_intake_bmc_rotation_route { rotation_application_for_route }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE DISCRIMINATING PAIR. Both arms are exercised against the SAME fold, because a witness that
-// only ever asks the unavailable arm cannot tell a correct route table from one that refuses
-// everything -- and refusing everything would also make a MegaRAC unit fail Arrival, for the wrong
-// reason, invisibly.
-
-test fn megarac_has_no_rotation_route_today() -> Bool {
-  match rotation_route_for_family(family: AmiMegaRac) {
-    RotationRouteUnavailable { family_note: _, detail: _ } => true
-    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => false
+// ── supplied values at the approval boundary ────────────────────────────────────────────────────
+// The approval is SUPPLIED as an admitted Redemption (gunbc.auth.approval_broker); its own producer
+// and every refusal it makes are witnessed in test.claim.approval_broker_witness_test. What these
+// claims discriminate is which authority and which request revision the route admission reads.
+fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: authority,
+      escalation_id: "route-witness-1" as NonEmptyStr,
+      request_revision: revision,
+      decision: ProposeApprove,
+      attempt: "attempt-1" as AttemptIdentity,
+      issued_at: "2026-10-03T00:00:00Z",
+      expires_at: "2026-10-03T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
   }
 }
 
-test fn openbmc_routes_to_redfish_account_service() -> Bool {
-  match rotation_route_for_family(family: OpenBmc) {
-    RotationRouteRedfishAccountService { transport_operation: _, action_shape: _ } => true
-    RotationRouteUnavailable { family_note: _, detail: _ } => false
+fn standing_request(s: BmcRotationRouteStanding) -> BmcAccountWriteRequest {
+  match s.grounding {
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => r
+    RouteGroundedByCitedSource { request: r, citation: _ } => r
+    RouteQualificationCandidate { request: r, evidence: _ } => r
+    RouteUngrounded => IpmiSetUserPassword { user: 3 }
   }
 }
 
-// THE AVAILABLE ARM'S PAYLOAD IS READ, NOT MERELY CARRIED. Review 63263 found the arm holding a
-// prose path_note that no consumer touched -- dead data by §4c's own test. Replacing the sentence
-// with DeclarationRefs only fixes half of that: a reference nothing reads is still unconsumed. So
-// the witness destructures the arm and asserts the operation it names.
-//
-// AND THE FIRST VERSION OF THIS CHECK DID NOT CHECK THE OPERATION (review 63271). It asserted
-// module_path and decl_name on both refs and never touched `field` -- which is the ONLY position
-// the operation name lives in. So a table returning NamedField { field_name: "DeleteAccount" }
-// would have GREENED, while the comment above it claimed a wrong operation would red. That is a
-// check whose subject is narrower than its stated claim, which is the §4b(1) inflation this PR has
-// now corrected three times in three different rows: the claim must equal what the evidence
-// executes. The field is now compared through std.decl_ref decl_field_eq, so the assertion and the
-// sentence describe the same test.
-//
-// AND THE FIRST FIX RE-INVENTED THE COMPARISON IT NEEDED (review 63521). It hand-rolled a
-// decl_field_name fold over DeclField when std.decl_ref already owns decl_field_eq, whose module
-// states the rule in its own annotation: a module needing a DeclarationRef imports the constructor
-// from the type's own module and never re-mints it. DESIGN §2 -- net concepts must not grow by
-// re-invention. The WholeDeclaration arm compounded it by returning "" , a fabricated plausible
-// value where the canonical surface refuses to conflate the two shapes (§5); it compared false and
-// stayed fail-closed here, which was luck of the call site rather than a property of the helper.
+// An operator approval of the ROTATION of this exact controller, build and request.
+fn rotation_approval_for(s: BmcRotationRouteStanding) -> Redemption {
+  approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: s, request: standing_request(s: s)))
+}
 
-test fn the_openbmc_route_names_the_set_account_password_operation() -> Bool {
-  match rotation_route_for_family(family: OpenBmc) {
-    RotationRouteRedfishAccountService { transport_operation: op, action_shape: act } =>
-      op.module_path == "extdeps.bmc.http"
-        && op.decl_name == "redfish.Http"
-        && decl_field_eq(a: op.field, b: NamedField { field_name: "SetAccountPassword" as NonEmptyStr })
-        && act.module_path == "extdeps.bmc.types"
-        && act.decl_name == "RedfishSystemAction"
-        && decl_field_eq(a: act.field, b: NamedField { field_name: "SetAccountPassword" as NonEmptyStr })
-    RotationRouteUnavailable { family_note: _, detail: _ } => false
+// A synthetic MegaRAC controller pair and build for the qualification bootstrap. No unit row is made
+// from either, and no modeled run grounds anything: the modeled verdict carries no standing.
+data lab_endpoint: BmcControllerEndpoint = BmcControllerEndpoint { host: "198.51.100.7" }
+
+data lab_endpoint_b: BmcControllerEndpoint = BmcControllerEndpoint { host: "198.51.100.8" }
+
+fn lab_firmware() -> BmcFirmwareReleaseIdentity {
+  bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.32" as NonEmptyStr)
+}
+
+data lab_surface_receipt: EvidenceRef = EvidenceRef {
+  label: "lab IPMI user list read",
+  digest: content_hash_of_value(value: "lab IPMI user list read" as NonEmptyStr),
+}
+
+fn candidate_at(endpoint: BmcControllerEndpoint, request: BmcAccountWriteRequest) -> BmcRotationRouteStanding {
+  rotation_route_candidate(
+    endpoint: endpoint,
+    firmware: lab_firmware(),
+    request: request,
+    evidence: ObservedSurfaceRead { surface: SurfaceAccountManagement, receipt: lab_surface_receipt },
+  )
+}
+
+fn lab_candidate(request: BmcAccountWriteRequest) -> BmcRotationRouteStanding {
+  candidate_at(endpoint: lab_endpoint, request: request)
+}
+
+fn subject_at(endpoint: BmcControllerEndpoint, request: BmcAccountWriteRequest) -> RouteQualificationSubject {
+  RouteQualificationSubject { endpoint: endpoint, firmware: lab_firmware(), request: request }
+}
+
+fn lab_world_with_user3() -> BmcWorld {
+  bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: [BmcIpmiUser { id: 3, password: "factory" }])
+}
+
+fn qualification_approval_for(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest) -> Redemption {
+  approval(authority: route_qualification_authority, revision: rotation_route_request_identity(standing: standing, request: request))
+}
+
+fn refusal_name(c: RouteQualificationRefusal) -> String {
+  match c {
+    QualificationSubjectNotACandidate => "not-a-candidate"
+    QualificationApprovalRefused { cause: _ } => "approval-refused"
+    QualificationApprovalDenied => "approval-denied"
+    QualificationApprovalForAnotherAuthority { authority: _ } => "another-authority"
+    QualificationApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+    QualificationResponseForAnotherSubject { answered: _, candidate: _ } => "response-for-another-subject"
+    QualificationRequestUnrealized => "unrealized"
+    QualificationRequestNotCompleted { response_receipt: _ } => "not-completed"
+    QualificationReadbackRefused { response_receipt: _ } => "readback-refused"
   }
 }
 
-// THE ARM THAT MATTERS FOR SAFETY: an unavailable route must yield the application arm the
-// adjudication refuses on, so a MegaRAC unit cannot reach a controller write at all. A route table
-// that returned `none` here would let the caller proceed with RotationNotAttempted and adjudicate
-// into a DIFFERENT refusal, which would read as "nobody tried" rather than "there is no way to try".
-test fn an_unavailable_route_yields_account_management_unavailable() -> Bool {
-  match rotation_application_for_route(route: rotation_route_for_family(family: AmiMegaRac)) {
-    Present { value: app } =>
-      match app {
-        AccountManagementUnavailable { detail: _ } => true
-        RotationApplied { reference: _, applied_at: _, evidence: _ } => false
-        RotationNotAttempted => false
-      }
+// The modeled verdict for a candidate, an approval and a modeled run against `answered`.
+fn modeled_verdict(candidate: BmcRotationRouteStanding, approval_value: Redemption, world: BmcWorld, answered: RouteQualificationSubject) -> String {
+  match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: dry_route_qualification_request(world: world, subject: answered, password: "new-Secret!1").response) {
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationRefused { cause: c } => refusal_name(c: c)
+  }
+}
+
+fn refusal_of(world: BmcWorld, request: BmcAccountWriteRequest, approval_value: Redemption) -> String {
+  modeled_verdict(candidate: lab_candidate(request: request), approval_value: approval_value, world: world, answered: subject_at(endpoint: lab_endpoint, request: request))
+}
+
+fn apply_verdict(standing: BmcRotationRouteStanding, target: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, approval_value: Redemption) -> String {
+  match admit_rotation_apply(standing: standing, target_endpoint: target, target_firmware: firmware, approval: approval_value) {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyRouteNotGrounded { standing: _ } => "route-not-grounded"
+    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
+    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
+    RotationApplyApprovalRefused { cause: _ } => "approval-refused"
+    RotationApplyApprovalDenied => "approval-denied"
+    RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
+    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+  }
+}
+
+fn grounding_kind(standing: BmcRotationRouteStanding) -> String {
+  match standing.grounding {
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => "executed"
+    RouteGroundedByCitedSource { request: _, citation: _ } => "cited"
+    RouteQualificationCandidate { request: _, evidence: _ } => "candidate"
+    RouteUngrounded => "ungrounded"
+  }
+}
+
+// The candidate a past read would justify, at the address it was read on. Supplied by the witness
+// only: no production code mints a standing from a historical observation.
+fn candidate_from_history(h: HistoricalRotationRouteObservation) -> BmcRotationRouteStanding {
+  rotation_route_candidate(endpoint: h.observed_endpoint, firmware: h.firmware, request: h.request, evidence: h.evidence)
+}
+
+// ── rows from evidence ──────────────────────────────────────────────────────────────────────────
+
+// mtcollins1 is grounded by its executed IPMI Set User Password on user 3, bound to its own
+// controller and build, with both receipts naming the committed transcript at its digest.
+test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
+  let s = mtcollins1_rotation_route_standing()
+  (s.endpoint.host as String) == "192.168.1.228"
+    && (s.firmware.raw_version as String) == "0.32"
+    && match s.grounding {
+      RouteGroundedByExecutedRequest { request: r, request_receipt: q, response_receipt: p } =>
+        match r {
+          IpmiSetUserPassword { user: u } => (u as Int) == 3
+          RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+        }
+          && q.digest == mtcollins1_user3_route_digest
+          && p.digest == mtcollins1_user3_route_digest
+      RouteGroundedByCitedSource { request: _, citation: _ } => false
+      RouteQualificationCandidate { request: _, evidence: _ } => false
+      RouteUngrounded => false
+    }
+}
+
+// mtjade1 has a HISTORICAL observation only (the real path: read, hashed, decoded, bound to the
+// unit's link, discriminated), at the factory address the capture was read on and the build it
+// reports, naming the observed Manager surface and the Redfish account write. Its type is not a
+// standing; the current standing is AccessDiscover's (O1c-1).
+test fn mtjade1_has_only_a_historical_observation_at_its_factory_address() -> Bool {
+  match mtjade1_historical_rotation_route_observation() {
     Absent => false
+    Present { value: h } =>
+      (h.observed_endpoint.host as String) == "10.0.7.2"
+        && (h.firmware.raw_version as String) == "2.11.104000"
+        && account_write_request_eq(a: h.request, b: redfish_account_password_write())
+        && match h.evidence {
+          ObservedSurfaceRead { surface: sf, receipt: _ } => match sf { SurfaceManagerIdentity => true  _ => false }
+          PublicStandardOperation { authority: _ } => false
+        }
   }
 }
 
-// AND THE POSITIVE CONTROL ON THAT SAME FOLD: a route that EXISTS must not manufacture a refusal.
-// Without this, an implementation that returned AccountManagementUnavailable unconditionally would
-// pass the test above and silently block the OpenBMC fleet too.
-test fn an_available_route_yields_no_refusal_application() -> Bool {
-  match rotation_application_for_route(route: rotation_route_for_family(family: OpenBmc)) {
-    Absent => true
-    Present { value: _ } => false
+// CONTROL: two AmiMegaRac controllers with different observed and executed surfaces produce
+// different route standings. Same family: mtcollins1's executed request grounds its route; the most
+// mtjade1's Manager read can justify is a candidate. A family-keyed answer cannot pass.
+test fn two_megarac_controllers_with_different_surfaces_have_different_standings() -> Bool {
+  match mtjade1_historical_rotation_route_observation() {
+    Absent => false
+    Present { value: h } => {
+      let jade = candidate_from_history(h: h)
+      let collins = mtcollins1_rotation_route_standing()
+      collins.firmware.family == AmiMegaRac
+        && jade.firmware.family == AmiMegaRac
+        && grounding_kind(standing: collins) == "executed"
+        && grounding_kind(standing: jade) == "candidate"
+    }
   }
+}
+
+// CONTROL: a Manager GET alone cannot construct an account-write route. The most the read justifies
+// is a candidate; the rotation Apply refuses it beside an exact approval of the rotation, and the
+// qualification classifier refuses it with an exact qualification approval because no live (or even
+// modeled) account write answered.
+test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
+  match historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity()) {
+    Absent => false
+    Present { value: h } => {
+      let s = candidate_from_history(h: h)
+      !rotation_route_is_grounded(standing: s)
+        && apply_verdict(standing: s, target: s.endpoint, firmware: s.firmware, approval_value: rotation_approval_for(s: s)) == "route-not-grounded"
+        && match qualify_rotation_route(standing: s, approval: qualification_approval_for(standing: s, request: h.request), response: none) {
+          RouteQualificationRefused { standing: _, cause: c } => refusal_name(c: c) == "unrealized"
+          RouteQualified { standing: _ } => false
+        }
+    }
+  }
+}
+
+// CONTROL: RouteUngrounded + operator approval of the rotation + an ordinary Apply -> refused, and
+// refused for the ROUTE. Positive control on the same fold, with the one real live-execution
+// carrier: mtcollins1's committed executed route with its exact approval is admitted.
+test fn an_ungrounded_route_with_rotation_approval_is_refused_and_a_grounded_one_is_admitted() -> Bool {
+  let ungrounded = rotation_route_ungrounded(endpoint: mtcollins1_endpoint, firmware: mtcollins1_firmware)
+  apply_verdict(standing: ungrounded, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: ungrounded)) == "route-not-grounded"
+    && apply_verdict(standing: mtcollins1_rotation_route_standing(), target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "admitted"
+}
+
+// An IPMI route grounded on mtcollins1 does not authorize mtjade1 (at the address its capture names),
+// nor mtcollins1 at another build, nor a write approved under the route-qualification authority.
+test fn mtcollins1s_grounded_route_does_not_authorize_another_controller_build_or_authority() -> Bool {
+  match mtjade1_historical_rotation_route_observation() {
+    Absent => false
+    Present { value: h } => {
+      let collins = mtcollins1_rotation_route_standing()
+      apply_verdict(standing: collins, target: h.observed_endpoint, firmware: h.firmware, approval_value: rotation_approval_for(s: collins)) == "another-controller"
+        && apply_verdict(standing: collins, target: mtcollins1_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval_for(s: collins)) == "another-build"
+        && apply_verdict(standing: collins, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: approval(authority: route_qualification_authority, revision: rotation_route_request_identity(standing: collins, request: IpmiSetUserPassword { user: 3 }))) == "another-authority"
+    }
+  }
+}
+
+// ── the qualification bootstrap, over the dry realization ───────────────────────────────────────
+
+// THE MODELED RUN CANNOT GROUND A PRODUCTION ROUTE (side-chat review of afcc512e9c, item 1). With a
+// candidate, the exact qualification approval and a completed, read-back modeled Set User Password,
+// the classifier says the run WOULD qualify -- and that verdict carries no standing. The candidate
+// stays a candidate, the ordinary rotation Apply still refuses it, and qualify_rotation_route, the
+// only construction of an executed grounding, has no live response to read and refuses.
+test fn a_modeled_run_would_qualify_but_grounds_nothing() -> Bool {
+  let request = IpmiSetUserPassword { user: 3 }
+  let candidate = lab_candidate(request: request)
+  let exact = qualification_approval_for(standing: candidate, request: request)
+  let step = dry_route_qualification_request(world: lab_world_with_user3(), subject: subject_at(endpoint: lab_endpoint, request: request), password: "new-Secret!1")
+  bmc_ipmi_user_accepts(world: step.world, user: 3, password: "new-Secret!1")
+    && !bmc_ipmi_user_accepts(world: step.world, user: 3, password: "factory")
+    && modeled_verdict(candidate: candidate, approval_value: exact, world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: request)) == "would-qualify"
+    && grounding_kind(standing: candidate) == "candidate"
+    && apply_verdict(standing: candidate, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: candidate)) == "route-not-grounded"
+    && match qualify_rotation_route(standing: candidate, approval: exact, response: none) {
+      RouteQualificationRefused { standing: s, cause: c } => refusal_name(c: c) == "unrealized" && grounding_kind(standing: s) == "candidate"
+      RouteQualified { standing: _ } => false
+    }
+}
+
+// THE RESPONSE IS BOUND TO ITS SUBJECT (item 2). A response made against controller A answers A: for
+// candidate B with the same request and B's exact approval it refuses; for candidate A it would
+// qualify.
+test fn a_response_for_another_controller_is_refused() -> Bool {
+  let request = IpmiSetUserPassword { user: 3 }
+  let b = candidate_at(endpoint: lab_endpoint_b, request: request)
+  let a = candidate_at(endpoint: lab_endpoint, request: request)
+  modeled_verdict(candidate: b, approval_value: qualification_approval_for(standing: b, request: request), world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: request)) == "response-for-another-subject"
+    && modeled_verdict(candidate: a, approval_value: qualification_approval_for(standing: a, request: request), world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: request)) == "would-qualify"
+}
+
+// REQUEST IDENTITY IS STRUCTURAL (item 3). Two Redfish account writes differing ONLY in the transport
+// operation's declaration field, or ONLY in the action shape, are different requests: unequal, with
+// different approval identities, and an approval for one refuses the other.
+fn redfish_write(op_field: NonEmptyStr, action_field: NonEmptyStr) -> BmcAccountWriteRequest {
+  RedfishAccountPasswordWrite {
+    transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: op_field),
+    action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: action_field),
+  }
+}
+
+test fn requests_differing_only_in_transport_or_action_shape_are_different_requests() -> Bool {
+  let base = redfish_write(op_field: "SetAccountPassword" as NonEmptyStr, action_field: "SetAccountPassword" as NonEmptyStr)
+  let other_transport = redfish_write(op_field: "SetAccountPasswordV2" as NonEmptyStr, action_field: "SetAccountPassword" as NonEmptyStr)
+  let other_action = redfish_write(op_field: "SetAccountPassword" as NonEmptyStr, action_field: "ResetAccountPassword" as NonEmptyStr)
+  let c_transport = lab_candidate(request: other_transport)
+  let c_action = lab_candidate(request: other_action)
+  account_write_request_eq(a: base, b: base)
+    && !account_write_request_eq(a: base, b: other_transport)
+    && !account_write_request_eq(a: base, b: other_action)
+    && classify_names(candidate: c_transport, approval_value: qualification_approval_for(standing: c_transport, request: base)) == "another-request"
+    && classify_names(candidate: c_action, approval_value: qualification_approval_for(standing: c_action, request: base)) == "another-request"
+}
+
+fn classify_names(candidate: BmcRotationRouteStanding, approval_value: Redemption) -> String {
+  match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: none) {
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationRefused { cause: c } => refusal_name(c: c)
+  }
+}
+
+// Every other way across refuses and keeps the candidate.
+test fn the_qualification_classifier_refuses_every_other_crossing() -> Bool {
+  let ipmi = IpmiSetUserPassword { user: 3 }
+  let right = qualification_approval_for(standing: lab_candidate(request: ipmi), request: ipmi)
+  refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: rotation_approval_for(s: lab_candidate(request: ipmi))) == "another-authority"
+    && refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: approval(authority: route_qualification_authority, revision: "another controller" as NonEmptyStr)) == "another-request"
+    && refusal_of(world: bmc_world(power: BmcPowerOn), request: ipmi, approval_value: right) == "not-completed"
+    && refusal_of(world: lab_world_with_user3(), request: redfish_account_password_write(), approval_value: qualification_approval_for(standing: lab_candidate(request: redfish_account_password_write()), request: redfish_account_password_write())) == "unrealized"
+    && modeled_verdict(candidate: rotation_route_ungrounded(endpoint: lab_endpoint, firmware: lab_firmware()), approval_value: right, world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: ipmi)) == "not-a-candidate"
+    && modeled_verdict(candidate: lab_candidate(request: ipmi), approval_value: right, world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: IpmiSetUserPassword { user: 4 })) == "response-for-another-subject"
+}
+
+// THE CITED ARM: a route grounded by a source cited for this build admits an Apply on that build and
+// refuses the same controller at another build.
+test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
+  let s = rotation_route_from_citation(
+    endpoint: lab_endpoint,
+    firmware: lab_firmware(),
+    request: IpmiSetUserPassword { user: 3 },
+    citation: ExternalAuthority { uri: uri_https(locator: "example.invalid/route-witness-citation" as NonEmptyStr) },
+  )
+  grounding_kind(standing: s) == "cited"
+    && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: s)) == "admitted"
+    && apply_verdict(standing: s, target: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval_for(s: s)) == "another-build"
+}
+
+// ── the qualification effect's authorization, by executing the selection ────────────────────────
+
+// The census row for qualify_rotation_route is classified by EXECUTING select_authorization_pattern
+// over its stated characteristics: the selection returns the operator-approved capability, and the
+// row's realization (an admitted Redemption) conforms to it.
+test fn the_qualification_effect_is_classified_operator_approved_and_conforms() -> Bool {
+  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "qualify_rotation_route")
+  length(rows) == 1
+    && all(rows, r =>
+      match select_authorization_pattern(e: r.effect) {
+        PatternSelected { pattern: p, receipt: _ } => match p { OperatorApprovedCapability => true  _ => false }
+        _ => false
+      }
+        && match site_verdict(row: r).conformance { Conforms => true  _ => false })
+}
+
+// AN APPROVAL IS BOUND TO ITS CONTROLLER, BUILD AND REQUEST (review 75181). mtcollins1's rotation
+// approval, reused for another controller's grounded route under the same authority, is a different
+// decision and refuses; the approval minted for that route's own identity is admitted; and a denial
+// is its own typed arm. Shown on a cited route, the grounded arm a witness may construct.
+test fn a_rotation_approval_for_one_controller_does_not_admit_another() -> Bool {
+  let request = IpmiSetUserPassword { user: 3 }
+  let lab = rotation_route_from_citation(
+    endpoint: lab_endpoint,
+    firmware: lab_firmware(),
+    request: request,
+    citation: ExternalAuthority { uri: uri_https(locator: "example.invalid/route-witness-citation" as NonEmptyStr) },
+  )
+  let denied = RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: rotation_apply_authority,
+      escalation_id: "route-witness-2" as NonEmptyStr,
+      request_revision: rotation_route_request_identity(standing: lab, request: request),
+      decision: ProposeDeny,
+      attempt: "attempt-2" as AttemptIdentity,
+      issued_at: "2026-10-03T00:00:00Z",
+      expires_at: "2026-10-03T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+  apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "another-request"
+    && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: lab)) == "admitted"
+    && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: denied) == "approval-denied"
 }
