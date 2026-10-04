@@ -318,7 +318,24 @@ The dry realization over `gunbc.bmc_model` `BmcWorld` exercises those carriers, 
 - **The roster of persistent host effects has a home.** `gunbc.host_convergence_census` `host_convergence_census_rows`. Each arrival phase's effect, and each Spark step, is a row there. It is not a parallel list.
 - **The sealed receipt is the domain's.** `std.realization_reconcile` states that std cannot seal the relation decided plan ↔ performed plan ↔ evidence without accepting a law from the caller it would be checking, and that the binding "is the DOMAIN's obligation, discharged by a domain carrier minted only by the authority that performed the effect" (worked example: `gunbc.typed_remote_file_write` `RemoteFileConverged`). So there is **no generic sealed receipt** to build. O1b's `BmcSecure` receipt and Spark's receipts stay domain carriers.
 
-**So the one missing piece is the ordered composition of protocol steps.** It goes in the workflow layer, `gunbc.fleet`. It does not go in std, because lanes, principals and resumability are fleet policy. The module is named by DFS when built, and it is parameterized over each domain's steps.
+**What is still open in that home, stated honestly** (side-chat review of `5044d42`). Ordered composition is not the only missing piece.
+- **The protocol's apply side is an awaiting frontier.** `host_effect_decide_apply_frontier` is `FrontierConsumerAwaiting`: `converge_apply_for_host` bypasses `HostEffectDomainProjection` and calls `host_effect_apply` directly. That is CONVERGENCE-ONE's unbuilt C8.
+- **`gunbc.ensure` `ensure_reconcile` does not execute the lifecycle.** It classifies reports.
+
+**The boundary this plan takes: (B).** The fold **composes already-executed, domain-owned step outcomes**. It does not execute the protocol and does not claim to.
+- Each domain runs its own step (observe, decide, apply, read back) and mints its own sealed receipt.
+- The fold orders step instances, checks preconditions against those receipts, and produces the run's ledger.
+- **C8 stays open.** It is discharged only by a production route through the projection's apply side. Nothing in cut O claims to discharge it. If an O1c PR does route a real apply through the projection, it says so and retires the frontier by its own trigger.
+
+It goes in the workflow layer, `gunbc.fleet`. It does not go in std, because lanes, principals and resumability are fleet policy. The module is named by DFS when built.
+
+**The runtime steps are joined to the census, so the census stays the roster.**
+- `StepInstanceKey { run, step_identity, subject }` identifies a step instance.
+- Every runtime step maps to **exactly one** `HostConvergenceCensusRow`.
+- A missing, extra, duplicate or unresolved identity refuses.
+- A duplicate `(run, step, subject)` also refuses.
+
+Without that identity join the runtime list would become the real roster and the census would be commentary.
 
 **Its shape, tested against two real consumers:** cut O's five arrival phases, and the Spark arm's steps S1–S9 (image produce and distribute, checkpoint seed and replica, sudo grants, claim recovery, supersede, launch). valiant-crab-775 reviewed the shape on 2026-10-04, and its six corrections are in the table.
 
@@ -326,7 +343,7 @@ The dry realization over `gunbc.bmc_model` `BmcWorld` exercises those carriers, 
 |---|---|---|
 | A step | an identity; a `HostEffectDomainProjection`; its domain receipt type; its preconditions. **A step instance is step × subject**: the Spark steps are per (host, artifact), the arrival steps per unit. | both |
 | Preconditions | step identities **with a quantifier over subjects**: all-of or any-of, each over a stated subject set. So "3 of 4 hosts converged" is representable as partial progress and is not read as a refusal. | Spark S9 (S3, S5, S6 on all hosts); S5 (S4 verified on some peer) |
-| Order | derived from preconditions by an identity join (an unknown identity or a cycle refuses). **Where an order authority already exists, the derived order must equal it or refuse.** Cut O's is `arrival_phases_all`. | arrival (authority), Spark (derived) |
+| Order | derived from preconditions by an identity join (an unknown identity or a cycle refuses). **Where an order authority already exists, each step is bound to one member of it and the derived order must agree with that authority's ranking, or refuse.** For cut O, each step is bound to one `IntakePhase` and checked with `intake_phase_rank`. The roster is a projection of the authoritative order (2 phases in O1c-1, 4 in O1, 5 with O2), not the 12-phase list itself. | arrival (authority), Spark (derived) |
 | Per step | the canonical protocol, unchanged: Noop / Apply / Refuse, independent readback, the domain receipt minted by the effect authority | both |
 | Precondition satisfied | only by a **readback in this run** of the precondition instance: a receipt for the same subject. Never by an earlier step's return value. **Which readback is sufficient is the domain's declaration**, and the fold does not force the most expensive one. A domain may declare a cheap identity readback that binds to an earlier full-verification receipt, and it must then state what that cheap readback does and does not establish (§4b rung honesty). | both; Spark S5, whose full verify hashes 306 GB per host |
 | Refusal | names the unmet step by identity. The fold may take that step **only if it is in the roster and ungated**. A gated step stops with a typed refusal naming the discharge it needs. | Spark S9 naming S6/S7; the arrival credential write |
@@ -342,15 +359,27 @@ The dry realization over `gunbc.bmc_model` `BmcWorld` exercises those carriers, 
 
 **Workflow surface.** Lane derivation changes concurrency groups in the generated workflow, which is an operator-visible surface. Cut O's use changes none: it runs inside the existing `mtcollins1_boot` job and its unit hold. The Spark arm's reshaping of its modes is that lane's proposal to the operator, not part of this cut.
 
-**§3c: the home lands with a consumer in the same closure.** A fold with no consumer is a dangling declaration, so there is no "fold only" PR. O1c is therefore three PRs:
+**§3c, and the pairing obligation: each capability lands with its first REAL consumer.** A fold with no consumer is a dangling declaration, and a capability exercised only by a designed fixture has no inhabitance claim (`DESIGN.md` §3, "a witness discriminates at one interface"). So the fold is not built whole in one PR. Each row of the shape table arrives in the PR whose consumer really exercises it:
 
-- **O1c-1**: the fold in `gunbc.fleet`, with its **first consumer**: the arrival prefix's two read-only phases, `AccessDiscover` (including the O1a route standing) and `IdentityBindProvisional`, as real protocol steps with census rows. Controls: the order equals `arrival_phases_all` or refuses; an unknown precondition refuses; a gated step is not auto-taken; a pending instance satisfies nothing and blocks only its dependents; an all-of precondition with one subject unconverged is partial, not refused; a leg without a deadline is a compile refusal. The quantifier and independent-progress controls use a designed multi-subject fixture, because the arrival consumer has one subject per run. The pairing obligation (§3 witness rule) is met by the arrival steps running the real path.
-- **O1c-2**: `PriorLifeBoundary`'s archive arm as a step.
-- **O1c-3**: the `BmcSecure` step (O1b's domain receipt) and the `ManagedHostAdmission` population.
+| PR | Real consumer | Capabilities it brings |
+|---|---|---|
+| **O1c-1** | the arrival prefix's two **read-only** phases, `AccessDiscover` (with the O1a route standing) and `IdentityBindProvisional` | the read-only scheduler core: `StepInstanceKey`; the census join and its refusals; step-to-`IntakePhase` binding and the rank check; preconditions satisfied by an in-run readback receipt; refusal naming the unmet step; the run ledger. **No apply, gate, lane, deadline or pending arm.** |
+| **O1c-2** | `PriorLifeBoundary`'s archive (an effect that writes evidence and can be incomplete) | an applied step with its domain receipt; per-leg deadlines; incomplete-versus-refused |
+| **O1c-3** | `BmcSecure` (O1b's receipt) and the `ManagedHostAdmission` population | the authorization gate and its discharge; principal per step; the mutation lane (the unit hold on the store host); apply followed by independent readback |
+| **Spark arm** (valiant-crab-775's lane) | S1–S9 over four hosts | subject quantifiers (all-of, any-of); pending that blocks only dependents; the domain-declared cheap readback; multi-host lanes keyed on mutated subjects |
 
-The Spark arm becomes the second consumer in its own lane (valiant-crab-775), which also reviews O1c-1's shape before it lands. `DESIGN.md` §3d names the fleet admission spine as this cycle's first consumer, so the shape must not preclude it, and O1c-1's PR says how it fits.
+**Controls land with the capability.**
+- O1c-1's are:
+  - a step whose phase rank disagrees with the authority refuses;
+  - an unknown precondition refuses;
+  - a runtime step with no census row, or two rows, refuses;
+  - a duplicate `(run, step, subject)` refuses;
+  - a precondition is not satisfied by a receipt for another subject.
+- The quantifier, pending and lane controls arrive with the consumer that inhabits them, not earlier with a fixture.
 
-**What O1b changes.** Nothing in its scope. Its decision goes through the canonical protocol (`HostEffectDomainProjection`) and not through `gunbc.ensure` alone, and its effect is a census row.
+valiant-crab-775 reviews O1c-1's shape before it lands. `DESIGN.md` §3d names the fleet admission spine as this cycle's first consumer, so the shape must not preclude it, and O1c-1's PR says how it fits.
+
+**What O1b changes.** Nothing in its scope. Its observe, assess and decide go through the canonical projection (`HostEffectDomainProjection`), and its effect is a census row. Its apply and readback are the domain's own, with its own sealed receipt, because the projection's apply side is the open C8 frontier.
 
 #### Authorization and what lands
 
