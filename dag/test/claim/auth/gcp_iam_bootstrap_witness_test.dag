@@ -1,12 +1,18 @@
 module test.claim.auth.gcp_iam_bootstrap_witness_test
 
-import std.types { Bool }
+import std.types { Bool, List }
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
 import gunbc.auth.gcp_iam_bootstrap_model {
   BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
+  BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
+}
+import gunbc.auth.gcp_iam_converge {
+  gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account,
+  ConvergeSecretPolicyRole, ConvergeCreateRole, iam_converge_role_id,
 }
 import gunbc.auth.gcp_iam_bootstrap {
   iam_bootstrap_service_enabled, iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
@@ -203,4 +209,23 @@ test fn service_enablement_requires_enabled_state_on_the_exact_project() -> Bool
     && !iam_bootstrap_service_enabled(name: "projects/other/services/cloudresourcemanager.googleapis.com", state: "ENABLED", service: "cloudresourcemanager.googleapis.com")
     && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "DISABLED", service: "cloudresourcemanager.googleapis.com")
     && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "ENABLING", service: "cloudresourcemanager.googleapis.com")
+}
+
+fn binding_present(bs: List<IamBootstrapBinding>, b: IamBootstrapBinding) -> Bool {
+  any(bs, x => iam_bootstrap_resource_key(resource: x.resource) == iam_bootstrap_resource_key(resource: b.resource) && x.cell.role == b.cell.role && x.cell.member == b.cell.member)
+}
+
+// EVERY GRANT-SET SECRET IS BOUND PER SECRET, AND NOTHING ABOUT IT IS PROJECT-LEVEL (operator
+// decision B', 2026-10-04): iam-converge's secret policy role and iam-observe's secret reader are each
+// in that secret's own policy, and the only project binding iam-converge holds is still the create
+// role whose permissions name no secret. The RED is the custody population bound on the project.
+test fn grant_set_secrets_are_bound_per_secret_never_on_the_project() -> Bool {
+  let bs = iam_bootstrap_capability_bindings()
+  gcp_iam_converge_grant_set_secrets().length() > 0
+    && all(gcp_iam_converge_grant_set_secrets(), x =>
+      binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account))
+        && binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
+    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)), b =>
+      b.cell.role == iam_converge_role_id(r: ConvergeCreateRole))
+    && !any(iam_bootstrap_role_permissions(role: BootstrapApplyRole { role: ConvergeCreateRole }), p => starts_with(s: p, prefix: "secretmanager."))
 }
