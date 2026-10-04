@@ -527,14 +527,19 @@ data service_evidence_receipt_schema: String = "service-evidence-receipt/v2"
 
 // THE ONE ENCODER of the wire's top level, used by the receipt and by the snapshot decoder's re-encode.
 fn service_evidence_wire_of(instance_id: String, node_id: String, attempt_key: String, revision_hex: String, entries: List<ServiceEvidenceEntry>) -> String {
-  serialize_json(v: json_object([
+  serialize_json(v: service_evidence_wire_json_of(instance_id: instance_id, node_id: node_id, attempt_key: attempt_key, revision_hex: revision_hex, entries: entries))
+}
+
+// The wire's JSON tree: the one structure the serializer renders and the snapshot decoder compares.
+fn service_evidence_wire_json_of(instance_id: String, node_id: String, attempt_key: String, revision_hex: String, entries: List<ServiceEvidenceEntry>) -> JsonValue {
+  json_object([
     json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
     json_kv(key: "instance_id", value: json_string(s: instance_id)),
     json_kv(key: "node_id", value: json_string(s: node_id)),
     json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
     json_kv(key: "launch_revision", value: json_string(s: revision_hex)),
     json_kv(key: "fields", value: json_array(map(entries, x => service_evidence_entry_json(x: x)))),
-  ]))
+  ])
 }
 
 fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
@@ -636,8 +641,9 @@ fn snapshot_string(v: JsonValue, key: String) -> String {
 // THE STANDING PAYLOAD, decoded to the typed entry the encoder writes. An observed field must be one
 // of the fields with a typed carrier, carry that carrier's members, and name the reader that produces
 // it; an owed field must carry exactly one producer arm with all its members. The decoded entry is
-// re-encoded by the module's own encoder, and the whole wire must re-encode to the persisted bytes, so
-// an extra, missing or reordered member anywhere refuses.
+// re-encoded by the module's own encoder, and the parsed document must equal, structurally, the JSON
+// tree that encoder builds from the decoded entries, so an extra, missing, reordered or retyped member
+// anywhere refuses. The digest binds the exact persisted bytes.
 data service_evidence_readers: List<ServiceEvidenceReader> = [MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader]
 data pending_service_readers: List<PendingServiceReader> = [PendingMetering, PendingSharedComputation, PendingResultReturned]
 
@@ -783,8 +789,8 @@ fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attemp
           Present { value: decoded } =>
             if !snapshot_names_are_canonical(names: map(decoded, d => d.field.field)) {
               SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population, once each, in order" }
-            } else if service_evidence_wire_of(instance_id: instance, node_id: node, attempt_key: attempt, revision_hex: revision, entries: map(decoded, d => d.entry)) != wire {
-              SnapshotInvalid { reason: "the service evidence snapshot does not re-encode to its persisted bytes, so it is not a wire this module writes" }
+            } else if service_evidence_wire_json_of(instance_id: instance, node_id: node, attempt_key: attempt, revision_hex: revision, entries: map(decoded, d => d.entry)) != v {
+              SnapshotInvalid { reason: "the service evidence snapshot is not structurally the document this module's encoder writes for its own decoded entries (an extra, missing, reordered or retyped member)" }
             } else {
               SnapshotDecoded { snapshot: ServiceEvidenceSnapshot {
                 wire: wire,
