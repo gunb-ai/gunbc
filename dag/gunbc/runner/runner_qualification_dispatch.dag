@@ -31,8 +31,8 @@ import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
 import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
-import gunbc.runner.runner_jit_perform { JitCredentialDelivery, JitCredentialBoundToAttempt }
-import gunbc.runner.runner_jit_deregistration { JitRegistration }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt }
+import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
 import gunbc.github_effect_perform {
   ControllerInstallationToken, dispatch_workflow_with, read_run_with, read_attempt_jobs_with,
@@ -49,7 +49,9 @@ import gunbc.runner_throughput_qualification_route { QualificationInstrument, qu
 //
 // THE SUBJECT IS SEALED AND ITS SCOPE IS FIXED BY CONSTRUCTION. QualificationDispatchSubject is
 // minted only by qualification_dispatch_subject_over, and only from:
-//   - the JIT registration the route minted and the credential delivered for that same slot -- so
+//   - the sealed AuthorizedJitMintDispatch (gunbc.runner.runner_jit_perform), whose only mint is
+//     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and the credential
+//     delivered for that same slot -- so
 //     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
@@ -111,6 +113,7 @@ type QualificationDispatchSubject sole_constructor {
 
 type QualificationSubjectRefusal
   = SubjectCredentialNotDelivered { delivery: JitCredentialDelivery }
+  | SubjectNoRegistration
   | SubjectDeliveryForAnotherSlot
   | SubjectSlotNotHostUnit
   | SubjectSlotForAnotherWorkflow { slot_workflow: NonEmptyStr, qualification_workflow: NonEmptyStr }
@@ -185,7 +188,7 @@ fn job_display_name(job: Job) -> NonEmptyStr {
 // model carrying the floor job the boot leg's mode will add. An admit list constrains the call edge,
 // not where the result goes, so every admitted witness entry is a `test fn` returning Bool.
 fn qualification_dispatch_subject_over(
-  registration: JitRegistration,
+  dispatch: AuthorizedJitMintDispatch,
   delivery: JitCredentialDelivery,
   workflow: Workflow,
   floor_job_id: NonEmptyStr,
@@ -205,6 +208,9 @@ fn qualification_dispatch_subject_over(
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "undeclared_input_refuses"),
   ]
 {
+  match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
+    Absent => QualificationSubjectRefused { refusal: SubjectNoRegistration }
+    Present { value: registration } =>
   match delivery {
     JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: _ } =>
       if delivered_slot != registration.slot {
@@ -243,20 +249,21 @@ fn qualification_dispatch_subject_over(
       }
     other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }
   }
+  }
 }
 
 // THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model. Until the
 // boot leg lands the route's mode there, it has no floor job reading the attempt input and this
 // refuses -- the wiring the route leg owes, refused rather than faked.
 fn qualification_dispatch_subject(
-  registration: JitRegistration,
+  dispatch: AuthorizedJitMintDispatch,
   delivery: JitCredentialDelivery,
   floor_job_id: NonEmptyStr,
   branch: NonEmptyStr,
   revision: CommitSha,
 ) -> QualificationSubjectStanding {
   qualification_dispatch_subject_over(
-    registration: registration,
+    dispatch: dispatch,
     delivery: delivery,
     workflow: fleet_converge_workflow,
     floor_job_id: floor_job_id,
