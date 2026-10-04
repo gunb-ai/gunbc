@@ -7,7 +7,7 @@ import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_extent_along_rear_io, asrock_altrad8ud_extent_depth }
+import product.printed_chassis.cassette_layout {CassetteLayout,current_layout}
 import product.printed_chassis.fan_mount {
   arctic_p8_fan_mount, FanMountAdmitted, FanMountBoreReachesMountingHoles, FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
 }
@@ -17,11 +17,12 @@ import extdeps.fans.arctic { arctic_p8_mounting_pattern }
 // This root owns the entire review assembly formerly authored in the browser.
 // Nominal board lengths come from the board authority; design allowances below are proposals.
 // No measured board thickness, standoff thread, PSU rating or thermal result is invented.
-data board_w: Int = micrometer_count(m: asrock_altrad8ud_extent_along_rear_io)
-data board_d: Int = micrometer_count(m: asrock_altrad8ud_extent_depth)
-data margin: Int = 14000
-data tray_w: Int = board_w + 2 * margin
-data tray_d: Int = board_d + 2 * margin
+data printed_configuration_layout:CassetteLayout=current_layout()
+data board_w: Int = printed_configuration_layout.board_width
+data board_d: Int = printed_configuration_layout.board_depth
+data margin: Int = printed_configuration_layout.edge_margin
+data tray_w: Int = printed_configuration_layout.tray_width
+data tray_d: Int = printed_configuration_layout.tray_depth
 data panel_t: Int = 8000
 data seam: Int = 400
 data panel_w: Int = (tray_w-seam)/2

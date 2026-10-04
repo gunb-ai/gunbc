@@ -1,0 +1,31 @@
+module test.claim.cassette_platform_projects_witness
+import std.types {Bool}
+import v2.std.optional {Present,Absent}
+import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
+import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
+import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline,InvalidEdgeMargin}
+test fn unknown_boards_do_not_borrow_jade_geometry() -> Bool {
+ let gh=match board_grid_tiles(project:gh200_p4261_profile,usable_tile_um:180000) {Absent=>true Present {value:_}=>false}
+ let mc=match board_grid_tiles(project:mt_collins_profile,usable_tile_um:180000) {Absent=>true Present {value:_}=>false}
+ gh && mc
+}
+test fn jade_requires_segmentation_and_invalid_bed_refuses() -> Bool {
+ let tiles=match board_grid_tiles(project:mt_jade_profile,usable_tile_um:180000) {Present {value:n}=>n==9 Absent=>false}
+ let invalid=match board_grid_tiles(project:mt_jade_profile,usable_tile_um:0) {Absent=>true Present {value:_}=>false}
+ tiles && invalid
+}
+test fn transplant_projects_retain_platform_power_and_open_obligations() -> Bool {
+ count(cassette_profiles)==4 && all(filter(cassette_profiles,p=>p.id!="altrad8ud"),p=>count(p.open)==12 && count(p.retain)==8 && match p.power {RetainPlatformPowerAssembly=>true IndependentPowerCassette=>false})
+}
+
+test fn one_layout_kernel_preserves_altra_and_derives_jade() -> Bool {
+ let old=current_layout()
+ let a=match layout_for(profile:altra_profile,edge_margin_um:14000) {LayoutKnown {layout:l}=>l.tray_width==old.tray_width && l.tray_depth==old.tray_depth _=>false}
+ let j=match layout_for(profile:mt_jade_profile,edge_margin_um:14000) {LayoutKnown {layout:l}=>l.tray_width==456000 && l.tray_depth==507360 _=>false}
+ a && j
+}
+test fn unknown_profile_and_invalid_allowance_cannot_emit_a_layout() -> Bool {
+ let gh=match layout_for(profile:gh200_p4261_profile,edge_margin_um:14000) {LayoutNeedsBoardOutline=>true _=>false}
+ let invalid=match layout_for(profile:altra_profile,edge_margin_um: -1) {InvalidEdgeMargin=>true _=>false}
+ gh && invalid
+}

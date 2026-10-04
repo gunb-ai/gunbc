@@ -1,0 +1,21 @@
+module product.printed_chassis.cassette_layout
+import std.types {Int}
+import std.measure {micrometer_count}
+import product.printed_chassis.cassette_profile {CassetteProfile,PublishedBoardOutline,BoardOutlinePending}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth}
+type CassetteLayout {board_width:Int,board_depth:Int,edge_margin:Int,tray_width:Int,tray_depth:Int}
+type LayoutReading = LayoutKnown {layout:CassetteLayout} | LayoutNeedsBoardOutline | InvalidEdgeMargin
+fn layout_for(profile:CassetteProfile,edge_margin_um:Int) -> LayoutReading {
+ if edge_margin_um<0 {return InvalidEdgeMargin}
+ match profile.outline {BoardOutlinePending=>LayoutNeedsBoardOutline PublishedBoardOutline {width:w,depth:d}=>LayoutKnown {layout:layout_from_outline(width_um:micrometer_count(m:w),depth_um:micrometer_count(m:d),edge_margin_um:edge_margin_um)}}
+}
+// One owner for tray allowances. These dimensions reserve only the board; retained
+// power/cooling/IO assemblies can enlarge the final envelope after their BOM is placed.
+fn layout_from_outline(width_um:Int,depth_um:Int,edge_margin_um:Int) -> CassetteLayout {
+ CassetteLayout {board_width:width_um,board_depth:depth_um,edge_margin:edge_margin_um,tray_width:width_um+2*edge_margin_um,tray_depth:depth_um+2*edge_margin_um}
+}
+// Existing printed configuration retains its exact source dimensions. Resolve its
+// known outline explicitly; unknown profiles never fall back to this row.
+fn current_layout() -> CassetteLayout {
+ layout_from_outline(width_um:micrometer_count(m:asrock_altrad8ud_extent_along_rear_io),depth_um:micrometer_count(m:asrock_altrad8ud_extent_depth),edge_margin_um:14000)
+}

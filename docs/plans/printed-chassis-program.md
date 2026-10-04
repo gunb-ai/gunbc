@@ -1,3 +1,5 @@
+**Unified multi-platform design, 4 October 2026:** [cassette profiles and consolidation](cassette-platforms.md) defines one shared design for ALTRAD8UD, GH200 P4261, Mt. Collins and Mt. Jade. New platforms retain their native power/management assemblies where appropriate; no copied board-specific tray generators.
+
 # Printed node chassis — program plan
 
 **Current review: 4 October 2026.** The operator requested fewer screws and faster assembly.
