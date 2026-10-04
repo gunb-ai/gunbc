@@ -68,6 +68,7 @@ import v2.extdeps.languages.dag {
   dag_string_literal_value_symbol_optional,
   dag_symbol_literal_name_optional,
   dag_symbol_literal_node,
+  parse_repeat_capture_items_with,
   dag_match_arm_node,
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
@@ -109,7 +110,7 @@ import v2.std.compilers.body_lowering {
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
-import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional }
+import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr }
 import v2.std.diagnostic {
   Accepted,
@@ -4584,6 +4585,27 @@ fn body_lower_fn_decl_arrow(shell: Node, sig: BodyLowerFnSignature, body: Option
 // the half of the restoration gunbc.rung_drop admit_callers_discarded_on_the_native_route names:
 // the carrier is added TOGETHER WITH its consumer (v2.compiler.infer infer_caller_admission_diags),
 // because carrying the list with nothing reading it does not retire that row.
+//
+// THE AUTHORED ENCODING IS CONSUMED AT LOWERING, not carried raw: the where-clause lowering does
+// the same to predicates, for the same reason — a raw grammar-sequence encoding is token atoms,
+// and token atoms do not ground, so a raw roster in a subject's own module would refuse the whole
+// fixture at infer_grounding_not_derived before any wall could judge it (pinned by probe
+// 2026-10-04). Each entry is re-hung as a POSITIONAL record conj
+// [ module_path -> atom, decl_name -> atom ] inside a roster conj: atoms and authored edges ground
+// exactly as the lowered where records do. The entry reader is
+// dag_string_literal_value_symbol_optional + the positional operator edge — the operator atom's
+// identity must be ^decl_ref, matching v1's gate. SPINE AUTHORITY:
+// parse_repeat_capture_items_with is the ONE walker for the
+// grammar_sequence_left/right_node_projection encoding; the positional contract (three right
+// projections from the clause shell's captured child reach the entry sequence; its left is the
+// first entry and its right's left is the repeat capture) is verified against the runtime tree by
+// probe 2026-10-04 and changes together with dag_grammar_admit_callers_clause_expr.
+//
+// FALLBACK, FAIL-CLOSED: if the authored spine or any entry does not read, the carrier hangs the
+// RAW clause shell instead of a roster. The reader then sees projection edges where it demands
+// positional record children and REFUSES (^infer_reason_admit_callers_entries_unreadable at the
+// shell) — a malformed clause is never a shorter roster (DESIGN §5: a failure arm must refuse,
+// never widen).
 fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => []
@@ -4591,8 +4613,163 @@ fn body_lower_fn_admit_clause_edges(shell: Node) -> List<Edge> {
       match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_admit_callers_clause) {
         Absent => []
         Present { value: clause } =>
-          [core_edge(marker: AdmitCallersEdge, target: clause)]
+          match body_lower_admit_roster_node(clause: clause) {
+            Absent => [core_edge(marker: AdmitCallersEdge, target: clause)]
+            Present { value: roster } => [core_edge(marker: AdmitCallersEdge, target: roster)]
+          }
       }
+  }
+}
+
+fn body_lower_admit_projection(node: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: node, name: name) {
+    Accepted { value: n, diagnostics: _ } => optional_present(value: n)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn body_lower_admit_roster_node(clause: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: clause) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match body_lower_admit_projection(node: captured, name: ^grammar_sequence_right_node_projection) {
+        Absent => optional_absent()
+        Present { value: after_head } =>
+          match body_lower_admit_projection(node: after_head, name: ^grammar_sequence_right_node_projection) {
+            Absent => optional_absent()
+            Present { value: after_colon } =>
+              match body_lower_admit_projection(node: after_colon, name: ^grammar_sequence_right_node_projection) {
+                Absent => optional_absent()
+                Present { value: entry_sequence } =>
+                  match body_lower_admit_projection(node: entry_sequence, name: ^grammar_sequence_left_node_projection) {
+                    Absent => optional_absent()
+                    Present { value: first_entry } =>
+                      match body_lower_admit_projection(node: entry_sequence, name: ^grammar_sequence_right_node_projection) {
+                        Absent => optional_absent()
+                        Present { value: after_first } =>
+                          match body_lower_admit_projection(node: after_first, name: ^grammar_sequence_left_node_projection) {
+                            Absent => optional_absent()
+                            Present { value: repeat_capture } =>
+                              match parse_repeat_capture_items_with(
+                                repeat_capture: repeat_capture,
+                                root: clause,
+                                item: fn(entry, _root) { outcome_accepted(value: entry) }
+                              ) {
+                                Rejected { diagnostics: _ } => optional_absent()
+                                Accepted { value: suffixes, diagnostics: _ } =>
+                                  body_lower_admit_roster_from_entries(
+                                    first_entry: first_entry,
+                                    suffixes: suffixes,
+                                    template: first_entry
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_admit_roster_from_entries(first_entry: Node, suffixes: List<Node>, template: Node) -> Optional<Node> {
+  match body_lower_admit_record_edge(entry: first_entry) {
+    Absent => optional_absent()
+    Present { value: head_edge } =>
+      match body_lower_admit_record_edges(entries: suffixes) {
+        Absent => optional_absent()
+        Present { value: tail_edges } =>
+          optional_present(
+            value: sugar_type_node(
+              connective: Conj,
+              children: Cons { head: head_edge, tail: tail_edges },
+              n: template
+            )
+          )
+      }
+  }
+}
+
+fn body_lower_admit_record_edges(entries: List<Node>) -> Optional<List<Edge>> {
+  match entries {
+    Empty => optional_present(value: [])
+    Cons { head: h, tail: t } =>
+      match body_lower_admit_record_edge(entry: h) {
+        Absent => optional_absent()
+        Present { value: e } =>
+          match body_lower_admit_record_edges(entries: t) {
+            Absent => optional_absent()
+            Present { value: rest } => optional_present(value: Cons { head: e, tail: rest })
+          }
+      }
+  }
+}
+
+// ONE ENTRY -> ONE POSITIONAL RECORD CONJ [ module_path -> atom, decl_name -> atom ]. The call is a
+// comp:transform application: one POSITIONAL edge whose target atom's identity is the operator
+// spelling, plus the authored module_path / decl_name edges carrying string-literal atoms.
+fn body_lower_admit_record_edge(entry: Node) -> Optional<Edge> {
+  let call = body_lower_deep_unwrap_optional(node: entry)
+  match call.kind {
+    ComputationNode { behavior: Transform } =>
+      match body_lower_admit_operator_edge(children: call.children) {
+        Absent => optional_absent()
+        Present { value: op_edge } =>
+          match op_edge.target.kind {
+            TypeNode { connective: Atom { identity: op } } =>
+              if symbol_eq(a: op, b: ^decl_ref) {
+                match body_lower_admit_string_field(call: call, field: ^module_path) {
+                  Absent => optional_absent()
+                  Present { value: mp } =>
+                    match body_lower_admit_string_field(call: call, field: ^decl_name) {
+                      Absent => optional_absent()
+                      Present { value: dn } =>
+                        optional_present(
+                          value: Edge {
+                            label: Positional,
+                            target: sugar_type_node(
+                              connective: Conj,
+                              children: Cons {
+                                head: Edge { label: Authored { name: ^module_path }, target: sugar_type_node(connective: Atom { identity: mp }, children: [], n: op_edge.target) },
+                                tail: Cons {
+                                  head: Edge { label: Authored { name: ^decl_name }, target: sugar_type_node(connective: Atom { identity: dn }, children: [], n: op_edge.target) },
+                                  tail: []
+                                }
+                              },
+                              n: call
+                            )
+                          }
+                        )
+                    }
+                }
+              } else {
+                optional_absent()
+              }
+            _ => optional_absent()
+          }
+      }
+    _ => optional_absent()
+  }
+}
+
+fn body_lower_admit_operator_edge(children: List<Edge>) -> Optional<Edge> {
+  fold(children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match e.label {
+          Positional => optional_present(value: e)
+          _ => optional_absent()
+        }
+    }
+  })
+}
+
+// @field -> string-literal atom -> the value lexeme as an interned symbol.
+fn body_lower_admit_string_field(call: Node, field: Symbol) -> Optional<Symbol> {
+  match sugar_named_child_optional(root: call, name: field) {
+    Absent => optional_absent()
+    Present { value: literal } => dag_string_literal_value_symbol_optional(n: literal)
   }
 }
 

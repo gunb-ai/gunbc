@@ -6557,40 +6557,36 @@ type InferAdmitEntry
   = AdmitEntryCoords { coords: InferAdmitCallerCoords }
   | AdmitEntryUninterpretable
 
-// ONE ENTRY OF THE LIST, READ OR REFUSED. The authored call `decl_ref(module_path: M,
-// decl_name: D)` reads through the construct readers: the tag names decl_ref, the named field
-// edges carry the two string atoms. Anything else is uninterpretable and refuses at the entry —
-// an entry that cannot be interpreted would otherwise be dropped, silently shrinking the
-// permitted-caller roster below what was authored.
-fn infer_admit_entry_interpret(entry: Node) -> InferAdmitEntry {
-  match construct_tag_path_optional(n: entry) {
-    Absent => AdmitEntryUninterpretable
-    Present { value: tag_path } =>
-      match qualified_name_last_segment(qn: tag_path) {
-        Absent => AdmitEntryUninterpretable
-        Present { value: leaf } =>
-          if !symbol_eq(a: leaf, b: ^decl_ref) {
-            AdmitEntryUninterpretable
-          } else {
-            match infer_admit_entry_field_symbol(entry: entry, field: ^module_path) {
-              Absent => AdmitEntryUninterpretable
-              Present { value: module_path } =>
-                match infer_admit_entry_field_symbol(entry: entry, field: ^decl_name) {
-                  Absent => AdmitEntryUninterpretable
-                  Present { value: decl_name } =>
-                    AdmitEntryCoords {
-                      coords: InferAdmitCallerCoords { module_path: module_path, decl_name: decl_name }
-                    }
-                }
-            }
-          }
+// THE RECORD SHAPE DEMAND: [ module_path -> atom, decl_name -> atom ], both atom identities
+// present. Absent = the child is not such a record.
+fn infer_admit_record_check(record: Node) -> Optional<InferAdmitCallerCoords> {
+  match infer_admit_entry_field_symbol(record: record, field: ^module_path) {
+    Absent => optional_absent()
+    Present { value: mp } =>
+      match infer_admit_entry_field_symbol(record: record, field: ^decl_name) {
+        Absent => optional_absent()
+        Present { value: dn } =>
+          optional_present(value: InferAdmitCallerCoords { module_path: mp, decl_name: dn })
       }
   }
 }
 
-// THE ONE NAMED FIELD'S STRING VALUE, as an interned lexeme.
-fn infer_admit_entry_field_symbol(entry: Node, field: Symbol) -> Optional<Symbol> {
-  fold(construct_field_edges(n: entry), init: optional_absent(), f: fn(acc, e) {
+// ONE ENTRY OF THE LIST, READ OR REFUSED. The carrier re-hung the authored call as a POSITIONAL
+// record conj [ module_path -> atom, decl_name -> atom ]; the record's atom identities ARE the
+// coords. Anything else is uninterpretable and refuses at the entry — an entry that cannot be
+// interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below
+// what was authored.
+fn infer_admit_entry_interpret(entry: Node) -> InferAdmitEntry {
+  match infer_admit_record_check(record: entry) {
+    Absent => AdmitEntryUninterpretable
+    Present { value: coords } => AdmitEntryCoords { coords: coords }
+  }
+}
+
+// THE ONE NAMED FIELD'S STRING VALUE, as an interned lexeme: the record conj's authored edge
+// `field` carries an atom whose identity is the interned lexeme.
+fn infer_admit_entry_field_symbol(record: Node, field: Symbol) -> Optional<Symbol> {
+  fold(record.children, init: optional_absent(), f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
       Absent =>
@@ -6620,62 +6616,54 @@ fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
   }
 }
 
-// THE CLAUSE'S ENTRIES, reached from the clause shell the carrier put on the Arrow.
-// POSITIONAL READER: the spine is v2.extdeps.languages.dag dag_grammar_admit_callers_clause_expr
-// — from the clause's captured sequence, three right projections reach the entry sequence; its
-// left is the first entry and its right's left is the repeat capture whose left holds each further
-// entry beside its comma. Adding or reordering a constituent there is a change to this reader's
-// contract and not a local grammar edit. The repeat's spine walk is
-// v2.extdeps.languages.dag parse_repeat_capture_items_with — ONE authority for the
-// grammar_sequence_left/right_node_projection encoding (no second walker); this reader supplies
-// the item reader, and an admit entry is an opaque parsed expression, so identity. Every missing
-// projection REFUSES with ^infer_reason_admit_callers_entries_unreadable: a malformed clause spine
-// is not a shorter roster — a listed caller must never go silent, and the refusal must name the
-// cause instead of the downstream refused-call verdict (DESIGN §5: a failure arm must refuse,
-// never widen).
-fn infer_admit_clause_entries(clause: Node) -> Outcome<List<Node>> {
-  match parse_production_captured_child_optional(node: clause) {
-    Absent => infer_admit_entries_refused(clause: clause)
-    Present { value: captured } =>
-      match body_infer_projection_child(node: captured, name: ^grammar_sequence_left_node_projection) {
-        Absent => infer_admit_entries_refused(clause: clause)
-        Present { value: first_entry } =>
-          match body_infer_projection_child(node: captured, name: ^grammar_sequence_right_node_projection) {
-            Absent => infer_admit_entries_refused(clause: clause)
-            Present { value: outer_right } =>
-              match body_infer_projection_child(node: outer_right, name: ^grammar_sequence_left_node_projection) {
-                Absent => infer_admit_entries_refused(clause: clause)
-                Present { value: repeat_capture } =>
-                  match parse_repeat_capture_items_with(
-                    repeat_capture: repeat_capture,
-                    root: clause,
-                    item: fn(entry, _root) { outcome_accepted(value: entry) }
-                  ) {
-                    Rejected { diagnostics: _ } => infer_admit_entries_refused(clause: clause)
-                    Accepted { value: suffixes, diagnostics: _ } =>
-                      outcome_accepted(value: Cons { head: first_entry, tail: suffixes })
-                  }
-              }
-          }
-      }
-  }
-}
-
-// THE UNREADABLE-CLAUSE REFUSAL, located at the clause itself. Real parses cannot produce a
-// malformed spine, so the reader proposes no correction.
-fn infer_admit_entries_refused(clause: Node) -> Outcome<List<Node>> {
-  outcome_rejected(Diagnostic {
-    reason: ^infer_reason_admit_callers_entries_unreadable,
-    at: node_locus(node: clause),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  })
-}
-
+// ONE READER FOR A GRAMMAR-SEQUENCE PROJECTION EDGE: the named edges
+// (grammar_sequence_left/right_node_projection) carry the spine; find_named_child is the accessor
+// the probes verified against the runtime tree. Outcome flattened to Optional: a missing
+// projection is a REFUSAL SITE for the caller (^infer_reason_admit_callers_entries_unreadable),
+// never a silent shorter roster.
 fn body_infer_projection_child(node: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
-    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Accepted { value: n, diagnostics: _ } => Present { value: n }
     Rejected { diagnostics: _ } => Absent
   }
+}
+
+// THE ROSTER'S RECORDS, read from the core edge target the carrier hung on the Arrow. The carrier
+// re-hung each authored entry as a POSITIONAL record conj [ module_path -> atom, decl_name -> atom ]
+// inside a roster conj (the where-clause lowering's precedent for consuming an authored encoding at
+// lowering). A target that is the RAW clause shell — the carrier's fail-closed fallback for an
+// authored spine that does not read — shows Authored projection edges here, which REFUSES with
+// ^infer_reason_admit_callers_entries_unreadable: a malformed clause is never a shorter roster, and
+// the refusal names the cause instead of the downstream refused-call verdict (DESIGN §5: a failure
+// arm must refuse, never widen). A POSITIONAL child whose record does not read refuses with
+// ^infer_reason_admit_callers_entry_not_decl_ref at that child — an uninterpretable entry must not
+// be dropped, silently shrinking the permitted-caller roster below what was authored.
+fn infer_admit_clause_entries(roster: Node) -> Outcome<List<Node>> {
+  fold(roster.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+    match acc {
+      Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      Accepted { value: records, diagnostics: _ } =>
+        match e.label {
+          Positional =>
+            match infer_admit_record_check(record: e.target) {
+              Absent =>
+                outcome_rejected(Diagnostic {
+                  reason: ^infer_reason_admit_callers_entry_not_decl_ref,
+                  at: node_locus(node: e.target),
+                  correction: Unavailable { reason: UserInputBoundary }
+                })
+              Present { value: _ } =>
+                outcome_accepted(value: Cons { head: e.target, tail: records })
+            }
+          _ =>
+            outcome_rejected(Diagnostic {
+              reason: ^infer_reason_admit_callers_entries_unreadable,
+              at: node_locus(node: e.target),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+        }
+    }
+  })
 }
 
 // EVERY DIAGNOSTIC THE LIST CARRIES, folded into the stage's Diagnostics carrier.
@@ -6686,63 +6674,6 @@ fn infer_admission_diags_of(ds: List<Diagnostic>) -> Diagnostics {
       inner: Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
     )
   })
-}
-
-// ONE APPLICATION'S VERDICT UNDER `caller`. Only a callee whose Arrow carries the admit edge is
-// judged; every other call is outside this wall's scope — the clause only ever rides a fn Arrow,
-// and a call whose callee grounds to no Arrow has no clause to violate (v1's gate was the same:
-// only constructor calls were judged). The callee's Arrow is read through
-// infer_application_callee_arrow_with_facts, the ONE authority for the arrow behind a resolved
-// reference: a name-resolved callee stays a Conj, so a direct infer_operator_arrow on it answers
-// Absent and the arrow is reached through the use's facts entry — whose grounding evidence is the
-// declared Arrow, carrying its declared edges (the admit clause among them). That is what makes
-// the wall reach an IMPORTED callee: the facts gather grounds the reference through the closure
-// index, so a call in the subject module to a fn declared in a peer module is judged against the
-// peer's declared list. Failure arms FAIL CLOSED: more than one AdmitCallersEdge on a callee Arrow
-// is not "no restriction" -- it refuses with a typed, located diagnostic rather than passing the
-// application unjudged.
-fn infer_caller_admission_application_diags(
-  application: Node,
-  caller: Optional<InferAdmitCallerCoords>,
-  module_symbol: Symbol,
-  entries: List<InferredFactsEntry>
-) -> Diagnostics {
-  match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
-    Absent => None
-    Present { value: arrow } =>
-      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
-        Ambiguous =>
-          infer_admission_diags_of([
-            Diagnostic {
-              reason: ^infer_reason_admit_callers_edge_ambiguous,
-              at: node_locus(node: application),
-              correction: Unavailable { reason: UserInputBoundary }
-            }
-          ])
-        Absent => None
-        Found { target: clause } =>
-          match infer_admit_clause_entries(clause: clause) {
-            Rejected { diagnostics: d } => Some { diagnostics: d }
-            Accepted { value: roster, diagnostics: _ } =>
-              match caller {
-                Absent => infer_admission_diags_of([
-                  Diagnostic {
-                    reason: ^infer_reason_caller_admission_caller_unkeyed,
-                    at: node_locus(node: application),
-                    correction: Unavailable { reason: UserInputBoundary }
-                  }
-                ])
-                Present { value: coords } =>
-                  infer_admission_judge_entries(
-                    application: application,
-                    entries: roster,
-                    caller: coords,
-                    module_symbol: module_symbol
-                  )
-              }
-          }
-      }
-  }
 }
 
 type InferAdmitJudgement {
@@ -6794,48 +6725,85 @@ fn infer_admission_judge_entries(
   }
 }
 
-// DESCENT KEYING. The module root's children are the declaration member wraps — a one-edge Conj
-// whose named edge is the declaration's name targeting its Arrow
-// (v2.compiler.body_lowering_fold body_lower_fn_decl_named_member_wrap) — so an edge whose target
-// is such a wrap keys the calls below it to that declaration. Descending into anything else keeps
-// the enclosing caller.
-fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge) -> InferAdmissionCtx {
-  match edge.target.kind {
-    TypeNode { connective: Conj } =>
-      match first(xs: edge.target.children) {
-        Present { value: e } =>
-          match e.label {
-            Authored { name: member_name } =>
-              if length(xs: edge.target.children) == 1 {
-                match e.target.kind {
-                  TypeNode { connective: Arrow } =>
-                    InferAdmissionCtx {
-                      caller: Present {
-                        value: InferAdmitCallerCoords { module_path: ctx.module_symbol, decl_name: member_name }
-                      },
-                      module_symbol: ctx.module_symbol
-                    }
-                  TypeNode { connective: Atom { identity: _ } } => ctx
-                  TypeNode { connective: Conj } => ctx
-                  TypeNode { connective: Disj } => ctx
-                  TypeNode { connective: Cardinality } => ctx
-                  TypeNode { connective: Instantiation } => ctx
-                  ComputationNode { behavior: _ } => ctx
-                }
-              } else {
-                ctx
+// ONE APPLICATION'S VERDICT UNDER `caller`. Only a callee whose Arrow carries the admit edge is
+// judged; an unrostered callee imposes nothing (scope rule: the clause rides the fn Arrow, and a
+// fn whose Arrow does not carry it is not restricted). An Ambiguous admit edge refuses at the
+// application. The entries come from the facts gather, so an imported callee's clause is read the
+// same way a same-module one is.
+fn infer_caller_admission_application_diags(
+  application: Node,
+  caller: Optional<InferAdmitCallerCoords>,
+  module_symbol: Symbol,
+  entries: List<InferredFactsEntry>
+) -> Diagnostics {
+  match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
+    Absent => None
+    Present { value: arrow } =>
+      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+        Ambiguous =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_admit_callers_edge_ambiguous,
+              at: node_locus(node: application),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          ])
+        Absent => None
+        Found { target: roster } =>
+          match infer_admit_clause_entries(roster: roster) {
+            Rejected { diagnostics: d } => Some { diagnostics: d }
+            Accepted { value: records, diagnostics: _ } =>
+              match caller {
+                Absent => infer_admission_diags_of([
+                  Diagnostic {
+                    reason: ^infer_reason_caller_admission_caller_unkeyed,
+                    at: node_locus(node: application),
+                    correction: Unavailable { reason: UserInputBoundary }
+                  }
+                ])
+                Present { value: coords } =>
+                  infer_admission_judge_entries(
+                    application: application,
+                    entries: records,
+                    caller: coords,
+                    module_symbol: module_symbol
+                  )
               }
-            Positional => ctx
-            StructuralLabel { label: _ } => ctx
           }
-        Absent => ctx
       }
-    TypeNode { connective: Atom { identity: _ } } => ctx
-    TypeNode { connective: Disj } => ctx
-    TypeNode { connective: Arrow } => ctx
-    TypeNode { connective: Cardinality } => ctx
-    TypeNode { connective: Instantiation } => ctx
-    ComputationNode { behavior: _ } => ctx
+  }
+}
+
+// DESCENT KEYING. The namespace graft DISSOLVES the declaration member wrap and re-hangs each
+// member's Arrow DIRECTLY under the module body conj, under an authored edge named for the
+// declaration (v2.compiler.body_lowering_fold body_lower_fn_decl_named_member_wrap: "the wrap is a
+// carrier, not the image root ... re-hangs the Arrow under the module; the Arrow is what stands for
+// the authored declaration in the admitted tree"). So an AUTHORED edge whose target is an Arrow
+// inside the grafted body names the declaration the calls below it sit in — the same edge resolve
+// harvests the binding from (v2.compiler.03_resolve harvest_module_root_named_bindings /
+// try_edge_declared_binding). Keying REPLACES the caller, so a nested declaration keys its own
+// calls once the descent passes its authored edge (innermost enclosing declaration wins, which is
+// the caller v1 judged). Descending through any other edge keeps the enclosing caller.
+fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge) -> InferAdmissionCtx {
+  match edge.label {
+    Authored { name: member_name } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          InferAdmissionCtx {
+            caller: Present {
+              value: InferAdmitCallerCoords { module_path: ctx.module_symbol, decl_name: member_name }
+            },
+            module_symbol: ctx.module_symbol
+          }
+        TypeNode { connective: Atom { identity: _ } } => ctx
+        TypeNode { connective: Conj } => ctx
+        TypeNode { connective: Disj } => ctx
+        TypeNode { connective: Cardinality } => ctx
+        TypeNode { connective: Instantiation } => ctx
+        ComputationNode { behavior: _ } => ctx
+      }
+    Positional => ctx
+    StructuralLabel { label: _ } => ctx
   }
 }
 
