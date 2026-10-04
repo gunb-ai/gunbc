@@ -40,7 +40,7 @@ import gunbc.roadmap_session_placement {
 }
 import gunbc.roadmap_service_evidence {
   ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
-  service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode,
+  service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode_bound,
   ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
   service_evidence_observe_for_attempt,
 }
@@ -651,12 +651,13 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
         if when == "" {
           StartReceiptInvalid { reason: "established_at is missing" }
         } else {
-          match service_evidence_snapshot_decode(wire: dogfood_decode_field(v: v, key: "service_evidence_wire")) {
+          let ev_wire = dogfood_decode_field(v: v, key: "service_evidence_wire")
+          if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
+            StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
+          } else {
+          match service_evidence_snapshot_decode_bound(wire: ev_wire, node_id: Present { value: dogfood_decode_field(v: v, key: "node_id") }, attempt_key: Present { value: dogfood_decode_field(v: v, key: "attempt_key") }) {
             SnapshotInvalid { reason } => StartReceiptInvalid { reason: join(["the pinned service evidence does not decode: ", reason], "") }
-            SnapshotDecoded { snapshot } =>
-              if dogfood_decode_field(v: v, key: "service_evidence_digest") != snapshot.digest {
-                StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
-              } else {
+            SnapshotDecoded { snapshot } => {
           let r = DogfoodStartReceipt {
             node_id: dogfood_decode_field(v: v, key: "node_id"),
             attempt_key: dogfood_decode_field(v: v, key: "attempt_key"),
@@ -678,6 +679,7 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
             Present { value: why } => StartReceiptInvalid { reason: why }
           }
               }
+          }
           }
         }
       }

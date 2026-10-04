@@ -744,29 +744,38 @@ fn snapshot_fields_of(v: JsonValue) -> List<SnapshotEntry>? {
 }
 
 // Exactly the canonical names, once each and in canonical order: pairwise equal over equal lengths.
+// Equal lengths and equal newline-joined text: a canonical name contains no newline, so the joined
+// text matches only when every name matches in order (an embedded newline would add a separator).
 fn snapshot_names_are_canonical(names: List<String>) -> Bool {
   let canonical = service_evidence_canonical_fields
-  length(names) == length(canonical)
-    && fold(names, init: SnapshotNameWalk { rest: canonical, ok: true }, f: (w, n) => match first(w.rest) {
-      Absent => SnapshotNameWalk { rest: [], ok: false }
-      Present { value: c } => SnapshotNameWalk { rest: skip(w.rest, 1), ok: w.ok && c == n }
-    }).ok
+  length(names) == length(canonical) && join(names, "\n") == join(canonical, "\n")
 }
 
-type SnapshotNameWalk {
-  rest: List<String>
-  ok: Bool
-}
 
 fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDecode {
+  service_evidence_snapshot_decode_bound(wire: wire, node_id: none, attempt_key: none)
+}
+
+// THE BOUND DECODE: a consumer that knows which node and attempt the evidence must name passes them,
+// and a foreign binding refuses as soon as the document is parsed, before the field payloads are
+// decoded and re-encoded.
+fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attempt_key: String?) -> ServiceEvidenceSnapshotDecode {
   match parse_json_document(s: wire) {
     JsonDocumentUnreadable { gap: _ } => SnapshotInvalid { reason: "the service evidence snapshot is not a JSON document" }
-    JsonDocumentParsed { value: v } =>
-      if snapshot_string(v: v, key: "schema") != service_evidence_receipt_schema {
+    JsonDocumentParsed { value: v } => {
+      let schema = snapshot_string(v: v, key: "schema")
+      let instance = snapshot_string(v: v, key: "instance_id")
+      let node = snapshot_string(v: v, key: "node_id")
+      let attempt = snapshot_string(v: v, key: "attempt_key")
+      let revision = snapshot_string(v: v, key: "launch_revision")
+      let foreign = (match node_id { Absent => false  Present { value: n } => n != node }) || (match attempt_key { Absent => false  Present { value: a } => a != attempt })
+      if schema != service_evidence_receipt_schema {
         SnapshotInvalid { reason: join(["the service evidence snapshot's schema is not ", service_evidence_receipt_schema], "") }
-      } else if snapshot_string(v: v, key: "instance_id") == "" || snapshot_string(v: v, key: "node_id") == "" || snapshot_string(v: v, key: "attempt_key") == "" {
+      } else if instance == "" || node == "" || attempt == "" {
         SnapshotInvalid { reason: "the service evidence snapshot names no instance, node or attempt" }
-      } else if !lower_hex_40(value: snapshot_string(v: v, key: "launch_revision")) {
+      } else if foreign {
+        SnapshotInvalid { reason: "the service evidence snapshot names another node or attempt" }
+      } else if !lower_hex_40(value: revision) {
         SnapshotInvalid { reason: "the service evidence snapshot's launch_revision is not a 40-hex revision" }
       } else {
         match snapshot_fields_of(v: v) {
@@ -774,24 +783,22 @@ fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDeco
           Present { value: decoded } =>
             if !snapshot_names_are_canonical(names: map(decoded, d => d.field.field)) {
               SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population, once each, in order" }
-            } else if service_evidence_wire_of(
-                instance_id: snapshot_string(v: v, key: "instance_id"), node_id: snapshot_string(v: v, key: "node_id"),
-                attempt_key: snapshot_string(v: v, key: "attempt_key"), revision_hex: snapshot_string(v: v, key: "launch_revision"),
-                entries: map(decoded, d => d.entry)) != wire {
+            } else if service_evidence_wire_of(instance_id: instance, node_id: node, attempt_key: attempt, revision_hex: revision, entries: map(decoded, d => d.entry)) != wire {
               SnapshotInvalid { reason: "the service evidence snapshot does not re-encode to its persisted bytes, so it is not a wire this module writes" }
             } else {
               SnapshotDecoded { snapshot: ServiceEvidenceSnapshot {
                 wire: wire,
                 digest: wire_content_hash_to_hex(hash: content_hash_of_value(value: wire as NonEmptyStr)),
-                instance_id: snapshot_string(v: v, key: "instance_id"),
-                node_id: snapshot_string(v: v, key: "node_id"),
-                attempt_key: snapshot_string(v: v, key: "attempt_key"),
-                launch_revision: snapshot_string(v: v, key: "launch_revision"),
+                instance_id: instance,
+                node_id: node,
+                attempt_key: attempt,
+                launch_revision: revision,
                 fields: map(decoded, d => d.field),
               } }
             }
         }
       }
+    }
   }
 }
 
