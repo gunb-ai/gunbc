@@ -1034,9 +1034,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
 
-    StaticRule { selector: ClassSelector { name: "issue-status" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-    ] },
 
     StaticRule { selector: ClassSelector { name: "issue-fields" }, decls: [
       decl(prop: Display, value: "flex"),
