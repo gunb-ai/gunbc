@@ -9,7 +9,7 @@ import extdeps.languages.typescript.program {
 
 import gunbc.roadmap_component { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
 import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
-import gunbc.workspace_allocation_routes { workspace_write_unavailable_wire }
+import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
 
 fn js_id(name: String) -> TsExpr { ts_ident(name: name) }
 fn js_get(object: TsExpr, property: String) -> TsExpr { ts_member(object: object, property: property) }
@@ -87,9 +87,17 @@ fn allocation_request_statements() -> List<TsStmt> {
       js_ret(expr: js_then(promise: ts_call(callee: js_id(name: "fetch"), args: [js_id(name: "path"), js_id(name: "init")]), handler: js_id(name: "allocationRead"))),
     ])),
     ts_const(name: "allocationRefused", value: js_fn(params: ["body"], stmts: [
-      js_status(value: js_get(object: js_id(name: "body"), property: "reason")),
+      ts_const(name: "shown", value: ts_cond(test: js_get(object: js_id(name: "body"), property: "cause"),
+        consequent: js_plus(left: js_plus(left: js_get(object: js_id(name: "body"), property: "reason"), right: ts_lit_str(value: " (")), right: js_plus(left: js_get(object: js_id(name: "body"), property: "cause"), right: ts_lit_str(value: ")"))),
+        alternate: js_get(object: js_id(name: "body"), property: "reason"))),
+      js_status(value: js_id(name: "shown")),
       ts_if(cond: ts_binop(left: js_get(object: js_id(name: "body"), property: "availability"), op: "===", right: ts_lit_str(value: workspace_write_unavailable_wire)), then: ts_block(stmts: [
         js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeAvailability"), value: ts_lit_str(value: workspace_write_unavailable_wire)),
+        js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason"), value: js_id(name: "shown")),
+        js_do(expr: js_send(object: js_send(object: js_id(name: "document"), method: "querySelectorAll", args: [ts_lit_str(value: "[data-allocation-release]")]), method: "forEach", args: [js_fn(params: ["button"], stmts: [
+          js_set(target: js_get(object: js_id(name: "button"), property: "disabled"), value: js_id(name: "true")),
+          js_set(target: js_get(object: js_id(name: "button"), property: "title"), value: js_id(name: "shown")),
+        ])])),
         js_set(target: js_get(object: js_id(name: "allocationCreate"), property: "disabled"), value: js_id(name: "true")),
       ]), else_stmt: none),
     ])),
@@ -146,9 +154,10 @@ fn allocation_render_statements() -> List<TsStmt> {
       ts_if(cond: ts_binop(left: js_field(name: "retired_at"), op: "===", right: ts_lit_str(value: "")), then: ts_block(stmts: [
         ts_const(name: "release", value: js_create(tag: "button")),
         js_set(target: js_get(object: js_id(name: "release"), property: "type"), value: ts_lit_str(value: "button")),
+        js_do(expr: js_send(object: js_id(name: "release"), method: "setAttribute", args: [ts_lit_str(value: "data-allocation-release"), ts_lit_str(value: "")])),
         js_text(target: js_id(name: "release"), value: ts_lit_str(value: "Release")),
         js_set(target: js_get(object: js_id(name: "release"), property: "disabled"), value: ts_prefix(op: "!", expr: ts_call(callee: js_id(name: "allocationWritable"), args: []))),
-        js_set(target: js_get(object: js_id(name: "release"), property: "title"), value: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason")),
+        js_set(target: js_get(object: js_id(name: "release"), property: "title"), value: ts_binop(left: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason"), op: "||", right: ts_lit_str(value: "Release this workspace"))),
         js_do(expr: js_send(object: js_id(name: "release"), method: "addEventListener", args: [ts_lit_str(value: "click"), js_fn(params: [], stmts: [
           js_do(expr: ts_call(callee: js_id(name: "allocationRelease"), args: [js_field(name: "id"), js_field(name: "generation")])),
         ])])),

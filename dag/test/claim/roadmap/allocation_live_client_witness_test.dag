@@ -6,7 +6,7 @@ import gunbc.roadmap_allocation_style { allocation_css }
 import gunbc.roadmap_allocation_client { allocation_live_source }
 import gunbc.roadmap_allocation_location { allocation_list_path, allocation_item_prefix, allocation_release_suffix }
 import gunbc.workspace_allocation { workspace_profiles, workspace_profile_wire, workspace_profile_parse }
-import gunbc.workspace_allocation_routes { workspace_write_standing, workspace_write_route_response }
+import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 
 // The roadmap stylesheet is supplied: no claim below reads it, and rendering the real one is the
@@ -16,14 +16,14 @@ data fx_roadmap_stylesheet: String = ".fx-roadmap-sheet{}"
 data fx_csrf: String = "fx-csrf-token"
 
 fn allocation_preview_signed_in() -> String {
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedIn { csrf: fx_csrf }, write_standing: workspace_write_standing(), roadmap_stylesheet: fx_roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedIn { csrf: fx_csrf }, roadmap_stylesheet: fx_roadmap_stylesheet)) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
   }
 }
 
 fn allocation_preview_signed_out() -> String {
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedOut, write_standing: workspace_write_standing(), roadmap_stylesheet: fx_roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedOut, roadmap_stylesheet: fx_roadmap_stylesheet)) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
   }
@@ -48,19 +48,12 @@ test fn witness_allocation_profile_outside_the_list_refuses() -> Bool {
   match workspace_profile_parse(value: "8cpu-16gib") { Present { value: _ } => false Absent => match workspace_profile_parse(value: "") { Present { value: _ } => false Absent => true } }
 }
 
-// The write route answers the typed unavailable and the page renders the same standing before any
-// click: the create control is disabled with the route's own reason, and the token rides the page.
-test fn witness_allocation_write_route_answers_typed_unavailable() -> Bool {
-  let response = workspace_write_route_response(standing: workspace_write_standing())
-  response.status == 503 && string_contains(s: response.body, pattern: "\"availability\": \"unavailable\"")
-}
-
-test fn witness_allocation_signed_in_page_carries_csrf_and_server_unavailable_state() -> Bool {
+// The token rides the page for a signed-in viewer, and the create control is live: whether a write
+// is admitted is the server's answer to the POST, never a decision the page makes before it.
+test fn witness_allocation_signed_in_page_carries_csrf_and_a_live_control() -> Bool {
   let html = allocation_preview_signed_in()
   string_contains(s: html, pattern: concat("data-csrf=\"", concat(fx_csrf, "\"")))
-    && string_contains(s: html, pattern: "data-write-availability=\"unavailable\"")
-    && string_contains(s: html, pattern: "id=\"allocation-create\" aria-describedby=\"allocation-status\" disabled")
-    && string_contains(s: html, pattern: "tailnet write path")
+    && string_contains(s: html, pattern: "id=\"allocation-create\" aria-describedby=\"allocation-status\">")
     && !string_contains(s: html, pattern: "<fieldset disabled")
 }
 
@@ -72,7 +65,8 @@ test fn witness_allocation_signed_out_cannot_request() -> Bool {
 }
 
 // The client calls the routes the table mounts, sends the token and a persisted idempotency key,
-// renders the connection only as the server's text, and never assembles an SSH command.
+// renders the connection only as the server's text, and never assembles an SSH command. A write
+// answered with the typed unavailable value disables the write controls and shows reason and cause.
 test fn witness_allocation_client_drives_the_real_contract() -> Bool {
   let js = allocation_live_source()
   string_contains(s: js, pattern: concat("'", concat(allocation_list_path, "'")))
@@ -82,7 +76,8 @@ test fn witness_allocation_client_drives_the_real_contract() -> Bool {
     && string_contains(s: js, pattern: "idempotency_key: allocationPendingKey()")
     && string_contains(s: js, pattern: "localStorage.setItem(allocationKeyStore, allocationHeldKey)")
     && string_contains(s: js, pattern: "code.textContent = a.connection")
-    && string_contains(s: js, pattern: "body.availability === 'unavailable'")
+    && string_contains(s: js, pattern: concat("body.availability === '", concat(workspace_write_unavailable_wire, "'")))
+    && string_contains(s: js, pattern: "body.cause")
     && !string_contains(s: js, pattern: "ssh")
 }
 

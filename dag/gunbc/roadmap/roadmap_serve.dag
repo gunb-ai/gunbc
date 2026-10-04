@@ -9,8 +9,8 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
-import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get, workspace_route_create, workspace_route_release, workspace_write_standing }
+import gunbc.roadmap_allocation_location { allocation_page_path }
+import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
@@ -274,8 +274,6 @@ type RoadmapServeHandler
   | AllocationListHandler
   | AllocationGetHandler
   | AllocationClientHandler
-  | AllocationCreateHandler
-  | AllocationReleaseHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
   | DispatchJsonHandler
@@ -355,10 +353,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
-    ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
-    ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
-    ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
-    ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations.json", handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: "/allocations/\{allocation_id\}", handler: AllocationGetHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -1305,8 +1301,6 @@ fn roadmap_serve_invoke_over(
     AllocationListHandler => workspace_route_list(request: request)
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
-    AllocationCreateHandler => workspace_route_create(request: request)
-    AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
@@ -2061,7 +2055,7 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
     SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
     FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
   }
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, write_standing: workspace_write_standing(), roadmap_stylesheet: roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
   }

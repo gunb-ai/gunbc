@@ -4,12 +4,10 @@ import std.types { String }
 
 data allocation_page_path: String = "/allocations"
 
-// The allocation routes, shared by the route table and the browser client that calls them. Create
+// The allocation routes the browser client calls; the route table's rows spell the same paths. Create
 // is a POST to the page path; one allocation is the item prefix plus its WorkspaceAllocationId, a
 // single path segment by that type's own law, and its release is that item path plus the suffix.
 data allocation_list_path: String = "/allocations.json"
 data allocation_item_prefix: String = "/allocations/"
 data allocation_release_suffix: String = "/release"
 
-fn allocation_item_route() -> String { concat(allocation_item_prefix, "\{allocation_id\}") }
-fn allocation_release_route() -> String { concat(allocation_item_route(), allocation_release_suffix) }

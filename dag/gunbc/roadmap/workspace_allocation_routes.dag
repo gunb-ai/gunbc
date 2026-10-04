@@ -2,56 +2,22 @@ module gunbc.workspace_allocation_routes
 
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
 import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence }
 import gunbc.clock_read { clock_now_probed_at }
 
 import gunbc.workspace_allocation_policy { workspace_authorization_policy }
 
-import gunbc.workspace_allocation_http { workspace_http_list_over, workspace_http_get_over, workspace_http_reason, workspace_http_json }
-import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.workspace_allocation_http { workspace_http_list_over, workspace_http_get_over, workspace_http_reason }
 
-// THE WRITE ROUTES ARE MOUNTED AND ANSWER A TYPED UNAVAILABLE. Create and release require the
-// tailnet deployment path (DeploymentAccessPolicy { tailnet_path_required: true }), and the server
-// seam gunbc.roadmap_serve roadmap_serve_request_security does not yet read back the Tailscale serve
-// route, so AccessPathTailnetProxy cannot be constructed there and a write could never be admitted.
-// The policy is not weakened: until that seam executes a serve-route/ACL readback, the write routes
-// answer WorkspaceWritesUnavailable, which the page also renders before any click, so a browser
-// never mistakes an unmounted write for a missing route or a success. When the seam lands, this one
-// value moves to WorkspaceWritesAdmitted and the routes call gunbc.workspace_allocation_http
-// workspace_http_create_over and workspace_http_release_over.
-type WorkspaceWriteStanding
-  = WorkspaceWritesUnavailable { reason: NonEmptyStr }
-
-fn workspace_write_standing() -> WorkspaceWriteStanding {
-  WorkspaceWritesUnavailable { reason: "Allocation requests need the tailnet write path, which this server cannot verify yet; no request was recorded." as NonEmptyStr }
-}
-
-// The availability wire value a client branches on, beside the reason it renders verbatim.
-data workspace_write_unavailable_wire: String = "unavailable"
-
-fn workspace_write_unavailable_response(reason: NonEmptyStr) -> ServeHttpResponse {
-  workspace_http_json(status: 503, value: json_object(members: [
-    json_kv(key: "availability", value: json_string(s: workspace_write_unavailable_wire)),
-    json_kv(key: "reason", value: json_string(s: reason as String)),
-  ]))
-}
-
-fn workspace_write_route_response(standing: WorkspaceWriteStanding) -> ServeHttpResponse {
-  match standing {
-    WorkspaceWritesUnavailable { reason } => workspace_write_unavailable_response(reason: reason)
-  }
-}
-
-fn workspace_route_create(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  workspace_write_route_response(standing: workspace_write_standing())
-}
-
-fn workspace_route_release(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, allocation_id: NonEmptyStr) -> ServeHttpResponse {
-  workspace_write_route_response(standing: workspace_write_standing())
-}
-
+// ONLY THE READ ROUTES ARE MOUNTED. Create and release require the tailnet deployment path
+// (DeploymentAccessPolicy { tailnet_path_required: true }), and the server seam
+// gunbc.roadmap_serve roadmap_serve_request_security does not yet read back the Tailscale serve
+// route, so AccessPathTailnetProxy cannot be constructed there and a mounted write could never be
+// admitted. The writes stay unmounted -- the policy is not weakened -- until that seam executes a
+// serve-route/ACL readback; gunbc.workspace_allocation_http workspace_http_create_over and
+// workspace_http_release_over are the handlers that mount then, witnessed under the required path.
 fn workspace_route_list(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   match clock_now_probed_at() {
     Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")

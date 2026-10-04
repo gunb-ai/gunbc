@@ -3,13 +3,12 @@ module gunbc.roadmap_allocation_page
 import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import std.types { String, Bool, List }
 import std.measure { ByteSize, measure_count, gibibyte_scale_factor_bytes, minute_count }
-import std.markup { Fragment, Attribute, attr }
+import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.roadmap_allocation_style { allocation_css }
 import gunbc.workspace_allocation { WorkspaceProfile, workspace_profiles, workspace_profile_wire, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound }
-import gunbc.workspace_allocation_routes { WorkspaceWriteStanding, WorkspaceWritesUnavailable, workspace_write_unavailable_wire }
 
 // These are navigation identities, shared by the route and its rendered links.
 
@@ -47,20 +46,6 @@ fn allocation_profile_choices() -> List<Fragment> {
   map(profiles, p => allocation_profile_choice(profile: p, checked: match first(profiles) { Present { value: head } => head == p Absent => false }))
 }
 
-// The server's write standing, rendered before any click: the create control is disabled with the
-// reason the write route itself answers, never a client-side guess.
-fn allocation_write_reason(standing: WorkspaceWriteStanding) -> String {
-  match standing { WorkspaceWritesUnavailable { reason } => reason as String }
-}
-
-fn allocation_write_availability(standing: WorkspaceWriteStanding) -> String {
-  match standing { WorkspaceWritesUnavailable { reason: _ } => workspace_write_unavailable_wire }
-}
-
-fn allocation_create_disabled(standing: WorkspaceWriteStanding) -> List<Attribute> {
-  match standing { WorkspaceWritesUnavailable { reason: _ } => [attr(name: "disabled", value: "")] }
-}
-
 fn allocation_viewer_csrf(viewer: AllocationPageViewer) -> String {
   match viewer { AllocationViewerSignedOut => "" AllocationViewerSignedIn { csrf } => csrf }
 }
@@ -72,9 +57,8 @@ fn allocation_viewer_signed_in(viewer: AllocationPageViewer) -> Bool {
 // THE PAGE OVER ITS ROADMAP STYLESHEET, supplied by the caller as roadmap_page_launch_with_stylesheet
 // takes it for the roadmap page: the serve route passes roadmap_css(), and a claim about the form,
 // the notice or the response headers -- none of which reads the stylesheet -- supplies its own.
-fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, write_standing: WorkspaceWriteStanding, roadmap_stylesheet: String) -> Fragment {
+fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, roadmap_stylesheet: String) -> Fragment {
   let signed_in = allocation_viewer_signed_in(viewer: viewer)
-  let reason = allocation_write_reason(standing: write_standing)
   el_attrs("html", [attr(name: "lang", value: "en")], [
     el("head", [
       el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
@@ -85,14 +69,12 @@ fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, write_standing:
     el("body", [
       roadmap_header(page: "allocations"),
       el_attrs("main", [attr(name: "id", value: "allocation-workspace"), attr(name: "class", value: "allocation-page"),
-        attr(name: "data-csrf", value: allocation_viewer_csrf(viewer: viewer)),
-        attr(name: "data-write-availability", value: allocation_write_availability(standing: write_standing)),
-        attr(name: "data-write-reason", value: reason)], [
+        attr(name: "data-csrf", value: allocation_viewer_csrf(viewer: viewer))], [
         el_class("p", "allocation-eyebrow", [txt("COMPUTE / MICROVM")]),
         el("h2", [txt("A workspace on the fleet")]),
         el_class("p", "allocation-intro", [txt("Choose a workspace size. Placement selects an eligible srv host; the disk and lease are fixed by policy.")]),
         el_attrs("section", [attr(name: "class", value: "allocation-notice"), attr(name: "aria-label", value: "Availability")],
-          if signed_in { [el("strong", [txt("Allocation requests are unavailable.")]), el_attrs("p", [attr(name: "id", value: "allocation-write-reason")], [txt(reason)])] }
+          if signed_in { [el("strong", [txt("Requests are decided by the allocation service.")]), el("p", [txt("If it cannot accept a request it says why here, and no workspace is reserved.")])] }
           else { [el("strong", [txt("Sign in to request a workspace.")]), el_attrs("a", [attr(name: "href", value: auth_login_route_path)], [txt("Sign in with Google")])] }),
         el_class("div", "allocation-layout", [
           el_attrs("form", [attr(name: "id", value: "allocation-request"), attr(name: "aria-label", value: "Allocation request"), attr(name: "action", value: allocation_page_path)], [
@@ -104,8 +86,8 @@ fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, write_standing:
                 el("dt", [txt("Lease")]), el("dd", [txt(join(["Up to ", to_string(minute_count(workspace_lease_bound())), " minutes"], ""))]),
                 el("dt", [txt("Placement")]), el("dd", [txt("Any eligible srv host")]),
               ]),
-              el_attrs("button", concat([attr(name: "type", value: "submit"), attr(name: "id", value: "allocation-create"), attr(name: "aria-describedby", value: "allocation-status")], allocation_create_disabled(standing: write_standing)), [txt("Request workspace")]),
-              el_attrs("p", [attr(name: "id", value: "allocation-status"), attr(name: "class", value: "allocation-muted"), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt(reason)]),
+              el_attrs("button", [attr(name: "type", value: "submit"), attr(name: "id", value: "allocation-create"), attr(name: "aria-describedby", value: "allocation-status")], [txt("Request workspace")]),
+              el_attrs("p", [attr(name: "id", value: "allocation-status"), attr(name: "class", value: "allocation-muted"), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], []),
             ]),
           ]),
         ]),
