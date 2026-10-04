@@ -1,0 +1,23 @@
+module test.claim.workspace_network_observation_witness_test
+
+import std.types { Bool }
+import extdeps.linux.tun_fdinfo { tun_descriptor_census, TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable }
+
+test fn zero_holders_requires_successful_explicit_census() -> Bool {
+  (match tun_descriptor_census(success: true, value: "holders=0\n") { TunDescriptorCount { count: n } => n == 0 other => false })
+    && (match tun_descriptor_census(success: false, value: "holders=0\n") { TunDescriptorUnreadable => true other => false })
+}
+
+test fn missing_tap_does_not_mean_reusable_tap() -> Bool {
+  match tun_descriptor_census(success: true, value: "missing\n") { TunInterfaceMissing => true other => false }
+}
+
+test fn attached_descriptor_refutes_quiescence() -> Bool {
+  match tun_descriptor_census(success: true, value: "holders=2\n") { TunDescriptorCount { count: n } => n == 2 other => false }
+}
+
+test fn malformed_and_negative_census_remain_unknown() -> Bool {
+  (match tun_descriptor_census(success: true, value: "holders=-1") { TunDescriptorUnreadable => true other => false })
+    && (match tun_descriptor_census(success: true, value: "") { TunDescriptorUnreadable => true other => false })
+    && (match tun_descriptor_census(success: true, value: "holders=garbage") { TunDescriptorUnreadable => true other => false })
+}

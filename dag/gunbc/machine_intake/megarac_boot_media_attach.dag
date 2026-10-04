@@ -24,7 +24,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   StalePowerOffNotObserved,
 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
 import gunbc.machine_intake_megarac_media_attach {
   MegaRacDetachAdmission,
   MegaRacDetachAdmitted,
@@ -222,7 +222,8 @@ type StalePowerOffNeed
 fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
   match before {
     ChassisPowerRead { power_on: on } => on
-    _ => false
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
   }
 }
 
@@ -261,7 +262,8 @@ fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyS
 fn stale_power_off_observed(sample: ChassisPowerObservation) -> Bool {
   match sample {
     ChassisPowerRead { power_on: on } => !on
-    _ => false
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
   }
 }
 
@@ -358,7 +360,9 @@ fn megarac_power_after_stale_power_off(
 {
   match off {
     StalePowerOffObserved { stale_image: _, before: _ } => megarac_boot_media_chassis_power(host: host, password_file: password_file, bound: bound)
-    _ => before
+    StalePowerOffNotNeeded { reason: _ } => before
+    StalePowerOffCommandRefused { stale_image: _, before: _ } => before
+    StalePowerOffNotObserved { stale_image: _, before: _, last: _ } => before
   }
 }
 
@@ -370,7 +374,8 @@ fn megarac_detach_admission_after_power_off(power: ChassisPowerObservation, off:
       MegaRacDetachNotAdmitted { reason: concat("chassis power off to replace the stale image was refused: ", i) as NonEmptyStr }
     StalePowerOffNotObserved { stale_image: i, before: _, last: l } =>
       MegaRacDetachNotAdmitted { reason: join(["chassis power off to replace the stale image ", i, " was never observed off; last read ", chassis_observation_text(observation: l) as String], "") as NonEmptyStr }
-    _ => megarac_detach_admission(power: power)
+    StalePowerOffNotNeeded { reason: _ } => megarac_detach_admission(power: power)
+    StalePowerOffObserved { stale_image: _, before: _ } => megarac_detach_admission(power: power)
   }
 }
 

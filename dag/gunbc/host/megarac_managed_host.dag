@@ -9,6 +9,7 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release
 import extdeps.bmc.megarac {
   megarac_firmware_0_32, megarac_screen_capture_standing, KvmClientCanvasJpeg,
   ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued, ScreenCaptureClientSideOnly,
+  ScreenCaptureServedOnDemand, ScreenCaptureEventRetainedOnly, ScreenCaptureAbsent,
 }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved,
@@ -83,7 +84,9 @@ fn megarac_kvm_still_catalogued(firmware: BmcFirmwareReleaseIdentity) -> Bool {
             Present { value: _ } => true
             Absent => false
           }
-        _ => false
+        ScreenCaptureServedOnDemand => false
+        ScreenCaptureEventRetainedOnly => false
+        ScreenCaptureAbsent => false
       }
   }
 }
@@ -99,10 +102,12 @@ fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRac
           } else {
             MegaRacHostRefused { cause: MegaRacBuildNotExecuted { operation: operation, firmware: firmware } }
           }
-        other => MegaRacHostRefused { cause: MegaRacHostNotMegaRac { family: other } }
+        OpenBmc => MegaRacHostRefused { cause: MegaRacHostNotMegaRac { family: OpenBmc } }
       }
     }
-    other => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: other } }
+    ManagedHostAccessUnobserved { endpoint: e } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
+    ManagedHostNotSecured { cause: c } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostNotSecured { cause: c } } }
+    ManagedHostEndpointMismatch { observed: o, secured: s } => MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
   }
 }
 

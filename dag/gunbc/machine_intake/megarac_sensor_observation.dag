@@ -8,7 +8,7 @@ import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
 import product.placement_supply { HostIdentity }
-import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacSdrSocketNaming }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill }
 
 // WHAT A MEGARAC CONTROLLER'S SENSOR TABLE SAYS ABOUT EACH SOCKET, from one `sdr elist` read
 // (extdeps.bmc.ipmi SdrElistAuthenticatedCached, decoded by extdeps.bmc.ipmi_sdr). This is the
@@ -47,7 +47,8 @@ fn megarac_sdr_socket_naming(host: AdmittedMegaRacHost) -> MegaRacSdrSocketNamin
       } else {
         SdrSocketNamingRefused { reason: concat("no SDR socket naming is read for MegaRAC firmware ", host.firmware.raw_version as String) as NonEmptyStr }
       }
-    _ => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
+    MegaRacVirtualMediaAttach => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
+    MegaRacKvmCanvasStill => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
   }
 }
 

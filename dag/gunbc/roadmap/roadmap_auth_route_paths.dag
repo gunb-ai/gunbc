@@ -1,0 +1,13 @@
+module gunbc.roadmap_auth_route_paths
+
+import std.types { String }
+
+// THE PATHS OF THE TWO AUTH ROUTES A PAGE CONTROL ADDRESSES, written once. The route table
+// (gunbc.roadmap_serve roadmap_serve_own_route_specs) serves these rows and the page markup
+// (gunbc.roadmap_page header_account_nodes, gunbc.roadmap_allocation_page) links to the same
+// rows, so a renamed route moves its links with it instead of leaving a control that addresses a
+// path nothing serves. A leaf module because the page cannot import the serve module that
+// imports it.
+data auth_login_route_path: String = "/auth/login"
+
+data auth_logout_route_path: String = "/auth/logout"

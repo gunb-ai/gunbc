@@ -113,7 +113,9 @@ fn managed_host_bound_account(host: NonEmptyStr) -> NonEmptyStr? {
     Present { value: h } =>
       match managed_host_binding(host: h) {
         ManagedHostBound { binding: b } => Present { value: b.account }
-        _ => none
+        ManagedHostAccessUnobserved { endpoint: _ } => none
+        ManagedHostNotSecured { cause: _ } => none
+        ManagedHostEndpointMismatch { observed: _, secured: _ } => none
       }
   }
 }
