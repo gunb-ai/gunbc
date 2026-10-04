@@ -1344,14 +1344,15 @@ fn constructor_reference_admission_early_refusal(
 // declaration identity, the residual names the function that would make it lawful: the unfold when
 // the produced side is host text, the fold when it is a code-point sequence. Every other mismatch
 // keeps its ordinary TypeMismatch.
+//
+// ONE ARM PER TextRepresentation, NO WILDCARD (zero-ambiguity ruling, via sharp-raven-357 on #13151):
+// a variant added later must fail the route match at compile time rather than be silently advised to
+// call the fold. A crossing is only reported between two text readings, so the NotText and
+// Unidentified arms name no route and keep the plain mismatch instead of guessing one.
 fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv, span: SourceSpan, module_name: String) -> ErrorNode {
   let si = env.source_indices
   let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
   if text_crossing_by_identity(left: expected, right: got, env: env) {
-    // ONE ARM PER TextRepresentation, NO WILDCARD (zero-ambiguity ruling, via sharp-raven-357 on
-    // #13151): a variant added later must fail this match at compile time rather than be silently
-    // advised to call the fold. A crossing is only reported between two text readings, so the NotText
-    // and Unidentified arms name no route and keep the plain mismatch instead of guessing one.
     match text_representation_by_identity(n: got, env: env) {
       HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
       CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
