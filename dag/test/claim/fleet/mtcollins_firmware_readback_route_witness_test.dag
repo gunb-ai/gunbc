@@ -1,0 +1,111 @@
+module test.claim.mtcollins_firmware_readback_route_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import extdeps.firmware.types { MainboardCpld, HostBios, BmcController }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_upgrade_cpld_row_bmc0_45_3, ipmitool_hpm_upgrade_app_row_bmc0_45_3 }
+import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, hpm_check_table_of }
+import gunbc.ensure { EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
+import gunbc.fleet.mtcollins_firmware_converge { HpmCheckComponent, SmproVersionRegister, readback_route_of, hpm_check_version_reading }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE ROUTE'S COMPONENT NAME AGAINST WHAT THE CONTROLLER PRINTS.
+//
+// THE CURRENT BMC'S ROW, IN THE CHECK LAYOUT: BMC 0.45.3 printed the CPLD's row only inside the
+// upgrade table (ipmitool_hpm_upgrade_cpld_row_bmc0_45_3). Its first five cells -- ID, Name, Active,
+// Backup -- are the ones the check table shares, so they replace the 0.32 capture's CPLD row; the
+// Deferred cell is the 0.32 capture's own. Nothing here is typed by hand.
+fn cells_of(row: String) -> List<String> {
+  split(s: row, delimiter: "|")
+}
+
+fn check_layout_row_of(upgrade_row: String, deferred: String) -> String {
+  let cs = cells_of(row: upgrade_row)
+  join(["", text_of(xs: cs, i: 1), text_of(xs: cs, i: 2), text_of(xs: cs, i: 3), text_of(xs: cs, i: 4), deferred, ""], "|")
+}
+
+fn text_of(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+data capture_cpld_row: String = "|*  5|CPLD         |   0.32 9D380300 | ---.-- -------- |   0.00 00000000 |"
+
+fn current_bmc_table() -> HpmCheckTable {
+  hpm_check_table_of(stdout: replace(s: ipmitool_hpm_check_bmc0_32, from: capture_cpld_row, to: check_layout_row_of(upgrade_row: ipmitool_hpm_upgrade_cpld_row_bmc0_45_3, deferred: "   0.00 00000000 ")))
+}
+
+fn cpld_component() -> NonEmptyStr {
+  match readback_route_of(t: MainboardCpld) {
+    HpmCheckComponent { component: c } => c
+    SmproVersionRegister { offset: _ } => "the CPLD route is not hpm check"
+  }
+}
+
+// RED, with the real 0.45.3 row: the vendor's prose name `MB CPLD` is not a component the controller
+// lists, and the readback says so by name instead of reading empty.
+test fn the_prose_name_mb_cpld_refuses_against_the_current_bmc_row_by_name() -> Bool {
+  match hpm_check_version_reading(table: current_bmc_table(), component: "MB CPLD") {
+    EnsureInaccessible { reason: r } => string_contains(s: r, pattern: "lists no component named 'MB CPLD'") && string_contains(s: r, pattern: "CPLD")
+    EnsureObserved { evidence: _ } => false
+    EnsureAbsent { reason: _ } => false
+  }
+}
+
+// THE ROUTE'S NAME READS THE CURRENT BMC'S CPLD ROW: active 4.00, the image before the AC cycle.
+test fn the_cpld_route_reads_the_current_bmc_row() -> Bool {
+  match hpm_check_version_reading(table: current_bmc_table(), component: cpld_component()) {
+    EnsureObserved { evidence: v } => v.major == 4 && v.minor == 0 && (cpld_component() as String) == "CPLD"
+    EnsureInaccessible { reason: _ } => false
+    EnsureAbsent { reason: _ } => false
+  }
+}
+
+test fn every_hpm_route_names_a_component_the_capture_lists() -> Bool {
+  let bios = match readback_route_of(t: HostBios) {
+    HpmCheckComponent { component: c } =>
+      match hpm_check_version_reading(table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), component: c) {
+        EnsureObserved { evidence: _ } => true
+        EnsureInaccessible { reason: _ } => false
+        EnsureAbsent { reason: _ } => false
+      }
+    SmproVersionRegister { offset: _ } => false
+  }
+  let cpld = match hpm_check_version_reading(table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), component: cpld_component()) {
+    EnsureObserved { evidence: v } => v.major == 0 && v.minor == 32
+    EnsureInaccessible { reason: _ } => false
+    EnsureAbsent { reason: _ } => false
+  }
+  bios && cpld
+}
+
+// THE APP PATCH IS READ FROM AUXILIARY BYTE 0, NEVER INVENTED. The 0.45.3 image's APP cell
+// (`0.45 03000000`, the File column of the real upgrade row) placed as the active cell reads exactly
+// 0.45.3 through the BMC route; a cell whose byte 0 is not hex is undecodable, not 0.45.0.
+data capture_app_row: String = "|*  1|APP          |   0.32 01112100 | ---.-- -------- |   0.00 00000000 |"
+
+fn app_table(active: String) -> HpmCheckTable {
+  let cs = cells_of(row: ipmitool_hpm_upgrade_app_row_bmc0_45_3)
+  let row = join(["", text_of(xs: cs, i: 1), text_of(xs: cs, i: 2), active, text_of(xs: cs, i: 4), "   0.00 00000000 ", ""], "|")
+  hpm_check_table_of(stdout: replace(s: ipmitool_hpm_check_bmc0_32, from: capture_app_row, to: row))
+}
+
+fn bmc_component() -> NonEmptyStr {
+  match readback_route_of(t: BmcController) {
+    HpmCheckComponent { component: c } => c
+    SmproVersionRegister { offset: _ } => "the BMC route is not hpm check"
+  }
+}
+
+test fn the_app_cell_of_the_0_45_3_image_reads_exactly_0_45_3() -> Bool {
+  let file_cell = text_of(xs: cells_of(row: ipmitool_hpm_upgrade_app_row_bmc0_45_3), i: 5)
+  match hpm_check_version_reading(table: app_table(active: file_cell), component: bmc_component()) {
+    EnsureObserved { evidence: v } => v.major == 0 && v.minor == 45 && v.patch == 3
+    EnsureInaccessible { reason: _ } => false
+    EnsureAbsent { reason: _ } => false
+  }
+}

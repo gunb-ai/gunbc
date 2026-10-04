@@ -1210,7 +1210,10 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The five test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
+// The test.claim.host_boot_attempt_admission_wet_witness identity (the create-once attempt slot over
+// the same file CAS; first effect the same Mktemp) and its digest identity (first effect sha256sum
+// DigestStdin, no mock_response), then the five
+// test.claim.durable_cas_file_store_wet_witness identities: CAS publication read-back,
 // sequential loser naming the winner, generation-two advance, a non-contention store refusal, and the
 // head search reaching the Int maximum without overflowing -- plus the five
 // test.claim.approval_assertion_counter_wet_witness_test identities (replay refused, per-enrolment
@@ -1224,6 +1227,10 @@ fn floor_route_gap_expectation_chunk_11() -> List<FloorRouteGapExpectation> {
 // DirWithTemplate / NoMockResponse gap on each identity.
 fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
   Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_boot_attempt_admission_wet_witness.one_changed_byte_changes_the_receipt_digest_by_real_execution", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.host_boot_attempt_admission_wet_witness.an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.commit_then_independent_read_back_agrees_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.durable_cas_file_store_wet_witness.a_second_eligible_writer_loses_to_the_observed_winner_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -1269,6 +1276,8 @@ fn floor_route_gap_expectation_chunk_12() -> List<FloorRouteGapExpectation> {
     }
     }
     }
+  }
+  }
   }
   }
   }
@@ -2164,12 +2173,14 @@ fn floor_route_gap_expectation_chunk_35() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.workspace_request_consumer_witness_test.waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.workspace_allocation_write_seam_wet_witness_test.seam_admitted_create_and_release_land_in_the_store", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.terminal_elected_actor_without_hold_settles_retirement", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.running_elected_actor_retains_quota", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test.concurrent_actor_replacement_admits_exactly_one", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } } } } } } 
+    tail: Empty {} } } } } } } } } } } } } 
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
