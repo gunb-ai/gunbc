@@ -126,7 +126,7 @@ import std.human_intervention {
   HumanInterventionIdentity,
   FleetOnce,
   DeviceOnce,
-  EveryProvision,
+  EveryProvision, EveryOperatorRequest,
   BreakGlassOnly,
   NoDischargeSiteModeled,
   DischargedAt,
@@ -2019,6 +2019,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
         && match i.frequency {
           FleetOnce => true
           DeviceOnce => false
+          EveryOperatorRequest => false
           EveryProvision => false
           BreakGlassOnly => false
         }
@@ -2052,11 +2053,13 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
             && match spreadsheet_share_intervention(spreadsheet_id: id, writer: w_fixture_writer()).frequency {
               DeviceOnce => true
               FleetOnce => false
-              EveryProvision => false
+              EveryOperatorRequest => false
+          EveryProvision => false
               BreakGlassOnly => false
             }
         FleetOnce => false
-        EveryProvision => false
+        EveryOperatorRequest => false
+          EveryProvision => false
         BreakGlassOnly => false
       }
     ReviewSheetOperatorRefused { reason: _ } => false
@@ -2174,7 +2177,8 @@ test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
           pattern: "fleet-automation",
         )
     DeviceOnce => false
-    EveryProvision => false
+    EveryOperatorRequest => false
+          EveryProvision => false
     BreakGlassOnly => false
   }
 }

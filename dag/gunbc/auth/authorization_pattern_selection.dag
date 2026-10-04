@@ -17,7 +17,7 @@ import std.decision {
   select_realization,
 }
 import std.human_intervention {
-  HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
+  HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly,
   DischargedAt, NoDischargeSiteModeled,
 }
 import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
@@ -161,6 +161,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
     BreakGlassOnly => true
     FleetOnce => false
     DeviceOnce => false
+    EveryOperatorRequest => false
     EveryProvision => false
   }
   irreversible_undischarged || wide || bills || break_glass
@@ -171,6 +172,7 @@ fn witness_required(e: PrivilegedEffect) -> Bool {
 // operator learns to tap without reading.
 fn unattended_required(e: PrivilegedEffect) -> Bool {
   match e.frequency {
+    EveryOperatorRequest => false
     EveryProvision => true
     FleetOnce => false
     DeviceOnce => false
@@ -512,6 +514,7 @@ fn frequency_text(f: HumanInterventionFrequency) -> String {
   match f {
     FleetOnce => "FleetOnce"
     DeviceOnce => "DeviceOnce"
+    EveryOperatorRequest => "EveryOperatorRequest"
     EveryProvision => "EveryProvision"
     BreakGlassOnly => "BreakGlassOnly"
   }

@@ -1,0 +1,26 @@
+# Printer workflow review status
+
+The printer start paths share one approval and claim implementation. Dispatch input validation
+is not authorization: the common path verifies an unexpired ntfy grant, observes an explicit
+error-free IDLE report, and acquires a durable claim for the approved escalation ID before any
+upload/start. FINISH, partial reports and errors refuse. Approval text requires the operator to
+check the actual bed when approving. A second IDLE observation and approval-expiry check occur
+immediately before publishing the start.
+
+Claims live in `/var/lib/gunbc/printer-starts` on the separately modeled printer LAN host. The
+host check precedes the gate. The service account needs an owner-controlled, persistent directory
+there before this path can operate; missing/unwritable storage refuses. Do not delete a claim to
+retry an uncertain start. This review has not provisioned that directory or performed a live print.
+
+One exact-version credential session covers preflight, upload, post-upload observation and start.
+It is evidence of an existing-secret read, never PrinterCredentialProvisioned. Receipt source is
+projected from the selected token source. The observed setup report is informational only.
+
+The census distinguishes separately initiated operator requests from unattended provisioning.
+Physical print starts select operator approval. Current code-enforced approval under a federated
+read and the operator-token compatibility entry have explicit, bounded divergences; neither is
+presented as a broker-minted printer credential. Token-file input does not establish credential
+custody and is not authorization to relay tokens through chat.
+
+Local approval, census and workflow-binding witnesses pass. CI is required and the PR remains
+draft. CAD and slicer preparation are split out; approval-client cutover is prerequisite #13218.

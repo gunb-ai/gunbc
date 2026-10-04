@@ -9,7 +9,7 @@ import std.dissolution {
   DissolutionCondition, DissolutionStatus, DissolutionFired, DissolutionPending, DissolutionUnbound,
   dissolution_status, unbound_dissolution, retires_dissolution,
 }
-import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly }
+import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision, EveryOperatorRequest, BreakGlassOnly }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
@@ -504,7 +504,7 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // the selected authority for that irreversible effect; the common start gate also
 // verifies approval, observes IDLE and atomically claims the approved escalation.
 fn printer_start_effect() -> PrivilegedEffect {
- PrivilegedEffect {subject:"start one digest-bound physical printer job",frequency:EveryProvision,
+ PrivilegedEffect {subject:"start one digest-bound physical printer job",frequency:EveryOperatorRequest,
   reversibility:IrreversibleEffect {what_is_lost:"filament and the prior physical bed state"},surface:ApiSurface,
   workload_identity:WorkloadIdentityBindable {member:federated_service_account_member(email:printer_service_account) as NonEmptyStr},
   minted_reach:MintsNoCredential,billing:NoBillingConsequence,witness_discharge:NoWitnessDischarge}
