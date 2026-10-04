@@ -1245,57 +1245,8 @@ fn first_duplicate_type_param_name(names: List<String>) -> String? {
 // left as authored.
 fn field_inferred_with_declaration(field: Node, env: TypeEnv) -> InferredNode? {
   match field.inferred {
-    Present { value: Resolved { node: authored } } => Present { value: Resolved { node: reference_tree_with_declaration(n: authored, env: env) } }
+    Present { value: Resolved { node: authored } } => Present { value: Resolved { node: reference_with_declaration(n: authored, env: env) } }
     _ => field.inferred
-  }
-}
-
-// THE WHOLE REFERENCE, NOT ONLY ITS HEAD. A field's type reference has references beneath it -- its
-// type arguments, and for a function type its parameter types and its return -- and each of them is
-// a position the Rust emitter reads on its own (v1.compiler.infer_emit_info resolve_type_decl_routed).
-// Stamping only the head left `decide: fn(AccessRequest<S, A, O, C, E>) -> AccessDecision` with an
-// unstamped AccessRequest, in a closure where two modules declare that leaf. The walk visits the
-// positions binder_marked_type visits, and for the same reason: they are the type positions of the
-// reference. It writes nothing but Node.declaration, through the one writer.
-fn reference_tree_with_declaration(n: Node, env: TypeEnv) -> Node {
-  let is_arrow = match n.connective { Arrow => true  _ => false }
-  let children = map(n.children, c => reference_argument_with_declaration(argument: c, env: env))
-  let params = if is_arrow { map(n.params, p => reference_param_with_declaration(param: p, env: env)) } else { n.params }
-  let inferred = if is_arrow { reference_inferred_with_declaration(inferred: n.inferred, env: env) } else { n.inferred }
-  reference_with_declaration(n: node_with_children_params_inferred(n: n, children: children, params: params, inferred: inferred), env: env)
-}
-
-fn reference_inferred_with_declaration(inferred: InferredNode?, env: TypeEnv) -> InferredNode? {
-  match inferred {
-    Present { value: Resolved { node: t } } => Present { value: Resolved { node: reference_tree_with_declaration(n: t, env: env) } }
-    _ => inferred
-  }
-}
-
-// A type argument is either the reference itself or a carrier whose `inferred` holds it
-// (v1.compiler.infer_types child_type_node reads it that way); an arrow argument denotes itself and
-// its `inferred` is its return, which the tree walk already covers.
-fn reference_argument_with_declaration(argument: Node, env: TypeEnv) -> Node {
-  let is_arrow = match argument.connective { Arrow => true  _ => false }
-  if is_arrow {
-    reference_tree_with_declaration(n: argument, env: env)
-  } else {
-    reference_tree_with_declaration(
-      n: node_with_children_params_inferred(n: argument, children: argument.children, params: argument.params, inferred: reference_inferred_with_declaration(inferred: argument.inferred, env: env)),
-      env: env)
-  }
-}
-
-fn reference_param_with_declaration(param: Node, env: TypeEnv) -> Node {
-  match param.children |> first {
-    Present { value: te } =>
-      node_with_children_params_inferred(
-        n: param,
-        children: concat([reference_tree_with_declaration(n: te, env: env)], param.children |> skip(1)),
-        params: param.params,
-        inferred: param.inferred
-      )
-    Absent => param
   }
 }
 
