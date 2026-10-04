@@ -4,7 +4,7 @@ import v2.std.algebra {any,filter,length}
 import std.measure {micrometer_count,millimeter_count}
 import std.affine_space {Point3,signed_frame_component_count}
 import std.euclidean_geometry {Axis3,Axis3X,Axis3Y,Axis3Z}
-import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,Block,RoundPrism,Printed,PrintPlane,LayOnXY,LayOnXZ,LayOnYZ,MechanicalInterface}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,Block,RoundPrism,Printed,Purchased,Metal,Clearance,PrintPlane,LayOnXY,LayOnXZ,LayOnYZ,MechanicalInterface}
 import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
 import extdeps.printing.fdm {build_envelope_x,build_envelope_y,build_envelope_z}
 
@@ -16,7 +16,7 @@ fn dimension(p:Primitive,a:Axis3) -> Int {
  match p {Block {size:s,center:_}=>match a {Axis3X=>micrometer_count(m:s.size_x) Axis3Y=>micrometer_count(m:s.size_y) Axis3Z=>micrometer_count(m:s.size_z)}
  RoundPrism {diameter:d,length:l,axis:axis,center:_}=>if axis_same(a:a,b:axis) {micrometer_count(m:l)} else {micrometer_count(m:d)}}
 }
-fn axis_same(a:Axis3,b:Axis3) -> Bool {match a {Axis3X=>match b {Axis3X=>true _=>false} Axis3Y=>match b {Axis3Y=>true _=>false} Axis3Z=>match b {Axis3Z=>true _=>false}}}
+fn axis_same(a:Axis3,b:Axis3) -> Bool {match a {Axis3X=>match b {Axis3X=>true Axis3Y=>false Axis3Z=>false} Axis3Y=>match b {Axis3Y=>true Axis3X=>false Axis3Z=>false} Axis3Z=>match b {Axis3Z=>true Axis3X=>false Axis3Y=>false}}}
 fn center(p:Primitive) -> Point3 {match p {Block {size:_,center:c}=>c RoundPrism {diameter:_,length:_,axis:_,center:c}=>c}}
 fn smaller(a:Int,b:Int) -> Int {if a<b {a} else {b}}
 fn larger(a:Int,b:Int) -> Int {if a>b {a} else {b}}
@@ -47,11 +47,11 @@ fn within_bed(p:AssemblyPart) -> Bool {
 fn coaxial(a:Primitive,at:Point3,b:Primitive,bt:Point3) -> Bool {
  match a {RoundPrism {diameter:da,length:_,axis:aa,center:ca}=>match b {RoundPrism {diameter:db,length:_,axis:ab,center:cb}=>
  axis_same(a:aa,b:ab)&&micrometer_count(m:db)<=micrometer_count(m:da)&&micrometer_count(m:da)-micrometer_count(m:db)<=600&&all([Axis3X,Axis3Y,Axis3Z],axis=>axis_same(a:axis,b:aa)||component(p:ca,a:axis)+component(p:at,a:axis)==component(p:cb,a:axis)+component(p:bt,a:axis))
- _=>false} _=>false}
+ Block {size:_,center:_}=>false} Block {size:_,center:_}=>false}
 }
 fn bore_has_mate(p:AssemblyPart,c:Primitive,parts:List<AssemblyPart>) -> Bool {
- match c {RoundPrism {diameter:d,length:_,axis:_,center:_}=>if micrometer_count(m:d)<=5000 {any(parts,q=>q.id!=p.id&&any(concat(q.adds,q.cuts),b=>coaxial(a:c,at:p.at,b:b,bt:q.at)))} else {true} _=>true}
+ match c {RoundPrism {diameter:d,length:_,axis:_,center:_}=>if micrometer_count(m:d)<=5000 {any(parts,q=>q.id!=p.id&&any(concat(q.adds,q.cuts),b=>coaxial(a:c,at:p.at,b:b,bt:q.at)))} else {true} Block {size:_,center:_}=>true}
 }
 fn review_model_checks(parts:List<AssemblyPart>,interfaces:List<MechanicalInterface>) -> Bool {
- length(parts)>0&&all(parts,p=>length(filter(parts,q=>q.id==p.id))==1&&length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))&&match p.kind {Printed=>within_bed(p:p)&&all(p.cuts,c=>bore_has_mate(p:p,c:c,parts:parts)) _=>true})&&all(interfaces,i=>all(i.members,id=>any(parts,p=>p.id==id)))
+ length(parts)>0&&all(parts,p=>length(filter(parts,q=>q.id==p.id))==1&&length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))&&match p.kind {Printed=>within_bed(p:p)&&all(p.cuts,c=>bore_has_mate(p:p,c:c,parts:parts)) Purchased=>true Metal=>true Clearance=>true})&&all(interfaces,i=>all(i.members,id=>any(parts,p=>p.id==id)))
 }

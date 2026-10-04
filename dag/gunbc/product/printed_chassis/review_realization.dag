@@ -1,7 +1,7 @@
 module product.printed_chassis.review_realization
 
 import std.types { String }
-import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
 import product.printed_chassis.cassette_review {all_parts,manifest}
@@ -173,5 +173,5 @@ fn main() -> CliWireResponse {
 
 fn bundle() -> CliWireResponse {
  if !review_model_checks(parts:all_parts(),interfaces:interfaces()) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
- match main() {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest()),json_kv(key:"program",value:json_string(s:b))])),exit:e} _=>CliWirePrintable {bytes:"Unexpected program result",exit:exit_failure(reason:"Unexpected program result")}}
+ match main() {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest()),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
 }

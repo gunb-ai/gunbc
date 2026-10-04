@@ -9,7 +9,7 @@ import product.printed_chassis.assembly_geometry {
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_extent_along_rear_io, asrock_altrad8ud_extent_depth }
 import product.printed_chassis.fan_mount {
-  arctic_p8_fan_mount, FanMountAdmitted, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
+  arctic_p8_fan_mount, FanMountAdmitted, FanMountBoreReachesMountingHoles, FanMountBoreNotEnclosedByPlate, FanMountPlateSmallerThanPattern, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
 }
 import product.printed_chassis.coupon { OpThroughHole }
 import extdeps.fans.arctic { arctic_p8_mounting_pattern }
@@ -82,13 +82,13 @@ fn fan_plate_adds() -> List<Primitive> {
  match arctic_p8_fan_mount {FanMountAdmitted {geometry:g}=>{
   let p=fan_mount_plate(g:g)
   [block(w:micrometer_count(m:p.size_x),h:micrometer_count(m:p.size_y),d:micrometer_count(m:p.size_z),x:0,y:55000,z:0)]
- } _=>[]}
+ } FanMountBoreReachesMountingHoles {bore_radius:_,hole_center_distance:_}=>[] FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_}=>[] FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_}=>[]}
 }
 fn fan_plate_cuts() -> List<Primitive> {
  match arctic_p8_fan_mount {FanMountAdmitted {geometry:g}=>{
   let p=fan_mount_plate(g:g)
   map(concat([fan_mount_bore(g:g)],fan_mount_mounting_holes(g:g)),op=>match op {OpThroughHole {diameter:d,center_x:x,center_y:y}=>round(diameter:micrometer_count(m:d),length:12000,axis:Axis3Z,x:micrometer_count(m:x)-micrometer_count(m:p.size_x)/2,y:55000+micrometer_count(m:y)-micrometer_count(m:p.size_y)/2,z:0)})
- } _=>[]}
+ } FanMountBoreReachesMountingHoles {bore_radius:_,hole_center_distance:_}=>[] FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_}=>[] FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_}=>[]}
 }
 fn fan_frame(i:Int,id:String) -> AssemblyPart {
  let outer=i!=0

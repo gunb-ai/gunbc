@@ -569,11 +569,11 @@ fn review_primitive_line(p:Primitive,action:ReviewCsgAction) -> LineEmission {
  SourceSubstitution {prefix:",",rendering:micrometre_millimetre_wire(m:l)},
  SourceSubstitution {prefix:",cq.Vector(0,0,0),cq.Vector",rendering:MillimetreRendered {wire:axis as NonEmptyStr}},
  review_dimension(prefix:").translate((",n:component(p:c,a:Axis3X)),
- SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3X=>micrometer_count(m:l) _=>0}))},
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3X=>micrometer_count(m:l) Axis3Y=>0 Axis3Z=>0}))},
  review_dimension(prefix:",",n:component(p:c,a:Axis3Y)),
- SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Y=>micrometer_count(m:l) _=>0}))},
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Y=>micrometer_count(m:l) Axis3X=>0 Axis3Z=>0}))},
  review_dimension(prefix:",",n:component(p:c,a:Axis3Z)),
- SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Z=>micrometer_count(m:l) _=>0}))}
+ SourceSubstitution {prefix:"-",rendering:micrometre_half_millimetre_wire(m:micrometer(count:match a {Axis3Z=>micrometer_count(m:l) Axis3X=>0 Axis3Y=>0}))}
  ],tail:concat("))",end))
  }
  }

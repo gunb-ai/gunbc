@@ -2,8 +2,8 @@ module test.claim.cassette_assembly_witness_test
 import std.types {Bool,List}
 import std.affine_space {signed_frame_component_count}
 import product.printed_chassis.review_realization {bundle}
-import gunbc.cli_wire {CliWirePrintable}
-import std.process {ExitSuccess}
+import gunbc.cli_wire {CliWirePrintable,CliWireUnprintable}
+import std.process {ExitSuccess,ExitFailure}
 import product.printed_chassis.assembly_geometry {AssemblyPart,part,block,Printed,Cassette,LayOnXZ,placed}
 import product.printed_chassis.assembly_review_checks {review_model_checks,within_bed}
 import product.printed_chassis.cassette_review {all_parts}
@@ -25,5 +25,5 @@ test fn oversized_piece_is_not_admitted() -> Bool {
 }
 
 test fn review_bundle_requires_the_same_admitted_source_manifest() -> Bool {
- match bundle() {CliWirePrintable {bytes:b,exit:ExitSuccess}=>string_contains(s:b,pattern:"Manifest differs from the emitted geometry")&&string_contains(s:b,pattern:"_review_shapes") _=>false}
+ match bundle() {CliWirePrintable {bytes:b,exit:e}=>match e {ExitSuccess=>string_contains(s:b,pattern:"Manifest differs from the emitted geometry")&&string_contains(s:b,pattern:"_review_shapes") ExitFailure {code:_,reason:_}=>false} CliWireUnprintable {cause:_}=>false}
 }
