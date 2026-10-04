@@ -881,11 +881,8 @@ fn group_arm_engine_capacity_lines(ctx: SparkMaterializeContext) -> String {
 // running arm, no quoting. What the capacity plan cites is read from here, never from memory of
 // upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
 data group_arm_runtime_source_modules: List<String> = [
-  "vllm.config.vllm",
-  "vllm.entrypoints.openai.serving_tokenization",
-  "vllm.entrypoints.serve.tokenize.serving",
-  "vllm.v1.engine.core",
-  "vllm.plugins",
+  "vllm.benchmarks.datasets",
+  "vllm.benchmarks.serve",
 ]
 
 fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
