@@ -2294,12 +2294,12 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 }
 
 /// One roster row as the host reads it -- only the fields it needs to gather FACTS (which file a
-/// row names, and whether it is an ImportsFixed retirement whose file must be re-derived). Every
+/// row names, and whether it is a retirement whose file must be re-derived). Every
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
-    /// `NotAReference`, read from the row view's own fields.
+    /// A retirement the host re-derives on every run to hold it true, read from the row view's
+    /// `rechecked` field, which the `.dag` derives from the row's standing.
     rechecked: bool,
 }
 
@@ -2319,7 +2319,7 @@ impl UnimportedBareProviderRosterReading {
     /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
     /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
-    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    /// before a view field existed (`rechecked`, gunbc#13116) is still a readable base.
     fn read(
         index: &MultiEntryIndex,
         entry: &str,
@@ -2354,28 +2354,16 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
-            let imports_fixed = match ctx.field(fields, "imports_fixed") {
+            let rechecked = match ctx.field(fields, "rechecked") {
                 Some(v1_interpreter::Value::Bool(b)) => *b,
                 other => {
                     return Err(format!(
-                        "{function}: row `imports_fixed` is not a Bool ({})",
+                        "{function}: row `rechecked` is not a Bool ({})",
                         floor_value_shape(other)
                     ))
                 }
             };
-            let not_a_reference = match ctx.field(fields, "not_a_reference") {
-                Some(v1_interpreter::Value::Bool(b)) => *b,
-                other => {
-                    return Err(format!(
-                        "{function}: row `not_a_reference` is not a Bool ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            rows.push(RosterRow {
-                file,
-                rechecked: imports_fixed || not_a_reference,
-            });
+            rows.push(RosterRow { file, rechecked });
         }
         Ok(Self {
             ctx,
@@ -2489,9 +2477,13 @@ fn unimported_bare_provider_standing_refusals(
     let mut carried: Vec<String> = Vec::new();
     let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     for path in &checked {
         let sf = &lookup[path.as_str()];
-        for v in unimported_bare_providers(sf, index)? {
+        let judgment = unimported_bare_provider_judgment(sf, index)?;
+        suppressed_builtin += judgment.suppressed_builtin;
+        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
+        for v in judgment.rows {
             let id = head.identity(&v.file, &v.name)?;
             hints.insert(
                 id.clone(),
@@ -2507,6 +2499,15 @@ fn unimported_bare_provider_standing_refusals(
             carried.push(id);
         }
     }
+    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
+    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
+    // the files this run judged, so growth in the kernel-method-only population is visible.
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
+         suppressed_builtin={suppressed_builtin} \
+         suppressed_kernel_method_only={suppressed_kernel_method_only}",
+        checked.len()
+    );
     let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
     let verdict = head.refusals(
         "unimported_bare_provider_roster_standing",
