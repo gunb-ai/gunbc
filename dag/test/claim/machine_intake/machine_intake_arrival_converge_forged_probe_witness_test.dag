@@ -1,0 +1,58 @@
+module test.claim.machine_intake_arrival_converge_forged_probe_witness
+
+import std.types { String, Bool, Int }
+import v2.std.algebra { filter }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CONVERGENCE FOLD'S AND THE ARRIVAL PREFIX'S SEALS, ENROLLED AS EXECUTED REDS (cut O1c-1). Every
+// carrier that reaches a decision is construction-confined: the AccessDiscover receipt (which carries
+// the current route standing), the IdentityBindProvisional receipt (which carries the subject and the
+// access instance it consumed), the admitted plan (the only input fold_convergence_run takes), and the
+// read-only remedy (the only value an Apply over a read-only phase could carry). The probe authors each
+// outside its module; this witness hands the source to the compiler through the diagnostic-census
+// harness and requires SoleConstructorViolation at each SUBJECT by name. The class-scoped control shows
+// a clean source reading the same modules through their real producers emits none.
+data forged_probe_source: String = "module probe_arrival_converge_forged\n\nimport std.types { List, NonEmptyStr }\nimport gunbc.machine_intake_phase { Arrival, AccessDiscover, IntakePhase }\nimport gunbc.machine_intake_subject { MachineIntakeSubject }\nimport gunbc.machine_intake_bmc_rotation_route { BmcRotationRouteStanding }\nimport gunbc.fleet.convergence_fold { AdmittedConvergencePlan, RankedStep, StepInstanceKey }\nimport gunbc.machine_intake_arrival_converge {\n  AccessDiscoverEstablished, IdentityBoundProvisional, ReadOnlyPhaseRemedy, AccessObservation,\n}\n\nfn forged_access(key: StepInstanceKey, access: AccessObservation, route: BmcRotationRouteStanding) -> AccessDiscoverEstablished {\n  AccessDiscoverEstablished { key: key, access: access, route: route }\n}\n\nfn forged_identity(key: StepInstanceKey, subject: MachineIntakeSubject) -> IdentityBoundProvisional {\n  IdentityBoundProvisional { key: key, consumed_access: key, subject: subject }\n}\n\nfn forged_plan(steps: List<RankedStep<IntakePhase>>, key: StepInstanceKey) -> AdmittedConvergencePlan<IntakePhase> {\n  AdmittedConvergencePlan { authority: key.step_identity, steps: steps }\n}\n\nfn forged_remedy() -> ReadOnlyPhaseRemedy {\n  ReadOnlyPhaseRemedy { phase: AccessDiscover }\n}\n"
+
+data harness_control_source: String = "module probe_arrival_converge_harness_control\nimport gunbc.fleet.convergence_fold { ConvergencePlanAdmission, admit_convergence_plan }\nimport gunbc.machine_intake_phase { IntakePhase }\nimport gunbc.host_convergence_census { host_convergence_census_standing }\nimport gunbc.machine_intake_arrival_converge { arrival_order_authority }\nfn admission() -> ConvergencePlanAdmission<IntakePhase> { admit_convergence_plan(census: host_convergence_census_standing, order: arrival_order_authority(), steps: []) }\n"
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_harness_runs_and_a_clean_source_emits_no_seal_violation() -> Bool {
+  blocking_count_for_class(c: compile_dag_diagnostic_census(harness_control_source), wanted: "SoleConstructorViolation") == 0
+}
+
+test fn forged_arrival_receipts_are_refused_at_their_literals() -> Bool {
+  let c = compile_dag_diagnostic_census(forged_probe_source)
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AccessDiscoverEstablished") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "IdentityBoundProvisional") >= 1
+}
+
+test fn a_forged_admitted_plan_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: compile_dag_diagnostic_census(forged_probe_source), wanted: "SoleConstructorViolation", subject: "AdmittedConvergencePlan") >= 1
+}
+
+test fn a_forged_read_only_remedy_is_refused_at_its_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: compile_dag_diagnostic_census(forged_probe_source), wanted: "SoleConstructorViolation", subject: "ReadOnlyPhaseRemedy") >= 1
+}
