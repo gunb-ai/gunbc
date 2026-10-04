@@ -6,7 +6,6 @@ import v2.std.anonymous_binder { anonymous_binder_mint_parameter_list }
 import v2.std.collection { Absent, Map, Present, empty_map, list_at_optional, map_insert, map_lookup }
 import v2.std.list_introduction { list_introduction_head_path, list_introduction_head_path_optional, lower_list_introduction }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

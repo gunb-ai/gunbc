@@ -17,7 +17,6 @@ import v2.std.optional {
 }
 import v2.std.node_query { declared_field_from_edge }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

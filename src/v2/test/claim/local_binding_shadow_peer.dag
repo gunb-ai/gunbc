@@ -1,7 +1,6 @@
 module v2.test.claim.local_binding_shadow_peer
 
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 
 // THE SHADOWING SYMBOL, AUTHORED HERE RATHER THAN BORROWED. The defect reproduces on any
 // module-level free function whose name a local binding reuses, and the first fixtures for it

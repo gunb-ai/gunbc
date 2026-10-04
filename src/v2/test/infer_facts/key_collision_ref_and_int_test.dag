@@ -3,7 +3,6 @@ module v2.test.infer_facts.key_collision_ref_and_int
 import v2.compiler.infer { infer }
 import v2.compiler.resolve { ResolvedTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 
 // A DECLARATION REFERENCE BESIDE AN INT LITERAL MUST INFER. Measured on main c95f906 (smart-newt-725):

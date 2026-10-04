@@ -15,7 +15,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
@@ -32,11 +31,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reaches INFER, and the Rust closure-emit door renders a function-typed declared return (`impl
 // Fn` / `Box<dyn Fn>`, the last two claims below) with the body as returned `move` closures. Removing the FunctionValueBody arm makes the module ill-formed at normalize, so
 // every positive claim here goes red with it.
-data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport v2.std.logic { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
+data fvb_direct_source: String = "module v2.test.fvb_direct\n\nimport std.types { Bool }\n\nfn fvb_direct(p: Bool) -> fn(Bool) -> Bool { fn(q) { p } }\n"
 
-data fvb_curried_source: String = "module v2.test.fvb_curried\n\nimport v2.std.logic { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
+data fvb_curried_source: String = "module v2.test.fvb_curried\n\nimport std.types { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => x, v: p) }\n"
 
-data fvb_curried_undeclared_source: String = "module v2.test.fvb_curried_undeclared\n\nimport v2.std.logic { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => fvb_undeclared_inner, v: p) }\n"
+data fvb_curried_undeclared_source: String = "module v2.test.fvb_curried_undeclared\n\nimport std.types { Bool }\n\nfn fvb_apply(f: Bool, v: Bool) -> Bool { v }\n\nfn fvb_curried(p: Bool) -> Bool { fvb_apply(f: x => y => fvb_undeclared_inner, v: p) }\n"
 
 fn fvb_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
