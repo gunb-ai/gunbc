@@ -219,7 +219,9 @@ fn argv_exact_token_equal(left: List<String>, right: List<String>) -> Bool {
   if any(left, w => string_contains(s: w, pattern: "\n")) || any(right, w => string_contains(s: w, pattern: "\n")) {
     false
   } else {
-    join(left, separator: "\n") == join(right, separator: "\n")
+    // Length first: two lists that join to the same text with different cardinalities are NOT the
+    // same argv, and the join alone would hide it whenever a word carries an embedded separator.
+    (length(xs: left) == length(xs: right)) && (join(left, separator: "\n") == join(right, separator: "\n"))
   }
 }
 

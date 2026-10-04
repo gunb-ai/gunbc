@@ -8,7 +8,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.systemd { SliceProperty, SystemdUnitProperty, ActiveState, systemd_unit_property_wire, SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command,
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
 }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point, cgroup_v2_child_path }
 
@@ -419,13 +419,15 @@ fn start_with_invocation(unit: NonEmptyStr, invocation: String, sleep_for: Strin
 }
 
 fn start_retained_payload(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> Bool {
-  match systemd_run_transient_unit_command(unit: unit, properties: properties, command_argv: command_argv) {
+  // Retained means the terminal state stays observable: the retained builder, and the argument
+  // tail only — the transport owns the "systemd-run" head.
+  match systemd_run_transient_retained_unit_command(unit: unit, properties: properties, command_argv: command_argv) {
     SystemdRunCommandRefused { reason: why } => {
       let _ = why
       false
     }
     SystemdRunCommandReady { command: command } =>
-      systemd.SystemdRun.RunTransientRetained(command_argv: argv_words(command: command)).success
+      systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command)).success
   }
 }
 

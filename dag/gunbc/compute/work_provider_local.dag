@@ -152,9 +152,11 @@ type ToolchainObservation
 fn compute_observe_toolchain(instance: HostDashboardInstance) -> ToolchainObservation {
   match compute_exec(program: compute_program(instance: instance, cap: RustcCapability), workdir: instance.repo_root as String, args: ["--version"]) {
     ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["rustc --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecRefused { reason } => ToolchainObservationRefused { detail: join(["rustc --version was refused by the launcher: ", reason], "") }
     ComputeExecOk { stdout: rustc_line, stderr: _ } =>
       match compute_exec(program: sccache_installed_binary_path, workdir: instance.repo_root as String, args: ["--version"]) {
         ComputeExecFailed { exit_code, stdout: _, stderr } => ToolchainObservationRefused { detail: join(["sccache --version exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecRefused { reason } => ToolchainObservationRefused { detail: join(["sccache --version was refused by the launcher: ", reason], "") }
         ComputeExecOk { stdout: cache_line, stderr: _ } =>
           if trim(s: rustc_line) == "" || trim(s: cache_line) == "" {
             ToolchainObservationRefused { detail: "rustc or sccache printed an empty version line" }
@@ -174,6 +176,7 @@ type SubjectResolution
 fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> SubjectResolution {
   match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
     ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git show ", commit, " exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecRefused { reason } => SubjectResolutionRefused { detail: join(["git show was refused by the launcher: ", reason], "") }
     ComputeExecOk { stdout, stderr: _ } =>
       match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
         Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
@@ -186,6 +189,7 @@ fn compute_ensure_dir(instance: HostDashboardInstance, path: String) -> Bool {
   match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: instance.repo_root as String, args: ["-d", "-m", "0755", path]) {
     ComputeExecOk { stdout: _, stderr: _ } => true
     ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => false
+    ComputeExecRefused { reason: _ } => false
   }
 }
 
@@ -380,6 +384,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
+      ComputeExecRefused { reason: _ } => ""
     })
     match systemd_run_user_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
@@ -409,6 +414,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
           summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
             ComputeExecOk { stdout: _, stderr } => stderr
             ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+            ComputeExecRefused { reason } => reason
           }),
         }
       }
@@ -751,9 +757,11 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
         let dst = join([layout.store_dir, "/", compute_basename(path: rel)], "")
         match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: layout.checkout, args: ["hash-object", src]) {
           ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed: ", stderr], "") }
+          ComputeExecRefused { reason } => OutputsMismatch { detail: join(["declared output ", rel, " could not be hashed, the launcher refused: ", reason], "") }
           ComputeExecOk { stdout, stderr: _ } =>
             match compute_exec(program: compute_program(instance: instance, cap: AttemptStateDirectoryCapability), workdir: layout.checkout, args: ["-m", "0755", src, dst]) {
               ComputeExecFailed { exit_code: _, stdout: _, stderr } => OutputsMismatch { detail: join(["declared output ", rel, " could not be stored: ", stderr], "") }
+              ComputeExecRefused { reason } => OutputsMismatch { detail: join(["declared output ", rel, " could not be stored, the launcher refused: ", reason], "") }
               ComputeExecOk { stdout: _, stderr: _ } =>
                 OutputsReturned { outputs: concat(outputs, [WorkOutput { declared: rel, blob: trim(s: stdout), store_path: dst }]) }
             }
@@ -1732,6 +1740,12 @@ fn compute_run_leased(
         summary: compute_unspawned_summary(),
         gate: opened,
       }
+    ComputeExecRefused { reason } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: CheckoutUnavailable { detail: join(["git worktree add was refused by the launcher: ", reason], "") } },
+        summary: compute_unspawned_summary(),
+        gate: opened,
+      }
     ComputeExecOk { stdout: _, stderr: _ } =>
       match compute_begin_launch(layout: layout, gate: opened) {
         AttemptGateRefused { detail: d } =>
@@ -1759,6 +1773,7 @@ fn compute_spawn_and_collect(
   let log = Filesystem.Write(path: layout.log_path, content: match run {
     ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
     ComputeExecFailed { exit_code: _, stdout, stderr } => join([stdout, stderr], "")
+    ComputeExecRefused { reason } => reason
   })
   let summary = unit_run.summary
   ComputeAttempt {

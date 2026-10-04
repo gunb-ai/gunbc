@@ -50,7 +50,9 @@ fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "s
 type SystemdSummaryPrintingWait { command: ArgvCommand }
 
 fn systemd_summary_printing_wait_argv(w: SystemdSummaryPrintingWait) -> List<String> {
-  argv_words(command: w.command)
+  // compute_exec receives the program separately, so these are the argument tail; the full
+  // argv_words would double the program head on the compute side too.
+  systemd_run_command_argument_words(command: w.command)
 }
 
 // ── THE TYPED OPTION MODEL OF systemd-run(1) AT THE GROUNDED MAJOR ─────────────────────────────
@@ -251,7 +253,9 @@ fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunP
 }
 
 fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
-  systemd_run_command_of(options: list_append(left: [RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+  // The pre-cutover scope builder led with --user --scope (the caller drops to the account's user
+  // manager); the typed builder renders the same two flags in the same order.
+  systemd_run_command_of(options: list_append(left: [RunUserManager, RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 // The full invocation, and the authority the materialized operation argv is checked against. It

@@ -9,6 +9,7 @@ import extdeps.systemd.systemd_run {
   SystemdSetenvBinding,
   RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions, SetEnv,
   systemd_run_option_words, systemd_run_transient_wait_unit_command, systemd_run_user_wait_command,
+  systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_system_scope_command,
 }
 import gunbc.systemd_run_transient {
   systemd_run_transient_wait_operation_argv_matches_authority,
@@ -72,6 +73,82 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
   ) {
     SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "one line")
     SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// ── BYTE IDENTITY, EVERY BUILDER: one control per builder shape, each pinning the words the
+// retired glued builders emitted, in the order they emitted them. A control per builder is the
+// point: the wait fixture alone proved one shape and the other builders drifted silently.
+
+// The collecting transient: --unit, --collect, the properties, then -- (the old order).
+test fn the_collecting_transient_builder_emits_unit_collect_then_properties() -> Bool {
+  match systemd_run_transient_unit_command(
+    unit: "fci1-order.service",
+    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: [
+          "systemd-run", "--unit=fci1-order.service", "--collect", "--property=MemoryMax=17179869184", "--", "/bin/true",
+        ],
+      )
+  }
+}
+
+// The retained transient: --unit, the properties, then --, with NO --collect — the terminal state
+// stays observable, which is why the retained variant exists.
+test fn the_retained_transient_builder_omits_collect() -> Bool {
+  match systemd_run_transient_retained_unit_command(
+    unit: "fci1-retained.service",
+    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: ["systemd-run", "--unit=fci1-retained.service", "--property=MemoryMax=17179869184", "--", "/bin/true"],
+      )
+  }
+}
+
+// The user wait builder: --wait --pipe --collect lead, then --user --unit, short properties, the
+// setenv bindings, then --.
+test fn the_user_wait_builder_renders_the_old_order() -> Bool {
+  match systemd_run_user_wait_command(
+    unit: "fci1-user.service",
+    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: [
+          "systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=fci1-user.service",
+          "--property=MemoryMax=17179869184", "--setenv=A=c", "--", "/bin/true",
+        ],
+      )
+  }
+}
+
+// The scope builder: --user --scope lead (the account drop runs under the user manager), long
+// properties, then --.
+test fn the_scope_builder_leads_with_user_and_scope() -> Bool {
+  match systemd_run_system_scope_command(
+    properties: [SystemdRunProperty { property: MemoryMaxProperty, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: ["systemd-run", "--user", "--scope", "--property=MemoryMax=17179869184", "--", "/bin/true"],
+      )
   }
 }
 

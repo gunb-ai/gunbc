@@ -52,12 +52,15 @@ fn test_exec(instance: HostDashboardInstance, workdir: String, args: List<String
 fn snapshot_worktree(instance: HostDashboardInstance, worktree: String) -> SnapshotResolution {
   match test_exec(instance: instance, workdir: worktree, args: ["add", "-A"]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git add -A", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+    gunbc.compute.work_provider_local.ComputeExecRefused { reason } => SnapshotRefused { step: "git add -A", detail: join(["the launcher refused: ", reason], "") }
     gunbc.compute.work_provider_local.ComputeExecOk { stdout: _, stderr: _ } =>
       match test_exec(instance: instance, workdir: worktree, args: ["write-tree"]) {
         gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git write-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+        gunbc.compute.work_provider_local.ComputeExecRefused { reason } => SnapshotRefused { step: "git write-tree", detail: join(["the launcher refused: ", reason], "") }
         gunbc.compute.work_provider_local.ComputeExecOk { stdout: tree, stderr: _ } =>
           match test_exec(instance: instance, workdir: worktree, args: ["commit-tree", trim(s: tree), "-p", "HEAD", "-m", "gunbc compute snapshot of the attempt worktree"]) {
             gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git commit-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
+            gunbc.compute.work_provider_local.ComputeExecRefused { reason } => SnapshotRefused { step: "git commit-tree", detail: join(["the launcher refused: ", reason], "") }
             gunbc.compute.work_provider_local.ComputeExecOk { stdout: commit, stderr: _ } =>
               if trim(s: commit) == "" { SnapshotRefused { step: "git commit-tree", detail: "printed no commit id" } } else { SnapshotResolved { commit: trim(s: commit) } }
           }
@@ -74,6 +77,7 @@ type TreeListing
 fn list_tree(instance: HostDashboardInstance, worktree: String, commit: String) -> TreeListing {
   match test_exec(instance: instance, workdir: worktree, args: ["ls-tree", "-r", "--name-only", commit]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => TreeListingRefused { detail: join(["git ls-tree exited ", to_string(value: exit_code), ": ", stderr], "") }
+    gunbc.compute.work_provider_local.ComputeExecRefused { reason } => TreeListingRefused { detail: join(["the launcher refused: ", reason], "") }
     gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => TreeListed { paths: filter(stdout.split(sep: "\n"), p => trim(s: p) != "") }
   }
 }
@@ -81,6 +85,7 @@ fn list_tree(instance: HostDashboardInstance, worktree: String, commit: String) 
 fn show_file(instance: HostDashboardInstance, worktree: String, commit: String, path: String) -> String? {
   match test_exec(instance: instance, workdir: worktree, args: ["show", join([commit, ":", path], "")]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => none
+    gunbc.compute.work_provider_local.ComputeExecRefused { reason: _ } => none
     gunbc.compute.work_provider_local.ComputeExecOk { stdout, stderr: _ } => Present { value: stdout }
   }
 }

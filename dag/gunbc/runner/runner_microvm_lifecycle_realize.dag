@@ -78,7 +78,7 @@ import extdeps.systemd.journalctl
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
-  systemd_run_transient_unit_command, systemd_run_command_argument_words,
+  systemd_run_transient_unit_command, systemd_run_transient_retained_unit_command, systemd_run_command_argument_words,
 }
 import gunbc.runner_microvm_lifecycle {
   CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
@@ -1172,7 +1172,9 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
   match attempt_jailer_at_launch(receipt: receipt) {
     Absent => VmmStartFailed { unit: unit, detail: "lease expired during staging or launch clock is unreadable" }
     Present { value: jailer } =>
-      match systemd_run_transient_unit_command(
+      // RunTransientRetained exists so the terminal state stays observable: the invocation must
+      // NOT carry --collect, so this builds through the retained shape, not the collecting one.
+      match systemd_run_transient_retained_unit_command(
         unit: unit,
         properties: concat([
           runner_microvm_attempt_slice_property(attempt: attempt),
