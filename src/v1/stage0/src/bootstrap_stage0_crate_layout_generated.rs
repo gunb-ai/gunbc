@@ -11,7 +11,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "data_initializer_identity.rs",
     "declaration_index.rs",
     "closure_identity.rs",
-    "shared_typecheck_store.rs",
     "recorded_fixture.rs",
     "phase_profile.rs",
     "pre_push.rs",
