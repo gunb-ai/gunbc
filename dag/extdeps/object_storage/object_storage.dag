@@ -47,3 +47,27 @@ type ObjectOperation
 type ObjectGetResult
   = ObjectGetFound { id: ObjectId, attributes: ObjectAttributes }
   | ObjectGetNotFound
+
+// ── CONDITIONAL WRITES: THE PRECONDITION A PUT CARRIES ─────────────────────────────────────────
+//
+// HTTP conditional requests (RFC 9110 section 13.1): an entity tag is the server's opaque validator
+// for one stored representation; If-None-Match: * makes a write create-only, and If-Match: <tag>
+// makes it replace exactly the representation the writer last read. A 412 answers that the
+// precondition did not hold and NOTHING was written. Which of the two a 412 means is a property of
+// the precondition sent, so the precondition is one closed value, never two independent flags (a
+// put cannot be both create-only and replace-matching).
+data rfc9110_conditional_requests_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110#section-13.1"
+  }
+}
+
+type ObjectEntityTag {
+  value: NonEmptyStr
+}
+
+type ObjectPutPrecondition
+  = PutUnconditional
+  | PutIfAbsent
+  | PutIfMatch { tag: ObjectEntityTag }

@@ -1,6 +1,7 @@
 module extdeps.transports.shell_declared
 
 import std.types { Int, String }
+import v2.std.optional { Present }
 
 // THE DECLARED VOCABULARY OF THE SHELL TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names and its exit-status patterns -- apart from

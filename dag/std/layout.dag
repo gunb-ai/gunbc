@@ -1,6 +1,7 @@
 module std.layout
 
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.types { List }
 
 type Doc
   = DocEmpty
