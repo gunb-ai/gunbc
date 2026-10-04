@@ -921,6 +921,23 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
       decl(prop: MaxWidth, value: "100%"),
     ] },
+    StaticRule { selector: ClassSelector { name: "issue-inline-assign" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: TextAlign, value: "left"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "issue-inline-editor" }, decls: [
+      decl(prop: Position, value: "fixed"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Overflow, value: "visible"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+    ] },
     ResponseRule { subject: RawSelector { text: ".issue-sort" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
       decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: TextDecoration, value: "underline")
@@ -979,7 +996,7 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: ClassSelector { name: "issue-cell-assignee" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: JustifyContent, value: "center"),
+      decl(prop: JustifyContent, value: "flex-start"),
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
     ] },

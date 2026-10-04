@@ -812,7 +812,7 @@ fn serve_issue_assignment_context_over(
               Absent => serve_text_response(status: 503, content_type: text_plain_utf8, body: "Cannot prepare a stable assignment operation. Try again before submitting.")
               Present { value: nonce } => serve_text_response(
                 status: 200, content_type: application_json_utf8,
-                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce))
+                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce, node_id: node_id))
             }
         }
       }

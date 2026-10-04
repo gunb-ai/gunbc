@@ -50,5 +50,5 @@ test fn approval_shell_has_no_application_runtime_or_session_controls() -> Bool 
   !string_contains(s: page, pattern: "<script")
     && !string_contains(s: page, pattern: "data-account-session")
     && !string_contains(s: page, pattern: "<button")
-    && string_contains(s: page, pattern: "href=\"/favicon.svg\"")
+    && string_contains(s: page, pattern: "href=\"/favicon-gunb.svg\"")
 }

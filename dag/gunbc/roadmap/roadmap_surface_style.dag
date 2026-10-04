@@ -1,7 +1,7 @@
 module gunbc.roadmap_surface_style
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap_component { roadmap_row_height }
-import extdeps.google.issue_tracker { issue_results_columns, IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee, IssueColumnStatus, IssueColumnLastModified }
+import extdeps.google.issue_tracker { issue_results_columns, IssueResultsColumn, IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee, IssueColumnStatus, IssueColumnLastModified }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, WithinSubject, PseudoElementOfSubject, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { CustomProperty, AlignItems, Background, Border, BorderBottom, BorderLeft, BorderRadius, BoxShadow, Color, Cursor, Display, Fill, Flex, FlexDirection, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridColumn, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginBottom, MarginLeft, MarginRight, MarginTop, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, PaddingLeft, Position, Stroke, TextDecoration, TextTransform, Transform, WhiteSpace, Width, RawProperty }
@@ -9,14 +9,20 @@ import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, h
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
 
 // Local control geometry needs wider priority badges and an intrinsic modified heading.
-// Keep the upstream column roster; do not change the observed upstream layout model.
+// App ordering is distinct from the observed upstream roster. Header, rows and tracks share it.
+fn workspace_issue_columns() -> List<IssueResultsColumn> {
+  sort_by(issue_results_columns, c => match c.kind {
+    IssueColumnPriority => 0 IssueColumnTitle => 1 IssueColumnStatus => 2
+    IssueColumnAssignee => 3 IssueColumnLastModified => 4
+  })
+}
 fn workspace_issue_tracks() -> String {
-  join(map(issue_results_columns, c => match c.kind {
+  join(map(workspace_issue_columns(), c => match c.kind {
     IssueColumnPriority => "minmax(6ch, max-content)"
     IssueColumnLastModified => "max-content"
-    IssueColumnTitle => c.track as String
-    IssueColumnAssignee => c.track as String
-    IssueColumnStatus => c.track as String
+    IssueColumnTitle => "minmax(0, 1fr)"
+    IssueColumnAssignee => "minmax(18ch, 26ch)"
+    IssueColumnStatus => "minmax(12ch, max-content)"
   }), " ")
 }
 
@@ -1075,6 +1081,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: RawProperty { name: "top" }, value: scale_var(t: height_control)),
       decl(prop: RawProperty { name: "right" }, value: "0"),
       decl(prop: RawProperty { name: "left" }, value: "auto"),
+      decl(prop: MinWidth, value: "min(32ch, 85vw)"),
       decl(prop: Width, value: "100%")
     ] },
     StaticRule { selector: RawSelector { text: ".instrument-cell" }, decls: [

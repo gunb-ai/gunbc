@@ -1,4 +1,5 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
@@ -124,7 +125,7 @@ import extdeps.google.issue_tracker {
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnLastModified,
-  issue_results_columns, issue_results_column_kind_wire,
+  issue_results_column_kind_wire,
   avatar_initials_of, issue_avatar_standing_wire, AvatarStanding, AvatarAbsent,
 }
 import gunbc.roadmap_workflow_stage {
@@ -511,23 +512,28 @@ fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
 // answers (see gunbc.roadmap_serve serve_issue_assign_response_over), refusing with the launch's
 // typed vocabulary when fabric cannot start.
 fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String = "", command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
-  let suggestions = filter(issue_assign_suggestions(viewer: viewer, recents: recents), p => issue_assign_selector(p: p, profiles: view.profiles) != "")
+  issue_assign_form_nodes(node_id: view.node_id, profiles: view.profiles, viewer: viewer, recents: recents, expected_revision: expected_revision, current_assignee: current_assignee, command_context: command_context)
+}
+
+// One form producer for the issue rail and the session-loaded workspace editor.
+fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String, command_context: IssueFormContext) -> List<Fragment> {
+  let suggestions = filter(issue_assign_suggestions(viewer: viewer, recents: recents), p => issue_assign_selector(p: p, profiles: profiles) != "")
   [ el_attrs("form", [
       attr(name: "class", value: "issue-assign-form site-choice site-choice-rich" ),
       attr(name: "data-site-choice", value: "rich"),
       attr(name: "method", value: "post" ),
       attr(name: "enctype", value: "application/x-www-form-urlencoded" ),
-      attr(name: "action", value: join(["/issue/", view.node_id, "/assign"], "") ),
+      attr(name: "action", value: join(["/issue/", node_id, "/assign"], "") ),
     ], [
       el_attrs("input", [ attr(name: "name", value: "key"), attr(name: "type", value: "hidden"), attr(name: "value", value: if command_context.operation == "" { "" } else { concat(command_context.operation, "-assign") }) ], []),
       el_attrs("input", [ attr(name: "name", value: "csrf"), attr(name: "type", value: "hidden"), attr(name: "value", value: command_context.csrf) ], []),
-      site_choice_input(id: "issue-assign-input", name: "assignee", class_name: "issue-assign-input", label: "Assignee", placeholder: "Unassigned — choose a person or group", value: current_assignee, list_id: "issue-assign-options"),
+      site_choice_input(id: concat("issue-assign-input-", node_id), name: "assignee", class_name: "issue-assign-input", label: "Assignee", placeholder: "Unassigned — choose a person or group", value: current_assignee, list_id: concat("issue-assign-options-", node_id)),
       el_attrs("input", [
         attr(name: "name", value: "expected_revision" ),
         attr(name: "type", value: "hidden" ),
         attr(name: "value", value: expected_revision ),
       ], []),
-      site_choice_list(id: "issue-assign-options", options: map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: view.profiles)), hidden: true, empty_label: "No matching assignees"),
+      site_choice_list(id: concat("issue-assign-options-", node_id), options: map(suggestions, p => issue_assign_suggestion_nodes(p: p, profiles: profiles)), hidden: true, empty_label: "No matching assignees"),
       el_attrs("button", [
         attr(name: "class", value: "issue-assign-submit issue-action-text" ),
         attr(name: "hidden", value: ""),
@@ -536,7 +542,7 @@ fn issue_assign_action_nodes(view: WorkRowView, viewer: String, recents: List<Ev
         attr(name: "data-idiom", value: issue_button_idiom_wire(idiom: IssueButtonText) ),
         attr(name: "data-action-route", value: "assign" ),
         attr(name: "data-action-state", value: issue_action_availability_wire(a: IssueActionEnabled) ),
-        attr(name: "data-node", value: view.node_id ),
+        attr(name: "data-node", value: node_id ),
         attr(name: "title", value: "Assigning Fabric starts a workflow run; review before confirming" ),
       ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]),
     ]) ]
@@ -588,6 +594,7 @@ fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProf
     attr(name: "data-workflow", value: if event_principal_is_fabric(p: p) { "1" } else { "0" }),
     attr(name: "class", value: "site-choice-option issue-assign-suggestion" ),
     attr(name: "data-principal", value: event_principal_label(p: p) ),
+    attr(name: "data-assignee-label", value: workspace_assignee_label(holder: p, profiles: profiles)),
     attr(name: "data-kind", value: suggestion_kind_wire(p: p) ),
   ], concat(
     [ issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: p)) ],
@@ -811,8 +818,8 @@ fn issue_assignee_chip_text(holder: EventPrincipal, profiles: List<PrincipalProf
   }
 }
 
-// THE DETAIL ACTION BAR: the durable Assign form alone (owner ruling 2026-09-25 — the table rows
-// and the detail header carry no execution buttons; see issue_assign_action_nodes for the ruling).
+// The issue rail and the on-demand workspace editor share the durable Assign form
+// (owner request 2026-10-04). Workflow selection still needs its explicit commit.
 fn issue_detail_action_bar_nodes(view: WorkRowView, viewer: String, recents: List<EventPrincipal>, expected_revision: String, current_assignee: String = "", command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
   issue_assign_action_nodes(view: view, current_assignee: current_assignee, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)
 }
@@ -1662,6 +1669,16 @@ fn issue_line_cell_class(kind: IssueResultsColumnKind) -> String {
   join(["issue-cell issue-cell-", issue_results_column_kind_wire(kind: kind)], "")
 }
 
+// Names are preferred for people; groups and legacy identities retain their full email.
+fn workspace_assignee_label(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> String {
+  match holder {
+    LegacyEmailPrincipal { email, authentication_unestablished: _ } => email as String
+    EventPrincipalAuthenticated { ref: _ } =>
+      if event_principal_is_fabric(p: holder) { fabric_display_alias as String }
+      else { event_principal_display_with_profile(p: holder, profiles: profiles).name }
+  }
+}
+
 fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> List<Fragment> {
   match col.kind {
     IssueColumnPriority => [el_attrs("span", [
@@ -1685,7 +1702,10 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
           Absent => [ txt(issue_assignee_unassigned_display as String) ]
-          Present { value: holder } => issue_assignee_chip_node(holder: holder, profiles: view.profiles)
+          Present { value: holder } => [
+            issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
+            el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
+          ]
         }) ]
     IssueColumnStatus => [el_attrs("span", [attr(name: "class", value: "taskbar-signal issue-status"), attr(name: "title", value: bar.signal)], [txt(issue_status_label(view: view))])]
     IssueColumnLastModified => []
@@ -1739,7 +1759,7 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, members
         attr(name: "data-search", value: issue_search_value(view: view) ),
         attr(name: "data-summary-only", value: "" ) ]),
     children: [ el_attrs("div", [attr(name: "class", value: "issue-line"), attr(name: "role", value: "presentation")],
-      map(issue_results_columns, c => el_attrs("span", [
+      map(workspace_issue_columns(), c => el_attrs("span", [
         attr(name: "class", value: issue_line_cell_class(kind: c.kind) ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
         attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar, priority: priority) ),
@@ -1764,7 +1784,7 @@ fn workspace_column_label(col: IssueResultsColumn) -> String {
 
 fn issue_table_header_nodes() -> Fragment {
   el_attrs("div", [attr(name: "class", value: "issue-table-header"), attr(name: "role", value: "row")],
-    map(issue_results_columns, c =>
+    map(workspace_issue_columns(), c =>
       el_attrs("span", [
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),

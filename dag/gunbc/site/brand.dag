@@ -4,20 +4,23 @@ import std.markup { Fragment, attr }
 import gunbc.site.markup { el_attrs }
 import gunbc.site.robot_mark { robot_mark_ink, robot_mark_badge_background }
 import gunbc.design.palette { swatch_paint }
-import gunbc.site.avatar_marks { avatar_robot_face }
 import extdeps.languages.html { serialize_html_source }
 import extdeps.http.server { MediaType, TopLevelImage }
 
-data site_favicon_path: String = "/favicon.svg"
+data site_favicon_path: String = "/favicon-gunb.svg"
 data site_favicon_type: MediaType = MediaType { top_level: TopLevelImage, subtype: "svg+xml", parameters: [] }
 
 // Canonical gunb mark, copied from gunb-ai/frontend legacy/moodboard.html #stoic-idle.
 // Keep the workflow robot identity separate from the site brand.
 fn site_brand_mark() -> Fragment {
   el_attrs("svg", [attr(name: "class", value: "site-brand-mark"), attr(name: "viewBox", value: "0 0 120 120"), attr(name: "role", value: "img"), attr(name: "aria-label", value: "gunb")], [
-    el_attrs("g", [attr(name: "transform", value: "translate(-12 -12) scale(1.2)")], [
-      el_attrs("path", [attr(name: "fill-rule", value: "evenodd"), attr(name: "fill", value: "currentColor"), attr(name: "d", value: "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z")], [])
-    ])
+    site_brand_geometry()
+  ])
+}
+
+fn site_brand_geometry() -> Fragment {
+  el_attrs("g", [attr(name: "transform", value: "translate(-12 -12) scale(1.2)")], [
+    el_attrs("path", [attr(name: "fill-rule", value: "evenodd"), attr(name: "fill", value: "currentColor"), attr(name: "d", value: "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M35,40 A8,8 0 0,1 35,56 A8,8 0 0,1 35,40 Z M85,40 A8,8 0 0,1 85,56 A8,8 0 0,1 85,40 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z")], [])
   ])
 }
 
@@ -29,7 +32,7 @@ fn site_brand_link() -> Fragment {
 fn site_favicon_source() -> String {
   let svg = el_attrs("svg", [attr(name: "xmlns", value: "http://www.w3.org/2000/svg"), attr(name: "viewBox", value: "0 0 128 128"), attr(name: "color", value: swatch_paint(sw: robot_mark_ink))], [
     el_attrs("rect", [attr(name: "width", value: "128"), attr(name: "height", value: "128"), attr(name: "rx", value: "28"), attr(name: "fill", value: swatch_paint(sw: robot_mark_badge_background))], []),
-    el_attrs("g", [attr(name: "transform", value: "translate(10 12) scale(.9)")], [avatar_robot_face(antenna: true)]),
+    el_attrs("g", [attr(name: "transform", value: "translate(10 12) scale(.9)")], [site_brand_geometry()]),
   ])
   serialize_html_source(node: svg)
 }

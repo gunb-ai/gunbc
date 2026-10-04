@@ -1956,22 +1956,14 @@ test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
   }
 }
 
-// THE ASSIGNEE CELL (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc from
-// THE ASSIGNEE CELL (owner ruling 2026-09-25, "make assignee always be the pfp (or a
-// default/placeholder) of the email account"): the cell renders the principal's AVATAR CHIP — a
-// fixed-size circular chip, deterministic initials under the avatar law (photo when resolved, the
-// /avatar realization is the follow-up), the workflow badge for Fabric — NEVER the email text
-// (the full identity rides the title attribute). An unassigned issue renders the model's "--"
-// placeholder, the capture-verified unassigned spelling (34 of the 50 saved rows in "test -
-// Chromium.html"). The fixture: page-task-one holds an in-progress standing (by
-// "operator@gunb.ai"); page-task-two and the project hold none — one row shows the chip, two show
-// the placeholder, and no cell carries a link or button.
+// The workspace shows the identity beside its avatar and retains a session-gated editor.
 test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
       occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 1
+        && string_contains(s: table, pattern: "issue-assignee-text")
         && occurrence_count(s: table, pattern: ">--</button>") == 2
         && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\" disabled=\"disabled\"") == 3
         && string_contains(s: table, pattern: "Sign in to assign this issue; checking session.")
@@ -2014,9 +2006,9 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
         && occurrence_count(s: table, pattern: "class=\"issue-col issue-col-") == count(issue_results_columns)
         && all(issue_results_columns, c => occurrence_count(s: table, pattern: join(["data-col=\"", issue_results_column_kind_wire(kind: c.kind), "\""], "")) == 4)
         && marker_before(s: row_body, first: "data-col=\"priority\"", second: "data-col=\"title\"")
-        && marker_before(s: row_body, first: "data-col=\"title\"", second: "data-col=\"assignee\"")
-        && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"status\"")
-        && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
+        && marker_before(s: row_body, first: "data-col=\"title\"", second: "data-col=\"status\"")
+        && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"assignee\"")
+        && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"last-modified\"")
         && string_contains(s: row_body, pattern: "href=\"/issue/page-task-one\"")
         && string_contains(s: row_body, pattern: "data-sort-value=\"9\"")
         && !string_contains(s: table, pattern: "data-col=\"type\"")
