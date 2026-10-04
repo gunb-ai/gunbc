@@ -18,6 +18,7 @@ import gunbc.boot_medium {
   stock_installer_boot_medium,
 }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.managed_host_boot_handoff { CredentialPathGiven, CredentialPathMissing, boot_handoff_password_file, boot_handoff_admission_probe_of }
 import gunbc.managed_host_boot {
   BootSubjectAdmitted,
   BootSubjectRefused,
@@ -45,6 +46,8 @@ fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation
     redfish_virtual_media_probe: o.redfish_virtual_media_probe,
     successful_read_surfaces: o.successful_read_surfaces,
     successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
   }
 }
 
@@ -160,4 +163,27 @@ test fn w_the_stock_installer_medium_is_read_off_its_upstream_row() -> Bool {
   (stock_installer_boot_medium.image_name as String) == "ubuntu-24.04.3-live-server-arm64.iso"
     && (stock_installer_boot_medium.digest as String) == "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
     && (stock_installer_boot_medium.export.dir as String) == "/srv/bmc"
+}
+
+// THE HANDOFF REFUSES AN EMPTY CREDENTIAL PATH BEFORE ANY CONTROLLER WRITE, as the unit's handoff did:
+// the empty path is a typed missing input, never a placeholder filename handed to ipmitool.
+test fn w_an_empty_credential_path_is_missing_not_a_filename() -> Bool {
+  (match boot_handoff_password_file(raw: "") { CredentialPathMissing => true  CredentialPathGiven { path: _ } => false })
+    && (match boot_handoff_password_file(raw: "/run/pw") { CredentialPathGiven { path: p } => (p as String) == "/run/pw"  CredentialPathMissing => false })
+}
+
+// THE ADMISSION PROBE OVER EVERY MANAGED HOST'S REAL ROWS: each row admits its controller through its
+// binding and its empty-capability control refuses, so the fold discriminates on live data. The
+// unbound arm is the RED: the same row beside another controller's access is reported, not probed.
+test fn w_the_handoff_admission_discriminates_on_every_managed_hosts_rows() -> Bool {
+  managed_hosts() |> all(h => {
+    let real = match boot_handoff_admission_probe_of(host: h) { Absent => true  Present { value: _ } => false }
+    let crossed = match h.access {
+      BmcAccessUnobserved { endpoint: _ } => h
+      BmcAccessObserved { observation: o } =>
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    }
+    let red = match boot_handoff_admission_probe_of(host: crossed) { Present { value: why } => string_contains(s: why, pattern: "observed and secured controllers differ")  Absent => false }
+    real && red
+  }) && count(managed_hosts()) == 1
 }
