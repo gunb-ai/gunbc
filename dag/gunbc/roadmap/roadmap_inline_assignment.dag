@@ -60,9 +60,9 @@ fn inline_assignment_option(session: AuthenticatedSession, p: EventPrincipal, pr
 // before — the never-blocks law), and the operation parameter rides Cut 1's retry idempotency.
 fn inline_assignment_context_body(session: AuthenticatedSession, events: List<RoadmapEventEnvelope>, recents: List<EventPrincipal>, profiles: List<PrincipalProfile>, operation: String = "", node_id: String = "") -> String {
   serialize_json(v: json_object(members: [
-    json_kv(key: "picker_html", value: json_string(s: match try_serialize_html_source(node: el_class_wrap(nodes: issue_assign_form_nodes(node_id: node_id, profiles: profiles, viewer: principal_ref_label(p: session.principal), recents: recents, expected_revision: issue_chain_head_id(envs: events), current_assignee: "", command_context: IssueFormContext { operation: operation, csrf: session.csrf.token as String }))) {
+    json_kv(key: "picker_html", value: json_string(s: if node_id == "" { "" } else { match try_serialize_html_source(node: el_class_wrap(nodes: issue_assign_form_nodes(node_id: node_id, profiles: profiles, viewer: principal_ref_label(p: session.principal), recents: recents, expected_revision: issue_chain_head_id(envs: events), current_assignee: "", command_context: IssueFormContext { operation: operation, csrf: session.csrf.token as String }))) {
       EmitOk { html } => html EmitRejected { reason: _ } => ""
-    })),
+    } })),
     json_kv(key: "key", value: json_string(s: operation)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
     json_kv(key: "expected_revision", value: json_string(s: issue_chain_head_id(envs: events))),
