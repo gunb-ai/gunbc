@@ -1017,8 +1017,21 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
   Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Empty {} }
 }
 
+// PROVEN, OVER THE NEW-WITNESS EVAL-STEP BUDGET (72300) ON THIS PR'S FLOOR OF RECORD, admitted by ruling of
+// sharp-raven-357 (v2 native mgr, 2026-10-04) as two rows, never folded, so each cost stays attributable:
+// v2.test.parse.keyword_value_name_parse kvn_bool_literal_pattern_control_holds 76109 steps and
+// kvn_contextual_pattern_binder_control_holds 77441 steps, floor of record run 37167363297 / job 111332996751
+// at gunbc#13168 head 2c91990b011. REASON: each subject is already the minimal construct (one data-initializer
+// match arm with one field pattern), and the cost is the interpreted tokenize/parse floor -- a one-line source
+// costs ~42k on its own. Not a fixture-shape problem; no restructure is owed. TRIGGER: the interpreter's
+// per-source tokenize and parse cost falls below the new-witness budget, or parse claims are evaluated on the
+// native route.
+fn floor_cost_debt_proven_chunk_22() -> List<String> {
+  Cons { head: "v2.test.parse.keyword_value_name_parse.kvn_bool_literal_pattern_control_holds", tail: Cons { head: "v2.test.parse.keyword_value_name_parse.kvn_contextual_pattern_binder_control_holds", tail: Empty {} } }
+}
+
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Empty {} } } } } } } } } } } }}}}}}}}}}}}
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Cons { head: floor_cost_debt_proven_chunk_22(), tail: Empty {} } } } } } } } } } } } }}}}}}}}}}}}}
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
