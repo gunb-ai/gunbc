@@ -21,7 +21,7 @@ import gunbc.auth.approval_device_enrolment_code_issue { enrolment_code_issue_re
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import std.measure { byte_size_count }
