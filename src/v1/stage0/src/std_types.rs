@@ -2,7 +2,6 @@
 // Source module: std.types
 
 use self::AuthScheme::*;
-use self::Bool::*;
 use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::TopologyNodeKind::*;
@@ -166,23 +165,7 @@ pub fn canonical_container_names() -> Rc<Vec<String>> {
     )))
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum Bool {
-    True,
-    False,
-}
-// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)
-impl From<Bool> for bool {
-    fn from(b: Bool) -> bool {
-        match b {
-            Bool::True => true,
-            Bool::False => false,
-        }
-    }
-}
+pub type Bool = bool;
 
 pub type Unit = ();
 

@@ -1,5 +1,6 @@
 module v2.std.qualified_name
 
+import std.types { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -15,9 +16,6 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { HeadAbsent, HeadFound, fold_list, fold_list_node, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,
@@ -25,9 +23,8 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.logic { Bool }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
-import v2.std.node { Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel }
+import v2.std.node { Atom, Conj, Edge, EdgeLabel, Node, NodeFold, Positional, Symbol, TypeNode, DeclarationReferenceKind, LexicalReferenceKind, MarkedReference, NotMarkedReference, ParameterReferenceKind, ResolvedReferenceKind, fold_node, resolved_reference_kind_marker, resolved_reference_body_kind, node_synthetic, node_with_occurrence_id, symbol_eq, symbol_intern_lexeme, symbol_lexeme, Authored, core_edge_label, StructuralLabel, ComputationNode }
 import v2.std.text { String }
 
 type QualifiedName = FreeMonoid<Symbol>

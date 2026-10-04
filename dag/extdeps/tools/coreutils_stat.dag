@@ -44,6 +44,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // %a IS THE ACCESS BITS IN OCTAL WITH NO INTERPRETATION. extdeps.access.posix owns what those digits
 // MEAN and reads them back through file_mode_of_octal_text; PathMode's whole job is to fetch the
 // spelling.
+// %d IS THE DEVICE NUMBER OF THE FILESYSTEM HOLDING THE PATH (st_dev), in decimal. Two paths with
+// different numbers are on different filesystems, which is what decides whether link(2) between
+// them can succeed (extdeps.filesystem.filesystem_io LinkCreateNew's cross-device refusal).
 service coreutils.Stat {
   operation PathOwnership {
     requires none
@@ -69,6 +72,24 @@ service coreutils.Stat {
     }
     readonly
     transport shell { argv: ["stat", "-c", "%s", "--", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "stat could not read the path"
+    }
+    mock_response {
+      0 => { size_text: "0", success: true } "hermetic coreutils.Stat.PathSize: the empty file's size. A literal, as every extdeps mock arm is (crypto.Sha256Sum.File's note records the interpolation that never replayed), and chosen to agree with that mock's empty-input digest, so a hermetic reading of a staged file describes one consistent file -- the empty one -- rather than a digest of nothing beside the size of something."
+    }
+  }
+
+  operation PathDevice {
+    requires none
+    input { path: NonEmptyStr }
+    output {
+      device_text: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["stat", "-c", "%d", "--", "{path}"] }
     exit {
       0 => Unit
       nonzero => String "stat could not read the path"

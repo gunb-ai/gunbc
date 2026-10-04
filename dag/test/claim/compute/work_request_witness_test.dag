@@ -14,9 +14,9 @@ import gunbc.compute.work_provider_local {
   compute_stuck_reservation_remedy,
   UnitLifecycleObservations, unit_lifecycle_decide, unit_population,
   UnitPopulation, PopulationOccupied, PopulationEmpty, PopulationUnknown,
-  compute_kill_mode_property, compute_kill_mode_value,
   UnitPropertyReading, unit_property_from_shell,
 }
+import gunbc.compute.unit_bounds { compute_kill_mode_property, compute_kill_mode_value }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,

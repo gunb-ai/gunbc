@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.work_after_a_decided_verdict_delays_the_exit_a_caller_reads
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data work_after_a_decided_verdict_delays_the_exit_a_caller_reads: RecurringFailureMode = RecurringFailureMode {
+  identity: "work_after_a_decided_verdict_delays_the_exit_a_caller_reads" as NonEmptyStr,
+
+  receipts: [
+    "**work after a decided verdict delays the exit a caller reads** (a process decides its answer, then frees its loaded state before ending -- destructors over the whole interpreter graph and libc exit's thread-local destructors -- so a caller that judges it by PROCESS EXIT within an allowance sees a hung or unfinished process whose verdict was already success).",
+
+    "SPECIMEN (2026-10-03, fleet-converge run 37102391062, job mtcollins1-boot). The host booted fully and the boot exited 0, but the step went red with 'watcher result unfinished'. The SOL notice watcher (gunbc.machine_intake_mtcollins1_sol_notice mtcollins1_sol_notice_wet) saw the trap's stop at 08:43:07.52Z and its final drain decided success within ~10 ms; the process then outlived the trap's 10 s tail --pid allowance (gunbc.machine_intake_mtcollins1_boot_run mtcollins1_sol_notice_final_allowance). Measured locally on the watcher entry, stop to process end: 27.2 s on the seed as it was (constant in pass count: the same for 30 and 300 passes), 12.9 s with the run_verb ctx/graph drop skipped, ~1.9 s with Verdict::apply also ending by _exit; 111 s between the last stderr line and process end once under host swap pressure.",
+
+    "WHY IT IS A CLASS: the cost is invisible to every check that reads the verdict -- the result is right and the exit status is right -- and appears only to a caller that bounds the process by its end, which every step trap, timeout and supervisor does. It grows with the loaded corpus, not with the work the entry performed, so it worsens as the tree grows without any change to the entry. A sibling instance was met and partly repaired in claim_executor (v1_compiler.cli_run release_process_caches_at_exit, which forgets named caches and documents an unmeasured residue); on the gunbc run path that helper released nothing and left 5.9 s of exit-time residue, so a per-cache release does not close the class.",
+
+    "REPAIR (this row's PR): the gunbc run verb forgets its interpreter context and resolved graph once the verdict is decided, and Verdict::apply flushes both standard streams and ends by _exit, after an audit that nothing either owns, and no thread-local or atexit hook on these paths, holds a file, child, lock or lease. RUNG found at 1 (the harm occurred: a successful boot reported red). NOW 1 for the class: the repair is in place but no enrolled claim fails when exit latency after the verdict regresses -- the before/after figures come from a local instrument (start the watcher entry over scratch capture files, write the stop file, time stop to process end). CEILING 2: the latency is a measured quantity, so a gate can bound it; nothing makes post-verdict work unwritable in the seed's host Rust. NEXT TRIGGER, capability not artifact: a wet claim that launches the built gunbc on a real closure and asserts that its process ends within a declared bound of its last effect, enrolled within the floor's cost budget -- sufficient to go red on the seed as it was, for every gunbc run entry, not only the watcher.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_sol_notice", decl_name: "mtcollins1_sol_notice_wet"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_notice_final_allowance"),
+  ],
+}

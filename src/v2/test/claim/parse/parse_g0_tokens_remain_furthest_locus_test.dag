@@ -18,7 +18,6 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 

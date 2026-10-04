@@ -98,22 +98,12 @@ test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
   )
 }
 
-// THE BOOL ROW ON THE EMITTED PATH, re-pinned under the uniform kernel precedence
-// (direct_import_export_precedence_note, kernel installation independent of import cardinality):
-// a bare direct import of the kernel spelling `Bool` cannot displace kernel identity, so a kernel
-// true at this boundary emits the host keyword. The pre-precedence expectation (structural
-// constructor) held only by ancestry occupancy -- a single-import module skipped the kernel
-// overlay, so v2.std.logic.Bool won by leak, not by rule. The structural Bool image becomes
-// reachable again when namespace Rule-1 dissolves the union leak; until then this row is the
-// discriminating red that fires if leak-dependent resolution is reintroduced.
-test fn w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword() -> Bool {
-  compile_dag_rust_emit_check(
-    "module test.claim.structural_bool_probe\nimport v2.std.logic { Bool }\nfn probe() -> Bool { true }\nfn probe_false(b: Bool) -> Bool { false }\n",
-    "src/test_claim_structural_bool_probe.rs",
-    ["{\n    true\n}", "{\n    false\n}"],
-    ["Bool::True", "Bool::False"]
-  )
-}
+// w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword is RETIRED as dissolution
+// (DESIGN 4b(4)): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak, and the
+// Bool de-fork deleted that declaration, so the leak it guarded has no declaration to leak from and
+// its red can no longer be written. It is not re-subjected to a user-declared `Bool = True | False`
+// fixture: on this route that is a different class, the local_bool_coproduct_probe specimen, which
+// is tracked on its own. The host control below stays enrolled.
 
 // HOST CONTROL for the Bool row: the prelude std.types Bool realizes natively and keeps the host
 // keyword -- a rule keyed on the spelling `Bool` cannot pass this row and the one above together.

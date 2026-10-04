@@ -632,7 +632,7 @@ test fn w_preflight_tests_every_device_and_bind_source_by_name() -> Bool {
                  TmpfsMount { container_path: _, size_bytes: _ } => true
                })
             && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-no-gpu-cdi-device")
-            && string_contains(s: script, pattern: "grep -qx 'nvidia.com/gpu=all'")
+            && string_contains(s: script, pattern: "nvidia.com/gpu=all")
             && !string_contains(s: script, pattern: ".Runtimes")
         }
       }

@@ -1336,6 +1336,13 @@ pub enum InterpError {
         marginal_cpu_nanos: u128,
         limit_ms: u64,
     },
+    /// A fixture compile instrument (`compile_dag_rust_emit_check`) refused to answer: the
+    /// typed cause says which arm fired (`cli_run::FixtureRenderRefusal`). Refusing is the
+    /// fail-closed alternative to rendering every module or reading an absent file as `false`.
+    FixtureRenderRefused {
+        instrument: &'static str,
+        refusal: crate::cli_run::FixtureRenderRefusal,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1486,6 +1493,10 @@ impl fmt::Display for InterpError {
                  fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
                 entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
             ),
+            InterpError::FixtureRenderRefused {
+                instrument,
+                refusal,
+            } => write!(f, "{instrument}: {refusal}"),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -6157,6 +6168,20 @@ pub fn run_in_context_with_args(
         };
         with_lexical_base_env(&env, || call_function(ctx, &item_node, args, &env))
     })
+}
+
+/// The authored parameter names `entry_fn` declares, in declaration order; `None` when the
+/// closure holds no such function. A host seam that calls one entry reads this to supply
+/// arguments from the entry's declaration rather than from a host-side list of names.
+pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<Vec<String>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
 }
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
@@ -17168,6 +17193,7 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
 // receive its exact bytes: the emitted crate through its lib.rs root, the seed through the
 // committed generated artifact this call resolves to. The regeneration and fixed-point gates
 // refuse drift on that artifact, so the agreement is machine-held rather than review-held.
+use crate::gunbc_file_transport_generated::gunbc_file_link_create_new as link_file_create_new;
 use crate::gunbc_file_transport_generated::gunbc_file_write_create_new as write_file_create_new;
 
 // ------------------------------------------------------------------------------------------------
@@ -17789,6 +17815,7 @@ fn io_error_kind_name(e: &std::io::Error) -> String {
         std::io::ErrorKind::AlreadyExists => "already_exists",
         std::io::ErrorKind::PermissionDenied => "permission_denied",
         std::io::ErrorKind::NotADirectory => "not_a_directory",
+        std::io::ErrorKind::CrossesDevices => "cross_device",
         _ => "other",
     }
     .to_string()
@@ -17945,6 +17972,50 @@ fn dispatch_file(
                     Ok(()) => Ok(FileResult {
                         success: true,
                         byte_count,
+                        path,
+                        error: String::new(),
+                        error_kind: String::new(),
+                        content: String::new(),
+                    }),
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        error_kind: io_error_kind_name(&e),
+                        content: String::new(),
+                    }),
+                };
+            }
+            "link_create_new" => {
+                let source = match param_env.lookup(ctx.sym("source")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file link_create_new operation missing `source` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &render_file_effect_begin_line_mirror(
+                        "Filesystem.LinkCreateNew",
+                        &path,
+                        &format!("from {}", source),
+                        shell_obs_emoji(),
+                    ),
+                );
+                // One link(2) through the same realization the emitted program calls
+                // (extdeps.filesystem.rust_realization gunbc_file_link_create_new): an existing
+                // target answers already_exists and a source on another filesystem answers
+                // cross_device, both by the host's io::ErrorKind; nothing falls back to a copy.
+                return match link_file_create_new(&source, &path) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count: 0,
                         path,
                         error: String::new(),
                         error_kind: String::new(),
@@ -20600,7 +20671,7 @@ fn eval_emit_host_run_transport_builtin(
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm
 /// agreement witnesses remain green without them.
-/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR precedent): the
+/// Durable re-root (realization-side config): the
 /// root is WHERE the cache lives, never WHAT identifies an artifact — the content-hash path
 /// component stays the key. Opt-in; only the declared /tmp/gunbc_ scratch prefix
 /// (std.emit_on_demand root authority) is rebased, so an arbitrary caller path never silently
@@ -23108,11 +23179,14 @@ macro_rules! v1_builtin_arms {
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
                 let includes = expect_str_list($positional.get(2).copied(), $name)?;
                 let excludes = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::compile_dag_rust_emit_check(
-                        &source, &file_path, &includes, &excludes,
-                    ),
-                )))
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                )
+                .map(|verdict| Some(Value::Bool(verdict)))
+                .map_err(|refusal| InterpError::FixtureRenderRefused {
+                    instrument: "compile_dag_rust_emit_check",
+                    refusal,
+                })
             },
 
             arm "free_call.compile_dag_diagnostic_census" { "compile_dag_diagnostic_census" } => {

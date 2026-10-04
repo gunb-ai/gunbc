@@ -12,7 +12,7 @@ import gunbc.host_converge {
   ConvergeVerdict,
   VerdictConverged,
   Drifted,
-  Absent,
+  VerdictAbsent,
   converge_verdict,
 }
 import gunbc.host_runner_memory_provision {
@@ -79,7 +79,7 @@ fn runner_memory_cap_verify_tally_knob(
         drifted: acc.drifted + 1,
         absent: acc.absent,
       }
-    Present { value: Absent } =>
+    Present { value: VerdictAbsent } =>
       RunnerMemoryCapVerifyTally {
         converged: acc.converged,
         drifted: acc.drifted,
@@ -115,11 +115,11 @@ fn runner_memory_cap_verify_verdict_from_tally(tally: RunnerMemoryCapVerifyTally
   if tally.drifted > 0 {
     Drifted
   } else { if tally.absent > 0 {
-    Absent
+    VerdictAbsent
   } else { if tally.converged == knob_count && knob_count > 0 {
     VerdictConverged
   } else {
-    Absent
+    VerdictAbsent
   } } }
 }
 

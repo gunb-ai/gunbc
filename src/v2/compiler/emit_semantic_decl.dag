@@ -1,5 +1,6 @@
 module v2.compiler.emit_semantic_decl
 
+import std.types { List }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.compiler.target_serialize { grammar_relation_row_for_emitted, grammar_relation_row_tokens_root }
 import v2.std.compilers.semantic_decl_emission {
@@ -10,7 +11,7 @@ import v2.std.compilers.semantic_decl_emission {
   target_semantic_enum_surface_from_coproduct,
   target_semantic_struct_surface_from_record
 }
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_get }
+import v2.std.collection { Absent, Map, Present, empty_map, map_get }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.compilers.target_model {
   TargetModel,

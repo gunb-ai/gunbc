@@ -1,8 +1,9 @@
 module v2.std.provenance
 
+import std.types { List }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,

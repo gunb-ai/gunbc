@@ -28,8 +28,7 @@ import gunbc.roadmap_model {
   acceptance_history_integrity_verdict,
 }
 import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
-import std.types { CommitSha, GitRef, Int, String }
-import v2.std.collection { List }
+import std.types { CommitSha, GitRef, Int, String, List }
 
 data roadmap_acceptance_history_repository_path: String = "."
 

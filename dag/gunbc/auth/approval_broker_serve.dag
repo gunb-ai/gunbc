@@ -6,6 +6,7 @@ import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, AuthAbsent,
   request_access_path_of, tailnet_transport_observation,
+  RequestAccessPath,
 }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_request_submission {
@@ -191,6 +192,7 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
     status: status,
     content_type: content_type,
     body: approval_broker_marked_body(content_type: content_type, body: body, m: marker, process: process),
+    headers: [],
   }
 }
 
@@ -231,7 +233,7 @@ fn broker_page_response(page: Fragment, marker: ApprovalBrokerMarker, process: A
 // this very fold until stage 6, so a response that named only the route was emitted identically by
 // both processes and the cutover probe could not tell them apart.
 fn approval_confirm_page_response(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -278,7 +280,7 @@ fn approval_confirm_page_response(
 // store untouched -- which is also what keeps the hermetic witness able to reach this handler
 // whether or not the trust standing is established, since Clock.Now has no hermetic arm.
 fn approval_decide_response(
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   params: List<PathParamBinding>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
@@ -308,7 +310,7 @@ fn approval_decide_response(
   }
 }
 
-fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, segment: String, process: ApprovalServingProcess) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
@@ -361,7 +363,7 @@ fn approval_decide_parsed_response(request: ServeHttpRequest<RequestAuthenticati
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   match approval_write_admission(asker: process) {
     ApprovalWriteRefused { holder: h, asker: a } =>
       broker_text_response(
@@ -391,7 +393,7 @@ fn approval_submit_response(request: ServeHttpRequest<RequestAuthenticationEvide
 // the server for it. Copying a body once is an extraction; keeping the copy while its authority
 // moves is a reimplementation that drifts silently -- and the tell is exactly this, a merge where
 // the other side changed a fold I had duplicated rather than consumed.
-fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -443,7 +445,7 @@ fn approval_status_response(params: List<PathParamBinding>, process: ApprovalSer
 // THE STORE RECEIPT ROUTE (gunbc.auth.approval_store_receipt). It reads the store and mints, and
 // writes nothing, so like the status route it takes no writer admission; the asker's authentication
 // is the submission-key MAC the fold checks before it reads the escalation at all.
-fn approval_store_receipt_response(request: ServeHttpRequest<RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
+fn approval_store_receipt_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, params: List<PathParamBinding>, process: ApprovalServingProcess) -> ServeHttpResponse {
   let answer = store_receipt_answer(escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr, body: request.body)
   broker_text_response(status: answer.status, content_type: text_plain_utf8, body: answer.body, marker: StoreReceiptHandlerObserved, process: process)
 }
@@ -464,7 +466,7 @@ fn approval_store_receipt_response(request: ServeHttpRequest<RequestAuthenticati
 
 fn approval_broker_selection_response(
   sel: RouteSelection<ApprovalBrokerHandler>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match sel {
@@ -506,7 +508,7 @@ fn approval_broker_selection_response(
 fn approval_broker_invoke(
   handler: ApprovalBrokerHandler,
   params: List<PathParamBinding>,
-  request: ServeHttpRequest<RequestAuthenticationEvidence>,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
@@ -596,7 +598,7 @@ fn approval_broker_respond_as(
 // behind a serve-status readback this entry does not perform, so it reaches the handlers as an
 // unattributed observation. The broker reads no session cookie -- the signed capability and the
 // submission MAC are its authentication -- so the evidence is AuthAbsent.
-fn approval_broker_request_security(tailscale_identity: String) -> RequestSecurityContext<RequestAuthenticationEvidence> {
+fn approval_broker_request_security(tailscale_identity: String) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: request_access_path_of(
       listen_host: approval_broker_listen_host,

@@ -1,0 +1,79 @@
+module v2.test.claim.variant_field_native_binding
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the restoration trigger of gunbc.rung_drop
+// variant_fields_unlowered_on_the_native_route (declared 2026-09-21) — the half that was not
+// established by gunbc#12033: that the NATIVE route, the emitted compiler
+// (claim_executor --v2-native-route, which derives this universe and executes every identity in
+// it), lowers variant fields into declared field identities and binds pattern binders from them.
+// The claims below are written so the emitted binary itself answers them: each test fn's body
+// constructs and matches, so a native execution that lost a binder — the loss this row was
+// declared over, "a positional binder was silently lost" — fails here, on the native route.
+//
+// THE SPECIMEN, VERBATIM FROM THE ROW: "the binder `node` of the `Present { value: node }` arms
+// of v2.std.symbol_index symbol_index_candidates_at". The specimen claims live beside this file
+// in v2.test.claim.variant_field_native_specimen; they call the real std fn (not a mirror) and
+// hold that the candidate it returns CARRIES the bound node — the value the arm's binder
+// delivered. A native execution that dropped the binder cannot produce it.
+//
+// CI ENROLLMENT WAITS ON gunbc.rung_drop v2_native_route_off_the_merge_path: until the
+// `emit-build` lane's first green fleet run executes the frontier, this universe is adjudicated
+// natively only by the operator-invoked instrument, and the floor executes it interpreted. The
+// interpreted floor run and the native adjudicate are two executions of the same claims; the
+// native receipt is recorded on the retiring PR.
+//
+// THE discriminating red is a mutation receipt: with the binder binding
+// broken (the arm's binder dropped in v2.std.symbol_index, the #11998 state), the two specimen
+// claims refuse — on the floor before the change, on the native route after it. The round-trip
+// claims above do not observe that mutation: the Seal identities never call
+// symbol_index_candidates_at, so a dropped arm binder is invisible to them.
+
+type Seal = Boxed(Int) | Held { value: Int }
+
+fn seal_unbox(s: Seal) -> Int {
+  match s {
+    Boxed(v) => v
+    Held { value: w } => w
+  }
+}
+
+// THE POSITIONAL ROUND TRIP THE ROW NAMES: "a positional `A(x)` construction and match round-trip
+// field \"0\"". Construction `Boxed(41)` supplies field "0"; the arm pattern's binder receives it;
+// the comparison closes the round trip.
+test fn vfb_positional_construction_and_match_round_trip_field_zero() -> Bool {
+  let s = Boxed(41)
+  match s {
+    Boxed(v) => v == 41
+    Held { value: _ } => false
+  }
+}
+
+// THE SAME ROUND TRIP THROUGH A CALL: the construction and the match bind in different fns, so the
+// value crosses a call boundary as the declared field's inhabitant and comes back as the binder's.
+test fn vfb_positional_round_trip_through_a_call_holds() -> Bool {
+  seal_unbox(s: Boxed(41)) == 41
+}
+
+// THE NAMED SPELLING, ONE FACT TWO WAYS (the row's reason for one frontier over both spellings):
+// `Held { value: 7 }` declares-and-supplies `value`; the arm binds it under its name.
+test fn vfb_named_construction_and_match_round_trip_holds() -> Bool {
+  let s = Held { value: 7 }
+  match s {
+    Held { value: w } => w == 7
+    Boxed(_) => false
+  }
+}
+
+// THE OTHER ARM STILL ANSWERS: a matched-away arm is a verdict, not a dropped field. A named
+// arm whose field binder is a wildcard must not swallow a positional value — the claim holds
+// when the match answers with the Boxed arm.
+test fn vfb_named_arm_of_a_positional_value_stays_unmatched() -> Bool {
+  let s = Boxed(41)
+  match s {
+    Held { value: _ } => false
+    Boxed(_) => true
+  }
+}

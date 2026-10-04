@@ -100,7 +100,7 @@ fn factory_bmc_network_standing(
 // establishes the shared segment: ARP does not cross a router.
 data mtjade1_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic {
   address: ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 2),
-  prefix: 29,
+  prefix: 24,
   gateway: ipv4_address(octet1: 10, octet2: 0, octet3: 7, octet4: 1),
   link: Eui48Address {
     octet1: 112,
@@ -110,8 +110,26 @@ data mtjade1_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic
     octet5: 51,
     octet6: 107,
   },
-  basis: "operator read of the controller, corroborated by a 90s tcpdump on srv1's enP3p3s0f1 which received this MAC's own ARP broadcasts (who-has 10.0.7.1 tell 10.0.7.2)",
+  basis: "operator read of the controller, corroborated by a 90s tcpdump on srv1's enP3p3s0f1 which received this MAC's own ARP broadcasts (who-has 10.0.7.1 tell 10.0.7.2). PREFIX CORRECTED 2026-10-03 from 29 to 24: the controller's own ipmitool lan print 1, captured before it was reconfigured (srv1 ~/mtjade1/lan1-before-dhcp.txt), reports Subnet Mask 255.255.255.0; the earlier /29 was srv1's chosen access prefix, not the controller's.",
 }
+
+// RECONFIGURED BY THE OPERATOR, 2026-10-03: the factory static above was preserved as evidence
+// until the operator chose to move the unit onto the site LAN. ipmitool lan set 1 ipsrc dhcp on the
+// factory address; the controller then took a lease from the site router (DHCP request from this
+// MAC, then ipmitool lan print 1 at the new address reads IP Address Source: DHCP Address,
+// 192.168.1.246, mask 255.255.255.0, gateway 192.168.1.1; srv1 ~/mtjade1/lan1-after-dhcp.txt sha256
+// bd7c6cc97e6d42d19cd6daa0efa2603b96097ec088ec38c12cc44d2fa803c236). The operator holds the
+// reservation for this MAC. The factory row stays as the historical reading; this is the current one.
+data mtjade1_bmc_reconfigured_network: ObservedBmcNetwork = BmcNetworkObservedDhcpLease {
+  address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 246),
+  prefix: 24,
+  basis: "operator-directed ipmitool lan set 1 ipsrc dhcp on 2026-10-03; lease observed by tcpdump and read back by lan print 1 at 192.168.1.246",
+}
+
+data mtjade1_current_bmc_network_standing: FactoryBmcNetworkStanding = factory_bmc_network_standing(
+  expectation: mt_jade_gsg_bmc_network_expectation,
+  observed: mtjade1_bmc_reconfigured_network,
+)
 
 data mtjade1_factory_bmc_network_standing: FactoryBmcNetworkStanding = factory_bmc_network_standing(
   expectation: mt_jade_gsg_bmc_network_expectation,

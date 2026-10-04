@@ -275,7 +275,10 @@ data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp
 // WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
 // any runtime accepts it.
 fn vllm_kv_cache_dtype_request_matching_wire(wire: NonEmptyStr) -> VllmKvCacheDtypeRequest? {
-  (filter(vllm_kv_cache_dtype_requests, k => (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String))).first()
+  fold(vllm_kv_cache_dtype_requests, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String) { Present { value: k } } else { acc }
+  })
 }
 
 // ── THE SPARSE-ATTENTION INDEXER'S K CACHE DTYPE, AN AXIS INDEPENDENT OF THE MAIN KV DTYPE ─────
@@ -313,7 +316,10 @@ fn vllm_indexer_kv_dtype_wire(d: VllmIndexerKvDtype) -> NonEmptyStr {
 data vllm_indexer_kv_dtypes: List<VllmIndexerKvDtype> = [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4]
 
 fn vllm_indexer_kv_dtype_matching_wire(wire: String) -> VllmIndexerKvDtype? {
-  (filter(vllm_indexer_kv_dtypes, d => (vllm_indexer_kv_dtype_wire(d: d) as String) == wire)).first()
+  fold(vllm_indexer_kv_dtypes, init: none, f: (acc, d) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_indexer_kv_dtype_wire(d: d) as String) == wire { Present { value: d } } else { acc }
+  })
 }
 
 fn vllm_indexer_kv_dtype_argv(r: VllmIndexerKvDtypeRequest) -> List<String> {
@@ -734,7 +740,9 @@ fn vllm_scheduler_admission_key(r: VllmSchedulerAdmissionRequest) -> String {
 // ── READING THE CONTROLS BACK OFF A LAUNCHED ARGV ────────────────────────────────────────────────
 //
 // The inverse of the renderer above, so a plan and a container can be compared on these fields
-// rather than assumed equal. Both spellings of the boolean present at once, or either repeated, is a
+// rather than assumed equal. DECLARED FRONTIER: in this change only the scheduler-envelope witness calls
+// these readers; their production consumer is gunbc.spark.serving_relaunch_transaction's admission-controls
+// axis, which lands in deforking cut 7 (#12986), and that landing is the trigger. Both spellings of the boolean present at once, or either repeated, is a
 // mis-assembled argv and refuses rather than taking argparse's last-wins answer.
 type VllmFullInputAdmissionRead
   = FullInputAdmissionReadOmitted
@@ -742,8 +750,8 @@ type VllmFullInputAdmissionRead
   | FullInputAdmissionReadConflict { cause: NonEmptyStr }
 
 fn vllm_argv_full_input_admission(argv: List<String>) -> VllmFullInputAdmissionRead {
-  let on = count(filter(argv, w => w == vllm_scheduler_reserve_full_isl_flag))
-  let off = count(filter(argv, w => w == vllm_no_scheduler_reserve_full_isl_flag))
+  let on = fold(argv, init: 0, f: (acc, w) => if w == vllm_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  let off = fold(argv, init: 0, f: (acc, w) => if w == vllm_no_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
   if on + off > 1 {
     FullInputAdmissionReadConflict { cause: join([
       "the argv carries ", vllm_scheduler_reserve_full_isl_flag, " ", to_string(on), " times and ",

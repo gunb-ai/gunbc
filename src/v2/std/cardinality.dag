@@ -1,5 +1,6 @@
 module v2.std.cardinality
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import std.termination {
   DescentEvidence,
@@ -8,9 +9,6 @@ import std.termination {
   DescentUnknown,
   descent_evidence_lattice_meet,
   evidence_rank
-}
-import v2.std.collection {
-  List
 }
 import v2.std.optional {
   Absent,

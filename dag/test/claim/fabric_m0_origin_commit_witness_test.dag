@@ -45,7 +45,7 @@ import product.fabric.work { MaterializedProgram,
 import gunbc.fabric_m0_completion { ComputationSucceeded }
 import gunbc.fabric_m0_commit { CommitNamespace, ManifestRead }
 import gunbc.fabric_m0_job_ending { JobEnding, end_required_job }
-import gunbc.cloudflare.r2_origin_object { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
 import gunbc.fabric_m0_origin_commit { transport_of_origin_put, object_readback_of_origin_put, process_exit_with_credential_custody }
 
 // READS THE LIVE TREE: the staged arm's reading is taken through read_origin_staged_file over a

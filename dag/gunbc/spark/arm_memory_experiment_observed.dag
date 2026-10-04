@@ -1588,19 +1588,11 @@ data arm_loader_trace_min_hundredths_gib: List<Nat> = [770, 814, 819, 786]
 // observed MemAvailable floor -- the load-phase peak pressure of the unified pool, page cache
 // included, at the conservative floor spelling.
 fn arm_loader_trace_pool_hundredths(rank: Nat) -> Nat {
-  match rank {
-    3 => 11969
-    _ => 12169
-  }
+  if rank == 3 { 11969 } else { 12169 }
 }
 
 fn arm_loader_trace_host_floor_hundredths(rank: Nat) -> Nat {
-  match rank {
-    0 => 770
-    1 => 814
-    2 => 819
-    _ => 786
-  }
+  if rank == 0 { 770 } else if rank == 1 { 814 } else if rank == 2 { 819 } else { 786 }
 }
 
 fn arm_loader_trace_bound(rank: Nat) -> ByteSize {

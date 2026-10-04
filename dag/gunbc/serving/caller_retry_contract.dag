@@ -2,7 +2,7 @@ module gunbc.serving.caller_retry_contract
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.algebra { length }
+import v2.std.algebra { length, filter, any }
 
 // ── THE BACKLOG IS THE CALLER'S, AND WHAT THAT OWES IS A CONTRACT (operator ruling, 2026-10-02) ────────
 //
@@ -51,14 +51,24 @@ type DurableRetryPropertyRow {
 type CallerBacklogStanding
   = DurableCallerBacklog
   | ExternalRetryObligation { unmet: List<DurableRetryProperty> }
+  | CallerBacklogRosterMalformed { duplicated: List<DurableRetryProperty> }
 
+fn durable_retry_property_eq(a: DurableRetryProperty, b: DurableRetryProperty) -> Bool {
+  durable_retry_property_wire(p: a) as String == durable_retry_property_wire(p: b) as String
+}
+
+// THE STANDING IS DERIVED AGAINST THE CANONICAL SEVEN, NOT AGAINST WHATEVER ROWS WERE SUPPLIED (side-chat
+// review): a property with no row is unmet, never vacuously satisfied, and a property with two rows is a
+// malformed roster that refuses rather than letting either row decide. DurableCallerBacklog exists only
+// when every one of the seven has exactly one row and that row is established.
 fn caller_backlog_standing(rows: List<DurableRetryPropertyRow>) -> CallerBacklogStanding {
-  let unmet = fold(rows, init: [] as List<DurableRetryProperty>, f: (acc, r) => match r.standing {
-    RetryPropertyEstablished { basis: _ } => acc
-    RetryPropertyUnestablished { obligation: _ } => concat(acc, [r.property])
-  })
-  if length(rows) == 0 {
-    ExternalRetryObligation { unmet: durable_retry_properties }
+  let duplicated = filter(durable_retry_properties, p => length(filter(rows, r => durable_retry_property_eq(a: r.property, b: p))) > 1)
+  let unmet = filter(durable_retry_properties, p => !any(rows, r => durable_retry_property_eq(a: r.property, b: p) && match r.standing {
+    RetryPropertyEstablished { basis: _ } => true
+    RetryPropertyUnestablished { obligation: _ } => false
+  }))
+  if length(duplicated) > 0 {
+    CallerBacklogRosterMalformed { duplicated: duplicated }
   } else if length(unmet) == 0 {
     DurableCallerBacklog
   } else {
@@ -100,6 +110,9 @@ fn caller_backlog_wire(s: CallerBacklogStanding) -> String {
     ExternalRetryObligation { unmet: us } =>
       join(["the backlog is the caller's -- an EXTERNAL RETRY OBLIGATION, not a durable backlog; unmet: ",
         join(map(us, u => durable_retry_property_wire(p: u) as String), ", ")], "")
+    CallerBacklogRosterMalformed { duplicated: ds } =>
+      join(["the caller's durable-retry roster is malformed (a property has more than one row: ",
+        join(map(ds, d => durable_retry_property_wire(p: d) as String), ", "), "), so no backlog standing is derived"], "")
   }
 }
 

@@ -5,7 +5,6 @@ import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, Ord
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.optional {
@@ -15,12 +14,12 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
 import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.machine {
   Byte,
   MachineWidth,

@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_record_accepted_where_a_declared_scalar_slot_is_declared
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_record_accepted_where_a_declared_scalar_slot_is_declared: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_record_accepted_where_a_declared_scalar_slot_is_declared" as NonEmptyStr,
+
+  receipts: [
+    "**a constructed record is accepted at a position whose declared type is a kernel scalar, with zero diagnostics at acceptance** (the declared-type judgment on the interpreted path runs when the VALUE side is a kernel literal or a collection; a constructor-produced record is not judged against the slot's declared type, so the mismatch enters the program silently).",
+
+    "SPECIMEN (PR gunbc#13119, commit a2c9cd8e88c, found at 5aef96d9702): in `src/v2/compiler/05_emit_orchestration.dag` the pipeline-step dispatch's Exit arm bound `orch_emit_exit_step(status: st)` -- an `Outcome<extdeps.communication.medium.Medium<String>>` -- with `f: fn(text) { outcome_accepted(OrchEmitCarried { text: text, prepared: prepared }) }`, where `v2.std.orchestration_emit` `OrchEmitCarried.text` is declared `String`. The bound value is the record `Medium { carried: ..., fidelity: ... }`; it was accepted into the String field with no diagnostic, and the interpreter carried the record in the slot.",
+
+    "SURFACING, AND THE RUNG THAT FOUND IT: the wrongness rendered as bytes -- a fleet-converge workflow run step emitted `Medium { carried: exit 1, fidelity: Lossless }` where the statement is `exit 1` -- and was caught by the generated-artifact agreement lane (`tools.generated_artifact_gate` `main`) on PR #13119's CI (`generated` check, run 37131236934 at a2c9cd8e88c and run 37139220947 at 5aef96d9702: committed `.github/workflows/fleet-converge.yml` 323483 bytes vs authority-rendered 323523, one changed line in 3094). Every emit fixture stayed green through the same commits (15/15 orchestration_emit_test, 8/8 tier2, 80/82 live_deploy emit_test) because no fixture covered an Exit step inside a pipeline: the checker did not refuse, the claims did not go red, and only a byte diff of a registry-rostered projection saw it.",
+
+    "HARM: silent wrongness, outside the ladder -- a declared-type obligation with no judge at the seam. Had the workflow not been registry-rostered, the wrong bytes would have shipped; where the slot is never read by a refusing operation, the record sits in a scalar slot forever.",
+
+    "WHEN IT SURFACES WITHOUT THE BYTE DIFF: as an operation-level runtime type error, not a binding-time one. Demonstrated on merged head d585a31a279 by reverting only the unwrap: claims emitting through the carried slot fail with `type error: cannot concat on Record` -- the interpreter refuses the OPERATION, not the CONSTRUCTION, so the diagnostic points away from the binding that introduced the wrong value.",
+
+    "DISTINGUISHING FACTS vs `gunbc.recurring_failure_mode.function_typed_argument_mismatch_accepted`: that row's hole is scoped to function types (either side an arrow, through the `type_node_is_callable` exemption). This specimen has no function type on either side: a record into a declared kernel-scalar slot at a constructor field inside a bind lambda. The sibling's correction paragraph records that `declared_type_conformance_diags` judged only ground kernel scalars and element collections -- which is the same boundary this row names from the value side: the judgment keys on the value being a kernel literal or collection, so a constructor-produced record passes unjudged.",
+
+    "NEXT-RUNG TRIGGER, named as the capability: construction-time inhabitance judged at constructor-field and bind-parameter positions regardless of the value side's kind, sufficient that a minimal repro (a struct literal binding a constructed record into a declared String field) refuses LOCATED at the construction, with the correctly-typed literal at the same position as its control.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.orchestration_emit", decl_name: "OrchEmitCarried", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.communication.medium", decl_name: "Medium", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.emit_orchestration", decl_name: "orch_emit_exit_step", field: WholeDeclaration },
+    DeclarationRef { module_path: "tools.generated_artifact_gate", decl_name: "main", field: WholeDeclaration },
+  ],
+}

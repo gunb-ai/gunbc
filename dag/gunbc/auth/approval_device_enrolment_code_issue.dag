@@ -6,7 +6,8 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import extdeps.sudo.elevation { sudo_elevate }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_scope_as_account_argv }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_system_scope_argv }
+import extdeps.tools.util_linux_setpriv { setpriv_reuid_regid_argv }
 import extdeps.systemd { MemoryMax, MemoryHigh }
 import std.measure { byte_size_count }
 import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approval_broker_slice_memory_high }
@@ -38,7 +39,7 @@ import gunbc.live_deploy.release_locus {
 // runner, exactly as gunbc.auth.approval_keyring_converge reaches srv1: the job prepares the fleet
 // SSH context, connects to srv1 as the bootstrap principal, and elevates to the OPERATOR'S POSIX
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
-// run gunbc.auth.approval_device_routes issue_device_enrolment_code from the broker's admitted
+// run gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code from the broker's admitted
 // release tree. The remote verb writes the code's slot and delivers the code over the operator's
 // ntfy topic. The verb itself refuses before minting unless its own live read on the host shows
 // the channel private and bound to the running server (gunbc.auth.approval_ntfy_access_readback),
@@ -77,8 +78,8 @@ fn enrolment_code_issue_ssh_target() -> SshTarget {
 // AND IT RUNS IN A MEMORY-BOUNDED SCOPE, because the seed refuses to resolve without one. Its
 // typed-module cache cap is derived from the cgroup's memory.high/memory.max, and with neither bound
 // it refuses HostBudgetUnreadable rather than guessing (fleet-converge run 36556990543). An SSH
-// session binds no such limit. The scope is a system-manager transient scope that runs the verb as
-// the operator's account (extdeps.systemd.systemd_run systemd_run_scope_as_account_argv). A user
+// session binds no such limit. The scope is a system-manager transient scope (extdeps.systemd.systemd_run
+// systemd_run_system_scope_argv) around the account drop below. A user
 // scope would need that account's session bus, which the elevated command lacks. The bounds are the
 // broker's own slice rows (gunbc.live_deploy.slice_bounds approval_broker_slice_memory_max and _high).
 // The verb resolves the broker's routes closure, the same program the broker boots, so the same
@@ -91,20 +92,28 @@ fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
   ]
 }
 
+// THE VERB RUNS AS THE OPERATOR'S ACCOUNT WITH THAT ACCOUNT'S OWN GROUP GRANTS. It reads the ntfy
+// publisher token from a directory gated on the gunbc-ntfy group, so the drop must initialise the
+// supplementary groups; systemd-run's own --uid/--gid did not, and every code was minted and then
+// refused delivery (fleet-converge run 37098981121). The drop sits inside the scope so the bound
+// still covers the whole verb.
 fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<String> {
   let root = srv1_gunbc_approval_broker_root as String
   let release_dir = approval_broker_release_dir(root: root, revision: revision)
-  let inv = sudo_elevate(command: systemd_run_scope_as_account_argv(account: fleet_posix_operator_user.name, properties: enrolment_code_issue_scope_properties(), command_argv: env_prefixed_argv(bindings: [
+  let account = fleet_posix_operator_user.name
+  let verb = env_prefixed_argv(bindings: [
     EnvSet { name: gunbc_workspace_root_env_name, value: release_dir },
   ], command_argv: [
     approval_broker_release_binary_path(root: root, revision: revision),
     "run",
     "--source-root", release_dir + "/dag",
     "--source-root", release_dir + "/src/v2",
-    "--entry", release_dir + "/dag/gunbc/auth/approval_device_routes.dag",
+    "--entry", release_dir + "/dag/gunbc/auth/approval_device_enrolment_code.dag",
     "--function", "issue_device_enrolment_code",
     "--arg", "revision=" + release_revision_execstart_text(binding: revision),
-  ])))
+  ])
+  let as_account = setpriv_reuid_regid_argv(user: account, group: account, init_groups: true, command_argv: verb)
+  let inv = sudo_elevate(command: systemd_run_system_scope_argv(properties: enrolment_code_issue_scope_properties(), command_argv: as_account))
   concat([inv.bin_path], inv.args)
 }
 

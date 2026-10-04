@@ -1,0 +1,176 @@
+module gunbc.machine_intake_mtcollins1_smpro_error_reading
+
+import v2.std.algebra { filter }
+import std.types { Int, List, NonEmptyStr, String }
+import v2.std.optional { Present }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.bmc.ipmi_master_write_read { master_write_read_slave_byte }
+import extdeps.ampere.smpro_register {
+  SmproRegister, smpro_word,
+  smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
+  smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
+}
+import extdeps.ampere.smpro_internal_error { SmproInternalRecord, SmproRecordGate, SmproProcessorPmpro, smpro_internal_error_of, smpro_record_gate }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_site_targets }
+
+// ONE RAW SMpro ERROR-REGISTER READING FROM mtcollins1, 2026-10-03, AS RECEIVED: the operator's
+// hand-run read-only pass during the boot loop (eager-gull-22 msg_12ab1f39), before the collector in
+// gunbc.machine_intake_mtcollins1_smpro_observation read these registers itself. Method, as relayed:
+// `ipmitool -I lanplus raw 0x06 0x52 0x05 <0x9e|0x9c> 0x02 <reg>` -- I2C master write-read, no
+// register writes. Stamps are srv1 CLOCK_REALTIME seconds, kept as the text the capture printed.
+//
+// THE ROWS ARE THE OBSERVATION; EVERY DECODE IS DERIVED. Nothing below states what a window MEANS:
+// mtcollins1_smpro_error_windows groups the rows and decodes each window with
+// extdeps.ampere.smpro_internal_error, so a corrected decoder re-reads these same bytes.
+//
+// A WINDOW IS ITS OWN OBSERVATION. Socket 0's record reads nonzero in the first window and zero in
+// the second, so the record is not sticky across the loop; no window is merged into another.
+
+type SmproErrorCapture {
+  directory: NonEmptyStr
+  power_on_marker: NonEmptyStr
+  marker_digest: Digest
+  reads_digest: Digest
+}
+
+data mtcollins1_smpro_error_capture_20261003: SmproErrorCapture = SmproErrorCapture {
+  directory: "srv1 ~/mtc-fw/smpro-err-20261003T005609Z",
+  power_on_marker: "1790988969.678166992 (2026-10-03T00:56:09.678Z)",
+  marker_digest: sha256_digest(hex: "d418a1027fd7ad9cd69a933489d436048bde231b290574241800578268374d99"),
+  reads_digest: sha256_digest(hex: "4e03673f8fc09f93117e6a0ab0a5a5a5be1d42dcd0ddf93d486fe533e1ce943d"),
+}
+
+// One line of regs.stamped: stamp, 8-bit slave byte, register, and the two bytes in wire order (the
+// SMpro bus is big-endian, so the first byte is the word's high byte).
+type SmproRawRegisterRead {
+  stamp: NonEmptyStr
+  slave_byte: Int
+  register: Int
+  first_byte: Int
+  second_byte: Int
+}
+
+data mtcollins1_smpro_error_reads_20261003: List<SmproRawRegisterRead> = [
+  SmproRawRegisterRead { stamp: "1790988988.543764995", slave_byte: 158, register: 126, first_byte: 0, second_byte: 2 },
+  SmproRawRegisterRead { stamp: "1790988988.685475598", slave_byte: 158, register: 161, first_byte: 0, second_byte: 4 },
+  SmproRawRegisterRead { stamp: "1790988989.028398108", slave_byte: 158, register: 166, first_byte: 0, second_byte: 116 },
+  SmproRawRegisterRead { stamp: "1790988989.095941852", slave_byte: 158, register: 167, first_byte: 34, second_byte: 68 },
+  SmproRawRegisterRead { stamp: "1790988989.164443442", slave_byte: 158, register: 168, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790988989.232525549", slave_byte: 158, register: 169, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989013.468442353", slave_byte: 158, register: 126, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989013.624696710", slave_byte: 158, register: 161, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989014.076694496", slave_byte: 158, register: 166, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989014.159934320", slave_byte: 158, register: 167, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989014.232838492", slave_byte: 158, register: 168, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989014.341096805", slave_byte: 158, register: 169, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989015.538019471", slave_byte: 156, register: 161, first_byte: 0, second_byte: 2 },
+  SmproRawRegisterRead { stamp: "1790989015.913038344", slave_byte: 156, register: 166, first_byte: 0, second_byte: 116 },
+  SmproRawRegisterRead { stamp: "1790989015.983883306", slave_byte: 156, register: 167, first_byte: 34, second_byte: 68 },
+  SmproRawRegisterRead { stamp: "1790989016.054202784", slave_byte: 156, register: 168, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989016.120532003", slave_byte: 156, register: 169, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989039.185810758", slave_byte: 158, register: 126, first_byte: 0, second_byte: 2 },
+  SmproRawRegisterRead { stamp: "1790989039.359053282", slave_byte: 158, register: 161, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989039.800598015", slave_byte: 158, register: 166, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989039.892471803", slave_byte: 158, register: 167, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989039.996353373", slave_byte: 158, register: 168, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989040.083206537", slave_byte: 158, register: 169, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989041.242288850", slave_byte: 156, register: 161, first_byte: 0, second_byte: 2 },
+  SmproRawRegisterRead { stamp: "1790989041.657189167", slave_byte: 156, register: 166, first_byte: 0, second_byte: 116 },
+  SmproRawRegisterRead { stamp: "1790989041.725784117", slave_byte: 156, register: 167, first_byte: 34, second_byte: 68 },
+  SmproRawRegisterRead { stamp: "1790989041.793521982", slave_byte: 156, register: 168, first_byte: 0, second_byte: 0 },
+  SmproRawRegisterRead { stamp: "1790989041.861719610", slave_byte: 156, register: 169, first_byte: 0, second_byte: 0 },
+]
+
+// ── the derivation ──────────────────────────────────────────────────────────────────────────────
+
+// A window is a maximal run of reads of one slave whose registers do not restart: a read of a
+// different slave, or of a register at or below the previous one, opens the next window. No time
+// threshold is involved.
+fn opens_window(prev: SmproRawRegisterRead?, r: SmproRawRegisterRead) -> Bool {
+  match prev {
+    Absent => true
+    Present { value: p } => p.slave_byte != r.slave_byte || r.register <= p.register
+  }
+}
+
+fn smpro_read_windows(reads: List<SmproRawRegisterRead>) -> List<List<SmproRawRegisterRead>> {
+  let empty: List<List<SmproRawRegisterRead>> = []
+  let none_read: List<SmproRawRegisterRead> = []
+  let closed = fold(reads, init: SmproWindowFold { done: empty, open: none_read }, f: (acc, r) =>
+    if opens_window(prev: last_of(rs: acc.open), r: r) && count(acc.open) > 0 {
+      SmproWindowFold { done: concat(acc.done, [acc.open]), open: [r] }
+    } else {
+      SmproWindowFold { done: acc.done, open: concat(acc.open, [r]) }
+    })
+  if count(closed.open) == 0 { closed.done } else { concat(closed.done, [closed.open]) }
+}
+
+type SmproWindowFold {
+  done: List<List<SmproRawRegisterRead>>
+  open: List<SmproRawRegisterRead>
+}
+
+fn last_of(rs: List<SmproRawRegisterRead>) -> SmproRawRegisterRead? {
+  rs.skip(n: count(rs) - 1).first()
+}
+
+// The socket a slave byte addresses, from the collector's own admitted site; a refused site
+// addresses no socket, so every read in the capture is then unattributed rather than guessed.
+fn socket_of_slave(slave_byte: Int) -> Int? {
+  let targets = match mtcollins1_smpro_site() { SmproSiteAdmitted { site: s } => smpro_site_targets(site: s) SmproSiteRefused { cause: _ } => [] }
+  match filter(targets, t => match master_write_read_slave_byte(seven_bit_address: t.seven_bit_address) { Present { value: b } => b == slave_byte Absent => false }).first() {
+    Present { value: t } => Present { value: t.socket }
+    Absent => none
+  }
+}
+
+fn word_of(window: List<SmproRawRegisterRead>, reg: SmproRegister) -> Int? {
+  match filter(window, r => r.register == reg.offset).first() {
+    Present { value: r } => Present { value: smpro_word(first_byte: r.first_byte, second_byte: r.second_byte) }
+    Absent => none
+  }
+}
+
+// The PMpro error record of one window, through the driver's pending gate with THIS window's
+// GPI_RAS_ERR read (the socket-1 windows read none, so their records stand UNGATED). The capture did
+// not read the WARN words, so no warning is decoded; `missing` names any error-record word not read.
+type SmproErrorWindow {
+  first_stamp: NonEmptyStr
+  socket: Int?
+  gpi_ras_err: Int?
+  pmpro: SmproRecordGate
+  missing: List<NonEmptyStr>
+}
+
+data pmpro_error_record_regs: List<SmproRegister> = [
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_err_pmpro_data_lo_reg,
+]
+
+fn word_or_zero(window: List<SmproRawRegisterRead>, reg: SmproRegister) -> Int {
+  match word_of(window: window, reg: reg) { Present { value: w } => w Absent => 0 }
+}
+
+fn smpro_error_window_of(window: List<SmproRawRegisterRead>) -> SmproErrorWindow {
+  let missing = flat_map(pmpro_error_record_regs, reg => match word_of(window: window, reg: reg) { Present { value: _ } => [] Absent => [reg.name] })
+  let gpi = word_of(window: window, reg: smpro_gpi_ras_err_reg)
+  let all_read = count(missing) == 0
+  SmproErrorWindow {
+    first_stamp: match window.first() { Present { value: r } => r.stamp Absent => "(empty window)" },
+    socket: match window.first() { Present { value: r } => socket_of_slave(slave_byte: r.slave_byte) Absent => none },
+    gpi_ras_err: gpi,
+    pmpro: smpro_record_gate(gpi: gpi, processor: SmproProcessorPmpro, type_read: all_read, warning: none,
+      error: if all_read { smpro_internal_error_of(
+        type_word: word_or_zero(window: window, reg: smpro_err_pmpro_type_reg),
+        info_hi: word_or_zero(window: window, reg: smpro_err_pmpro_info_hi_reg),
+        info_lo: word_or_zero(window: window, reg: smpro_err_pmpro_info_lo_reg),
+        data_hi: word_or_zero(window: window, reg: smpro_err_pmpro_data_hi_reg),
+        data_lo: word_or_zero(window: window, reg: smpro_err_pmpro_data_lo_reg),
+      ) } else { none }),
+    missing: missing,
+  }
+}
+
+fn mtcollins1_smpro_error_windows(reads: List<SmproRawRegisterRead>) -> List<SmproErrorWindow> {
+  map(smpro_read_windows(reads: reads), w => smpro_error_window_of(window: w))
+}

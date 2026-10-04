@@ -1,0 +1,295 @@
+module test.claim.machine_intake.smpro_internal_error_witness_test
+
+import v2.std.algebra { any }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present }
+import extdeps.ampere.smpro_internal_error {
+  SmproInternalRecord, SmproNamedCode, SmproCodeDefined, SmproCodeUndefined,
+  SmproRecordKind, SmproErrorWithData, SmproErrorWithoutData, SmproWarning, SmproEnter, SmproExit,
+  smpro_internal_error_of, smpro_internal_warning_of, smpro_internal_record_text,
+  SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
+  SmproProcessorPmpro, smpro_record_gate,
+}
+import extdeps.ampere.smpro_register {
+  SmproRegister, smpro_manufacturer_id_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
+  smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg,
+}
+import gunbc.machine_intake_mtcollins1_smpro_error_reading {
+  SmproErrorWindow,
+  mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
+}
+import gunbc.machine_intake_ampere_smpro_observation {
+  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_dossier_text,
+  SmproPassObservation, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture,
+}
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence,
+  HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  SmproRecordStated, PendingErrorRecord, RecordUngated, UngatedRecordUnexplained,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_notes,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED OUTCOMES, RENDERED AGAINST mtcollins1's REAL ADMITTED SITE. A refused site yields no
+// observation: the account then sees no pass and the dossier the marker, so claims expecting a
+// record fail rather than pass on an empty fold.
+fn observed(outcomes: List<SmproProbeOutcome>) -> SmproPassObservation? {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => Present { value: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }
+    SmproSiteRefused { cause: _ } => none
+  }
+}
+
+fn dossier_of(outcomes: List<SmproProbeOutcome>) -> String {
+  match observed(outcomes: outcomes) { Present { value: o } => smpro_pass_dossier_text(obs: o) Absent => "FIXTURE SITE REFUSED" }
+}
+
+// ── field predicates ────────────────────────────────────────────────────────────────────────────
+
+fn named(c: SmproNamedCode, code: Int, name: String) -> Bool {
+  match c { SmproCodeDefined { code: n, name: s } => n == code && (s as String) == name SmproCodeUndefined { code: _ } => false }
+}
+
+fn undefined(c: SmproNamedCode, code: Int) -> Bool {
+  match c { SmproCodeUndefined { code: n } => n == code SmproCodeDefined { code: _, name: _ } => false }
+}
+
+fn is_enter(r: SmproInternalRecord) -> Bool {
+  match r.direction { SmproEnter => true SmproExit => false }
+}
+
+// The record the 2026-10-03 capture carries: CCIX RCA link-up failure during CCIX initialization.
+fn is_ccix_rca_linkup_fail(r: SmproInternalRecord) -> Bool {
+  named(c: r.error, code: 116, name: "ERR_CCIX_RCA_LINKUP_FAIL")
+    && named(c: r.location, code: 68, name: "CCIX initialization")
+    && named(c: r.image, code: 2, name: "Executing ROM normal (non-secure) boot path")
+    && is_enter(r: r)
+}
+
+fn kind_is_with_data(r: SmproInternalRecord) -> Bool {
+  match r.kind { SmproErrorWithData => true SmproErrorWithoutData => false SmproWarning => false }
+}
+
+fn kind_is_without_data(r: SmproInternalRecord) -> Bool {
+  match r.kind { SmproErrorWithoutData => true SmproErrorWithData => false SmproWarning => false }
+}
+
+// ── the decoder over supplied words ─────────────────────────────────────────────────────────────
+
+test fn type_bit_two_with_info_2244_0074_is_the_ccix_rca_linkup_failure() -> Bool {
+  match smpro_internal_error_of(type_word: 4, info_hi: 8772, info_lo: 116, data_hi: 0, data_lo: 0) {
+    Present { value: r } => is_ccix_rca_linkup_fail(r: r) && kind_is_with_data(r: r) && r.info_hi_unparsed_bits == 2
+    Absent => false
+  }
+}
+
+test fn a_type_with_no_error_bit_is_no_record() -> Bool {
+  match smpro_internal_error_of(type_word: 0, info_hi: 8772, info_lo: 116, data_hi: 0, data_lo: 0) { Present { value: _ } => false Absent => true }
+    && (match smpro_internal_error_of(type_word: 1, info_hi: 8772, info_lo: 116, data_hi: 0, data_lo: 0) { Present { value: _ } => false Absent => true })
+}
+
+// BIT(1) is taken before BIT(2), exactly as smpro_internal_err_read tests them.
+test fn bit_one_is_taken_before_bit_two() -> Bool {
+  match smpro_internal_error_of(type_word: 6, info_hi: 8772, info_lo: 116, data_hi: 7, data_lo: 9) {
+    Present { value: r } => kind_is_without_data(r: r) && r.data_hi == 0 && r.data_lo == 0
+    Absent => false
+  }
+}
+
+test fn bit_eleven_is_exit() -> Bool {
+  match smpro_internal_error_of(type_word: 2, info_hi: 8772 + 2048, info_lo: 116, data_hi: 0, data_lo: 0) {
+    Present { value: r } => match r.direction { SmproExit => true SmproEnter => false }
+    Absent => false
+  }
+}
+
+test fn a_warning_reads_its_own_words() -> Bool {
+  match smpro_internal_warning_of(type_word: 1, warn_hi: 8772, warn_lo: 116) {
+    Present { value: r } => is_ccix_rca_linkup_fail(r: r) && (match r.kind { SmproWarning => true SmproErrorWithData => false SmproErrorWithoutData => false })
+    Absent => false
+  }
+}
+
+// ── RED: an unlisted code is its number, never the nearest name ────────────────────────────────
+
+// INFO_HI 0xA099: image nibble 10 (the table ends at 9), location 0x99 = 153 (it ends at 77);
+// INFO_LO 146 (it ends at 145).
+test fn red_an_unlisted_location_error_and_image_are_undefined() -> Bool {
+  match smpro_internal_error_of(type_word: 2, info_hi: 41113, info_lo: 146, data_hi: 0, data_lo: 0) {
+    Present { value: r } => undefined(c: r.image, code: 10) && undefined(c: r.location, code: 153) && undefined(c: r.error, code: 146)
+      && contains(smpro_internal_record_text(r: r), "code 146 (no row in internalErrors.hpp)")
+    Absent => false
+  }
+}
+
+test fn the_last_listed_codes_are_still_defined() -> Bool {
+  match smpro_internal_error_of(type_word: 2, info_hi: 36941, info_lo: 145, data_hi: 0, data_lo: 0) {
+    Present { value: r } => named(c: r.image, code: 9, name: "All others") && named(c: r.location, code: 77, name: "BMC module") && named(c: r.error, code: 145, name: "ERR_DDR_TRAINING_FAILED")
+    Absent => false
+  }
+}
+
+// ── RED: a misplaced field shift reads a different record ──────────────────────────────────────
+
+// Reading INFO_HI with its bytes swapped (location from the HIGH byte -- the 0x22/0x44 misreading)
+// lands on location 34, a different named location, and is not the CCIX record.
+test fn red_location_from_the_high_byte_is_a_different_record() -> Bool {
+  match smpro_internal_error_of(type_word: 4, info_hi: 17442, info_lo: 116, data_hi: 0, data_lo: 0) {
+    Present { value: r } => !is_ccix_rca_linkup_fail(r: r) && named(c: r.location, code: 34, name: "PCP CPM initialization")
+    Absent => false
+  }
+}
+
+// Swapping INFO_HI and INFO_LO puts both fields past their tables.
+test fn red_info_hi_and_lo_swapped_is_undefined() -> Bool {
+  match smpro_internal_error_of(type_word: 4, info_hi: 116, info_lo: 8772, data_hi: 0, data_lo: 0) {
+    Present { value: r } => !is_ccix_rca_linkup_fail(r: r) && undefined(c: r.location, code: 116) && undefined(c: r.error, code: 8772)
+    Absent => false
+  }
+}
+
+// ── the real capture (gunbc.machine_intake_mtcollins1_smpro_error_reading), decoded ─────────────
+
+fn window_at(n: Int) -> SmproErrorWindow? {
+  mtcollins1_smpro_error_windows(reads: mtcollins1_smpro_error_reads_20261003).skip(n: n).first()
+}
+
+fn window_gate(n: Int) -> SmproRecordGate? {
+  match window_at(n: n) { Absent => none Present { value: w } => Present { value: w.pmpro } }
+}
+
+fn gate_is_pending_ccix(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: PendingAndDecoded { error: Present { value: r }, warning: _ } } => is_ccix_rca_linkup_fail(r: r) && kind_is_with_data(r: r) _ => false }
+}
+
+fn gate_is_ungated_ccix(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: GpiUnavailable { ungated_error: Present { value: r }, ungated_warning: _ } } => is_ccix_rca_linkup_fail(r: r) && kind_is_without_data(r: r) _ => false }
+}
+
+fn gate_is_not_pending(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: NotPending } => true _ => false }
+}
+
+fn gate_is_pending_without_record(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: PendingWithClearOrMissingType } => true _ => false }
+}
+
+fn window_socket(n: Int) -> Int {
+  match window_at(n: n) { Present { value: w } => match w.socket { Present { value: s } => s Absent => 0 - 1 } Absent => 0 - 2 }
+}
+
+fn window_gpi(n: Int) -> Int {
+  match window_at(n: n) { Present { value: w } => match w.gpi_ras_err { Present { value: g } => g Absent => 0 - 1 } Absent => 0 - 2 }
+}
+
+// This is the inhabitance claim: the real bytes reach the real decoder through the real windowing.
+test fn the_capture_is_five_windows_in_socket_order_0_0_1_0_1() -> Bool {
+  count(mtcollins1_smpro_error_windows(reads: mtcollins1_smpro_error_reads_20261003)) == 5
+    && window_socket(n: 0) == 0 && window_socket(n: 1) == 0 && window_socket(n: 2) == 1 && window_socket(n: 3) == 0 && window_socket(n: 4) == 1
+}
+
+// GPI_RAS_ERR bit 1 (PMpro) set and TYPE reports the record: the driver's own record.
+test fn window_zero_socket_zero_is_pending_and_decodes_the_ccix_failure() -> Bool {
+  window_gpi(n: 0) == 2 && gate_is_pending_ccix(g: window_gate(n: 0))
+}
+
+test fn window_one_socket_zero_is_not_pending_so_the_record_is_not_sticky() -> Bool {
+  window_gpi(n: 1) == 0 && gate_is_not_pending(g: window_gate(n: 1))
+}
+
+// Socket 1's windows read no GPI_RAS_ERR, so its CCIX record stands UNGATED, never as reported.
+test fn socket_one_record_stands_ungated_in_both_windows() -> Bool {
+  window_gpi(n: 2) == 0 - 1 && gate_is_ungated_ccix(g: window_gate(n: 2)) && gate_is_ungated_ccix(g: window_gate(n: 4))
+}
+
+// GPI_RAS_ERR says PMpro pending while TYPE is already clear: its own arm, not "no record".
+test fn window_three_pending_with_a_clear_type_is_its_own_arm() -> Bool {
+  window_gpi(n: 3) == 2 && gate_is_pending_without_record(g: window_gate(n: 3))
+}
+
+fn ccix_record() -> SmproInternalRecord? {
+  smpro_internal_error_of(type_word: 2, info_hi: 8772, info_lo: 116, data_hi: 0, data_lo: 0)
+}
+
+// RED: TYPE reports a record while the PMpro pending bit is clear -- including when only the SMpro's
+// bit (bit 0) is set.
+test fn red_a_record_without_its_pending_bit_is_type_present_without_pending() -> Bool {
+  (match smpro_record_gate(gpi: Present { value: 0 }, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { TypePresentWithoutPending { error: _, warning: _ } => true _ => false })
+    && (match smpro_record_gate(gpi: Present { value: 1 }, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { TypePresentWithoutPending { error: _, warning: _ } => true _ => false })
+}
+
+test fn red_no_gpi_read_is_gpi_unavailable_never_pending() -> Bool {
+  match smpro_record_gate(gpi: none, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { GpiUnavailable { ungated_error: Present { value: _ }, ungated_warning: _ } => true _ => false }
+}
+
+test fn red_pending_with_unread_type_is_pending_with_clear_or_missing_type() -> Bool {
+  match smpro_record_gate(gpi: Present { value: 2 }, processor: SmproProcessorPmpro, type_read: false, error: none, warning: none) { PendingWithClearOrMissingType => true _ => false }
+}
+
+// ── the collector renders a decoded record as a finding (supplied outcomes) ────────────────────
+
+fn read_ok(socket: Int, reg: SmproRegister, stdout: String) -> SmproProbeOutcome {
+  smpro_probe_outcome(raw: SmproProbeRaw { sequence: 0, socket: socket, register: reg.name, request: "r", at: "t", exit_code: 0, stdout: stdout, stderr: "" })
+}
+
+fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
+  [
+    read_ok(socket: socket, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"),
+    read_ok(socket: socket, reg: smpro_err_pmpro_type_reg, stdout: "00 02"),
+    read_ok(socket: socket, reg: smpro_err_pmpro_info_lo_reg, stdout: "00 74"),
+    read_ok(socket: socket, reg: smpro_err_pmpro_info_hi_reg, stdout: info_hi),
+    read_ok(socket: socket, reg: smpro_err_pmpro_data_lo_reg, stdout: "00 00"),
+    read_ok(socket: socket, reg: smpro_err_pmpro_data_hi_reg, stdout: "00 00"),
+    read_ok(socket: socket, reg: smpro_warn_pmpro_info_lo_reg, stdout: "00 00"),
+    read_ok(socket: socket, reg: smpro_warn_pmpro_info_hi_reg, stdout: "00 00"),
+  ]
+}
+
+// WHAT A RECORD MEANS FOR THE ATTEMPT is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account):
+// a gated, pending record is a stated error and a degradation; an ungated one is an anomaly and an
+// open question, never an error (docs/plans/power-on-sequence-model.md, law 8).
+fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
+  mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: AttemptConfigurationReceipt {
+      subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
+      requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+      cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+    },
+    handoff: HandoffPoweredOn, smpro: match observed(outcomes: outcomes) { Present { value: o } => [SmproPassEvidence { label: "pass", observation: o }] Absent => [] },
+    console: ConsoleNotRead, sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" },
+    bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+}
+
+data ccix_decode: String = "ERR_CCIX_RCA_LINKUP_FAIL (116) at CCIX initialization (68), ENTER"
+
+test fn a_pending_pmpro_record_is_a_stated_error_naming_the_decode() -> Bool {
+  let a = account_of(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
+  any(a.errors, x => match x.error { SmproRecordStated { socket: k, processor: _, pass: _, record: r } => k == 1 && contains(smpro_internal_record_text(r: r), ccix_decode) _ => false })
+    && any(a.degradations, d => match d { PendingErrorRecord { socket: k, processor: _, record: _ } => k == 1 _ => false })
+    && any(mtcollins1_power_on_account_notes(a: a), l => contains(l, ccix_decode))
+}
+
+test fn red_without_a_gpi_read_the_record_is_ungated_not_stated() -> Bool {
+  let a = account_of(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  !any(a.errors, x => match x.error { SmproRecordStated { socket: _, processor: _, pass: _, record: _ } => true _ => false })
+    && !any(a.degradations, d => match d { PendingErrorRecord { socket: _, processor: _, record: _ } => true _ => false })
+}
+
+test fn red_an_ungated_record_is_an_anomaly_and_an_open_question() -> Bool {
+  let a = account_of(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  any(a.anomalies, x => match x { RecordUngated { socket: k, processor: _, pass: _, gate: _ } => k == 1 _ => false })
+    && any(a.open, q => match q.question { UngatedRecordUnexplained { socket: k } => k == 1 _ => false })
+}
+
+test fn red_a_missing_info_word_decodes_nothing_and_says_why() -> Bool {
+  let os = pmpro_words(socket: 1, info_hi: "22 44")
+  let without_hi = concat(os.take(n: 3), os.skip(n: 4))
+  !any(mtcollins1_power_on_account_notes(a: account_of(outcomes: without_hi)), x => contains(x, "ERR_CCIX"))
+    && contains(dossier_of(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
+}

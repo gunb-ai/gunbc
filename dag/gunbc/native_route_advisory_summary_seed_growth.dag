@@ -1,0 +1,48 @@
+module gunbc.native_route_advisory_summary_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data native_route_advisory_summary_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "NativeFileAdvisoriesObserved",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "native_file_advisories_summary",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "parse_native_run_output",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "decode_file_advisories_row",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "advised_files_agree",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "decode_native_census_output",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "Decodes and renders the native route's accepted-file advisory rows, which the emitted binary prints as accepted_file_advisories lines (v2.compiler.native_test_vocabulary NativeTestFileAdvisories: path, head, tail) beside a terminal advised_files count. The decode arm in parse_native_run_output reads each row and refuses when the marker's count disagrees with the rows printed; NativeFileAdvisoriesObserved is the decoded row; native_file_advisories_summary tallies reasons and names each advised file. It decides nothing about admission. Before it, an accepted file's advisories were matched away in the context fold, so the advisory program (steps 2-4: fatal-first readers, residue reported once per grammar) had no instrument to be shown done against. The host is where the driver's rows are decoded today, so the decode and rendering sit beside the existing file-refusal decode rather than in a second reader. parse_native_run_output is listed because the change adds an arm and a count check to it; the rest of that function predates this row. The row decode and the count check are one pair of functions (decode_file_advisories_row, advised_files_agree) shared by parse_native_run_output and decode_native_census_output, the census-resolve stdout decode that run_v2_native_census uses, so the census-resolve receipt carries the same advisory population, refused the same way, as census; decode_native_census_output otherwise reads only the terminal counts that run_v2_native_census already read.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations (and the advisory arm and count check in parse_native_run_output) when the native lane's row decode and summary are emitted from a .dag fold over NativeTestFileAdvisories rather than hand-decoded in native_lane_runner (including the census-resolve decode in decode_native_census_output), SUFFICIENT FOR a native-route run (gunbc test over the //v2/test/... universe, or claim_executor's required native lane, and the eval-driver census door) to print each accepted file's advisory reasons and their tally with no hand-authored decode or rendering.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs: the accepted_file_advisories arm and advised_files check in parse_native_run_output, reached by every native run's stdout decode; native_file_advisories_summary, called once from run_required_v2_native_inner after the file-refusal summary; decode_native_census_output, reached by every run_v2_native_census (gunbc test //gunbc/instruments:v2-native-census) through the shared row decode and count check"
+}

@@ -186,7 +186,12 @@ fn above_floor_admission_defect(admission: VllmSchedulerAdmissionRequest) -> Non
   }
 }
 
-// THE FLOOR ENVELOPE: the shape every launch had before this split, stated as one.
+// THE FLOOR ENVELOPE: the shape every launch had before this split, stated as one. It is the SECOND mint of
+// the sealed type, on purpose and total: at the floor (ceiling == cold seats, admission omitted) there is no
+// gate to state, so scheduler_envelope's refusals cannot fire and a fallible mint would only add a dead arm.
+// Every ceiling ABOVE the floor goes through scheduler_envelope, whose production consumer is the Group A
+// seat staircase (gunbc.spark.glm53_arm_staircase, deforking cut 8a, #13040) -- a declared frontier whose
+// trigger is that PR landing; this change keeps every production launch at the floor.
 fn envelope_at_cold_floor(cold: ServingCapacityIntent) -> SchedulerEnvelope {
   SchedulerEnvelope {
     cold: cold,
@@ -229,7 +234,10 @@ fn envelope_above_floor(e: SchedulerEnvelope) -> Bool {
 //
 // THE PROFILE CARRIES BOTH SERVICE CLASSES: max_num_seqs is the ceiling, guaranteed_cold_seqs the
 // floor, and scheduler_admission the gate the seats between them depend on -- rendered into the argv
-// by gunbc.spark.serving_arm_launch and read back by the relaunch's readback.
+// by gunbc.spark.serving_arm_launch. READ BACK IS A DECLARED FRONTIER here: its consumer is the relaunch
+// transaction's admission-controls axis (gunbc.spark.serving_relaunch_transaction, through
+// extdeps.vllm.engine_args vllm_argv_scheduler_admission), which lands in deforking cut 7 (#12986); that
+// landing is the trigger, and until it does no production path compares plan and container on these fields.
 fn profile_for_envelope(
   envelope: SchedulerEnvelope,
   policy: ModelLaunchPolicy,

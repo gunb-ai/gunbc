@@ -22,7 +22,6 @@ import v2.std.optional {
   Present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   ComputationNode,
   Conj,

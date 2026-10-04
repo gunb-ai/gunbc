@@ -22,7 +22,6 @@ use crate::std_reference_binding_observation::StructuralBindingResolution::Struc
 pub use crate::std_reference_binding_observation::{
     ReferenceBindingObservation, StructuralBindingResolution,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, FilePath, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

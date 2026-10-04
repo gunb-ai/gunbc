@@ -256,11 +256,11 @@ fn y_answer(index: &Rc<OccurrenceCandidateIndex>, reference: &Rc<ReferenceOccurr
 fn print_reading_disclosures() {
     println!("\nREAD THESE WITH THE NUMBERS ABOVE:");
     println!(
-        "  X COLUMN IS THE POST-REWIRE PERSISTED ENV -- the one EMISSION reads. \
-v1.compiler.infer rewire_type_env_import_str_binding_identity rewrites module envs after \
-build_type_env; PRE-REWIRE INFERENCE ANSWERS ARE NOT MEASURED HERE. The two once disagreed on \
-this exact subject (139 of 146 E0308 rows, frontier receipt 1), so 'they agree now' is an \
-assumption this instrument does not test."
+        "  X COLUMN IS THE PERSISTED ENV -- the one EMISSION reads. The import-str identity \
+rewire that used to rewrite module envs after build_type_env is deleted, so the persisted \
+ancestry is the one inference built; inference and emission once disagreed on this exact \
+subject through that rewire (139 of 146 E0308 rows, frontier receipt 1). 'They agree now' \
+is still an assumption this instrument does not test."
     );
     println!(
         "  THIS IS A TWO-READER COMPARISON, NOT CORRECTNESS EVIDENCE \

@@ -2,7 +2,7 @@ module extdeps.uri
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.unicode.types {
   unicode_scalar_max_code_point,
   unicode_surrogate_first_code_point,
@@ -540,5 +540,103 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
           join(uri_percent_encode_outcome_wires(outcomes: outcomes), "") as NonEmptyStr,
         )
     }
+  }
+}
+
+// PERCENT-DECODE (RFC 3986 section 2.1), the inverse of uri_percent_encode_code_points. Every
+// "%" HEXDIG HEXDIG triplet decodes to one octet -- either hex case, since RFC 3986 makes the digits
+// case-insensitive -- and consecutive escaped octets must form well-formed UTF-8 (shortest form, no
+// surrogate, at most U+10FFFF), the same scalar rules the encode half admits. A literal character is
+// itself one scalar. A "%" not followed by two hex digits, or escaped octets that are not UTF-8,
+// REFUSE with their cause: a value that still carries an escape is never returned as decoded. The
+// UTF-8 fold is local to this module for the reason the encode half's is: std.encoding sits above
+// extdeps.uri in the import graph. Which characters a consumer admits in the decoded value is that
+// consumer's policy, not this one.
+type UriPercentDecodeRefusalCause
+  = UriPercentDecodeTruncatedEscape
+  | UriPercentDecodeNonHexDigit { cp: Int }
+  | UriPercentDecodeNotUtf8
+
+type UriPercentDecodeComponent
+  = UriPercentComponentDecoded { value: String }
+  | UriPercentComponentDecodeRefused { cause: UriPercentDecodeRefusalCause }
+
+// A UTF-8 scalar under assembly from escaped octets: its bits so far, how many continuation octets
+// remain, and the least code point its lead octet admits (the shortest-form bound).
+type UriDecodeUtf8
+  = UriUtf8Idle
+  | UriUtf8Need { cp: Int, remaining: Int, least: Int }
+
+// Decoded scalars are accumulated in REVERSE (one cons each, one reverse at the end), so decoding is
+// linear in the input rather than copying the accumulator per scalar.
+type UriPercentDecodeFold
+  = UriDecodeText { out: List<Int>, utf8: UriDecodeUtf8 }
+  | UriDecodeAfterPercent { out: List<Int>, utf8: UriDecodeUtf8 }
+  | UriDecodeAfterHighNibble { out: List<Int>, utf8: UriDecodeUtf8, high: Int }
+  | UriDecodeRefused { cause: UriPercentDecodeRefusalCause }
+
+fn uri_hex_digit_value(cp: Int) -> Int? {
+  if cp >= 48 && cp <= 57 { Present { value: cp - 48 } }
+  else { if cp >= 65 && cp <= 70 { Present { value: cp - 55 } }
+  else { if cp >= 97 && cp <= 102 { Present { value: cp - 87 } }
+  else { none } } }
+}
+
+fn uri_decode_scalar_admitted(cp: Int, least: Int) -> Bool {
+  cp >= least && cp <= unicode_scalar_max_code_point
+    && (cp < unicode_surrogate_first_code_point || cp > unicode_surrogate_last_code_point)
+}
+
+fn uri_decode_octet(out: List<Int>, utf8: UriDecodeUtf8, b: Int) -> UriPercentDecodeFold {
+  match utf8 {
+    UriUtf8Idle =>
+      if b < 128 { UriDecodeText { out: Cons { head: b, tail: out }, utf8: UriUtf8Idle } }
+      else { if b >= 194 && b <= 223 { UriDecodeText { out: out, utf8: UriUtf8Need { cp: b - 192, remaining: 1, least: 128 } } }
+      else { if b >= 224 && b <= 239 { UriDecodeText { out: out, utf8: UriUtf8Need { cp: b - 224, remaining: 2, least: 2048 } } }
+      else { if b >= 240 && b <= 244 { UriDecodeText { out: out, utf8: UriUtf8Need { cp: b - 240, remaining: 3, least: 65536 } } }
+      else { UriDecodeRefused { cause: UriPercentDecodeNotUtf8 } } } } }
+    UriUtf8Need { cp: c, remaining: r, least: m } =>
+      if b < 128 || b > 191 { UriDecodeRefused { cause: UriPercentDecodeNotUtf8 } }
+      else {
+        let next = c * 64 + (b - 128)
+        if r > 1 { UriDecodeText { out: out, utf8: UriUtf8Need { cp: next, remaining: r - 1, least: m } } }
+        else { if uri_decode_scalar_admitted(cp: next, least: m) { UriDecodeText { out: Cons { head: next, tail: out }, utf8: UriUtf8Idle } }
+        else { UriDecodeRefused { cause: UriPercentDecodeNotUtf8 } } }
+      }
+  }
+}
+
+fn uri_percent_decode_step(state: UriPercentDecodeFold, cp: Int) -> UriPercentDecodeFold {
+  match state {
+    UriDecodeRefused { cause: c } => UriDecodeRefused { cause: c }
+    UriDecodeText { out: out, utf8: u } =>
+      if cp == 37 { UriDecodeAfterPercent { out: out, utf8: u } }
+      else { match u {
+        UriUtf8Idle => UriDecodeText { out: Cons { head: cp, tail: out }, utf8: UriUtf8Idle }
+        UriUtf8Need { cp: _, remaining: _, least: _ } => UriDecodeRefused { cause: UriPercentDecodeNotUtf8 }
+      } }
+    UriDecodeAfterPercent { out: out, utf8: u } =>
+      match uri_hex_digit_value(cp: cp) {
+        Absent => UriDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: cp } }
+        Present { value: h } => UriDecodeAfterHighNibble { out: out, utf8: u, high: h }
+      }
+    UriDecodeAfterHighNibble { out: out, utf8: u, high: h } =>
+      match uri_hex_digit_value(cp: cp) {
+        Absent => UriDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: cp } }
+        Present { value: l } => uri_decode_octet(out: out, utf8: u, b: h * 16 + l)
+      }
+  }
+}
+
+fn uri_percent_decode_component(value: String) -> UriPercentDecodeComponent {
+  match fold(value |> chars, init: UriDecodeText { out: [], utf8: UriUtf8Idle }, f: (state, cp) => uri_percent_decode_step(state: state, cp: cp)) {
+    UriDecodeRefused { cause: c } => UriPercentComponentDecodeRefused { cause: c }
+    UriDecodeAfterPercent { out: _, utf8: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
+    UriDecodeAfterHighNibble { out: _, utf8: _, high: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
+    UriDecodeText { out: out, utf8: u } =>
+      match u {
+        UriUtf8Need { cp: _, remaining: _, least: _ } => UriPercentComponentDecodeRefused { cause: UriPercentDecodeNotUtf8 }
+        UriUtf8Idle => UriPercentComponentDecoded { value: join(reverse(out) |> map(c => from_code_point(cp: c)), "") }
+      }
   }
 }

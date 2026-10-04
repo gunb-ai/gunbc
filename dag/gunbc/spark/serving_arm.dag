@@ -1209,22 +1209,18 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
   }
 }
 
-data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
-  checkpoint: Glm53NativeFp8,
+data glm_native_initial_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_native_kv_auto_launch_policy,
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 1,
   guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
-  kv_cache_dtype: KvAuto,
   serve_port: 30000,
   served_alias: "glm-5.3-flash" as NonEmptyStr,
   prefix_caching: PrefixCachingExplicit { enabled: true },
-  engram: EngramConfigOmitted,
-  modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
-  indexer_kv_dtype: IndexerKvDtypeOmitted,
-}
+)
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
 //
@@ -1270,22 +1266,18 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
 // (extdeps.vllm.kv_cache) and does not bind here. The witness
 // test.claim.spark.serving_arm_kv_dtype_witness goes red if this row carries a dtype the declared
 // build refuses.
-data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile {
-  checkpoint: Glm53NativeFp8,
+data glm_native_concurrent_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_native_launch_policy,
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 16,
   guaranteed_cold_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
-  kv_cache_dtype: KvFp8,
   serve_port: glm_native_initial_profile.serve_port,
   served_alias: glm_native_initial_profile.served_alias,
   prefix_caching: PrefixCachingExplicit { enabled: true },
-  engram: EngramConfigOmitted,
-  modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
-  indexer_kv_dtype: IndexerKvDtypeOmitted,
-}
+)
 
 // ── WHAT A MODEL DECIDES ABOUT ITS LAUNCH, ONE ROW PER CHECKPOINT ───────────────────────────────
 //
@@ -1317,6 +1309,20 @@ type ModelLaunchPolicy sole_constructor {
 data glm53_native_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
   checkpoint: Glm53NativeFp8,
   kv_cache_dtype: KvFp8,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+// GLM-5.3-Flash native FP8 AS FIRST LAUNCHED: the main KV cache requested as `auto`, which on this
+// fp8-quantized MLA checkpoint resolves to the same fp8_ds_mla kernel as the explicit request
+// (glm_native_kv_cache_dtype_admission). It is its own row, not a spelling of glm53_native_launch_policy,
+// because the request is part of the launch's identity: the compatibility receipts recorded against
+// glm_native_initial_profile name kv=auto in their profile key, and rewriting the request would re-key
+// every one of them for a launch that never asked for fp8 by name. New launches use glm53_native_launch_policy.
+data glm53_native_kv_auto_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53NativeFp8,
+  kv_cache_dtype: KvAuto,
   indexer_kv_dtype: IndexerKvDtypeOmitted,
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
@@ -1386,22 +1392,28 @@ data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = ModelLaunchPoli
 // value beneath it was a third number nobody sent -- the row warned against claiming an unsent
 // argument and then claimed a different one. Deriving it means the profile cannot drift from the
 // revision whose default it is describing.
-data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
+// THE CANARY'S MODEL CHOICES ARE ITS CHECKPOINT'S OWN ROW, like every other launch's: fp8 KV, no Engram,
+// text by omission, the indexer at its default.
+data glm53_exl3_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
   checkpoint: Glm53Exl3_205,
+  kv_cache_dtype: KvFp8,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
+}
+
+data glm_exl3_canary_profile: ServingLaunchProfile = serving_launch_profile(
+  policy: glm53_exl3_launch_policy,
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
   guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
-  kv_cache_dtype: KvFp8,
   serve_port: 30001,
   served_alias: "glm-5.3-flash-exl3-canary" as NonEmptyStr,
   prefix_caching: PrefixCachingOmitted,
-  engram: EngramConfigOmitted,
-  modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
-  indexer_kv_dtype: IndexerKvDtypeOmitted,
-}
+)
 
 
 // ── THE RUNTIME THIS FLEET BUILT FOR THE NATIVE CHECKPOINT ────────────────────────────────────

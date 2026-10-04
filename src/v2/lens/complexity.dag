@@ -1,4 +1,5 @@
 module v2.lens.complexity
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -32,7 +33,6 @@ import v2.lens.cost {
   cost_lens
 }
 import std.algebra { Empty }
-import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
   AmbiguousIntent,
