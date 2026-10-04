@@ -45,7 +45,7 @@ fn assembly_steps() -> List<String> {
  "Seat the fan bank on the arms and insert the two rear retainers.",
  "Fit each fan and its guard over the locating pins; install two diagonal M4 bolts per fan."]
 }
-fn manifest() -> JsonValue {
+fn manifest_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> JsonValue {
  json_object(members:[json_kv(key:"schema",value:text(s:"gunbc.cassette-review.v1")),json_kv(key:"revision",value:text(s:"06")),json_kv(key:"quantum",value:text(s:"micrometre")),json_kv(key:"axes",value:text(s:"X across rear I/O; Y up; +Z toward front handle")),json_kv(key:"release",value:text(s:"review-only; no print or powered-operation admission")),json_kv(key:"fan_fit",value:text(s:fan_fit_display())),
  json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"bay_pitch_um",value:json_int(n:bay_pitch)),json_kv(key:"bay_width_um",value:json_int(n:bay_w)),json_kv(key:"nodes_per_block",value:json_int(n:4)),json_kv(key:"intended_nodes",value:json_int(n:8)),
  json_kv(key:"assembly_steps",value:json_array(elements:map(assembly_steps(),s=>text(s:s)))),
@@ -55,9 +55,10 @@ fn manifest() -> JsonValue {
  json_kv(key:"export",value:json_object(members:[json_kv(key:"linear_tolerance_um",value:json_int(n:micrometer_count(m:exercised_stl_knobs.linear_tolerance))),json_kv(key:"angular_tolerance_radians",value:text(s:exercised_stl_knobs.angular_tolerance_text as String))])),
  json_kv(key:"power",value:json_object(members:[json_kv(key:"placement",value:text(s:"fixed-frame shared 12 V system per four-node block")),json_kv(key:"branches",value:json_int(n:4)),json_kv(key:"rated_watts",value:json_null()),json_kv(key:"live_hot_swap",value:json_bool(b:false)),json_kv(key:"redundancy",value:json_null())])),
  json_kv(key:"print_envelope_mm",value:json_array(elements:[json_int(n:millimeter_count(m:build_envelope_x(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_y(e:a1_mini_build_envelope))),json_int(n:millimeter_count(m:build_envelope_z(e:a1_mini_build_envelope)))])),
- json_kv(key:"parts",value:json_array(elements:all_parts() |> map(p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:interfaces() |> map(i=>interface_json(i:i)))),
+ json_kv(key:"parts",value:json_array(elements:parts |> map(p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:joints |> map(i=>interface_json(i:i)))),
  json_kv(key:"unresolved",value:json_array(elements:[text(s:"Board standoff thread, installed height and underside keep-outs; no new gauge sequence."),text(s:"Fastener lengths/engagement, support material, rail clearance and loaded joint performance."),text(s:"Cooler location/orientation and rear I/O/cable service access."),text(s:"Shared supply selection, branch circuitry, protective earth and thermal validation."),text(s:"Drives and expansion cards are unspecified, not silently omitted requirements.")]))])
 }
+fn manifest() -> JsonValue {manifest_for(parts:all_parts(),joints:interfaces())}
 fn main() -> CliWireResponse {
  if review_model_checks(parts:all_parts(),interfaces:interfaces()) {CliWirePrintable {bytes:serialize_json(v:manifest()),exit:ExitSuccess}} else {CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
 }

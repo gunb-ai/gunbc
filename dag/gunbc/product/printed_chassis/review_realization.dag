@@ -1,10 +1,11 @@
 module product.printed_chassis.review_realization
 
-import std.types { String }
+import std.types { String,List }
+import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterface}
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
-import product.printed_chassis.cassette_review {all_parts,manifest}
+import product.printed_chassis.cassette_review {all_parts,manifest_for}
 import extdeps.languages.json.emit {serialize_json,json_string,json_object,json_kv}
 import product.printed_chassis.cassette {interfaces}
 import product.printed_chassis.assembly_review_checks {review_model_checks}
@@ -166,12 +167,15 @@ fn adapter_source() -> String { join([
   "\n",
   "if __name__=='__main__':main()\n"
 ], "") }
-fn main() -> CliWireResponse {
- if !review_model_checks(parts:all_parts(),interfaces:interfaces()) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
- match realize_review_parts(parts:all_parts()) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:manifest()))),")\n",adapter_source()],""),exit:ExitSuccess}}
+fn program_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> CliWireResponse {
+ if !review_model_checks(parts:parts,interfaces:joints) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
+ match realize_review_parts(parts:parts) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:manifest_for(parts:parts,joints:joints)))),")\n",adapter_source()],""),exit:ExitSuccess}}
 }
+fn main() -> CliWireResponse {program_for(parts:all_parts(),joints:interfaces())}
 
-fn bundle() -> CliWireResponse {
- if !review_model_checks(parts:all_parts(),interfaces:interfaces()) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
- match main() {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest()),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
+// Both payloads derive from the same parts and joints. Callers cannot supply a
+// manifest from another model, and program_for owns the single admission check.
+fn bundle_for(parts:List<AssemblyPart>,joints:List<MechanicalInterface>) -> CliWireResponse {
+ match program_for(parts:parts,joints:joints) {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest_for(parts:parts,joints:joints)),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
 }
+fn bundle() -> CliWireResponse {bundle_for(parts:all_parts(),joints:interfaces())}

@@ -1,6 +1,7 @@
 module product.printed_chassis.assembly_review_checks
-import std.types {Bool,Int,List,String}
-import v2.std.algebra {any,filter,length}
+import std.types {Bool,Int,List,Map,String}
+import v2.std.algebra {any,length}
+import v2.std.collection {empty_map,map_insert,map_lookup}
 import std.measure {micrometer_count,millimeter_count}
 import std.affine_space {Point3,signed_frame_component_count}
 import std.euclidean_geometry {Axis3,Axis3X,Axis3Y,Axis3Z}
@@ -44,14 +45,38 @@ fn within_bed(p:AssemblyPart) -> Bool {
  match p.print_plane {LayOnXY=>x<=bx&&y<=by&&z<=bz LayOnXZ=>x<=bx&&z<=by&&y<=bz LayOnYZ=>z<=bx&&y<=by&&x<=bz}
  }}
 }
-fn coaxial(a:Primitive,at:Point3,b:Primitive,bt:Point3) -> Bool {
- match a {RoundPrism {diameter:da,length:_,axis:aa,center:ca}=>match b {RoundPrism {diameter:db,length:_,axis:ab,center:cb}=>
- axis_same(a:aa,b:ab)&&micrometer_count(m:db)<=micrometer_count(m:da)&&micrometer_count(m:da)-micrometer_count(m:db)<=600&&all([Axis3X,Axis3Y,Axis3Z],axis=>axis_same(a:axis,b:aa)||component(p:ca,a:axis)+component(p:at,a:axis)==component(p:cb,a:axis)+component(p:bt,a:axis))
- Block {size:_,center:_}=>false} Block {size:_,center:_}=>false}
+// Build world-space bore lines once. A line ignores only the axial component,
+// exactly as the coaxial relation does; diameter and different-owner checks remain.
+// Persistent-map insertion copies its small accumulator; the bounded cassette has
+// tens of lines, rather than a corpus-sized map. No global linear-cost claim is made.
+type BoreLine {axis:Axis3,u:Int,v:Int}
+type Bore {owner:String,line:BoreLine,diameter:Int}
+fn bores(p:AssemblyPart,primitives:List<Primitive>) -> List<Bore> {
+ flat_map(primitives,q=>match q {Block {size:_,center:_}=>[] RoundPrism {diameter:d,length:_,axis:a,center:c}=>{
+ let diameter=micrometer_count(m:d)
+ if diameter>5000 {[]} else {
+ let x=signed_frame_component_count(c:c.x)+signed_frame_component_count(c:p.at.x)
+ let y=signed_frame_component_count(c:c.y)+signed_frame_component_count(c:p.at.y)
+ let z=signed_frame_component_count(c:c.z)+signed_frame_component_count(c:p.at.z)
+ let line=match a {Axis3X=>BoreLine {axis:Axis3X,u:y,v:z} Axis3Y=>BoreLine {axis:Axis3Y,u:x,v:z} Axis3Z=>BoreLine {axis:Axis3Z,u:x,v:y}}
+ [Bore {owner:p.id,line:line,diameter:diameter}]
+ }}})
 }
-fn bore_has_mate(p:AssemblyPart,c:Primitive,parts:List<AssemblyPart>) -> Bool {
- match c {RoundPrism {diameter:d,length:_,axis:_,center:_}=>if micrometer_count(m:d)<=5000 {any(parts,q=>q.id!=p.id&&any(concat(q.adds,q.cuts),b=>coaxial(a:c,at:p.at,b:b,bt:q.at)))} else {true} Block {size:_,center:_}=>true}
+fn bore_index(parts:List<AssemblyPart>) -> Map<BoreLine,List<Bore>> {
+ fold(flat_map(parts,p=>bores(p:p,primitives:concat(p.adds,p.cuts))),init:empty_map(),f:fn(index,b){
+ let previous=match map_lookup(m:index,key:b.line) {Absent=>[] Present {value:rows}=>rows}
+ map_insert(m:index,key:b.line,value:concat([b],previous))
+ })
 }
+fn bore_has_mate(b:Bore,index:Map<BoreLine,List<Bore>>) -> Bool {
+ match map_lookup(m:index,key:b.line) {Absent=>false Present {value:rows}=>any(rows,q=>q.owner!=b.owner&&q.diameter<=b.diameter&&b.diameter-q.diameter<=600)}
+}
+type PartIds {seen:Map<String,Bool>,unique:Bool}
 fn review_model_checks(parts:List<AssemblyPart>,interfaces:List<MechanicalInterface>) -> Bool {
- length(parts)>0&&all(parts,p=>length(filter(parts,q=>q.id==p.id))==1&&length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))&&match p.kind {Printed=>within_bed(p:p)&&all(p.cuts,c=>bore_has_mate(p:p,c:c,parts:parts)) Purchased=>true Metal=>true Clearance=>true})&&all(interfaces,i=>all(i.members,id=>any(parts,p=>p.id==id)))
+ let ids=fold(parts,init:PartIds {seen:empty_map(),unique:true},f:fn(acc,p){
+ let fresh=match map_lookup(m:acc.seen,key:p.id) {Absent=>true Present {value:_}=>false}
+ PartIds {seen:map_insert(m:acc.seen,key:p.id,value:true),unique:acc.unique&&fresh}
+ })
+ let index=bore_index(parts:parts)
+ length(parts)>0&&ids.unique&&all(interfaces,i=>all(i.members,id=>match map_lookup(m:ids.seen,key:id) {Absent=>false Present {value:_}=>true}))&&all(parts,p=>length(p.adds)>0&&all(concat(p.adds,p.cuts),q=>primitive_positive(p:q))&&match p.kind {Printed=>within_bed(p:p)&&all(bores(p:p,primitives:p.cuts),b=>bore_has_mate(b:b,index:index)) Purchased=>true Metal=>true Clearance=>true})
 }

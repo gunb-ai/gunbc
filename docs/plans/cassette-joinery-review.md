@@ -42,3 +42,15 @@ move it behind a DAG-owned observed-result judgment and execute that pipeline in
 checks and shared emitter remove the duplicate solid interpreter, but do not close that obligation.
 The assembly remains review-only, with no fabrication capability. Assembly time must be measured
 on the first full unpowered build; no invented time saving is claimed.
+
+CI cost validation (2026-10-04): the closed-variant residue gate reports zero unrostered
+cases after explicit constructor handling. Source admission indexes world-space bore lines and
+part IDs instead of rescanning all primitives for every mounting hole. The map remains bounded
+by this small assembly; persistent-map insertion is not claimed to be globally linear.
+The whole-assembly and moved/missing/oversized controls remain full-model witnesses. Packaging
+uses the same parameterized producer on a small fixture and includes duplicate-member refusal.
+Direct claim_batch measurements put all six witnesses below the new-witness enrollment margin;
+no ceiling, debt roster or exemption was changed. A complete bundle emission matched the r06
+manifest and Python program exactly. Hosted floor validation must still confirm the committed
+revision. Local full-floor execution is not a green receipt: this session host lacks the declared
+browser-fixture runner premise.
