@@ -106,7 +106,6 @@ data known_frontier_causes: List<CauseOwnership> = [
   },
   CauseOwnership {
     cause: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a let-match with returning arms heading a tail spine and TWO OR MORE binding arms: each binding arm would need the rest of the spine, and copying it per arm is a cost-shape defect, so it refuses here, located at the let (v2.compiler.body_lowering_fold body_lower_exit_walk_let_match). Flips when v2 infer types a local fn value (frontier lambda_value_has_no_derived_type_in_v2_infer), which admits one shared join point k(x) = rest. Count on the PR"
   },
