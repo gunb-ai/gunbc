@@ -16568,18 +16568,23 @@ fn ground_node(n: Node, ctx: GroundCtx) -> GroundOut {
   }
 }
 
-// THE TYPE-VARIABLE BINDER A FIELD'S TYPE NAMES, or Absent when the field's type is not a type
-// variable. A declaration's field carries its parameter three ways depending on how far the
-// declaration has been processed: stamped on the field node itself (stamp_type_param_occurrences,
-// and the kernel mint), stamped on the type node the field resolves to, or still unresolved, where
-// the field's bare type label is the binder's own name. A field resolved to a declared type is
-// none of these and answers Absent.
-fn payload_field_type_binder(f: Node, si: Map<String, NewlineIndex>) -> String? {
+// THE TYPE-VARIABLE BINDER A FIELD'S TYPE NAMES, or Absent when the field's type is not one of
+// the declaration's own type parameters. After resolution a parameter leaf looks like a concrete
+// type of that name, so the binder is not on the node; v1.compiler.infer_env
+// declaration_substitution_basis is the corpus's one authority for "is this leaf a parameter of
+// this declaration" (its roster is the declaration's own generic names), and this reads the
+// field's type through it. A field already stamped as a type variable -- the kernel mint's own --
+// answers directly.
+fn payload_field_type_binder(f: Node, env: TypeEnv, generic_names: List<String>) -> String? {
   match type_variable_binder_name(n: f) {
     Present { value: tv } => Present { value: tv }
     Absent =>
-      if f.inferred == none { Present { value: type_node_label(n: f, source_indices: si) } }
-      else { type_variable_binder_name(n: child_type_node(ch: f)) }
+      if f.inferred == none {
+        let label = type_node_label(n: f, source_indices: env.source_indices)
+        if generic_names |> any(g => g == label) { Present { value: label } } else { none }
+      } else {
+        type_variable_binder_name(n: declaration_substitution_basis(n: child_type_node(ch: f), env: env, generic_names: generic_names))
+      }
   }
 }
 
@@ -16621,11 +16626,11 @@ fn kernel_optional_shape_refusal(decl: Node, env: TypeEnv) -> String? {
           if authored_name_at(source_indices: si, node: f) != mint_payload_field {
             Present { value: concat("its payload field is named '", authored_name_at(source_indices: si, node: f), "' where the kernel mint names it '", mint_payload_field, "'") }
           } else {
-            match payload_field_type_binder(f: f, si: si) {
+            match payload_field_type_binder(f: f, env: env, generic_names: decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))) {
               Present { value: tv } =>
                 if tv == param_name { none }
                 else { Present { value: concat("its payload field's type is the type variable '", tv, "', which is not its type parameter '", param_name, "'") } }
-              Absent => Present { value: concat("its payload field's type is not its type parameter '", param_name, "'") }
+              Absent => Present { value: concat("its payload field's type, '", authored_name_at(source_indices: si, node: child_type_node(ch: f)), "', is not its type parameter '", param_name, "'") }
             }
           }
       }
