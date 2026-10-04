@@ -2753,7 +2753,7 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
   }
 }
 
-// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_routes
+// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_enrolment_code
 // issue_device_enrolment_code on srv1 as the operator's user, from the release the dispatch names;
 // the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
 // over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:

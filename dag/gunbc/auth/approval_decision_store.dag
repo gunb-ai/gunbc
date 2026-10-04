@@ -20,7 +20,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, Files
 import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.srv1_dashboard_bind { srv1_dashboard_listen_host }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -161,7 +161,7 @@ type IdentityTrustStanding
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
 // (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
-// gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
+// gunbc.srv1_dashboard_bind srv1_dashboard_listen_host (srv1_live_dashboard_instance.listen_host) is the one fact
 // live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
@@ -191,7 +191,7 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
   }
 }
 
-data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_dashboard_listen_host)
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 

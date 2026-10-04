@@ -1,5 +1,5 @@
 module test.claim.instrument_motion_page_witness
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, AccessPathLocalDev, RequestAccessPath }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
@@ -25,7 +25,7 @@ import gunbc.design.instrument_bob {
   frames_visit_an_intermediate_position, frames_max_abs_between, frames_last_displacement,
   frames_cross_rest, frames_terminate_exactly_once, bob_phase_key,
 }
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, AccessPathLocalDev }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, RequestSecurityContext }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import std.types { String, Int, Bool, List }
 import extdeps.ietf.http_semantics { HttpMethod, GET }
@@ -34,7 +34,7 @@ data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised 
 
 WHAT THE RED CONTROLS DISCRIMINATE. The reduced wire is asserted to DIFFER from the full wire and to be exactly the at-rest frame: if a future edit made reduced motion a client-side opt-out, both wires would be equal and the first control reds. The client program is asserted to contain no arithmetic library call: if the physics ever migrated into the renderer, Math. would appear and the second control reds. And the shipped full wire is asserted to respect the modelled travel bound at every frame, so a page that shipped an unbounded sequence reds even though the model that decided it is green."
 
-fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence> {
   ServeHttpRequest {
     method: method,
     path: path,
