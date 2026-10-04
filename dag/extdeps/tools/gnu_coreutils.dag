@@ -322,6 +322,39 @@ fn coreutils_install_directory_owned_argv(
   ]
 }
 
+// install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
+// ownership following the invoking principal. Its one caller reaches it through
+// sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
+// elevation itself; the owned variants above exist for callers that create as one principal and
+// hand the file over. install does NOT create missing parents -- that is upstream behaviour,
+// stated at the section comment above so a caller does not assume otherwise.
+fn coreutils_install_file_argv(mode: NonEmptyStr, source: String, dest: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    source,
+    dest,
+  ]
+}
+
+// dd(1) -- GNU coreutils, "dd: convert and copy a file". This repository's one use is the
+// BYTE-EXACT STAGED WRITE: `dd of=PATH status=none` truncates and overwrites PATH from stdin, and
+// status=none suppresses the statistics line dd otherwise prints to stderr, so the command's log
+// carries only what the caller chose to log. dd rather than tee because tee ECHOES the bytes into
+// its own stdout -- the command log would carry the unit file's contents twice, once as payload
+// and once as log; the reasoning is recorded at gunbc.typed_remote_file_write, whose convergence
+// law this builder serves on the LocalShell and SshShell transports. `of=PATH` is ONE word -- dd's
+// own operand grammar, not a flag and a separate path -- and the PAYLOAD is never an argv element:
+// it crosses as stdin, so no byte of it can change the command's meaning.
+data coreutils_dd_binary_name: NonEmptyStr = "dd"
+
+fn dd_program() -> ProgramIdentity = uncataloged_program(invocation: coreutils_dd_binary_name)
+
+fn dd_overwrite_path_command(path: String) -> ArgvCommand {
+  argv_command(program: dd_program(), arguments: [concat("of=", path), "status=none"])
+}
+
 // rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
 // repository and the distinction between them is load-bearing, not stylistic: -f removes a file
 // and does not fail when it is already absent (idempotent teardown); -d removes an EMPTY

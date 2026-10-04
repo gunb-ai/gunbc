@@ -5,6 +5,7 @@ import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, 
 import extdeps.ssh.session {
   ssh_session_exec_result_from_service,
   ssh_session_exec_portable_words,
+  ssh_session_exec_portable_words_with_stdin,
   SshSessionExecResult,
 }
 import extdeps.ssh.session
@@ -116,6 +117,30 @@ fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvE
     Absent => TypedArgvExecConverged {
       result: ssh_session_exec_portable_words(
         client_args: shape_ssh_shell_exec(host: host, argv: argv),
+      ),
+    }
+  }
+}
+
+// THE STDIN SIBLING, same wall, same admission order. It exists because one op in a host-effect
+// fold (dd receiving unit-file bytes) carries its payload as DATA, and the payload is not what the
+// wall judges -- the ARGV is. The check runs before the transport call exactly as in
+// typed_argv_exec_over_ssh, so a word the remote shell would re-parse refuses here rather than
+// reaching ssh, whether or not the leg carries stdin. Kept as a separate function rather than an
+// optional-stdin parameter on typed_argv_exec_over_ssh because the transport ops themselves are
+// two distinct declarations (ExecPortableWords / ExecPortableWordsWithStdin); fusing here would
+// make the seam read as one operation when the transport spells two.
+fn typed_argv_exec_over_ssh_with_stdin(
+  host: NonEmptyStr,
+  argv: List<String>,
+  stdin_payload: String,
+) -> TypedArgvExecOutcome {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => TypedArgvExecRefused { reason: why }
+    Absent => TypedArgvExecConverged {
+      result: ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_ssh_shell_exec(host: host, argv: argv),
+        stdin_payload: stdin_payload,
       ),
     }
   }
