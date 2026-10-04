@@ -2,6 +2,7 @@ module test.fixture.rest_exchange_replay_probe
 
 import std.types { Bool, Int, List, String }
 import extdeps.transports.rest { RestOutcome }
+import std.serialization { Text }
 import extdeps.github.workflow_runs { WorkflowRunList }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 
@@ -38,6 +39,29 @@ service test.RestReplay {
     }
     readonly
     transport rest { method: GET, path: "/answer" }
+  }
+
+  // THE RESPONSE FORMAT, SPELLED AS THE std.serialization WireFormat VARIANT github.Pulls.Diff uses.
+  // A plain-text body must come back as text through dispatch_rest, not through the JSON decoder.
+  operation TextBody {
+    output {
+      text: String
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer", response_format: Text }
+    response { 200 => String }
+  }
+
+  // A response_format that is no WireFormat variant: a refusal, never a silent Json default.
+  operation FormatUnrecognized {
+    output {
+      text: String
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer", response_format: "Text" }
+    response { 200 => String }
   }
 
   operation RootArray {
