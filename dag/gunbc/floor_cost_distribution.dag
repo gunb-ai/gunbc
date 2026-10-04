@@ -555,7 +555,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
       Absent => none
       Present { value: identity } => match fields[columns.module] {
       Absent => none
-      Present { value: module } => match parse_claim_cost_reading(fields: fields, columns: columns) {
+      Present { value: row_module } => match parse_claim_cost_reading(fields: fields, columns: columns) {
         Absent => none
         Present { value: reading } => match (match fields.skip(n: columns.verdict_reached).first() { Absent => none  Present { value: cell } => parse_verdict_reached(value: cell) }) {
           Absent => none
@@ -564,7 +564,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
             ReachabilityColumnUnrecorded => Present {
               value: FloorCostRow {
                 identity: identity,
-                module: module,
+                module: row_module,
                 verdict_reached: reached,
                 cost: reading,
                 reachability: none
@@ -573,7 +573,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
             ReachabilityColumnRead { value: reach } => Present {
               value: FloorCostRow {
                 identity: identity,
-                module: module,
+                module: row_module,
                 verdict_reached: reached,
                 cost: reading,
                 reachability: Present { value: reach }
