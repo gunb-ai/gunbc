@@ -212,7 +212,7 @@ fn slot_refused_as_another_workflow(slot_workflow: NonEmptyStr) -> Bool {
 test fn a_slot_for_another_workflow_or_branch_cannot_become_a_subject() -> Bool {
   slot_refused_as_another_workflow(slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
     && slot_refused_as_another_workflow(slot_workflow: qualification_selected_workflow(branch: "feature"))
-    && (match qualification_slot_refusal(slot_workflow: qualification_selected_workflow(branch: pin_branch), branch: branch) { Absent => true Present { value: _ } => false })
+    && (match qualification_slot_refusal(slot_workflow: qualification_selected_workflow(branch: pin_branch), branch: pin_branch) { Absent => true Present { value: _ } => false })
 }
 
 fn runs_on_refused(runs_on: RunnerSpec) -> Bool {
