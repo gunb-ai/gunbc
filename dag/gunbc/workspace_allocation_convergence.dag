@@ -1,0 +1,90 @@
+module gunbc.workspace_allocation_convergence
+
+import gunbc.runner_slot_allocation { identity_is_workspace_execution_member }
+import std.types { String, NonEmptyStr, Int, List, Bool }
+import std.algebra { trim }
+import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation_store {
+  WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
+  workspace_read_owner, workspace_owner_key, workspace_allocation_json, workspace_allocation_coherent,
+}
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
+
+// The selected host observes its own hold root. A matching path on another host is never the
+// same authority. The global owner head supplies desired state and immutable incarnation intent.
+type WorkspaceConvergenceBasis sole_constructor {
+  host: NonEmptyStr,
+  owner: PrincipalRef,
+  owner_key: NonEmptyStr,
+  owner_generation: Int,
+  allocation: WorkspaceAllocation,
+  reservation_plan: WorkspaceReservationPlan,
+}
+
+type WorkspaceConvergenceObservation
+  = WorkspaceConvergenceObserved { basis: WorkspaceConvergenceBasis }
+  | WorkspaceConvergenceUnobserved { reason: String }
+
+fn workspace_convergence_observe(store: FabricStorageBinding, owner: PrincipalRef, idempotency_key: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputAbsent => WorkspaceConvergenceUnobserved { reason: "selected host identity is absent" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceConvergenceUnobserved { reason: "selected host identity is unreadable" }
+    ProcessOutputPresent { text: hostname } => if trim(s: hostname) == "" {
+      WorkspaceConvergenceUnobserved { reason: "selected host identity is empty" }
+    } else {
+      match workspace_read_owner(store: store, owner: owner) {
+        WorkspaceStoreUnreadable { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
+        WorkspaceStoreReadOk { snapshot: observed } => workspace_convergence_basis(
+          snapshot: observed, idempotency_key: idempotency_key, host: trim(s: hostname) as NonEmptyStr,
+        )
+      }
+    }
+  }
+}
+
+fn workspace_convergence_basis(snapshot: WorkspaceOwnerSnapshot, idempotency_key: NonEmptyStr, host: NonEmptyStr) -> WorkspaceConvergenceObservation {
+  match snapshot.expected {
+    ExpectSlotAbsent => WorkspaceConvergenceUnobserved { reason: "allocation owner head is absent" }
+    ExpectSlotGeneration { generation: revision } => match filter(snapshot.allocations, a => a.request.idempotency_key == idempotency_key).first() {
+      Absent => WorkspaceConvergenceUnobserved { reason: "allocation request is absent" }
+      Present { value: selected } => if !workspace_allocation_coherent(allocation: selected) {
+        WorkspaceConvergenceUnobserved { reason: "allocation record is incoherent" }
+      } else { match selected.plan {
+        Absent => WorkspaceConvergenceUnobserved { reason: "allocation has no durable selected-host reservation plan" }
+        Present { value: prepared } => if !identity_is_workspace_execution_member(identity: prepared.reservation.slot) {
+          WorkspaceConvergenceUnobserved { reason: "selected slot has no commissioned workspace purpose" }
+        } else if (prepared.reservation.slot.host as String) != (host as String) {
+          WorkspaceConvergenceUnobserved { reason: "allocation planning or apply must execute on the selected host" }
+        } else {
+          WorkspaceConvergenceObserved { basis: WorkspaceConvergenceBasis {
+            host: host, owner: snapshot.owner, owner_key: workspace_owner_key(owner: snapshot.owner),
+            owner_generation: revision, allocation: selected, reservation_plan: prepared,
+          } }
+        }
+      } }
+    }
+  }
+}
+
+// FleetConvergeRequest folds these rows into its existing member fingerprint and bundle digest.
+// Any changed desired head, selected host, hold root, grant or incarnation invalidates the plan.
+fn workspace_convergence_baseline_rows(basis: WorkspaceConvergenceBasis) -> List<String> {
+  [
+    concat("workspace-owner-head:", basis.owner_key as String),
+    concat("workspace-owner-generation:", to_string(basis.owner_generation)),
+    concat("workspace-selected-host:", basis.host as String),
+    concat("workspace-hold-root:", basis.reservation_plan.root as String),
+    concat("workspace-allocation:", serialize_json(v: workspace_allocation_json(allocation: basis.allocation))),
+  ]
+}
+
+fn workspace_convergence_same_revision(planned: WorkspaceConvergenceBasis, observed: WorkspaceConvergenceBasis) -> Bool {
+  workspace_convergence_baseline_rows(basis: planned) == workspace_convergence_baseline_rows(basis: observed)
+}
