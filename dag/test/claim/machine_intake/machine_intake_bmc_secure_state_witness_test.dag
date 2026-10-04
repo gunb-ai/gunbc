@@ -4,6 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String, list_l
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.goal_assessment { GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.types { AccountRoleAdministrator }
@@ -72,6 +73,20 @@ import gunbc.machine_intake_bmc_rotation_route {
 import gunbc.machine_intake_bmc_secure {
   BmcSecureGoal,
   BmcAccountActionDue,
+  PublishedGenerationNotGoalBound,
+  PublishedAccountKind,
+  PublishedAccountRetainedByPolicy,
+  BreakGlassAccount,
+  PublishedFactoryCredential,
+  BmcSecureStateRefusal,
+  AccountDeviationNeedsUngroundedOperation,
+  AccountRetentionNotGoalBound,
+  AccountStateForOtherSubject,
+  AccountStateForOtherManagedReference,
+  AccountReadingPrecedesReadFloor,
+  AccountStateConjunctionRefused,
+  ChannelAccessWrite,
+  PublishedFactoryCredentialRestore,
   BmcAccountPlanOutcome,
   BmcSecurePhaseOutcome,
   GenerationFetchAdmission,
@@ -216,8 +231,19 @@ fn break_glass_ref() -> ManagedCredentialReference {
   }
 }
 
+// The goal's published replacement: the exact break-glass generation the published account is retired
+// to (version 4 at epoch 4 of the break-glass secret, the generation stored after the one in force).
+fn goal_break_glass_ref() -> ManagedCredentialReference {
+  ManagedCredentialReference {
+    account: "admin",
+    role: AccountRoleAdministrator,
+    secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-admin", version: "4", hash_state: HashPending },
+    credential_epoch: 4,
+  }
+}
+
 fn goal_v1() -> BmcSecureGoal {
-  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), published_break_glass: goal_break_glass_ref(), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
 }
 
 // ── the observer clock of these claims ──────────────────────────────────────────────────────────
@@ -258,17 +284,22 @@ fn world_reflash_restored() -> BmcWorld {
 }
 
 fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation {
+  read_with(w: w, subject: subject, managed: managed, managed_password: managed_password, census_value: census(published_lan_privilege_closed: closed), account: PublishedAccountRetired, at: at)
+}
+
+fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, at: EpochMs) -> BmcAccountStateObservation {
   dry_read_bmc_account_state(
     world: w,
     subject: subject,
     endpoint: lab_endpoint,
+    firmware: lab_firmware(),
     managed: managed,
     managed_user: managed_user,
     managed_password: managed_password,
-    census: census(published_lan_privilege_closed: closed),
+    census: census_value,
     published_user: published_user,
     published_password: factory_password,
-    published_account: PublishedAccountRetired,
+    published_account: account,
     read_at_millis: at,
   )
 }
@@ -344,6 +375,21 @@ fn cited_lab_route_published_user() -> BmcRotationRouteStanding
   rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 2 }, citation: lab_route_fixture_citation)
 }
 
+// The managed user's route grounded for the PREVIOUS build of the same lab controller (0.32), for the
+// stale-route control only; admitted to that control alone.
+fn cited_lab_route_managed_user_previous_build() -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+  ]
+{
+  rotation_route_from_citation(
+    endpoint: lab_endpoint,
+    firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.32" as NonEmptyStr),
+    request: IpmiSetUserPassword { user: 3 },
+    citation: lab_route_fixture_citation,
+  )
+}
+
 fn grounded_route(user: IpmiUserId) -> BmcRotationRouteStanding {
   if (user as Int) == (published_user as Int) { cited_lab_route_published_user() } else { cited_lab_route_managed_user() }
 }
@@ -416,10 +462,21 @@ fn plan_with(
   managed_generation_value: ManagedCredentialGenerationFetched?,
   planned_at: EpochMs,
 ) -> BmcAccountPlanOutcome? {
+  plan_full(reading: reading, goal: goal, managed_route: managed_route, managed_generation_value: managed_generation_value, published_generation_value: break_glass_generation(), planned_at: planned_at)
+}
+
+fn plan_full(
+  reading: BmcAccountStateObservation,
+  goal: BmcSecureGoal,
+  managed_route: BmcRotationRouteStanding,
+  managed_generation_value: ManagedCredentialGenerationFetched?,
+  published_generation_value: ManagedCredentialGenerationFetched?,
+  planned_at: EpochMs,
+) -> BmcAccountPlanOutcome? {
   match managed_generation_value {
     Absent => none
     Present { value: mg } =>
-      match break_glass_generation() {
+      match published_generation_value {
         Absent => none
         Present { value: bg } =>
           Present {
@@ -427,7 +484,6 @@ fn plan_with(
               subject: lab_subject(),
               goal: goal,
               reading: reading,
-              firmware: lab_firmware(),
               managed_user: managed_user,
               managed_route: managed_route,
               managed_approval: rotation_approval(s: managed_route, user: route_user(s: managed_route)),
@@ -486,6 +542,7 @@ fn plan_label(o: BmcAccountPlanOutcome?) -> String {
             AccountWriteRequestForAnotherUser { target: _, admitted: _, required: _ } => "another-user"
             ManagedGenerationForAnotherAccount { generation: _, in_force: _ } => "generation-another-account"
             ManagedGenerationNotAdvanced { in_force: _, generation: _ } => "generation-not-advanced"
+            PublishedGenerationNotGoalBound { generation: _, goal: _ } => "published-generation-not-goal-bound"
             GenerationFetchedAfterPlan { target: _, fetched_at: _, planned_at: _ } => "fetched-after-plan"
             PlanPrecedesDivergedReading { read_floor: _, planned_at: _ } => "plan-precedes-reading"
           }
@@ -646,9 +703,94 @@ test fn the_post_read_is_independent_of_the_reading_that_diverged() -> Bool {
 test fn the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading() -> Bool {
   let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
   let foreign = read(w: world_factory_open(), subject: other_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
-  let stale_goal = BmcSecureGoal { managed: managed_ref(version: "2", epoch: 2), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+  let stale_goal = BmcSecureGoal { managed: managed_ref(version: "2", epoch: 2), published_break_glass: goal_break_glass_ref(), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
   plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: break_glass_generation(), planned_at: t_plan)) == "generation-another-account"
     && plan_label(o: plan_with(reading: read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "2", epoch: 2), managed_password: managed_password_v1, closed: true, at: t_read), goal: stale_goal, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "generation-not-advanced"
     && plan_label(o: plan_default(reading: foreign)) == "unobserved"
     && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: published_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "another-user"
+}
+
+// ── blocker controls (side-chat review of 07423d29de) ───────────────────────────────────────────
+
+fn state_refusal_label(c: BmcSecureStateRefusal) -> String {
+  match c {
+    AccountStateForOtherSubject { expected: _, found: _ } => "other-subject"
+    AccountStateForOtherManagedReference { goal: _, observed: _ } => "other-managed-reference"
+    AccountReadingPrecedesReadFloor { floor: _ } => "precedes-floor"
+    AccountStateConjunctionRefused { cause: _ } => "conjunction-refused"
+    AccountDeviationNeedsUngroundedOperation { cause: _, operation: op } =>
+      match op {
+        ChannelAccessWrite => "needs:channel-access-write"
+        PublishedFactoryCredentialRestore => "needs:factory-credential-restore"
+      }
+    AccountRetentionNotGoalBound { retained: _, goal: _ } => "retention-not-goal-bound"
+  }
+}
+
+fn assessment_on(reading: BmcAccountStateObservation) -> String {
+  match inspect_bmc_secure_state(subject: lab_subject(), goal: goal_v1(), reading: reading) {
+    BmcSecureStateUnobserved { cause: _ } => "unobserved"
+    BmcSecureStateInspected { observed: _, assessment: a, decision: d } =>
+      match a {
+        GoalSatisfied { evidence: _ } => join(["satisfied/", decision_label(d: d)], "")
+        GoalDiverged { deviations: _ } => join(["diverged/", decision_label(d: d)], "")
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => join(["indeterminate/", decision_label(d: d)], "")
+        GoalAssessmentRefused { cause: c } => join([state_refusal_label(c: c), "/", decision_label(d: d)], "")
+      }
+  }
+}
+
+fn census_with(serial_privilege_open: Bool, unaddressed_lan_open: Bool) -> IpmiControllerChannelCensus {
+  ipmi_controller_channel_census(
+    members: [
+      ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 45)),
+      ipmi_non_lan_channel_member(channel: 2, medium: IpmiMediumSerialAsync),
+      ipmi_lan_channel_member(channel: 7, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 0, octet2: 0, octet3: 0, octet4: 0)),
+    ],
+    user_access: [
+      ipmi_user_channel_access(channel: 1, user: published_user, privilege: IpmiPrivilegeNoAccess),
+      ipmi_user_channel_access(channel: 2, user: published_user, privilege: if serial_privilege_open { IpmiPrivilegeAdministrator } else { IpmiPrivilegeNoAccess }),
+      ipmi_user_channel_access(channel: 7, user: published_user, privilege: if unaddressed_lan_open { IpmiPrivilegeAdministrator } else { IpmiPrivilegeNoAccess }),
+    ],
+  )
+}
+
+fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAccountKind) -> BmcAccountStateObservation {
+  read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_value, account: account, at: t_read)
+}
+
+// BLOCKER 1. The build a route must be grounded for is the build the controller reported in the read;
+// the planner has no build argument. A current reading beside a route for the previous build refuses.
+test fn a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: cited_lab_route_managed_user_previous_build(), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "not-admitted:another-build"
+}
+
+// BLOCKER 2. The published replacement is the goal's exact break-glass generation: the managed
+// secret's generation and an unrelated secret's generation refuse; the predeclared one is planned.
+test fn the_published_replacement_must_be_the_goal_bound_break_glass_generation() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let unrelated = fetched(current: ManagedCredentialReference { account: "admin", role: AccountRoleAdministrator, secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-other", version: "3", hash_state: HashPending }, credential_epoch: 3 }, secret: "bmc-lab-o1b-other", version: "4", bytes: break_glass_password, fetch_at: t_fetch)
+  plan_label(o: plan_full(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), published_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "published-generation-not-goal-bound"
+    && plan_label(o: plan_full(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), published_generation_value: unrelated, planned_at: t_plan)) == "published-generation-not-goal-bound"
+    && plan_label(o: plan_full(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), published_generation_value: break_glass_generation(), planned_at: t_plan)) == "planned"
+}
+
+// BLOCKER 3. A channel still open to the published account (an administrator privilege on a serial
+// channel, or on an unaddressed LAN channel) is not cleared by a password write, so it refuses naming
+// the missing channel-access write and plans nothing.
+test fn an_open_channel_refuses_naming_the_missing_channel_access_write() -> Bool {
+  assessment_on(reading: secured_read(census_value: census_with(serial_privilege_open: true, unaddressed_lan_open: false), account: PublishedAccountRetired)) == "needs:channel-access-write/refuse"
+    && assessment_on(reading: secured_read(census_value: census_with(serial_privilege_open: false, unaddressed_lan_open: true), account: PublishedAccountRetired)) == "needs:channel-access-write/refuse"
+    && plan_label(o: plan_default(reading: secured_read(census_value: census_with(serial_privilege_open: true, unaddressed_lan_open: false), account: PublishedAccountRetired))) == "not-due:refuse"
+    && assessment_on(reading: secured_read(census_value: census_with(serial_privilege_open: false, unaddressed_lan_open: false), account: PublishedAccountRetired)) == "satisfied/noop"
+}
+
+// Retention. A break-glass account retained by policy must be the goal's generation; a factory
+// credential retained by policy and found not accepted names the missing restore.
+test fn a_retained_credential_must_be_the_goal_bound_generation() -> Bool {
+  let closed = census_with(serial_privilege_open: false, unaddressed_lan_open: false)
+  assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: goal_break_glass_ref().secret } })) == "satisfied/noop"
+    && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-other", version: "4", hash_state: HashPending } } })) == "retention-not-goal-bound/refuse"
+    && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: PublishedFactoryCredential })) == "needs:factory-credential-restore/refuse"
 }

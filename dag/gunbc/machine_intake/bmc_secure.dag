@@ -1224,9 +1224,13 @@ fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef,
 // it is the same reading whether or not anything was written. read_floor is the observer instant the
 // read began; every reading in it must be at or after the floor, which is what lets the receipt below
 // order a readback after the write it verifies and refuse the pre-write reading passed twice.
+// firmware is the release the controller reported in the same read. It is the build a route must be
+// grounded for: the plan reads it from here and takes no build argument, so a current reading cannot be
+// admitted over a route for a build the controller no longer runs (O1a's stale-route crossing).
 type BmcAccountStateObservation sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
   managed: ManagedCredentialReference
   read_floor: ObserverClockInstant
   managed_probe: ObservedCredentialProbe
@@ -1242,6 +1246,7 @@ type BmcAccountStateObservation sole_constructor {
 fn observed_bmc_account_state(
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   read_floor: ObserverClockInstant,
   managed_probe: ObservedCredentialProbe,
@@ -1256,6 +1261,7 @@ fn observed_bmc_account_state(
   BmcAccountStateObservation {
     subject: subject,
     endpoint: endpoint,
+    firmware: firmware,
     managed: managed,
     read_floor: read_floor,
     managed_probe: managed_probe,
@@ -1299,8 +1305,14 @@ fn managed_reference_same(a: ManagedCredentialReference, b: ManagedCredentialRef
 
 // WHAT THE PHASE REQUIRES OF THE CONTROLLER: this managed generation accepted, the published
 // credential closed, under this qualification policy.
+// published_break_glass is the exact generation the published account is retired TO (or, under a
+// break-glass retention policy, the account that must be the one retained): a predeclared secret,
+// version and epoch. It is part of the goal so the replacement is a desired state and never whatever
+// generation a caller hands the planner. Disabling or deleting the published account instead is not an
+// arm here: those are channel and user-table writes no executed evidence grounds on any controller.
 type BmcSecureGoal {
   managed: ManagedCredentialReference
+  published_break_glass: ManagedCredentialReference
   policy: IntakeQualificationPolicy
 }
 
@@ -1315,6 +1327,8 @@ type BmcSecureStateRefusal
   | AccountStateForOtherManagedReference { goal: ManagedCredentialReference, observed: ManagedCredentialReference }
   | AccountReadingPrecedesReadFloor { floor: ObserverClockInstant }
   | AccountStateConjunctionRefused { cause: BmcSecureRefusalCause }
+  | AccountDeviationNeedsUngroundedOperation { cause: BmcSecureRefusalCause, operation: MissingAccountOperation }
+  | AccountRetentionNotGoalBound { retained: SecretRef, goal: ManagedCredentialReference }
 
 // WHICH CONJUNCTION REFUSALS AN ACCOUNT WRITE CAN REMEDY, WHICH ARE UNKNOWNS, AND WHICH ARE NEITHER.
 // A deviation is a state the account action changes (the managed credential not accepted, the
@@ -1322,8 +1336,17 @@ type BmcSecureStateRefusal
 // establish a state; it is never a deviation, because writing on an unread controller is the
 // absorbing fallback DESIGN §5 forbids. Everything else -- an ordering, a duplicated or unmatched
 // reading, a production retention -- refuses the assessment.
+// THE ONLY ADMITTED ACTION IS A PASSWORD WRITE (IpmiSetUserPassword over a grounded route). It cannot
+// give a LAN channel an address, set a channel's privilege to NO ACCESS, or put the factory password
+// back, so a deviation only those operations change is not remediable here: it refuses with the
+// missing operation named, rather than planning a password write that cannot clear it.
+type MissingAccountOperation
+  = ChannelAccessWrite
+  | PublishedFactoryCredentialRestore
+
 type ConjunctionCauseClass
   = CauseRemediableByAccountAction
+  | CauseNeedsUngroundedOperation { operation: MissingAccountOperation }
   | CauseUnestablishedReading
   | CauseReadingPrecedesFloor
   | CauseRefusesAssessment
@@ -1346,15 +1369,15 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => CauseReadingPrecedesFloor
     PublishedCredentialCensusNotTaken => CauseUnestablishedReading
     PublishedCredentialNoAddressableLanMember => CauseUnestablishedReading
-    PublishedCredentialLanMemberUnaddressed { channel: _ } => CauseRemediableByAccountAction
-    PublishedCredentialChannelAccessNotClosed { channel: _ } => CauseRemediableByAccountAction
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => CauseNeedsUngroundedOperation { operation: ChannelAccessWrite }
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => CauseNeedsUngroundedOperation { operation: ChannelAccessWrite }
     PublishedCredentialUserAccessUnestablished { channel: _ } => CauseUnestablishedReading
     PublishedCredentialUserAccessDuplicate { channel: _ } => CauseRefusesAssessment
     PublishedCredentialCensusMemberUnprobed { channel: _ } => CauseUnestablishedReading
     PublishedCredentialProbeDuplicate { channel: _ } => CauseRefusesAssessment
     PublishedCredentialProbeUnmatched { channel: _ } => CauseRefusesAssessment
     PublishedCredentialRetainedNotAdmittedForProduction => CauseRefusesAssessment
-    PublishedCredentialNotRetained { channel: _ } => CauseRemediableByAccountAction
+    PublishedCredentialNotRetained { channel: _ } => CauseNeedsUngroundedOperation { operation: PublishedFactoryCredentialRestore }
   }
 }
 
@@ -1389,12 +1412,42 @@ fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateOb
   }
 }
 
+// Under a break-glass retention policy the retained account must be the goal's exact generation.
+fn retention_is_goal_bound(kind: PublishedAccountKind, goal: BmcSecureGoal) -> Bool {
+  match kind {
+    PublishedAccountRetired => true
+    PublishedAccountDisabledNotRetired { restore_path: _ } => true
+    PublishedAccountRetainedByPolicy { retention: r } =>
+      match r {
+        PublishedFactoryCredential => true
+        BreakGlassAccount { secret: sec } =>
+          (sec.project as String) == (goal.published_break_glass.secret.project as String)
+            && sec.secret == goal.published_break_glass.secret.secret
+            && sec.version == goal.published_break_glass.secret.version
+      }
+  }
+}
+
+fn retained_secret_or_goal(kind: PublishedAccountKind, goal: BmcSecureGoal) -> SecretRef {
+  match kind {
+    PublishedAccountRetired => goal.published_break_glass.secret
+    PublishedAccountDisabledNotRetired { restore_path: _ } => goal.published_break_glass.secret
+    PublishedAccountRetainedByPolicy { retention: r } =>
+      match r {
+        PublishedFactoryCredential => goal.published_break_glass.secret
+        BreakGlassAccount { secret: sec } => sec
+      }
+  }
+}
+
 fn assess_bmc_account_state(
   goal: BmcSecureGoal,
   observed: BmcAccountStateObservation,
 ) -> GoalAssessment<BmcSecureHeld, BmcSecureRefusalCause, BmcSecureRefusalCause, BmcSecureStateRefusal> {
   if !managed_reference_same(a: goal.managed, b: observed.managed) {
     GoalAssessmentRefused { cause: AccountStateForOtherManagedReference { goal: goal.managed, observed: observed.managed } }
+  } else if !retention_is_goal_bound(kind: observed.published_account.kind, goal: goal) {
+    GoalAssessmentRefused { cause: AccountRetentionNotGoalBound { retained: retained_secret_or_goal(kind: observed.published_account.kind, goal: goal), goal: goal.published_break_glass } }
   } else {
     match conjunction_over_observation(goal: goal, observed: observed) {
       BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } =>
@@ -1402,6 +1455,7 @@ fn assess_bmc_account_state(
       BmcSecureRefused { cause: c } =>
         match conjunction_cause_class(cause: c) {
           CauseRemediableByAccountAction => GoalDiverged { deviations: FreeSemigroup { head: c, tail: [] } }
+          CauseNeedsUngroundedOperation { operation: op } => GoalAssessmentRefused { cause: AccountDeviationNeedsUngroundedOperation { cause: c, operation: op } }
           CauseUnestablishedReading => GoalIndeterminate { known_deviations: [], unknowns: FreeSemigroup { head: c, tail: [] } }
           CauseReadingPrecedesFloor => GoalAssessmentRefused { cause: AccountReadingPrecedesReadFloor { floor: observed.read_floor } }
           CauseRefusesAssessment => GoalAssessmentRefused { cause: AccountStateConjunctionRefused { cause: c } }
@@ -1446,6 +1500,12 @@ fn bmc_secure_state_refusal_label(cause: BmcSecureStateRefusal) -> NonEmptyStr {
     AccountStateForOtherManagedReference { goal: _, observed: _ } => "the account-state reading probed another managed credential generation than the goal names"
     AccountReadingPrecedesReadFloor { floor: _ } => "an account-state reading precedes the observer instant its read began"
     AccountStateConjunctionRefused { cause: c } => bmc_secure_refusal_label(cause: c)
+    AccountDeviationNeedsUngroundedOperation { cause: _, operation: op } =>
+      match op {
+        ChannelAccessWrite => "the deviation needs a channel-access write, and no admitted route performs one; a password write cannot clear it"
+        PublishedFactoryCredentialRestore => "the policy retains the factory credential and it is not accepted; restoring it is not an admitted operation"
+      }
+    AccountRetentionNotGoalBound { retained: _, goal: _ } => "the break-glass account retained by policy is not the generation the goal names"
   }
 }
 
@@ -1627,6 +1687,7 @@ type BmcAccountPlanRefusal
   | AccountWriteRequestForAnotherUser { target: AccountWriteTarget, admitted: IpmiUserId, required: IpmiUserId }
   | ManagedGenerationForAnotherAccount { generation: ManagedCredentialReference, in_force: ManagedCredentialReference }
   | ManagedGenerationNotAdvanced { in_force: Int, generation: Int }
+  | PublishedGenerationNotGoalBound { generation: ManagedCredentialReference, goal: ManagedCredentialReference }
   | GenerationFetchedAfterPlan { target: AccountWriteTarget, fetched_at: ObserverClockInstant, planned_at: ObserverClockInstant }
   | PlanPrecedesDivergedReading { read_floor: ObserverClockInstant, planned_at: ObserverClockInstant }
 
@@ -1681,7 +1742,6 @@ fn plan_bmc_account_action(
   subject: MachineIntakeSubject,
   goal: BmcSecureGoal,
   reading: BmcAccountStateObservation,
-  firmware: BmcFirmwareReleaseIdentity,
   managed_user: IpmiUserId,
   managed_route: BmcRotationRouteStanding,
   managed_approval: Redemption,
@@ -1707,19 +1767,21 @@ fn plan_bmc_account_action(
               BmcAccountPlanRefused { cause: ManagedGenerationForAnotherAccount { generation: next, in_force: in_force } }
             } else if next.credential_epoch <= in_force.credential_epoch {
               BmcAccountPlanRefused { cause: ManagedGenerationNotAdvanced { in_force: in_force.credential_epoch, generation: next.credential_epoch } }
+            } else if !managed_reference_same(a: fetched_generation_reference(fetched: published_generation), b: goal.published_break_glass) {
+              BmcAccountPlanRefused { cause: PublishedGenerationNotGoalBound { generation: fetched_generation_reference(fetched: published_generation), goal: goal.published_break_glass } }
             } else {
-              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, route: managed_route, endpoint: o.endpoint, firmware: firmware, approval: managed_approval, generation: managed_generation, planned_at: planned_at) {
+              match admitted_account_write(target: ManagedAccountTarget, user: managed_user, route: managed_route, endpoint: o.endpoint, firmware: o.firmware, approval: managed_approval, generation: managed_generation, planned_at: planned_at) {
                 PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                 PlannedAccountWriteAdmitted { write: mw } =>
-                  match admitted_account_write(target: PublishedAccountTarget, user: o.published_user, route: published_route, endpoint: o.endpoint, firmware: firmware, approval: published_approval, generation: published_generation, planned_at: planned_at) {
+                  match admitted_account_write(target: PublishedAccountTarget, user: o.published_user, route: published_route, endpoint: o.endpoint, firmware: o.firmware, approval: published_approval, generation: published_generation, planned_at: planned_at) {
                     PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                     PlannedAccountWriteAdmitted { write: pw } =>
                       BmcAccountPlanned {
                         plan: BmcAccountActionPlan {
                           subject: subject,
                           endpoint: o.endpoint,
-                          firmware: firmware,
-                          goal: BmcSecureGoal { managed: next, policy: goal.policy },
+                          firmware: o.firmware,
+                          goal: BmcSecureGoal { managed: next, published_break_glass: goal.published_break_glass, policy: goal.policy },
                           diverged: o,
                           due: due,
                           managed_write: mw,
@@ -1906,6 +1968,7 @@ fn dry_read_bmc_account_state(
   world: BmcWorld,
   subject: MachineIntakeSubject,
   endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
   managed_user: IpmiUserId,
   managed_password: String,
@@ -1919,6 +1982,7 @@ fn dry_read_bmc_account_state(
   observed_bmc_account_state(
     subject: subject,
     endpoint: endpoint,
+    firmware: firmware,
     managed: managed,
     read_floor: at,
     managed_probe: dry_probe(world: world, user: managed_user, password: managed_password, what: "managed", at: at),
