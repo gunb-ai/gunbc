@@ -1258,3 +1258,25 @@ Concept 04 is published with rear fans and downloadable generated STL/STEP, sour
 The operator-token/ntfy route is being used because PR #13149 remains unmerged. The request binds
 printer-01, credential version 1, exact project digest and attempt `rear-fan-mount-20261004-01`.
 A start result must be observed separately; preparation is not evidence of printing.
+
+The first launch refused before submission because its submission-key environment variable was
+missing; it filed no approval and created no start marker. Corrected operator launches on srv1
+require these existing key paths (never their contents) plus the private token-file path:
+
+- `GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-submission-mac-key`
+- `GUNBC_APPROVAL_CAPABILITY_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-mac-key`
+- `GUNBC_APPROVAL_STORE_RECEIPT_MAC_KEY_FILE=/etc/gunbc-roadmap/approval-store-receipt-mac-key`
+- `RUNNER_TEMP` pointing to an owner-only staging directory.
+
+The refusal log is retained as `print-01-preflight-refusal.log` under the srv1 run directory.
+Retrying the same attempt before any request/start marker exists does not replay a printer start.
+
+The corrected run passed the signed approval gate, observed the printer ready, claimed its durable
+start marker, uploaded the exact project and sent one AMS-slot-1 start. MQTT publication lost its
+connection without acknowledgement after two minutes, so the effect was classified UNKNOWN and
+was not replayed. A separate modeled `printer_report.run` observation then returned RUNNING,
+print_error 0, exact digest filename `gunbc-71da943ff2ed73a6b47c54759ba288e82af7d084c269bf9a413d4d901cf5199c.3mf`,
+19% and 23 minutes remaining. This confirms the requested job active; layer_num was 0, so it is
+not yet evidence of deposited layers or completed fit. The snapshot is retained locally and on srv1.
+The operator independently reported probably heating. Printer-02 was not started. Temporary copies
+of the operator token were deleted from both hosts.
