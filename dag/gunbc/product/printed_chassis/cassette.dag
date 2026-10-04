@@ -5,7 +5,7 @@ import std.measure { micrometer_count }
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
 import product.printed_chassis.assembly_geometry {
   Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
-  Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
+  Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
 }
 import product.printed_chassis.tray_panel_features {panel_seam_um,lap_center_offset_um,lap_along_joint_um,rail_foot_width_um,rail_foot_inset_um,rail_wall_width_um,rail_wall_offset_um,handle_center_from_edge_um,handle_depth_um,rear_socket_width_um,rear_socket_inset_um,rear_socket_wall_width_um,handle_support_center_from_edge_um,handle_support_depth_um}
 import product.printed_chassis.cassette_layout {CassetteLayout,current_layout}
@@ -72,13 +72,20 @@ fn panel(sx:Int,sz:Int,id:String) -> AssemblyPart {
  let rails=[block(w:rail_foot_width_um,h:4000,d:panel_d,x:sx*(panel_w/2-rail_foot_inset_um),y: -2000,z:0),block(w:rail_wall_width_um,h:12000,d:panel_d,x:sx*(panel_w/2+rail_wall_offset_um),y:4000,z:0)]
  let handle=if sz==1 {[block(w:54800,h:8000,d:handle_depth_um,x:sx*27600-cx,y:4000,z:tray_d/2+handle_center_from_edge_um-cz),block(w:10000,h:8000,d:handle_support_depth_um,x:sx*50000-cx,y:4000,z:tray_d/2+handle_support_center_from_edge_um-cz)]} else {[]}
  let dock_x=sx*(tray_w/2-rear_socket_inset_um)-cx
- let dock_z=0-tray_d/2+24000-cz
- let socket=if sz== -1 {[block(w:rear_socket_width_um,h:3000,d:42000,x:dock_x,y: -13500,z:dock_z),block(w:rear_socket_wall_width_um,h:11000,d:42000,x:dock_x-(rear_socket_width_um-rear_socket_wall_width_um)/2,y: -6500,z:dock_z),block(w:rear_socket_wall_width_um,h:11000,d:42000,x:dock_x+(rear_socket_width_um-rear_socket_wall_width_um)/2,y: -6500,z:dock_z)]} else {[]}
  let pin=if sz== -1 {[hole_y(d:4400,x:dock_x,z:0-tray_d/2+22000-cz)]} else {[]}
- part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:panel_w,h:panel_t,d:panel_d,x:0,y:4000,z:0)],concat(laps,concat(rails,concat(handle,socket)))),cuts:concat(pockets,concat(vents,concat(clamps,pin))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Two keyed laps per seam register and carry shear; one M3 clamp per seam, four total. Rail and front handle features are integral. Rear sockets accept the slide-in support arms. Joint clearance is a proposal; first assembly is unpowered.")
+ part(id:id,name:concat("Keyed tray panel ",id),kind:Printed,scope:Cassette,adds:concat([block(w:panel_w,h:panel_t,d:panel_d,x:0,y:4000,z:0)],concat(laps,concat(rails,handle))),cuts:concat(pockets,concat(vents,concat(clamps,pin))),x:cx,y:0,z:cz,ex:sx*65000,ey:12000,ez:sz*55000,plane:LayOnXZ,notes:"Two keyed laps per seam register and carry shear; one M3 clamp per seam, four total. Rail and front handle features are integral. Separate S1/S2 sockets accept the slide-in support arms; one M4 through-bolt retains each socket/arm/tray stack. Joint clearance is a proposal; first assembly is unpowered.")
+}
+// The socket is printed floor-down with its channel open, never under the tray.
+// Its floor and side walls preserve the existing arm envelope and hole datum.
+fn rear_socket(sx:Int,id:String) -> AssemblyPart {
+ part(id:id,name:"Separate open rear-arm socket",kind:Printed,scope:Cassette,
+ adds:[block(w:rear_socket_width_um,h:3000,d:42000,x:0,y:1500,z:0),block(w:rear_socket_wall_width_um,h:8000,d:42000,x:0-(rear_socket_width_um-rear_socket_wall_width_um)/2,y:7000,z:0),block(w:rear_socket_wall_width_um,h:8000,d:42000,x:(rear_socket_width_um-rear_socket_wall_width_um)/2,y:7000,z:0)],
+ cuts:[hole_y(d:4400,x:0,z: -2000)],
+ x:sx*(tray_w/2-rear_socket_inset_um),y: -15000,z:0-tray_d/2+24000,ex:sx*50000,ey: -45000,ez:0,plane:LayOnXZ,
+ notes:"Print floor-down, open channel upward, supports disabled. One M4 through-bolt with washers and nut replaces K1/K2 and clamps socket, arm and tray. Proposed M4 x 35 length; check engagement and do not crush plastic. Bearing/creep unqualified. Old torn panels are not assumed repairable.")
 }
 fn extension(sx:Int,id:String) -> AssemblyPart {
- part(id:id,name:"Slide-in rear support arm",kind:Printed,scope:Cassette,adds:[block(w:20000,h:8000,d:112000,x:0,y:0,z:0)],cuts:[hole_y(d:4400,x:0,z:32000),hole_y(d:4400,x:0,z: -46000)],x:sx*(tray_w/2-7000),y: -8000,z:0-tray_d/2-10000,ex:sx*50000,ey: -20000,ez: -60000,plane:LayOnXZ,notes:"Slides into an integral tray socket. Two removable pins retain the tray and fan-bank interfaces; no threaded fasteners. Pin retention and loaded cantilever behavior remain unqualified.")
+ part(id:id,name:"Slide-in rear support arm",kind:Printed,scope:Cassette,adds:[block(w:20000,h:8000,d:112000,x:0,y:0,z:0)],cuts:[hole_y(d:4400,x:0,z:32000),hole_y(d:4400,x:0,z: -46000)],x:sx*(tray_w/2-7000),y: -8000,z:0-tray_d/2-10000,ex:sx*50000,ey: -20000,ez: -60000,plane:LayOnXZ,notes:"Slides into a separately printed tray socket. One M4 through-bolt retains the tray interface; a removable printed pin retains the fan-bank interface. Pin retention and loaded cantilever behavior remain unqualified.")
 }
 fn fan_plate_adds() -> List<Primitive> {
  match arctic_p8_fan_mount {FanMountAdmitted {geometry:g}=>{
@@ -116,12 +123,12 @@ fn retaining_pin(x:Int,z:Int,bottom:Int,top:Int,id:String) -> AssemblyPart {
 fn printed_parts() -> List<AssemblyPart> {
  [panel(sx: -1,sz: -1,id:"P1"),panel(sx:1,sz: -1,id:"P2"),panel(sx: -1,sz:1,id:"P3"),panel(sx:1,sz:1,id:"P4"),
  extension(sx: -1,id:"E1"),extension(sx:1,id:"E2"),fan_frame(i: -1,id:"M1"),fan_frame(i:0,id:"M2"),fan_frame(i:1,id:"M3"),guard(i: -1,id:"G1"),guard(i:0,id:"G2"),guard(i:1,id:"G3"),
- retaining_pin(x:0-tray_w/2+7000,z:0-tray_d/2+22000,bottom: -15000,top:11000,id:"K1"),retaining_pin(x:tray_w/2-7000,z:0-tray_d/2+22000,bottom: -15000,top:11000,id:"K2"),
+ rear_socket(sx: -1,id:"S1"),rear_socket(sx:1,id:"S2"),
  retaining_pin(x:0-tray_w/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:tray_w/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),retaining_pin(x: -39000,z:rear_plate_z+26000,bottom: -6000,top:4000,id:"K5")]
 }
 fn interfaces() -> List<MechanicalInterface> {
  [mechanical_interface(id:"keyed-panel-laps",members:["P1","P2","P3","P4"],fastener:M3PanelClamp,quantity:4,status:Proposed,requirement:"Two keyed laps and one clamp per seam. Four top-accessible screws for the entire tray; joint clearance and engagement need assembly review."),
- mechanical_interface(id:"slide-in-arms",members:["P1","P2","E1","E2","K1","K2"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Slide arms into integral sockets, then insert broad-grip pins. No underside splice screws."),
+ mechanical_interface(id:"slide-in-arms",members:["P1","P2","E1","E2","S1","S2"],fastener:M4SocketThroughBolt,quantity:2,status:Proposed,requirement:"Place arms in separate open sockets; retain each socket/arm/tray stack with one M4 through-bolt, washers and nut."),
  mechanical_interface(id:"rear-bank-keys",members:["M1","M2","M3","K5"],fastener:PrintedRetainingPin,quantity:1,status:Proposed,requirement:"Center slides over outer keyed feet; one retainer holds the assembled bank."),
  mechanical_interface(id:"rear-bank-arms",members:["M1","M3","E1","E2","K3","K4"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Seat rear bank on arms and insert two retainers."),
  mechanical_interface(id:"fan-and-guard",members:["M1","M2","M3","G1","G2","G3","F1","F2","F3"],fastener:M4FanThroughBolt,quantity:6,status:OriginalPlateFitOnly,requirement:"Two diagonal bolts per fan; opposite integral pins register it. Nominal 39 mm stack plus washers/nut; final bolt engagement unresolved."),

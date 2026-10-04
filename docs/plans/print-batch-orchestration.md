@@ -87,3 +87,10 @@ must not silently authorize future uncleared beds.
 Deliver BATCH-1/2 as pure planning first; BATCH-3 produces reviewable slices; BATCH-4/5 are the
 execution integration; BATCH-6 is the release gate. Do not label the feature implemented until
 all six are complete. No extra gauges or speculative duplicate parts should fill a plate.
+
+The subsequent socket-cleanup incident adds a process objective: compare structural
+orientation candidates using sliced support mass, total material, duration, trapped
+support accessibility and handling risk. Do not reduce infill or rotate loaded joints
+solely to maximize nominal bed occupancy. Prefer longer useful multi-object plates
+when compatible, as explicitly requested by the operator. Damaged P1/P2 become explicit
+replacement demands; retain all other completed/active instance reservations.

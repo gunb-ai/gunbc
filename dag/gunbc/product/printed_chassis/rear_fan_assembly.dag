@@ -2,14 +2,14 @@ module product.printed_chassis.rear_fan_assembly
 import std.types {List,Int,String}
 import std.measure {micrometer_count}
 import std.euclidean_geometry {Axis3Y,Axis3Z}
-import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,MechanicalInterface,Printed,Purchased,Cassette,LayOnXY,LayOnXZ,block,round,part,mechanical_interface,PrintedRetainingPin,M4FanThroughBolt,Proposed}
-import product.printed_chassis.cassette {tray_w,tray_d,rear_plate_z,rear_beam_z,extension,retaining_pin}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,MechanicalInterface,Printed,Purchased,Cassette,LayOnXY,LayOnXZ,block,round,part,mechanical_interface,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,Proposed}
+import product.printed_chassis.cassette {tray_w,tray_d,rear_plate_z,rear_beam_z,extension,retaining_pin,rear_socket}
 import product.printed_chassis.rear_cooling {RearFanBank,rear_mount}
 import product.printed_chassis.fan_mount {FanMountAdmitted,FanMountBoreReachesMountingHoles,FanMountBoreNotEnclosedByPlate,FanMountPlateSmallerThanPattern,fan_mount_bore,fan_mount_mounting_holes}
 import product.printed_chassis.coupon {OpThroughHole}
 import extdeps.fans.arctic {arctic_p14_frame_depth}
 
-// Prototype joinery geometry. The original tray sockets and arms are retained.
+// Prototype joinery geometry. Original arm geometry is retained; sockets are separate support-free prints.
 // Rear-bank self-weight is carried by the arms, never by the motherboard or cooler.
 // This assembly is the current single-fan variant; selection of multiple fans needs
 // a corresponding crossmember layout before this producer can admit it.
@@ -71,7 +71,7 @@ fn fan_body(bank:RearFanBank) -> AssemblyPart {
  notes:"Publisher 140 x 140 x 27 mm frame envelope and 125 mm mounting pitch. Simplified frame aperture; rotor not modeled. Installed-flow, PWM floor and board header current limit remain unresolved.")
 }
 fn rear_interfaces() -> List<MechanicalInterface> {[
- mechanical_interface(id:"rear-arm-sockets",members:["P1","P2","E1","E2","K1","K2"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Reuse original tray sockets and arm pins; tray solids unchanged."),
+ mechanical_interface(id:"rear-arm-sockets",members:["P1","P2","E1","E2","S1","S2"],fastener:M4SocketThroughBolt,quantity:2,status:Proposed,requirement:"Separate open sockets retain original arm geometry. One M4 through-bolt per socket/arm/tray stack replaces the friction pin; load qualification pending."),
  mechanical_interface(id:"split-crossmember",members:["E1","E2","B140L","B140R","K3","K4"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Crossmember rests on arms; outer pins prevent separation. No centre splice screw."),
  mechanical_interface(id:"keyed-cradle",members:["B140L","B140R","M140","K6","K7"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Cradle feet bear on crossmember; retain with two inner pins. Loaded joints not qualified."),
  mechanical_interface(id:"fan-and-guard-140",members:["M140","F140","G140"],fastener:M4FanThroughBolt,quantity:2,status:Proposed,requirement:"Two diagonal M4 through-bolts plus opposite locating pins. Nominal stack 40 mm before washers/nut: 4 mm plate + 27 mm fan + 6 mm spacer + 3 mm grille. Final length/engagement unresolved."),
@@ -87,7 +87,7 @@ fn rear_assembly(bank:RearFanBank) -> RearAssemblyReading {
    let cuts=map(concat([fan_mount_bore(g:g)],fan_mount_mounting_holes(g:g)),op=>match op {OpThroughHole {diameter:d,center_x:x,center_y:y}=>round(diameter:micrometer_count(m:d),length:12000,axis:Axis3Z,x:micrometer_count(m:x)-edge/2,y:micrometer_count(m:y)-edge/2,z:0)})
    RearAssemblyGeometry {interfaces:rear_interfaces(),parts:[
     extension(sx: -1,id:"E1"),extension(sx:1,id:"E2"),crossmember(side: -1,id:"B140L"),crossmember(side:1,id:"B140R"),cradle(bank:bank,cuts:cuts),fan_body(bank:bank),guard(bank:bank),
-    retaining_pin(x:0-tray_w/2+7000,z:0-tray_d/2+22000,bottom: -15000,top:11000,id:"K1"),retaining_pin(x:tray_w/2-7000,z:0-tray_d/2+22000,bottom: -15000,top:11000,id:"K2"),
+    rear_socket(sx: -1,id:"S1"),rear_socket(sx:1,id:"S2"),
     retaining_pin(x:0-tray_w/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:tray_w/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),
     retaining_pin(x: -rear_cradle_foot_x_um,z:rear_beam_z,bottom: -4000,top:12000,id:"K6"),retaining_pin(x:rear_cradle_foot_x_um,z:rear_beam_z,bottom: -4000,top:12000,id:"K7"),
    ]}

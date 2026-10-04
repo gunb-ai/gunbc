@@ -161,7 +161,7 @@ local preparation root, through the pinned Orca DAG route and the supported cass
 profile (four walls, 20% gyroid, five top/bottom layers, 2 mm brim). These are parts for
 the unpowered fit assembly, not qualified structural or thermal components.
 
-The subsequent queue is the M140 cradle, G140 guard, K1/K2/K3/K4/K6/K7 retainers, and
+The subsequent queue before the socket revision was the M140 cradle, G140 guard, K1/K2/K3/K4/K6/K7 retainers, and
 the four lower/upper corner-post pairs with four post retaining pins. Plate grouping,
 orientation, material and slice readback for those later parts remain preparation work.
 No old 80 mm fan frames or guards should be printed for this variant.
@@ -217,3 +217,27 @@ Future batching requirement: use the [desired-set print orchestration plan](prin
 to pack compatible outstanding items densely and reconcile quantities across both printers.
 The sparse arms plate is a scheduling limitation of the manual queue, not a constraint that
 each part family requires its own plate. The batch controller is not implemented yet.
+
+## Rear socket redesign after cleanup damage
+
+The operator reports both integral rear sockets were torn off during support removal.
+P1/P2 are rejected for the original rear-arm connection; this creates exactly two
+replacement panel demands. P3/P4, E1/E2 and B140L/B140R are not replacement demands.
+
+`cassette.rear_socket` now produces separate S1/S2 open channels, floor-down.
+The rear panels contain no integral socket. Existing arms and their hole locations
+are retained. One M4 through-bolt, washers and nut per corner replaces K1/K2;
+M4 x 35 is the proposed length, pending actual engagement. Do not print K1/K2 for
+this revision. Four tray seam clamps and two fan bolts remain unchanged.
+
+The side walls stop at the existing rail underside rather than overlapping it as
+an integral union did. CAD must check separate-solid clearance, not merely validity.
+S1/S2 can print without supports; the panel print orientation is a separate process
+choice. Upright panels are experimental unpowered-fit prints, not qualified structural
+parts. Compare sliced support/material and time against flat panels before release.
+
+The candidate overnight plate is replacement P1/P2 upright plus S1/S2 floor-down,
+with individual named objects, all printed layer-by-layer. Slower wall speeds and
+acceleration plus a brim address adhesion/motion risk; they do not establish loaded
+joint strength. The durable arbitrary-set batch controller remains the separate
+BATCH-1 through BATCH-6 milestone; a prepared multi-object plate is not that controller.

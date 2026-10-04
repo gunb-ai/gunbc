@@ -5,16 +5,16 @@ import product.printed_chassis.cassette {printed_parts,tray_w}
 import product.printed_chassis.rear_cooling {select_rear_fans,rear_fan_candidates,RearOpening,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit}
 import product.printed_chassis.rear_fan_assembly {rear_assembly,RearAssemblyGeometry,RearAssemblyUnsupportedBank,RearAssemblyMountRefused}
 import product.printed_chassis.stack_joinery {stack_joinery,StackJoineryGeometry,StackJoineryHeightUnsupported,stack_service,TopUnitMayLift,UpperUnitsNeedIndependentSupport,InvalidStackService,post_wall_area_mm2,shoe_bearing_area_um2}
-import product.printed_chassis.assembly_review_checks {within_bed,primitive_positive,review_model_checks}
+import product.printed_chassis.assembly_review_checks {within_bed,primitive_positive,review_model_checks,primitive_bounds}
 import product.printed_chassis.assembly_geometry {Printed,Purchased,Metal,Clearance}
-test fn rear_bank_has_bed_sized_connected_interfaces_and_only_two_bolts() -> Bool {
+test fn rear_bank_has_bed_sized_interfaces_and_separate_socket_retention() -> Bool {
  match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:tray_w-40000,height_um:190000,depth_um:60000},bed_um:170000) {
  RearCoolingInvalidInput=>false RearCoolingNoFit=>false
  RearFanGeometry {bank:b}=>match rear_assembly(bank:b) {
  RearAssemblyUnsupportedBank=>false RearAssemblyMountRefused=>false
  RearAssemblyGeometry {parts:p,interfaces:i}=>{
  let tray=filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4")
- count(p)==13 && review_model_checks(parts:concat(tray,p),interfaces:i) && any(i,j=>j.id=="fan-and-guard-140"&&j.quantity==2)
+ count(p)==13 && review_model_checks(parts:concat(tray,p),interfaces:i) && any(i,j=>j.id=="fan-and-guard-140"&&j.quantity==2) && any(i,j=>j.id=="rear-arm-sockets"&&j.quantity==2) && any(p,q=>q.id=="S1") && any(p,q=>q.id=="S2") && !any(p,q=>q.id=="K1"||q.id=="K2")
  }
  }
  }
@@ -30,4 +30,10 @@ test fn middle_pop_needs_support_and_top_pop_does_not_borrow_it() -> Bool {
  let top=match stack_service(node_count:4,index_from_bottom:3) {TopUnitMayLift=>true UpperUnitsNeedIndependentSupport {count:_}=>false InvalidStackService=>false}
  let invalid=match stack_service(node_count:4,index_from_bottom:4) {InvalidStackService=>true TopUnitMayLift=>false UpperUnitsNeedIndependentSupport {count:_}=>false}
  middle && top && invalid
+}
+
+// Actual panel producers must no longer grow the support-generating hanging socket.
+test fn rear_panels_have_no_geometry_below_the_rail_feet() -> Bool {
+ let panels=filter(printed_parts(),p=>p.id=="P1"||p.id=="P2")
+ count(panels)==2 && all(panels,p=>all(p.adds,q=>primitive_bounds(p:q).lo_y>= -8000))
 }
