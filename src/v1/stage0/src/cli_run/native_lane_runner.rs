@@ -912,6 +912,55 @@ struct NativeRunOutput {
     terminal: NativeTerminalMarker,
 }
 
+/// One `accepted_file_advisories` row, decoded. Shared by every verb that prints the row
+/// (`census`, `adjudicate`, `census-resolve`), so a malformed row refuses identically under each.
+fn decode_file_advisories_row(
+    advised: &serde_json::Value,
+    line: &str,
+) -> Result<NativeFileAdvisoriesObserved, String> {
+    let path = advised
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("accepted-file advisories carry no path: {line}"))?;
+    // The row is head plus tail, non-empty by its producer's type
+    // (`NativeTestFileAdvisories`), so the decoder reads a head it can require rather than
+    // a list it would have to refuse when empty.
+    let as_reason = |r: &serde_json::Value| {
+        r.as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
+    };
+    let mut reasons =
+        vec![as_reason(advised.get("head").ok_or_else(|| {
+            format!("accepted-file advisories carry no head: {line}")
+        })?)?];
+    for r in advised
+        .get("tail")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("accepted-file advisories carry no tail: {line}"))?
+    {
+        reasons.push(as_reason(r)?);
+    }
+    Ok(NativeFileAdvisoriesObserved {
+        path: path.to_string(),
+        reasons,
+    })
+}
+
+/// The terminal's `advised_files` must equal the rows printed: a run that reports more than it
+/// printed dropped some, and the decode refuses rather than reporting the short list.
+fn advised_files_agree(reported: u64, rows: &[NativeFileAdvisoriesObserved]) -> Result<(), String> {
+    if reported != rows.len() as u64 {
+        return Err(format!(
+            "the terminal marker reports advised_files={} but {} accepted-file advisory rows were \
+             printed",
+            reported,
+            rows.len()
+        ));
+    }
+    Ok(())
+}
+
 /// The host reads exactly two kinds of line: a per-file refusal row and the terminal marker.
 /// Population rows are the binary's own evidence surface and are counted by the marker, so they
 /// are passed through to the log rather than re-decoded here — decoding them would be this
@@ -1042,33 +1091,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             continue;
         }
         if let Some(advised) = value.get("accepted_file_advisories") {
-            let path = advised
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("accepted-file advisories carry no path: {line}"))?;
-            // The row is head plus tail, non-empty by its producer's type
-            // (`NativeTestFileAdvisories`), so the decoder reads a head it can require rather than
-            // a list it would have to refuse when empty.
-            let as_reason = |r: &serde_json::Value| {
-                r.as_str()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
-            };
-            let mut reasons =
-                vec![as_reason(advised.get("head").ok_or_else(|| {
-                    format!("accepted-file advisories carry no head: {line}")
-                })?)?];
-            for r in advised
-                .get("tail")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| format!("accepted-file advisories carry no tail: {line}"))?
-            {
-                reasons.push(as_reason(r)?);
-            }
-            advised_files.push(NativeFileAdvisoriesObserved {
-                path: path.to_string(),
-                reasons,
-            });
+            advised_files.push(decode_file_advisories_row(advised, line)?);
             continue;
         }
         // THE BASE CONTRACT, RESTORED (review 64181). This loop had no final arm, so any line that
@@ -1114,14 +1137,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     }
     let terminal =
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
-    if terminal.advised_files != advised_files.len() as u64 {
-        return Err(format!(
-            "the terminal marker reports advised_files={} but {} accepted-file advisory rows were \
-             printed",
-            terminal.advised_files,
-            advised_files.len()
-        ));
-    }
+    advised_files_agree(terminal.advised_files, &advised_files)?;
     Ok(NativeRunOutput {
         file_refusals,
         advised_files,
@@ -2626,17 +2642,19 @@ fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<Native
         })
     };
     let advised_files = need_u64("advised_files")?;
-    let advisory_rows = stdout
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|v| v.get("accepted_file_advisories").is_some())
-        .count() as u64;
-    if advisory_rows != advised_files {
-        return Err(format!(
-            "V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — the terminal reports \
-             advised_files={advised_files} but {advisory_rows} accepted_file_advisories rows were printed"
-        ));
+    let mut advisory_rows = Vec::new();
+    for line in stdout.lines() {
+        if let Some(advised) = serde_json::from_str::<serde_json::Value>(line)
+            .ok()
+            .and_then(|v| v.get("accepted_file_advisories").cloned())
+        {
+            advisory_rows.push(decode_file_advisories_row(&advised, line).map_err(|c| {
+                format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowMalformed — {c}")
+            })?);
+        }
     }
+    advised_files_agree(advised_files, &advisory_rows)
+        .map_err(|c| format!("V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — {c}"))?;
     Ok(NativeCensusRun {
         cause_groups: need_u64("cause_groups")?,
         file_refusals: need_u64("file_refusals")?,
@@ -3292,8 +3310,6 @@ mod tests {
         );
     }
 
-    /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
-    /// printed rows dropped some, and the decode refuses rather than reporting the short list.
     #[test]
     fn census_resolve_advisory_rows_reach_the_receipt() {
         let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
@@ -3316,8 +3332,17 @@ mod tests {
             .err()
             .expect("must refuse");
         assert!(cause.contains("no advised_files"), "got: {cause}");
+        // A malformed row refuses here exactly as it does under `census`: one decoder.
+        let malformed =
+            format!("{{\"accepted_file_advisories\":{{\"path\":\"a.dag\"}}}}\n{terminal}");
+        let cause = decode_native_census_output(&malformed, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("AdvisoryRowMalformed"), "got: {cause}");
     }
 
+    /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
+    /// printed rows dropped some, and the decode refuses rather than reporting the short list.
     #[test]
     fn advised_files_count_disagreeing_with_rows_refuses() {
         let stdout = concat!(
