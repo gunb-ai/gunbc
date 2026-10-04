@@ -11,7 +11,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   SeedArtifactNameNotABasename, SeedArtifactNameReserved, SeedArtifactNameCollidesWithSeedFile, SeedArtifactNameDuplicated,
 }
 import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg }
 import gunbc.machine_intake_mtcollins1_boot_run {
