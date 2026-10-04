@@ -17418,32 +17418,32 @@ mod changed_selections_outside_discovery_mirror_tests {
         let mut out = Vec::new();
         let mut cursor = value.clone();
         loop {
-            match cursor {
+            let next = match &cursor {
                 Value::List(items) => {
                     out.extend(items.iter().cloned());
                     return out;
                 }
                 Value::Variant {
                     variant_name,
-                    ref fields,
+                    fields,
                     ..
-                } if ctx.sym_eq(variant_name, "Empty") && fields.is_empty() => return out,
+                } if ctx.sym_eq(*variant_name, "Empty") && fields.is_empty() => return out,
                 Value::Variant {
                     variant_name,
-                    ref fields,
+                    fields,
                     ..
-                } if ctx.sym_eq(variant_name, "Cons") => {
+                } if ctx.sym_eq(*variant_name, "Cons") => {
                     let (Some(head), Some(tail)) =
                         (ctx.field(fields, "head"), ctx.field(fields, "tail"))
                     else {
                         panic!("a Cons cell of the .dag decider's list lacks head or tail");
                     };
                     out.push(head.clone());
-                    let next = tail.clone();
-                    cursor = next;
+                    tail.clone()
                 }
                 _ => panic!("the .dag decider did not return a List"),
-            }
+            };
+            cursor = next;
         }
     }
 
