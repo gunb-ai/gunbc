@@ -229,24 +229,6 @@ fn dashboard_instance_banner() -> Fragment {
 
 data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH (operator ruling 2026-09-24, superseding the 2026-08-02 centered-measure frame): the page takes the full viewport like the issue-tracker model — the measure_page cap and auto-centering are retired from .header-inner, .roadmap, and .daily-workspace. The header element keeps its full-width surface and border — it is a chassis edge — and its content in .header-inner now flows edge to edge with the same side padding the content containers carry. measure_page survives only on the sandbox audition surfaces, which are deliberately narrow."
 
-// THE HEADER ACCOUNT AREA (owner ask 2026-09-26, DYNAMIC since the pre-rendered-body defect
-// 2026-09-27: the main page body is the belt's pre-rendered static body, so a statically rendered
-// account area could never reflect the per-request session). The static markup renders only a
-// HIDDEN session target (empty avatar/name fields); the emitted client program fetches
-// GET /auth/session on load and unhides the target when the response says authenticated — name
-// and avatar render from the SESSION RESPONSE alone; a 401, an absent flag, or a failed fetch
-// leaves the target hidden, never an identity claim from a failed fetch. THE AVATAR rides the
-// never-blocks law: the session wire's OPTIONAL picture member renders as an <img> layered over
-// the client-computed initials; an absent picture, a failed fetch, or a failed image all render
-// the initials. The Sign in / Switch account / Sign out affordances and the account menu are NOT
-// rendered here: the Google login, callback and logout routes they addressed moved to a follow-up
-// PR modeled in .dag (#12787), and a link to a route this server does not serve is a dead control.
-
-
-// THE SHARED HEADER. Every page renders the same static account area (the hidden session
-// target); the client swap personalizes it per request where a session exists.
-
-
 // The header carries one link per SERVED page a human navigates between, so splitting the fleet
 // panels off the workspace does not make them unreachable. The link set is authored here rather
 // than derived from gunbc.roadmap_serve's route table on purpose and the reason is a layering one:

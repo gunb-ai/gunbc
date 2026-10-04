@@ -33,7 +33,7 @@ test fn allocation_signed_out_cannot_edit_draft() -> Bool {
   let html = allocation_preview_signed_out()
   string_contains(s: html, pattern: "<fieldset disabled")
     && string_contains(s: html, pattern: "Sign in to prepare an allocation.")
-    && !string_contains(s: html, pattern: "/auth/login")
+    && string_contains(s: html, pattern: "/auth/login")
 }
 
 test fn allocation_signed_in_can_prepare_but_cannot_submit() -> Bool {

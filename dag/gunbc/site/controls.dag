@@ -346,6 +346,15 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
+fn ts_on_click(obj: String, body: List<TsStmt>) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(object: ts_ident(name: obj), property: "addEventListener"),
+    args: [
+      ts_lit_str(value: "click"),
+      ts_arrow(params: [], body: ts_block(stmts: body)),
+    ]))
+}
+
 fn account_query_expr(selector: String) -> TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -355,8 +364,9 @@ fn account_query_expr(selector: String) -> TsExpr {
 fn account_swap_statements() -> List<TsStmt> {
   [
     ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
+    ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
     ts_if(
-      cond: ts_ident(name: "gunbcAccountSlot"),
+      cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
         callee: ts_member(
@@ -383,6 +393,7 @@ fn account_swap_statements() -> List<TsStmt> {
                         args: [ts_lit_str(value: "/")]),
                       property: "pop"),
                     args: [])),
+                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
                   ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
                   ts_expr_stmt(expr: ts_binop(
                     left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
@@ -424,6 +435,46 @@ fn account_swap_statements() -> List<TsStmt> {
             ]))]),
           property: "catch"),
         args: [ts_arrow(params: [], body: ts_block(stmts: []))])),
+        ts_const(name: "gunbcAccountTrigger", value: account_query_expr(selector: "[data-account-trigger]")),
+        ts_const(name: "gunbcAccountMenu", value: account_query_expr(selector: "[data-account-menu]")),
+        ts_if(
+          cond: ts_binop(left: ts_ident(name: "gunbcAccountTrigger"), op: "&&", right: ts_ident(name: "gunbcAccountMenu")),
+          then: ts_block(stmts: [
+            ts_on_click(obj: "gunbcAccountTrigger", body: [
+              ts_const(name: "gunbcMenuOpen", value: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
+              ts_expr_stmt(expr: ts_binop(
+                left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"),
+                op: "=",
+                right: ts_prefix(op: "!", expr: ts_ident(name: "gunbcMenuOpen")))),
+              ts_expr_stmt(expr: ts_call(
+                callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
+                args: [
+                  ts_lit_str(value: "aria-expanded"),
+                  ts_cond(test: ts_ident(name: "gunbcMenuOpen"), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false")),
+                ])),
+            ]),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+              args: [
+                ts_lit_str(value: "click"),
+                ts_arrow(params: ["e"], body: ts_block(stmts: [
+                  ts_if(
+                    cond: ts_binop(
+                      left: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
+                      op: "&&",
+                      right: ts_binop(
+                        left: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])),
+                        op: "&&",
+                        right: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])))),
+                    then: ts_block(stmts: [
+                      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
+                      ts_expr_stmt(expr: ts_call(
+                        callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
+                        args: [ts_lit_str(value: "aria-expanded"), ts_lit_str(value: "false")])),
+                    ]), else_stmt: none),
+                ])),
+              ])),
+          ]), else_stmt: none),
       ]),
       else_stmt: none),
   ]

@@ -1,5 +1,5 @@
 module gunbc.roadmap_component
-import gunbc.site.controls { longest_label_len, dispatch_reserved_ch_for, theme_toggle_labels, theme_toggle_reserved_width, sound_toggle_labels, sound_toggle_reserved_width, js_local_storage_get, js_sound_muted_predicate, js_actx_member, js_oscillator_tick_body, js_oscillator_schedule_stmts, sound_preamble_statements, sound_toggle_bind_statements, js_document_element, theme_toggle_bind_statements, account_query_expr, account_swap_statements, dispatch_button_ch_gutter, theme_storage_key, theme_toggle_class, theme_toggle_auto_value, theme_toggle_label_prefix, sound_toggle_class, sound_toggle_note, sound_toggle_label_on, sound_toggle_label_off, sound_muted_storage_value, sound_sounding_storage_value, js_sound_muted_fn, js_audio_context_var, js_tick_fn, sound_preamble_note, js_theme_choice_fn, js_theme_apply_fn }
+import gunbc.site.controls { ts_on_click, longest_label_len, dispatch_reserved_ch_for, theme_toggle_labels, theme_toggle_reserved_width, sound_toggle_labels, sound_toggle_reserved_width, js_local_storage_get, js_sound_muted_predicate, js_actx_member, js_oscillator_tick_body, js_oscillator_schedule_stmts, sound_preamble_statements, sound_toggle_bind_statements, js_document_element, theme_toggle_bind_statements, account_query_expr, account_swap_statements, dispatch_button_ch_gutter, theme_storage_key, theme_toggle_class, theme_toggle_auto_value, theme_toggle_label_prefix, sound_toggle_class, sound_toggle_note, sound_toggle_label_on, sound_toggle_label_off, sound_muted_storage_value, sound_sounding_storage_value, js_sound_muted_fn, js_audio_context_var, js_tick_fn, sound_preamble_note, js_theme_choice_fn, js_theme_apply_fn }
 
 import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
 import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
@@ -3142,14 +3142,7 @@ fn ts_closest(obj: String, selector: String) -> TsExpr {
     args: [ts_lit_str(value: selector)])
 }
 
-fn ts_on_click(obj: String, body: List<TsStmt>) -> TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_member(object: ts_ident(name: obj), property: "addEventListener"),
-    args: [
-      ts_lit_str(value: "click"),
-      ts_arrow(params: [], body: ts_block(stmts: body)),
-    ]))
-}
+
 
 fn ts_for_each(selector: String, item: String, body: List<TsStmt>) -> TsStmt {
   ts_expr_stmt(expr: ts_call(
@@ -3296,7 +3289,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 // name and the avatar initials render from the SESSION RESPONSE ALONE (the wire's OPTIONAL
 // name member, the verified token's name claim, preferred; the principal label's short form
 // when the login projected no name) — anything else (rejected standing, absent flag, read
-// failure) leaves the target hidden: never an identity claim from a failed fetch, and the empty catch
+// failure) leaves Sign in: never an identity claim from a failed fetch, and the empty catch
 // swallows the rejection so the static bytes stand. THE PFP rides the wire's OPTIONAL
 // picture member (shape
 // (a) of the identity doctrine: the verified Google picture URL rendered directly; the

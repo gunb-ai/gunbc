@@ -17,7 +17,12 @@ fn client_block_names(stmts: List<TsStmt>) -> List<String> {
   flat_map(stmts, s => match s {
     Const { name, value: _ } => [name]
     Let { name, value: _ } => [name]
-    _ => []
+    ExprStmt { expr: _ } => []
+    If { cond: _, then: _, else_stmt: _ } => []
+    ForOf { var_name: _, iterable: _, body: _ } => []
+    Return { expr: _ } => []
+    Block { stmts: _ } => []
+    Try { body: _, catch_param: _, handler: _ } => []
   })
 }
 

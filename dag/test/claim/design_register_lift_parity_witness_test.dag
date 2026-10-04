@@ -435,9 +435,8 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // (position: relative; overflow: hidden) and the .site-avatar img rule paints any image
 // inside a chip (absolute / inset 0 / 100% x 100% / object-fit cover via RawProperty — the
 // projection the assignee avatar slots reuse). Behavioral receipts:
-// witness_header_account_static_body_carries_hidden_target_and_no_login_controls (formerly
-// ..._carries_signin_and_hidden_target; the account menu's trigger/menu markup and the
-// hidden-menu rule pin, both removed 2026-10-02), witness_header_account_swap_table (the
+// witness_header_account_static_body_carries_signin_and_hidden_target (the account menu's
+// trigger/menu markup and the hidden-menu rule pin), witness_header_account_swap_table (the
 // menu toggle statements), the serve witnesses for the admitted login prompt, the register
 // censuses unchanged — plus the 2026-09-28 menu anchor fix (top:100% right:0 below the chip,
 // the top:auto fallback had rendered the menu at its static flex position above the viewport).
@@ -465,14 +464,10 @@ data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
 // 2026-09-30 (badge colour): the Fabric chip paints the owner's badge stone (#f4f1ec) under the
 // frontend's ink robot mark, routed through the --fabric-badge-bg/--fabric-badge-ink theme
 // properties (both schemes) from gunbc.site.robot_mark's swatches. Derived by execution.
-// 2026-10-02 (#12787, OAuth growth moved out): the Sign in link, the account menu, its items and
-// the sign-out form are no longer rendered (their login/logout routes moved to a follow-up PR), so
-// the .header-account-signin, .header-account-menu, .header-account-menu-item and
-// .header-account-signout rules have no consumer and are deleted; the hidden rule now names only
-// the session target. Behavioral receipts:
-// witness_header_account_static_body_carries_hidden_target_and_no_login_controls and
-// witness_header_account_rules_hide_and_crop. Derived by execution (roadmap_css_derived_digest).
-data roadmap_css_lift_parity_digest: String = "55fed1dc49fe858c"
+// 2026-10-03 (sign-in surface restored over main's stylesheet): the .header-account-signin,
+// .header-account-menu, .header-account-menu-item and .header-account-signout rules return with
+// their consumers. Derived by execution (roadmap_css_derived_digest).
+data roadmap_css_lift_parity_digest: String = "f9ac84802d32bee6"
 // Re-pinned 2026-09-24 for the row vertical-alignment fix (owner: staggered rows): the issue-table
 // grid moves from align-items baseline to stretch (under baseline each cell shrank to its content
 // and every border-bottom drew at a different height); cells add a line-height equal to the

@@ -1,4 +1,6 @@
 module gunbc.site.document
+import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.site.brand { site_brand_link, site_favicon_nodes }
 import gunbc.site.layout { site_layout_rules }
 
@@ -54,6 +56,12 @@ fn theme_toggle_control() -> Fragment {
 }
 
 fn header_account_nodes() -> List<Fragment> {
+  let signin = el_attrs("a", [
+    attr(name: "class", value: "header-account header-account-signin" ),
+    attr(name: "href", value: auth_login_route_path ),
+    attr(name: "data-account-signin", value: "" ),
+    attr(name: "title", value: "sign in with Google" ),
+  ], [ txt("Sign in") ])
   let avatar = el_attrs("span", [
     attr(name: "class", value: "site-avatar" ),
     attr(name: "data-account-avatar", value: "" ),
@@ -67,13 +75,36 @@ fn header_account_nodes() -> List<Fragment> {
     attr(name: "class", value: "header-account-trigger" ),
     attr(name: "type", value: "button" ),
     attr(name: "data-account-trigger", value: "" ),
+    attr(name: "aria-haspopup", value: "menu" ),
+    attr(name: "aria-expanded", value: "false" ),
   ], [ avatar, name ])
+  let switch_item = el_attrs("a", [
+    attr(name: "class", value: "header-account-menu-item" ),
+    attr(name: "href", value: join([auth_login_route_path, "?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String], "") ),
+    attr(name: "role", value: "menuitem" ),
+  ], [ txt("Switch account") ])
+  let signout_btn = el_attrs("button", [
+    attr(name: "class", value: "header-account-menu-item header-account-signout-btn" ),
+    attr(name: "type", value: "submit" ),
+    attr(name: "role", value: "menuitem" ),
+  ], [ txt("Sign out") ])
+  let signout_form = el_attrs("form", [
+    attr(name: "class", value: "header-account-signout" ),
+    attr(name: "method", value: "post" ),
+    attr(name: "action", value: auth_logout_route_path ),
+  ], [ signout_btn ])
+  let menu = el_attrs("span", [
+    attr(name: "class", value: "header-account-menu" ),
+    attr(name: "data-account-menu", value: "" ),
+    attr(name: "role", value: "menu" ),
+    attr(name: "hidden", value: "" ),
+  ], [ switch_item, signout_form ])
   let session = el_attrs("span", [
     attr(name: "class", value: "header-account header-account-session" ),
     attr(name: "data-account-session", value: "" ),
     attr(name: "hidden", value: "" ),
-  ], [ trigger ])
-  [ el_class("span", "header-account-slot", [ session ]) ]
+  ], [ trigger, menu ])
+  [ el_class("span", "header-account-slot", [ signin, session ]) ]
 }
 
 fn header_surface_link(label: String, href: String) -> Fragment {

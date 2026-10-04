@@ -1,7 +1,7 @@
 module gunbc.site.layout
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }
-import extdeps.languages.css.properties { Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
+import extdeps.languages.css.properties { FlexDirection, MarginTop, Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
 import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
 
@@ -87,7 +87,7 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13))
     ] },
-    StaticRule { selector: RawSelector { text: ".header-account-session[hidden]" }, decls: [
+    StaticRule { selector: RawSelector { text: ".header-account-session[hidden], .header-account-signin[hidden]" }, decls: [
       decl(prop: Display, value: "none")
     ] },
     StaticRule { selector: RawSelector { text: ".header-account-name" }, decls: [
@@ -110,6 +110,55 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer")
     ] },
     ResponseRule { subject: RawSelector { text: ".header-account-trigger" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--canvas)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signin" }, decls: [
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: MinHeight, value: scale_var(t: height_control))
+    ] },
+    ResponseRule { subject: RawSelector { text: ".header-account-signin" }, shape: SelfResponse, trigger: OnHover, transition_props: "color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: TextDecoration, value: "underline")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signout" }, decls: [
+      decl(prop: Display, value: "contents")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "100% 0 auto auto"),
+      decl(prop: MarginTop, value: scale_var(t: space_4)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Width, value: "max-content"),
+      decl(prop: MinWidth, value: "100%"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: BoxShadow, value: "0 var(--space-8) var(--space-24) color-mix(in srgb, var(--text) 13%, transparent)"),
+      decl(prop: Padding, value: scale_var(t: space_4)),
+      decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-menu)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu[hidden]" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu-item" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--text)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "none"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      decl(prop: TextAlign, value: "left"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Cursor, value: "pointer")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".header-account-menu-item" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
       decl(prop: Background, value: "var(--canvas)")
     ] },
     StaticRule { selector: RawSelector { text: "code" }, decls: [
