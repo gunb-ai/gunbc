@@ -45,7 +45,7 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
-          REQUIRED_MEMORY_BYTES: '21474836480'
+          REQUIRED_MEMORY_BYTES: "21474836480"
         if: inputs.label == '//gunbc/instruments:dependency-demand-census'
       - name: Require the declared memory for //gunbc/instruments:v2-native-census
         run: |
@@ -61,7 +61,7 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
-          REQUIRED_MEMORY_BYTES: '21474836480'
+          REQUIRED_MEMORY_BYTES: "21474836480"
         if: inputs.label == '//gunbc/instruments:v2-native-census'
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
