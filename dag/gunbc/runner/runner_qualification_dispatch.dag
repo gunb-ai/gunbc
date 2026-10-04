@@ -997,22 +997,62 @@ type QualificationCollectOutcome
   | QualificationCollectSlotNotAHostUnit
   | QualificationCollectUnderAnotherInstallation { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
 
-fn collect_qualification_instruments(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
-  if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: collected.dispatched.subject) {
-    QualificationCollectUnderAnotherInstallation { token_app: token.app, token_installation: token.installation }
+// THE READ PLAN, PURE: WHICH READS THE COLLECTOR MAY MAKE, DECIDED BEFORE ANY OF THEM. A token that
+// does not name the registration's App and installation (token_names_registration, the same join
+// collect_qualification_run makes) plans no reads at all; otherwise the plan is the designated floor
+// job's log and this run's artifacts, by id. The collector below performs exactly the reads its plan
+// names and takes the ids from the plan, so a claim on this function with supplied values is a claim
+// on what the collector reads.
+type CollectRead
+  = ReadFloorJobLog { job_id: Int }
+  | ReadRunArtifacts { run_id: Int }
+
+type CollectReadPlan
+  = CollectReadsRefused { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
+  | CollectReadsPlanned { job_id: Int, run_id: Int }
+
+fn collect_read_plan(
+  subject: QualificationDispatchSubject,
+  token_app: DeclaredGitHubApp,
+  token_installation: GitHubAppInstallationId,
+  floor_job_id: Int,
+  run_id: Int,
+) -> CollectReadPlan {
+  if token_names_registration(token_app: token_app, token_installation: token_installation, subject: subject) {
+    CollectReadsPlanned { job_id: floor_job_id, run_id: run_id }
   } else {
-    collect_qualification_instruments_under(collected: collected, token: token)
+    CollectReadsRefused { token_app: token_app, token_installation: token_installation }
   }
 }
 
-fn collect_qualification_instruments_under(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
+fn collect_read_plan_reads(plan: CollectReadPlan) -> List<CollectRead> {
+  match plan {
+    CollectReadsRefused { token_app: _, token_installation: _ } => []
+    CollectReadsPlanned { job_id: j, run_id: r } => [ReadFloorJobLog { job_id: j }, ReadRunArtifacts { run_id: r }]
+  }
+}
+
+fn collect_qualification_instruments(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
+  match collect_read_plan(
+    subject: collected.dispatched.subject,
+    token_app: token.app,
+    token_installation: token.installation,
+    floor_job_id: collected.floor_job.id,
+    run_id: collected.dispatched.receipt.workflow_run_id,
+  ) {
+    CollectReadsRefused { token_app: a, token_installation: i } => QualificationCollectUnderAnotherInstallation { token_app: a, token_installation: i }
+    CollectReadsPlanned { job_id: j, run_id: r } => collect_qualification_instruments_under(collected: collected, token: token, job_id: j, run_id: r)
+  }
+}
+
+fn collect_qualification_instruments_under(collected: CollectedQualificationRun, token: ControllerInstallationToken, job_id: Int, run_id: Int) -> QualificationCollectOutcome uses net: Network {
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
   match collected.dispatched.subject.registration.slot {
     MicroVmJitSlot { attempt: _ } => QualificationCollectSlotNotAHostUnit
     HostUnitJitSlot { slot: slot } => {
-      let log = attempt_job_log_of(read: read_job_log_with(token: token, owner: owner, repo: repo, job_id: collected.floor_job.id))
-      let claim_cost = read_claim_cost_artifact(token: token, owner: owner, repo: repo, run_id: collected.dispatched.receipt.workflow_run_id)
+      let log = attempt_job_log_of(read: read_job_log_with(token: token, owner: owner, repo: repo, job_id: job_id))
+      let claim_cost = read_claim_cost_artifact(token: token, owner: owner, repo: repo, run_id: run_id)
       QualificationCollected { stage: QualificationCollectStage { job_log: job_log_standing(collected: collected, slot: slot, log: log), claim_cost: claim_cost } }
     }
   }

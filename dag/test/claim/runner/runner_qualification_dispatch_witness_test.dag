@@ -56,6 +56,7 @@ import gunbc.runner.runner_qualification_dispatch {
   ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
   ClaimCostArchiveUnreadable, ClaimCostArchiveNotInflatable,
   conclude_claim_cost_listing, conclude_claim_cost_download, conclude_claim_cost_attempt,
+  collect_read_plan, collect_read_plan_reads, CollectReadsRefused, CollectReadsPlanned,
   ClaimCostArtifactAmbiguous, ClaimCostRunAdvancedPastAttempt, ClaimCostRunUnreadable,
 }
 import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
@@ -173,6 +174,16 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
                 && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77))) == 0
+                && count(collect_read_plan_reads(plan: collect_read_plan(subject: s, token_app: s.registration.app, token_installation: other_installation_id, floor_job_id: 501, run_id: 77))) == 0
+                && (match collect_read_plan(subject: s, token_app: gunbai_ci_declared, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
+                  CollectReadsRefused { token_app: _, token_installation: _ } => true
+                  CollectReadsPlanned { job_id: _, run_id: _ } => false
+                })
+                && (match collect_read_plan(subject: s, token_app: s.registration.app, token_installation: s.registration.installation, floor_job_id: 501, run_id: 77) {
+                  CollectReadsPlanned { job_id: 501, run_id: 77 } => true
+                  _ => false
+                })
                 && (s.host as String) == (h.host as String)
                 && (expected.registered_runner as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
                 && (expected.floor_job_name as String) == "qualification floor"
