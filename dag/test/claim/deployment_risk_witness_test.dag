@@ -197,16 +197,16 @@ test fn moving_the_prod_role_moves_the_broker_owner_and_the_fabric_storage_place
 // UNDER NoProdRole EVERY ROLE-FOLLOWER REFUSES WITH THE TYPED CAUSE -- nobody owns the broker, the
 // store is not placed anywhere, and approvals have no origin. A fallback to srv1 fails every conjunct.
 test fn under_no_prod_role_the_broker_owner_and_the_fabric_storage_placement_refuse() -> Bool {
-  let none = prod_role_realization_in(selection: NoProdRole, instances: public_builtin_dashboard_instances())
-  let realization_refused = match none {
+  let unheld = prod_role_realization_in(selection: NoProdRole, instances: public_builtin_dashboard_instances())
+  let realization_refused = match unheld {
     ProdRoleRealizationRefused { cause: ProdRoleUnheld } => true
     _ => false
   }
-  let placement_refused = match fabric_storage_placement_under(realization: none) {
+  let placement_refused = match fabric_storage_placement_under(realization: unheld) {
     FabricStoragePlacementRefused { cause: ProdRoleUnheld } => true
     _ => false
   }
-  let origin_refused = match approval_loopback_origin_under(realization: none) {
+  let origin_refused = match approval_loopback_origin_under(realization: unheld) {
     ApprovalLoopbackOriginRefused { cause: ProdRoleUnheld } => true
     _ => false
   }
@@ -214,8 +214,8 @@ test fn under_no_prod_role_the_broker_owner_and_the_fabric_storage_placement_ref
     && placement_refused
     && origin_refused
     && all(public_builtin_dashboard_instances(), i =>
-      !instance_owns_the_host_approval_broker_under(realization: none, instance_id: i.instance_id)
-        && !fabric_storage_placed_on_under(realization: none, instance: i)
+      !instance_owns_the_host_approval_broker_under(realization: unheld, instance_id: i.instance_id)
+        && !fabric_storage_placed_on_under(realization: unheld, instance: i)
     )
 }
 

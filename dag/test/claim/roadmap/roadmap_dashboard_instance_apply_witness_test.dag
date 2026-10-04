@@ -601,18 +601,18 @@ fn witness_sibling_reading() -> DashboardProtectedSiblingReading {
 
 test fn protected_sibling_readings_never_equate_absent_with_observed() -> Bool {
   let read = [witness_sibling_reading()]
-  let none: List<DashboardProtectedSiblingReading> = []
+  let empty: List<DashboardProtectedSiblingReading> = []
   dashboard_protected_sibling_readings_equal(before: read, after: read)
-    && dashboard_protected_sibling_readings_equal(before: none, after: none)
-    && !dashboard_protected_sibling_readings_equal(before: read, after: none)
-    && !dashboard_protected_sibling_readings_equal(before: none, after: read)
+    && dashboard_protected_sibling_readings_equal(before: empty, after: empty)
+    && !dashboard_protected_sibling_readings_equal(before: read, after: empty)
+    && !dashboard_protected_sibling_readings_equal(before: empty, after: read)
 }
 
 test fn a_host_without_a_protected_sibling_refuses_nothing_and_reads_nothing() -> Bool {
-  let none = dashboard_protected_sibling_read(siblings: dashboard_protected_siblings(instance: srv2_lab_dashboard_instance()))
-  count(none) == 0
-    && !dashboard_protected_sibling_reading_refused(readings: none)
-    && string_contains(s: dashboard_protected_sibling_reading_detail(readings: none), pattern: "no protected sibling")
+  let empty = dashboard_protected_sibling_read(siblings: dashboard_protected_siblings(instance: srv2_lab_dashboard_instance()))
+  count(empty) == 0
+    && !dashboard_protected_sibling_reading_refused(readings: empty)
+    && string_contains(s: dashboard_protected_sibling_reading_detail(readings: empty), pattern: "no protected sibling")
 }
 
 // THE SIBLING IS DERIVED FROM THE SELECTION AND THE HOST. Today srv1's lab is protected from
