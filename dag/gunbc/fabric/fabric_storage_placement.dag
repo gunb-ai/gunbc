@@ -10,6 +10,7 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
 }
 import std.effect_grant { Read, Write, Execute }
+import extdeps.tailscale.serve { tailscale_serve_unix_proxy_peer }
 import gunbc.ownership { Ensured }
 import gunbc.managed_directory {
   ManagedDirectory, DirectoryDependent, ManagedDirectoryAdmission, managed_directory_admit, srv1_dashboard_service_principal,
@@ -67,7 +68,7 @@ fn fabric_storage_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
 // The peer the tailscale proxy connects as. tailscaled runs as root, and since v1.98.9 only root may
 // configure a unix proxy target at all (TS-2026-005), so a root peer is the proxy and its request's
 // login header is the principal; every other peer is its own principal and the header is ignored.
-data fabric_storage_door_proxy_peer: NonEmptyStr = "root" as NonEmptyStr
+data fabric_storage_door_proxy_peer: NonEmptyStr = tailscale_serve_unix_proxy_peer
 
 
 

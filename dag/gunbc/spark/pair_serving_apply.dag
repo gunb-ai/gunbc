@@ -9,6 +9,7 @@ import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, shell_quote }
 import extdeps.ssh.session { SshSessionExecResult, ssh_client_error_exit_status }
+import gunbc.spark.remote_leg_began { remote_leg_began_word, remote_leg_began_payload_line, remote_leg_lines, remote_leg_reported_began }
 import gunbc.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_trusting_with_stdin,
   BootstrapCredentialFileHeld,
@@ -256,7 +257,7 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
 // ssh_client_error_exit_status says why 255 alone does not establish that nothing ran, and
 // gunbc.command_runner ssh_exit_255_conflation_dissolution rejects stderr-sniffing and names the
 // richer source: the remote side reporting its own status on stdout. So every privileged script is
-// wrapped (spark_pair_leg_payload) to print a began-line before its first effect and its own exit
+// wrapped (spark_pair_leg_payload) to print the shared began-line (gunbc.spark.remote_leg_began) before its first effect and its own exit
 // after its last, and the reading is three-valued over that:
 //
 //   exit line present           -> the script RAN; its own exit decides Applied or Failed.
@@ -267,7 +268,6 @@ fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<Strin
 // began-line crossed the wire also reads Unreached. That is why a caller that retries Unreached owes
 // IDEMPOTENT legs (gunbc.spark.native_serving_apply reads before it writes in every stage), and why
 // this module does not retry anything itself.
-data spark_pair_leg_began_word: String = "gunbc-privileged-leg-began"
 data spark_pair_leg_exit_prefix: String = "gunbc-privileged-leg-exit="
 
 type SparkPairHostApplyOutcome
@@ -304,7 +304,7 @@ fn spark_pair_host_unreached(o: SparkPairHostApplyOutcome) -> Bool {
 // still reports it; the outer exit then mirrors it so ssh's own status keeps its meaning too.
 fn spark_pair_leg_payload(script: String) -> String {
   join([
-    "echo ", spark_pair_leg_began_word, "\n",
+    remote_leg_began_payload_line(),
     "(\n", script, "\n)\n",
     "gunbc_leg_rc=$?\n",
     "echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc\n",
@@ -312,25 +312,17 @@ fn spark_pair_leg_payload(script: String) -> String {
   ], "")
 }
 
-fn spark_pair_leg_lines(stdout: String) -> List<String> {
-  map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
-}
-
 fn spark_pair_leg_reported_exit(stdout: String) -> Int? {
-  match first(filter(spark_pair_leg_lines(stdout: stdout), l => starts_with(s: l, prefix: spark_pair_leg_exit_prefix))) {
+  match first(filter(remote_leg_lines(stdout: stdout), l => starts_with(s: l, prefix: spark_pair_leg_exit_prefix))) {
     Absent => none
     Present { value: l } => parse_int(s: substring(s: l, start: length(spark_pair_leg_exit_prefix), end: length(l)))
   }
 }
 
-fn spark_pair_leg_reported_began(stdout: String) -> Bool {
-  length(filter(spark_pair_leg_lines(stdout: stdout), l => l == spark_pair_leg_began_word)) > 0
-}
-
 // THE SCRIPT'S OWN OUTPUT, WITHOUT THE WRAPPER'S TWO LINES, so readers of `detail` see what they saw
 // before the wrapper existed.
 fn spark_pair_leg_script_stdout(stdout: String) -> String {
-  trim(s: join(filter(spark_pair_leg_lines(stdout: stdout), l => l != spark_pair_leg_began_word && !starts_with(s: l, prefix: spark_pair_leg_exit_prefix)), "\n"))
+  trim(s: join(filter(remote_leg_lines(stdout: stdout), l => l != remote_leg_began_word && !starts_with(s: l, prefix: spark_pair_leg_exit_prefix)), "\n"))
 }
 
 // THE READING, PURE OVER ONE SESSION RESULT so a witness supplies the result at this boundary.
@@ -347,7 +339,7 @@ fn spark_pair_leg_outcome_of(host: HostIdentity, wire: String, r: SshSessionExec
         SparkPairHostApplyFailed { host: host, cause: join([wire, " script-exit=", to_string(code), " stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
       }
     Absent =>
-      if spark_pair_leg_reported_began(stdout: r.stdout) {
+      if remote_leg_reported_began(stdout: r.stdout) {
         SparkPairHostApplyFailed { host: host, cause: join([wire, " the script BEGAN and its exit never arrived (ssh exit=", to_string(r.exit_code), "), so it ran to an unknown point and is not retried: stdout=", spark_pair_leg_script_stdout(stdout: r.stdout), " stderr=", trim(s: r.stderr)], "") }
       } else if r.exit_code == ssh_client_error_exit_status {
         SparkPairHostUnreached { host: host, cause: join([wire, " ssh exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }

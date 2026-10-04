@@ -1,0 +1,81 @@
+module v2.test.claim.parse.repeat_progress
+
+import std.types { List }
+import v2.std.compilers.lexing { Token }
+import v2.std.grammar { GrammarExpr, ModeledGrammar, GrammarProduction, GrammarRoot, Optional, Repeat, StampClass, Terminal, grammar_atom, grammar_empty_sync_tokens }
+import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, PreparedModeled, PreparedVoidGrammar, parse_expr, parse_production_prepared, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty, prepare_grammar }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.parse_refusal_reason { TokenStartsNotIncreasing }
+import std.realization { Memoize }
+import std.algebra { Cons }
+import v2.std.algebra { length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REPEAT STOPS EXACTLY WHEN ITS ELEMENT STOPS CONSUMING. Over `x x y` a repeat of an OPTIONAL `x`
+// takes both `x` and stops at `y`, where the element still accepts but consumes nothing: a progress
+// test that always answered "progressed" would loop there and never return, and one that never did
+// would stop after the first `x`. A repeat that runs out of input stops at the end.
+
+fn rp_token(token_class: Symbol, start: Int) -> Token {
+  Token { class: token_class, lexeme: "", file: ^rp_file, start: start, end: start + 1 }
+}
+
+fn rp_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^rp_start,
+    productions: Cons {
+      head: GrammarProduction { name: ^rp_start, expression: Terminal { token_class: ^rp_x, stamp: StampClass }, emitted: grammar_atom(identity: ^rp_start) },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn rp_remaining(expr: GrammarExpr, tokens: List<Token>) -> Int {
+  match parse_expr(expr: expr, tokens: tokens, all_tokens: tokens, root: rp_root(), table: parse_table_empty(materialization: Memoize), prov: parse_prov_initial()) {
+    ParseExprAccepted { remaining: remaining, captured: _, diagnostics: _, prov: _, table: _ } => length(xs: remaining)
+    ParseExprRejected { diagnostics: _, table: _ } => -1
+  }
+}
+
+test fn a_repeat_of_a_nullable_element_stops_where_it_consumes_nothing_holds() -> Bool {
+  rp_remaining(
+    expr: Repeat { element: Optional { element: Terminal { token_class: ^rp_x, stamp: StampClass } } },
+    tokens: [rp_token(token_class: ^rp_x, start: 0), rp_token(token_class: ^rp_x, start: 2), rp_token(token_class: ^rp_y, start: 4)]
+  ) == 1
+}
+
+test fn a_repeat_stops_at_the_end_of_input_holds() -> Bool {
+  rp_remaining(
+    expr: Repeat { element: Terminal { token_class: ^rp_x, stamp: StampClass } },
+    tokens: [rp_token(token_class: ^rp_x, start: 0), rp_token(token_class: ^rp_x, start: 2)]
+  ) == 0
+}
+
+// A STREAM WHOSE STARTS DO NOT INCREASE IS REFUSED, NOT PARSED. Two tokens at one start are one
+// position, so the parse entry refuses under TokenStartsNotIncreasing, located at the second token --
+// the first whose start does not exceed its predecessor's -- instead of keying both to one memo
+// position. The refusal precedes any read of the grammar, so the grammar is SUPPLIED (the one-
+// production rp_root, prepared by the real prepare_grammar) and the route under test is the real
+// parse entry (DESIGN section 3: a witness discriminates at one interface).
+test fn colliding_token_starts_refuse_at_the_first_offending_token_holds() -> Bool {
+  match prepare_grammar(grammar: ModeledGrammar { root: rp_root() }) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: PreparedVoidGrammar, diagnostics: _ } => false
+    Accepted { value: PreparedModeled { modeled: m, materialization: mat }, diagnostics: _ } =>
+      match parse_production_prepared(
+        tokens: [rp_token(token_class: ^rp_x, start: 0), Token { class: ^rp_x, lexeme: "", file: ^rp_file, start: 0, end: 2 }],
+        validated: m.validated,
+        analysis: m.analysis,
+        production_name: ^rp_start,
+        materialization: mat
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: ds } =>
+          ds.head == parse_refusal_reason_diagnostic(reason: TokenStartsNotIncreasing, file: ^rp_file, start: 0, end: 2)
+      }
+  }
+}

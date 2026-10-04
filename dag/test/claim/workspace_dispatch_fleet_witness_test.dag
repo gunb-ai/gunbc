@@ -1,0 +1,48 @@
+module test.claim.workspace_dispatch_fleet_witness
+
+import gunbc.fleet_converge_scope { WorkspaceSlotCommissioningOnly }
+
+import std.types { Bool, String }
+import gunbc.fleet_converge_plan {
+  ScopeDecoded,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire
+}
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }
+import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command }
+import gunbc.fleet_generation_execution { fleet_generation_writer }
+
+
+fn dispatch_grant_fixture() -> String {
+  workspace_dispatch_grant_content(release_dir: "/opt/gunbc/microvm-controller/releases/0123456789abcdef0123456789abcdef01234567")
+}
+
+test fn commissioning_scope_roundtrips_through_fleet_authority() -> Bool {
+  fleet_converge_scope_wire(scope: WorkspaceSlotCommissioningOnly) == workspace_executor_scope_wire
+    && (match fleet_converge_scope_of_wire(wire: workspace_executor_scope_wire) {
+      ScopeDecoded { scope } => scope == WorkspaceSlotCommissioningOnly
+      _ => false
+    })
+}
+
+test fn installed_grants_name_only_exact_argument_free_entries() -> Bool {
+  let grant = dispatch_grant_fixture()
+  string_contains(s: grant, pattern: "workspace_dispatch_plan_cli")
+    && string_contains(s: grant, pattern: "workspace_dispatch_stage_cli")
+    && string_contains(s: grant, pattern: "workspace_dispatch_complete_cli")
+    && string_contains(s: grant, pattern: "/0123456789abcdef0123456789abcdef01234567/")
+    && !string_contains(s: grant, pattern: "*")
+    && !string_contains(s: grant, pattern: "--arg")
+}
+
+test fn dispatch_uses_fleet_lock_owner_without_reopening_artifacts() -> Bool {
+  let owner = workspace_dispatch_captured_command(effective_user: fleet_generation_writer(), shell: "exit 0", bundle: "0123456789abcdef", payload: "captured input")
+  let operator = workspace_dispatch_captured_command(effective_user: "different-operator", shell: "exit 0", bundle: "0123456789abcdef", payload: "captured input")
+  !string_contains(s: owner, pattern: "'-u'")
+    && string_contains(s: operator, pattern: "'-u'")
+    && string_contains(s: operator, pattern: fleet_generation_writer() as String)
+    && string_contains(s: operator, pattern: "'exit 0'")
+    && string_contains(s: operator, pattern: "'captured input'")
+    && !string_contains(s: operator, pattern: "apply.sh")
+}
