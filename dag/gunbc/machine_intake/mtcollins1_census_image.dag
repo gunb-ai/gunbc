@@ -167,6 +167,7 @@ fn mtcollins1_seeded_image_input_with_cmdline(
         content: mtcollins1_census_capture_program(stages: stages),
       },
     ],
+    seed_artifacts: [],
     grub_kernel_cmdline: grub_kernel_cmdline,
     volume_id: volume_id,
     pinned_dates: seeded_install_media_pinned_dates,

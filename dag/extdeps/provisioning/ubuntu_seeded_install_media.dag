@@ -28,6 +28,17 @@ type NoCloudSeedFile {
   content: NonEmptyStr
 }
 
+// A BINARY SEED MEMBER, NAMED BY ITS CONTENT DIGEST. A NoCloudSeedFile is text the caller renders;
+// an artifact is bytes someone else publishes, so the input carries where they are fetched from and
+// the sha256 they must have, and the build fetches them into the seed directory and refuses unless
+// the readback digest equals it. The digest is in the build key and the URL is not: the URL is
+// transport, and two URLs serving the same bytes build the same image.
+type NoCloudSeedArtifact {
+  name: NonEmptyStr
+  source_url: NonEmptyStr
+  sha256: NonEmptyStr
+}
+
 // WHAT A DERIVED SEEDED IMAGE IS BUILT FROM, and nothing else: every field below reaches the output
 // bytes, so each one is in the derivation key. The payload is a PARAMETER -- an install autoinstall
 // (srv3) and a live-session census program (Mt. Collins) are both a rendered user-data body plus seed
@@ -39,6 +50,7 @@ type UbuntuSeededInstallMediaBuildInput {
   nocloud_dir_on_iso: NonEmptyStr
   user_data_body: NonEmptyStr
   seed_files: List<NoCloudSeedFile>
+  seed_artifacts: List<NoCloudSeedArtifact>
   grub_kernel_cmdline: NonEmptyStr
   volume_id: NonEmptyStr
   pinned_dates: SeededInstallMediaPinnedDates
@@ -98,14 +110,28 @@ fn seeded_install_media_seed_file_key(file: NoCloudSeedFile) -> Fnv1a64Structura
   )
 }
 
+fn seeded_install_media_seed_artifact_key(artifact: NoCloudSeedArtifact) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    content_hash_atom(value: artifact.name),
+    content_hash_atom(value: artifact.sha256),
+  )
+}
+
+// An input with no artifacts folds to the key it had before artifacts existed, so every image built
+// without one keeps its key and its published digest.
 fn seeded_install_media_build_key(input: UbuntuSeededInstallMediaBuildInput) -> NonEmptyStr {
-  let seed = fold(
+  let text_seed = fold(
     input.seed_files,
     init: content_hash_combine_structural(
       content_hash_atom(value: input.nocloud_dir_on_iso),
       content_hash_atom(value: input.user_data_body),
     ),
     f: (acc, file) => content_hash_combine_structural(acc, seeded_install_media_seed_file_key(file: file)),
+  )
+  let seed = fold(
+    input.seed_artifacts,
+    init: text_seed,
+    f: (acc, artifact) => content_hash_combine_structural(acc, seeded_install_media_seed_artifact_key(artifact: artifact)),
   )
   let boot = content_hash_combine_structural(
     content_hash_combine_structural(

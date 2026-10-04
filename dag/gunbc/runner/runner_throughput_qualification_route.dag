@@ -216,6 +216,8 @@ data mtcollins1_qualification_workspace_backing: WorkspaceBacking = RamBackedTmp
 // is still the one data row gunbc.machine_intake_mtcollins1_census_image mtcollins1_boot_medium, and
 // it stays the census medium until the one-socket census boot has its receipt (operator sequencing,
 // relayed 2026-10-04), so switching it is a separate one-line import change after that receipt.
+// The boot stage's egress stays none (stage_egress): the runner tarball rides on the medium as a
+// digest-keyed seed artifact fetched at BUILD time, so booting the runner image opens no network.
 data mtcollins1_boot_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_up_readback"),
   wiring_owed: "after the one-socket census boot's receipt exists: a gunbc.runner.runner_host_medium runner_host_boot_medium data row carrying the published runner image's measured digest, the boot run's medium switched to it (one import change), and the boot run's census-only pre-attach readbacks (gunbc.machine_intake_mtcollins1_census_medium_readback, which refuse any medium but the census) replaced by gunbc.boot_medium boot_medium_readback over the selected medium; SUFFICIENT FOR booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal accepted only by runner_host_up_readback" as NonEmptyStr,
