@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dogfood_route_wet_witness
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.process { ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
@@ -24,6 +25,10 @@ import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
@@ -48,6 +53,15 @@ fn fresh_instance(tag: String) -> HostDashboardInstance {
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
+}
+
+// THE ATTEMPT'S LAUNCH RECORD, as the belt writes it at launch: the durable binding a pinned
+// snapshot is judged against (instance, node, attempt and the null launch revision the fixtures use).
+fn plant_launch(instance: HostDashboardInstance) -> Bool {
+  let path = dispatch_attempt_launch_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1")
+  let _dir = shell.Mkdir.Parents(path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1") as FilePath)
+  let id = LaunchIdentity { node_id: "n1" as NonEmptyStr as RoadmapNodeId, cause: Operator, mode: ManualReady, instance_id: instance.instance_id, revision: launch_identity_null_revision() }
+  Filesystem.Write(path: path, content: serialize_json(v: attempt_launch_record_json(id: id, attempt_key: "k1" as NonEmptyStr))).success
 }
 
 fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
@@ -130,7 +144,8 @@ fn plant(root: NonEmptyStr, bytes: String) -> Bool {
 // acceptance read holds.
 test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "recorded"))
-  plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
+  plant_launch(instance: instance)
+    && plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
     && (match dogfood_start_record_for_instance(instance: instance) { DogfoodStartAlreadyRecorded => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
     && dogfood_route_acceptance_holds_on(instance: instance)
 }
@@ -149,7 +164,8 @@ test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded()
 // satisfy the acceptance read, even though node and attempt match.
 test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "foreign"))
-  plant(root: dogfood_start_store_root(instance: instance), bytes: wire_for(pr: "4242", instance_id: "some-other-instance"))
+  plant_launch(instance: instance)
+    && plant(root: dogfood_start_store_root(instance: instance), bytes: wire_for(pr: "4242", instance_id: "some-other-instance"))
     && is_refused(r: dogfood_start_record_for_instance(instance: instance))
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }

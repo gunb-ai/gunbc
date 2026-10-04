@@ -40,7 +40,7 @@ import gunbc.roadmap_dogfood_route {
   CleanupReading, CleanupEstablished, CleanupGap, dogfood_cleanup_reading,
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
   StageGap, StageOwed, StageRefused,
-  ProducerPending, DogfoodStageReadings, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
+  ProducerPending, DogfoodStageReadings, dogfood_occupied_slot_record, dogfood_route_carried, dogfood_route_complete_of, DogfoodCarried,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
   dogfood_start_receipt_wire, dogfood_start_receipt_decode, StartReceiptDecoded, StartReceiptInvalid,
@@ -500,6 +500,14 @@ test fn evidence_naming_another_node_is_not_a_start() -> Bool {
 
 test fn a_partial_evidence_wire_is_not_a_start() -> Bool {
   !pinned(ev_wire: "{\"schema\": \"service-evidence-receipt/v2\", \"fields\": []}", ev_digest: "x")
+}
+
+// THE OCCUPIED SLOT, ONE JUDGMENT: the recorder's first read and its lost-race read both report an
+// occupied slot through dogfood_occupied_slot_record, so a winner whose evidence is not bound to this
+// instance's attempt refuses on either path rather than reading as already recorded.
+test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
+  (match dogfood_occupied_slot_record(defect: Present { value: "the pinned evidence names another instance" }) { DogfoodStartRefused { reason: _ } => true  DogfoodStartAlreadyRecorded => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
+    && (match dogfood_occupied_slot_record(defect: none) { DogfoodStartAlreadyRecorded => true  DogfoodStartRefused { reason: _ } => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
 }
 
 // ── THE START RECORD'S EXIT ──

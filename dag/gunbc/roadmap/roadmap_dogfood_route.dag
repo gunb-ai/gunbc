@@ -42,7 +42,7 @@ import gunbc.roadmap_service_evidence {
   ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
   service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode_bound,
   ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
-  service_evidence_observe_for_attempt,
+  service_evidence_observe_for_attempt, service_evidence_binding_for_attempt, service_evidence_snapshot_binding_defect,
 }
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
@@ -693,6 +693,27 @@ type DogfoodStartRecord
   | DogfoodStartNoCompleteAttempt
   | DogfoodStartRefused { reason: String }
 
+// THE ONE INSTANCE-BOUND JUDGMENT OF AN OCCUPIED SLOT, used by the recorder's first read, by its
+// lost-race read and by the acceptance read: the decoded receipt's pinned evidence must name exactly
+// the attempt's durable binding -- instance, node, attempt and launch revision, read from the
+// attempt's launch record in THIS instance (gunbc.roadmap_service_evidence
+// service_evidence_snapshot_binding_defect).
+fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt: DogfoodStartReceipt) -> String? {
+  service_evidence_snapshot_binding_defect(
+    snapshot: receipt.service_evidence,
+    binding: service_evidence_binding_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key),
+  )
+}
+
+// What an occupied slot means for the recorder, pure over the judgment: a receipt bound here is
+// already recorded; one that is not refuses, so it is never reported as this instance's start.
+fn dogfood_occupied_slot_record(defect: String?) -> DogfoodStartRecord {
+  match defect {
+    Absent => DogfoodStartAlreadyRecorded
+    Present { value: why } => DogfoodStartRefused { reason: join(["the recorded start receipt is not this instance's start: ", why], "") }
+  }
+}
+
 fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
   let root = dogfood_start_store_root(instance: instance)
   match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key) {
@@ -701,10 +722,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
       match readable {
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt } =>
-              if receipt.service_evidence.instance_id != (instance.instance_id as String) {
-                DogfoodStartRefused { reason: "the recorded start receipt pins service evidence from another instance" }
-              } else { DogfoodStartAlreadyRecorded }
+            StartReceiptDecoded { receipt } => dogfood_occupied_slot_record(defect: dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt))
             StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["the recorded start receipt is invalid and cannot be rewritten: ", reason], "") }
           }
         CasReadableAbsent =>
@@ -741,7 +759,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
                                               CasReadableAbsent => DogfoodStartRefused { reason: "the create-only write was refused yet the slot reads absent" }
                                               CasReadablePresent { version } =>
                                                 match dogfood_start_receipt_decode(payload: version.value as String) {
-                                                  StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
+                                                  StartReceiptDecoded { receipt } => dogfood_occupied_slot_record(defect: dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt))
                                                   StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["a concurrent writer left an invalid start receipt: ", reason], "") }
                                                 }
                                             }
@@ -772,7 +790,7 @@ fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
         CasReadableAbsent => false
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt } => receipt.service_evidence.instance_id == (instance.instance_id as String)
+            StartReceiptDecoded { receipt } => match dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt) { Absent => true  Present { value: _ } => false }
             StartReceiptInvalid { reason: _ } => false
           }
       }

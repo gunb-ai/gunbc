@@ -469,13 +469,36 @@ type ServiceEvidenceObservation
   | ServiceEvidenceAttemptUnlaunched
   | ServiceEvidenceRefused { reason: String }
 
-fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ServiceEvidenceObservation {
-  match service_evidence_bind_attempt(
+// THE ATTEMPT'S DURABLE BINDING, read from its launch record: the one source of the instance, node,
+// attempt and launch revision a service-evidence snapshot must name.
+fn service_evidence_binding_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptBindingOutcome {
+  service_evidence_bind_attempt(
     instance_id: instance.instance_id as String,
     node_id: node_id as String,
     attempt_key: attempt_key,
     launch: filesystem_file_observation_of_path(path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
-  ) {
+  )
+}
+
+// A pinned snapshot's binding against the attempt's durable binding: all four members must be equal.
+fn service_evidence_binding_defect(instance_id: String, node_id: String, attempt_key: String, launch_revision: String, binding: AttemptBindingOutcome) -> String? {
+  match binding {
+    AttemptUnlaunched => Present { value: "the attempt the pinned evidence names has no launch record" }
+    AttemptBindingRefused { reason } => Present { value: join(["the attempt's launch record cannot bind the pinned evidence: ", reason], "") }
+    AttemptBound { binding: b } =>
+      if instance_id != (b.instance_id as String) { Present { value: "the pinned evidence names another instance" } }
+      else if node_id != (b.node_id as String) || attempt_key != (b.attempt_key as String) { Present { value: "the pinned evidence names another node or attempt" } }
+      else if launch_revision != (b.revision_hex as String) { Present { value: "the pinned evidence names another launch revision than the attempt's launch record" } }
+      else { none }
+  }
+}
+
+fn service_evidence_snapshot_binding_defect(snapshot: ServiceEvidenceSnapshot, binding: AttemptBindingOutcome) -> String? {
+  service_evidence_binding_defect(instance_id: snapshot.instance_id, node_id: snapshot.node_id, attempt_key: snapshot.attempt_key, launch_revision: snapshot.launch_revision, binding: binding)
+}
+
+fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> ServiceEvidenceObservation {
+  match service_evidence_binding_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     AttemptUnlaunched => ServiceEvidenceAttemptUnlaunched
     AttemptBindingRefused { reason } => ServiceEvidenceRefused { reason: reason }
     AttemptBound { binding } =>
@@ -624,7 +647,13 @@ type ServiceEvidenceSnapshotDecode
   = SnapshotDecoded { snapshot: ServiceEvidenceSnapshot }
   | SnapshotInvalid { reason: String }
 
-data service_evidence_canonical_fields: List<String> = map(service_evidence_entries(r: service_evidence_readings(r: service_evidence_closing_probe())), x => x.field)
+// THE SOURCE AUTHORITY, AS ENTRIES: what service_evidence_readings writes for each field when no
+// landed reader has a record (the closing probe). Every field's owed producer is fixed by it, and a
+// field may stand observed only when this entry owes it to a reader's absent record -- and then only
+// from that reader. The snapshot decoder checks each decoded entry against this, field by field.
+data service_evidence_canonical_entries: List<ServiceEvidenceEntry> = service_evidence_entries(r: service_evidence_readings(r: service_evidence_closing_probe()))
+
+data service_evidence_canonical_fields: List<String> = map(service_evidence_canonical_entries, x => x.field)
 
 fn service_evidence_canonical_field_names() -> List<String> {
   service_evidence_canonical_fields
@@ -750,12 +779,38 @@ fn snapshot_fields_of(v: JsonValue) -> List<SnapshotEntry>? {
 }
 
 // Exactly the canonical names, once each and in canonical order: pairwise equal over equal lengths.
-// Equal lengths and equal newline-joined text: a canonical name contains no newline, so the joined
-// text matches only when every name matches in order (an embedded newline would add a separator).
-fn snapshot_names_are_canonical(names: List<String>) -> Bool {
-  let canonical = service_evidence_canonical_fields
-  length(names) == length(canonical) && join(names, "\n") == join(canonical, "\n")
+// One decoded entry against its source-authority entry: the same field; if owed, exactly the producer
+// the authority names; if observed, only where the authority owes the field to a reader's absent record
+// and only from that reader.
+fn snapshot_entry_follows_its_source(decoded: ServiceEvidenceEntry, canonical: ServiceEvidenceEntry) -> Bool {
+  decoded.field == canonical.field && (match canonical.standing {
+    StandingOwed { producer: expected } =>
+      match decoded.standing {
+        StandingOwed { producer } => producer == expected
+        StandingObserved { value: _, source } =>
+          match expected {
+            ReaderRecordAbsent { reader } => source == reader
+            PendingReader { reader: _ } => false
+            UnbuiltProducer { owner_node: _ } => false
+          }
+        StandingRefused { reason: _ } => false
+      }
+    StandingObserved { value: _, source: _ } => false
+    StandingRefused { reason: _ } => false
+  })
 }
+
+fn snapshot_entries_follow_their_sources(decoded: List<ServiceEvidenceEntry>, canonical: List<ServiceEvidenceEntry>) -> Bool {
+  match first(decoded) {
+    Absent => length(canonical) == 0
+    Present { value: d } =>
+      match first(canonical) {
+        Absent => false
+        Present { value: c } => snapshot_entry_follows_its_source(decoded: d, canonical: c) && snapshot_entries_follow_their_sources(decoded: skip(decoded, 1), canonical: skip(canonical, 1))
+      }
+  }
+}
+
 
 
 fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDecode {
@@ -787,8 +842,8 @@ fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attemp
         match snapshot_fields_of(v: v) {
           Absent => SnapshotInvalid { reason: "the service evidence snapshot has a field whose standing payload is malformed, refused, or not the typed carrier and producer its encoder writes" }
           Present { value: decoded } =>
-            if !snapshot_names_are_canonical(names: map(decoded, d => d.field.field)) {
-              SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population, once each, in order" }
+            if !snapshot_entries_follow_their_sources(decoded: map(decoded, d => d.entry), canonical: service_evidence_canonical_entries) {
+              SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population in order, each standing as its source authority (service_evidence_readings) allows" }
             } else if service_evidence_wire_json_of(instance_id: instance, node_id: node, attempt_key: attempt, revision_hex: revision, entries: map(decoded, d => d.entry)) != v {
               SnapshotInvalid { reason: "the service evidence snapshot is not structurally the document this module's encoder writes for its own decoded entries (an extra, missing, reordered or retyped member)" }
             } else {
