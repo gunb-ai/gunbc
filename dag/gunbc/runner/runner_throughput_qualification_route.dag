@@ -13,7 +13,7 @@ import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union 
 import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification {
   WorkspaceBacking, RamBackedTmpfs, FloorWorkloadPin,
-  RouteLegStanding, LegWired, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
+  RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority, leg_is_wired,
 }
 
 // THE EXECUTION ROUTE IS A TYPED STAGE PLAN, AND EVERY STAGE SAYS WHAT IT MUTATES AND UNDER WHOM.
@@ -28,9 +28,10 @@ import gunbc.runner_throughput_qualification {
 // stages as writing nothing, and a green witness certified it -- a false fact with coverage.
 // Only the collect stage is observation.
 //
-// A ROUTE IS EXECUTABLE ONLY WHEN EVERY EFFECTFUL LEG IS BOUND. `route_is_executable` is false
-// today and the witness asserts that it is false. The image leg IS bound: the seeded-media
-// derivation takes its payload as a parameter. The boot leg is not, and not for want of a landing:
+// A ROUTE IS EXECUTABLE ONLY WHEN EVERY EFFECTFUL LEG IS WIRED -- its authority has a production
+// caller on the route. `route_is_executable` is false today and the witness asserts that it is
+// false. No leg is wired yet: the image leg's authority exists (the seeded-media derivation takes its
+// payload as a parameter) but nothing builds the derived runner image. The boot leg has no authority, and not for want of a landing:
 // the boot run on main (`gunbc.machine_intake_mtcollins1_boot_run`) boots exactly two media, the
 // census image and the stock installer, and its terminal is the census program's, so it cannot boot a
 // runner and observe it ready. `extdeps.github.workflows CreateDispatch` has no production caller
@@ -213,8 +214,9 @@ data mtcollins1_boot_leg: RouteLegStanding = LegAwaitingAuthority {
   sufficient_for: "booting mtcollins1 from the derived runner image under grant_from_store with the SOL collector attached before the BMC stimulus, no controller write on deny, expiry or an unfiled request, and a terminal that says the runner host is up" as NonEmptyStr,
 }
 
-data mtcollins1_image_leg: RouteLegStanding = LegWired {
+data mtcollins1_image_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput"),
+  wiring_owed: "the runner medium the boot leg lands with (untangle cut 4a): a production caller that builds the derived runner image from UbuntuSeededInstallMediaBuildInput with the runner payload and hands it to the boot run as its medium; SUFFICIENT FOR the image the boot leg boots being the one this route derived, not a fixture" as NonEmptyStr,
 }
 
 // THE THREE GITHUB CONTROL-PLANE LEGS. Registration and deregistration have implemented

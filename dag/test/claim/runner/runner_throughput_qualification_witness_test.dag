@@ -58,7 +58,7 @@ import gunbc.runner_throughput_qualification {
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
   RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
-  qualification_run_producer_frontier, leg_is_wired, RouteLegStanding, LegAuthorityImplemented,
+  qualification_run_producer_frontier, leg_is_wired, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
   AssessedFact, InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings, ConcurrentCohortAtWidth,
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
@@ -753,10 +753,14 @@ test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool
   !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
 
-// THE IMAGE LEG IS BOUND AND THE BOOT LEG IS NOT, and the claim tells the two apart: binding the
-// boot leg to the census-only boot run, or unbinding the image leg, turns this red.
-test fn the_image_leg_is_bound_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
-  leg_is_wired(leg: mtcollins1_route_legs.image) && !leg_is_wired(leg: mtcollins1_route_legs.boot)
+// THE IMAGE LEG HAS AN IMPLEMENTED AUTHORITY AND IS NOT WIRED; THE BOOT LEG HAS NO AUTHORITY. The
+// claim tells the two apart: wiring the image leg before a production caller builds the runner
+// image, pointing it at another declaration, or binding the boot leg to the census-only boot run,
+// turns this red.
+test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.image, module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput")
+    && !leg_is_wired(leg: mtcollins1_route_legs.image)
+    && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
 }
 
 // REGISTRATION AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by declaration
