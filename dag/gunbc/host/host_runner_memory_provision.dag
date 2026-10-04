@@ -4,7 +4,7 @@ import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_converge {
   fleet_converge_policy,
   HostConverge,

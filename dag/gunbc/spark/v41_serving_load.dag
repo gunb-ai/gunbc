@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.measure { token_count, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request }

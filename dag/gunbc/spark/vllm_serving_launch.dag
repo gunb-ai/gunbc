@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
 import product.fabric.demand { ObservationReceiptRef }

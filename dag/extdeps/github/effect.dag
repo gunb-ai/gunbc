@@ -87,6 +87,9 @@ type GitHubEffect
   | GenerateOrganizationJitConfig {
       organization: GitHubOrganizationRef
     }
+  | DeleteOrganizationRunner {
+      organization: GitHubOrganizationRef
+    }
 
 data workflow_directory_prefix: NonEmptyStr = ".github/workflows/"
 
@@ -157,6 +160,8 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
     RegisterOrganizationRunner { organization: _ } =>
       [organization_self_hosted_runners_write]
     GenerateOrganizationJitConfig { organization: _ } =>
+      [organization_self_hosted_runners_write]
+    DeleteOrganizationRunner { organization: _ } =>
       [organization_self_hosted_runners_write]
   }
 }
