@@ -50,6 +50,9 @@ test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bo
         && mentions(lines: later, fragment: "450-1000 W configurable range")
         && mentions(lines: later, fragment: "boot storage")
         && mentions(lines: later, fragment: "expected 120 V")
+        && mentions(lines: later, fragment: "at most 75 V")
+        && mentions(lines: later, fragment: "reads as SKU215")
+        && mentions(lines: later, fragment: "shows no RJ45")
     _ => false
   }
 }
@@ -133,6 +136,7 @@ fn booted_and_measured() -> SuperchipAssembly {
       carrier_designation: p4261_k1_carrier.carrier_designation,
       carrier_part_number: p4261_k1_carrier.carrier_part_number,
       revision: p4261_k1_carrier.revision,
+      layout: p4261_k1_carrier.layout,
       module_face: p4261_k1_carrier.module_face,
       provenance: p4261_k1_carrier.provenance,
       boot: CarrierBootObserved { module_part_number: "699-2G530-0215-DV5", evidence: "supplied boot receipt" },
@@ -162,6 +166,7 @@ test fn a_boot_of_another_module_does_not_qualify_this_one() -> Bool {
       carrier_designation: a.carrier.carrier_designation,
       carrier_part_number: a.carrier.carrier_part_number,
       revision: a.carrier.revision,
+      layout: a.carrier.layout,
       module_face: a.carrier.module_face,
       provenance: a.carrier.provenance,
       boot: CarrierBootObserved { module_part_number: "699-2G530-0206-QS1", evidence: "supplied" },
@@ -215,6 +220,7 @@ test fn a_mismatched_connector_face_refuses_mating() -> Bool {
       carrier_designation: p4261_k1_carrier.carrier_designation,
       carrier_part_number: p4261_k1_carrier.carrier_part_number,
       revision: p4261_k1_carrier.revision,
+      layout: p4261_k1_carrier.layout,
       module_face: MezzanineFacePhotographed {
         connector_count: 3,
         contact_rows_per_connector: 6,

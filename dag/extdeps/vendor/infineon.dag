@@ -1,0 +1,31 @@
+module extdeps.vendor.infineon
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-10-04 from the publisher block of an Infineon datasheet (IPB017N10N5LF Rev. 2.3,
+// 2022-09-09): "Published by Infineon Technologies AG, 81726 München, Germany".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.infineon.com/assets/row/public/documents/24/49/infineon-ipb017n10n5lf-datasheet-en.pdf"
+  }
+}
+
+data infineon: Vendor<Hardware> = Vendor { legal_name: "Infineon Technologies AG" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.infineon",
+      decl_name: "infineon",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

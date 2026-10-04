@@ -1,0 +1,97 @@
+module test.claim.product.p4261_carrier_layout_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { volt, volt_count, ampere }
+import extdeps.electronic_component.types { ComponentVoltageRating, CapacitorRatedVoltage }
+import product.p4261_carrier_layout {
+  CarrierLayoutObservation,
+  ObservedComponent,
+  RatingPrintedOnBody,
+  MarkingUnresolved,
+  MainInputPath,
+  AuxiliaryInputPath,
+  OnPathByAdjacency,
+  BoundByRatedParts,
+  NoRatedPartOnPath,
+  IndicatesFortyEightToFiftyFourVoltClass,
+  p4261_k1_layout,
+  path_bound,
+  main_bus_indication,
+  carrier_input_reading,
+}
+
+// THE REAL PATH: the K1 photographs bound the main input at 75 V, and the limiting part is the fuse --
+// the 100 V MOSFETs are rated higher, so the lowest rating wins.
+test fn the_main_input_is_bounded_by_the_fuse_at_75_volts() -> Bool {
+  match path_bound(layout: p4261_k1_layout, path: MainInputPath) {
+    BoundByRatedParts { maximum: m, limiting: l, placement: p } =>
+      volt_count(v: m) == 75 && contains(l as String, "fuse") && contains(p as String, "by adjacency only")
+    NoRatedPartOnPath => false
+  }
+}
+
+// The 100 V hot-swap MOSFETs indicate a 48-54 V-class bus and say what would decide it.
+test fn the_hot_swap_parts_indicate_without_deciding() -> Bool {
+  match main_bus_indication(layout: p4261_k1_layout) {
+    IndicatesFortyEightToFiftyFourVoltClass { basis: b, decided_by: d } =>
+      contains(b as String, "IPB017N10N5LF") && contains(b as String, "VDS=56V") && contains(d as String, "power-distribution board")
+    _ => false
+  }
+}
+
+// The auxiliary path's only rated-looking parts are the 12 A fuse (no voltage printed) and capacitors
+// whose code is NOT decoded, so it has no voltage bound -- an undecoded marking contributes nothing.
+test fn undecoded_capacitors_bound_nothing() -> Bool {
+  match path_bound(layout: p4261_k1_layout, path: AuxiliaryInputPath) {
+    NoRatedPartOnPath => true
+    BoundByRatedParts { maximum: _, limiting: _, placement: _ } => false
+  }
+}
+
+fn with_component(c: ObservedComponent) -> CarrierLayoutObservation {
+  CarrierLayoutObservation {
+    labels: p4261_k1_layout.labels,
+    module_receptacles: p4261_k1_layout.module_receptacles,
+    main_input_connectors: p4261_k1_layout.main_input_connectors,
+    auxiliary_connector: p4261_k1_layout.auxiliary_connector,
+    auxiliary_connector_positions: p4261_k1_layout.auxiliary_connector_positions,
+    edge_high_speed_connectors: p4261_k1_layout.edge_high_speed_connectors,
+    management_io_observed: p4261_k1_layout.management_io_observed,
+    power_components: concat(p4261_k1_layout.power_components, [c]),
+    unresolved_parts: p4261_k1_layout.unresolved_parts,
+  }
+}
+
+// The bound DISCRIMINATES: a supplied 63 V-rated capacitor on the main path lowers it to 63 V, and the
+// same capacitor on the auxiliary path leaves the main bound at 75 V.
+test fn a_lower_rated_part_lowers_only_its_own_path() -> Bool {
+  let cap = fn(path) {
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "supplied bulk capacitor",
+      identification: RatingPrintedOnBody {
+        voltage: Present { value: ComponentVoltageRating { kind: CapacitorRatedVoltage, maximum: volt(count: 63) } },
+        current: Absent,
+        marking_read: "supplied",
+      },
+      path: path,
+      membership: OnPathByAdjacency { basis: "supplied" },
+    }
+  }
+  let lowered = match path_bound(layout: with_component(c: cap(MainInputPath)), path: MainInputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, placement: _ } => volt_count(v: m) == 63
+    NoRatedPartOnPath => false
+  }
+  let untouched = match path_bound(layout: with_component(c: cap(AuxiliaryInputPath)), path: MainInputPath) {
+    BoundByRatedParts { maximum: m, limiting: _, placement: _ } => volt_count(v: m) == 75
+    NoRatedPartOnPath => false
+  }
+  lowered && untouched
+}
+
+// The rendered reading says both what is bounded and what is not.
+test fn the_reading_names_its_limits() -> Bool {
+  let r = carrier_input_reading(layout: p4261_k1_layout)
+  contains(r, "at most 75 V") && contains(r, "48-54 V class") && contains(r, "Neither bound is the rail")
+}
