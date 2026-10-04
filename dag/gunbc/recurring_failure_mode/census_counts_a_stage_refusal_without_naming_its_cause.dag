@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.census_counts_a_stage_refusal_without_naming_its_cause
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data census_counts_a_stage_refusal_without_naming_its_cause: RecurringFailureMode = RecurringFailureMode {
+  identity: "census_counts_a_stage_refusal_without_naming_its_cause" as NonEmptyStr,
+
+  receipts: [
+    "**a census consumes a stage's refusal diagnostics to COUNT what the refusal covers and renders none of them, so its output says that a module refused and never why or where** (INVALID STATE: v2.compiler.reference_conservation conservation_against_refusal took the normalize refusal's NonEmptyDiagnostics, folded them into a RefusalCover, and discarded them. The report carried a `refused` number and one `refusal-not-at-or-above` row per atom the refusal did not cover; reference_conservation_report_lines printed no reason and no locus. The TokenizeOrParseRefused row kept its diagnostics on the report and the renderer printed only the count of unmeasured rows, so a parse refusal was equally unnamed.)",
+
+    "HARM. The reader of the census has a refusal with no cause, and the cheapest next step is to guess one. The diagnostics were typed and located the whole time; the instrument dropped them at its own boundary. A refusal whose cause is not printed is also not datable: the reader cannot tell a property of the module from a property of the compiler revision that measured it.",
+
+    "RECEIPT (2026-10-04, XL-2 N7, clever-wren-409 then bold-owl-731). After gunbc#13305 fixed the native parse refusal of v2.compiler.service_realization, reference_conservation_census_for_paths over that file on the pull request's head reported every authored atom refused or `refusal-not-at-or-above`, with nothing conserved and no cause. A follow-up session was dispatched to type and locate the refusal. On main the same instrument over the same file reported no refused atom: normalize accepts the module. The pull request's head was cut from a base that still contained gunbc#13038, which main reverted (gunbc#13293) for breaking function-value and fold claims; the module is dense in fold calls taking function literals. A probe printing normalize's own diagnostics over main's copy of the file then measured it: on #13305's head, normalize refused with normalize_reason_post_normalize_not_well_formed located at the module keyword (bytes 0..6); on the re-land of gunbc#13038 (gunbc#13309) and on main, normalize accepted. So the refusal was a fact about that base and not about the module -- and the census, printing no reason, gave its reader no way to see that.",
+
+    "DISTINGUISHING FACTS. This is not `call_expression_erased_at_v2_body_lowering` and its neighbours, which are about what lowering loses; here nothing is lost by the compiler, and the loss is in the instrument's rendering. It is not a refusal with a wrong or missing diagnostic: the stage produced a typed, located diagnostic and the census held it. The tell is mechanical: a function that receives diagnostics and returns a carrier with no field that could hold a reason.",
+
+    "RUNG FOUND AT: mitigatable -- the refusal is counted, so it is not silent, but its cause is recoverable only by a second, hand-written probe. RUNG NOW, for this census: mechanically preventable. ReferenceConservationReport carries normalize_refusal (the fatal reason and its locus, a node locus resolved through the module's span index to text), and the summary line always prints `refusal=<stage>:<reason>@<locus>` or `refusal=none`. Controls: v2.test.claim.namespace_xl0.reference_conservation a_refused_normalization_carries_its_fatal_reason_located_in_text_holds, a_refused_normalization_prints_its_reason_and_locus_on_the_summary_line_holds and an_accepted_module_prints_no_refusal_on_the_summary_line_holds.",
+
+    "CEILING: structurally guaranteed, per instrument -- whether a census arm that receives diagnostics returns a carrier holding a reason is decidable from the carrier's type. NEXT-RUNG TRIGGER, naming the capability: every census or probe entry point that reports a stage outcome returns a carrier in which a refusal arm cannot be constructed without its fatal reason and locus, so that an instrument printing a bare refused count does not typecheck. This row's repair covers one instrument; v2.compiler.parse_acceptance_census already prints its reason and extent and prints `node` for a node locus rather than resolving it, which is the same gap at a smaller grain and is not repaired here.",
+  ],
+
+  evidence: [],
+}
