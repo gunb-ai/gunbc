@@ -15,7 +15,7 @@ import gunbc.cloudflare.r2_staged_transfer {
   R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
   WriteCredentialCustody, WriteCredentialShredded,
   r2_put_staged_file,
-  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   r2_fetch_into_staging,
 }
 import std.fabric_blob {
@@ -132,9 +132,11 @@ fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -
     CacheBlobTargetRefused { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobUnauthorized { cause: cause } }
     CacheBlobTargetReady { target: target } =>
       match r2_fetch_into_staging(target: target, token_source: token_source) {
-        R2FetchObjectAbsent => FabricBlobAbsent { address: address }
-        R2FetchUnavailable { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
-        R2FetchStaged { staged_path: p, tag: _ } =>
+        R2FetchObjectAbsent { staging: _ } => FabricBlobAbsent { address: address }
+        R2FetchStoreRefused { cause: cause, staging: _ } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreRefused { cause: cause } }
+        R2FetchTransportUnanswered { cause: cause, staging: _ } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
+        R2FetchLocalFailure { cause: cause, staging: _ } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
+        R2FetchStaged { staged_path: p, staging_dir: _, tag: _ } =>
           match read_staged_fabric_blob(path: p) {
             FabricBlobReadRefused { fault: fault } => FabricBlobGetUnavailable { address: address, fault: fault }
             FabricBlobRead { reading: reading } => FabricBlobFetched { address: address, reading: reading }
