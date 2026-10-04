@@ -48,7 +48,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
