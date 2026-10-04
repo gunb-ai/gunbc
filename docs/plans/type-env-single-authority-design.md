@@ -693,3 +693,198 @@ subject before PR-2 is opened:
 - presence tests over long exporter lists for widely declared names (`surface_has` walks every
   exporter);
 - per-module pool snapshots during typecheck (persistent-map path copies on every admission).
+
+## PR-2 slowdown: attribution (calm-pike-525, 2026-10-02)
+**Where the figures live.** This section keeps the structural findings, the predictions and their
+verdicts, and the rulings. It does not copy figures (DESIGN §6). The probe that measured them is an
+ignored test that needs a whole-tree resolve, and it lives on probe branches, not on main. So the
+figures are recorded only where their pinned commits are recorded too: the receipts in #13008's
+description and the scoring messages to the lane manager. A durable instrument row is a possible
+follow-up. It is not part of this note.
+
+**Instrument shape.**
+- **Attribution.** Each emitted function under test gets a thread-CPU guard at its head, charged at its
+  outermost activation only. The hot point lookups are counted, not timed. A cumulative table is
+  printed every 500 typechecked modules, so arms can be compared at equal module counts.
+- **Arms.** BEFORE is PR-2's base. AFTER is PR-2, then PR-2 with each repair added.
+- **Differential.** It digests every module that resolved. Modules owning a blocking diagnostic are
+  reported as a counted, named set rather than stopping the run, so the differential can no longer
+  void.
+- **Fork ledgers.** A per-module fork-row digest, recomputed over the final pool, compares the ledgers.
+
+**Attribution.** The dominant term was none of the four listed candidates. It was the point lookups
+during typecheck, at identical lookup demand in every arm.
+- Every lookup that passed presence descended.
+- Each descent level ran a presence test over every import.
+- Each presence test walked the name's POOL-wide exporter list.
+- So the cost per lookup grew with the tree, not with the module's closure.
+- The fork-row walk was the second term, sized by the same pool-wide grain.
+- The design's single-exporter fast path had not been implemented. My first fix keyed it pool-wide and
+  missed: in a whole tree almost every name has a homonym somewhere. That miss is labelled.
+
+**Predictions, stated before the run.**
+- P1, the fork-row walk, structural: HIT. Its magnitude: MISS, because it is the second term, not the
+  first.
+- P2, the `ancestry_names` enumerations: MISS. They are larger than predicted.
+- P3, the presence tests: MISS. They are part of the dominant term.
+- P4, the pool snapshots: MISS. They are small.
+
+**Repairs on #13008.**
+- The closure-grain classification (`closure_sole_declarer`).
+- Closure-grain fork candidates (`closure_contested_names`).
+- The contested-name table below.
+
+**The 8 apparent differences between PR-2 and BEFORE are not resolution differences.** They are byte
+spans moved by PR-2's own edit to `gunbc.namespace_cut_subject_roster`. The full-entry mode
+(`GUNBC_ANCESTRY_DIGEST=full`) separates an edited span from a different winner, and here it finds no
+different winner.
+
+### Ruling and the contested-name table (calm-boar-904, 2026-10-02)
+**The table is admitted** as sharing at the least common ancestor. `surface_contested_walk` produces
+the fork ledger and each contested name's winner in one walk per module. Its derivation is written
+beside it:
+- identity (view, name), and why it is complete;
+- least common ancestor: the module's `build_type_env`;
+- retention: the module's `TypeEnv`;
+- one producer: `ancestry_winner` and `surface_union_winner` are deleted.
+
+**The receipt protocol** was set by the ruling.
+- All three arms are built on ONE runner and run interleaved, with two runners in counter-order.
+- The 1-hour cap of the BuildBuddy free tier forced a fixed subject for the timing figures:
+  `GUNBC_PROBE_EXCLUDE=dag/test/,src/v2/test/`. That EXCLUDES THE TEST TREES, and the subject is closed
+  under importers using the assembler's own `ExclusionOrphansImporter` refusal.
+- Equality is whole-tree.
+
+**Verdicts.**
+- **Equality.** Against #13008 alone, the table is equal at declaration grain and in every module's fork
+  rows.
+- **Overall prediction, HIT.** The table does not bring PR-2 to BEFORE, and the residual is the rewire
+  pass's `ancestry_names` re-enumeration.
+- **P-a, PARTIAL.** Typecheck including env construction reaches BEFORE. Typecheck excluding env
+  construction stays above it, because of the exporter-list walk in the classification.
+- **P-b, HIT.** The fork walk falls by more than predicted.
+- **P-c, HIT.** The rewire is the residual.
+
+**Follow-up ruling.** Both remaining terms are cost-shape defects to be fixed: the rewire's
+re-enumeration, and the classification's exporter walk. That work is HELD behind the memory question
+below.
+
+### PR-2's landing gate is memory (neat-boar-16, 2026-10-01), and it is open
+**The gate.** PR-2 lands only if the floor-subject peak falls by at least 3 GB. The process peaks
+measured above moved far less than that.
+
+**Chain read on main: LIVE.** The ancestry unions are live at the floor's peak seam
+(`SeamDiscoveryAuthority`).
+- `run_required_floor` holds `prepared.graph` through discovery authority.
+- `prepared_graph_without_typecheck_caches` drops only `type_env_cache`.
+- gunbc#12890 bounded the warm seam's frames. It did not project the graph.
+
+So PR-2 could move that peak in principle.
+
+**Why it has not, so far.** This branch removes only part (a), the string-binding union. The cache's
+deps, cycle-name and variant-local unions, and `source_visible_names` (parts b and c), are still
+materialized. This section's own warning applies: removing one holder of a union that another still
+shares saves nothing.
+
+**Pre-registered expectation.**
+- (ii) PRIMARY: the bulk sits in the unremoved unions.
+- (i) CONTRIBUTING: the string union is small exclusively, because of HAMT sharing.
+- (iii) SMALL: new holders (contested tables, pool snapshots) offset the saving.
+
+**Discriminator.** `//gunbc/instruments:typed-graph-exclusive-bytes-floor-subject`, main against
+PR-2 merged with main.
+
+**Decision rule.**
+- (ii) means re-scope to a+b+c and measure that against the gate.
+- (i) means withdraw.
+- (iii) means fix the new holders first.
+
+### Is the floor's whole-closure reconcile demanded? (C2 of `floor-time-attribution-2026-10-02.md`; chain read at main, 2026-10-03)
+`compile.reconcile` is `reconcile_with_census_extra`. That is the whole typecheck
+(`typecheck_with_census_extra`) plus the three rewire passes. A resolved `ModuleGraph` carries no
+per-module environment, registry or inferred type. Every planned-claim category reads facts that only
+reconcile produces:
+- **Claim evaluation, wet lanes, enrolment, and the discovery and authority frames.** All of them go
+  through `claim_scope_for_with_memos` into the interpreter.
+  - The scope's closure IS `func_env.parents`.
+  - The interpreter's dispatch guards read `item_registry`.
+  - Evaluation reads the typed `items`: `.inferred` on match scrutinees, map literals, and op return
+    types, plus the `ground_kernel_views` folds.
+  - The coproduct fallback (`resolve_coproduct_type_node`) reads `type_env`.
+- **The non-fold-residue verdict** reads the typed `items` and `type_env` of the touched, interface-consumer
+  and NFR-row modules.
+
+So no planned claim can run on a resolved-only closure. Reconcile is demanded, not redundant, and
+the C2 repair class "delete redundant demand" does not apply to it as a whole.
+
+**The whole-closure strict verdict is itself a floor deliverable.** A blocking type diagnostic anywhere in
+the prepared closure refuses the floor (`resolved_graph_from_sources`, Strict gate). `checker_module_seeds`
+widens preparation for typechecking alone ("Claim planning does not read this: only preparation widens").
+The judged identities are printed for required CI.
+
+**The only narrowing left.** It would typecheck only the union of the planned scopes, the NFR scope and
+the authority frames, and stop typechecking the closure modules that no claim reaches (gate-prefix
+modules with no witness, checker-change seeds). That gives up the whole-closure strict verdict, which is
+a safety property. It is therefore a declared §4b(3) rung drop that needs an explicit ruling, not a
+demand cut. Nothing in the code or docs has ruled on it. The size of that population has not been
+counted: it is `prepared.graph.modules` minus the union of `claim_scope_for` modules over the planned
+claims, the wet lane and the authority frames.
+
+**Where reconcile's time can honestly go down: its interior.** The floor runner's own comment
+(`required_floor_runner.rs`, "RECONCILE'S INTERIOR") records that over half of reconcile's wall time
+allocates nothing, and that which of its six operations owns which region is unattributed. That is a
+cost-shape question inside a demanded computation, and the next attribution step there is per-operation
+trace marks in `04_infer.dag`.
+
+### Outcome: PR-2 is withdrawn (calm-boar-904, 2026-10-03)
+- **The gate became unreachable.** neat-boar-16 measured the rebased PR-2 against main with #13076 on srv1. The figures are with the pinned receipts on #13008. PR-2's saving in class bytes was well under the 3 GB gate, and answers were unchanged (equal `ancestry_entries`). The floor-peak runs at those pins are NOT a gate read: every run refused at the end of strict preparation on a main red (two String-type-mismatch diagnostics, routed to the String lane), so their peak is the prepare seam of runs that stopped there.
+- **Main had already moved.** Main's own `type_env` fell by about the size of the gate between the two baseline pins. That makes the gate unreachable for PR-2 on current main, whatever released the bytes.
+- **Not kept on single-authority grounds.** On main the import union is computed once, by `build_ancestry_precedence`'s fold, and then materialized in several holders. That is one authority, not a DESIGN §3 fork, and PR-2 was justified by memory alone. Its derived view adds a surface pool, closure bitsets, derived views and contested tables that its remaining saving does not pay for.
+- **Attributed: #13076 released main's `type_env` bytes** (neat-boar-16, srv1, 2026-10-03). The instrument `typed-graph-exclusive-bytes-floor-subject` was run at #13076's parent `ca79f2c` and at its merge `82558fb`, over the same subject with equal `ancestry_entries`. The whole drop belongs to #13076: `type_env`, the joint `type_env` + cache + interface, and `graph_total` each fell by about the gate's size, and every other class was unchanged.
+  - **So the chartered memory win was delivered by DELETING the identity rewire, not by PR-2.**
+  - **It reverses this note's earlier reading:** the rewire's RSS rise was LIVE retention, not transient allocation. Its per-module rewrite path-copied nearly every ancestry key and broke the structural sharing between modules' maps. The two-versions probe compared against the rewritten maps themselves, which were the cost.
+  - #13076's body is corrected by a comment, and the receipt is on `gunbc.recurring_failure_mode` `name_canonicalisation_depends_on_the_co_compiled_graph`.
+- **What carries forward:**
+  - the closure-grain classification and the shared contested-name walk, which are on the PR-2 branch (kept as provenance);
+  - the reconcile-interior attribution;
+  - the deletion of the identity rewire, which landed as #13076.
+
+### Warm-route attribution: both hypotheses falsified (neat-boar-16, srv1, 2026-10-03)
+- **The run.** Pin `558cecb` (MAIN representation), entry `dag/std/decision.dag`, cold and warm as separate processes, both rc=0. The instrument is the sequential class drop of `typed_graph_byte_attribution` on the warm-route probe branch `calm-pike-525/warm-route-bytes-probe`. Figures are in neat-boar-16's report and are not copied here.
+- **H1 FALSIFIED** (the warm delta lives in the type_env union maps). Those maps free essentially nothing in either arm.
+- **H2 FALSIFIED** (decoded Node trees lose their structural sharing). No graph class shows a warm/cold difference.
+- **What the miss shows.** In BOTH arms, dropping the entry's whole typed graph frees a tiny fraction of the process heap. So the probe measured the wrong population: neither the warm-route delta nor most of the cold heap is held by the entry's graph. What holds it is process-lifetime state beside the graph: the shared index, the persisted-store decode, the resident pools. Both hypotheses shared the premise that the cost sits in the entry's graph, and that premise is what the run refuted.
+- **Next.** Attribute the process-lifetime residency by the same sequential drop, at the same pin and entry: shared-index generations, resident pools, and the typed-store decode. Predictions are stated before that run. Until then the warm-route lead is unattributed, and no repair is proposed.
+- **Residency run (pin `6e25707`): P1 and P2 HIT.**
+  - **P1:** the shared index costs the same cold and warm.
+  - **P2:** the whole warm delta is loaded inside the warm RESOLVE step, and it survives dropping the entry's graph. So it is state the warm resolve route retains for the process lifetime.
+  - **Next (pin `ede7021`, P3/P4 pre-registered):** the typed-store counters, to tell breadth (decoding far beyond the entry closure) from per-decode expansion.
+- **Counters run (pin `ede7021`, neat-boar-16): P4 HIT; P3 FALSIFIED on breadth, true on bytes.**
+  - The warm route reads only TWO store entries, but they are near whole-pool size.
+  - Cold encodes are corpus-sized per module.
+- **Structural reading (from the code; not yet measured):**
+  - `TypecheckModuleResult` → `TypedModule.type_env: Rc<TypeEnv>` (and `interface.env`) → `TypeEnv.parents: Rc<Vec<Rc<TypeEnv>>>`, and all of it derives `serde::Serialize`.
+  - serde writes an `Rc` by value, so ONE module's typed snapshot serializes every ancestor's environment again, with no sharing. Decoding rebuilds them unshared.
+  - This is the same class as the identity rewire: structural sharing lost at a copy boundary, here serialization.
+- **Earliest unjustified boundary (proposed):** the snapshot's grain.
+  - A module-grain record should carry its parents as module identities, resolved at decode against environments already decoded, not as their contents.
+- **Discriminator, pre-registered before any repair:**
+  - Per-module encoded bytes grow with the size of the module's import closure, approaching proportionality.
+  - A module with no imports encodes small.
+  - If encoded size is flat in closure size, this reading is falsified.
+- **Snapshot-grain discriminator (pin `e479390`, neat-boar-16, srv1, cold): CONFIRMED.**
+  - Per module, the encoded `type_env` size is a near-exact linear function of the number of reachable environments, independent of the module's item count.
+- **Per-field reading (pin `c2e50a8`): CONFIRMED.**
+  - The per-environment constant is `symbol_index`, identical across modules and pool-scoped.
+  - `intern_table` and `source_indices` are smaller and also identical.
+  - The module's own fields are KB-sized.
+  - So parents-by-identity alone would not have been the repair. Figures are in those runs' logs.
+- **Outcome: no repair built (calm-boar-904 ruling).**
+  - The persisted store that produced the warm-route delta was deleted from main by #13064, as a regression of the same size per entry; that is this class, fixed by deletion.
+  - The same encoder survives only in the in-memory cross-worker store. On main it is armed only in a `cfg(test)` module and in `run_discovery_corpus_with_options_inner`, whose sole entry has a unit test as its only caller.
+  - No production consumer demands typed-snapshot sharing (DESIGN §2's demand-first rule), so nothing is built.
+  - The class is filed as `gunbc.recurring_failure_mode` `typed_snapshot_serializes_shared_structure_by_value`, a declared frontier: the row lands with #13163 and does not resolve until then. Its next-rung trigger carries the build conditions for when a consumer appears.
+- **This closes the type_env attribution:**
+  - PR-2 withdrawn;
+  - the chartered memory win delivered by #13076;
+  - the warm-route cost attributed to the persisted store's snapshot grain, already deleted by #13064.

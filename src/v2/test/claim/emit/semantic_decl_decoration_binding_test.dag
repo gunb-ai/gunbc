@@ -9,7 +9,6 @@ import v2.std.compilers.semantic_decl_emission {
   target_semantic_decl_coproduct_decoration_lines
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Authored, Node, TypeNode }
 import v2.std.collection { fold_list }
 import v2.std.text { is_empty }

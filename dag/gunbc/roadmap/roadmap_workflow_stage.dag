@@ -1,6 +1,6 @@
 module gunbc.roadmap_workflow_stage
 
-import std.types { String, List }
+import std.types { String, List, Bool }
 import std.algebra { trim }
 
 type WorkflowSegmentKind
@@ -64,6 +64,20 @@ fn workflow_segment_kind_key(kind: WorkflowSegmentKind) -> String {
     ReviewWorkflowSegment => "review"
     GoalAuditWorkflowSegment => "audit"
   }
+}
+
+// ONE SELECTOR FOR "THE SEGMENT OF KIND K", with kind identity read once through the kind's own
+// key. Before this, each consumer hand-wrote the same eight-arm fold for one kind, so every new kind
+// cost one edit per copy (review 74549).
+fn workflow_segment_kind_eq(a: WorkflowSegmentKind, b: WorkflowSegmentKind) -> Bool {
+  workflow_segment_kind_key(kind: a) == workflow_segment_kind_key(kind: b)
+}
+
+fn workflow_segment_of_kind(segments: List<WorkflowSegment>, kind: WorkflowSegmentKind) -> WorkflowSegment? {
+  fold(segments, init: none, f: (acc, s) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => if workflow_segment_kind_eq(a: s.kind, b: kind) { Present { value: s } } else { none }
+  })
 }
 
 fn workflow_segment_kind_label(kind: WorkflowSegmentKind) -> String {

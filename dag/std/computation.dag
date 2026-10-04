@@ -4,7 +4,9 @@ import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  positive_descent_count
+  positive_descent_count,
+  NonIncreasing,
+  Strict
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, OrderedSemiringProfile, ApproximateFieldProfile,

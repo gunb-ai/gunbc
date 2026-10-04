@@ -3,7 +3,6 @@ module v2.test.parse.keyword_path_segment_parse
 import v2.test.parse.expression_bodied_fn_decl_parse { g_fatal_at, g_tokenize_parse }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.parse_refusal_reason { KeywordAsPathSegment }
 import v2.std.text { String }
 

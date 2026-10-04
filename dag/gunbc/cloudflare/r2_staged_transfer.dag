@@ -139,14 +139,17 @@ fn classify_r2_put(precondition: ObjectPutPrecondition, answer: S3TransferAnswer
 // THE READ VERDICT IS PURE UP TO THE STAGED FILE: which arm a status selects is decidable from a
 // fixture. -f makes a non-2xx write NOTHING to the destination (extdeps.tools.curl), so a staged
 // path either holds the object's bytes or does not exist.
+// A store that ANSWERED and refused (a 403, a 400) and a transfer that received NO answer are two
+// facts with two remedies -- investigate the store vs retry the transport -- so they are two arms.
 type R2FetchVerdict
   = R2FetchStagedAt { staged_path: NonEmptyStr, tag: ObjectEntityTag? }
   | R2FetchAbsent
   | R2FetchRefused { cause: NonEmptyStr }
+  | R2FetchUnanswered { cause: NonEmptyStr }
 
 fn classify_r2_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> R2FetchVerdict {
   match answer {
-    S3NotAnswered { cause: cause } => R2FetchRefused { cause: cause }
+    S3NotAnswered { cause: cause } => R2FetchUnanswered { cause: cause }
     S3Answered { status: status, tag: tag } =>
       if http_status_is_success(status: status) {
         R2FetchStagedAt { staged_path: staged_path, tag: tag }
@@ -256,30 +259,72 @@ fn r2_put_is_clean(put: R2Put) -> Bool {
 // points the transport at a file inside it, so no caller can substitute a path of its own and the
 // file a later digest is taken over is the file this transfer wrote. A credential that could not be
 // shredded refuses the fetch rather than reporting it as staged.
+// WHAT BECAME OF A STAGING DIRECTORY: never created, removed, or left behind at a reported path. It
+// rides beside every fetch arm, as credential custody rides beside a put: a fetch that ends without
+// handing bytes to the caller removes the directory it minted before returning, and a removal that
+// fails is a residue fact, never silence.
+type R2StagingCustody
+  = R2StagingNotCreated
+  | R2StagingRemoved
+  | R2StagingResidue { path: NonEmptyStr }
+
+fn r2_release_staging(dir: NonEmptyStr) -> R2StagingCustody {
+  if shell.Remove.RecursiveForce(path: dir as FilePath).success { R2StagingRemoved } else { R2StagingResidue { path: dir } }
+}
+
+// THE FETCH. Staged hands the caller the bytes AND the directory holding them, which the caller
+// discharges with r2_release_staging once it has read them. Every other arm has already discharged
+// its directory and says how. A local failure before or after the transfer (no transport, no
+// private directory, the credential not placed or not shredded) is its own arm: the store is not
+// implicated by it.
 type R2Fetch
-  = R2FetchStaged { staged_path: NonEmptyStr, tag: ObjectEntityTag? }
-  | R2FetchObjectAbsent
-  | R2FetchUnavailable { cause: NonEmptyStr }
+  = R2FetchStaged { staged_path: NonEmptyStr, staging_dir: NonEmptyStr, tag: ObjectEntityTag? }
+  | R2FetchObjectAbsent { staging: R2StagingCustody }
+  | R2FetchStoreRefused { cause: NonEmptyStr, staging: R2StagingCustody }
+  | R2FetchTransportUnanswered { cause: NonEmptyStr, staging: R2StagingCustody }
+  | R2FetchLocalFailure { cause: NonEmptyStr, staging: R2StagingCustody }
+
+// The verdict as the fetch, pure: which arm a status selects, with the custody of a directory that
+// was already released (staging) or retained for the caller (staging_dir).
+fn r2_fetch_of_verdict(verdict: R2FetchVerdict, staging_dir: NonEmptyStr, released: R2StagingCustody) -> R2Fetch {
+  match verdict {
+    R2FetchStagedAt { staged_path: p, tag: t } => R2FetchStaged { staged_path: p, staging_dir: staging_dir, tag: t }
+    R2FetchAbsent => R2FetchObjectAbsent { staging: released }
+    R2FetchRefused { cause: c } => R2FetchStoreRefused { cause: c, staging: released }
+    R2FetchUnanswered { cause: c } => R2FetchTransportUnanswered { cause: c, staging: released }
+  }
+}
+
+// Whether a verdict hands its directory to the caller; every other verdict releases it now.
+fn r2_fetch_retains_staging(verdict: R2FetchVerdict) -> Bool {
+  match verdict {
+    R2FetchStagedAt { staged_path: _, tag: _ } => true
+    R2FetchAbsent => false
+    R2FetchRefused { cause: _ } => false
+    R2FetchUnanswered { cause: _ } => false
+  }
+}
 
 data r2_staged_object_basename: String = "object"
 
 fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSource) -> R2Fetch {
   match r2_transport_present(report: target.report) {
-    R2TransportAbsent { cause: cause } => R2FetchUnavailable { cause: cause }
+    R2TransportAbsent { cause: cause } => R2FetchLocalFailure { cause: cause, staging: R2StagingNotCreated }
     R2TransportPresent => {
       let staging = shell.Mktemp.Dir()
       if staging.success == false {
-        R2FetchUnavailable { cause: "no private directory could be minted to stage the store's bytes, so nothing was fetched" }
+        R2FetchLocalFailure { cause: "no private directory could be minted to stage the store's bytes, so nothing was fetched", staging: R2StagingNotCreated }
       } else {
-        let staged_path = join([staging.path as String, "/", r2_staged_object_basename], "") as NonEmptyStr
+        let dir = staging.path as NonEmptyStr
+        let staged_path = join([dir as String, "/", r2_staged_object_basename], "") as NonEmptyStr
         match place_r2_s3_netrc(
           host: r2_s3_endpoint_host(endpoint: target.locator.endpoint) as NonEmptyStr,
           access_key_id: target.access_key_id,
           token_value: target.token_value,
           token_source: token_source,
         ) {
-          R2S3NetrcRefused { cause: cause } => R2FetchUnavailable { cause: cause }
-          R2S3NetrcRefusedResidueRemains { cause: cause } => R2FetchUnavailable { cause: cause }
+          R2S3NetrcRefused { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
+          R2S3NetrcRefusedResidueRemains { cause: cause } => R2FetchLocalFailure { cause: cause, staging: r2_release_staging(dir: dir) }
           R2S3NetrcPlaced { binding: binding, workspace: workspace } => {
             let observed = run_shell_command_observe(
               command: curl_sigv4_s3_download_command(
@@ -293,13 +338,10 @@ fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSour
             )
             let shredded = shred_r2_s3_netrc(workspace: workspace)
             if shredded == false {
-              R2FetchUnavailable { cause: "the read credential's private directory could not be removed after the GET; credential material may remain and requires cleanup, and the fetch is not reported as staged" }
+              R2FetchLocalFailure { cause: "the read credential's private directory could not be removed after the GET; credential material may remain and requires cleanup, and the fetch is not reported as staged", staging: r2_release_staging(dir: dir) }
             } else {
-              match classify_r2_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr) {
-                R2FetchAbsent => R2FetchObjectAbsent
-                R2FetchRefused { cause: cause } => R2FetchUnavailable { cause: cause }
-                R2FetchStagedAt { staged_path: p, tag: t } => R2FetchStaged { staged_path: p, tag: t }
-              }
+              let verdict = classify_r2_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr)
+              r2_fetch_of_verdict(verdict: verdict, staging_dir: dir, released: if r2_fetch_retains_staging(verdict: verdict) { R2StagingNotCreated } else { r2_release_staging(dir: dir) })
             }
           }
         }

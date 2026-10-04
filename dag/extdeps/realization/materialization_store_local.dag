@@ -3,7 +3,7 @@ module extdeps.realization.materialization_store_local
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemFailureKind, FilesystemNotFound, FilesystemAlreadyExists, FilesystemPermissionDenied,
-  FilesystemOtherFailure, FilesystemNotDirectory,
+  FilesystemOtherFailure, FilesystemNotDirectory, FilesystemCrossDevice,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
   FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
@@ -137,6 +137,7 @@ fn filesystem_fault(kind: FilesystemFailureKind, error: String) -> StoreFault {
     FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemNotDirectory => StoreFault { class: StoreFaultUnreachable, detail: detail }
+    FilesystemCrossDevice => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: detail }
   }
 }

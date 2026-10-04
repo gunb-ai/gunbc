@@ -1,7 +1,7 @@
 module std.effect_grant
 
 import std.types { Bool, String, List }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { filter }
 import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 import std.access {
@@ -263,8 +263,8 @@ fn namespace_tree_of_label(label: String) -> NamespaceTree? {
   match (filter(namespace_trees_without_parameters, t => namespace_tree_label(tree: t) == label)).first() {
     Present { value: t } => Present { value: t }
     Absent =>
-      if starts_with(s: label, prefix: service_tree_label_prefix) && length(label) > length(service_tree_label_prefix) {
-        Present { value: ServiceOpTree { service: substring(s: label, start: length(service_tree_label_prefix), end: length(label)) } }
+      if starts_with(s: label, prefix: service_tree_label_prefix) && string_length(s: label) > string_length(s: service_tree_label_prefix) {
+        Present { value: ServiceOpTree { service: substring(s: label, start: string_length(s: service_tree_label_prefix), end: string_length(s: label)) } }
       } else { none }
   }
 }

@@ -1,0 +1,140 @@
+module v2.test.claim.algebra_operator_derivation
+
+import v2.compiler.infer { AlgebraFieldNotCarried, AlgebraFieldResultType, AlgebraFieldRowMalformed, InferAlgebraFieldResult, infer, infer_algebra_field_result_type }
+import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.std.integer { integer_int_type_node }
+import v2.std.model_core { AlgebraInhabitanceDecl }
+import v2.std.collection { List }
+import v2.test.claim.type_param_binder_frame { tpb_assemble }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool, bool_node }
+import v2.std.node { Node, Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.infer derives a binary algebra operator's result through ONE route -- the operator's
+// signature field (v2.std.compilers.target_model canonical operation) is declared by the operand type's row in
+// v2.extdeps.languages.dag dag_algebra_inhabitance_decls -- replacing the Int-only `+` arm. A derived body type is
+// observed through the declared-return check: a body that derives a type contradicting the declared return
+// refuses arrow_body_does_not_inhabit_declared_return, while an underived body is only an accepted, counted
+// undecidable obligation.
+
+fn aod_reason(src: String) -> Symbol {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => ^accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+// EACH FIXTURE PROGRAM IS ASSEMBLED AND INFERRED ONCE, by a NULLARY producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the claims read the decided reason.
+fn aod_bool_join_declared_int_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Int {\n  a || b\n}\n")
+}
+
+fn aod_int_add_declared_bool_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Bool {\n  a + b\n}\n")
+}
+
+fn aod_bool_add_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a + b\n}\n")
+}
+
+fn aod_int_join_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Int {\n  a || b\n}\n")
+}
+
+fn aod_bool_join_ok_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a || b\n}\n")
+}
+
+fn aod_int_add_ok_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn g(a: Int, b: Int) -> Int {\n  a + b\n}\n")
+}
+
+// (1) `||` OVER BOOL DERIVES BOOL: declared Int, so the derived Bool body refuses. RED ON THE BASE: no arm
+// derived `||`, the body was underived, and the program was accepted with an undecidable advisory.
+test fn aod_bool_join_derives_bool() -> Bool {
+  aod_bool_join_declared_int_reason() == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// (2) `+` OVER INT STILL DERIVES INT, now through Int's ordered-ring row: declared Bool, so it refuses.
+test fn aod_int_add_still_derives_int() -> Bool {
+  aod_int_add_declared_bool_reason() == ^arrow_body_does_not_inhabit_declared_return
+}
+
+// (3) NO ROW, NO DERIVATION: Bool carries no ring add, and Int no lattice join -- each refuses at the operator.
+test fn aod_bool_add_refuses() -> Bool {
+  aod_bool_add_reason() == ^infer_transform_operand_type_mismatch
+}
+
+test fn aod_int_join_refuses() -> Bool {
+  aod_int_join_reason() == ^infer_transform_operand_type_mismatch
+}
+
+// (4) THE ACCEPTED CONTROLS: each operator over its own carrier, declared correctly, is accepted.
+test fn aod_well_typed_operators_are_accepted() -> Bool {
+  aod_bool_join_ok_reason() == ^accepted
+    && aod_int_add_ok_reason() == ^accepted
+}
+
+// (5) A ROW IS SELECTED BY THE CARRIER ITS STRUCTURE IS OVER, NEVER BY A COPY STORED BESIDE IT. These supply the
+// rows at the derivation's own interface (infer_algebra_field_result_type); (1)-(4) above are the real-path
+// inhabitance, running the production rows through assemble and infer. Each supplied row is a CORRELATED-FIELD
+// MUTATION: its outer `inhabitant` disagrees with the ^inhabitant_edge of its own `algebra` node. RED ON THE
+// PRE-FIX HEAD, which selected by the outer field: `Int || Int` derived Int from a Bool boolean-algebra.
+fn aod_mismatched_row(outer: Node, algebra: Node) -> List<AlgebraInhabitanceDecl> {
+  [AlgebraInhabitanceDecl { algebra: algebra, inhabitant: outer, witness: outer }]
+}
+
+fn aod_result_is_type(r: InferAlgebraFieldResult, expected: Node) -> Bool {
+  match r {
+    AlgebraFieldResultType { result: t } => t == expected
+    AlgebraFieldNotCarried => false
+    AlgebraFieldRowMalformed { cause: _ } => false
+  }
+}
+
+fn aod_result_not_carried(r: InferAlgebraFieldResult) -> Bool {
+  match r {
+    AlgebraFieldResultType { result: _ } => false
+    AlgebraFieldNotCarried => true
+    AlgebraFieldRowMalformed { cause: _ } => false
+  }
+}
+
+// An outer Int over a Bool boolean algebra lends Int no lattice join.
+test fn aod_outer_inhabitant_lends_no_join() -> Bool {
+  aod_result_not_carried(r: infer_algebra_field_result_type(
+    rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
+    operand_type: integer_int_type_node(),
+    field: ^lattice_field_join
+  ))
+}
+
+// The inverse: an outer Bool over an Int ordered ring lends Bool no ring add.
+test fn aod_outer_inhabitant_lends_no_add() -> Bool {
+  aod_result_not_carried(r: infer_algebra_field_result_type(
+    rows: aod_mismatched_row(outer: bool_node(), algebra: ordered_ring_node(inhabitant: integer_int_type_node())),
+    operand_type: bool_node(),
+    field: ^ring_field_add
+  ))
+}
+
+// The positive arm of the same mutation: the structure answers for the carrier it IS over, whatever the outer copy
+// says, so the derivation cannot be passing merely by refusing every mismatched row.
+test fn aod_embedded_carrier_selects_the_row() -> Bool {
+  aod_result_is_type(
+    r: infer_algebra_field_result_type(
+      rows: aod_mismatched_row(outer: integer_int_type_node(), algebra: boolean_algebra_node(inhabitant: bool_node())),
+      operand_type: bool_node(),
+      field: ^lattice_field_join
+    ),
+    expected: bool_node()
+  )
+}

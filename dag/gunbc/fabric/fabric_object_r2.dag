@@ -18,8 +18,8 @@ import gunbc.cloudflare.r2_origin { BucketPurpose }
 import gunbc.cloudflare.r2_staged_transfer {
   WriteCredentialCustody, WriteCredentialShredded,
   R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
-  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
-  r2_put_staged_file, r2_fetch_into_staging,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  r2_release_staging, r2_put_staged_file, r2_fetch_into_staging,
 }
 import gunbc.fabric.fabric_blob_r2 {
   FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
@@ -91,10 +91,13 @@ fn get_fabric_object_r2(object: FabricObjectRef, purpose: BucketPurpose, token_s
     FabricBlobTargetRefused { cause: c } => FabricObjectGetRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }
     FabricBlobTargetReady { target: target } =>
       match r2_fetch_into_staging(target: target, token_source: token_source) {
-        R2FetchObjectAbsent => FabricObjectGetRefused { fault: FabricObjectMissing { object: object } }
-        R2FetchUnavailable { cause: c } => FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: c } }
-        R2FetchStaged { staged_path: p, tag: _ } => {
+        R2FetchObjectAbsent { staging: _ } => FabricObjectGetRefused { fault: FabricObjectMissing { object: object } }
+        R2FetchStoreRefused { cause: c, staging: _ } => FabricObjectGetRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }
+        R2FetchTransportUnanswered { cause: c, staging: _ } => FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: c } }
+        R2FetchLocalFailure { cause: c, staging: _ } => FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: concat("the object could not be staged locally: ", c as String) as NonEmptyStr } }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } => {
           let read = Filesystem.Read(path: p as String)
+          let released = r2_release_staging(dir: d)
           if read.success == false {
             FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: concat("the staged object could not be read: ", p as String) as NonEmptyStr } }
           } else {

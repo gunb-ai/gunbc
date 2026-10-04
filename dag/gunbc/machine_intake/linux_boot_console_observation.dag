@@ -1,0 +1,112 @@
+module gunbc.machine_intake_linux_boot_console_observation
+
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.linux.efi_stub { linux_efi_stub_line_prefix, linux_efi_stub_initrd_load_failed_prefix, linux_efi_load_error_rendering }
+import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_prefix, linux_kernel_panic_end_marker }
+
+// WHAT THE LINUX EFI STUB AND THE KERNEL PRINTED ON THE SERIAL CONSOLE DURING ONE BOOT, as an
+// observation receipt of this repository. The lines are upstream's (extdeps.linux.efi_stub,
+// extdeps.linux.boot_console); which of them a capture holds is ours.
+//
+// A LINE IS MATCHED BY THE UPSTREAM TEXT ANYWHERE IN IT, not at its start: the kernel prefixes its
+// own lines with a "[ seconds ]" timestamp, and on mtcollins1 the stub's first line follows GRUB's
+// screen-drawing escape sequences on the same serial line (run 37069907299).
+//
+// WHAT IS NOT CLAIMED (DESIGN section 4d). A capture with no stub line says nothing about whether
+// the stub ran: the console may have been lost first. So every reading below that is not a stated
+// line is "not printed", never "did not happen".
+
+// The status the stub printed after "0x". EFI_LOAD_ERROR is the one upstream row this corpus has
+// observed (run 37069907299); any other status is kept as its digits.
+type EfiStubStatus
+  = EfiLoadError
+  | EfiStatusOther { digits: NonEmptyStr }
+
+type EfiStubInitrdReading
+  = InitrdFailureNotPrinted
+  | InitrdLoadFailed { status: EfiStubStatus, line: NonEmptyStr }
+
+type KernelPanicReading
+  = KernelPanicNotPrinted
+  | KernelPanicked { reason: NonEmptyStr }
+
+type LinuxBootConsoleObservation {
+  stub_lines: Int
+  initrd: EfiStubInitrdReading
+  kernel_banner_printed: Bool
+  panic: KernelPanicReading
+}
+
+fn text_after_marker(line: String, marker: String) -> String? {
+  let parts = split(s: line, delimiter: marker)
+  if count(parts) < 2 { none } else { Present { value: join(parts.skip(n: 1), marker) } }
+}
+
+fn efi_stub_status_of(digits: String) -> EfiStubStatus? {
+  let d = trim(digits)
+  if d == "" { none }
+  else if d == (linux_efi_load_error_rendering as String) { Present { value: EfiLoadError } }
+  else { Present { value: EfiStatusOther { digits: d as NonEmptyStr } } }
+}
+
+fn initrd_reading_of(line: String) -> EfiStubInitrdReading? {
+  match text_after_marker(line: line, marker: linux_efi_stub_initrd_load_failed_prefix as String) {
+    Absent => none
+    Present { value: rest } => match efi_stub_status_of(digits: rest) {
+      Absent => none
+      Present { value: st } => Present { value: InitrdLoadFailed { status: st, line: trim(line) as NonEmptyStr } }
+    }
+  }
+}
+
+// The panic line, never its end marker: the marker repeats the prefix, and reading it as a second
+// panic would report the reason with "]---" appended.
+fn panic_reason_of(line: String) -> String? {
+  if string_contains(s: line, pattern: linux_kernel_panic_end_marker as String) { none } else {
+    match text_after_marker(line: line, marker: linux_kernel_panic_prefix as String) {
+      Absent => none
+      Present { value: r } => if trim(r) == "" { none } else { Present { value: trim(r) } }
+    }
+  }
+}
+
+// THE FIRST stated initrd failure and the FIRST panic: each is printed once per boot, and the first
+// is the one that led to what followed.
+fn linux_boot_console_observation(lines: List<String>) -> LinuxBootConsoleObservation {
+  let initrd = match flat_map(lines, l => match initrd_reading_of(line: l) { Absent => [] Present { value: r } => [r] }).first() {
+    Absent => InitrdFailureNotPrinted
+    Present { value: r } => r
+  }
+  let panic = match flat_map(lines, l => match panic_reason_of(line: l) { Absent => [] Present { value: r } => [r] }).first() {
+    Absent => KernelPanicNotPrinted
+    Present { value: r } => KernelPanicked { reason: r as NonEmptyStr }
+  }
+  LinuxBootConsoleObservation {
+    stub_lines: count(filter(lines, l => string_contains(s: l, pattern: linux_efi_stub_line_prefix as String))),
+    initrd: initrd,
+    kernel_banner_printed: any(lines, l => string_contains(s: l, pattern: linux_banner_prefix as String)),
+    panic: panic,
+  }
+}
+
+fn efi_stub_status_text(s: EfiStubStatus) -> String {
+  match s {
+    EfiLoadError => concat("EFI_LOAD_ERROR (0x", linux_efi_load_error_rendering as String, ")")
+    EfiStatusOther { digits: d } => concat("0x", d as String)
+  }
+}
+
+fn linux_boot_console_text(o: LinuxBootConsoleObservation) -> String {
+  join([
+    concat("efi stub lines: ", to_string(o.stub_lines)),
+    concat("initrd: ", match o.initrd {
+      InitrdFailureNotPrinted => "no load failure printed"
+      InitrdLoadFailed { status: s, line: _ } => concat("load FAILED, status ", efi_stub_status_text(s: s))
+    }),
+    concat("kernel banner: ", if o.kernel_banner_printed { "printed" } else { "not printed" }),
+    concat("panic: ", match o.panic { KernelPanicNotPrinted => "none printed" KernelPanicked { reason: r } => r as String }),
+  ], "\n")
+}

@@ -1,0 +1,63 @@
+module v2.test.claim.self_host_contract.program_partition_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.program_partition { partition_user_semantic_types_from_root, PartitionUserSemanticType }
+import v2.std.node { Node, Edge, Authored, Positional, TypeNode, ComputationNode, Conj, Disj, Value, node_synthetic }
+
+// THE program_partition ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. The expected verdicts are
+// read off the authority: v2.compiler.program_partition partition_user_semantic_types_from_root
+// collects, from a module's AUTHORED declaration edges, those whose target is a Disj or Conj type
+// node, keeps the first per name, and skips value declarations and positional edges. This function
+// runs interpreted on the floor and, emitted beside its subject, on the fleet; the self-host
+// behavioral row holds only when both realizations agree. It replaces a hand-written Rust driver
+// that restated this contract against the emitted spelling of v2.std.node, which nothing compiled
+// per change and which the EdgeLabel cut left naming a variant that no longer existed.
+fn ppc_type_node_disj() -> Node {
+  node_synthetic(kind: TypeNode { connective: Disj }, children: [])
+}
+
+fn ppc_type_node_conj() -> Node {
+  node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+}
+
+fn ppc_value_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn ppc_module_root() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_disj() },
+      Edge { label: Authored { name: ^value_decl }, target: ppc_value_node() },
+      Edge { label: Authored { name: ^Shape }, target: ppc_type_node_conj() },
+      Edge { label: Positional, target: ppc_type_node_disj() },
+      Edge { label: Authored { name: ^Pair }, target: ppc_type_node_conj() }
+    ]
+  )
+}
+
+fn ppc_is_disj(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: c } => match c {
+      Disj => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// The planted fault expects the value declaration to be collected as well, so the injected reading
+// does not hold exactly when partition really skips it.
+fn program_partition_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let collected = partition_user_semantic_types_from_root(root: ppc_module_root())
+  let names = collected |> map(t => t.name)
+  let expected = if inject_fault { [^Shape, ^value_decl, ^Pair] } else { [^Shape, ^Pair] }
+  names == expected
+    && (collected |> filter(t => t.name == ^Shape && ppc_is_disj(n: t.semantic)) |> count) == 1
+}
+
+test fn program_partition_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  program_partition_emitted_contract_holds(inject_fault: false)
+    && !program_partition_emitted_contract_holds(inject_fault: true)
+}

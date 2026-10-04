@@ -8,7 +8,6 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 
 test fn sg5_set_non_ordable_projection_rejects() -> Bool {
   match translate_type_expression_project(

@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -40,15 +39,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // RESOLVED on main -- the part carrying it was gone -- and each refuses unbound at its atom on head.
 // CONTROLS, TRUE ON BOTH: an undeclared name inside the nested if (the part main kept) refuses at it;
 // a real `else if` chain still reads its nested else; the declared shape resolves.
-data eam_scrutinee_source: String = "module v2.test.eam_scrutinee\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match eam_undeclared_scrutinee {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+data eam_scrutinee_source: String = "module v2.test.eam_scrutinee\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match eam_undeclared_scrutinee {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
 
-data eam_first_arm_source: String = "module v2.test.eam_first_arm\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => eam_undeclared_first_arm\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+data eam_first_arm_source: String = "module v2.test.eam_first_arm\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => eam_undeclared_first_arm\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
 
-data eam_nested_if_source: String = "module v2.test.eam_nested_if\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { eam_undeclared_nested_if } else { u }\n    }\n  }\n}\n"
+data eam_nested_if_source: String = "module v2.test.eam_nested_if\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { eam_undeclared_nested_if } else { u }\n    }\n  }\n}\n"
 
-data eam_else_if_source: String = "module v2.test.eam_else_if\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else if c {\n    u\n  } else {\n    eam_undeclared_else_if\n  }\n}\n"
+data eam_else_if_source: String = "module v2.test.eam_else_if\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else if c {\n    u\n  } else {\n    eam_undeclared_else_if\n  }\n}\n"
 
-data eam_declared_source: String = "module v2.test.eam_declared\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
+data eam_declared_source: String = "module v2.test.eam_declared\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\ntype EamK = EamA | EamB { v: Int }\n\nfn eam_probe(u: Int, c: Bool, k: EamK) -> Int {\n  if u == 0 {\n    u\n  } else {\n    match k {\n      EamA => u\n      EamB { v: w } =>\n        if c { w } else { u }\n    }\n  }\n}\n"
 
 fn eam_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

@@ -53,7 +53,7 @@ import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSele
 import gunbc.cloudflare.r2_origin { FabricWorkspace }
 import gunbc.fabric.fabric_blob_r2 {
   FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTarget, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
-  put_workspace_chunk, get_workspace_chunk, get_fabric_blob,
+  put_workspace_chunk, get_workspace_chunk, get_fabric_blob, release_fabric_blob_staging,
 }
 import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
 import gunbc.fabric.fabric_object_r2 { put_fabric_object_r2, get_fabric_object_r2 }
@@ -423,7 +423,7 @@ fn workspace_stored_entry_read(object: FabricObjectRef, token_source: AccessToke
 // THE ENTRY THE HEAD NOW NAMES, for the classifier's moved arm. Any failure to read it is absence,
 // which the classifier answers as WorkspaceCommitObservedUndecoded -- never as a race.
 fn workspace_observed_entry(binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceStoredEntry? {
-  match r2_head_read(binding: binding, token_source: token_source) {
+  match r2_head_read(binding: binding, token_source: token_source).read {
     FabricHeadReadRefused { fault: _ } => none
     FabricHeadObserved { reading: FabricHeadAbsent } => none
     FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } =>
@@ -466,7 +466,7 @@ fn workspace_closure_from(object: FabricObjectRef?, token_source: AccessTokenSou
 }
 
 fn workspace_closure(binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceClosure {
-  match r2_head_read(binding: binding, token_source: token_source) {
+  match r2_head_read(binding: binding, token_source: token_source).read {
     FabricHeadReadRefused { fault: f } => WorkspaceClosureRefused { detail: fabric_storage_fault_wire(fault: f) }
     FabricHeadObserved { reading: FabricHeadAbsent } => WorkspaceClosureRead { newest_first: [] }
     FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } => workspace_closure_from(object: Present { value: o }, token_source: token_source, acc: [], budget: workspace_closure_bound)
@@ -791,14 +791,18 @@ fn workspace_measure_on_btrfs(parent: NonEmptyStr, run: NonEmptyStr, token_sourc
           match workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_create_command(path: workspace))) {
             Present { value: why } => workspace_measure_fail(head: head, verdict: "refused-subvolume-create", why: concat("the workspace subvolume could not be created: ", why))
             Absent =>
-              match get_fabric_blob(address: source, key: fabric_workspace_source_key(address: source), purpose: FabricWorkspace {}, token_source: token_source) {
+              let fetched = get_fabric_blob(address: source, key: fabric_workspace_source_key(address: source), purpose: FabricWorkspace {}, token_source: token_source)
+              match fetched.verdict {
                 FabricBlobAbsent { address: _ } => workspace_measure_fail(head: head, verdict: "refused-source-absent", why: join(["no source object at ", fabric_workspace_source_key(address: source) as String], ""))
                 FabricBlobGetUnavailable { address: _, fault: f } => workspace_measure_fail(head: head, verdict: "refused-source-unavailable", why: fabric_blob_fault_text(fault: f))
                 FabricBlobFetched { address: _, reading: r } =>
                   if !content_hash_eq_cryptographic(left: fabric_blob_reading_digest(reading: r), right: source.key) {
+                    let released = release_fabric_blob_staging(staging: fetched.staging)
                     workspace_measure_fail(head: head, verdict: "refused-source-digest-mismatch", why: join(["the fetched source hashes to ", fabric_blob_reading_digest(reading: r).hex, ", not the dispatched address"], ""))
                   } else {
-                    match workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: fabric_blob_reading_path(reading: r) as String, into_directory: workspace, strip_components: 0))) {
+                    let extracted = workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: fabric_blob_reading_path(reading: r) as String, into_directory: workspace, strip_components: 0)))
+                    let released = release_fabric_blob_staging(staging: fetched.staging)
+                    match extracted {
                       Present { value: why } => workspace_measure_fail(head: head, verdict: "refused-source-extract", why: concat("the source archive could not be extracted: ", why))
                       Absent => workspace_measure_extracted(workspace: workspace as NonEmptyStr, snapshot: snapshot as NonEmptyStr, scratch: scratch.path as NonEmptyStr, run: run, token_source: token_source, head: concat(head, join(["source_object=", fabric_blob_object_name(address: source) as String, " source_bytes=", to_string(measure_count(m: fabric_blob_reading_size(reading: r))), "\n"], "")))
                     }
@@ -1058,16 +1062,19 @@ fn workspace_restore_recreate(head: String, binding: R2HeadBinding, barrier: Lis
 // ONE ENTRY BACK ONTO DISK: fetch the chunk by its address, require the fetched bytes to hash to
 // that address, and copy them to the entry's path. Empty means restored; a value is why not.
 fn workspace_restore_entry(dir: NonEmptyStr, entry: WorkspaceEntry, token_source: AccessTokenSource) -> List<String> {
-  match get_workspace_chunk(address: entry.chunk, token_source: token_source) {
+  let fetched = get_workspace_chunk(address: entry.chunk, token_source: token_source)
+  match fetched.verdict {
     FabricBlobAbsent { address: _ } => [join([entry.path as String, ": the chunk is absent"], "")]
     FabricBlobGetUnavailable { address: _, fault: f } => [join([entry.path as String, ": ", fabric_blob_fault_text(fault: f)], "")]
     FabricBlobFetched { address: _, reading: r } =>
       if !content_hash_eq_cryptographic(left: fabric_blob_reading_digest(reading: r), right: entry.chunk.key) {
+        let released = release_fabric_blob_staging(staging: fetched.staging)
         [join([entry.path as String, ": the fetched bytes do not hash to the chunk's address"], "")]
       } else {
         let target = join([dir as String, "/", entry.path as String], "")
         let made = shell.Mkdir.Parents(path: workspace_dirname(path: target) as FilePath)
         let copied = shell.Copy.File(source: fabric_blob_reading_path(reading: r) as FilePath, destination: target as FilePath)
+        let released = release_fabric_blob_staging(staging: fetched.staging)
         if made.success && copied.success { [] } else { [join([entry.path as String, ": the chunk could not be written to its path"], "")] }
       }
   }
