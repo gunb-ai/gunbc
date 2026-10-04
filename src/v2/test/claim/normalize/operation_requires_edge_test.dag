@@ -18,7 +18,6 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label }
 import v2.std.integer { Int }

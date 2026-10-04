@@ -1,6 +1,5 @@
 module gunbc.test.claim.body_lowering_refusal_scope_test
 
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import gunbc.tools.body_lowering_population_probe {
   BodyLoweringSubject,

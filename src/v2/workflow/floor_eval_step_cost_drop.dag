@@ -1,7 +1,6 @@
 module v2.workflow.floor_eval_step_cost_drop
 
 import v2.std.algebra { any, count_where, list_map }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int, int_gt }
 import std.types { NonEmptyStr, List }

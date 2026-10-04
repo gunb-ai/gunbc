@@ -3,7 +3,6 @@ module v2.test.lens_synthesis.synthesis_no_technique_diagnostic
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.synthesis { AlgebraicRank, synthesis_lens_diagnostics }
 import v2.std.algebra { non_empty }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Cardinality,
