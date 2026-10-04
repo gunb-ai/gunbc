@@ -1,6 +1,8 @@
 module gunbc.machine_intake_bmc_rotation_route
 
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.scoped_authorization { AttemptIdentity }
+import v2.std.algebra { any }
 import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
@@ -130,6 +132,7 @@ fn rotation_route_from_citation(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_cited_route_admits_apply_and_is_bound_to_its_build"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable"),
   ]
 {
   BmcRotationRouteStanding {
@@ -566,6 +569,69 @@ type RotationApplyAdmission
   | RotationApplyApprovalDenied
   | RotationApplyApprovalForAnotherAuthority { authority: NonEmptyStr }
   | RotationApplyApprovalForAnotherRequest { approved: NonEmptyStr, requested: NonEmptyStr }
+  | RotationApplyWouldLeaveNoAdministrator { channel: Int, cause: AdministratorRetentionRefusal }
+
+// THE LOCKOUT HAZARD IS A REFUSAL, NOT A NOTE. A Set User Access write that lowers a user's privilege
+// on a channel (anything other than ADMINISTRATOR) could remove the last administrator-capable account
+// from that channel. It is admissible only beside a typed precondition: the MANAGED account -- a
+// different user from the one being closed -- read back at ADMINISTRATOR on that same channel with
+// Get User Access, IN THE SAME RUN, which is the attempt the approval names. The readback's producer is
+// the BmcSecure observation (cut O1b); here it is an admission input, and its absence refuses.
+type ManagedAdministratorReadback {
+  attempt: AttemptIdentity
+  managed_user: IpmiUserId
+  access: List<IpmiUserChannelAccess>
+}
+
+type AdministratorRetentionRefusal
+  = ManagedReadbackAbsent
+  | ManagedReadbackFromAnotherRun { readback: AttemptIdentity, approved: AttemptIdentity }
+  | ManagedAccountIsTheClosedAccount { user: IpmiUserId }
+  | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
+
+fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
+  match privilege {
+    IpmiPrivilegeAdministrator => false
+    IpmiPrivilegeCallback => true
+    IpmiPrivilegeUser => true
+    IpmiPrivilegeOperator => true
+    IpmiPrivilegeOem => true
+    IpmiPrivilegeNoAccess => true
+  }
+}
+
+fn administrator_retention_refusal(request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
+  match request {
+    IpmiSetUserPassword { user: _ } => none
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+    IpmiSetUserAccess { access: x } =>
+      if !lowers_privilege(privilege: x.privilege) {
+        none
+      } else {
+        match readback {
+          Absent => Present { value: ManagedReadbackAbsent }
+          Present { value: r } =>
+            if (r.attempt as String) != (approved_attempt as String) {
+              Present { value: ManagedReadbackFromAnotherRun { readback: r.attempt, approved: approved_attempt } }
+            } else if (r.managed_user as Int) == (x.user as Int) {
+              Present { value: ManagedAccountIsTheClosedAccount { user: x.user } }
+            } else if any(r.access, a => (a.user as Int) == (r.managed_user as Int) && (a.channel as Int) == (x.channel as Int) && !lowers_privilege(privilege: a.privilege)) {
+              none
+            } else {
+              Present { value: ManagedAccountNotAdministratorOnChannel { managed_user: r.managed_user } }
+            }
+        }
+      }
+  }
+}
+
+fn request_channel(request: BmcAccountWriteRequest) -> Int {
+  match request {
+    IpmiSetUserAccess { access: x } => x.channel as Int
+    IpmiSetUserPassword { user: _ } => 0
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => 0
+  }
+}
 
 fn grounded_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
   match standing.grounding {
@@ -581,6 +647,7 @@ fn admit_rotation_apply(
   target_endpoint: BmcControllerEndpoint,
   target_firmware: BmcFirmwareReleaseIdentity,
   request: BmcAccountWriteRequest,
+  managed_readback: ManagedAdministratorReadback?,
   approval: Redemption,
 ) -> RotationApplyAdmission {
   match grounded_request(standing: standing) {
@@ -604,7 +671,10 @@ fn admit_rotation_apply(
                 } else if cl.request_revision != rotation_route_request_identity(standing: standing, request: request) {
                   RotationApplyApprovalForAnotherRequest { approved: cl.request_revision, requested: rotation_route_request_identity(standing: standing, request: request) }
                 } else {
-                  RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                  match administrator_retention_refusal(request: request, readback: managed_readback, approved_attempt: cl.attempt) {
+                    Present { value: c } => RotationApplyWouldLeaveNoAdministrator { channel: request_channel(request: request), cause: c }
+                    Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                  }
                 }
             }
         }

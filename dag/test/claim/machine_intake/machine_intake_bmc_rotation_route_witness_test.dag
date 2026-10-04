@@ -34,7 +34,8 @@ import gunbc.machine_intake_bmc_rotation_route {
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
   RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
-  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest,
+  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
+  ManagedAdministratorReadback, ManagedReadbackAbsent, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel,
   route_qualification_authority, rotation_apply_authority,
   rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
   rotation_route_request_identity, rotation_route_is_grounded,
@@ -155,7 +156,7 @@ fn apply_verdict(standing: BmcRotationRouteStanding, target: BmcControllerEndpoi
 }
 
 fn apply_verdict_for(standing: BmcRotationRouteStanding, target: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, request: BmcAccountWriteRequest, approval_value: Redemption) -> String {
-  match admit_rotation_apply(standing: standing, target_endpoint: target, target_firmware: firmware, request: request, approval: approval_value) {
+  match admit_rotation_apply(standing: standing, target_endpoint: target, target_firmware: firmware, request: request, managed_readback: none, approval: approval_value) {
     RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
     RotationApplyRouteNotGrounded { standing: _ } => "route-not-grounded"
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
@@ -165,6 +166,7 @@ fn apply_verdict_for(standing: BmcRotationRouteStanding, target: BmcControllerEn
     RotationApplyApprovalDenied => "approval-denied"
     RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
     RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => "would-leave-no-administrator"
   }
 }
 
@@ -506,4 +508,50 @@ test fn the_channel_access_qualification_effect_is_classified_by_executing_the_s
         _ => false
       }
         && match site_verdict(row: r).conformance { Conforms => true  _ => false })
+}
+
+// THE LOCKOUT HAZARD IS UNPLANNABLE. On a grounded channel-access route (a cited one, the grounded
+// arm a witness may construct), closing user 2 on channel 2 with an exact approval of that write:
+// with no managed readback -> refused; with the managed account (user 3) read back at ADMINISTRATOR on
+// channel 2 in the approval's own attempt -> admitted; the same readback from another run, a readback
+// whose managed account IS the closed one, and a managed account at ADMINISTRATOR only on another
+// channel -> each refused with its own typed cause.
+fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
+  let request = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  let route = rotation_route_from_citation(
+    endpoint: lab_endpoint,
+    firmware: lab_firmware(),
+    request: access_write(user: 2, channel: 3, privilege: IpmiPrivilegeNoAccess),
+    citation: ExternalAuthority { uri: uri_https(locator: "example.invalid/route-witness-citation" as NonEmptyStr) },
+  )
+  match admit_rotation_apply(
+    standing: route,
+    target_endpoint: lab_endpoint,
+    target_firmware: lab_firmware(),
+    request: request,
+    managed_readback: readback,
+    approval: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: request)),
+  ) {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyWouldLeaveNoAdministrator { channel: ch, cause: c } =>
+      if ch != 2 { "wrong-channel" } else {
+        match c {
+          ManagedReadbackAbsent => "readback-absent"
+          ManagedReadbackFromAnotherRun { readback: _, approved: _ } => "another-run"
+          ManagedAccountIsTheClosedAccount { user: _ } => "managed-is-closed"
+          ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
+        }
+      }
+    _ => "other-refusal"
+  }
+}
+
+test fn a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable() -> Bool {
+  let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  lockout_verdict(readback: none) == "readback-absent"
+    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2 } }) == "admitted"
+    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-0" as AttemptIdentity, managed_user: 3, access: admin_on_2 } }) == "another-run"
+    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)] } }) == "managed-is-closed"
+    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1 } }) == "not-administrator-on-channel"
 }
