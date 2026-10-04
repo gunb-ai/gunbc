@@ -1,7 +1,8 @@
 module gunbc.instruments.native_emission_controls
 
-import std.types { Bool, List, Set, String }
+import std.types { Bool, Int, List, Set, String }
 import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 
 // THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
@@ -92,17 +93,115 @@ fn header_bound_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: an expression legal in value position is projected the same way in a branch condition. A
+// filter -- a call taking a lambda -- in an if-condition was refused at emission
+// (FilterInBranchCondition, deleted) on an unobserved premise that the guarded branch was dropped,
+// which kept gunbc.auth.approval_store_receipt off the native broker route. The four carriers are the
+// pipe, the free call, a filter inside a nested if used as the condition, and that receipt parser's
+// own `count(filter(lines |> skip(n: 2), ...))` under `||`; each is asked on both arms, so a dropped
+// or inverted branch is a red.
+fn filter_guard_pipe(xs: List<Int>) -> Int {
+  if (xs |> filter(x => x > 0) |> count) > 0 { 1 } else { 0 }
+}
+
+fn filter_guard_call(xs: List<Int>) -> Int {
+  if (filter(xs, x => x > 0) |> count) > 0 { 1 } else { 0 }
+}
+
+fn filter_guard_nested(xs: List<Int>) -> Int {
+  if (if (xs |> filter(x => x > 0) |> count) > 0 { true } else { false }) { 1 } else { 0 }
+}
+
+fn filter_guard_receipt_shape(tag: String, lines: List<String>) -> Int {
+  if tag == "" || count(filter(lines |> skip(n: 2), l => l != "")) != 0 { 0 } else { 1 }
+}
+
+fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "filter_guard_pipe_then_arm", held: filter_guard_pipe(xs: [0 - 1, 0, 3]) == 1 },
+    NativeEmissionCase { identity: "filter_guard_pipe_else_arm", held: filter_guard_pipe(xs: [0 - 1, 0]) == 0 },
+    NativeEmissionCase { identity: "filter_guard_call_then_arm", held: filter_guard_call(xs: [5]) == 1 },
+    NativeEmissionCase { identity: "filter_guard_call_else_arm", held: filter_guard_call(xs: []) == 0 },
+    NativeEmissionCase { identity: "filter_guard_nested_then_arm", held: filter_guard_nested(xs: [2]) == 1 },
+    NativeEmissionCase { identity: "filter_guard_nested_else_arm", held: filter_guard_nested(xs: [0]) == 0 },
+    NativeEmissionCase { identity: "filter_guard_receipt_blank_tail_accepts", held: filter_guard_receipt_shape(tag: "x", lines: ["h", "", ""]) == 1 },
+    NativeEmissionCase { identity: "filter_guard_receipt_red_nonblank_tail_refuses", held: filter_guard_receipt_shape(tag: "x", lines: ["h", "", "", "y"]) == 0 },
+    NativeEmissionCase { identity: "filter_guard_receipt_red_empty_tag_short_circuits", held: filter_guard_receipt_shape(tag: "", lines: ["h", "", ""]) == 0 }
+  ]
+}
+
+// RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
+// NativeClaimDriver; v1.compiler.emit_rust native_claim_report_effect_demand). Reaching Filesystem
+// makes native_claim_report effectful, so this whole program runs only if the rendered main binds
+// the filesystem_io handler and awaits the report: remove the binding and the main calls an async,
+// handler-taking report with neither, which rustc refuses -- the red is the label's, not a row's.
+// The path sits under a root no host provisions, so the case decides the same way everywhere.
+fn control_absent_path_read_is_refused() -> Bool {
+  let read = Filesystem.Read(path: "/gunbc-native-emission-controls-absent/none")
+  !read.success && read.error != ""
+}
+
+fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "claim_driver_filesystem_absent_path_read_is_refused", held: control_absent_path_read_is_refused() }
+  ]
+}
+
+// RULE: an effectful fold step is realized as a loop in the enclosing async frame
+// (v1.compiler.emit_rust emit_rust_effectful_fold_loop). Iterator::fold takes its step as a
+// synchronous closure, so a step that reaches an effectful callee put that callee's `.await?` inside
+// it: E0728, the shape of gunbc.auth.approval_decision_store pending_escalations. The step here
+// reads Filesystem for every element and accumulates a record, as that fold does. Every path sits
+// under a root no host provisions, so each read is a typed refusal and the counts are decided
+// everywhere; the red rows are the record's two fields and the empty list.
+type ControlReadTally {
+  refused: Int
+  seen: Int
+}
+
+fn control_tally_absent_reads(paths: List<String>) -> ControlReadTally {
+  fold(paths, init: ControlReadTally { refused: 0, seen: 0 }, f: (acc, p) =>
+    let read = Filesystem.Read(path: p)
+    ControlReadTally { refused: if read.success { acc.refused } else { acc.refused + 1 }, seen: acc.seen + 1 }
+  )
+}
+
+fn control_absent_paths() -> List<String> {
+  ["/gunbc-native-emission-controls-absent/a", "/gunbc-native-emission-controls-absent/b", "/gunbc-native-emission-controls-absent/c"]
+}
+
+fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "effectful_fold_step_counts_every_refused_read", held: control_tally_absent_reads(paths: control_absent_paths()).refused == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_seen_counts_elements", held: control_tally_absent_reads(paths: control_absent_paths()).seen == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_empty_keeps_init", held: control_tally_absent_reads(paths: []).seen == 0 }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
   "set_struct_eq_red_everyone_is_not_a_listing",
   "set_and_list_struct_eq_same_fields",
-  "set_and_list_struct_eq_red_list_order_differs"
+  "set_and_list_struct_eq_red_list_order_differs",
+  "filter_guard_pipe_then_arm",
+  "filter_guard_pipe_else_arm",
+  "filter_guard_call_then_arm",
+  "filter_guard_call_else_arm",
+  "filter_guard_nested_then_arm",
+  "filter_guard_nested_else_arm",
+  "filter_guard_receipt_blank_tail_accepts",
+  "filter_guard_receipt_red_nonblank_tail_refuses",
+  "filter_guard_receipt_red_empty_tag_short_circuits",
+  "claim_driver_filesystem_absent_path_read_is_refused",
+  "effectful_fold_step_counts_every_refused_read",
+  "effectful_fold_step_red_seen_counts_elements",
+  "effectful_fold_step_red_empty_keeps_init"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  header_bound_cases()
+  concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

@@ -10,7 +10,6 @@ import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, bind_outcome
 import v2.std.fn_index { non_empty_diagnostics_list }
 import v2.std.grammar { GrammarProduction, GrammarRoot, Sequence, grammar_atom, grammar_emit_parse_tree, grammar_expr_terminal, node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Conj, Authored, Edge, Node, Symbol, TypeNode }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }

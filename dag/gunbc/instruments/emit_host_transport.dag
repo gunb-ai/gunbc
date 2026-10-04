@@ -32,7 +32,6 @@ import v2.std.host_transport {
   HostRuntimeRowAbsent,
   HostRuntimeRowPresent
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode }
 import tools.emit_host_fixtures {
   rust_stdout_fixture_source,

@@ -1,6 +1,5 @@
 module v2.std.subject_evidence
 
-import v2.std.logic { Bool }
 
 // CLAIM-ENTAILING EVIDENCE. An evidence standing may establish a proposition P only when EVERY
 // execution path that constructs that standing proves the subject reached the relevant phase AND

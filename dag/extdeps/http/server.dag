@@ -1,8 +1,5 @@
 module extdeps.http.server
 
-import extdeps.tailscale.identity { TailnetIdentity }
-import extdeps.tailscale.serve { TailscaleServeRouteKey }
-import std.content_hash { ContentHash }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
 import std.types { HttpStatus, Port, List, NonEmptyStr, Bool, String }
 import std.nat { Nat }
@@ -267,21 +264,16 @@ type ServedStaticRouteTable {
 //     one for a request that presented no session; it is not anonymity and it authorizes
 //     nothing.
 //
-// THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
-// the arm carries the tailscale serve route key and the ACL policy revision the modeling was
-// computed under (the versioned readback), so a deployment that stops routing through the
-// proxy, or whose ACL drifts, changes the modeled path rather than silently widening it.
-type TailnetRouteReadback
-  = TailnetRouteReadbackObserved { acl_revision: ContentHash, serve_route: TailscaleServeRouteKey }
-  | TailnetRouteReadbackUnobserved { reason: String }
-
-type RequestAccessPath
-  = AccessPathDirectHttps
-  | AccessPathTailnetProxy { transport_observation: TailnetIdentity, route_readback: TailnetRouteReadback }
-  | AccessPathLocalDev
-
-type RequestSecurityContext<Authentication> {
-  access_path: RequestAccessPath
+// THE ACCESS PATH IS A TYPE ARGUMENT for the reason authentication is: which proxies and front
+// doors a deployment routes through, and the readback that proves it, are facts about THAT
+// deployment, not about HTTP. This module used to enumerate them (a tailnet-proxy arm carrying a
+// Tailscale identity and serve route key), which made the generic HTTP interface import the
+// Tailscale modules and, through them, a command-execution and network-topology closure no
+// HTTP program needs (DESIGN section 3, external upstream decomposition: a hub may not enumerate
+// concrete products). The vocabulary now lives with its consumer,
+// gunbc.auth.request_authentication RequestAccessPath, which supplies it here.
+type RequestSecurityContext<AccessPath, Authentication> {
+  access_path: AccessPath
   authentication: Authentication
 }
 
@@ -289,11 +281,43 @@ type RequestSecurityContext<Authentication> {
 // interface stays realization-free (DESIGN 3): it cannot name gunbc's session vocabulary. A
 // handler that needs nothing ignores the field; a handler that writes consults the law in
 // gunbc.auth.request_authentication, which is where the two facts stay separate.
-type ServeHttpRequest<Authentication> {
+type ServeHttpRequest<AccessPath, Authentication> {
   method: HttpMethod
   path: String
   body: String
-  security: RequestSecurityContext<Authentication>
+  security: RequestSecurityContext<AccessPath, Authentication>
+}
+
+// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and a
+// value). The name is lowercased by the seam because field names are case-insensitive (section
+// 5.1), so a handler compares against one spelling; the value is the field value with its
+// surrounding whitespace removed and nothing else interpreted. A served entry that reads headers
+// DECLARES `request_headers: List<ServeRequestHeader>` and receives every field of the request in
+// arrival order; an entry that declares no such parameter receives none. Which fields mean
+// anything is the handler's fact, never the seam's.
+type ServeRequestHeader {
+  name: String
+  value: String
+}
+
+// What a request carried under one field name. Three answers, because a field may repeat (section
+// 5.3) and whether repetition is admissible belongs to the field's owner, not to the reader:
+// absent, exactly one value, or more than one.
+type ServeRequestHeaderReading
+  = ServeRequestHeaderAbsent
+  | ServeRequestHeaderSingle { value: String }
+  | ServeRequestHeaderRepeated { occurrences: Int }
+
+fn serve_request_header_reading(headers: List<ServeRequestHeader>, name: String) -> ServeRequestHeaderReading {
+  let values = headers |> flat_map(h => if h.name == name { [h.value] } else { [] })
+  if count(values) > 1 {
+    ServeRequestHeaderRepeated { occurrences: count(values) }
+  } else {
+    match values |> first {
+      Absent => ServeRequestHeaderAbsent
+      Present { value: v } => ServeRequestHeaderSingle { value: v }
+    }
+  }
 }
 
 // THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body —

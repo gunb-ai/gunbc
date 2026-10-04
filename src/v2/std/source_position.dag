@@ -13,12 +13,26 @@ import v2.std.text { String }
 // by character answers a different column (and, past a multibyte line, a different line) than the
 // BYTE offsets every span carries.
 //
-// THE UNIT IS IN THE FIELD NAME. `byte_column` is the 1-based byte column within the line, not a
-// code-point or grapheme column; a renderer that wants another unit converts explicitly rather than
-// relabelling this one.
+// A COLUMN IS A POSITION, NOT A QUANTITY, AND THE CARRIER SAYS SO. `SourceByteColumn` is the
+// 1-based ordinal of a byte within its line: an index, never a measured amount of bytes, so it is
+// deliberately not `std.measure` `ByteSize` (which measures a size, and would admit arithmetic a
+// position does not have -- adding two columns is meaningless). It is a brand over `Int`, the
+// shape `std.occurrence_identity` `AuthoredTokenOrdinal` already uses for a source-order
+// ordinal. Its unit is BYTES, not code points or graphemes; a renderer that wants another unit
+// converts explicitly rather than relabelling this one.
+type SourceByteColumn {
+  value: Int
+}
+
 type SourceLineCol {
   line: Int
-  byte_column: Int
+  byte_column: SourceByteColumn
+}
+
+// The fold's state: the line reached and the byte offset at which it starts.
+type LineStart {
+  line: Int
+  offset: Int
 }
 
 type OctetScan {
@@ -38,8 +52,8 @@ fn source_newline_byte_offsets(text: String) -> FreeMonoid<Int> {
 // column counts bytes from that line's start. A fold over the newline offsets, so its depth is
 // constant in the file's length.
 fn source_line_col_at_byte(text: String, offset: Int) -> SourceLineCol {
-  let start = fold_list(xs: source_newline_byte_offsets(text: text), empty: SourceLineCol { line: 1, byte_column: 0 }, cons: fn(acc, nl) {
-    if nl < offset { SourceLineCol { line: acc.line + 1, byte_column: nl + 1 } } else { acc }
+  let start = fold_list(xs: source_newline_byte_offsets(text: text), empty: LineStart { line: 1, offset: 0 }, cons: fn(acc, nl) {
+    if nl < offset { LineStart { line: acc.line + 1, offset: nl + 1 } } else { acc }
   })
-  SourceLineCol { line: start.line, byte_column: offset - start.byte_column + 1 }
+  SourceLineCol { line: start.line, byte_column: SourceByteColumn { value: offset - start.offset + 1 } }
 }

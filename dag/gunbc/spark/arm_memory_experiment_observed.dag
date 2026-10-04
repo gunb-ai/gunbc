@@ -1428,8 +1428,6 @@ data glm_checkpoint_projection_replicated_bytes: ByteSize = byte_size(count: 154
 // is false, so lm_head loads beside embed_tokens, consistent with the vocab-sharded class.
 data glm_checkpoint_projection_visual_bytes: ByteSize = byte_size(count: 1127254016)
 
-data glm_checkpoint_config_architectures: NonEmptyStr = "Glm5NextForConditionalGeneration" as NonEmptyStr
-
 // THE PROJECTION CENSUS, checked not trusted: the five kind sums reconstruct the index tensor
 // total exactly, and the conservation law holds with slack zero -- four times the per-rank
 // figure equals the sharded-plus-expert bytes once plus the replicated bytes four times.

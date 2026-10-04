@@ -31,7 +31,7 @@ type FabricStoragePlacement
 
 // The endpoint is the placed host's tailnet name on the store's own HTTPS listener, derived from the
 // fleet network's tailnet domain rather than spelled: an unset domain leaves the store unplaced
-// instead of guessing an address. (gunbc.auth.approval_ntfy_deployment srv1_tailnet_base_url_from
+// instead of guessing an address. (gunbc.fleet_tailnet tailnet_base_url_from
 // derives the same URL shape but answers an undeclared domain with a fabricated .invalid address; a
 // placement must refuse there instead, so it is not reused.)
 //
@@ -39,7 +39,7 @@ type FabricStoragePlacement
 // tailscale strips a mount path before proxying is not modeled in extdeps.tailscale.serve, and a root
 // mount makes the question not arise -- the request path the caller sends is the path the handler
 // routes on. 10000 because srv1's 443 carries the dashboard and its 8443 the approval notification
-// server (gunbc.auth.approval_ntfy_deployment approval_ntfy_serve_port); tailscale serve admits
+// server (gunbc.auth.approval_ntfy_publish approval_ntfy_serve_port); tailscale serve admits
 // HTTPS listeners on 443, 8443 and 10000 only.
 data fabric_storage_https_port: Port = 10000
 

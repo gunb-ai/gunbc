@@ -1,8 +1,7 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty, contains }
+import v2.std.algebra { Cons, Empty, contains, list_reverse }
 import v2.std.optional { Optional, Present, Absent }
-import v2.std.logic { Bool, True, False }
 import v2.std.integer { Int, int_gt, int_add, int_mul }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
@@ -219,7 +218,7 @@ fn changed_selections_outside_discovery(
   changed: List<String>,
   declared: List<String>,
 ) -> List<ChangedSelectionDispositionRow> {
-  reverse(fold(changed, init: [], f: fn(acc, identity) {
+  list_reverse(xs: fold(changed, init: [], f: fn(acc, identity) {
     if contains(xs: declared, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {

@@ -19,7 +19,6 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import std.algebra { Cons, Empty }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node { Hash }
 import v2.std.runtime {

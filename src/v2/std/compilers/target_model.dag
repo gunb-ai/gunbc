@@ -64,7 +64,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   invariant_port_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  None,
+  outcome_with_diagnostics
 }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing {
@@ -83,6 +85,15 @@ import v2.std.compilers.lexing {
   lex_rule_token_class_optional,
   TriviaRule,
   VoidLexRules,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  EmptyPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -155,6 +166,10 @@ import v2.std.node {
   core_occurrences,
   edge_is_core,
   production_edge_label,
+  Bind,
+  Loop,
+  PositionalPlusNamedMarkerEdges,
+  PositionalPrefixThenLabeledEdges
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -188,9 +203,6 @@ import v2.std.qualified_name {
   parameter_reference_path_optional,
   lexical_reference_label_optional,
   declaration_reference_path_optional
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.text {
   Char,
@@ -13902,7 +13914,7 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     PositionalPrefixThenLabeledEdges =>
       target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
-    PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPlusNamedMarkerEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
 

@@ -4,7 +4,6 @@ import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid }

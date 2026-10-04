@@ -7,7 +7,6 @@ import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging 
 import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }

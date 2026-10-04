@@ -1,7 +1,6 @@
 module v2.compiler.self_host.emit_coverage_frontier
 
 import std.types { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { length, any }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -18,7 +18,6 @@ import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
 }
 import v2.std.algebra { any, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow

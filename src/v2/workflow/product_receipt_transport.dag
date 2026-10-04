@@ -7,7 +7,6 @@ import extdeps.gunbc
 import extdeps.shell
 import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr }
-import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
   EvidenceSubjectCompleted,

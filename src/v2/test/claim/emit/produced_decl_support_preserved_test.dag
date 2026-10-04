@@ -24,7 +24,6 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { list_at_optional, Absent, Present }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

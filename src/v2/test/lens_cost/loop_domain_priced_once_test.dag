@@ -3,7 +3,6 @@ module v2.test.lens_cost.loop_domain_priced_once
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { ConstantCost, LinearCost, SumCost, cost_lens }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import std.nat { Succ, Zero }
 import v2.std.node {
   Atom,

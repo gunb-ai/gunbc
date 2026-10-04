@@ -32,7 +32,7 @@ type TargetProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
   | V2NativeFrontierProducer
-  | V2NativeCensusProducer
+  | V2NativeCensusProducer { reading: V2NativeCensusReading }
   | EmittedCrateWorkspaceProducer
   | EvaluationStoreAddressExactHeadProducer
   | PrimitiveEgressCensusProducer
@@ -47,6 +47,17 @@ type TargetProducer
   | SelfHostBehavioralEquivalenceProducer
   | DependencyDemandCensusProducer
   | NativeClaimProgramProducer { entry: String }
+
+// WHICH READING OF THE NATIVE CENSUS FAMILY A ROW TAKES. One producer spawns the emitted v2
+// compiler's census verbs; the reading names the verb and the reader that decides its standing, so a
+// further census over the same walk is a variant here and a row there, never another producer.
+//   ResolveRefusalReading: `census-resolve`, the resolve-refusal report (gunbc#13026).
+//   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
+//     unindexed controls (the nominal-type plan's M0), read by
+//     gunbc.instruments.type_declaration_use_census_reading.
+type V2NativeCensusReading
+  = ResolveRefusalReading
+  | TypeDeclarationUseReading
 
 type TargetBinding {
   target: Label

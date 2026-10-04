@@ -52,7 +52,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { Cons, Empty, fold_list, length, list_reverse }
 import std.algebra { list_append }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }

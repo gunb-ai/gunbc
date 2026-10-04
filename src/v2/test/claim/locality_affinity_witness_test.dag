@@ -14,7 +14,6 @@ import std.content_hash { ContentHash, Fnv1a64 }
 import v2.std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,

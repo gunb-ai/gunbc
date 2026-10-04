@@ -19,7 +19,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
 import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { bool_node }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node { Arrow, Edge, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_named_child }
@@ -80,7 +80,7 @@ data rcf_far_value_source: String = "module v2.test.rcf_far_value\n\nimport v2.t
 
 data rcf_far_missing_source: String = "module v2.test.rcf_far_missing\n\nimport v2.test.rcfp { RcfFar }\n\ndata far_missing: RcfFar = RcfFar { n: 1 }\n"
 
-data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport v2.std.logic { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
+data rcf_bool_field_source: String = "module v2.test.rcf_bool_field\n\nimport std.types { Bool }\n\ntype ArB {\n  m: Bool\n}\n\ndata ar_bool: ArB = ArB { m: 3 }\n"
 
 data rcf_pattern_source: String = "module v2.test.rcf_pattern\n\ntype ArB {\n  n: Int\n  m: Int\n}\n\nfn rcf_take(a: ArB) -> Int {\n  match a {\n    ArB { n: x } => x\n  }\n}\n"
 

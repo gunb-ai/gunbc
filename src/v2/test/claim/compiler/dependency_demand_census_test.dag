@@ -34,7 +34,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
@@ -60,17 +59,17 @@ data ddc_resources_source: String = "module std.resources\n\nresource Network {\
 
 data ddc_http_source: String = "module t.http\n\nimport std.resources { Network }\n\nservice H {\n  operation Get {\n    requires Network\n  }\n  operation Exec {\n    requires opaque\n  }\n}\n"
 
-data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport v2.std.logic { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
+data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn restates(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  p\n}\n\nfn transitive(p: Bool) -> Bool uses net: Network {\n  restates(p: p)\n}\n\nfn over_claims(p: Bool) -> Bool uses net: Network {\n  p\n}\n\nfn opaque_reach(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Exec()\n  p\n}\n\nfn fs_only(p: Bool) -> Bool uses fs: std.resources.Filesystem {\n  let r = std.resources.Filesystem.read()\n  p\n}\n\nfn mixed(p: Bool) -> Bool uses net: Network, fs: std.resources.Filesystem {\n  let r = t.http.H.Get()\n  let s = std.resources.Filesystem.read()\n  p\n}\n"
 
 // A CALL THROUGH A FUNCTION VALUE, beside a direct Network call that would otherwise make the fn Equal.
 // Its own module, so a refusal here cannot hide the other fns.
-data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Network }\nimport v2.std.logic { Bool }\n\nfn via_value(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  let g = t.app.restates\n  g(p: p)\n}\n\nfn via_param(p: Bool, g: fn(Bool) -> Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  g(p: p)\n}\n"
+data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn via_value(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  let g = t.app.restates\n  g(p: p)\n}\n\nfn via_param(p: Bool, g: fn(Bool) -> Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  g(p: p)\n}\n"
 
 // A USES FILE THE FRONT END REFUSES BEFORE AUTHORSHIP: a string that never terminates is refused at
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
 data ddc_broken_source: String = "module t.broken\n\nimport std.resources { Network }\n\nfn lost(p: Bool) -> Bool uses net: Network {\n  \"never terminates\n}\n"
 
-data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport v2.std.logic { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
+data ddc_alias_source: String = "module t.aliasing\n\nimport std.resources { Network }\nimport std.types { Bool }\n\nfn alias_used(p: Bool) -> Bool uses net: Network {\n  net\n}\n"
 
 fn ddc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

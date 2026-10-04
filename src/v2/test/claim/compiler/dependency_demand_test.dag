@@ -4,7 +4,6 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.dependency_demand { CalleeOutsideClosure, resource_set_empty, resource_set_of, DemandDidNotSettle, dependency_demand_of_bounded, DemandDerived, DemandUndecided, DependencyDemand, DependencyDemandRow, FunctionFact, FunctionValueCalled, OpaqueOperationCalled, OperationFact, RequiresNone, RequiresOpaque, RequiresResources, RequiresUndeclared, UndeclaredOperationCalled, dependency_demand_of, demand_equal }
 import v2.std.algebra { fold_list, length }
 import std.types { List }
-import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 
 // The reducer's interface is its fact rows, so each claim SUPPLIES them (DESIGN section 3). The real

@@ -37,7 +37,6 @@ import v2.std.grammar_choice_ambiguity {
   NonEmptyGrammarChoiceAmbiguityRows
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present }
@@ -114,13 +113,6 @@ type NonEmptySymbolChain {
 
 type AssembleRejectionCause
   = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
-  | MaskedAssembleRefusal {
-      overlap_evidence: NonEmptyGrammarChoiceAmbiguityRows,
-      remaining_chain: NonEmptySymbolChain
-    }
-  | MaskedAssembleRefusalWithoutEvidence {
-      remaining_chain: NonEmptySymbolChain
-    }
   | AssembleMissingModule { requested: QualifiedName }
   | MissingModuleIdentityUnavailable
   | OtherAssembleRefusal { reason: Symbol }
@@ -173,10 +165,9 @@ type FrontierProbeAssembleDetail
 
 // AssembleRejectionDetail binds only parse-stage-carried evidence — never a global grammar roster.
 // GrammarChoiceOverlap rows are extracted from ParseDiagnosticEvidence on the parse-stage
-// diagnostic carrier. When overlap residue heads a chain with a nonempty tail and carries evidence,
-// cause is MaskedAssembleRefusal; when the tail is nonempty but evidence is absent,
-// MaskedAssembleRefusalWithoutEvidence preserves remaining_chain without absorbing into
-// OtherAssembleRefusal. AssembleMissingModule in assemble_detail awaits parse-stage
+// diagnostic carrier. The cause is read from the chain's FATAL element: an overlap residue that
+// heads a chain only rode along, and the refusal is classified by what refused.
+// AssembleMissingModule in assemble_detail awaits parse-stage
 // ModuleRootMissingEvidence; FrontierProbeDetail.MissingModule (#7762) is the structural
 // resolve_module_not_found authority on detail. MissingModuleIdentityUnavailable remains when
 // assemble cause cannot bind parse-stage evidence. Emit-stage receipts use NoFrontierProbeDetail.
@@ -356,7 +347,6 @@ fn frontier_blocker_is_realization_reason(reason: Symbol) -> Bool {
   reason == ^compiler_import_closure_cyclic
     || reason == ^self_host_runner_not_realized
     || reason == ^emit_host_run_transport_unrealized
-    || reason == ^parse_grammar_choice_overlap_residue
 }
 
 fn frontier_blocker_is_upstream_semantic_marker_reason(reason: Symbol) -> Bool {

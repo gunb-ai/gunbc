@@ -7,7 +7,6 @@ import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.std.algebra { Cons, Empty, any, fold_list, length, list_reverse }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 

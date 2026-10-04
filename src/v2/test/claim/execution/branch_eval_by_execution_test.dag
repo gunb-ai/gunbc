@@ -55,7 +55,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.compilers.lexing { Token }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

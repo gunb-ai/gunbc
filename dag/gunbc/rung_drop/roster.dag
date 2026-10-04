@@ -81,6 +81,7 @@ import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_he
 import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_apply_route_hermetic }
 import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
 import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
+import gunbc.rung_drop.unimported_bare_provider_gate_admits_kernel_method_names_untyped { unimported_bare_provider_gate_admits_kernel_method_names_untyped }
 import gunbc.rung_drop.infer_facts_key_conflict_reverted_to_first_wins { infer_facts_key_conflict_reverted_to_first_wins }
 import gunbc.rung_drop.slot_row_pinned_below_demonstrated_demand_unrefused { slot_row_pinned_below_demonstrated_demand_unrefused }
 import gunbc.rung_drop.microvm_shakedown_slot_row_above_fleet_row { microvm_shakedown_slot_row_above_fleet_row }
@@ -186,6 +187,7 @@ data rung_drop_roster: List<RungDrop> = [
   runner_host_file_apply_route_hermetic,
   floor_cost_cpu_regression_at_constant_eval_steps,
   accumulator_copy_positive_controls_off_every_lane,
+  unimported_bare_provider_gate_admits_kernel_method_names_untyped,
   infer_facts_key_conflict_reverted_to_first_wins,
   slot_row_pinned_below_demonstrated_demand_unrefused,
   microvm_shakedown_slot_row_above_fleet_row,

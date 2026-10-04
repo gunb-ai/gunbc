@@ -245,7 +245,7 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_unit_hold_key"),
+  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
@@ -395,14 +395,14 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
     hold: mtcollins1_operator_ruling.interlock,
-    refusal: site(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },

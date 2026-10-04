@@ -20,7 +20,6 @@ import v2.lens.enforcement.gate {
 import v2.lens.enforcement.standing_intent { standing_intent_lens_closure_question_zero }
 import v2.lens.registry.completeness { lens_registry_completeness_bound_module_paths }
 import v2.lens.registry { Cost, Synthesis }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

@@ -577,15 +577,6 @@ fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: Bool) -> 
   )
 }
 
-fn rust_supplemental_impls_bool_coproduct() -> String {
-  concat(
-    "\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n",
-    "impl From<Bool> for bool {\n",
-    "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n",
-    "}\n"
-  )
-}
-
 data rust_pair_completion_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolves when the emitted-target operator surface is selected by the grammar-row inverse in extdeps.languages.rust rather than by this per-op spelling table, at which point trait_path/method/where_bounds become ordinary terminal rows on the Rust target model.")
 
 data rust_pair_completion_nonpolynomial_body_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the Sub and Div bodies rendered below. Scope honesty (review 43189): only Add, Mul and Neg are fully row-data — their bodies are rendered from the PairCompletionSumOfProducts polynomial arms, so perturbing a row changes the emission. Sub and Div are NOT polynomials in the four operand components, so today they render as literals keyed by variant name: Sub is a DERIVED op (Add composed")

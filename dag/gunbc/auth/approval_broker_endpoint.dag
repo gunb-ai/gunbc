@@ -5,10 +5,9 @@ import extdeps.tailscale.serve {
   TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, ServeSetPath,
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from, srv1_tailnet_host_from }
-import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.srv1_dashboard_bind { srv1_dashboard_host_identity }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -100,7 +99,7 @@ data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 // run that files and polls over the loopback approval client (the GCP IAM converge job) has to run
 // there.
 fn approval_broker_host_identity() -> NonEmptyStr {
-  srv1_live_dashboard_instance().host_identity
+  srv1_dashboard_host_identity
 }
 
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
@@ -237,14 +236,14 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 data approval_broker_public_port: Port? = none
 
 fn approval_broker_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: domain, port: approval_broker_public_port)
+  tailnet_base_url_from(host: approval_broker_host_identity(), domain: domain, port: approval_broker_public_port)
 }
 
 fn approval_broker_base_url() -> NonEmptyStr {
-  approval_broker_base_url_from(domain: fleet_intent_network.tailnet_domain)
+  approval_broker_base_url_from(domain: fleet_tailnet_domain)
 }
 
 // THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
 fn approval_broker_public_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_host_from(domain: domain)
+  tailnet_host_from(host: approval_broker_host_identity(), domain: domain)
 }
