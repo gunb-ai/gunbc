@@ -29,11 +29,12 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
-import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_reading }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
   dag_algebra_inhabitance_decls,
+  dag_algebra_inhabitance_row_type_params,
   DagCanonicalBoolLiteral,
   DagCanonicalIntLiteral,
   DagCanonicalSymbolLiteral,
@@ -181,7 +182,7 @@ import v2.std.node {
   node_subtree_nodes,
   well_formed,
 }
-import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
+import v2.std.type_binder { KindBound, StructureBound, Unbound, type_param_bound, GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, cast_target_optional, declaration_binder_edge, edge_is_type_params, type_annotation_optional, type_decl_view, type_param_names }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.node_query {
   FieldProjection,
@@ -3713,9 +3714,125 @@ fn infer_application_argument_inhabitance(
             type_params: infer_application_type_params(node: node, entries: entries)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+            Accepted { value: instances, diagnostics: d } =>
+              match infer_application_structure_bounds(node: node, entries: entries, declarations: declarations, instances: instances) {
+                Present { value: refusal } => outcome_rejected(refusal)
+                Absent => Accepted { value: true, diagnostics: d }
+              }
           }
       }
+  }
+}
+
+// A TYPE PARAMETER BOUNDED BY A STRUCTURE ADMITS AN INSTANCE ONLY THROUGH A DECLARED INHABITANCE ROW. The bound
+// is the binder's one annotation read as a StructureBound (v2.std.type_binder type_param_bound -- derived
+// from the annotation, never a stored tag); the instance is the one the argument walk just fixed. It is
+// admitted when some row of v2.extdeps.languages.dag dag_algebra_inhabitance_decls -- the ONE inhabitance
+// authority, the same rows the binary-operator arm reads -- has an inhabitant that is the instance (matched
+// over the row's own type parameters, compared with aliases unfolded) AND declares every field the bound
+// structure binds (v2.std.algebra_structure_signature algebra_inhabitance_field_declaration). Otherwise the
+// application refuses, typed and located, infer_reason_type_argument_does_not_inhabit_bound. An instance not
+// derived stays the counted frontier (no refusal); an unbounded or kind-bounded parameter is not judged here.
+fn infer_application_structure_bounds(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  declarations: SymbolIndex,
+  instances: List<TypeVariableInstance>
+) -> Optional<Diagnostic> {
+  match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
+    Absent => optional_absent()
+    Present { value: arrow } =>
+      fold(arrow.children, init: optional_absent(), f: fn(acc, e) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if edge_is_type_params(e: e) {
+              infer_binder_set_structure_bounds(node: node, binders: e.target, declarations: declarations, instances: instances)
+            } else {
+              acc
+            }
+        }
+      })
+  }
+}
+
+fn infer_binder_set_structure_bounds(node: Node, binders: Node, declarations: SymbolIndex, instances: List<TypeVariableInstance>) -> Optional<Diagnostic> {
+  fold(binders.children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          Authored { name: name } =>
+            match type_param_bound(binder: e.target) {
+              StructureBound { structure: structure } =>
+                match type_variable_instance_lookup(instances: instances, binder: name) {
+                  Absent => optional_absent()
+                  Present { value: instance } =>
+                    if infer_instance_inhabits_structure(instance: instance, structure: structure, declarations: declarations) {
+                      optional_absent()
+                    } else {
+                      optional_present(value: Diagnostic {
+                        reason: ^infer_reason_type_argument_does_not_inhabit_bound,
+                        at: node_locus(node: node),
+                        correction: Unavailable { reason: CorrectionNotModeled }
+                      })
+                    }
+                }
+              KindBound { kind: _ } => optional_absent()
+              Unbound => optional_absent()
+            }
+          StructuralLabel { label: _ } => acc
+          Positional => acc
+        }
+    }
+  })
+}
+
+// The fields a bound structure binds: the Authored binders of its algebra (the structure Conj under ^algebra_edge).
+fn infer_bound_structure_fields(structure: Node) -> List<Symbol> {
+  fold(structure.children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: n } =>
+        if n == ^algebra_edge {
+          fold(e.target.children, init: acc, f: fn(inner, f) {
+            match f.label {
+              Authored { name: field } => list_snoc_item(xs: inner, item: field)
+              StructuralLabel { label: _ } => inner
+              Positional => inner
+            }
+          })
+        } else {
+          acc
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn infer_instance_inhabits_structure(instance: Node, structure: Node, declarations: SymbolIndex) -> Bool {
+  let fields = infer_bound_structure_fields(structure: structure)
+  let wanted = infer_type_alias_normalized(t: instance, declarations: declarations)
+  fold(dag_algebra_inhabitance_decls(), init: false, f: fn(acc, row) {
+    acc || (infer_row_inhabitant_is(row_inhabitant: row.inhabitant, wanted: wanted, declarations: declarations)
+      && fold(fields, init: true, f: fn(all, field) {
+        all && (match algebra_inhabitance_field_declaration(inhabitance: row.algebra, field: field) {
+          FieldDeclared => true
+          FieldNotDeclared => false
+          InhabitanceMalformed { cause: _ } => false
+        })
+      }))
+  })
+}
+
+fn infer_row_inhabitant_is(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex) -> Bool {
+  match infer_match_generic_formal(formal: row_inhabitant, produced: wanted, type_params: dag_algebra_inhabitance_row_type_params(), instances: Empty, declarations: declarations) {
+    InferFormalShapeMismatch => false
+    InferFormalMatched { instances: matched } =>
+      infer_type_equal_ignoring_provenance(
+        a: infer_type_alias_normalized(t: infer_type_instantiated(t: row_inhabitant, instances: matched), declarations: declarations),
+        b: wanted
+      )
   }
 }
 

@@ -2,7 +2,7 @@ module v2.extdeps.languages.dag
 import std.types { List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
-import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
+import v2.std.algebra_structure_signature { boolean_algebra_node, free_monoid_structure_node, ordered_ring_node }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
@@ -106,6 +106,7 @@ import v2.std.compilers.lexing {
 }
 import v2.std.node {
   host_text_type_node,
+  Instantiation,
   symbol_lexeme,
   symbol_type_node,
   Arrow,
@@ -4548,8 +4549,50 @@ fn dag_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   }
 }
 
+// THE FREE-MONOID STRUCTURE'S TWO INHABITANTS, each citing the declaration that already IS the operation.
+// std.algebra FreeMonoid<E> over one element binder (^dag_free_monoid_row_element, a type parameter of the
+// row: a consumer matches it against a concrete instance, it never stands for a type), witnessed by
+// std.algebra list_append; and the kernel host text, witnessed by v2.std.node host_text_concatenation.
+// CONSUMER: v2.compiler.infer infer_application_structure_bounds -- a type parameter bounded by the
+// free-monoid structure (the collection roster's concat signature, v2.compiler.fold_lowering
+// collection_roster_signature_arrow) admits an instance only through one of these rows. Int has no row: its
+// ordered ring composes a monoid that is commutative, not free, and declares no ^free_monoid_field_concat.
+fn dag_free_monoid_row_element() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^dag_free_monoid_row_element } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn dag_free_monoid_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic) },
+      Edge { label: Positional, target: dag_free_monoid_row_element() }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.list_append"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+fn dag_host_text_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = host_text_type_node()
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_structure_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "v2.std.node.host_text_concatenation"), occurrence_id: OccurrenceSynthetic)
+  }
+}
+
+// The type parameters a row's inhabitant is generic over (matched, never compared as written).
+fn dag_algebra_inhabitance_row_type_params() -> List<Symbol> {
+  [^dag_free_monoid_row_element]
+}
+
 fn dag_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance()]
+  [dag_int_algebra_inhabitance(), dag_bool_algebra_inhabitance(), dag_free_monoid_free_monoid_inhabitance(), dag_host_text_free_monoid_inhabitance()]
 }
 
 fn dag_kernel_value_type_binding(row: KernelValueType) -> Optional<Symbol> {

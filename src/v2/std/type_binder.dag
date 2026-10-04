@@ -266,6 +266,45 @@ fn type_param_kind_optional(binder: Node) -> Optional<Node> {
   })
 }
 
+// WHAT A BINDER'S ANNOTATION BOUNDS IT BY, DERIVED FROM WHAT THE ANNOTATION IS -- never a tag stored beside
+// the edge, so the reading and the annotation cannot disagree. The one BinderTypeEdge (type_param_kind_optional)
+// is either a KIND -- a type expression whose inhabitants are the parameter's admissible arguments, judged at
+// resolve by type_application_conformance -- or a STRUCTURE: a signature-world inhabitance node
+// (v2.std.algebra_structure_signature algebra_inhabitance_node: a Conj of exactly the ^algebra_edge and
+// ^inhabitant_edge), which the parameter's instance must inhabit, judged where the instance is known
+// (v2.compiler.infer infer_application_structure_bounds). A kind expression never has that shape: resolve
+// lowers an authored annotation as a type expression, so an authored `<M: Monoid>` is a KindBound naming
+// std.algebra's Monoid record and is judged (and refused) as a kind -- the declared frontier whose trigger is
+// gunbc.recurring_failure_mode algebra_structure_has_two_representations_with_no_declared_mapping.
+type BinderBound
+  = KindBound { kind: Node }
+  | StructureBound { structure: Node }
+  | Unbound
+
+fn binder_annotation_is_structure(annotation: Node) -> Bool {
+  match annotation.kind {
+    TypeNode { connective: Conj } =>
+      count(annotation.children) == 2
+        && fold(annotation.children, init: true, f: fn(acc, e) {
+          acc && (match e.label {
+            Authored { name: n } => n == ^algebra_edge || n == ^inhabitant_edge
+            StructuralLabel { label: _ } => false
+            Positional => false
+          })
+        })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn type_param_bound(binder: Node) -> BinderBound {
+  match type_param_kind_optional(binder: binder) {
+    Absent => Unbound
+    Present { value: annotation } =>
+      if binder_annotation_is_structure(annotation: annotation) { StructureBound { structure: annotation } } else { KindBound { kind: annotation } }
+  }
+}
+
 // WHETHER AN APPLIED TYPE ARGUMENT INHABITS A PARAMETER'S KIND, as the caller can establish it. The
 // judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
 // is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
@@ -327,9 +366,10 @@ fn type_application_step(acc: TypeApplicationConformance, binders: Node, pa: Typ
       match type_binder_target_of(binders: binders, name: pa.name) {
         Absent => TypeApplicationBinderOrderMalformed
         Present { value: binder } =>
-          match type_param_kind_optional(binder: binder) {
-            Absent => acc
-            Present { value: kind } =>
+          match type_param_bound(binder: binder) {
+            Unbound => acc
+            StructureBound { structure: _ } => acc
+            KindBound { kind: kind } =>
               match inhabits(pa.argument, kind) {
                 ArgumentInhabitsKind => acc
                 ArgumentLiteralUnjudged => acc

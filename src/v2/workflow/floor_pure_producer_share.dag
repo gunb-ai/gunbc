@@ -1535,7 +1535,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.collection_concat_realization.cca_records_reading",
   "v2.test.claim.compiler.collection_concat_realization.cca_element_mismatch_reading",
   "v2.test.claim.compiler.collection_concat_realization.cca_int_operands_reading",
-  "v2.test.claim.compiler.collection_concat_realization.cca_local_declaration_reading"
+  "v2.test.claim.compiler.collection_concat_realization.cca_local_declaration_reading",
+  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_kernel_reading",
+  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_mixed_reading",
+  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_int_reading",
+  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_bool_reading"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

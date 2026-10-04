@@ -1,0 +1,116 @@
+module v2.test.claim.compiler.free_monoid_structure_bound
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic }
+import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
+import v2.std.algebra_structure_signature { free_monoid_structure_node }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: the collection roster's concat binds a carrier M BOUNDED BY THE FREE-MONOID STRUCTURE
+// (v2.std.algebra_structure_signature free_monoid_structure_type_node, its own binder ^free_monoid_field_concat),
+// carried on the binder's one BinderTypeEdge and read as a StructureBound (v2.std.type_binder type_param_bound).
+// v2.compiler.infer infer_application_structure_bounds admits M's instance only through a declared
+// AlgebraInhabitanceDecl row: std.algebra FreeMonoid<T> (witness list_append) and the kernel host text
+// (witness v2.std.node host_text_concatenation). BOUNDARY: source text in, through the production assembly
+// route, then infer -- except the resolve-kind control, whose input is a supplied binder set (the shape the
+// roster synthesizes and resolve never sees).
+
+data fmb_kernel: String = "module p\n\nfn f(a: String, b: String) -> String {\n  concat(a, b)\n}\n"
+data fmb_mixed: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(a: String, b: List<Int>) -> String {\n  concat(a, b)\n}\n"
+data fmb_int: String = "module p\n\nfn f(a: Int, b: Int) -> Int {\n  concat(a, b)\n}\n"
+data fmb_bool: String = "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  concat(a, b)\n}\n"
+
+fn fmb_binds_row(tree: ResolvedTree) -> Bool {
+  fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+    acc || (match declaration_reference_path_optional(node: n) {
+      Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_concat_shape"
+      Absent => false
+    })
+  })
+}
+
+type FmbReading {
+  binds_row: Bool
+  reason: Symbol
+}
+
+fn fmb_reading(src: String) -> FmbReading {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } => FmbReading { binds_row: false, reason: fmi_reason(o: Rejected { diagnostics: d }) }
+    Accepted { value: tree, diagnostics: _ } => FmbReading { binds_row: fmb_binds_row(tree: tree), reason: fmi_reason(o: fmi_infer_tree(tree: tree)) }
+  }
+}
+
+fn fmb_kernel_reading() -> FmbReading { fmb_reading(src: fmb_kernel) }
+fn fmb_mixed_reading() -> FmbReading { fmb_reading(src: fmb_mixed) }
+fn fmb_int_reading() -> FmbReading { fmb_reading(src: fmb_int) }
+fn fmb_bool_reading() -> FmbReading { fmb_reading(src: fmb_bool) }
+
+// ACCEPTED: kernel String concat kernel String binds the roster row and inhabits the bound by its row.
+test fn fmb_kernel_text_concat_is_accepted_through_its_row() -> Bool {
+  let r = fmb_kernel_reading()
+  r.binds_row && r.reason == ^accepted
+}
+
+// EXECUTES: the kernel arm's witness is host string concatenation.
+test fn fmb_kernel_text_concatenation_executes() -> Bool {
+  host_text_concatenation(left: "ab", right: "c") == "abc"
+}
+
+// RED, RULING 3: kernel String with a free monoid is a crossing; one M cannot take both, so it refuses.
+test fn fmb_mixed_carriers_refuse() -> Bool {
+  let r = fmb_mixed_reading()
+  r.binds_row && r.reason == ^application_argument_does_not_inhabit
+}
+
+// RED, THE BINDER TRAP: Int inhabits a monoid (its ring's additive one) but not the FREE monoid, so it
+// refuses AT THE BOUND, with the bound's own cause.
+test fn fmb_int_refuses_at_the_free_monoid_bound() -> Bool {
+  let r = fmb_int_reading()
+  r.binds_row && r.reason == ^infer_reason_type_argument_does_not_inhabit_bound
+}
+
+// RED: a type inhabiting another structure (Bool, a boolean algebra) does not inhabit the free monoid.
+test fn fmb_bool_refuses_at_the_free_monoid_bound() -> Bool {
+  let r = fmb_bool_reading()
+  r.binds_row && r.reason == ^infer_reason_type_argument_does_not_inhabit_bound
+}
+
+// RESOLVE JUDGES KINDS ONLY: a structure-bound binder applied in type position is not judged as a kind, so
+// an inhabits() that would answer KindUnresolved for it is never asked; a kind-bound binder still is.
+fn fmb_carrier() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [])
+}
+
+fn fmb_binders(annotation: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [Edge { label: Authored { name: ^fmb_carrier }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^fmb_carrier } }, children: [Edge { label: core_edge_label(marker: BinderTypeEdge), target: annotation }]) }],
+      source: fmb_carrier()
+    )
+  )
+}
+
+fn fmb_conforms(c: TypeApplicationConformance) -> Bool {
+  match c {
+    TypeApplicationConforms => true
+    TypeApplicationArityMismatch { declared: _, supplied: _ } => false
+    TypeApplicationKindNotInhabited { argument: _, kind: _ } => false
+    TypeApplicationKindUnresolved { argument: _, kind: _ } => false
+    TypeApplicationBinderOrderMalformed => false
+  }
+}
+
+test fn fmb_structure_bound_is_not_judged_as_a_kind_at_resolve() -> Bool {
+  let structure_bound = type_application_conformance(binders: fmb_binders(annotation: free_monoid_structure_node(inhabitant: fmb_carrier())), arguments: [fmb_carrier()], inhabits: fn(a, k) { KindUnresolved })
+  let kind_bound = type_application_conformance(binders: fmb_binders(annotation: fmb_carrier()), arguments: [fmb_carrier()], inhabits: fn(a, k) { ArgumentOutsideKind })
+  fmb_conforms(c: structure_bound) && !fmb_conforms(c: kind_bound)
+}
