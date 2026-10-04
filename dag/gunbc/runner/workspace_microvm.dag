@@ -46,13 +46,17 @@ type WorkspacePublicKeyText sole_constructor { reference: NonEmptyStr, line: Non
 type WorkspacePublicKeyTextAdmission = WorkspacePublicKeyTextAdmitted { key: WorkspacePublicKeyText } | WorkspacePublicKeyRefused
 
 type WorkspacePublicKey sole_constructor { reference: NonEmptyStr, line: NonEmptyStr }
+
+// An administrator-authored catalog row is unadmitted text; only workspace_owner_public_key
+// turns a row into a WorkspacePublicKey, after the owner, reference and line checks.
+type WorkspacePublicKeyCatalogRow { reference: NonEmptyStr, line: String }
 type WorkspacePublicKeyAdmission = WorkspacePublicKeyAdmitted { key: WorkspacePublicKey } | WorkspacePublicKeyNotAdmitted { reason: String }
 
 // Guest access is the request owner's enrolled key and nothing else: the request's server-supplied
 // reference must be the one the policy enrolls for that owner, and it must name exactly one catalog
 // line, revalidated here. A reference enrolled for another owner -- including the one the previous
 // incarnation of a reused slot carried -- is refused before any bootstrap record is written.
-fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy, catalog: List<WorkspacePublicKey>,
+fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy, catalog: List<WorkspacePublicKeyCatalogRow>,
   owner: PrincipalRef, reference: NonEmptyStr) -> WorkspacePublicKeyAdmission {
   match workspace_owner_enrollment(policy: policy, owner: owner) {
     Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace owner is not enrolled for guest access" }
@@ -63,7 +67,7 @@ fn workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy, catalog: Lis
       if count(rows) != 1 { WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" } }
       else { match rows.first() {
         Absent => WorkspacePublicKeyNotAdmitted { reason: "workspace key reference does not name exactly one catalog key" }
-        Present { value: row } => match workspace_public_key(reference: reference, text: row.line as String) {
+        Present { value: row } => match workspace_public_key(reference: reference, text: row.line) {
           WorkspacePublicKeyRefused => WorkspacePublicKeyNotAdmitted { reason: "workspace catalog key contains options, extra records or an unsupported algorithm" }
           WorkspacePublicKeyTextAdmitted { key: text } => WorkspacePublicKeyAdmitted { key: WorkspacePublicKey { reference: reference, line: text.line } }
         }

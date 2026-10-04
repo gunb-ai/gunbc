@@ -6,7 +6,7 @@ import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, Work
 import gunbc.workspace_allocation_policy { workspace_authorization_policy, workspace_public_key_catalog, workspace_operator_principal, workspace_operator_public_key_ref }
 import extdeps.ssh { ssh_public_key_line }
 import gunbc.fleet_ssh_access { operator_ssh_principal }
-import gunbc.workspace_microvm { WorkspacePublicKey, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
+import gunbc.workspace_microvm { WorkspacePublicKeyCatalogRow, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
 
 fn alice() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "alice-test" } }
 fn bob() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "bob-test" } }
@@ -18,10 +18,10 @@ fn two_owner_policy() -> WorkspaceAuthorizationPolicy {
   ] }
 }
 
-fn two_owner_catalog() -> List<WorkspacePublicKey> {
+fn two_owner_catalog() -> List<WorkspacePublicKeyCatalogRow> {
   [
-    WorkspacePublicKey { reference: "alice-key", line: "ssh-ed25519 AAAAALICE alice" },
-    WorkspacePublicKey { reference: "bob-key", line: "ssh-ed25519 AAAABOB bob" },
+    WorkspacePublicKeyCatalogRow { reference: "alice-key", line: "ssh-ed25519 AAAAALICE alice" },
+    WorkspacePublicKeyCatalogRow { reference: "bob-key", line: "ssh-ed25519 AAAABOB bob" },
   ]
 }
 
@@ -49,12 +49,12 @@ test fn a_stale_or_foreign_key_reference_cannot_reach_another_owners_guest() -> 
     WorkspacePublicKeyAdmitted { key: _ } => false
   }
   let ambiguous = match workspace_owner_public_key(policy: two_owner_policy(),
-    catalog: concat(two_owner_catalog(), [WorkspacePublicKey { reference: "alice-key", line: "ssh-ed25519 AAAAOTHER other" }]), owner: alice(), reference: "alice-key") {
+    catalog: concat(two_owner_catalog(), [WorkspacePublicKeyCatalogRow { reference: "alice-key", line: "ssh-ed25519 AAAAOTHER other" }]), owner: alice(), reference: "alice-key") {
     WorkspacePublicKeyNotAdmitted { reason: _ } => true
     WorkspacePublicKeyAdmitted { key: _ } => false
   }
   let optioned = match workspace_owner_public_key(policy: two_owner_policy(),
-    catalog: [WorkspacePublicKey { reference: "alice-key", line: "command=\"sh\" ssh-ed25519 AAAAALICE" }], owner: alice(), reference: "alice-key") {
+    catalog: [WorkspacePublicKeyCatalogRow { reference: "alice-key", line: "command=\"sh\" ssh-ed25519 AAAAALICE" }], owner: alice(), reference: "alice-key") {
     WorkspacePublicKeyNotAdmitted { reason: _ } => true
     WorkspacePublicKeyAdmitted { key: _ } => false
   }
