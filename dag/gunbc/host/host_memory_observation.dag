@@ -11,6 +11,13 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import std.measure { kibibyte_count, kibibyte_to_byte_size }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import gunbc.machine_intake_host_capture_envelope {
+  BoundHostCaptureEnvelope, HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
+  host_capture_section_reading, host_capture_run_identity_value,
+}
+import gunbc.machine_intake_host_resource_observation { ResourceUnread, observe_memory }
 
 // WHAT A HOST HAS, READ FROM THE HOST -- SEPARATED FROM WHAT CI DOES WITH IT. Every declaration
 // here came from gunbc.ci_floor_measurement and the extraction is the whole
@@ -303,4 +310,53 @@ data gunbc_fleet_oomd_floor_basis: String = "oomd_actuation_floor is a DERIVED l
 
 fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
   measure_scale_fraction_floor(m: host, num: 1, den: 16)
+}
+
+// ── the census route: a host capture's meminfo section becomes this host's measured usable RAM ──
+
+// THE READ IS A CAPTURED RECEIPT, NOT A NUMBER COPIED OUT OF ONE. A boot that runs the capture
+// envelope (gunbc.machine_intake_host_capture_envelope, whose stage list carries a meminfo section)
+// prints MemTotal and MemAvailable between that section's ARGV and EXIT lines. This reader is the
+// only route from those bytes to HostUsableRamMeasured, so a host enrolled from a census boot
+// (mtcollins1 first) gets its row by naming its receipt, with no figure hand-copied beside it, and
+// the provenance names the machine and run the receipt came from.
+//
+// WHAT IT REFUSES, EACH FOR ITS OWN REASON. A section that is absent, still pending or malformed
+// is not a read; a section that exited nonzero printed something other than the kernel's answer;
+// a complete, zero-exit section that does not parse as MemTotal/MemAvailable is the meminfo parse's
+// own refusal (gunbc.machine_intake_host_resource_observation observe_memory), carried unchanged.
+// A firmware-trained DIMM total is not an input this function accepts at all: it is nominal
+// capacity, which fleet_host_memory_nominal_vs_usable_note keeps out of HostUsableRam.
+type CensusUsableRamUnread
+  = CensusMeminfoSectionAbsent
+  | CensusMeminfoSectionPending
+  | CensusMeminfoSectionMalformed { reason: String }
+  | CensusMeminfoExitNonzero { exit_code: String }
+  | CensusMeminfoUnparsed { cause: ResourceUnread }
+
+fn host_usable_ram_from_capture(envelope: BoundHostCaptureEnvelope) -> ObservationAttempt<HostUsableRam, CensusUsableRamUnread> {
+  match host_capture_section_reading(envelope: envelope, name: "meminfo") {
+    SectionPending { output: _ } => ObservationRefused { cause: CensusMeminfoSectionPending }
+    SectionMalformed { reason: r } => ObservationRefused { cause: CensusMeminfoSectionMalformed { reason: r } }
+    SectionComplete { exit_code: code, output: out } =>
+      if code != "0" {
+        ObservationRefused { cause: CensusMeminfoExitNonzero { exit_code: code } }
+      } else {
+        match observe_memory(meminfo: Present { value: out }) {
+          ObservationRefused { cause: c } => ObservationRefused { cause: CensusMeminfoUnparsed { cause: c } }
+          ObservationEstablished { observed: m } =>
+            ObservationEstablished {
+              observed: HostUsableRamMeasured {
+                bytes: kibibyte_to_byte_size(k: m.total),
+                provenance: join([
+                  envelope.machine as String, " /proc/meminfo MemTotal = ", to_string(kibibyte_count(k: m.total)),
+                  " kB, read from the meminfo section of host capture run ", host_capture_run_identity_value(run: envelope.run),
+                  " (gunbc.host_memory_observation host_usable_ram_from_capture)",
+                ], "") as NonEmptyStr,
+              },
+            }
+        }
+      }
+    SectionAbsent => ObservationRefused { cause: CensusMeminfoSectionAbsent }
+  }
 }

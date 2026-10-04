@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+  operator_host_mtcollins1,
 }
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
@@ -77,6 +78,10 @@ fn host_session_evidence(host: HostIdentity) -> SessionResidencyEvidence {
   } else if (host as String) == (operator_host_srv4 as String) {
     SessionsOperatorDeclaredAbsent {
       reason: "operator states srv4 carries no interactive sessions; NOT observed, because srv4 failed host-key verification from this session. Same standing history as srv3 — stood up as a CI host through the modeled path, never a dashboard instance."
+    }
+  } else if (host as String) == (operator_host_mtcollins1 as String) {
+    SessionsOperatorDeclaredAbsent {
+      reason: "operator ruling 2026-10-03, relayed by eager-gull-22: mtcollins1 is admitted only as a diskless, netbooted, ephemeral CI runner host, so no persistent interactive session lives on it. NOT observed: this follows from the ruling, not from a count of sessions.slice. DISSOLVES ON a persistent install on mtcollins1 or any session placement there; either one reopens this row as unobserved."
     }
   } else {
     SessionsUnobserved {

@@ -15,7 +15,8 @@ import gunbc.fleet_intent {
   fleet_host_memory_nominal_vs_usable_note,
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
-import extdeps.cpu.ampere { altra_q6430_catalog }
+import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
@@ -105,6 +106,55 @@ data srv4_offer: ComputeOffer = ComputeOffer {
   provider: "gunbc-operator-srv4",
   supply: ComputeSupplyFacts {
     physical: srv4_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+// MT. COLLINS UNIT 1 AS A DISKLESS EPHEMERAL CI RUNNER HOST, AT ITS MEASURED ONE-SOCKET SHAPE.
+// Operator ruling 2026-10-03: the unit is admissible with socket 1 out (bent pins), so the offer
+// carries ONE processor. The board is a two-socket Mt. Collins, and offering its spec would admit
+// twice the CPU width the machine can run. Every one-socket boot in
+// gunbc.machine_intake_mtcollins1_socket1_investigation_observation read sockets 1, cpus 80,
+// numa_nodes 1, and the witness checks this offer's thread count against those readings.
+//
+// THE PART IS A BET, TYPED AS ONE IN THIS NOTE. The operator reports an Ampere Altra engineering
+// sample in socket 0 (mtcollins1_socket_cpus), and no model number has been read off it. Q80-30 is
+// the corpus's only 80-core Altra row, chosen because its thread count equals the measured 80. What
+// the width depends on is that count, and the count is measured; the model number is not.
+//
+// NO MEMORY DEVICES ARE LISTED. The DIMM population is being changed (2026-10-04), and nominal
+// capacity is not what placement charges anyway. Usable RAM arrives as this host's
+// HostUsableRamMeasured row, read by gunbc.host_memory_observation host_usable_ram_from_capture from
+// the census boot's meminfo receipt.
+//
+// NOT ENROLLED in fleet_intent_offers, and that is a declared frontier, not an omission. Enrolment
+// waits on three triggers: (1) the census receipt's MemTotal row, (2) a fixed-overhead row for this
+// host, and (3) the width chain reading supplied facts, which would let the RAM-backed tmpfs
+// workspace (gunbc.runner_throughput_qualification_route mtcollins1_qualification_workspace_backing)
+// be charged inside slot memory. Until all three hold, an enrolled mtcollins1 would only refuse.
+data mtcollins1_socket0_cpu: CpuFacts = CpuFacts {
+  catalog: altra_q8030_catalog,
+  deployment: CpuDeploymentFacts { sustained_per_thread_hz: altra_q8030_catalog.nominal_sustained_per_thread_hz },
+}
+
+data mtcollins1_runner_host: ComputeHost = ComputeHost {
+  identity: operator_host_mtcollins1,
+  baseboard: none,
+  bmc_intent: none,
+  processors: [CpuProcessor { cpu: mtcollins1_socket0_cpu }],
+  memory: [],
+  storage: [],
+  network_interfaces: [],
+}
+
+data mtcollins1_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-mtcollins1",
+  supply: ComputeSupplyFacts {
+    physical: mtcollins1_runner_host,
     execution: fleet_intent_execution_surface(),
     cost: Present { value: operator_owned_cost() },
     observed_performance: [],
