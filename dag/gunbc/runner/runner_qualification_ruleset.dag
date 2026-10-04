@@ -6,7 +6,7 @@ import std.resources { Network }
 import extdeps.transports.rest { RestExchangePerformance, RestExchangeSucceeded }
 import extdeps.github.effect { ManageRepositoryRulesets }
 import extdeps.github.rulesets {
-  RulesetWire, RulesetSummaryWire, RulesetRuleWire, RulesetConditionsWire, RulesetBypassActor,
+  RulesetWire, RulesetSummaryWire, RulesetRuleWire, RulesetConditionsWire,
   RulesetActive, BranchTarget, UpdateRule, NonFastForwardRule,
   parse_ruleset_enforcement, parse_ruleset_target, ruleset_rule_types, ruleset_rule_type_wire_label,
   ruleset_target_wire_label, ruleset_enforcement_wire_label, parameterless_rule, ref_name_conditions,
@@ -45,9 +45,6 @@ import gunbc.github_effect_perform {
 
 data qualification_ruleset_name: NonEmptyStr = "runner-qualification-pins"
 data qualification_ruleset_include: NonEmptyStr = "refs/heads/qualification/**"
-
-// NO BYPASS ACTORS: nobody, the App included, may move a qualification branch.
-data qualification_ruleset_bypass_actors: List<RulesetBypassActor> = []
 
 fn qualification_ruleset_rules() -> List<RulesetRuleWire> {
   [parameterless_rule(t: UpdateRule), parameterless_rule(t: NonFastForwardRule)]
@@ -191,7 +188,6 @@ fn ensure_qualification_ruleset(
           enforcement: ruleset_enforcement_wire_label(e: RulesetActive),
           conditions: qualification_ruleset_conditions(),
           rules: qualification_ruleset_rules(),
-          bypass_actors: qualification_ruleset_bypass_actors,
         )
         match created.performance {
           RestExchangeSucceeded => {

@@ -35,7 +35,6 @@ fn ruleset(enforcement: String, include: List<String>, rules: List<RulesetRuleWi
 
 data exact_rules: List<RulesetRuleWire> = [rule(t: "update"), rule(t: "non_fast_forward")]
 data prefix: List<String> = ["refs/heads/qualification/**"]
-data bypass_roster_not_returned: List<RulesetBypassActor>? = none
 
 fn other_shape(r: RulesetWire) -> Bool {
   match qualification_ruleset_shape_refusal(r: r) { Present { value: _ } => true Absent => false }
@@ -57,7 +56,7 @@ test fn only_the_exact_ruleset_shape_is_enforced() -> Bool {
     && other_shape(r: ruleset(enforcement: "active", include: prefix, rules: [rule(t: "update"), rule(t: "non_fast_forward"), rule(t: "creation")], bypass: Present { value: [] }))
     && other_shape(r: ruleset(enforcement: "active", include: prefix, rules: [rule(t: "update"), rule(t: "non_fast_forward"), rule(t: "deletion")], bypass: Present { value: [] }))
     && other_shape(r: ruleset(enforcement: "active", include: prefix, rules: exact_rules, bypass: Present { value: [RulesetBypassActor { actor_type: "RepositoryRole", actor_id: 5, bypass_mode: "always" }] }))
-    && other_shape(r: ruleset(enforcement: "active", include: prefix, rules: exact_rules, bypass: bypass_roster_not_returned))
+    && other_shape(r: ruleset(enforcement: "active", include: prefix, rules: exact_rules, bypass: none))
     && (match qualification_ruleset_standing_of(read: RestExchangeStatusRefused { status: 403, body: "fixture" }, ruleset: ruleset(enforcement: "active", include: prefix, rules: exact_rules, bypass: Present { value: [] })) {
       QualificationRulesetRefused { refusal: RulesetReadUnreadable { performance: _ } } => true
       _ => false
