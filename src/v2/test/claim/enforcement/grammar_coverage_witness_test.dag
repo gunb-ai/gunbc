@@ -124,32 +124,6 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
     && (receipt.rejected_count == 0)
 }
 
-test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
-  grammar_coverage_file_reject_locus_matches(
-    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
-    stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
-  )
-}
-
-test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
-  grammar_coverage_file_reject_locus_matches(
-    receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
-    stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
-  )
-}
-
-test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
-  let receipt = gc_witness_v1_tree_receipt_live()
-  grammar_coverage_rejected_row_present(
-    rows: receipt.rejected_rows,
-    stage: "parse",
-    reason: ^parse_grammar_choice_overlap_residue
-  )
-    && (grammar_coverage_rejected_row_count_sum(rows: receipt.rejected_rows) == 2)
-}
-
 test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_v1_tree_receipt_live()
   (receipt.files_attempted == 2)

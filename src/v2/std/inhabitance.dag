@@ -10,7 +10,8 @@ import v2.std.diagnostic {
   Rejected,
   Suggested,
   Unavailable,
-  node_locus
+  node_locus,
+  diagnostics_fatal_reason
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -322,7 +323,7 @@ fn declared_type_inhabitance_structural(obligation: DeclaredTypeObligation) -> I
         Rejected { diagnostics: r } =>
           declared_type_inhabitance_declared_carrier(
             obligation: obligation,
-            exact_refusal: InhabitanceRefused { find_witness_reason: r.head.reason }
+            exact_refusal: InhabitanceRefused { find_witness_reason: diagnostics_fatal_reason(d: r) }
           )
       }
   }

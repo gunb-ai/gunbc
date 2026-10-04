@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -44,15 +43,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // name, so an operand reaching resolve is not by itself a refusal; the left-only module puts the
 // undeclared name in the first position, which main already lowered, so it refuses on both sides and
 // shows the refusal is resolve's and not an artefact of the new reader.
-data sqo_chain_right_source: String = "module v2.test.sqo_chain_right\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_undeclared_right }\n"
+data sqo_chain_right_source: String = "module v2.test.sqo_chain_right\n\nimport std.types { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_undeclared_right }\n"
 
-data sqo_branch_right_source: String = "module v2.test.sqo_branch_right\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { if p { p && sqo_undeclared_right } else { false } }\n"
+data sqo_branch_right_source: String = "module v2.test.sqo_branch_right\n\nimport std.types { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { if p { p && sqo_undeclared_right } else { false } }\n"
 
-data sqo_negated_source: String = "module v2.test.sqo_negated\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { !sqo_undeclared_negated && p }\n"
+data sqo_negated_source: String = "module v2.test.sqo_negated\n\nimport std.types { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { !sqo_undeclared_negated && p }\n"
 
-data sqo_declared_right_source: String = "module v2.test.sqo_declared_right\n\nimport v2.std.logic { Bool }\n\ndata sqo_declared_value: Bool = true\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_declared_value }\n"
+data sqo_declared_right_source: String = "module v2.test.sqo_declared_right\n\nimport std.types { Bool }\n\ndata sqo_declared_value: Bool = true\n\nfn sqo_probe(p: Bool) -> Bool { p && p && sqo_declared_value }\n"
 
-data sqo_left_only_source: String = "module v2.test.sqo_left_only\n\nimport v2.std.logic { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { sqo_undeclared_left && p && p }\n"
+data sqo_left_only_source: String = "module v2.test.sqo_left_only\n\nimport std.types { Bool }\n\nfn sqo_probe(p: Bool) -> Bool { sqo_undeclared_left && p && p }\n"
 
 fn sqo_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

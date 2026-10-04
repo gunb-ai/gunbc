@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_maintenance_hold
+module gunbc.managed_host_unit_hold
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -17,6 +17,7 @@ import std.durable_exclusive_hold {
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { trim }
+import std.list { distinct_by_key }
 import gunbc.build_cache_instance { ProcessIdentity, process_identity_eq }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
@@ -40,18 +41,23 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_mtcollins1 }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, managed_hosts }
+import gunbc.host_maintenance_hold_reason { maintenance_hold_reason_env }
+import extdeps.tools.hostname
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 // ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
 //
-// Until 2026-09-23 every Mt. Collins boot waited for one operator tap, and the operator tapped only
+// Until 2026-09-23 every boot of a hand-serviced unit waited for one operator tap, and the operator tapped only
 // when nobody had hands in the chassis. That consent carried two facts: "this effect may run" and
 // "the unit is not under maintenance right now". The operator ruling of 2026-09-23 retired the
 // first (the boot is a recurring automated effect; gunbc.auth.privileged_effect_census derives the
 // federated pattern for it). The second is a physical-safety fact about the unit, not about who may
 // authorize, so it does not dissolve with the approval stage: a boot that power-cycles a unit whose
 // DIMMs are being reseated is the harm. It is carried here as ONE std.durable_exclusive_hold slot
-// per unit, keyed by the machine name the signed subject already uses.
+// per unit, keyed by the key its gunbc.managed_host ManagedHost row declares (unit_hold). Nothing here
+// names a unit: which hosts have a hold, under which key and on which store host, is read off the row.
 //
 // ONE SLOT, TWO KINDS OF HOLDER, AND THAT IS THE POINT. The operator takes the slot for
 // maintenance; the boot run takes the SAME slot before any BMC actuation and frees it after. So
@@ -66,11 +72,174 @@ import gunbc.fleet_intent_network { operator_host_srv1, operator_host_mtcollins1
 
 data unit_hold_store_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
 
-data mtcollins1_unit_hold_key: NonEmptyStr = operator_host_mtcollins1 as NonEmptyStr
+// ── THE ADMISSION: WHICH HOSTS HAVE A HOLD AT ALL ─────────────────────────────────────────────
+// Taking, releasing or checking a unit hold is an operation on a managed host, and its policy is the
+// row's own unit_hold decision. A host whose row says ResetNoUnitHold has no slot, and a label that
+// names no row of managed_hosts() is not a host this fleet drives; both are typed refusals, and no
+// arm falls back to a key spelled from the label. AdmittedUnitHoldSubject is sole_constructor and
+// admit_unit_hold_subject is its only mint, so every acquire, release and proof check below is fed a
+// key and a store host that came from a ManagedHost row and from nowhere else.
+type AdmittedUnitHoldSubject sole_constructor {
+  host: ManagedHost
+  key: NonEmptyStr
+  store_host: NonEmptyStr
+}
 
-// The host the store lives on: the srv1 runner, where the boot job is pinned and where the operator
-// takes maintenance holds. Every hold-owning root of this unit runs there.
-data mtcollins1_unit_hold_store_host: NonEmptyStr = operator_host_srv1 as NonEmptyStr
+type UnitHoldAdmission
+  = UnitHoldSubjectAdmitted { subject: AdmittedUnitHoldSubject }
+  | UnitHoldNotRequired { host: HostIdentity }
+
+fn admit_unit_hold_subject(host: ManagedHost) -> UnitHoldAdmission {
+  match host.unit_hold {
+    ResetUnitHoldRequired { key: k, store_host: s } =>
+      UnitHoldSubjectAdmitted { subject: AdmittedUnitHoldSubject { host: host, key: k, store_host: s } }
+    ResetNoUnitHold => UnitHoldNotRequired { host: host.host }
+  }
+}
+
+// THE SAME ADMISSION FOR A LABEL, over the rows it is given so the refusals have something to refuse:
+// a caller that knows only a host's name (an operator's argument, a unit procedure's own identity)
+// reaches the row here and nowhere else.
+type UnitHoldHostAdmission
+  = UnitHoldHostAdmitted { subject: AdmittedUnitHoldSubject }
+  | UnitHoldHostNotManaged { host: NonEmptyStr }
+  | UnitHoldHostNotRequired { host: HostIdentity }
+
+fn unit_hold_admission_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> UnitHoldHostAdmission {
+  fold(
+    hosts,
+    init: UnitHoldHostNotManaged { host: host },
+    f: (acc, h) => match acc {
+      UnitHoldHostAdmitted { subject: _ } => acc
+      UnitHoldHostNotRequired { host: _ } => acc
+      UnitHoldHostNotManaged { host: _ } =>
+        if (h.host as String) == (host as String) {
+          match admit_unit_hold_subject(host: h) {
+            UnitHoldSubjectAdmitted { subject: s } => UnitHoldHostAdmitted { subject: s }
+            UnitHoldNotRequired { host: x } => UnitHoldHostNotRequired { host: x }
+          }
+        } else {
+          acc
+        }
+    },
+  )
+}
+
+fn unit_hold_admission_for(host: NonEmptyStr) -> UnitHoldHostAdmission {
+  unit_hold_admission_in(hosts: managed_hosts(), host: host)
+}
+
+// Absent means the host was admitted; the text is what a refused caller prints.
+fn unit_hold_host_admission_refusal(admission: UnitHoldHostAdmission) -> NonEmptyStr? {
+  match admission {
+    UnitHoldHostAdmitted { subject: _ } => none
+    UnitHoldHostNotManaged { host: h } =>
+      Present { value: join(["'", h as String, "' is not a managed host (gunbc.managed_host managed_hosts has no row for it), so it has no unit hold; nothing was taken, released or written"], "") as NonEmptyStr }
+    UnitHoldHostNotRequired { host: h } =>
+      Present { value: join(["managed host '", h as String, "' declares no unit hold (ResetNoUnitHold), so there is no hold slot for it; nothing was taken, released or written"], "") as NonEmptyStr }
+  }
+}
+
+// THE HOSTS A HOLD STORE MUST EXIST ON: every store host some managed host's hold names, each once,
+// in row order. gunbc.runner_host_grants provisions the store root on exactly these. The named hosts
+// are gathered by prepending and reversed once, and std.list distinct_by_key removes repeats through
+// its keyed map, so neither step copies an accumulator or scans one per row.
+fn unit_hold_named_store_hosts_reversed(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
+  fold(
+    hosts,
+    init: [],
+    f: (acc, h) => match admit_unit_hold_subject(host: h) {
+      UnitHoldNotRequired { host: _ } => acc
+      UnitHoldSubjectAdmitted { subject: s } => concat([s.store_host], acc)
+    },
+  )
+}
+
+fn unit_hold_store_hosts_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
+  distinct_by_key(xs: reverse(unit_hold_named_store_hosts_reversed(hosts: hosts)), key: fn(h) { h as String })
+}
+
+fn unit_hold_store_hosts() -> List<NonEmptyStr> {
+  unit_hold_store_hosts_of(hosts: managed_hosts())
+}
+
+// ── THE STORE IS A LOCAL DIRECTORY, SO THE PROCESS MUST BE ON THE STORE HOST ───────────────────
+// unit_hold_store_root is a path on whatever machine runs this code. An admitted subject names the
+// host its store lives on, and a take, release or acquire run anywhere else would succeed against that
+// other machine's empty directory while the real store stayed free: an interlock held where nobody
+// looks. So every store effect below is fed a UnitHoldStoreExecutor, and that carrier exists only
+// when THIS PROCESS OBSERVED its own short hostname (os.Hostname.ReadShort) and it equals the
+// hostname gunbc.hostname_allocation allocates to the subject's store host -- the same two
+// authorities gunbc.host_reset_return_run observer_self_corroboration reads to establish which
+// machine a run is on. A label a caller supplies is not that observation, so there is no parameter
+// for one: unit_hold_store_executor performs the read itself. A store host with no allocated
+// hostname, and a hostname that cannot be read, refuse; neither is treated as a match.
+type UnitHoldStoreExecutorDecision
+  = UnitHoldExecutorIsStoreHost { observed: NonEmptyStr }
+  | UnitHoldExecutorElsewhere { observed: NonEmptyStr, store_host: NonEmptyStr, allocated: NonEmptyStr }
+  | UnitHoldStoreHostUnallocated { store_host: NonEmptyStr }
+  | UnitHoldExecutorUnread { store_host: NonEmptyStr }
+
+// THE DECISION IS A PURE FOLD OVER A SUPPLIED READING, so a witness can show both sides of it; it
+// returns a decision and never the carrier. Absent means the hostname could not be read.
+fn unit_hold_store_executor_decision(subject: AdmittedUnitHoldSubject, observed: String?) -> UnitHoldStoreExecutorDecision {
+  match canonical_hostname_for_fleet_slot(fleet_slot: subject.store_host as HostIdentity) {
+    Absent => UnitHoldStoreHostUnallocated { store_host: subject.store_host }
+    Present { value: allocated } =>
+      match observed {
+        Absent => UnitHoldExecutorUnread { store_host: subject.store_host }
+        Present { value: raw } =>
+          if trim(s: raw) == "" {
+            UnitHoldExecutorUnread { store_host: subject.store_host }
+          } else if trim(s: raw) == (allocated as String) {
+            UnitHoldExecutorIsStoreHost { observed: trim(s: raw) as NonEmptyStr }
+          } else {
+            UnitHoldExecutorElsewhere { observed: trim(s: raw) as NonEmptyStr, store_host: subject.store_host, allocated: allocated as String as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn unit_hold_store_executor_refusal(key: NonEmptyStr, decision: UnitHoldStoreExecutorDecision) -> NonEmptyStr? {
+  match decision {
+    UnitHoldExecutorIsStoreHost { observed: _ } => none
+    UnitHoldExecutorElsewhere { observed: o, store_host: h, allocated: a } =>
+      Present { value: join(["the unit hold store for '", key as String, "' is on '", h as String, "' (hostname '", a as String, "'), and this process observes its own host as '", o as String, "'; a hold taken or released here would act on a store nobody reads; nothing was read or written"], "") as NonEmptyStr }
+    UnitHoldStoreHostUnallocated { store_host: h } =>
+      Present { value: join(["the unit hold store for '", key as String, "' is on '", h as String, "', which has no hostname allocated in gunbc.hostname_allocation, so this process cannot establish that it runs there; nothing was read or written"], "") as NonEmptyStr }
+    UnitHoldExecutorUnread { store_host: h } =>
+      Present { value: join(["the unit hold store for '", key as String, "' is on '", h as String, "', and this process could not read its own short hostname, so it cannot establish that it runs there; nothing was read or written"], "") as NonEmptyStr }
+  }
+}
+
+type UnitHoldStoreExecutor sole_constructor {
+  subject: AdmittedUnitHoldSubject
+  observed_hostname: NonEmptyStr
+}
+
+type UnitHoldStoreExecutorStanding
+  = UnitHoldOnStoreHost { executor: UnitHoldStoreExecutor }
+  | UnitHoldNotOnStoreHost { reason: NonEmptyStr }
+
+// THE ONE MINT OF THE EXECUTOR CARRIER, and it reads the hostname itself.
+fn unit_hold_store_executor(subject: AdmittedUnitHoldSubject) -> UnitHoldStoreExecutorStanding {
+  let read = os.Hostname.ReadShort()
+  let observed = if read.success { Present { value: read.value } } else { none }
+  let decision = unit_hold_store_executor_decision(subject: subject, observed: observed)
+  match decision {
+    UnitHoldExecutorIsStoreHost { observed: o } => UnitHoldOnStoreHost { executor: UnitHoldStoreExecutor { subject: subject, observed_hostname: o } }
+    UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
+    UnitHoldStoreHostUnallocated { store_host: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
+    UnitHoldExecutorUnread { store_host: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
+  }
+}
+
+fn unit_hold_not_on_store_host(key: NonEmptyStr, decision: UnitHoldStoreExecutorDecision) -> UnitHoldStoreExecutorStanding {
+  match unit_hold_store_executor_refusal(key: key, decision: decision) {
+    Present { value: r } => UnitHoldNotOnStoreHost { reason: r }
+    Absent => UnitHoldNotOnStoreHost { reason: "unit hold store executor decision unclassified; nothing was read or written" as NonEmptyStr }
+  }
+}
 
 // WHO HOLDS THE UNIT IS A DECLARED SUM (review 70459), each kind carrying its detail. The durable
 // owner string is RENDERED from it and DECODED back to it here, in one place: nothing else builds an
@@ -96,9 +265,9 @@ type UnitHoldOwner
 fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: _ } => "operator-maintenance:"
-    BootRun { run_id: _, process: _, pid_namespace: _ } => "mtcollins1-boot:"
+    BootRun { run_id: _, process: _, pid_namespace: _ } => "boot-run:"
     HostResetReturn { attempt: _ } => "host-reset-return:"
-    KvmObserverProbe { run_id: _, process: _, pid_namespace: _ } => "mtcollins1-kvm-observer:"
+    KvmObserverProbe { run_id: _, process: _, pid_namespace: _ } => "kvm-observer:"
   }
 }
 
@@ -166,9 +335,9 @@ fn unit_hold_owner_ref(o: UnitHoldOwner) -> DurableHoldOwnerRef {
 fn unit_hold_owner_label(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => concat("operator maintenance: ", r as String)
-    BootRun { run_id: r, process: p, pid_namespace: _ } => join(["the mtcollins1 boot run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
+    BootRun { run_id: r, process: p, pid_namespace: _ } => join(["the boot run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
     HostResetReturn { attempt: a } => concat("host reset-return attempt ", a as String)
-    KvmObserverProbe { run_id: r, process: p, pid_namespace: _ } => join(["the mtcollins1 KVM observer probe run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
+    KvmObserverProbe { run_id: r, process: p, pid_namespace: _ } => join(["the KVM observer probe run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
   }
 }
 
@@ -233,8 +402,6 @@ fn host_reset_owner(attempt: NonEmptyStr) -> DurableHoldOwnerRef {
 }
 
 // The operator names why they hold the unit; the reason is the owner, so a refused boot prints it.
-data mtcollins1_maintenance_reason_env: NonEmptyStr = "GUNBC_MTCOLLINS1_MAINTENANCE_REASON"
-
 fn operator_maintenance_owner(reason: NonEmptyStr) -> DurableHoldOwnerRef {
   unit_hold_owner_ref(o: OperatorMaintenance { reason: reason })
 }
@@ -250,11 +417,12 @@ fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: 
 // arm of unit_hold_minted, admitted only to unit_hold_acquire and fed only that call's own live
 // compare-and-set outcomes. A supplied or authored
 // acquire outcome therefore cannot become a proof: the pure refusal fold below reads outcomes, and
-// it returns text, never a proof. test.claim.machine_intake.mtcollins1_maintenance_hold_witness_test
-// enrolls test.probe.unit_hold_proof_forged_probe, where a forged proof is refused at the literal.
+// it returns text, never a proof. The proof carries the admitted subject it was acquired for, so what
+// it proves -- this host's slot is held -- is read from the row that admitted it.
+// test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness_test enrolls
+// test.probe.unit_hold_proof_forged_probe, where a forged proof is refused at the literal.
 type UnitHoldProof sole_constructor {
-  root: NonEmptyStr
-  key: NonEmptyStr
+  subject: AdmittedUnitHoldSubject
   owner: DurableHoldOwnerRef
   generation: CasGeneration
 }
@@ -282,8 +450,8 @@ fn unit_hold_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr? {
 }
 
 // ── WHETHER A HOLDING PROCESS STILL RUNS, OBSERVED ─────────────────────────────────────────────
-// The store and every holder that can be recovered run on one host (mtcollins1_unit_hold_store_host;
-// the boot admission refuses any other), so the holder's process is observable through this host's
+// The store and every holder that can be recovered run on one host (the admitted subject's
+// store_host; each hold-owning root refuses any other), so the holder's process is observable through this host's
 // procfs. Three reads decide it, each typed by the host's own error kind:
 //   - /proc/sys/kernel/random/boot_id differs from the holder's boot -> the host rebooted since, so
 //     every process of that boot is gone: OBSERVED DEAD;
@@ -479,7 +647,7 @@ fn recovery_refusal_text(key: NonEmptyStr, r: DurableHoldRecoveryRefusal) -> Non
 
 fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration) -> DeadHolderRecovery
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
   let report = holder_report(holder: holder, generation: generation)
@@ -498,14 +666,14 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
 
 // The proof is built here, from an outcome only unit_hold_acquire's own live acquires produce: the
 // admission is what keeps a supplied FileHoldAcquired from becoming a proof.
-fn unit_hold_minted(root: NonEmptyStr, key: NonEmptyStr, outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisition
+fn unit_hold_minted(subject: AdmittedUnitHoldSubject, outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_acquire"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
   match outcome {
     FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
-      UnitHeld { proof: UnitHoldProof { root: root, key: key, owner: o, generation: g } }
+      UnitHeld { proof: UnitHoldProof { subject: subject, owner: o, generation: g } }
     FileHoldOccupied { slot_key: _, holder: _, generation: _ } => unit_hold_not_acquired(outcome: outcome)
     FileHoldAcquireLost { slot_key: _ } => unit_hold_not_acquired(outcome: outcome)
     FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_not_acquired(outcome: outcome)
@@ -526,57 +694,91 @@ fn unit_hold_not_acquired(outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisitio
 // further question -- is its holder observed dead? -- and only an observed-dead holder's hold is freed,
 // after which this caller acquires once more like any acquirer. There is no loop: a slot taken by
 // someone else in between refuses as occupied, naming them.
-fn unit_hold_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
+fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_boot_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
     decl_ref(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "mtcollins1_kvm_observer_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "kvm_observer_acquire_unit_hold"),
   ]
 {
-  let outcome = file_hold_acquire(root: root, slot_key: key, requested_owner: owner)
-  match outcome {
-    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
-      match unit_hold_recover_dead_holder(root: root, key: key, holder: h, generation: g) {
-        DeadHolderNotRecovered { reason: r } => UnitHoldRefused { reason: r }
-        DeadHolderRecovered { dead_holder: _, evidence: _ } =>
-          unit_hold_minted(root: root, key: key, outcome: file_hold_acquire(root: root, slot_key: key, requested_owner: owner))
-      }
-    _ => unit_hold_minted(root: root, key: key, outcome: outcome)
+  match unit_hold_store_executor(subject: subject) {
+    UnitHoldNotOnStoreHost { reason: r } => UnitHoldRefused { reason: join([r as String, "; controller untouched"], "") as NonEmptyStr }
+    UnitHoldOnStoreHost { executor: e } => unit_hold_acquire_on_store_host(executor: e, owner: owner)
   }
 }
 
-fn unit_hold_proof_key(proof: UnitHoldProof) -> NonEmptyStr {
-  proof.key
+// The store effect itself, reachable only with the executor carrier and only from the mint above.
+fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+  ]
+{
+  let subject = executor.subject
+  let outcome = file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner)
+  match outcome {
+    FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
+      match unit_hold_recover_dead_holder(root: unit_hold_store_root, key: subject.key, holder: h, generation: g) {
+        DeadHolderNotRecovered { reason: r } => UnitHoldRefused { reason: r }
+        DeadHolderRecovered { dead_holder: _, evidence: _ } =>
+          unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner))
+      }
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquireLost { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+  }
 }
 
-fn mtcollins1_boot_acquire_unit_hold(run_id: NonEmptyStr) -> UnitHoldAcquisition
+// A HOLD-OWNING RUN NAMES THE HOST IT DRIVES, AND THE ADMISSION IS HERE. The boot and the KVM probe
+// know their unit by its HostIdentity; the label is admitted against the managed rows before anything
+// touches the store, and a host that is not managed, or has no hold, refuses with that cause. The
+// acquire itself takes only the admitted subject.
+fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
 {
-  match self_process_identity() {
-    SelfUnidentified { cause: c } =>
-      UnitHoldRefused { reason: join(["this boot cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
-    SelfIdentified { process: p, pid_namespace: n } =>
-      unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: boot_run_owner(run_id: run_id, process: p, pid_namespace: n))
+  match unit_hold_admission_for(host: host as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotManaged { host: h })
+    UnitHoldHostNotRequired { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostAdmitted { subject: subject } =>
+      match self_process_identity() {
+        SelfUnidentified { cause: c } =>
+          UnitHoldRefused { reason: join(["this boot cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
+        SelfIdentified { process: p, pid_namespace: n } =>
+          unit_hold_acquire(subject: subject, owner: boot_run_owner(run_id: run_id, process: p, pid_namespace: n))
+      }
   }
 }
 
-// THE KVM OBSERVER PROBE TAKES THE SAME SLOT (gunbc.machine_intake_mtcollins1_kvm_observer_observe).
+fn unit_hold_not_admitted(admission: UnitHoldHostAdmission) -> UnitHoldAcquisition {
+  match unit_hold_host_admission_refusal(admission: admission) {
+    Present { value: r } => UnitHoldRefused { reason: join([r as String, "; controller untouched"], "") as NonEmptyStr }
+    Absent => UnitHoldRefused { reason: "unit hold admission unclassified; controller untouched" as NonEmptyStr }
+  }
+}
+
+// THE KVM OBSERVER PROBE TAKES THE SAME SLOT (a unit's KVM observer probe, e.g. gunbc.machine_intake_mtcollins1_kvm_observer_observe).
 // It writes nothing to the controller, but it takes the BMC's one KVM viewer seat, and the boot takes
 // that seat under this hold and REFUSES its handoff when the seat is busy -- so a probe that did not
 // hold the unit could make a concurrent boot refuse, and an operator's maintenance would see a viewer
 // nobody accounted for. Holding the unit makes the probe, the boot and maintenance exclude each other.
-fn mtcollins1_kvm_observer_acquire_unit_hold(run_id: NonEmptyStr) -> UnitHoldAcquisition
+fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_observe_wet"),
   ]
 {
-  match self_process_identity() {
-    SelfUnidentified { cause: c } =>
-      UnitHoldRefused { reason: join(["this probe cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
-    SelfIdentified { process: p, pid_namespace: n } =>
-      unit_hold_acquire(root: unit_hold_store_root, key: mtcollins1_unit_hold_key, owner: unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: p, pid_namespace: n }))
+  match unit_hold_admission_for(host: host as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotManaged { host: h })
+    UnitHoldHostNotRequired { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostAdmitted { subject: subject } =>
+      match self_process_identity() {
+        SelfUnidentified { cause: c } =>
+          UnitHoldRefused { reason: join(["this probe cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
+        SelfIdentified { process: p, pid_namespace: n } =>
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: p, pid_namespace: n }))
+      }
   }
 }
 
@@ -654,20 +856,44 @@ fn probe_hold_release_outcome_text(o: ProbeHoldReleaseOutcome) -> String {
   }
 }
 
-fn mtcollins1_kvm_observer_release_unit_hold(run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
+fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_kvm_observer_observe", decl_name: "mtcollins1_kvm_observer_release_wet"),
   ]
 {
-  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: mtcollins1_unit_hold_key), run_id: run_id) {
+  match unit_hold_admission_for(host: host as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostNotManaged { host: h })
+    UnitHoldHostNotRequired { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostAdmitted { subject: subject } =>
+      match unit_hold_store_executor(subject: subject) {
+        UnitHoldNotOnStoreHost { reason: r } => ProbeHoldUnreleased { cause: r as String }
+        UnitHoldOnStoreHost { executor: e } => kvm_observer_release_on_store_host(executor: e, run_id: run_id)
+      }
+  }
+}
+
+fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "kvm_observer_release_unit_hold"),
+  ]
+{
+  let key = executor.subject.key
+  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: key), run_id: run_id) {
     ProbeHoldFreeNoop => ProbeHoldAlreadyFree
     ProbeHoldForeignNoop { holder: h } => ProbeHoldNotOurs { holder: h }
     ProbeHoldUnobservable { cause: c } => ProbeHoldUnreleased { cause: c }
     ProbeHoldReleaseAt { owner: o, generation: g } =>
-      match file_hold_release_assess(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, owner: o, acquired_generation: g, released_by: concat("mtcollins1-kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
+      match file_hold_release_assess(root: unit_hold_store_root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
         FileHoldReleaseNotEligible { slot_key: _, refusal: r } => probe_hold_release_refused(refusal: r)
         FileHoldReleasePlanned { plan: p } => probe_hold_release_committed(outcome: file_hold_release_commit(plan: p))
       }
+  }
+}
+
+fn kvm_observer_release_not_admitted(admission: UnitHoldHostAdmission) -> ProbeHoldReleaseOutcome {
+  match unit_hold_host_admission_refusal(admission: admission) {
+    Present { value: r } => ProbeHoldUnreleased { cause: r as String }
+    Absent => ProbeHoldUnreleased { cause: "unit hold admission unclassified" }
   }
 }
 
@@ -679,7 +905,7 @@ type UnitHoldReleaseOutcome
   | UnitHoldLeftHeld { cause: NonEmptyStr }
 
 fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
-  match file_hold_release_assess(root: proof.root, slot_key: proof.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
+  match file_hold_release_assess(root: unit_hold_store_root, slot_key: proof.subject.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => UnitHoldLeftHeld { cause: "the slot no longer showed this run's hold" as NonEmptyStr }
     FileHoldReleasePlanned { plan: p } =>
       match file_hold_release_commit(plan: p) {
@@ -695,69 +921,175 @@ fn unit_hold_release(proof: UnitHoldProof, outcome: ProcessExit) -> ProcessExit 
   match unit_hold_release_outcome(proof: proof) {
     UnitHoldReleasedCleanly => outcome
     UnitHoldLeftHeld { cause: c } =>
-      exit_failure(reason: join(["unit hold ", proof.key as String, " left held (", c as String, "); step outcome was: ", match outcome {
+      exit_failure(reason: join(["unit hold ", proof.subject.key as String, " left held (", c as String, "); step outcome was: ", match outcome {
         ExitSuccess => "success"
         ExitFailure { code: _, reason: r } => concat("failure: ", r)
       }], ""))
   }
 }
 
-// A BMC WRITE PATH ASKS THIS BEFORE ITS FIRST REQUEST: the proof must be for this unit's slot. A
-// proof for another unit is still a proof, so the key is compared rather than assumed.
-fn unit_hold_proof_refusal(proof: UnitHoldProof, key: NonEmptyStr, label: String) -> String? {
-  if (proof.key as String) == (key as String) {
+// A BMC WRITE PATH ASKS THIS BEFORE ITS FIRST REQUEST: the proof must be for the host it is about to
+// write to. A proof for another host is still a proof, so the host its subject was admitted from is
+// compared rather than assumed.
+fn unit_hold_proof_refusal(proof: UnitHoldProof, host: HostIdentity, label: String) -> String? {
+  if host_identity_eq(a: proof.subject.host.host, b: host) {
     none
   } else {
-    Present { value: join([label, ": unit hold proof is for '", proof.key as String, "', not '", key as String, "'; controller untouched"], "") }
+    Present { value: join([label, ": unit hold proof is for '", proof.subject.host.host as String, "', not '", host as String, "'; controller untouched"], "") }
   }
 }
 
-// ── The operator's side: two entries run in the operator's own session on the runner host ──────
-fn mtcollins1_maintenance_hold_take() -> ProcessExit {
-  let reason = actions_variable_trimmed(name: mtcollins1_maintenance_reason_env)
-  if reason == "" {
-    return exit_failure(reason: concat(mtcollins1_maintenance_reason_env as String, " is unset; a maintenance hold names why the unit is held"))
+// ── The operator's side: two entries run in the operator's own session on the store host ───────
+// MAINTENANCE IS ITS OWN OPERATION WITH ITS OWN POLICY: beside the host's hold decision, the operator
+// names why the unit is held, through the variable gunbc.host_maintenance_hold_reason declares for
+// that host. A host with a hold and no declared reason variable is refused rather than given a
+// default name. AdmittedMaintenanceHold is sole_constructor and admit_maintenance_hold_in its only
+// mint, so the take and the release below act only on a host that passed both -- and, like every
+// other store effect here, only from a process observed on the store host (UnitHoldStoreExecutor).
+type AdmittedMaintenanceHold sole_constructor {
+  subject: AdmittedUnitHoldSubject
+  reason_env: NonEmptyStr
+}
+
+type MaintenanceHoldAdmission
+  = MaintenanceHoldAdmitted { hold: AdmittedMaintenanceHold }
+  | MaintenanceHoldHostRefused { admission: UnitHoldHostAdmission }
+  | MaintenanceHoldNoReasonVariable { host: HostIdentity }
+
+fn admit_maintenance_hold_in(hosts: List<ManagedHost>, host: NonEmptyStr) -> MaintenanceHoldAdmission {
+  match unit_hold_admission_in(hosts: hosts, host: host) {
+    UnitHoldHostNotManaged { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostNotManaged { host: h } }
+    UnitHoldHostNotRequired { host: h } => MaintenanceHoldHostRefused { admission: UnitHoldHostNotRequired { host: h } }
+    UnitHoldHostAdmitted { subject: s } =>
+      match maintenance_hold_reason_env(host: s.host) {
+        Absent => MaintenanceHoldNoReasonVariable { host: s.host.host }
+        Present { value: env } => MaintenanceHoldAdmitted { hold: AdmittedMaintenanceHold { subject: s, reason_env: env } }
+      }
   }
-  match file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
-    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
-    FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
-      exit_failure(reason: concat("mtcollins1 maintenance hold: unit already held by ", h as String))
-    FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the race; re-run")
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable; the unit is NOT held")
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
-    FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
+}
+
+fn maintenance_hold_admission_refusal(admission: MaintenanceHoldAdmission) -> String {
+  match admission {
+    MaintenanceHoldAdmitted { hold: _ } => ""
+    MaintenanceHoldHostRefused { admission: a } =>
+      match unit_hold_host_admission_refusal(admission: a) {
+        Present { value: r } => concat("maintenance hold: ", r as String)
+        Absent => "maintenance hold: unit hold admission unclassified"
+      }
+    MaintenanceHoldNoReasonVariable { host: h } =>
+      join(["maintenance hold: managed host '", h as String, "' has a unit hold but gunbc.host_maintenance_hold_reason declares no reason variable for it; nothing was taken or released"], "")
+  }
+}
+
+// THE HOST IS THE ENTRY'S ARGUMENT (`gunbc run ... --function maintenance_hold_take --arg host=<label>`),
+// never a default: an empty or unknown label refuses.
+fn maintenance_hold_take(host: String) -> ProcessExit {
+  if trim(s: host) == "" {
+    return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
+  }
+  match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
+    MaintenanceHoldAdmitted { hold: h } => maintenance_hold_take_admitted(hold: h)
+    MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
+    MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))
+  }
+}
+
+fn maintenance_hold_label(hold: AdmittedMaintenanceHold) -> String {
+  concat("maintenance hold on ", hold.subject.key as String)
+}
+
+// THE EXECUTOR IS DERIVED HERE FROM THE HOLD'S OWN SUBJECT, NEVER SUPPLIED BESIDE IT. A function taking
+// an admitted hold and an executor as two arguments could be handed hold A with an executor minted for
+// subject B on the same store host, and would then write B's slot under A's reason. So neither helper
+// below has an executor parameter: each mints it from hold.subject, and the slot key every store call
+// uses is that executor's own subject's. Both are sealed to their entry. A process that is not on the
+// store host refuses in the first arm, before the reason is read or the store touched.
+fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_take"),
+  ]
+{
+  let label = maintenance_hold_label(hold: hold)
+  match unit_hold_store_executor(subject: hold.subject) {
+    UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldOnStoreHost { executor: e } => {
+      let reason = actions_variable_trimmed(name: hold.reason_env)
+      if reason == "" {
+        exit_failure(reason: concat(hold.reason_env as String, " is unset; a maintenance hold names why the unit is held"))
+      } else {
+        match file_hold_acquire(root: unit_hold_store_root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
+          FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
+          FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
+            exit_failure(reason: join([label, ": unit already held by ", h as String], ""))
+          FileHoldAcquireLost { slot_key: _ } => exit_failure(reason: concat(label, ": lost the race; re-run"))
+          FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: concat(label, ": store unavailable; the unit is NOT held"))
+          FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
+          FileHoldKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: concat(label, ": key not slot-addressable"))
+        }
+      }
+    }
   }
 }
 
 // THE OPERATOR RELEASES ONLY AN OPERATOR HOLD: a boot's own hold is the boot's to free, and freeing
 // it from outside would let a second boot start while the first still drives the BMC.
-fn mtcollins1_maintenance_hold_release() -> ProcessExit {
-  match observe_file_hold(root: unit_hold_store_root, key: mtcollins1_unit_hold_key) {
-    HoldSlotAbsent => exit_failure(reason: "mtcollins1 maintenance hold: no hold was ever taken")
-    HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: concat("mtcollins1 maintenance hold: already free (released by ", concat(b as String, ")")))
-    HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: concat("mtcollins1 maintenance hold: slot undecodable: ", d as String))
-    HoldObservationUnavailable { cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store unavailable")
+fn maintenance_hold_release(host: String) -> ProcessExit {
+  if trim(s: host) == "" {
+    return exit_failure(reason: "maintenance hold: no host named; pass --arg host=<managed host>")
+  }
+  match admit_maintenance_hold_in(hosts: managed_hosts(), host: trim(s: host) as NonEmptyStr) {
+    MaintenanceHoldAdmitted { hold: h } => maintenance_hold_release_admitted(hold: h)
+    MaintenanceHoldHostRefused { admission: a } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldHostRefused { admission: a }))
+    MaintenanceHoldNoReasonVariable { host: x } => exit_failure(reason: maintenance_hold_admission_refusal(admission: MaintenanceHoldNoReasonVariable { host: x }))
+  }
+}
+
+fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release"),
+  ]
+{
+  match unit_hold_store_executor(subject: hold.subject) {
+    UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldOnStoreHost { executor: e } => maintenance_hold_release_on_store_host(executor: e)
+  }
+}
+
+// The release needs no maintenance policy beyond the admission its caller passed, so it takes the
+// executor alone: the slot it reads and frees, and the name it prints, are that executor's subject's.
+// Sealed to the helper above.
+fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "maintenance_hold_release_admitted"),
+  ]
+{
+  let label = concat("maintenance hold on ", executor.subject.key as String)
+  match observe_file_hold(root: unit_hold_store_root, key: executor.subject.key) {
+    HoldSlotAbsent => exit_failure(reason: concat(label, ": no hold was ever taken"))
+    HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: join([label, ": already free (released by ", b as String, ")"], ""))
+    HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
+    HoldObservationUnavailable { cause: _ } => exit_failure(reason: concat(label, ": store unavailable"))
     HoldSlotHeld { generation: g, owner: o } =>
       match decode_unit_hold_owner(owner: o) {
         UnitHoldOwnerUnrecognized { raw: r } =>
-          exit_failure(reason: concat("mtcollins1 maintenance hold: held by an owner this module did not write, so it is not released from here: ", r))
+          exit_failure(reason: join([label, ": held by an owner this module did not write, so it is not released from here: ", r], ""))
         UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p, pid_namespace: n } } =>
-          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: BootRun { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next boot recovers it if that run is observed dead")))
+          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: BootRun { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next boot recovers it if that run is observed dead"], ""))
         UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: a } } =>
-          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold")))
+          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold"], ""))
         UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r, process: p, pid_namespace: n } } =>
-          exit_failure(reason: concat("mtcollins1 maintenance hold: held by ", concat(unit_hold_owner_label(o: KvmObserverProbe { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next acquirer recovers it if that run is observed dead")))
+          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: KvmObserverProbe { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next acquirer recovers it if that run is observed dead"], ""))
         UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
-        match file_hold_release_assess(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
-          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: "mtcollins1 maintenance hold: slot moved before release; re-run")
-          FileHoldReleasePlanned { plan: p } =>
-            match file_hold_release_commit(plan: p) {
-              FileHoldReleased { slot_key: _, generation: _ } => ExitSuccess
-              FileHoldReleaseLost { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: lost the release race; re-run")
-              FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: "mtcollins1 maintenance hold: store refused the release; the unit is STILL held")
-              FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: "mtcollins1 maintenance hold: key not slot-addressable")
-            }
-        }
+          match file_hold_release_assess(root: unit_hold_store_root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
+            FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: concat(label, ": slot moved before release; re-run"))
+            FileHoldReleasePlanned { plan: p } =>
+              match file_hold_release_commit(plan: p) {
+                FileHoldReleased { slot_key: _, generation: _ } => ExitSuccess
+                FileHoldReleaseLost { slot_key: _ } => exit_failure(reason: concat(label, ": lost the release race; re-run"))
+                FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: concat(label, ": store refused the release; the unit is STILL held"))
+                FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => exit_failure(reason: concat(label, ": key not slot-addressable"))
+              }
+          }
       }
   }
 }
