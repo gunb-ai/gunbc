@@ -42,7 +42,7 @@ import std.durable_exclusive_hold {
   DurableHoldHolderReport, DurableHoldRecoveryRefusal, HoldRecoveryEligible, HoldRecoveryRefused,
   durable_hold_recovery_assess,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store { KeepAllGenerations, CasSlotRetention,
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
 }
@@ -135,8 +135,12 @@ fn hold_observation_of_cas(observed: CasSlotObservation<NonEmptyStr>) -> Durable
   }
 }
 
-fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservation {
-  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key, retention: KeepAllGenerations))
+// RETENTION IS THE SLOT'S DECLARATION, passed by its consumer (gunbc.durable_cas_file_store
+// CasSlotRetention): a hold whose history is an audit trail keeps every generation; a hold taken and
+// released on every commit of a bounded store keeps a window, or its own bookkeeping would grow
+// without bound. Read, plan and commit carry the same declaration.
+fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr, retention: CasSlotRetention) -> DurableHoldObservation {
+  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key, retention: retention))
 }
 
 // EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
@@ -165,6 +169,7 @@ type FileHoldAcquirePlan sole_constructor {
   owner: DurableHoldOwnerRef
   expected: CasExpectation
   held_payload: NonEmptyStr
+  retention: CasSlotRetention
 }
 
 type FileHoldAcquirePreparation
@@ -177,8 +182,9 @@ fn file_hold_acquire_prepare(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   requested_owner: DurableHoldOwnerRef,
+  retention: CasSlotRetention,
 ) -> FileHoldAcquirePreparation {
-  match durable_hold_acquire_assess(observed: observe_file_hold(root: root, key: slot_key)) {
+  match durable_hold_acquire_assess(observed: observe_file_hold(root: root, key: slot_key, retention: retention)) {
     HoldAcquireRefused { refusal: r } => FileHoldAcquireNotEligible { slot_key: slot_key, refusal: r }
     HoldAcquireEligible { expected: e } =>
       FileHoldAcquirePlanned {
@@ -188,6 +194,7 @@ fn file_hold_acquire_prepare(
           owner: requested_owner,
           expected: e,
           held_payload: hold_slot_payload(state: DurableHoldHeld { owner: requested_owner }),
+          retention: retention,
         },
       }
   }
@@ -217,7 +224,7 @@ fn file_hold_acquire_commit(plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome
   match admit_cas_attempt_for_derived_payload(key: plan.slot_key, expected: plan.expected, proposed: plan.held_payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
         CasCommitted { committed: c } =>
           FileHoldAcquired { slot_key: plan.slot_key, owner: plan.owner, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: plan.slot_key }
@@ -235,8 +242,9 @@ fn file_hold_acquire(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   requested_owner: DurableHoldOwnerRef,
+  retention: CasSlotRetention,
 ) -> FileHoldAcquireOutcome {
-  match file_hold_acquire_prepare(root: root, slot_key: slot_key, requested_owner: requested_owner) {
+  match file_hold_acquire_prepare(root: root, slot_key: slot_key, requested_owner: requested_owner, retention: retention) {
     FileHoldAcquirePlanned { plan: p } => file_hold_acquire_commit(plan: p)
     FileHoldAcquireNotEligible { slot_key: _, refusal: r } =>
       match r {
@@ -263,6 +271,7 @@ type FileHoldReleasePlan sole_constructor {
   owner: DurableHoldOwnerRef
   generation: CasGeneration
   free_payload: NonEmptyStr
+  retention: CasSlotRetention
 }
 
 type FileHoldReleaseAssessment
@@ -280,9 +289,10 @@ fn file_hold_release_assess(
   owner: DurableHoldOwnerRef,
   acquired_generation: CasGeneration,
   released_by: DurableHoldReleaseRef,
+  retention: CasSlotRetention,
 ) -> FileHoldReleaseAssessment {
   match durable_hold_release_assess(
-    observed: observe_file_hold(root: root, key: slot_key),
+    observed: observe_file_hold(root: root, key: slot_key, retention: retention),
     owner: owner,
     acquired_generation: acquired_generation,
   ) {
@@ -295,6 +305,7 @@ fn file_hold_release_assess(
           owner: owner,
           generation: g,
           free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+          retention: retention,
         },
       }
   }
@@ -319,7 +330,7 @@ fn file_hold_release_commit(plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome
   ) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldReleaseKeyNotSlotAddressable { slot_key: plan.slot_key }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, retention: plan.retention, verified: v).outcome {
         CasCommitted { committed: c } => FileHoldReleased { slot_key: plan.slot_key, generation: c.generation }
         CasPreconditionFailed { expected: _, observed: _ } => FileHoldReleaseLost { slot_key: plan.slot_key }
         CasStoreRefused { cause: c } => FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: c }
@@ -346,12 +357,14 @@ fn file_hold_recovery_assess(
   slot_key: NonEmptyStr,
   report: DurableHoldHolderReport,
   released_by: DurableHoldReleaseRef,
+  retention: CasSlotRetention,
 ) -> FileHoldRecoveryAssessment
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
   ]
 {
-  match durable_hold_recovery_assess(observed: observe_file_hold(root: root, key: slot_key), report: report) {
+  match durable_hold_recovery_assess(observed: observe_file_hold(root: root, key: slot_key, retention: retention), report: report) {
     HoldRecoveryRefused { refusal: r } => FileHoldRecoveryNotEligible { slot_key: slot_key, refusal: r }
     HoldRecoveryEligible { generation: g, dead_holder: h, evidence: e } =>
       FileHoldRecoveryPlanned {
@@ -361,6 +374,7 @@ fn file_hold_recovery_assess(
           owner: h,
           generation: g,
           free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+          retention: retention,
         },
         dead_holder: h,
         evidence: e,

@@ -1,5 +1,6 @@
 module gunbc.fabric_control_plane
 
+import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { Fnv1a64StructuralDigestHex, serialize_content_hash }
 import std.decl_ref { decl_ref }
@@ -237,7 +238,7 @@ fn reserve_selected_cell(
     slot_key: slot_key,
     requested_owner: fabric_hold_owner(
       reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
-    ),
+    ), retention: KeepAllGenerations
   ) {
     FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
       CellReserved {
@@ -638,7 +639,7 @@ fn end_cell_hold(
     slot_key: slot_key,
     owner: fabric_hold_owner(reservation: reservation),
     acquired_generation: acquired_generation,
-    released_by: fabric_hold_release_ref(reason: reason),
+    released_by: fabric_hold_release_ref(reason: reason), retention: KeepAllGenerations
   ) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
       match r {
