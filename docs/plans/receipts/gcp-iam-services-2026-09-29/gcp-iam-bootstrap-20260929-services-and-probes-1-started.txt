@@ -1,0 +1,1 @@
+operator bootstrap started; not a convergence receipt

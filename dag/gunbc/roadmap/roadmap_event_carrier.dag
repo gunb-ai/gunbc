@@ -16,7 +16,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
 import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_attempt_request_record {
   attempt_request_binding_read_for_instance,
 }
 import extdeps.shell
-import gunbc.roadmap.roadmap_event_log { roadmap_event_heads, roadmap_node_standing_key, roadmap_issue_state }
+import gunbc.roadmap.roadmap_event_log { roadmap_event_heads, roadmap_history_unordered_reason, roadmap_issue_state }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
 import extdeps.git {
@@ -192,13 +192,46 @@ fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsur
 // Every operation owns its worktree. A concurrent read cannot reset a writer's index or FETCH_HEAD.
 // The remote publication is conditional on the EXACT fetched commit, not merely fast-forward.
 // The issue-parent decision and operation receipt are made inside that same immutable snapshot.
+// A SNAPSHOT'S PATH SAYS WHOSE IT IS. Every private snapshot of one carrier layout is created at
+// stem, then a fixed-width structural digest of the layout's complete long-lived worktree path,
+// then a dot, then mktemp's suffix. The worktree path is per instance, so the namespace is per
+// instance. The digest is over the whole path and has one width, so two worktree paths that differ
+// anywhere have different namespaces, no namespace is a prefix of another, and an instance root of
+// any length costs the same one filename component.
+//
+// OWNERSHIP IS THE WHOLE SHAPE, not a prefix: a path is one of this layout's snapshots only when it
+// is the namespace followed by exactly the suffix mktemp writes in place of the template's
+// placeholder (roadmap_event_snapshot_path_owned). The census of one instance
+// (gunbc.roadmap.roadmap_event_snapshot_census) selects by that, so a worktree someone registered
+// at a longer path beginning with the namespace is not counted as a snapshot.
+data roadmap_event_snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
+data roadmap_event_snapshot_placeholder: String = "XXXXXXXXXX"
+
+fn roadmap_event_snapshot_namespace(layout: RoadmapEventCarrierLayout) -> String {
+  join([
+    roadmap_event_snapshot_stem,
+    content_hash_tagged_structural(tag: "roadmap-event-snapshot-namespace" as NonEmptyStr, payload: content_hash_atom(value: layout.worktree as String as NonEmptyStr)).digest as String,
+    ".",
+  ], "")
+}
+
+fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePath {
+  concat(roadmap_event_snapshot_namespace(layout: layout), roadmap_event_snapshot_placeholder) as FilePath
+}
+
+fn roadmap_event_snapshot_path_owned(namespace: String, path: String) -> Bool {
+  starts_with(s: path, prefix: namespace)
+    && string_length(s: path) == string_length(s: namespace) + string_length(s: roadmap_event_snapshot_placeholder)
+    && all((path |> chars).skip(n: string_length(s: namespace)), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+}
+
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }
 
 fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierSnapshot {
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => CarrierSnapshotRefused { reason: concat(step, concat(": ", reason)) }
     CarrierReady => {
-      let temporary = shell.Mktemp.Dir()
+      let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))
       if !temporary.success { CarrierSnapshotRefused { reason: "cannot create private event snapshot" } }
       else { match carrier_exec(layout: layout, workdir: layout.repo_root as String,
         args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"]) {
@@ -210,22 +243,80 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
   }
 }
 
-fn roadmap_event_snapshot_close(layout: RoadmapEventCarrierLayout) -> CarrierExec {
-  carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "remove", "--force", layout.worktree as String])
+// WHAT BECAME OF THE OPERATION'S PRIVATE SNAPSHOT. Not opened is an operation refused before a
+// snapshot existed, so there was nothing to remove. Closed is the worktree removed. Close failed is
+// a worktree the operation left behind, named with what the removal answered. It is a fact beside
+// the operation's result and never a rewrite of it: an event that was published stays published
+// whether or not its scratch worktree could be removed.
+type CarrierSnapshotClose
+  = SnapshotNotOpened
+  | SnapshotClosed
+  | SnapshotCloseFailed { worktree: FilePath, exit_code: Int, stderr: String }
+
+// EVERY SNAPSHOT-OWNING OPERATION ANSWERS WITH BOTH: its own result, unchanged, and the standing of
+// the snapshot it owned. The caller is the one that has a surface for a leaked worktree, so the
+// standing travels to it as a value; no carrier operation decides it is unimportant.
+type CarrierClosed<T> {
+  result: T
+  close: CarrierSnapshotClose
 }
 
-fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, operation: String = "") -> RoadmapEventAppend {
-  if operation != "" && !roadmap_operation_identity_valid(operation: operation) { EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "operation-invalid", reason: "operation identity must be 1–128 URL-safe ASCII characters" } } else {
-  match roadmap_event_private_snapshot(layout: layout) {
-    CarrierSnapshotRefused { reason } => EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "snapshot", reason: reason }
-    CarrierSnapshotReady { layout: private } => {
-      let result = roadmap_event_append_private(layout: private, event: event, operation: operation)
-      let cleanup = roadmap_event_snapshot_close(layout: private)
-      result
-    }
+fn carrier_snapshot_close_of(layout: RoadmapEventCarrierLayout, removal: CarrierExec) -> CarrierSnapshotClose {
+  match removal {
+    CarrierExecOk { stdout: _ } => SnapshotClosed
+    CarrierExecFailed { exit_code, stderr } => SnapshotCloseFailed { worktree: layout.worktree, exit_code: exit_code, stderr: stderr }
   }
 }
 
+// The sentence a caller with a text surface states, and none when there is nothing to state.
+fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
+  match close {
+    SnapshotNotOpened => none
+    SnapshotClosed => none
+    SnapshotCloseFailed { worktree, exit_code, stderr } =>
+      Present { value: join(["roadmap event snapshot worktree ", worktree as String, " was not removed (exit ", to_string(value: exit_code), "): ", trim(stderr)], "") }
+  }
+}
+
+fn carrier_snapshot_close_failures(closes: List<CarrierSnapshotClose>) -> List<String> {
+  fold(closes, init: [], f: (acc, c) => match carrier_snapshot_close_failure(close: c) {
+    Present { value: line } => concat(acc, [line])
+    Absent => acc
+  })
+}
+
+// A REPORT IS A TEXT SURFACE, so a leaked snapshot is stated on it after the report's own answer,
+// which is left exactly as it was.
+fn carrier_report_with_snapshot_close(text: String, close: CarrierSnapshotClose) -> String {
+  match carrier_snapshot_close_failure(close: close) {
+    Absent => text
+    Present { value: leak } => join([text, " [", leak, "]"], "")
+  }
+}
+
+fn roadmap_event_snapshot_close(layout: RoadmapEventCarrierLayout) -> CarrierSnapshotClose {
+  carrier_snapshot_close_of(layout: layout, removal: carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "remove", "--force", layout.worktree as String]))
+}
+
+// THE CLOSE IS TAKEN INSIDE A MATCH ON THE OPERATION'S OWN RESULT, in every snapshot-owning
+// operation below. The removal is therefore a dependency of the answer (the answer carries its
+// standing) and the operation's result is a dependency of the removal (the arm that removes exists
+// only once the result does), so the snapshot is removed after the operation and before the answer,
+// by construction and not by the order two independent bindings happen to be written in.
+fn roadmap_event_append(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, operation: String = "") -> CarrierClosed<RoadmapEventAppend> {
+  if operation != "" && !roadmap_operation_identity_valid(operation: operation) {
+    CarrierClosed { result: EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "operation-invalid", reason: "operation identity must be 1–128 URL-safe ASCII characters" }, close: SnapshotNotOpened }
+  } else {
+    match roadmap_event_private_snapshot(layout: layout) {
+      CarrierSnapshotRefused { reason } => CarrierClosed { result: EventAppendRefused { id: roadmap_event_envelope(e: event).id, step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+      CarrierSnapshotReady { layout: private } =>
+        match roadmap_event_append_private(layout: private, event: event, operation: operation) {
+          EventAppended { id } => CarrierClosed { result: EventAppended { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+          EventAlreadyPresent { id } => CarrierClosed { result: EventAlreadyPresent { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+          EventAppendRefused { id, step, reason } => CarrierClosed { result: EventAppendRefused { id: id, step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+        }
+    }
+  }
 }
 
 fn roadmap_operation_identity_valid(operation: String) -> Bool {
@@ -322,23 +413,25 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
 }
 
 fn roadmap_event_parent_admitted(event: RoadmapEvent, envelopes: List<RoadmapEventEnvelope>) -> Bool {
-  let standing = roadmap_node_standing_key(s: roadmap_node_standing(envs: envelopes))
-  if standing == "forked" || standing == "history_incomplete" { false }
-  else if any(envelopes, e => e.event.node != event.node) { false }
-  else {
-    let readable = match roadmap_event_heads(envs: envelopes).first() {
-      Absent => CasReadableAbsent
-      Present { value: head } => CasReadablePresent { version: CasSlotVersion {
-        generation: count(envelopes), content: content_hash_of_value(value: head.id as NonEmptyStr), value: head.id } }
-    }
-    match event.parent {
-      Absent => cas_expectation_admits(expected: ExpectSlotAbsent, readable: readable)
-      Present { value: expected } => match filter(envelopes, e => e.id == expected).first() {
-        Absent => false
-        Present { value: previous } => cas_expectation_admits(expected: ExpectSlotGeneration {
-          generation: count(roadmap_event_chain(envs: envelopes, head: previous, budget: count(envelopes))) }, readable: readable)
+  match roadmap_history_unordered_reason(envs: envelopes) {
+    Present { value: _ } => false
+    Absent =>
+      if any(envelopes, e => e.event.node != event.node) { false }
+      else {
+        let readable = match roadmap_event_heads(envs: envelopes).first() {
+          Absent => CasReadableAbsent
+          Present { value: head } => CasReadablePresent { version: CasSlotVersion {
+            generation: count(envelopes), content: content_hash_of_value(value: head.id as NonEmptyStr), value: head.id } }
+        }
+        match event.parent {
+          Absent => cas_expectation_admits(expected: ExpectSlotAbsent, readable: readable)
+          Present { value: expected } => match filter(envelopes, e => e.id == expected).first() {
+            Absent => false
+            Present { value: previous } => cas_expectation_admits(expected: ExpectSlotGeneration {
+              generation: count(roadmap_event_chain(envs: envelopes, head: previous, budget: count(envelopes))) }, readable: readable)
+          }
+        }
       }
-    }
   }
 }
 
@@ -522,36 +615,36 @@ fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> Roadmap
   }
 }
 
-fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+fn roadmap_events_read(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> CarrierClosed<RoadmapEventsRead> {
   match roadmap_event_private_snapshot(layout: layout) {
-    CarrierSnapshotRefused { reason } => EventsReadRefused { node: node, step: "snapshot", reason: reason }
-    CarrierSnapshotReady { layout: private } => {
-      let result = roadmap_events_read_private(layout: private, node: node)
-      let cleanup = roadmap_event_snapshot_close(layout: private)
-      result
-    }
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: EventsReadRefused { node: node, step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_events_read_private(layout: private, node: node) {
+        EventsRead { node: read_node, envelopes } => CarrierClosed { result: EventsRead { node: read_node, envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
+        EventsReadRefused { node: read_node, step, reason } => CarrierClosed { result: EventsReadRefused { node: read_node, step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
   }
 }
 
-fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapStandings> {
   match roadmap_event_private_snapshot(layout: layout) {
-    CarrierSnapshotRefused { reason } => StandingsUnobserved { reason: reason }
-    CarrierSnapshotReady { layout: private } => {
-      let result = roadmap_standings_read_private(layout: private)
-      let cleanup = roadmap_event_snapshot_close(layout: private)
-      result
-    }
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: StandingsUnobserved { reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_standings_read_private(layout: private) {
+        StandingsObserved { rows } => CarrierClosed { result: StandingsObserved { rows: rows }, close: roadmap_event_snapshot_close(layout: private) }
+        StandingsUnobserved { reason } => CarrierClosed { result: StandingsUnobserved { reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
   }
 }
 
-fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
   match roadmap_event_private_snapshot(layout: layout) {
-    CarrierSnapshotRefused { reason } => AllEventsReadRefused { step: "snapshot", reason: reason }
-    CarrierSnapshotReady { layout: private } => {
-      let result = roadmap_events_read_all_private(layout: private)
-      let cleanup = roadmap_event_snapshot_close(layout: private)
-      result
-    }
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_events_read_all_private(layout: private) {
+        AllEventsRead { envelopes } => CarrierClosed { result: AllEventsRead { envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
+        AllEventsReadRefused { step, reason } => CarrierClosed { result: AllEventsReadRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
+      }
   }
 }
 
@@ -607,18 +700,17 @@ fn roadmap_result_append_of(append: RoadmapEventAppend) -> RoadmapResultAppend {
 // none that differs on this one, the claim a Claimed on this issue's history, a single head), the
 // event is built from that derived identity and chained on the head the snapshot read, and it is
 // published against that exact commit. A log that moved between the read and the publish is
-// refused by the same conditional push as any append. The snapshot is closed through a match the
-// result passes through, so the close is a step of the append and not a binding nothing consumes.
-fn roadmap_bound_result_append(instance: HostDashboardInstance, node: RoadmapNodeId, attempt: String, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String) -> RoadmapResultAppend {
+// refused by the same conditional push as any append. The snapshot is closed inside a match on the
+// append's own result, and its standing is answered beside that result (roadmap_event_append).
+fn roadmap_bound_result_append(instance: HostDashboardInstance, node: RoadmapNodeId, attempt: String, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String) -> CarrierClosed<RoadmapResultAppend> {
   match roadmap_event_private_snapshot(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
-    CarrierSnapshotRefused { reason } => ResultAppendRefused { step: "snapshot", reason: reason }
-    CarrierSnapshotReady { layout: private } => {
-      let result = roadmap_bound_result_append_private(instance: instance, layout: private, node: node, attempt: attempt, outcome: outcome, author: author, recorded_at: recorded_at)
-      match roadmap_event_snapshot_close(layout: private) {
-        CarrierExecOk { stdout: _ } => result
-        CarrierExecFailed { exit_code: _, stderr: _ } => result
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: ResultAppendRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      match roadmap_bound_result_append_private(instance: instance, layout: private, node: node, attempt: attempt, outcome: outcome, author: author, recorded_at: recorded_at) {
+        ResultAppended { id } => CarrierClosed { result: ResultAppended { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+        ResultAppendAlreadyPresent { id } => CarrierClosed { result: ResultAppendAlreadyPresent { id: id }, close: roadmap_event_snapshot_close(layout: private) }
+        ResultAppendRefused { step, reason } => CarrierClosed { result: ResultAppendRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
       }
-    }
   }
 }
 

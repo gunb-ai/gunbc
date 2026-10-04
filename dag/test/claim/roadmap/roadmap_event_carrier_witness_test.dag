@@ -4,12 +4,18 @@ import std.types { Bool, String, FilePath, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemFileIndeterminate, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.roadmap.roadmap_event_log { RoadmapEvent, Claimed, roadmap_event_envelope, RoadmapEventId, EventPrincipalAuthenticated }
+import gunbc.roadmap.roadmap_event_log { RoadmapEvent, RoadmapEventEnvelope, Claimed, roadmap_event_envelope, RoadmapEventId, EventPrincipalAuthenticated }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout, roadmap_event_node_dir, roadmap_event_file_relative, roadmap_event_push_refspec, roadmap_event_commit_message,
   roadmap_events_branch, roadmap_events_decode_reads, EventFileRead, EventFileContent, EventFileUnreadable, RoadmapEventsRead, EventsRead, EventsReadRefused,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, roadmap_all_events_of_reads,
+  CarrierExecOk, CarrierExecFailed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  carrier_snapshot_close_of, carrier_snapshot_close_failure, carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
+  roadmap_event_parent_admitted,
 }
+import gunbc.roadmap.roadmap_event_log { Progress, roadmap_history_unordered_reason }
+import gunbc.roadmap.roadmap_event_cli { roadmap_event_record_exit, roadmap_event_record_unordered_refusal }
+import std.process { ExitSuccess, ExitFailure }
 import gunbc.roadmap.roadmap_event_log { roadmap_event_wire_text }
 
 fn self_claimed(node: RoadmapNodeId, author: String, at: String) -> RoadmapEventEnvelope {
@@ -86,4 +92,95 @@ test fn a_refused_listing_at_the_receipt_site_arrives_with_existence_unknown_nev
         && !string_contains(s: cause, pattern: "is listed")
     _ => false
   }
+}
+
+fn progress_on(node: RoadmapNodeId, parent: RoadmapEventId?, note: String, at: String) -> RoadmapEvent {
+  let principal = EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "s1" as NonEmptyStr } }
+  RoadmapEvent { node: node, author: principal, parent: parent, kind: Progress { note: note as NonEmptyStr }, recorded_at: at }
+}
+
+// WHAT A REMOVAL ANSWERED IS THE SNAPSHOT'S STANDING, AND A FAILED ONE IS NAMED. A removal that
+// exited nonzero is SnapshotCloseFailed carrying the worktree the layout names, the exit and what
+// git said -- the red is that arm answering SnapshotClosed. A removal that succeeded is
+// SnapshotClosed. Only the failed standing has a sentence, and the sentence names the worktree;
+// closed and never-opened have none, so a list of standings yields exactly its failures.
+test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -> Bool {
+  let private = roadmap_event_carrier_layout(repo_root: "/repo" as FilePath, instance_root: "/tmp/tmp.snap" as FilePath, git_program: "/usr/bin/git", directory_program: "/usr/bin/install")
+  let failed = carrier_snapshot_close_of(layout: private, removal: CarrierExecFailed { exit_code: 128, stderr: "fatal: validation failed, cannot remove working tree\n" })
+  let closed = carrier_snapshot_close_of(layout: private, removal: CarrierExecOk { stdout: "" })
+  let failed_is_named = match failed {
+    SnapshotCloseFailed { worktree, exit_code, stderr: _ } => (worktree as String) == (private.worktree as String) && exit_code == 128
+    SnapshotClosed => false
+    SnapshotNotOpened => false
+  }
+  let closed_is_closed = match closed { SnapshotClosed => true  SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false  SnapshotNotOpened => false }
+  let sentence = match carrier_snapshot_close_failure(close: failed) {
+    Present { value: line } => string_contains(s: line, pattern: "/tmp/tmp.snap/roadmap-events") && string_contains(s: line, pattern: "exit 128") && string_contains(s: line, pattern: "cannot remove working tree")
+    Absent => false
+  }
+  let silent = match carrier_snapshot_close_failure(close: closed) { Absent => true  Present { value: _ } => false }
+    && match carrier_snapshot_close_failure(close: SnapshotNotOpened) { Absent => true  Present { value: _ } => false }
+  failed_is_named && closed_is_closed && sentence && silent
+    && count(carrier_snapshot_close_failures(closes: [closed, failed, SnapshotNotOpened, failed])) == 2
+    && count(carrier_snapshot_close_failures(closes: [closed, SnapshotNotOpened])) == 0
+}
+
+// A REPORT STATES THE LEAK AFTER ITS OWN ANSWER AND IS OTHERWISE UNTOUCHED: with a closed snapshot
+// the text is returned exactly; with a failed one the same text comes first and the worktree is
+// named after it. The red is a report that reads the same either way.
+test fn a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it() -> Bool {
+  let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.leak" as FilePath, exit_code: 1, stderr: "busy" }
+  let said = carrier_report_with_snapshot_close(text: "demo-node: open (0 events)", close: leaked)
+  carrier_report_with_snapshot_close(text: "demo-node: open (0 events)", close: SnapshotClosed) == "demo-node: open (0 events)"
+    && carrier_report_with_snapshot_close(text: "demo-node: open (0 events)", close: SnapshotNotOpened) == "demo-node: open (0 events)"
+    && starts_with(s: said, prefix: "demo-node: open (0 events)")
+    && string_contains(s: said, pattern: "/tmp/tmp.leak")
+    && said != "demo-node: open (0 events)"
+}
+
+// THE RECORD ENTRY'S EXIT BESIDE ITS SNAPSHOTS. A recorded event stays ExitSuccess even when a
+// snapshot was left behind -- the red is a nonzero exit telling the caller its event was not
+// recorded. A refusal keeps its code and its own reason first and gains the leak after it -- the
+// red is a refusal that reads the same whether or not a worktree leaked.
+test fn the_record_exit_keeps_a_success_and_states_a_leak_on_a_refusal() -> Bool {
+  let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.leak" as FilePath, exit_code: 1, stderr: "busy" }
+  let recorded = match roadmap_event_record_exit(exit: ExitSuccess, closes: [SnapshotClosed, leaked]) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  let refused = match roadmap_event_record_exit(exit: ExitFailure { code: 1, reason: "append refused at revision-conflict" }, closes: [SnapshotClosed, leaked]) {
+    ExitFailure { code, reason } => code == 1 && starts_with(s: reason, prefix: "append refused at revision-conflict") && string_contains(s: reason, pattern: "/tmp/tmp.leak")
+    ExitSuccess => false
+  }
+  let refused_clean = match roadmap_event_record_exit(exit: ExitFailure { code: 1, reason: "append refused at revision-conflict" }, closes: [SnapshotClosed, SnapshotNotOpened]) {
+    ExitFailure { code, reason } => code == 1 && reason == "append refused at revision-conflict"
+    ExitSuccess => false
+  }
+  recorded && refused && refused_clean
+}
+
+// THE REVISION CHECK ASKS THE ONE HISTORY-ORDER AUTHORITY. The discriminating case is a history
+// whose only event names a parent the log does not carry: an event chained on that one head passes
+// the generation check by itself (one event, a chain of one), so only the ordering question refuses
+// it -- the red is that append admitted. A forked history is refused too; there the generation
+// check would refuse on its own, so that case is a control on the answer and not on the route. The
+// positive controls: a linear history has no unordered reason and admits an event on its head, and
+// an event naming a stale parent on it is refused by the revision check. The record entry's
+// refusal carries the authority's own sentence.
+test fn an_append_is_refused_on_a_history_the_order_authority_cannot_order() -> Bool {
+  let node = "demo-node" as RoadmapNodeId
+  let e1 = self_claimed(node: node, author: "s1", at: "t1")
+  let e2 = roadmap_event_envelope(e: progress_on(node: node, parent: Present { value: e1.id }, note: "a", at: "t2"))
+  let rival = roadmap_event_envelope(e: progress_on(node: node, parent: Present { value: e1.id }, note: "b", at: "t3"))
+  let orphan = roadmap_event_envelope(e: progress_on(node: node, parent: Present { value: "deadbeefdeadbeef" as RoadmapEventId }, note: "c", at: "t4"))
+  let next = progress_on(node: node, parent: Present { value: e2.id }, note: "next", at: "t5")
+  let stale = progress_on(node: node, parent: Present { value: e1.id }, note: "stale", at: "t5")
+  let on_orphan = progress_on(node: node, parent: Present { value: orphan.id }, note: "on an orphan", at: "t5")
+  let linear_admits = roadmap_event_parent_admitted(event: next, envelopes: [e1, e2])
+  let linear_is_ordered = match roadmap_history_unordered_reason(envs: [e1, e2]) { Absent => true  Present { value: _ } => false }
+  let stale_refused = !roadmap_event_parent_admitted(event: stale, envelopes: [e1, e2])
+  let incomplete_refused = !roadmap_event_parent_admitted(event: on_orphan, envelopes: [orphan])
+  let forked_refused = !roadmap_event_parent_admitted(event: next, envelopes: [e1, e2, rival])
+  let refusal_says_why = match roadmap_history_unordered_reason(envs: [orphan]) {
+    Present { value: why } => why != "" && string_contains(s: roadmap_event_record_unordered_refusal(why: why), pattern: why) && string_contains(s: roadmap_event_record_unordered_refusal(why: why), pattern: "cannot be ordered")
+    Absent => false
+  }
+  linear_admits && linear_is_ordered && stale_refused && incomplete_refused && forked_refused && refusal_says_why
 }

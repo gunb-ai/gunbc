@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_result_returned_witness_test
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal }
@@ -51,7 +51,8 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
   result_returned_observation_of,
 }
-import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit }
+import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit, belt_tick_exit_with_snapshot_closes }
+import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 
 data rr_attempt: String = "feedfacefeedface"
@@ -666,7 +667,8 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
 // result_return_attempts_for_instance is driven against srv2 preview and withholds on the posture
 // before it reads the log or observes an attempt.
 test fn the_result_return_pass_withholds_on_an_observe_only_instance() -> Bool {
-  match result_return_attempts_for_instance(instance: srv2_preview_dashboard_instance(), recorded_at: "2026-10-03T10:00:00Z") {
+  let run = result_return_attempts_for_instance(instance: srv2_preview_dashboard_instance(), recorded_at: "2026-10-03T10:00:00Z")
+  count(run.closes) == 0 && match run.pass {
     ResultReturnPassWithheld { reason } => string_contains(s: reason, pattern: "observe-only")
     ResultReturnPassRan { outcomes: _ } => false
     ResultReturnPassRefused { step: _, reason: _ } => false
@@ -709,4 +711,27 @@ test fn an_undelivered_result_fails_the_tick_and_is_named_beside_an_observation_
   }
   let neither = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitSuccess) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
   undelivered && unreadable && clean && both && observation_only && result_only && neither
+}
+
+// A SNAPSHOT THE RESULT RETURN LEFT BEHIND FAILS THE TICK AND IS NAMED, AND REPLACES NOTHING. A
+// clean tick whose pass left one worktree behind exits nonzero naming that worktree and what the
+// removal answered; a tick that already failed keeps its code and its own reason and gains the
+// leak after it; a tick whose snapshots all closed, or that opened none, exits exactly as it would
+// have. The red is an exit that is unchanged by a failed removal.
+test fn a_snapshot_left_behind_by_the_result_return_fails_the_tick_beside_its_own_exit() -> Bool {
+  let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.rrleak" as FilePath, exit_code: 128, stderr: "fatal: cannot remove a locked working tree\n" }
+  let alone = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, leaked, SnapshotNotOpened]) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "1 roadmap event snapshot(s)") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak") && string_contains(s: reason, pattern: "exit 128") && string_contains(s: reason, pattern: "locked working tree")
+    ExitSuccess => false
+  }
+  let beside = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [leaked]) {
+    ExitFailure { code, reason } => code == 3 && starts_with(s: reason, prefix: "served observation write failed") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak")
+    ExitSuccess => false
+  }
+  let closed = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, SnapshotNotOpened]) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  let untouched = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [SnapshotClosed]) {
+    ExitFailure { code, reason } => code == 3 && reason == "served observation write failed"
+    ExitSuccess => false
+  }
+  alone && beside && closed && untouched
 }
