@@ -1539,7 +1539,13 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.free_monoid_structure_bound.fmb_kernel_reading",
   "v2.test.claim.compiler.free_monoid_structure_bound.fmb_mixed_reading",
   "v2.test.claim.compiler.free_monoid_structure_bound.fmb_int_reading",
-  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_bool_reading"
+  "v2.test.claim.compiler.free_monoid_structure_bound.fmb_bool_reading",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_plain_alias_agrees_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_plain_alias_disagrees_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_refined_refuses_raw_plain_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_refined_refuses_raw_generic_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_alias_of_refined_refuses_raw_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_alias_of_refined_admits_refined_reason"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
