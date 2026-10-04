@@ -2107,8 +2107,9 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// in the fixture's closure is no longer rendered, so ITS per-module emit refusal no longer
 /// reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks
 /// (anonymous records, effectful recursion, file-name and symbol collisions) run before
-/// selection and are unchanged. A corpus module's own emission is the subject of the
-/// generated-artifact lanes, which render it for real, not of a fixture claim.
+/// selection and are unchanged. A corpus module's own emission is not a fixture claim's subject:
+/// the required floor renders every recorded closure module once per run in
+/// [`fixture_closure_union_emit_receipt`], and an emit refusal there refuses the floor.
 ///
 /// REFUSES, NEVER WIDENS. If the graph holds no module spanned in the fixture source, there is
 /// no subject to render, and the answer is a typed refusal. It is never a fall back to
