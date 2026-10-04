@@ -150,20 +150,24 @@ fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
   }
 }
 
-// CARDINALITY PROBES: exactly one of these passes, and which one names the materialized shape.
-// THE FIVE NON-PASSING MEMBERS ARE DESIGNED REDS, NOT BROKEN CLAIMS, and they are deliberately
-// NOT enrolled in v2.workflow.floor_expected_red: this is a one-hot family whose red IS the
-// assertion (which member passes names the materialized shape), while the roster's charter
-// carries only identities someone is fixing, and its KnownRedNowPassing arm would read a healthy
-// family flip (cardinality moving, e.g. 11 -> 12) as a stale enrolment. The floor counts a
-// terminal-verdict FAIL as answered; the standing this file must never re-enter is
-// planned-without-terminal-verdict, which the two refused-arm members did once through bare
-// negative literals (== -1) and now carry as the corpus spelling (== 0 - N). Filed as
-// gunbc.recurring_failure_mode.a_bare_negative_integer_literal_in_a_claim_body_loses_its_verdict.
-test fn probe_materialized_cardinality_11() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 11 }
-test fn probe_materialized_cardinality_1() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 1 }
-test fn probe_materialized_cardinality_10() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 10 }
-test fn probe_materialized_cardinality_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 - 1 }
-test fn probe_materialized_cardinality_command_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 - 2 }
-test fn probe_materialized_cardinality_0() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 }
+// THE CARDINALITY CONTROLS, ALL TRUE-RETURNING. Every floor claim answers TRUE; the negative
+// controls are folded into assertions of absence rather than designed-false claims, so the
+// discrimination survives without a claim that reads as a floor red: the exact cardinality is
+// pinned at 11 (the materialized shape: the leading literal plus ten projected words), the two
+// refusal sentinels are asserted absent, and the degenerate counts (empty, singleton, the
+// option-word-only 10) are asserted absent. materialized_cardinality above is a plain fn, so a
+// refusal would move the answer to its sentinel and these claims would go red, not silent.
+test fn probe_materialized_cardinality_is_exactly_11() -> Bool {
+  materialized_cardinality(reading: wait_control_command_reading()) == 11
+}
+
+test fn probe_cardinality_refusal_arms_are_not_produced() -> Bool {
+  let c = materialized_cardinality(reading: wait_control_command_reading())
+  (c != 0 - 1) && (c != 0 - 2)
+}
+
+test fn probe_cardinality_degenerate_counts_are_not_produced() -> Bool {
+  let c = materialized_cardinality(reading: wait_control_command_reading())
+  (c != 0) && (c != 1) && (c != 10)
+}
 
