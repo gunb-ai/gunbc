@@ -3564,35 +3564,45 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
   }
 }
 
+// WHAT A TRANSPORT RUNNER BROUGHT BACK, AS A COPRODUCT (DESIGN 5: the refusal must stay typed). Two
+// shapes, kept apart so no caller can read a before-execution refusal as a process result:
+// RunArgvTransportObserved carries a ShellExecObserved -- the leg RAN and this is what it returned,
+// exit status included; RunArgvTransportRefused carries the portable-word wall's admission text --
+// NO LEG RAN, so there is no exit code to report and any "exited N" line about this leg would be
+// fabricated. The first draft of this seam folded the refusal into ShellExecObserved{exit_code: 1},
+// which made the install fold report that an operation "exited 1" that never started. Callers match
+// the arms, so each says which of the two happened.
+type RunArgvTransportOutcome
+  = RunArgvTransportObserved { observed: ShellExecObserved }
+  | RunArgvTransportRefused { reason: String }
+
 // ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
 // run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
-// outcome becomes is the same for both: the wall's refusal becomes a failed observation whose stdout
-// carries the admission's own text (plus this edge's "before any ssh leg" prefix, so the red names
-// the broken wall rather than a connection error), and a converged result becomes the process's exit
-// status and streams. ShellExecObserved has no refusal-shaped state, so a refusal IS an observation
-// here -- the mapping is where the admission's verdict and the transport's carrier meet, and it is
-// written once so the two arms cannot drift.
-fn typed_argv_outcome_to_shell_exec(typed: TypedArgvExecOutcome) -> ShellExecObserved {
+// outcome becomes is the same for both: the wall's refusal becomes the REFUSED arm, carrying the
+// admission's own text (plus this edge's "before any ssh leg" marker, so the red names the broken
+// wall rather than a connection error), and a converged result becomes the OBSERVED arm -- the
+// process's real exit status and streams. The mapping is where the admission's verdict and the
+// transport's carrier meet, and it is written once so the two arms cannot drift.
+fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
     TypedArgvExecRefused { reason: why } =>
-      ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: join(
+      RunArgvTransportRefused {
+        reason: join(
           [
-            "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
+            "the portable-word wall refused the typed argv before any ssh leg: ",
             why,
           ],
           "",
         ),
-        stderr: "",
       }
     TypedArgvExecConverged { result: result } =>
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.exit_code == 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
       }
   }
 }
@@ -3647,25 +3657,25 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // problem, so what remains is the transport's own authority -- the fleet seam executes through its
 // own session type and trust policy, and admitting shape_fleet_ssh_exec as a host-effect transport
 // arm is its own change with its own analysis, not a rider on this conversion.
-fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> ShellExecObserved {
+fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
       let params = run_argv_parameters_of(command: command)
       let result = shell.Exec.RunArgv(program: params.program, arguments: params.arguments)
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.exit_code == 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
       }
     }
     SshShell { ssh_host: h } =>
-      typed_argv_outcome_to_shell_exec(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
     FleetSsh { target: t, context: _ } =>
-      ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: join([
+      RunArgvTransportRefused {
+        reason: join([
           "host_effect_apply: run_argv_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
           t.endpoint as String,
           ". The command is typed argv, so the old carrier objection (a script body where the fleet path",
@@ -3674,14 +3684,10 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
           " as a host-effect transport arm is its own change with its own analysis. Fail-closed until that",
           " change names itself.",
         ], ""),
-        stderr: "",
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
-        stderr: "",
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
       }
   }
 }
@@ -3699,24 +3705,24 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         arguments: params.arguments,
         stdin_payload: stdin_payload,
       )
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.exit_code == 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
+      RunArgvTransportObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
       }
     }
     SshShell { ssh_host: h } =>
-      typed_argv_outcome_to_shell_exec(typed: typed_argv_exec_over_ssh_with_stdin(
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh_with_stdin(
         host: h,
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
     FleetSsh { target: t, context: _ } =>
-      ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: join([
+      RunArgvTransportRefused {
+        reason: join([
           "host_effect_apply: run_argv_stdin_over_host_effect_transport refuses the FleetSsh transport for endpoint=",
           t.endpoint as String,
           ". The command is typed argv with its payload on stdin, so the old carrier objection (a script",
@@ -3725,14 +3731,10 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
           " policy, and admitting the portable-words-with-stdin op as a host-effect transport arm is its",
           " own change with its own analysis. Fail-closed until that change names itself.",
         ], ""),
-        stderr: "",
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
-        stderr: "",
+      RunArgvTransportRefused {
+        reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
       }
   }
 }
@@ -5592,7 +5594,7 @@ fn compile_pool_slice_install_step(
         stdin_payload: serialize_systemd_unit_file(file: slice_unit_file),
         transport: transport,
       )
-      if written.success == false {
+      if !run_argv_transport_succeeded(outcome: written) {
         let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
         compile_pool_install_failed_step_result(
           failed_step: "stage write",
@@ -5603,7 +5605,7 @@ fn compile_pool_slice_install_step(
         )
       } else {
         let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
-        if installed.success == false {
+        if !run_argv_transport_succeeded(outcome: installed) {
           let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
           compile_pool_install_failed_step_result(
             failed_step: "install",
@@ -5614,7 +5616,7 @@ fn compile_pool_slice_install_step(
           )
         } else {
           let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
-          if reloaded.success == false {
+          if !run_argv_transport_succeeded(outcome: reloaded) {
             let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
             compile_pool_install_failed_step_result(
               failed_step: "daemon-reload",
@@ -5626,48 +5628,59 @@ fn compile_pool_slice_install_step(
           } else {
             let started = run_argv_over_host_effect_transport(command: start, transport: transport)
             let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
-            if started.success == false {
-              compile_pool_install_failed_step_result(
-                failed_step: "start",
-                slice_unit: slice_unit,
-                observed: started,
-                discarded: discarded,
-                effect_intent: effect_intent,
-              )
-            } else {
-              let after = compile_pool_ensure_admission_for(node: node, transport: transport)
-              if compile_pool_ensure_is_converged(admission: after) {
-                Converged {
-                  evidence: ShellEffectApplied {
-                    exit_code: started.exit_code,
-                    stdout: join(
-                      [
-                        "CompilePoolSliceReceipt: converged unit=",
-                        slice_unit as String,
-                        " memory.max=memory.high=",
-                        to_string(byte_size_count(b: sized)),
-                        " (re-observed after install; the admission answered already-converged)",
-                      ],
-                      "",
-                    ),
-                    stderr: started.stderr,
-                  },
-                  applied: effect_intent,
+            match started {
+              RunArgvTransportRefused { reason: _ } =>
+                compile_pool_install_failed_step_result(
+                  failed_step: "start",
+                  slice_unit: slice_unit,
+                  observed: started,
+                  discarded: discarded,
+                  effect_intent: effect_intent,
+                )
+              RunArgvTransportObserved { observed: s } =>
+                if !s.success {
+                  compile_pool_install_failed_step_result(
+                    failed_step: "start",
+                    slice_unit: slice_unit,
+                    observed: started,
+                    discarded: discarded,
+                    effect_intent: effect_intent,
+                  )
+                } else {
+                  let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+                  if compile_pool_ensure_is_converged(admission: after) {
+                    Converged {
+                      evidence: ShellEffectApplied {
+                        exit_code: s.exit_code,
+                        stdout: join(
+                          [
+                            "CompilePoolSliceReceipt: converged unit=",
+                            slice_unit as String,
+                            " memory.max=memory.high=",
+                            to_string(byte_size_count(b: sized)),
+                            " (re-observed after install; the admission answered already-converged)",
+                          ],
+                          "",
+                        ),
+                        stderr: s.stderr,
+                      },
+                      applied: effect_intent,
+                    }
+                  } else {
+                    NotConverged {
+                      reason: join(
+                        [
+                          "host_effect_apply: EnsureCompilePoolSlice installed ",
+                          slice_unit as String,
+                          " and the read-back did not converge -- ",
+                          compile_pool_admission_diagnostic(admission: after),
+                        ],
+                        "",
+                      ),
+                      applied: effect_intent,
+                    }
+                  }
                 }
-              } else {
-                NotConverged {
-                  reason: join(
-                    [
-                      "host_effect_apply: EnsureCompilePoolSlice installed ",
-                      slice_unit as String,
-                      " and the read-back did not converge -- ",
-                      compile_pool_admission_diagnostic(admission: after),
-                    ],
-                    "",
-                  ),
-                  applied: effect_intent,
-                }
-              }
             }
           }
         }
@@ -5695,33 +5708,77 @@ fn compile_pool_install_stage_failure(step: String, slice_unit: NonEmptyStr, obs
   )
 }
 
+// THE STEP-LEVEL FAILURE LINE, one per op so a failed fold names the op that failed rather than
+// leaving five exit codes to disambiguate, AND TRUTHFUL ABOUT WHICH FAILURE HAPPENED (review: the
+// SSH refusal must stay typed). A refused outcome never started a process, so its line says the
+// step DID NOT RUN and carries the wall's own admission text; an observed outcome ran, so its line
+// says the OPERATION exited and which one, from the observation's real exit status. The old text
+// said "the shell exited"; there is no shell on this edge anymore.
+fn compile_pool_install_step_failure_line(step: String, slice_unit: NonEmptyStr, outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: why } =>
+      join(
+        [
+          "host_effect_apply: EnsureCompilePoolSlice did not run its ",
+          step,
+          " over ",
+          slice_unit as String,
+          " -- ",
+          why,
+        ],
+        "",
+      )
+    RunArgvTransportObserved { observed: o } =>
+      compile_pool_install_stage_failure(step: step, slice_unit: slice_unit, observed: o)
+  }
+}
+
+// THE DISCARD LEG'S REPORT, same split. An observed discard names its exit status, so a failed
+// cleanup is visible rather than silent; a refused discard says so -- the wall stopped that leg
+// before any ssh connection, and no exit status exists to report.
+fn compile_pool_install_discard_line(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportObserved { observed: o } =>
+      join([" (staged bytes discarded, exit ", to_string(o.exit_code), ")"], "")
+    RunArgvTransportRefused { reason: why } =>
+      join([" (the staged-byte discard did not run either -- ", why, ")"], "")
+  }
+}
+
+// Whether the transport runner's leg did its job: only an OBSERVED outcome with exit status zero
+// counts. A refusal is a failed step for sequencing purposes -- but the failure fold below still
+// says what kind of failure it was, which is the whole point of keeping the coproduct.
+fn run_argv_transport_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportRefused { reason: _ } => false
+    RunArgvTransportObserved { observed: o } => o.success
+  }
+}
+
 // THE INSTALL SEQUENCE'S FAILURE DECISION, AS A PURE FOLD OVER SUPPLIED OUTCOMES (DESIGN 3: the
 // witness discriminates at this interface, and the values are supplied -- no operation, no ssh, no
 // sudo, no network). compile_pool_slice_install_step runs the staged operations in order and, when
-// one fails, hands THIS fold the failed step's own observation and the observation the discard leg
-// brought back. The fold's whole decision is the failure sequence: the cleanup is ATTEMPTED BEFORE
-// the failure is reported -- its observation is a parameter, so a caller that skipped the second leg
-// could not produce this call -- and the report carries both the failed step and the cleanup's own
-// exit status, interpolated from the supplied observation rather than a constant, so the marker's
-// presence is evidence the second leg ran. A failed cleanup is not silent either: its exit status
-// is in the reason, it is just not the headline. The wet step is the only side that can run the
-// operations, so it is the only side that can supply these values; all four failure arms delegate
-// here, which makes this fold the sequence's single decision point -- the witness supplies DESIGNED
-// outcomes (a failed write, a failing cleanup) and pins the same NotConverged the wet fold returns.
+// one fails, hands THIS fold the failed step's own outcome and the outcome the discard leg brought
+// back. The fold's whole decision is the failure sequence: the cleanup is ATTEMPTED BEFORE the
+// failure is reported -- its outcome is a parameter, so a caller that skipped the second leg could
+// not produce this call -- and the report carries the failed step plus the discard verdict, each
+// routed through its own line so a refused-before-execution leg is never described as a process
+// that ran. The wet step is the only side that can run the operations, so it is the only side that
+// can supply these values; all four failure arms delegate here, which makes this fold the
+// sequence's single decision point -- the witness supplies DESIGNED outcomes (a failed write, a
+// failing cleanup, a wall refusal) and pins the same NotConverged the wet fold returns.
 fn compile_pool_install_failed_step_result(
   failed_step: String,
   slice_unit: NonEmptyStr,
-  observed: ShellExecObserved,
-  discarded: ShellExecObserved,
+  observed: RunArgvTransportOutcome,
+  discarded: RunArgvTransportOutcome,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   NotConverged {
     reason: join(
       [
-        compile_pool_install_stage_failure(step: failed_step, slice_unit: slice_unit, observed: observed),
-        " (staged bytes discarded, exit ",
-        to_string(discarded.exit_code),
-        ")",
+        compile_pool_install_step_failure_line(step: failed_step, slice_unit: slice_unit, outcome: observed),
+        compile_pool_install_discard_line(outcome: discarded),
       ],
       "",
     ),

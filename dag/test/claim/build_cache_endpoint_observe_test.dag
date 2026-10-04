@@ -19,6 +19,8 @@ import gunbc.host_effect_realize {
   run_argv_stdin_over_host_effect_transport,
   provision_build_cache_arch_unknown_intent_fixture,
   ShellExecObserved,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
   CompilePoolInstallReady,
   CompilePoolInstallRefused,
 }
@@ -849,28 +851,33 @@ test fn witness_local_shell_stdin_decomposition_hands_the_program_exactly_once()
 // offending token, and a format like "%s" would be named instead of the re-interpretable word,
 // which would make this witness's token assertion pin the wrong word.
 test fn witness_ssh_shell_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
-  let observed = run_argv_over_host_effect_transport(
+  match run_argv_over_host_effect_transport(
     command: printf_command(format: "x", values: ["a;b"]),
     transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
-  )
-  !observed.success
-    && string_contains(s: observed.stdout, pattern: "outside portable allowlist")
-    && string_contains(s: observed.stdout, pattern: "before any ssh leg")
-    && string_contains(s: observed.stdout, pattern: "a;b")
+  ) {
+    RunArgvTransportRefused { reason: why } =>
+      string_contains(s: why, pattern: "outside portable allowlist")
+        && string_contains(s: why, pattern: "before any ssh leg")
+        && string_contains(s: why, pattern: "a;b")
+    RunArgvTransportObserved { observed: _ } => false
+  }
 }
 
 // Same first-offender discipline as the non-stdin witness: format clean, so the named token is
-// the space-carrying word itself.
+// the space-carrying word itself. The refusal comes back on the REFUSED arm -- no ShellExecObserved
+// is constructed for it, so no exit status exists to misreport.
 test fn witness_ssh_shell_stdin_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
-  let observed = run_argv_stdin_over_host_effect_transport(
+  match run_argv_stdin_over_host_effect_transport(
     command: printf_command(format: "x", values: ["a b"]),
     stdin_payload: "unused: the refusal precedes the leg, so nothing consumes it",
     transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
-  )
-  !observed.success
-    && string_contains(s: observed.stdout, pattern: "outside portable allowlist")
-    && string_contains(s: observed.stdout, pattern: "before any ssh leg")
-    && string_contains(s: observed.stdout, pattern: "a b")
+  ) {
+    RunArgvTransportRefused { reason: why } =>
+      string_contains(s: why, pattern: "outside portable allowlist")
+        && string_contains(s: why, pattern: "before any ssh leg")
+        && string_contains(s: why, pattern: "a b")
+    RunArgvTransportObserved { observed: _ } => false
+  }
 }
 
 // POSITIVE CONTROL for the refusal pair above: the wall is admission, not veto. The fold's five real
@@ -918,17 +925,21 @@ test fn witness_stage_write_failure_still_attempts_the_discard() -> Bool {
   match compile_pool_install_failed_step_result(
     failed_step: "stage write",
     slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
-    observed: ShellExecObserved {
-      exit_code: 1,
-      success: false,
-      stdout: "",
-      stderr: "dd: error writing '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': No space left on device",
+    observed: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "dd: error writing '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': No space left on device",
+      },
     },
-    discarded: ShellExecObserved {
-      exit_code: 1,
-      success: false,
-      stdout: "",
-      stderr: "rm: cannot remove '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': Permission denied",
+    discarded: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "rm: cannot remove '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': Permission denied",
+      },
     },
     effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
   ) {
@@ -936,6 +947,60 @@ test fn witness_stage_write_failure_still_attempts_the_discard() -> Bool {
       string_contains(s: r, pattern: "stage write")
         && string_contains(s: r, pattern: "staged bytes discarded, exit 1")
         && string_contains(s: r, pattern: "No space left on device")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// THE REFUSAL ARM OF THE FAILURE SEQUENCE (review: the SSH refusal must stay typed). The wall stops
+// the stage write before any ssh leg; the fold must say the step DID NOT RUN -- never "exited N",
+// which would fabricate a process result for an admission verdict. The discard leg here is refused
+// by the same wall (it travels over the same transport), so the cleanup is reported as not-run too.
+// The three pins: the did-not-run phrasing for the failed step, the absence of ANY exit-status claim
+// (string_contains inverted), and the same shape for the discard.
+test fn witness_wall_refusal_of_the_stage_write_reports_a_step_that_did_not_run() -> Bool {
+  match compile_pool_install_failed_step_result(
+    failed_step: "stage write",
+    slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+    observed: RunArgvTransportRefused {
+      reason: "the portable-word wall refused the typed argv before any ssh leg: typed_argv: argv token outside portable allowlist (fail-closed; ssh remote argv is shell-reinterpreted): unit",
+    },
+    discarded: RunArgvTransportRefused {
+      reason: "the portable-word wall refused the typed argv before any ssh leg: typed_argv: argv token outside portable allowlist (fail-closed; ssh remote argv is shell-reinterpreted): rm",
+    },
+    effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "did not run its stage write")
+        && !string_contains(s: r, pattern: "exited")
+        && string_contains(s: r, pattern: "the staged-byte discard did not run either")
+        && !string_contains(s: r, pattern: "discarded, exit")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
+// The mixed vector: the wall refuses the STEP but the discard leg (a different argv, clean words)
+// really runs and reports its exit status. The refused step still says did-not-run; the observed
+// cleanup still says discarded. One fold, two shapes, no drift between them.
+test fn witness_refused_step_with_observed_discard_reports_each_truthfully() -> Bool {
+  match compile_pool_install_failed_step_result(
+    failed_step: "stage write",
+    slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+    observed: RunArgvTransportRefused {
+      reason: "the portable-word wall refused the typed argv before any ssh leg: typed_argv: argv token outside portable allowlist (fail-closed; ssh remote argv is shell-reinterpreted): unit",
+    },
+    discarded: RunArgvTransportObserved {
+      observed: ShellExecObserved {
+        exit_code: 0,
+        success: true,
+        stdout: "",
+        stderr: "",
+      },
+    },
+    effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "did not run its stage write")
+        && string_contains(s: r, pattern: "staged bytes discarded, exit 0")
     Converged { evidence: _, applied: _ } => false
   }
 }
