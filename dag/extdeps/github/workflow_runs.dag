@@ -311,10 +311,17 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 // drops are execution that really happened and really occupied a runner. A caller measuring
 // occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
 // this operation, so the choice moves to the input with "latest" as the compatible default.
+// THE BEARER IS THE CALLER'S auth_token WHEN ONE IS GIVEN. Every operation already took auth_token,
+// and the service read only GITHUB_TOKEN, so a caller holding an installation token
+// (gunbc.github_effect_perform read_run_with / read_attempt_jobs_with) was silently read under the
+// ambient Actions credential. Declaring auth_input beside auth_source makes a non-empty auth_token the
+// bearer; a caller passing "" (gunbc.pr_base_freshness, gunbc.fleet_desired_admission,
+// gunbc.roadmap_launch_deployment_cli) falls through to GITHUB_TOKEN exactly as before.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 

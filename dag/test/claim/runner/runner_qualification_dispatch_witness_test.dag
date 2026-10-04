@@ -20,9 +20,12 @@ import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispa
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit, qualification_instruments, FloorPhaseRows, FloorCgroupRows }
 import test.claim.github_app_registry {
   app_credential, other_app_credential, other_installation_credential, a_pull_request_job_credential,
-  bot_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
+  bot_installation_id, other_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
 }
-import gunbc.auth.github_apps { gunbai_bot_declared }
+import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
+import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, observe_runner_group_restriction }
+import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
+import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner.runner_qualification_ref_pin {
   qualification_selected_workflow, qualification_workflow_path, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
   qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused,
@@ -38,7 +41,7 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_run_expectation, QualificationRunExpectation,
   qualification_dispatch_standing, QualificationDispatchStanding,
   DispatchStandingSucceeded, DispatchStandingRefused, DispatchStandingCommitAmbiguous,
-  hold_covers_slot_host,
+  hold_covers_slot_host, token_names_registration,
   decide_qualification_run, QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused,
   RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunOnAnotherBranch, RunNotCompleted,
   RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique,
@@ -77,6 +80,26 @@ data registered_runner_id: Int = 4242
 // over a supplied QualificationRunExpectation. The pairing obligation is discharged by ONE claim that
 // runs the real path: the route's JIT mint over the real managed-host roster, the sealed subject
 // mint over a supplied floor workflow, and the expectation derived from that subject.
+
+// A group standing for the dedicated name under another id, through the same sealed observer.
+fn group_with_id(id: Int, workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
+  observe_runner_group_restriction(
+    name: "runner-qualification",
+    selected_workflow: workflow,
+    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+      total_count: 1,
+      runner_groups: [OrgRunnerGroupWire {
+        id: id,
+        name: "runner-qualification",
+        visibility: "selected",
+        allows_public_repositories: false,
+        restricted_to_workflows: true,
+        selected_workflows: [workflow as String],
+        workflow_restrictions_read_only: false,
+      }],
+    }),
+  )
+}
 
 fn floor_job(runs_on: RunnerSpec) -> Job {
   Job {
@@ -146,6 +169,9 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
               let expected = qualification_run_expectation(subject: s)
               s.attempt == attempt
                 && s.runner_id == registered_runner_id && expected.registered_runner_id == registered_runner_id
+                && token_names_registration(token_app: s.registration.app, token_installation: s.registration.installation, subject: s)
+                && !token_names_registration(token_app: gunbai_ci_declared, token_installation: s.registration.installation, subject: s)
+                && !token_names_registration(token_app: s.registration.app, token_installation: other_installation_id, subject: s)
                 && (s.host as String) == (h.host as String)
                 && (expected.registered_runner as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
                 && (expected.floor_job_name as String) == "qualification floor"
@@ -315,10 +341,13 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
     })
 }
 
-// A DELIVERY CARRIES THE AUTHORIZED DISPATCH THAT PRODUCED IT. Two authorized mints for the SAME
-// host-unit slot -- here under different organizations -- produce deliveries that agree on slot,
-// credential and runner id; the subject over dispatch A refuses delivery B rather than claiming A's
-// registration for a credential B minted.
+// A DELIVERY CARRIES THE AUTHORIZED DISPATCH THAT PRODUCED IT, SEALED, AND THE SUBJECT COMPARES THE
+// COMPLETE REQUEST. Two authorized mints for the SAME host-unit slot -- under another organization, and
+// under the same slot, App, installation, organization and runner name but another runner group --
+// produce deliveries that agree on slot, credential and runner id; the subject over dispatch A refuses
+// each rather than claiming A's registration for a credential another mint produced. (Rewrapping one
+// delivery's credential with A's dispatch is unconstructable:
+// test.claim.runner_qualification_delivery_rewrap_witness.)
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {
@@ -344,6 +373,19 @@ test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
                 ) {
                   QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch } => true
                   _ => false
+                })
+                && (match dispatch_jit_mint(binding: binding, authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_with_id(id: 4, workflow: qualification_selected_workflow(branch: pin_branch)), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+                  JitMintDispatchAuthorized { dispatch: c } =>
+                    a.slot == c.slot && a.app == c.app && a.installation == c.installation && a.organization == c.organization && a.request.name == c.request.name
+                      && a.request.runner_group_id != c.request.runner_group_id
+                      && (match qualification_dispatch_subject_over(
+                        dispatch: a, delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: c }, outcome: minted_outcome),
+                        workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, pin: p,
+                      ) {
+                        QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch } => true
+                        _ => false
+                      })
+                  JitMintDispatchRefused { refusal: _ } => false
                 })
             JitMintDispatchRefused { refusal: _ } => false
           }

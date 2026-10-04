@@ -31,7 +31,7 @@ import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
 import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
-import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation, jit_mint_identity_of }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
 import gunbc.github_effect_perform {
@@ -71,9 +71,9 @@ import gunbc.runner.runner_qualification_ref_pin {
 // minted only by qualification_dispatch_subject_over, and only from:
 //   - the sealed AuthorizedJitMintDispatch (gunbc.runner.runner_jit_perform), whose only mint is
 //     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and a credential
-//     delivered by THAT mint -- the delivery's JitMintIdentity (App, installation, organization,
-//     runner name) and slot must equal the dispatch's, so a same-slot delivery from another mint
-//     refuses -- so
+//     delivered by THAT mint -- the delivery is a sealed BoundJitCredential carrying the dispatch that
+//     produced it, which must equal this dispatch over the complete request (App, installation,
+//     organization, name, runner group, labels, work folder); a rewrap is unconstructable -- so
 //     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
@@ -264,8 +264,9 @@ fn qualification_dispatch_subject_over(
     Absent => QualificationSubjectRefused { refusal: SubjectNoRegistration }
     Present { value: registration } =>
   match delivery {
-    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: runner_id, minted_for: minted_for } =>
-      if minted_for != jit_mint_identity_of(dispatch: dispatch) || delivered_slot != dispatch.slot {
+    JitCredentialBoundToAttempt { bound: bound } => {
+      let runner_id = bound.runner_id
+      if bound.dispatch != dispatch {
         QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch }
       } else {
         match registration.slot {
@@ -297,6 +298,7 @@ fn qualification_dispatch_subject_over(
             }
         }
       }
+    }
     other => QualificationSubjectRefused { refusal: SubjectCredentialNotDelivered { delivery: other } }
   }
   }
@@ -419,7 +421,7 @@ fn dispatch_qualification_floor(
   let effect = qualification_dispatch_effect(subject: subject)
   if !hold_covers_slot_host(held: hold.subject.host.host, slot_host: subject.host) {
     QualificationDispatchRefused { subject: subject, refusal: DispatchHoldForAnotherHost { held: hold.subject.host.host, slot: subject.host } }
-  } else if token.app != subject.registration.app || token.installation != subject.registration.installation {
+  } else if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: subject) {
     QualificationDispatchRefused { subject: subject, refusal: DispatchTokenForAnotherInstallation }
   } else {
     match dispatch_authority_refusal(authority: authority, app: subject.registration.app, installation: subject.registration.installation) {
@@ -471,6 +473,7 @@ fn dispatch_qualification_floor(
 
 type QualificationRunRefusal
   = RunReadUnreadable { performance: RestExchangePerformance }
+  | RunCollectedUnderAnotherInstallation { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
   | RunSubjectMismatch { observed_run_id: Int, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
   | RunAdvancedPastDispatchedAttempt { observed_attempt: Int }
   | RunRevisionNotPinned { pinned: CommitSha, observed: CommitSha }
@@ -615,7 +618,25 @@ fn decide_qualification_run(
   }
 }
 
+// THE READBACK IS PERFORMED UNDER THE INSTALLATION THAT DISPATCHED. A sealed controller token for some
+// other App or installation could read a run and report it as installation A's; the token is joined
+// to the registration before either read, exactly as at dispatch.
+fn token_names_registration(token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId, subject: QualificationDispatchSubject) -> Bool {
+  token_app == subject.registration.app && token_installation == subject.registration.installation
+}
+
 fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
+  if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: dispatched.subject) {
+    QualificationRunRefused {
+      run_id: dispatched.receipt.workflow_run_id,
+      refusal: RunCollectedUnderAnotherInstallation { token_app: token.app, token_installation: token.installation },
+    }
+  } else {
+    collect_qualification_run_under(dispatched: dispatched, token: token)
+  }
+}
+
+fn collect_qualification_run_under(dispatched: DispatchedQualificationRun, token: ControllerInstallationToken) -> QualificationRunCollection uses net: Network {
   let run_id = dispatched.receipt.workflow_run_id
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr

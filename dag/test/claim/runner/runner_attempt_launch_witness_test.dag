@@ -1,8 +1,11 @@
 module test.claim.runner_attempt_launch_witness
 
-import gunbc.runner.runner_jit_perform { JitMintIdentity }
-import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
-import extdeps.github.effect { GitHubOrganizationRef }
+import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint }
+import gunbc.runner_jit_mint { MicroVmSlotBinding }
+import gunbc.runner_microvm_attempt { bind_owned_attempt }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
+import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
 import gunbc.runner_attempt_launch { GitHubLaunchPayload, launch_payload_device }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
@@ -138,16 +141,28 @@ fn minted_credential(encoded: String) -> List<EncodedJitConfig> {
 // something that is not a whole credential, handed on as if it were.
 data short_blob: String = "ZmFrZS1qaXQtY29uZmln"
 
-// THE MINT IDENTITY ON A HAND-BUILT DELIVERY. A delivery names the mint it came from
-// (JitMintIdentity); the launch decision this fixture drives reads only the slot, the credential and
-// the runner id, so the identity here is a plain fixture value.
+// THE DELIVERY IS MINTED, NOT HAND-BUILT. A successful delivery is a sealed BoundJitCredential that only
+// receive_jit_mint constructs, carrying the authorized dispatch that produced it; this fixture takes the
+// real route for the attempt under test -- an owned cell binding, dispatch_jit_mint (which admits this
+// helper by name), and receive_jit_mint over upstream's own 201 outcome fold with the encoding the
+// claim chooses.
 fn received_for(attempt: MicroVmAttempt, encoded: String) -> JitMintPerformance {
-  match minted_credential(encoded: encoded) {
-    Cons { head: c, tail: _ } =>
+  match dispatch_jit_mint(
+      binding: MicroVmSlotBinding { binding: bind_owned_attempt(attempt: attempt, owned: true) },
+      authority: app_credential,
+      control_plane: observed_grant(perms: runner_grant),
+      organization: gunbai_org_ref,
+      runner_group: restricted_group_1(),
+      attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+    ) {
+    JitMintDispatchAuthorized { dispatch: d } =>
       JitMintReceived {
-        delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: attempt }, credential: c, runner_id: registration_fixture_id, minted_for: JitMintIdentity { app: gunbai_ci_declared, installation: gunbai_ci_declared_installation_id, organization: GitHubOrganizationRef { login: "gunb-ai" }, runner_name: "fixture-jit-runner" } },
+        delivery: receive_jit_mint(
+          dispatch: JitMintDispatchAuthorized { dispatch: d },
+          outcome: jit_config_mint_outcome(status: 201, encoded: encoded, runner_id: registration_fixture_id, error_body: ""),
+        ),
       }
-    Empty {} => JitMintAppJwtUnsigned { detail: "fixture: credential fixture did not mint" }
+    JitMintDispatchRefused { refusal: _ } => JitMintAppJwtUnsigned { detail: "fixture: the attempt's dispatch was refused" }
   }
 }
 
