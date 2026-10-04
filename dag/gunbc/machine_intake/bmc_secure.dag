@@ -1177,9 +1177,26 @@ type ControllerClockReading {
 
 // ONE AUTHENTICATION ATTEMPT, TIMED BY THE OBSERVER. The three arms of CredentialProbeOutcome with an
 // observer instant where it carries a bare EpochMs; the event path's type dies with the event path.
+//
+// EVERY ORDERING FIELD SITS IN A SEALED RECORD WHOSE MINT TAKES THE INSTANT AS A PARAMETER. A field
+// typed ObserverClockInstant does not by itself keep another product out of it: a non-literal value
+// of a distinct product placed in a record or variant field is accepted today
+// (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value), while the same value at
+// a call argument refuses. sole_constructor seals records, not coproduct arms, so the probe arms carry
+// ObservedReading rather than an instant: a literal outside this module refuses SoleConstructorViolation,
+// and the one mint, observed_reading, refuses a ControllerClockReading at its observed_at argument.
+type ObservedReading sole_constructor {
+  evidence: EvidenceRef
+  observed_at: ObserverClockInstant
+}
+
+fn observed_reading(evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedReading {
+  ObservedReading { evidence: evidence, observed_at: observed_at }
+}
+
 type ObservedCredentialProbe
-  = ObservedCredentialAccepted { evidence: EvidenceRef, observed_at: ObserverClockInstant }
-  | ObservedCredentialRejected { evidence: EvidenceRef, observed_at: ObserverClockInstant }
+  = ObservedCredentialAccepted { reading: ObservedReading }
+  | ObservedCredentialRejected { reading: ObservedReading }
   | ObservedCredentialUnestablished { detail: NonEmptyStr }
 
 type ObservedPublishedLanProbe {
@@ -1193,10 +1210,14 @@ type PublishedAccountKind
   | PublishedAccountDisabledNotRetired { restore_path: PublishedCredentialRestorePath }
   | PublishedAccountRetainedByPolicy { retention: RetainedCredentialKind }
 
-type ObservedPublishedAccount {
+type ObservedPublishedAccount sole_constructor {
   kind: PublishedAccountKind
   evidence: EvidenceRef
   observed_at: ObserverClockInstant
+}
+
+fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef, observed_at: ObserverClockInstant) -> ObservedPublishedAccount {
+  ObservedPublishedAccount { kind: kind, evidence: evidence, observed_at: observed_at }
 }
 
 // THE CURRENT ACCOUNT STATE OF ONE CONTROLLER, AS READ. It carries no rotation and no bootstrap probe:
@@ -1250,8 +1271,8 @@ fn observed_bmc_account_state(
 
 fn observed_probe_at_join(probe: ObservedCredentialProbe) -> CredentialProbeOutcome {
   match probe {
-    ObservedCredentialAccepted { evidence: e, observed_at: at } => CredentialAccepted { evidence: e, observed_at: observer_instant_millis(instant: at) }
-    ObservedCredentialRejected { evidence: e, observed_at: at } => CredentialRejected { evidence: e, observed_at: observer_instant_millis(instant: at) }
+    ObservedCredentialAccepted { reading: r } => CredentialAccepted { evidence: r.evidence, observed_at: observer_instant_millis(instant: r.observed_at) }
+    ObservedCredentialRejected { reading: r } => CredentialRejected { evidence: r.evidence, observed_at: observer_instant_millis(instant: r.observed_at) }
     ObservedCredentialUnestablished { detail: d } => CredentialProbeUnestablished { detail: d }
   }
 }
@@ -1340,9 +1361,11 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
 fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateObservation) -> BmcSecureOutcome {
   let floor = observer_instant_millis(instant: observed.read_floor)
   match observed.managed_probe {
-    ObservedCredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
+    ObservedCredentialRejected { reading: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
     ObservedCredentialUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
-    ObservedCredentialAccepted { evidence: me, observed_at: at } =>
+    ObservedCredentialAccepted { reading: mr } => {
+      let me = mr.evidence
+      let at = mr.observed_at
       if observer_instant_precedes(earlier: at, later: observed.read_floor) {
         BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: floor, probed_at: observer_instant_millis(instant: at) } }
       } else {
@@ -1362,6 +1385,7 @@ fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateOb
           environment: goal.policy.environment,
         )
       }
+    }
   }
 }
 
@@ -1851,9 +1875,9 @@ fn dry_evidence(text: String) -> EvidenceRef {
 fn dry_probe(world: BmcWorld, user: IpmiUserId, password: String, what: String, at: ObserverClockInstant) -> ObservedCredentialProbe {
   let text = join(["dry ipmi probe ", what, " user ", to_string(user as Int), " at ", to_string(observer_instant_millis(instant: at) as Int)], "")
   if bmc_ipmi_user_accepts(world: world, user: user, password: password) {
-    ObservedCredentialAccepted { evidence: dry_evidence(text: concat(text, " -> accepted")), observed_at: at }
+    ObservedCredentialAccepted { reading: observed_reading(evidence: dry_evidence(text: concat(text, " -> accepted")), observed_at: at) }
   } else {
-    ObservedCredentialRejected { evidence: dry_evidence(text: concat(text, " -> rejected")), observed_at: at }
+    ObservedCredentialRejected { reading: observed_reading(evidence: dry_evidence(text: concat(text, " -> rejected")), observed_at: at) }
   }
 }
 
@@ -1903,11 +1927,11 @@ fn dry_read_bmc_account_state(
     census_observed_at: at,
     published_probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at),
     published_user: published_user,
-    published_account: ObservedPublishedAccount {
+    published_account: observed_published_account(
       kind: published_account,
       evidence: dry_evidence(text: join(["dry user list of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
       observed_at: at,
-    },
+    ),
     controller_clock: none,
   )
 }
