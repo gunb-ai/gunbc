@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_host_absent_from_a_converge_roster_silently_keeps_the_upstream_default
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_host_absent_from_a_converge_roster_silently_keeps_the_upstream_default: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_absent_from_a_converge_roster_silently_keeps_the_upstream_default" as NonEmptyStr,
+
+  receipts: [
+    "**a host absent from a converge roster silently keeps the upstream default** (a per-host desired-state roster that omits a host makes the converge refuse for it when named and stay silent otherwise, so the host keeps whatever its distribution ships, and the result looks like drift on one host when no converge ever ran there).",
+
+    "INVALID STATE: gunbc.fleet_wireless_link wireless_link_desired_rows covered srv5..srv11 and left srv12 (spark-2196) out because its radio had not been measured; nothing compared the roster with the procured Spark population.",
+
+    "HARM: spark-2196 kept Ubuntu's /etc/NetworkManager/conf.d/default-wifi-powersave-on.conf (wifi.powersave = 3) while every other Spark was 'disable'; its management-LAN latency was 165 ms avg vs 11 ms after a hand fix on 2026-10-04 (read by valiant-crab-775). It read as a power-save regression on one host.",
+
+    "DISTINGUISHING FACTS: the roster's population against an independently authored one (gunbc.spark.dgx_procurement dgx_spark_procurement_intent reserved_identities), joined at identity grain, not by count. A sibling of the same class, found in review of gunbc#13199: persisted settings read from the DESIRED profile by name rather than from the profile ACTIVE on the interface, so a different governing profile could keep the default while the named one read converged; gunbc.fleet_wireless_link observe_wireless_link now reads every persisted setting from the active profile by UUID (nmcli connection show --active) and refuses when none, or another, is active.",
+
+    "RUNG: found at 1. Now 2: gunbc.fleet_wireless_link wireless_link_uncovered_spark_hosts and test.claim.fleet.fleet_wireless_link_witness witness_every_procured_spark_has_a_wireless_row red when a procured Spark has no row. CEILING 3: the per-host desired rows derived from the procured roster, so a Spark without a wireless row has no constructor. NEXT-RUNG TRIGGER: wireless_link_desired_rows mapped over reserved_identities with per-host measured overrides, SUFFICIENT FOR no procured Spark to be expressible without a wireless row.",
+  ],
+
+  evidence: [],
+}
