@@ -1,6 +1,8 @@
 module v2.test.claim.field_projection.field_projection_stages
 
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.collection { map_insert }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -14,7 +16,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Some,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
+import v2.std.node { Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq }
 import v2.std.qualified_name {
   parameter_reference_path_optional,
   qualified_name_last_segment, declaration_reference_path_optional, qualified_name_spine_shape_present }
@@ -606,15 +608,48 @@ test fn fps_a_root_bound_data_value_projects_holds() -> Bool {
   r.resolves && r.resolved_carries_projection
 }
 
-// THE RED THAT KEEPS THE CLIMB SCOPED TO VALUES. A root-bound TYPE is a declaration, not a value, so a path
-// through it is a qualified name; `Box.tree` names no declaration and must still refuse unbound rather than
-// be read as a projection off the type.
-fn fps_root_type_projection_source() -> Outcome<ResolvedTree> {
-  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f() -> Int {\n  Box.tree\n}\n")
+// THE RED THAT KEEPS THE CLIMB SCOPED TO VALUES, AT THE ONE INTERFACE THAT DECIDES IT. A root-bound TYPE
+// is a declaration, not a value, so a path through it stays a qualified name and `Box.tree` refuses unbound
+// instead of projecting. Whether a root head projects is decided by v2.compiler.resolve
+// root_binding_names_value from the declaration the binding names, so the red SUPPLIES that namespace
+// (DESIGN section 3, a witness discriminates at one interface): `p.Box` declares a type (Conj), `p.cfg` a
+// value (the nullary Arrow body lowering realizes `data` as). The real path is still executed by
+// fps_a_root_bound_data_value_projects above, which assembles, resolves and projects `cfg.tree`; a full
+// assembly of a type-head source measured 175k eval steps, over the new-witness budget.
+fn fps_decl_node(connective: Connective) -> Node {
+  Node { kind: TypeNode { connective: connective }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn fps_root_kind_namespace() -> Namespace {
+  let base = empty_namespace()
+  let index = empty_symbol_index()
+  Namespace {
+    bindings: base.bindings,
+    canonical_symbols: base.canonical_symbols,
+    symbol_index: SymbolIndex {
+      entries: map_insert(
+        map_insert(index.entries, Cons { head: ^p, tail: Cons { head: ^Box, tail: Empty } }, fps_decl_node(connective: Conj)),
+        Cons { head: ^p, tail: Cons { head: ^cfg, tail: Empty } },
+        fps_decl_node(connective: Arrow)
+      ),
+      global_bare: index.global_bare,
+      bound_declarings: index.bound_declarings,
+      declared_payloads: index.declared_payloads,
+      renaming_aliases: index.renaming_aliases,
+      declared_type_params: index.declared_type_params,
+      declared_resources: index.declared_resources,
+      namespace_bodies: index.namespace_bodies
+    },
+    module_qn: base.module_qn,
+    test_code: base.test_code,
+    declared_in: Cons { head: ^p, tail: Empty },
+    imported_origins: base.imported_origins
+  }
 }
 
 test fn fps_a_root_bound_type_projected_as_value_refuses_holds() -> Bool {
-  fps_reading_of(o: fps_root_type_projection_source()).resolve_refused_unbound
+  !root_binding_names_value(namespace: fps_root_kind_namespace(), canonical: ^Box)
+    && root_binding_names_value(namespace: fps_root_kind_namespace(), canonical: ^cfg)
 }
 
 // BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading
