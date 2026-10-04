@@ -20,7 +20,8 @@ import extdeps.vllm.kv_dtype_capability {
   KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
   KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
-import extdeps.zhipu.glm_5_3_flash {
+import extdeps.nvidia.glm_5_3_flash_nvfp4 { glm_5_3_flash_nvfp4_hub_repo, glm_5_3_flash_nvfp4_manifest, glm_5_3_flash_nvfp4_quant_method, glm_5_3_flash_nvfp4_kv_cache_dtype }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_architecture_class,
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
 }
 import extdeps.vllm.kv_cache { vllm_fp8_ds_mla_required_pe_dim, vllm_fp8_ds_mla_kernel_admits_pe_dim }
@@ -78,6 +79,7 @@ type ServingCheckpoint
   | DeepseekV4FlashIq3sSplit
   | Glm53RadixArkNvfp4Modelopt
   | DeepseekV41FlashDba1be0a
+  | Glm53FlashNvidiaNvfp4
 
 // A PRODUCED RUNTIME CARRIES ITS OWN BYTES, BECAUSE NO ROW CAN BE WRITTEN FOR IT AHEAD OF THE BUILD.
 // Every other variant here names an image somebody pulled or built once and pinned by hand, so its row
@@ -158,6 +160,7 @@ fn serving_checkpoint_wire(c: ServingCheckpoint) -> NonEmptyStr {
     Glm53Nvfp4CompressedTensors => "glm-5.3-flash-nvfp4-compressed-tensors" as NonEmptyStr
     DeepseekV4FlashIq3sSplit => "deepseek-v4-flash-iq3s-split" as NonEmptyStr
     Glm53RadixArkNvfp4Modelopt => "glm-5.3-radixark-nvfp4-modelopt" as NonEmptyStr
+    Glm53FlashNvidiaNvfp4 => "glm-5.3-flash-nvidia-nvfp4" as NonEmptyStr
     DeepseekV41FlashDba1be0a => "deepseek-v4.1-flash-dba1be0a" as NonEmptyStr
   }
 }
@@ -311,7 +314,7 @@ data glm53_exl3_205_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "turboderp/GLM-5.3-Flash-exl3" as NonEmptyStr },
   revision: "51058cd551c7e570d87bd32a4adee720edce2349" as NonEmptyStr,
   placement: LocalDirectoryPlacement { host_path: join([spark_models_root as String, "/glm53-flash-exl3-2.05"], "") as NonEmptyStr },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: gibibyte(count: 80),
   quantization: QuantizationSpelledOnArgv { wire: "exl3" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
@@ -324,12 +327,30 @@ data glm53_native_fp8_row: ServingCheckpointRow = ServingCheckpointRow {
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
   revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
-  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  architecture: glm_5_3_flash_architecture_class,
   weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_native_manifest),
   quantization: QuantizationResolvedFromCheckpointConfig { wire: "fp8" as NonEmptyStr, because: "the checkpoint's own config.json carries quant_method fp8 together with its weight_block_size and a 1509-entry modules_to_not_convert list; passing --quantization fp8 overrides that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
   parsers: glm_5_3_flash_vllm_parsers,
   resident_beyond_weights: NoResidentBeyondWeights,
   provenance: "revision and byte population are extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest, read from the Hub model API at that exact revision. The GiB figure is DERIVED from those bytes rather than authored: this row previously carried a hand-written 306, which agreed with two other spellings of the same fact and could therefore never catch their first divergence -- the merge that brought the architecture field in is exactly where that divergence would have arrived unnoticed. Still NOT measured on this fleet -- nothing here has fetched it. The architecture is the sole entry of `architectures` in config.json fetched at this exact revision on 2026-09-11" as NonEmptyStr,
+}
+
+// NVIDIA's NVFP4 GLM-5.3-FLASH IS THE SAME MODEL AS THE NATIVE ROW, QUANTIZED: same architecture class
+// and parsers (the base's), a different publisher, revision, byte population and quantization. Its
+// launch policy reads its KV request from the checkpoint's own extdeps row (glm_5_3_flash_nvfp4_kv_cache_dtype),
+// and whether a backend admits that request is the capability join's answer, not this row's -- so adding
+// this checkpoint is this row, its wire, its policy and its extdeps module, and nothing downstream.
+data glm53_flash_nvidia_nvfp4_row: ServingCheckpointRow = ServingCheckpointRow {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  repo: glm_5_3_flash_nvfp4_hub_repo,
+  revision: glm_5_3_flash_nvfp4_manifest.revision,
+  placement: HubCachePlacement { cache_root: spark_hub_cache_root },
+  architecture: glm_5_3_flash_architecture_class,
+  weight_gib: hub_checkpoint_manifest_gibibytes(m: glm_5_3_flash_nvfp4_manifest),
+  quantization: QuantizationResolvedFromCheckpointConfig { wire: glm_5_3_flash_nvfp4_quant_method, because: "the checkpoint's own config.json carries quant_method modelopt with quant_algo NVFP4, group size 16, an FP8 kv_cache_scheme and its ignore list; a --quantization flag would replace that structure with a bare scheme name, so the launch says nothing and the engine reads the checkpoint" as NonEmptyStr },
+  parsers: glm_5_3_flash_vllm_parsers,
+  resident_beyond_weights: NoResidentBeyondWeights,
+  provenance: "revision and byte population are extdeps.nvidia.glm_5_3_flash_nvfp4 glm_5_3_flash_nvfp4_manifest, read from the Hub API at that exact revision on 2026-10-02; the GiB figure is derived from those bytes. The architecture is the sole entry of `architectures` in config.json at the pin. NOT fetched, NOT launched and NOT measured on this fleet" as NonEmptyStr,
 }
 
 // THE RadixArk NVFP4 ROW IS GLM-5.3, NOT GLM-5.3-FLASH -- a different base model with a different
@@ -397,6 +418,7 @@ fn serving_checkpoint_row(c: ServingCheckpoint) -> ServingCheckpointRow? {
     DeepseekV4FlashIq3sSplit => none
     Glm53RadixArkNvfp4Modelopt => Present { value: glm53_radixark_nvfp4_row }
     DeepseekV41FlashDba1be0a => Present { value: deepseek_v41_flash_row }
+    Glm53FlashNvidiaNvfp4 => Present { value: glm53_flash_nvidia_nvfp4_row }
   }
 }
 
@@ -1336,6 +1358,16 @@ data deepseek_v41_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
   indexer_kv_dtype: IndexerKvDtypeOmitted,
   engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
   modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
+}
+
+// THE NVFP4 CHECKPOINT'S POLICY: its KV request is its own row's; the rest is the base model's (no
+// Engram, text by omission, indexer at its default).
+data glm53_flash_nvidia_nvfp4_launch_policy: ModelLaunchPolicy = ModelLaunchPolicy {
+  checkpoint: Glm53FlashNvidiaNvfp4,
+  kv_cache_dtype: glm_5_3_flash_nvfp4_kv_cache_dtype,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
+  engram: EngramConfigOmitted,
+  modality: ModalityOmitted,
 }
 
 // THE EXL3 ARM'S PROFILE IS ITS OWN, and giving this subject the native one would make the receipt below
