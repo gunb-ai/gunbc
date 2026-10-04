@@ -365,8 +365,8 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 data case_infer_add_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
   input_symbol: ^infer_receipt_input_infer_add,
-  input: fixture_add_resolved_tree().root,
-  expected_value: fixture_add_resolved_tree().root
+  input: fixture_add_resolved_tree(),
+  expected_value: fixture_add_resolved_tree()
 }
 
 data subject_infer_add_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_compiles)

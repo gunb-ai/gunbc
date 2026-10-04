@@ -29,7 +29,7 @@ import v2.std.verification {
 }
 
 fn fixture_add_constraint_graph() -> ConstraintGraph {
-  ConstraintGraph { root: fixture_add_resolved_tree().root }
+  ConstraintGraph { root: fixture_add_resolved_tree() }
 }
 
 fn anchor_solve_constraints_add() -> Outcome<CanonicalGrounding> {
@@ -42,9 +42,9 @@ fn anchor_solve_constraints_add() -> Outcome<CanonicalGrounding> {
 
 data witness_solve_constraints_add_accepts: Bool = match anchor_solve_constraints_add() {
   Accepted { value: g, diagnostics: d } =>
-    (g.node == fixture_add_resolved_tree().root)
+    (g.node == fixture_add_resolved_tree())
       && (g.witness.structural.property == ^preservation_rule_constraint_satisfaction)
-      && (g.witness.structural.evidence == fixture_add_resolved_tree().root)
+      && (g.witness.structural.evidence == fixture_add_resolved_tree())
       && (g.witness.closedness.property == ^constraint_property_candidate_set_closedness)
       && (d == None)
   Rejected { diagnostics: _ } => false
