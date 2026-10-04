@@ -9,6 +9,7 @@ import gunbc.auth.access_token_source {
 }
 import gunbc.fabric_m0_origin_readback {
   OriginFetchOutcome,
+  OriginReading,
   OriginObjectStaged,
   OriginObjectAbsent,
   OriginFetchUnavailable,
@@ -167,6 +168,16 @@ fn put_cause(put: OriginPut) -> String {
   }
 }
 
+fn staged_digest_verdict(reading: OriginReading) -> ProcessExit {
+  if content_hash_eq_cryptographic(left: origin_reading_digest(reading: reading), right: expected_fixture_digest()) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "THE STAGED BYTES DIGEST DIFFERENTLY FROM THE FIXTURE; the reading digested ",
+      origin_reading_digest(reading: reading).hex as String))
+  }
+}
+
 fn roundtrip() -> ProcessExit {
   match probe_token_source() {
     ProbeCredentialUnavailable { cause: cause } => exit_failure(reason: cause as String)
@@ -182,14 +193,7 @@ fn roundtrip() -> ProcessExit {
           OriginFetchUnavailable { key: _, cause: cause } =>
             fetch_concluded(fetch: fetch, answered: "unavailable", concluded: exit_failure(reason: concat("THE FETCH DID NOT REACH A VERDICT: ", cause as String)))
           OriginObjectStaged { key: _, reading: r } =>
-            fetch_concluded(fetch: fetch, answered: "staged", concluded:
-              if content_hash_eq_cryptographic(left: origin_reading_digest(reading: r), right: expected_fixture_digest()) {
-                ExitSuccess
-              } else {
-                exit_failure(reason: concat(
-                  "THE STAGED BYTES DIGEST DIFFERENTLY FROM THE FIXTURE; the reading digested ",
-                  origin_reading_digest(reading: r).hex as String))
-              })
+            fetch_concluded(fetch: fetch, answered: "staged", concluded: staged_digest_verdict(reading: r))
         }
       }
     }
