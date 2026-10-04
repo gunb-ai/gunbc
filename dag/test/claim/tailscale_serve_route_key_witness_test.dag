@@ -13,22 +13,24 @@ import std.key_relation {
 }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
-  TailscaleServeRouteSubject,
-  TailscaleServeScope,
   ServeRootMount,
   ServeSetPath,
   tailscale_serve_route_key,
   tailscale_serve_route_key_eq,
   tailscale_serve_route_key_label,
+  TailscaleServeRouteKey,
+  tailscale_serve_endpoint_flags,
+  tailscale_serve_mount_eq,
+  tailscale_serve_enable_argv,
+}
+import gunbc.tailscale_serve_scope {
+  TailscaleServeRouteSubject,
+  TailscaleServeScope,
   tailscale_serve_route_key_relation,
   tailscale_serve_resource_relation,
   tailscale_serve_route_subject,
   tailscale_serve_scope,
   TailscaleServeRouteKeyRelation,
-  TailscaleServeRouteKey,
-  tailscale_serve_endpoint_flags,
-  tailscale_serve_mount_eq,
-  tailscale_serve_enable_argv,
 }
 import gunbc.fleet_intent_network { srv1_tailscale_endpoint, srv2_tailscale_endpoint }
 import gunbc.membership_reconcile {
