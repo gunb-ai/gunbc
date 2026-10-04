@@ -6,7 +6,10 @@ PLA in AMS slot 1 on each. Availability is not fresh bed-clear or idle evidence 
 This is a queue for one complete unpowered assembly, not a dispatch or print-admission receipt.
 Keep the existing approval, fresh idle observation and durable start claim for every job.
 
-## Queue
+## Historical r06 queue
+
+Waves 3–5 below are superseded by the 140 mm continuation at the end of this document.
+Do not dispatch the old three-80-mm-fan parts for the residential assembly.
 
 | Wave | Printer-01 | Printer-02 | Assembly work after removal |
 | --- | --- | --- | --- |
@@ -141,3 +144,40 @@ Artifacts are under `print-prep-2026-10-04/cassette-wave-2` locally and `print-r
 P3 is also sliced and checked with the same front-tray profile. Project SHA-256: `cd0e5071dd1f61ea99a1817eadf9cf7def2f1f5869f8730b14bbe0073bf1fc67`; estimated 3 h 43 m 47 s / 110.67 g PLA. Independent modal extrusion-path bounds are X 6.565–170.650 mm, Y 1.078–179.190 mm, including line starts/endpoints; no deposited arc moves occur in these slices. A 0.25 mm edge allowance is retained. The operator subsequently confirmed printer-01's bed clear and requested P3 start; attempt `cassette-r06-wave2-20261004-P3` was launched through the same guarded route.
 
 P3 passed approval and fresh readiness, uploaded, and received one start publication. Independent telemetry confirms RUNNING the exact P3 digest at 0%, 223 minutes remaining, layer_num 0. Its print_error remains the vendor-documented non-existent 83935249 code admitted by the reviewed readiness classification; this is not a claim that the raw error field is zero. No start was replayed.
+
+## 140 mm continuation after P3/P4
+
+The operator reports P4 removed from printer-02 and P3 finished on printer-01.
+All four tray panels have therefore been reported finished; assembly fit is not yet recorded.
+Printer-01 cooling/removal confirmation remains pending. Next jobs are the two original
+rear support arms E1/E2 on printer-01 and split crossmember B140L/B140R on printer-02,
+from the reviewed residential 140 mm assembly. These supersede the old M1/M3 wave.
+
+Both plates retain the assembly's unit-scale geometry. XZ print orientation puts their
+8 mm thickness upright and the retaining holes vertical; the two arms occupy 50 × 112 mm
+and the two crossmember halves 141.72 × 90 mm before brim. The arms have 10 mm separation,
+as do the crossmember halves. Files are prepared in `cassette-wave-3` under the existing
+local preparation root, through the pinned Orca DAG route and the supported cassette PLA
+profile (four walls, 20% gyroid, five top/bottom layers, 2 mm brim). These are parts for
+the unpowered fit assembly, not qualified structural or thermal components.
+
+The subsequent queue is the M140 cradle, G140 guard, K1/K2/K3/K4/K6/K7 retainers, and
+the four lower/upper corner-post pairs with four post retaining pins. Plate grouping,
+orientation, material and slice readback for those later parts remain preparation work.
+No old 80 mm fan frames or guards should be printed for this variant.
+
+Both next plates passed archive/G-code checksum, unit-scale transform, A1 mini 0.4 mm,
+PLA 220 C / textured-bed 65 C, AMS index 0, 8 mm height, and independent deposited-path
+bounds checks. The existing 65 C bed-temperature advisory is retained for the unpowered
+prototype. Automatic supports are enabled and reported in the slice.
+
+| Printer | Plate | Slicer estimate | PLA | Project SHA-256 |
+| --- | --- | --- | --- | --- |
+| printer-01 | E1 + E2 | 56 m 27 s | 23.63 g | f1e5bcf8b2eb5574436ccd460f62ca15d43097829deb5163e6b3f30f27d21a3f |
+| printer-02 | B140L + B140R | 1 h 52 m 46 s | 52.38 g | acaf7b25a4c49c3412043c2c20ae35e790d6f4ae3c9f0f6fb6ca70d55b7f7244 |
+
+Files and unexecuted launch scripts are staged at
+`/home/briansrls/print-run-2026-10-04/cassette-wave-3` on srv1. Printer PR #13149
+remains open; the prior private token file is absent. A fresh private token file and
+printer-01 removal confirmation have been requested. No approval request, upload or
+start has been performed for these two jobs.
