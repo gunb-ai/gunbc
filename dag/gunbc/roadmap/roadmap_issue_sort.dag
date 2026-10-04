@@ -204,6 +204,9 @@ ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), pr
 ]))]))
 ]))),
 ts_const(name: "query", value: ts_arrow(params: [], body: ts_block(stmts: [
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "more"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "more"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Loading issues…"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "requestSerial"), op: "=", right: ts_binop(left: ts_ident(name: "requestSerial"), op: "+", right: ts_lit_num(text: "1")))),
 ts_const(name: "serial", value: ts_ident(name: "requestSerial")),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "queryTimer")])),
