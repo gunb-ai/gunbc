@@ -1098,8 +1098,8 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
       decl(prop: FontSize, value: "var(--text-13)")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure .issue-action-bar" }, decls: [
-      decl(prop: MarginTop, value: "var(--space-8)")
+    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure[open] > summary" }, decls: [
+      decl(prop: Display, value: "none")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-membership-children > summary.issue-membership-current" }, decls: [
       decl(prop: GridTemplateColumns, value: "var(--space-16) minmax(0, 1fr) auto var(--space-12)"),

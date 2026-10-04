@@ -2481,10 +2481,7 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
-// THE ASSIGNEE ROW: the current holder's chip (or the unassigned placeholder) beside the durable
-// Assign control — the editable field the mandate puts in the rail. The chip projects the
-// profile-bound identity (view.profiles, read once at the render entry); the holder reads the
-// assignment projection (the one derivation), never a second fold over attempts.
+// The current identity becomes the editor in place; closing restores the projected holder.
 fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   let face = match assignment.holder {
     Absent => issue_avatar_chip_node(display: EventPrincipalDisplay { name: "Unassigned", detail: "Choose an assignee", initials: "?", avatar: AvatarAbsent, picture: "" }, workflow: false)
