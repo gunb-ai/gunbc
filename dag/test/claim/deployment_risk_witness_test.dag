@@ -488,7 +488,7 @@ test fn an_unmarked_holder_on_its_own_target_is_adopted_and_the_plan_writes_the_
   let adopted = match decision {
     AdoptUnmarkedHolder { holder, host, retirement } =>
       holder.instance.deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
-        && (retirement.path as String) == (adopt_unmarked_holder_frontier.path as String)
+        && (retirement.reason as String) == (adopt_unmarked_holder_frontier.reason as String)
     _ => false
   }
   let live_id = srv1_live_dashboard_instance().instance_id as String
