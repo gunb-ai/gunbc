@@ -1931,17 +1931,10 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
 // mock_response). Triple enrollment as for chunk_30: this expectation, a WetScheduledClaim row in
 // local_repo_wet_schedule, and the gunbc.ci_layer_roots LocalRepoWetLane row for
 // scm_repository_save_real_execution_witness_test.dag.
-// chunk_31 also carries gunbc#13176's grant-row real blob-id claim: its first effect is git.Plumbing
-// HashObjectStdinNoWrite, which has no mock_response because one would be input-blind; THE LOCAL-REPO WET
-// LANE EXECUTES IT against real git (local_repo_wet_schedule), and its row here is only the hermetic
-// route's bookkeeping for that pairing.
 fn floor_route_gap_expectation_chunk_31() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes", operation: "Write", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_grant_row_wet_witness.the_captured_row_is_hashed_as_its_exact_bytes_by_real_execution", operation: "HashObjectStdinNoWrite", ground: NoMockResponse {} },
     tail: Empty {}
-    }
   }
 }
 
