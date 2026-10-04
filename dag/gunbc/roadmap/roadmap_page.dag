@@ -378,7 +378,8 @@ fn disclosure_body_nodes(d: DisclosureView) -> List<Fragment> {
         concat(
           map(fields, f => disclosure_field_row(f: f)),
           disclosure_updates_block(updates: updates)))
-    LegacyBodyDisclosure { content: _ } => []
+    LegacyBodyDisclosure { content } =>
+      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
   }
 }
 
@@ -2373,7 +2374,8 @@ fn issue_breadcrumb_compact_labels(crumbs: List<IssueBreadcrumbCrumb>) -> List<S
   let ends = fold(ancestors, init: { first: "", last: "", n: 0 }, f: (acc, label) => {
     first: if acc.n == 0 { label } else { acc.first }, last: label, n: acc.n + 1
   })
-  if ends.n == 0 { [] } else if ends.n == 1 { [ends.first] } else { [ends.first, ends.last] }
+  if ends.n == 0 { [] } else if ends.n == 1 { [ends.first] } else if ends.n == 2 { [ends.first, "›", ends.last] }
+  else { [ends.first, join(["› … ", to_string(ends.n - 2), " ›"], ""), ends.last] }
 }
 
 fn issue_breadcrumb_tree(crumbs: List<IssueBreadcrumbCrumb>) -> List<Fragment> {

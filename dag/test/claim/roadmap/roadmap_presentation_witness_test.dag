@@ -2010,6 +2010,18 @@ test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
       IssueBreadcrumbProject { node_id: "mid", purpose: "Middle", boundary: "" },
       IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
       IssueBreadcrumbTask { node_id: "task", purpose: "Current title", boundary: "" }
-    ]) == ["Root", "Parent"]
+    ]) == ["Root", "› … 1 ›", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    ]) == ["Root", "›", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "a", purpose: "A", boundary: "" },
+      IssueBreadcrumbProject { node_id: "b", purpose: "B", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Task", boundary: "" }
+    ]) == ["Root", "› … 2 ›", "Parent"]
     && issue_breadcrumb_compact_labels(crumbs: [IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" }]) == ["Root"]
 }

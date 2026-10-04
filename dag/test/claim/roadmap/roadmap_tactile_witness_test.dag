@@ -40,7 +40,6 @@ import gunbc.roadmap_interaction {
 import gunbc.roadmap_style { roadmap_css, roadmap_rules }
 import gunbc.roadmap_component { dispatch_client_js_source, dispatch_class_requested, dispatch_class_ok, dispatch_ack_prefix, dispatch_ack_word }
 import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_toggle_label_off }
-import gunbc.roadmap_page { roadmap_page_for_authority }
 import gunbc.site.document { site_header }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -344,11 +343,13 @@ test fn witness_sound_toggle_scan_discriminates() -> Bool {
 // program may paint it.
 
 test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
-  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+  match try_serialize_html_source(node: site_header(page: "workspace")) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
+      header_has_sound_toggle(h: site_header(page: "workspace"))
+        && string_contains(s: h, pattern: ">sound</button>")
         && !string_contains(s: h, pattern: sound_toggle_label_on)
+        && !string_contains(s: h, pattern: sound_toggle_label_off)
   }
 }
 

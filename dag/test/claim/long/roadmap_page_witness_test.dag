@@ -666,6 +666,7 @@ test fn witness_item_detail_disclosure_present() -> Bool {
     && string_contains(s: ticket, pattern: "class=\"inspect-body\"")
     && string_contains(s: legacy, pattern: "<details class=\"taskbar-inspect\"><summary>inspect</summary>")
     && string_contains(s: legacy, pattern: "class=\"inspect-body\"")
+    && string_contains(s: legacy, pattern: "and a body past it")
 }
 
 // THE DISCLOSURE LABEL IS ONE LAW OVER EVERY ROW KIND. The page-wide negatives this replaced pinned
@@ -1835,13 +1836,14 @@ test fn witness_issue_tab_switch_contracts() -> Bool {
 // member rows carry data-summary-only — the row's whole claim about execution is the latest
 // attempt's summary, painted by no one but the server. The client paint must skip these rows,
 // and the table region must render zero taskbar-inspect disclosures.
+// Inspect workspace markup without rebuilding unrelated document/header styles.
+// witness_default_view_is_the_searchable_issue_table retains the full document route.
 fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
-  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
+  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: gunbc.roadmap_page.daily_workspace_view_of_for_accepted(
     doc: fx_page_project_doc(),
     merged: [],
     accepted_ids: [],
     withheld: [],
-    main_prefix: [],
     attempts: [ completed_attempt_progress(node_id: "page-task-one") ],
     attempts_refused: none,
     standings: StandingsObserved { rows: [
@@ -1851,7 +1853,7 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
     stale_nodes: if stale { ["page-task-one"] } else { [] },
     profiles: [],
     memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())),
-    stylesheet: site_styles(rules: [])))
+    include_all: true), edges: doc_all_edges(doc: fx_page_project_doc()), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc()))))
 }
 
 fn table_region(html: String) -> String {
@@ -2082,12 +2084,11 @@ fn fx_long_title_doc(long: String) -> RoadmapDocument {
 }
 
 fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
-  try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
+  try_serialize_html_source(node: gunbc.roadmap_page.workspace_markup(ws: gunbc.roadmap_page.daily_workspace_view_of_for_accepted(
     doc: fx_long_title_doc(long: long),
     merged: [],
     accepted_ids: [],
     withheld: [],
-    main_prefix: [],
     attempts: [],
     attempts_refused: none,
     standings: StandingsObserved { rows: [] },
@@ -2095,7 +2096,7 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
     stale_nodes: [],
     profiles: [],
     memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long))),
-    stylesheet: site_styles(rules: [])))
+    include_all: true), edges: doc_all_edges(doc: fx_long_title_doc(long: long)), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long)))))
 }
 
 test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
@@ -2116,7 +2117,6 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 0
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
         && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", workspace_issue_tracks()], ""))
-        && fx_emitted_property(selector: ".roadmap", property: "padding", value: "var(--space-24)")
   }
 }
 
