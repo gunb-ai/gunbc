@@ -559,6 +559,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
+  filesystem_file_observation_of_path,
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
@@ -989,9 +990,7 @@ fn belt_oracle_observe_in_worktree(
   )
   validation_oracle_observe_from_source(
     oracle: oracle,
-    source_readable: read.success,
-    source: read.content,
-    read_error: read.error,
+    source_read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   )
 }
 
@@ -1594,8 +1593,7 @@ fn belt_claude_preflight_decision(
   claude_on_path: Bool,
   home: String,
   trust_store_path: String,
-  trust_store_readable: Bool,
-  trust_store_text: String,
+  trust_store_read: FilesystemReadOutcome,
   trust_root: String,
 ) -> BeltClaudePreflight {
   if !claude_on_path {
@@ -1608,24 +1606,29 @@ fn belt_claude_preflight_decision(
       step: "claude-trust-home",
       detail: "HOME unset or empty — cannot locate the claude trust store (~/.claude.json), so the workspace-trust seed is unknowable; fail-closed",
     }
-  } else if !trust_store_readable {
-    ClaudePreflightRefused {
-      step: "claude-trust-store",
-      detail: concat(
-        concat("claude trust store unreadable at ", trust_store_path),
-        " — claude blocks on its workspace-trust dialog for an unseeded root; seed it by launching claude once under the dispatch worktree root, or converge via the live_deploy membership",
-      ),
-    }
-  } else if !claude_workspace_trust_seeded(config_text: trust_store_text, project_path: trust_root) {
-    ClaudePreflightRefused {
-      step: "claude-trust-seed",
-      detail: concat(
-        concat(concat("workspace trust not seeded for ", trust_root), " in "),
-        concat(trust_store_path, " (projects entry with hasTrustDialogAccepted: true) — claude would block interactively on its trust dialog; ancestor-dir trust inheritance means seeding this ONE root covers every dispatch worktree"),
-      ),
-    }
   } else {
-    ClaudePreflightOk
+    match trust_store_read {
+      FilesystemReadRefused { error: _ } =>
+        ClaudePreflightRefused {
+          step: "claude-trust-store",
+          detail: concat(
+            concat("claude trust store unreadable at ", trust_store_path),
+            " — claude blocks on its workspace-trust dialog for an unseeded root; seed it by launching claude once under the dispatch worktree root, or converge via the live_deploy membership",
+          ),
+        }
+      FilesystemReadSucceeded { content: trust_store_text } =>
+        if !claude_workspace_trust_seeded(config_text: trust_store_text, project_path: trust_root) {
+          ClaudePreflightRefused {
+            step: "claude-trust-seed",
+            detail: concat(
+              concat(concat("workspace trust not seeded for ", trust_root), " in "),
+              concat(trust_store_path, " (projects entry with hasTrustDialogAccepted: true) — claude would block interactively on its trust dialog; ancestor-dir trust inheritance means seeding this ONE root covers every dispatch worktree"),
+            ),
+          }
+        } else {
+          ClaudePreflightOk
+        }
+    }
   }
 }
 
@@ -1640,8 +1643,7 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       claude_on_path: claude_ok,
       home: home,
       trust_store_path: "",
-      trust_store_readable: false,
-      trust_store_text: "",
+      trust_store_read: filesystem_read_outcome(content: "", success: false, error: "unused on refusal"),
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   } else {
@@ -1651,8 +1653,7 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       claude_on_path: claude_ok,
       home: home,
       trust_store_path: path,
-      trust_store_readable: r.success,
-      trust_store_text: r.content,
+      trust_store_read: filesystem_read_outcome(content: r.content, success: r.success, error: r.error),
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   }
@@ -3597,37 +3598,41 @@ fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome
   }
 }
 
-fn belt_tick_receipt_read_from_filesystem(
-  success: Bool,
-  content: String,
-  error: String,
-) -> BeltTickReceiptRead {
-  if success {
-    if trim(content) == "" {
-      BeltTickReceiptAbsent
-    } else {
-      belt_tick_receipt_decode(raw: content)
-    }
-  } else if string_contains(s: error, pattern: "No such file")
-      || string_contains(s: error, pattern: "not found") {
-    BeltTickReceiptAbsent
-  } else {
-    BeltTickReceiptUnreadable {
-      reason: join(["belt tick receipt could not be read: ", error], ""),
-    }
+// The tick receipt read classifies an OBSERVATION, not a host error string: the old classifier
+// text-matched the host's error ("No such file", "not found") to decide absent versus unreadable,
+// which breaks on every host phrasing and every error-transport change. The observation authority
+// establishes absence from the listing instead, and the host error rides inside the cause text.
+fn belt_tick_receipt_read_from_observation(observation: FilesystemFileObservation) -> BeltTickReceiptRead {
+  match observation {
+    FilesystemFileAbsent(_) => BeltTickReceiptAbsent
+    FilesystemFileRead { path: _, content } =>
+      if trim(content) == "" {
+        BeltTickReceiptAbsent
+      } else {
+        belt_tick_receipt_decode(raw: content)
+      }
+    FilesystemFileIndeterminate { cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
+    FilesystemFileObservationsDisagree { path: _, cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
   }
 }
 
 fn belt_tick_receipt_read_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltTickReceiptRead {
-  let read = Filesystem.Read(
-    path: belt_tick_receipt_path_for_instance(instance: instance),
-  )
-  belt_tick_receipt_read_from_filesystem(
-    success: read.success,
-    content: read.content,
-    error: read.error,
+  belt_tick_receipt_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: belt_tick_receipt_path_for_instance(instance: instance),
+    ),
   )
 }
 
@@ -5944,15 +5949,16 @@ fn belt_submission_observe(worktree: String) -> BeltSubmissionRead {
     BeltSubmissionObserved { observation: SubmissionAbsent }
   } else {
     let read = Filesystem.Read(path: join([worktree, "/", submission_artifact_name as String], ""))
-    if !read.success {
-      BeltSubmissionUnobservable {
-        reason: join([
-          "the submission artifact was listed and then could not be read, so whether it declares a candidate is unknown: ",
-          read.error,
-        ], ""),
-      }
-    } else {
-      match submission_decode(text: read.content) {
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        BeltSubmissionUnobservable {
+          reason: join([
+            "the submission artifact was listed and then could not be read, so whether it declares a candidate is unknown: ",
+            error,
+          ], ""),
+        }
+      FilesystemReadSucceeded { content } =>
+        match submission_decode(text: content) {
         SubmissionNotDecodable { reason } =>
           BeltSubmissionObserved { observation: SubmissionUndecodable { reason: reason } }
         SubmissionDecoded { submission } =>
@@ -6034,15 +6040,16 @@ fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: S
           CaptureRosterUnobservable { reason: _ } => acc
           CaptureRosterObserved { captures } => {
             let read = Filesystem.Read(path: join([dir, "/", trim(entry)], ""))
-            if !read.success {
-              CaptureRosterUnobservable {
-                reason: join([
-                  "a submission capture record was listed and then could not be read: ",
-                  trim(entry), " (", read.error, ")",
-                ], ""),
-              }
-            } else {
-              match submission_capture_decode(text: read.content) {
+            match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+              FilesystemReadRefused { error } =>
+                CaptureRosterUnobservable {
+                  reason: join([
+                    "a submission capture record was listed and then could not be read: ",
+                    trim(entry), " (", error, ")",
+                  ], ""),
+                }
+              FilesystemReadSucceeded { content } =>
+                match submission_capture_decode(text: content) {
                 CaptureNotDecodable { reason } =>
                   CaptureRosterUnobservable {
                     reason: join(["the submission capture record ", trim(entry), " does not decode: ", reason], ""),
@@ -6088,12 +6095,13 @@ fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: S
     CaptureAbsent
   } else {
     let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
-    if !read.success {
-      CaptureUnreadable {
-        reason: join(["the submission capture for this head was listed and then could not be read: ", read.error], ""),
-      }
-    } else {
-      match submission_capture_decode(text: read.content) {
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        CaptureUnreadable {
+          reason: join(["the submission capture for this head was listed and then could not be read: ", error], ""),
+        }
+      FilesystemReadSucceeded { content } =>
+        match submission_capture_decode(text: content) {
         CaptureNotDecodable { reason } =>
           CaptureUnreadable {
             reason: join(["the submission capture at this head's own address does not decode: ", reason], ""),
@@ -6303,15 +6311,16 @@ fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNo
     attempt_key: attempt_key,
   )
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    BaseShaUnobserved {
-      reason: join([
-        "the attempt's spawn origin could not be read, so the intake base is unknown: ",
-        path, " (", read.error, ") — the project base must freeze the recorded dispatch base",
-      ], ""),
-    }
-  } else {
-    match parse_json_document(s: read.content) {
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      BaseShaUnobserved {
+        reason: join([
+          "the attempt's spawn origin could not be read, so the intake base is unknown: ",
+          path, " (", error, ") — the project base must freeze the recorded dispatch base",
+        ], ""),
+      }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
       JsonDocumentUnreadable { gap: _ } =>
         BaseShaUnobserved { reason: join(["the spawn origin at ", path, " is not JSON"], "") }
       JsonDocumentParsed { value: doc } =>
@@ -6664,20 +6673,21 @@ fn belt_scm_delta_fold_step(
           }
         WorktreeBind { path } => {
           let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
-          if !read.success {
-            BeltDeltaFold {
-              store: acc.store,
-              unique: acc.unique,
-              refused: Present {
-                value: join([
-                  "the changed path ", path as String,
-                  " could not be read from the worktree (", read.error,
-                  "), so the tree cannot be captured whole",
-                ], ""),
-              },
-            }
-          } else {
-            match store_authored_source(store: acc.store, text: read.content) {
+          match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+            FilesystemReadRefused { error } =>
+              BeltDeltaFold {
+                store: acc.store,
+                unique: acc.unique,
+                refused: Present {
+                  value: join([
+                    "the changed path ", path as String,
+                    " could not be read from the worktree (", error,
+                    "), so the tree cannot be captured whole",
+                  ], ""),
+                },
+              }
+            FilesystemReadSucceeded { content } =>
+              match store_authored_source(store: acc.store, text: content) {
               SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
                 BeltDeltaFold {
                   store: acc.store,
@@ -10329,12 +10339,13 @@ fn belt_integration_receipt_observe(
         IntegrationReceiptAbsent
       } else {
         let read = Filesystem.Read(path: join([dir, "/", head_sha, ".json"], ""))
-        if !read.success {
-          IntegrationReceiptUnreadable {
-            reason: join(["the integration receipt for this head was listed and then could not be read: ", read.error], ""),
-          }
-        } else {
-          match integration_receipt_decode(text: read.content) {
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error } =>
+            IntegrationReceiptUnreadable {
+              reason: join(["the integration receipt for this head was listed and then could not be read: ", error], ""),
+            }
+          FilesystemReadSucceeded { content } =>
+            match integration_receipt_decode(text: content) {
             IntegrationReceiptNotDecodable { reason } =>
               IntegrationReceiptUnreadable {
                 reason: join(["the integration receipt at this head's own address does not decode: ", reason], ""),

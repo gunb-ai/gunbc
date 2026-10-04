@@ -4,7 +4,16 @@ import gunbc.site.markup { page_render_refusal_body }
 
 import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read }
 import std.types { String, Int, Bool, List, NonEmptyStr }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileRead,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  filesystem_file_observation_of_path,
+}
 import std.algebra { trim }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
@@ -478,19 +487,29 @@ fn served_observation_decode(raw: String) -> ServedObservationRead {
   }
 }
 
-fn served_observation_read_from_filesystem(success: Bool, content: String, error: String) -> ServedObservationRead {
-  if success {
-    if trim(content) == "" { ServedObservationAbsent } else { served_observation_decode(raw: content) }
-  } else if string_contains(s: error, pattern: "No such file") || string_contains(s: error, pattern: "not found") {
-    ServedObservationAbsent
-  } else {
-    ServedObservationUnreadable { reason: join(["served observation index could not be read: ", error], "") }
+// The served-observation index is classified from an OBSERVATION, not by text-matching the host's
+// error string: absence is established from the listing by the observation authority, and the host
+// error rides inside the cause text instead of being pattern-matched.
+fn served_observation_read_from_observation(observation: FilesystemFileObservation) -> ServedObservationRead {
+  match observation {
+    FilesystemFileAbsent(_) => ServedObservationAbsent
+    FilesystemFileRead { path: _, content } =>
+      if trim(content) == "" { ServedObservationAbsent } else { served_observation_decode(raw: content) }
+    FilesystemFileIndeterminate { cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
+    FilesystemFileObservationsDisagree { path: _, cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+      ServedObservationUnreadable { reason: join(["served observation index could not be read: ", cause], "") }
   }
 }
 
 fn served_observation_read_for_instance(instance: HostDashboardInstance) -> ServedObservationRead {
-  let read = Filesystem.Read(path: served_observation_path_for_instance(instance: instance))
-  served_observation_read_from_filesystem(success: read.success, content: read.content, error: read.error)
+  served_observation_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: served_observation_path_for_instance(instance: instance),
+    ),
+  )
 }
 
 // Bodies first, index last: a reader that races the writer sees either the previous complete

@@ -1,7 +1,13 @@
 module gunbc.roadmap_acceptance_history_carrier
 
 import std.types { List }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import gunbc.roadmap_model { RoadmapAcceptanceEvent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
@@ -33,12 +39,13 @@ fn load_roadmap_acceptance_event_history_from_carrier_text(text: String) -> Road
 
 fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEventHistoryLoad {
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    RoadmapAcceptanceEventHistoryLoadRefused {
-      detail: concat("carrier read refused: ", read.error),
-    }
-  } else {
-    load_roadmap_acceptance_event_history_from_carrier_text(text: read.content)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      RoadmapAcceptanceEventHistoryLoadRefused {
+        detail: concat("carrier read refused: ", error),
+      }
+    FilesystemReadSucceeded { content } =>
+      load_roadmap_acceptance_event_history_from_carrier_text(text: content)
   }
 }
 

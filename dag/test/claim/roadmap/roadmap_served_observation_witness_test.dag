@@ -1,5 +1,7 @@
 module test.claim.roadmap_served_observation_witness
 
+import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
+
 import std.types { String, Int, Bool, List, FilePath }
 import extdeps.http.server { text_html_utf8, text_plain_utf8, application_json_utf8 }
 import gunbc.host_layout { instance_receipts_dir }
@@ -24,7 +26,7 @@ import gunbc.roadmap_served_observation {
   served_observation_index_of_snapshot,
   served_observation_index_wire,
   served_observation_decode,
-  served_observation_read_from_filesystem,
+  served_observation_read_from_observation,
   served_observation_identity_hex,
   served_observation_body_digest,
   served_observation_body_read_from_filesystem,
@@ -129,9 +131,24 @@ test fn red_control_unknown_schema_is_unreadable() -> Bool {
   }
 }
 
+// Both facts drive through the owner's producers: absence is ESTABLISHED by a succeeded listing
+// that omits the index (the sole_constructor carrier is produced inside filesystem_io, never
+// forged here), while a listed index whose read is refused stays present-but-unavailable.
 test fn a_missing_index_reads_as_absent_not_unreadable() -> Bool {
-  let absent = served_observation_read_from_filesystem(success: false, content: "", error: "No such file or directory")
-  let broken = served_observation_read_from_filesystem(success: false, content: "", error: "Permission denied")
+  let absent_obs = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/var/lib/gunbc/served", success: true, entries: "bodies.json", error: "unused on success"),
+    name: "index.json",
+    path: "/var/lib/gunbc/served/index.json",
+    read: FilesystemReadRefused { error: "No such file or directory" },
+  )
+  let broken_obs = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/var/lib/gunbc/served", success: true, entries: "index.json\nbodies.json", error: "unused on success"),
+    name: "index.json",
+    path: "/var/lib/gunbc/served/index.json",
+    read: FilesystemReadRefused { error: "Permission denied" },
+  )
+  let absent = served_observation_read_from_observation(observation: absent_obs)
+  let broken = served_observation_read_from_observation(observation: broken_obs)
   (match absent { ServedObservationAbsent => true  _ => false })
     && (match broken { ServedObservationUnreadable { reason } => string_contains(s: reason, pattern: "Permission denied")  _ => false })
 }
