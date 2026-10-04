@@ -162,7 +162,7 @@ fn expected_width() -> Int {
 
 fn owned_route() -> ProviderRoute {
   ProviderRoute {
-    provider: decl_ref(module_path: "gunbc.fleet_intent_network", decl_name: "operator_host_mtcollins1"),
+    provider: decl_ref(module_path: "gunbc.fleet_host_identity", decl_name: "operator_host_mtcollins1"),
     service: decl_ref(module_path: "gunbc.floor_demand", decl_name: "floor_execution_requirements"),
     region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
   }

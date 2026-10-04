@@ -13,7 +13,7 @@ import extdeps.github.org_actions { runner_group_visibility_wire }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.org_actions_inspection { read_runner_groups, org_admin_token_env_name, RunnerGroupListDecode, RunnerGroupListDecodeRefused }
 import extdeps.shell.credentials { env_credential }
 import gunbc.auth.approval_gate {
