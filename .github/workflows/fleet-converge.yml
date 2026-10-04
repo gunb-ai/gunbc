@@ -2168,7 +2168,7 @@ jobs:
           GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
           GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
         if: github.event.inputs.mode == 'spark_arm_group_launch'
-        timeout-minutes: 60
+        timeout-minutes: 110
       - name: Spark arm group load (the staircase step named by the closed inputs, loaded at its cold floor and its ceiling from its head; stop rules judged; calibration receipt folded)
         id: spark_arm_group_load
         run: |-
