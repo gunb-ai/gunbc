@@ -116,6 +116,14 @@ fn workspace_executor_initial_guard(slot: NonEmptyStr, plan: NonEmptyStr) -> Cas
   }
 }
 
+// A submission past invocation recording recovers only through its recorded directive.
+fn workspace_executor_recorded_preparation(record: WorkspaceExecutorRecord) -> WorkspaceExecutorPreparation {
+  match workspace_executor_recorded_directive(record: record) {
+    Present { value } => WorkspaceExecutorPrepared { directive: value }
+    Absent => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
+  }
+}
+
 fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> WorkspaceExecutorPreparation {
   match workspace_executor_input_observe(slot: slot, executor: executor) {
     WorkspaceExecutorInputObserved { input } => match workspace_executor_journal_observe(slot_key: slot) {
@@ -145,22 +153,10 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
           ExecutorSubmissionFenced => if workspace_executor_mutation_matches(record: record) && record.submitter != executor {
             WorkspaceExecutorPrepared { directive: "drain:none" }
           } else { WorkspaceExecutorPreparationRefused { reason: "fenced submission has no replacement actor and exact guard" } }
-          ExecutorInvocationRecorded => match workspace_executor_recorded_directive(record: record) {
-            Present { value } => WorkspaceExecutorPrepared { directive: value }
-            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
-          }
-          ExecutorReadbackAccepted => match workspace_executor_recorded_directive(record: record) {
-            Present { value } => WorkspaceExecutorPrepared { directive: value }
-            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
-          }
-          ExecutorReleaseObserved => match workspace_executor_recorded_directive(record: record) {
-            Present { value } => WorkspaceExecutorPrepared { directive: value }
-            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
-          }
-          ExecutorGenerationCommitted => match workspace_executor_recorded_directive(record: record) {
-            Present { value } => WorkspaceExecutorPrepared { directive: value }
-            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
-          }
+          ExecutorInvocationRecorded => workspace_executor_recorded_preparation(record: record)
+          ExecutorReadbackAccepted => workspace_executor_recorded_preparation(record: record)
+          ExecutorReleaseObserved => workspace_executor_recorded_preparation(record: record)
+          ExecutorGenerationCommitted => workspace_executor_recorded_preparation(record: record)
         } }
       }
       WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "executor journal is unreadable" }
