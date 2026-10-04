@@ -391,13 +391,13 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitR
     StageDiffersFromBase { candidate: candidate, committed: committed } =>
       CheckoutWouldDiscardStagedWork {
         reference: reference,
-        candidate: candidate,
+        candidate: candidate.root,
         committed: Present { value: committed },
       }
     StageWithNoBase { candidate: candidate } =>
       CheckoutWouldDiscardStagedWork {
         reference: reference,
-        candidate: candidate,
+        candidate: candidate.root,
         committed: none,
       }
     StageMatchesBase { candidate: _ } => checkout_admitted(repo: repo, reference: reference)
