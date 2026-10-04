@@ -1150,14 +1150,16 @@ fn infer_field_projection_facts(
               outcome_rejected(infer_receiver_declares_no_fields_diagnostic(node: node))
             ReceiverDeclarationUnavailable { path: path } =>
               Rejected { diagnostics: infer_closure_miss_refusal(resolved: resolved, path: path, miss: infer_receiver_declaration_unavailable_diagnostic(node: node)) }
-            ReceiverPayload { payload: payload } =>
+            ReceiverArityMismatch =>
+              outcome_rejected(infer_receiver_arity_mismatch_diagnostic(node: node))
+            ReceiverPayload { payload: payload, instances: instances } =>
               match declared_field_named(payload: payload, name: projection.field) {
                 Present { value: declared } =>
                   bind_outcome_accepted(
                     od: cd,
                     inner: inferred_facts_from_derived_type(
                       node: node,
-                      derived_type: declared.type_node,
+                      derived_type: infer_projected_field_type(field_type: declared.type_node, instances: instances),
                       descent: Holds { value: descent_proof }
                     )
                   )
@@ -1166,6 +1168,30 @@ fn infer_field_projection_facts(
               }
           }
       }
+  }
+}
+
+// A FIELD OF AN INSTANTIATED GENERIC RECORD HAS ITS DECLARED TYPE AT THIS INSTANTIATION. A receiver
+// typed Box<Int> reads Box's payload and binds Box's type parameters to the application's arguments in
+// declared order, the same pairing infer_match_coproduct_of_type uses for a matched coproduct, so a field
+// declared `item: T` projects as Int. A non-generic receiver binds nothing and keeps its field type
+// exactly as declared.
+fn infer_projected_field_type(field_type: Node, instances: List<TypeVariableInstance>) -> Node {
+  if length(xs: instances) == 0 {
+    field_type
+  } else {
+    infer_type_instantiated(t: field_type, instances: instances)
+  }
+}
+
+// AN APPLICATION WHOSE ARGUMENT COUNT DIFFERS FROM ITS HEAD'S DECLARED PARAMETERS has no instantiation
+// to read a field at; that is a decided defect of the receiver's type, refused at the projection, never
+// read past or left at the frontier.
+fn infer_receiver_arity_mismatch_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_reason_projection_receiver_type_arity_mismatch,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -1216,8 +1242,9 @@ fn infer_field_not_declared_diagnostic(node: Node) -> Diagnostic {
 // never a claim about the receiver's fields. The arm carries the path so a reader can name the declaration
 // that could not be retrieved.
 type ProjectionReceiver
-  = ReceiverPayload { payload: Node }
+  = ReceiverPayload { payload: Node, instances: List<TypeVariableInstance> }
   | ReceiverTypeNotADeclaration
+  | ReceiverArityMismatch
   | ReceiverDeclarationUnavailable { path: QualifiedName }
   | ReceiverTypeUnderived
 
@@ -1232,12 +1259,28 @@ fn infer_projection_receiver(
       match inferred_facts_resolved_type(facts: base_facts) {
         Violates { diagnostic: _ } => ReceiverTypeUnderived
         Holds { value: receiver_type } =>
-          match declaration_reference_path_optional(node: receiver_type) {
+          let head_args = infer_type_head_and_args(t: receiver_type)
+          match declaration_reference_path_optional(node: head_args.head) {
             Absent => ReceiverTypeNotADeclaration
             Present { value: path } =>
               match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
                 Absent => ReceiverDeclarationUnavailable { path: path }
-                Present { value: payload } => ReceiverPayload { payload: payload }
+                Present { value: payload } =>
+                  if length(xs: head_args.args) == 0 {
+                    ReceiverPayload { payload: payload, instances: infer_no_type_variable_instances() }
+                  } else {
+                    let params = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: path)
+                    if length(xs: params) != length(xs: head_args.args) {
+                      ReceiverArityMismatch
+                    } else {
+                      ReceiverPayload {
+                        payload: payload,
+                        instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
+                          TypeVariableInstance { binder: p, instance: arg }
+                        })
+                      }
+                    }
+                  }
               }
           }
       }
