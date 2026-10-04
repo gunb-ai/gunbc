@@ -47,7 +47,7 @@ type GitRefDeletedBody {}
 // property on it (gunbc.runner.runner_qualification_ref_segment, the dedicated group's resting pin)
 // carries it as this typed standing, and the read below names what would ground it.
 data github_ref_creation_enforces_check_ref_format: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "an observed 422 from POST /repos/{owner}/{repo}/git/refs for refs/heads/qualification/.unpinned (or GitHub documentation stating the rejected names) would ground that a component beginning with a dot cannot be created through GitHub" as NonEmptyStr,
+  read_obligation: "an observed 422 from POST /repos/\{owner\}/\{repo\}/git/refs for refs/heads/qualification/.unpinned (or GitHub documentation stating the rejected names) would ground that a component beginning with a dot cannot be created through GitHub" as NonEmptyStr,
 }
 
 type GitRefWire {
