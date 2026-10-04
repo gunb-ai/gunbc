@@ -309,7 +309,7 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
                 expected_commit: trim(revision),
               )
             FilesystemFileIndeterminate { cause } =>
-              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt is listed and could not be read, so whether the operation already ran is unknown: ", cause], "") }
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt could not be observed, so whether the operation already ran is unknown: ", cause], "") }
             FilesystemFileObservationsDisagree { path: _, cause } =>
               EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt observation is self-contradictory, so whether the operation already ran is unknown: ", cause], "") }
             FilesystemFileSubjectRefused { directory: _, name: _, cause } =>

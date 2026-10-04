@@ -638,7 +638,7 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
     ServedObservationBodyUnreadable { cause } =>
       served_observation_refusal_response(
         refusal: "ServedObservationBodyUnreadable",
-        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index exists but could not be read: ", cause], ""),
+        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index could not be observed: ", cause], ""),
       )
     ServedObservationBodyMismatch { expected, actual } =>
       served_observation_refusal_response(

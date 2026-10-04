@@ -846,7 +846,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     node_id: "v1-emitter-fixed-point",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",

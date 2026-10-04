@@ -254,6 +254,29 @@ test fn red_control_a_listed_body_that_cannot_be_read_is_unreadable_not_missing(
     && !string_contains(s: r.body, pattern: "ServedObservationBodyMissing")
 }
 
+// RED control: the listing itself refused, so existence was never established either way. The
+// refusal carries the owner's listing cause ("could not be listed") and never claims the body
+// exists.
+test fn a_refused_listing_leaves_existence_unknown_and_never_claims_the_body_exists() -> Bool {
+  let daily = fixture_entry(kind: DailyPage)
+  let r = served_observation_body_response(
+    entry: daily,
+    body: served_observation_body_read_from_observation(
+      entry: daily,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: false, entries: "", error: "Permission denied (os error 13)"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadRefused { error: "not reached" },
+    ),
+  ),
+  )
+  r.status == 503
+    && string_contains(s: r.body, pattern: "could not be observed")
+    && string_contains(s: r.body, pattern: "could not be listed")
+    && !string_contains(s: r.body, pattern: "exists")
+}
+
 test fn a_refused_daily_render_is_served_as_plain_text_not_html() -> Bool {
   let entry = ServedObservationEntry { kind: DailyPage, status: 500, digest: served_observation_body_digest(body: "page render refused") }
   let r = served_observation_body_response(

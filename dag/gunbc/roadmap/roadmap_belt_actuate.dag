@@ -525,6 +525,7 @@ import gunbc.roadmap_session_placement {
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
   WorkflowAttemptEvidence,
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
   workflow_attempt_progress_json_members,
@@ -5551,6 +5552,10 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     WorkflowModeledStatePointerUnreadable { cause } =>
       join(["this attempt's current-attempt-key pointer could not be read, so whether an attempt key names its worktree is unknown: ", cause], "")
   }
+  let standing = match pointer_state {
+    WorkflowModeledStatePointerAbsent => WorkflowModeledStateAbsent
+    WorkflowModeledStatePointerUnreadable { cause } => WorkflowModeledStateUnreadable { cause: cause }
+  }
   let placement_detail = match pointer_state {
     WorkflowModeledStatePointerAbsent =>
       "this attempt has no modeled state pointer, so no attempt key names its session placement"
@@ -5565,7 +5570,7 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     node_id: attempt.node_id,
     attempt_key: attempt.attempt_key,
     branch: attempt.branch,
-    modeled_state_present: false,
+    modeled_state: standing,
     worktree: AttemptWorktreeUnobserved { path: "", cause: worktree_cause },
     admission_receipt_readable: false,
     admission_receipt: "",
@@ -5798,7 +5803,7 @@ fn belt_workflow_attempt_evidence_for_key(
       node_id: node_id,
       attempt_key: current_key,
     ),
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: current_key),
     admission_receipt_readable: admission.success,
     admission_receipt: admission.content,
