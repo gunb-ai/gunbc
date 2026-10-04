@@ -284,7 +284,8 @@ type ConvergenceReceiptProjection<R> sole_constructor {
 fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_of: fn(R) -> List<StepInstanceKey>) -> ConvergenceReceiptProjection<R>
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_receipt_projection"),
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "probe_receipt_projection"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run"),
   ]
 {
   ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of }

@@ -378,7 +378,8 @@ fn stopped_on_unmet_access_precondition<R, C>(v: ConvergenceRunVerdict<R, C>?) -
 // A PRECONDITION IS NOT SATISFIED BY A RECEIPT FOR ANOTHER SUBJECT. SUPPLIED at the fold's
 // interface: the Manager read is sealed and binds to mtjade1 alone, so no real AccessDiscover receipt
 // for another unit exists to hand it. The probe receipt below carries its key and consumed set as
-// plain fields, read through a projection this witness is admitted to mint. Over the real admitted
+// plain fields, read through a projection minted inside the test function itself: the fold admits
+// these two Bool-returning claims as callers, and no function here returns a sealed carrier. Over the real admitted
 // plan, an IdentityBindProvisional instance for mtjade1 that consumed mtjade2's AccessDiscover
 // instance stops the line naming mtjade1's own AccessDiscover instance as the unmet precondition,
 // although mtjade1's AccessDiscover converged.
@@ -395,10 +396,6 @@ fn probe_consumed(r: ProbeReceipt) -> List<StepInstanceKey> {
   r.consumed
 }
 
-fn probe_receipt_projection() -> ConvergenceReceiptProjection<ProbeReceipt> {
-  convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)
-}
-
 test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> Bool {
   let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let foreign_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: "mtjade2" as StepSubjectKey)
@@ -409,7 +406,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> 
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: probe_receipt_projection()) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -425,7 +422,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run() -> Boo
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: probe_receipt_projection()) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
