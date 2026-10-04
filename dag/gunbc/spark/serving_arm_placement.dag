@@ -3,7 +3,7 @@ module gunbc.spark.serving_arm_placement
 import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 
