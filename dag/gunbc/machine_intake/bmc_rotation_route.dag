@@ -16,7 +16,7 @@ import gunbc.machine_intake_bmc_secure {
   AccountManagementUnavailable,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
-import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, redemption_refusal_reason }
+import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
@@ -227,7 +227,7 @@ fn dry_route_qualification_request(world: BmcWorld, request: BmcAccountWriteRequ
 
 type RouteQualificationRefusal
   = QualificationSubjectNotACandidate
-  | QualificationApprovalRefused { cause: String }
+  | QualificationApprovalRefused { cause: RedemptionRefusal }
   | QualificationApprovalDenied
   | QualificationApprovalForAnotherAuthority { authority: NonEmptyStr }
   | QualificationApprovalForAnotherRequest { approved: NonEmptyStr, requested: NonEmptyStr }
@@ -246,7 +246,7 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
 
 fn qualification_approval_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approval: Redemption) -> RouteQualificationRefusal? {
   match approval {
-    RedemptionRefused { cause: c } => Present { value: QualificationApprovalRefused { cause: redemption_refusal_reason(r: c) } }
+    RedemptionRefused { cause: c } => Present { value: QualificationApprovalRefused { cause: c } }
     RedemptionAdmitted { claims: cl, decided_by: _ } =>
       match cl.decision {
         ProposeDeny => Present { value: QualificationApprovalDenied }
@@ -314,14 +314,18 @@ data route_qualification_live_frontier: DissolutionCondition = unbound_dissoluti
 // BEFORE the approval, so an ungrounded or candidate route refuses even beside a valid operator
 // approval of the rotation: approving a rotation is not grounding a route. A route grounded on one
 // controller or build refuses a write to another, so mtcollins1's executed IPMI route can never
-// authorize mtjade1.
+// authorize mtjade1. The approval must name the rotation authority AND this exact controller, build
+// and request (rotation_route_request_identity): an approval given for one controller is a different
+// decision on every other, refused as RotationApplyApprovalForAnotherRequest.
 type RotationApplyAdmission
   = RotationApplyAdmitted { standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, decided_by: NonEmptyStr }
   | RotationApplyRouteNotGrounded { standing: BmcRotationRouteStanding }
   | RotationApplyRouteForAnotherController { route_endpoint: BmcControllerEndpoint, target_endpoint: BmcControllerEndpoint }
   | RotationApplyRouteForAnotherBuild { route_firmware: BmcFirmwareReleaseIdentity, target_firmware: BmcFirmwareReleaseIdentity }
-  | RotationApplyApprovalRefused { cause: String }
+  | RotationApplyApprovalRefused { cause: RedemptionRefusal }
+  | RotationApplyApprovalDenied
   | RotationApplyApprovalForAnotherAuthority { authority: NonEmptyStr }
+  | RotationApplyApprovalForAnotherRequest { approved: NonEmptyStr, requested: NonEmptyStr }
 
 fn grounded_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteRequest? {
   match standing.grounding {
@@ -347,13 +351,15 @@ fn admit_rotation_apply(
         RotationApplyRouteForAnotherBuild { route_firmware: standing.firmware, target_firmware: target_firmware }
       } else {
         match approval {
-          RedemptionRefused { cause: c } => RotationApplyApprovalRefused { cause: redemption_refusal_reason(r: c) }
+          RedemptionRefused { cause: c } => RotationApplyApprovalRefused { cause: c }
           RedemptionAdmitted { claims: cl, decided_by: by } =>
             match cl.decision {
-              ProposeDeny => RotationApplyApprovalRefused { cause: "the operator denied the rotation" }
+              ProposeDeny => RotationApplyApprovalDenied
               ProposeApprove =>
                 if cl.authority != rotation_apply_authority {
                   RotationApplyApprovalForAnotherAuthority { authority: cl.authority }
+                } else if cl.request_revision != rotation_route_request_identity(standing: standing, request: request) {
+                  RotationApplyApprovalForAnotherRequest { approved: cl.request_revision, requested: rotation_route_request_identity(standing: standing, request: request) }
                 } else {
                   RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
                 }

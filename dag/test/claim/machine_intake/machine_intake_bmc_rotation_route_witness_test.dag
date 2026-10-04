@@ -15,7 +15,7 @@ import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.machine_intake_bmc_secure {
   CredentialRotationApplication, AccountManagementUnavailable, RotationApplied, RotationNotAttempted,
 }
-import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
+import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, ProposeDeny, approval_capability_protocol }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
 import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
@@ -33,7 +33,8 @@ import gunbc.machine_intake_bmc_rotation_route {
   QualificationResponseForAnotherRequest, QualificationRequestUnrealized,
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
-  RotationApplyRouteForAnotherBuild, RotationApplyApprovalRefused, RotationApplyApprovalForAnotherAuthority,
+  RotationApplyRouteForAnotherBuild, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
+  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest,
   route_qualification_authority, rotation_apply_authority,
   rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
   rotation_route_request_identity, rotation_route_is_grounded,
@@ -69,8 +70,18 @@ fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
   }
 }
 
-fn rotation_approval() -> Redemption {
-  approval(authority: rotation_apply_authority, revision: "rotate" as NonEmptyStr)
+fn standing_request(s: BmcRotationRouteStanding) -> BmcAccountWriteRequest {
+  match s.grounding {
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => r
+    RouteGroundedByCitedSource { request: r, citation: _ } => r
+    RouteQualificationCandidate { request: r, evidence: _ } => r
+    RouteUngrounded => IpmiSetUserPassword { user: 3 }
+  }
+}
+
+// An operator approval of the ROTATION of this exact controller, build and request.
+fn rotation_approval_for(s: BmcRotationRouteStanding) -> Redemption {
+  approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: s, request: standing_request(s: s)))
 }
 
 // A synthetic MegaRAC controller and build for the qualification bootstrap; no unit row is made from
@@ -137,7 +148,9 @@ fn apply_verdict(standing: BmcRotationRouteStanding, target: BmcControllerEndpoi
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
     RotationApplyApprovalRefused { cause: _ } => "approval-refused"
+    RotationApplyApprovalDenied => "approval-denied"
     RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
+    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
   }
 }
 
@@ -221,7 +234,7 @@ test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
     Absent => false
     Present { value: s } =>
       !rotation_route_is_grounded(standing: s)
-        && apply_verdict(standing: s, target: s.endpoint, firmware: s.firmware, approval_value: rotation_approval()) == "route-not-grounded"
+        && apply_verdict(standing: s, target: s.endpoint, firmware: s.firmware, approval_value: rotation_approval_for(s: s)) == "route-not-grounded"
         && match rotation_application_for_standing(standing: s) {
           Present { value: app } => match app {
             AccountManagementUnavailable { detail: _ } => true
@@ -238,8 +251,8 @@ test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
 // approval, aimed at its own controller and build, is admitted.
 test fn an_ungrounded_route_with_rotation_approval_is_refused_and_a_grounded_one_is_admitted() -> Bool {
   let ungrounded = rotation_route_ungrounded(endpoint: mtcollins1_endpoint, firmware: mtcollins1_firmware)
-  apply_verdict(standing: ungrounded, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval()) == "route-not-grounded"
-    && apply_verdict(standing: mtcollins1_rotation_route_standing(), target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval()) == "admitted"
+  apply_verdict(standing: ungrounded, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: ungrounded)) == "route-not-grounded"
+    && apply_verdict(standing: mtcollins1_rotation_route_standing(), target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "admitted"
 }
 
 // An IPMI route grounded on mtcollins1 does not authorize mtjade1, nor mtcollins1 at another build,
@@ -249,8 +262,8 @@ test fn mtcollins1s_grounded_route_does_not_authorize_another_controller_build_o
     Absent => false
     Present { value: jade } =>
       let collins = mtcollins1_rotation_route_standing()
-      apply_verdict(standing: collins, target: jade.endpoint, firmware: jade.firmware, approval_value: rotation_approval()) == "another-controller"
-        && apply_verdict(standing: collins, target: mtcollins1_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval()) == "another-build"
+      apply_verdict(standing: collins, target: jade.endpoint, firmware: jade.firmware, approval_value: rotation_approval_for(s: collins)) == "another-controller"
+        && apply_verdict(standing: collins, target: mtcollins1_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval_for(s: collins)) == "another-build"
         && apply_verdict(standing: collins, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: approval(authority: route_qualification_authority, revision: "rotate" as NonEmptyStr)) == "another-authority"
   }
 }
@@ -271,7 +284,7 @@ test fn the_qualification_effect_grounds_a_candidate_from_its_request_and_respon
       Present { value: s } =>
         grounding_kind(standing: s) == "executed"
           && (s.endpoint.host as String) == (lab_endpoint.host as String)
-          && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval()) == "admitted"
+          && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: s)) == "admitted"
     }
 }
 
@@ -280,7 +293,7 @@ test fn the_qualification_effect_grounds_a_candidate_from_its_request_and_respon
 test fn the_qualification_effect_refuses_every_other_crossing() -> Bool {
   let ipmi = IpmiSetUserPassword { user: 3 }
   let right = qualification_approval_for(standing: lab_candidate(request: ipmi), request: ipmi)
-  refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: rotation_approval()) == "another-authority"
+  refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: rotation_approval_for(s: lab_candidate(request: ipmi))) == "another-authority"
     && refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: approval(authority: route_qualification_authority, revision: "another controller" as NonEmptyStr)) == "another-request"
     && refusal_of(world: bmc_world(power: BmcPowerOn), request: ipmi, approval_value: right) == "not-completed"
     && refusal_of(world: lab_world_with_user3(), request: redfish_account_password_write(), approval_value: qualification_approval_for(standing: lab_candidate(request: redfish_account_password_write()), request: redfish_account_password_write())) == "unrealized"
@@ -312,8 +325,8 @@ test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
     citation: ExternalAuthority { uri: uri_https(locator: "example.invalid/route-witness-citation" as NonEmptyStr) },
   )
   grounding_kind(standing: s) == "cited"
-    && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval()) == "admitted"
-    && apply_verdict(standing: s, target: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval()) == "another-build"
+    && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: s)) == "admitted"
+    && apply_verdict(standing: s, target: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval_for(s: s)) == "another-build"
 }
 
 fn is_account_management_unavailable(a: CredentialRotationApplication?) -> Bool {
@@ -349,4 +362,35 @@ test fn the_qualification_effect_is_classified_operator_approved_and_conforms() 
         _ => false
       }
         && match site_verdict(row: r).conformance { Conforms => true  _ => false })
+}
+
+// AN APPROVAL IS BOUND TO ITS CONTROLLER, BUILD AND REQUEST (review 75181). An admitted approval of
+// mtcollins1's rotation, reused for another controller whose route is grounded under the same
+// authority, is a different decision and refuses; the same approval re-minted for the other
+// controller's own identity is admitted; and a denial is its own typed arm.
+test fn a_rotation_approval_for_one_controller_does_not_admit_another() -> Bool {
+  let request = IpmiSetUserPassword { user: 3 }
+  match qualify_lab(world: lab_world_with_user3(), request: request, approval_value: qualification_approval_for(standing: lab_candidate(request: request), request: request)) {
+    Absent => false
+    Present { value: lab } =>
+      let denied = RedemptionAdmitted {
+        claims: ApprovalCapabilityClaims {
+          protocol: approval_capability_protocol,
+          issuer: "gunbc-approval-broker" as NonEmptyStr,
+          audience: "srv1" as NonEmptyStr,
+          authority: rotation_apply_authority,
+          escalation_id: "route-witness-2" as NonEmptyStr,
+          request_revision: rotation_route_request_identity(standing: lab, request: request),
+          decision: ProposeDeny,
+          attempt: "attempt-2" as AttemptIdentity,
+          issued_at: "2026-10-03T00:00:00Z",
+          expires_at: "2026-10-03T00:15:00Z",
+          key_id: "broker-2026-10" as MacKeyId,
+        },
+        decided_by: "operator" as NonEmptyStr,
+      }
+      apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "another-request"
+        && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: lab)) == "admitted"
+        && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: denied) == "approval-denied"
+  }
 }
