@@ -132,6 +132,7 @@ import gunbc.auth.ci_app_key_rotation {
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
+import gunbc.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.ci_spec {
   site_pxe_edge_converge_receipt_path,
@@ -2881,6 +2882,8 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: boot_attempt_receipt_env_name as String, value: yaml_string(s: "${{ github.event.inputs.attempt_receipt }}")),
+      kv(key: boot_attempt_nonce_env_name as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
@@ -4770,7 +4773,14 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
   DispatchInput {
     name: "transaction_nonce",
-    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
+    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "attempt_receipt",
+    description: Present { value: "mtcollins1_boot only: a committed artifacts/receipts/*.json naming this attempt's plan and the operator's inspection (gunbc.host_boot_attempt_admission). Empty records the configuration as not recorded; a named receipt that fails any check refuses the boot before power-on. Requires transaction_nonce" },
     required: false,
     default: none,
     type: InputString,

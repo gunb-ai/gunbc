@@ -111,7 +111,7 @@ fn snapshot_entry_of(line: String) -> SnapshotFileEntry? {
 fn sha256_of_cache_blob(ctx: SparkMaterializeContext, repo_dir: NonEmptyStr, e: SnapshotFileEntry) -> SnapshotFileEntry? {
   if is_sha256_name(name: e.cache_blob as String) { Present { value: e } } else {
     match spark_remote_run(ctx: ctx, argv: ["sha256sum", join([repo_dir as String, "/blobs/", e.cache_blob as String], "")]) {
-      RemoteUnreachable { cause: _ } => none
+      RemoteUnreachable { cause: _, reach: _ } => none
       RemoteRan { exit_code: c, stdout: out, stderr: _ } =>
         if c != 0 { none } else {
           match first(split(s: out, delimiter: " ")) {
@@ -126,7 +126,7 @@ fn sha256_of_cache_blob(ctx: SparkMaterializeContext, repo_dir: NonEmptyStr, e: 
 
 fn read_snapshot_file_map(ctx: SparkMaterializeContext, paths: SnapshotHubPaths) -> SnapshotFileMap {
   match spark_remote_run(ctx: ctx, argv: ["find", paths.snapshot_dir as String, "-type", "l", "-printf", "%P\\t%l\\n"]) {
-    RemoteUnreachable { cause: c } => SnapshotFileMapUnread { cause: c }
+    RemoteUnreachable { cause: c, reach: _ } => SnapshotFileMapUnread { cause: c }
     RemoteRan { exit_code: c, stdout: out, stderr: err } =>
       if c != 0 { SnapshotFileMapUnread { cause: join(["find exited ", to_string(c), ": ", err], "") } } else {
         let lines = filter(split(s: out, delimiter: "\n"), l => l != "")
@@ -154,7 +154,7 @@ fn read_snapshot_file_map(ctx: SparkMaterializeContext, paths: SnapshotHubPaths)
 // model's blobs/, a layout hf also reads; its `hf cache verify` stays the oracle.
 fn expose_snapshot_blobs(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, entries: List<SnapshotFileEntry>) -> String? {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", fabric_blob_root as String]) {
-    RemoteUnreachable { cause: c } => Present { value: c }
+    RemoteUnreachable { cause: c, reach: _ } => Present { value: c }
     RemoteRan { exit_code: e, stdout: _, stderr: err } =>
       if e != 0 { Present { value: join(["mkdir exited ", to_string(e), ": ", err], "") } } else {
         first_failure(causes: map(entries, x => expose_one(ctx: ctx, paths: paths, x: x)))
@@ -164,7 +164,7 @@ fn expose_snapshot_blobs(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, 
 
 fn expose_one(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, x: SnapshotFileEntry) -> String {
   match spark_remote_run(ctx: ctx, argv: ["ln", "-fL", join([paths.repo_dir as String, "/blobs/", x.cache_blob as String], ""), fabric_blob_path(hex: x.sha256_hex) as String]) {
-    RemoteUnreachable { cause: c } => c
+    RemoteUnreachable { cause: c, reach: _ } => c
     RemoteRan { exit_code: e2, stdout: _, stderr: err2 } =>
       if e2 != 0 { join(["hard-linking ", x.rel_path as String, " into the blob root exited ", to_string(e2), ": ", err2, " (the Hub cache and the blob root must share a filesystem; nothing is copied instead)"], "") } else { "" }
   }
@@ -181,7 +181,7 @@ fn place_snapshot_entry(ctx: SparkMaterializeContext, paths: SnapshotHubPaths, e
   let link = join([paths.snapshot_dir as String, "/", e.rel_path as String], "")
   let script = "set -e; mkdir -p \"$1/blobs\" \"$(dirname \"$3\")\"; ln -f \"$2\" \"$4\"; ln -sfn \"$(realpath --relative-to=\"$(dirname \"$3\")\" \"$4\")\" \"$3\"; rm -f \"$2\""
   match spark_remote_run(ctx: ctx, argv: ["sh", "-c", script, "sh", paths.repo_dir as String, fabric_blob_path(hex: e.sha256_hex) as String, link, blob_in_cache]) {
-    RemoteUnreachable { cause: c } => c
+    RemoteUnreachable { cause: c, reach: _ } => c
     RemoteRan { exit_code: x, stdout: _, stderr: err } =>
       if x != 0 { join(["placing ", e.rel_path as String, " exited ", to_string(x), ": ", err], "") } else { "" }
   }

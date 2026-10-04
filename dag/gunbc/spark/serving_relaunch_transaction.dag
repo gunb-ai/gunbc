@@ -954,7 +954,7 @@ fn relaunch_leg(
 ) -> NonEmptyStr?
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
-    RemoteUnreachable { cause: why } =>
+    RemoteUnreachable { cause: why, reach: _ } =>
       Present { value: join([relaunch_step_wire(s: step) as String, ": ", why], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: _, stderr: err } =>
       if code != 0 {
@@ -1578,7 +1578,7 @@ fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservati
     ) }
     SleepArgv { words: words } =>
       match spark_remote_run(ctx: c.rank.ctx, argv: words) {
-        RemoteUnreachable { cause: why } => RankTransportRefused { refusal: rank_observation_refusal(
+        RemoteUnreachable { cause: why, reach: _ } => RankTransportRefused { refusal: rank_observation_refusal(
           subject: c.rank.subject,
           step: relaunch_step_wire(s: StepAwaitAnnouncement),
           cause: join(["the wait between announcement polls could not be taken: ", why], "") as NonEmptyStr,

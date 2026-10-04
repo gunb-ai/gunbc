@@ -80,7 +80,7 @@ fn checkpoint_host_path(c: ServingCheckpoint) -> NonEmptyStr? {
 fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, placement: SnapshotPlacement) -> HeldImageExecutor {
   let want = render_oci_content_digest_wire(d: image.config)
   match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", image.tag as String]) {
-    RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the image inspect leg did not run: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => HeldImageExecutorRefused { cause: join(["the image inspect leg did not run: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 && docker_image_inspect_names_no_such_image(stderr: err) {
         HeldImageExecutorRefused { cause: join(["the executor image ", image.tag as String, " is not held on ", ctx.host as String, " (", err, "); it is never pulled"], "") }
@@ -94,7 +94,7 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
               HeldImageExecutorRefused { cause: join(["the image under ", image.tag as String, " on ", ctx.host as String, " is ", id as String, ", not the recorded ", want], "") }
             } else {
               match spark_remote_run(ctx: ctx, argv: ["docker", "run", "--rm", "--pull", "never", "--entrypoint", "sh", image.tag as String, "-c", "command -v hf"]) {
-                RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the CLI read leg did not run: ", c], "") }
+                RemoteUnreachable { cause: c, reach: _ } => HeldImageExecutorRefused { cause: join(["the CLI read leg did not run: ", c], "") }
                 RemoteRan { exit_code: c2, stdout: path, stderr: e2 } =>
                   if c2 != 0 || !starts_with(s: path, prefix: "/") || string_contains(s: path, pattern: "\n") {
                     HeldImageExecutorRefused { cause: join(["the image ", want, " answered no Hub CLI path (exit ", to_string(c2), ", stdout `", path, "`, stderr `", e2, "`)"], "") }
@@ -174,7 +174,7 @@ fn checkpoint_verify_with(ctx: SparkMaterializeContext, image: VllmImageDistribu
     HeldImageExecutorRefused { cause: c } => CheckpointVerifyUnread { cause: c }
     HeldImageExecutorRead { executor: e, receipt: _ } =>
       match spark_remote_run(ctx: with_executor_ctx(ctx: ctx, executor: e), argv: executor_wrap(executor: e, argv: model_snapshot_completion_check_argv(snapshot: snapshot))) {
-        RemoteUnreachable { cause: c } => CheckpointVerifyUnread { cause: join(["the verify leg did not run: ", c], "") }
+        RemoteUnreachable { cause: c, reach: _ } => CheckpointVerifyUnread { cause: join(["the verify leg did not run: ", c], "") }
         RemoteRan { exit_code: code, stdout: out, stderr: err } =>
           match read_instrument(exit_code: code, stdout: out) {
             InstrumentVerified => CheckpointVerified
@@ -307,7 +307,7 @@ fn checkpoint_landed_on_host(ctx: SparkMaterializeContext, m: CheckpointMaterial
         Absent => none
         Present { value: paths } =>
           match spark_remote_run(ctx: ctx, argv: ["du", "-sbL", paths.repo_dir as String]) {
-            RemoteUnreachable { cause: c } => Present { value: join(["the host's checkpoint size could not be read: ", c], "") }
+            RemoteUnreachable { cause: c, reach: _ } => Present { value: join(["the host's checkpoint size could not be read: ", c], "") }
             RemoteRan { exit_code: code, stdout: out, stderr: err } =>
               if code != 0 { Present { value: join(["du exited ", to_string(code), ": ", err], "") } } else {
                 match first(split(s: out, delimiter: "\t")) {
@@ -336,7 +336,7 @@ fn transfer_restarts_line(ctx: SparkMaterializeContext, snapshot: ModelSnapshotD
     Absent => "transfer unit restarts: UNREAD (no subject)\n"
     Present { value: subject } =>
       match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=NRestarts", "--value"]) {
-        RemoteUnreachable { cause: c } => join(["transfer unit restarts: UNREAD (", c, ")\n"], "")
+        RemoteUnreachable { cause: c, reach: _ } => join(["transfer unit restarts: UNREAD (", c, ")\n"], "")
         RemoteRan { exit_code: code, stdout: out, stderr: err } =>
           if code != 0 { join(["transfer unit restarts: UNREAD (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
           else { join(["transfer unit restarts: ", trim(s: out), " (each a failure retried by Restart=on-failure)\n"], "") }

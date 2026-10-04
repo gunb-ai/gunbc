@@ -63,7 +63,7 @@ type RemoteText
 
 fn remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> RemoteText {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", trim(s: err)], "") } } else { RemoteTextRead { stdout: out } }
   }

@@ -27,7 +27,7 @@ import v2.std.diagnostic {
   diagnostics_has_reason
 }
 import std.algebra { list_snoc_item }
-import v2.std.type_binder { type_binder_set_children, type_params_edge }
+import v2.std.type_binder { type_params_edge }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.node_query { binder_edge }
 import v2.std.node {
@@ -117,12 +117,12 @@ fn inhabitance_generic_formal_tree() -> Node {
             item: type_params_edge(
               conj: node_synthetic(
                 kind: TypeNode { connective: Conj },
-                children: type_binder_set_children(binders: [
+                children: [
                   Edge {
                     label: Authored { name: ^inhabitance_type_param_t },
                     target: dag_type_atom_node(identity: ^inhabitance_type_param_t)
                   }
-                ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
+                ]
               )
             )
           )
