@@ -2,7 +2,7 @@ module gunbc.spark.host_occupancy_admission
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { Kibibyte }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_operation_exec { SystemctlStop, SystemctlStart }
 import gunbc.compute.host_occupancy {
   HostOccupant, ServingUnitActive, GpuComputeProcess,

@@ -137,7 +137,7 @@ fn running_release_member_string(lookup: JsonMemberLookup) -> String? {
   match lookup {
     JsonMemberFound { value: v } =>
       match v {
-        JsonString { value: s } => s
+        JsonString { value: s } => Present { value: s }
         JsonNull => Absent
         JsonBool { value: _ } => Absent
         JsonNumber { lexeme: _ } => Absent

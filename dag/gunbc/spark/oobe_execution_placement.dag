@@ -7,13 +7,8 @@ import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, PartiallyQualified }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.toolchain.types { Architecture, Aarch64 }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
 import extdeps.browser.chromium { ChromiumBuild, chromium_151_0_7922_34 }
 import gunbc.spark.oobe_screen_observation {

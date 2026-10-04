@@ -3,7 +3,6 @@ module gunbc.fleet_host_assembly
 import std.types { List, NonEmptyStr, Bool }
 import std.list { list_cover }
 import product.placement_supply {
-  HostIdentity,
   PhysicalAssetIdentity,
   PhysicalContainment,
   HostContainsComponent,
@@ -12,8 +11,8 @@ import product.placement_supply {
   RoomContainsRack,
   RackContainsPlacement,
   physical_asset_identity_eq,
-  host_identity_eq,
 }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.inventory {
   InventoryLotIdentity,
   LotCatalogIdentity,
@@ -23,12 +22,7 @@ import product.inventory {
   inventory_lot_identities_contain,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet_asset_identity {
   chassis_srv1,
   chassis_srv2,

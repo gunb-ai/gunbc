@@ -30,8 +30,8 @@ import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
   srv1_tailscale_endpoint,
   fleet_intent_network,
-  operator_host_srv1,
 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,

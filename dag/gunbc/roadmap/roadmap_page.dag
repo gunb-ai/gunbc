@@ -32,6 +32,8 @@ import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
+import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
@@ -243,17 +245,29 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 
 // THE HEADER ACCOUNT AREA (owner ask 2026-09-26, DYNAMIC since the pre-rendered-body defect
 // 2026-09-27: the main page body is the belt's pre-rendered static body, so a statically rendered
-// account area could never reflect the per-request session). The static markup renders only a
-// HIDDEN session target (empty avatar/name fields); the emitted client program fetches
-// GET /auth/session on load and unhides the target when the response says authenticated — name
+// account area could never reflect the per-request session — it showed Sign in forever after a
+// successful login). ONE AUTHORITY NOW: the static markup ALWAYS renders the Sign-in affordance
+// plus a HIDDEN session target (empty avatar/name fields), and the emitted client program fetches
+// GET /auth/session on load and swaps the target in when the response says authenticated — name
 // and avatar render from the SESSION RESPONSE alone; a 401, an absent flag, or a failed fetch
-// leaves the target hidden, never an identity claim from a failed fetch. THE AVATAR rides the
-// never-blocks law: the session wire's OPTIONAL picture member renders as an <img> layered over
-// the client-computed initials; an absent picture, a failed fetch, or a failed image all render
-// the initials. The Sign in / Switch account / Sign out affordances and the account menu are NOT
-// rendered here: the Google login, callback and logout routes they addressed moved to a follow-up
-// PR modeled in .dag (#12787), and a link to a route this server does not serve is a dead control.
+// leaves Sign in, never an identity claim from a failed fetch. THE AVATAR rides the never-blocks
+// law: the session wire's OPTIONAL picture member renders as an <img> layered over the
+// client-computed initials (the standing flips to data-avatar="resolved" only when the picture
+// lands); an absent picture, a failed fetch, or a failed image all render the initials — the
+// /avatar/<principal> proxy endpoint is the tailnet-privacy follow-up, not a blocker.
+// THE ACCOUNT MENU (owner ask 2026-09-27): the chip is a BUTTON (avatar + name), not a bare
+// row — activating it toggles a small menu with the Google-account actions: Switch account
+// (a GET to /auth/login?prompt=select_account, the one admitted login prompt, so Google shows
+// its chooser) and Sign out (the native form POSTing /auth/logout: the 303 lands back here,
+// the fetch re-runs against the cleared cookie, Sign in returns). The menu ships hidden and
+// the emitted client owns the toggle; the static bytes still carry no identity claim.
 fn header_account_nodes() -> List<Fragment> {
+  let signin = el_attrs("a", [
+    attr(name: "class", value: "header-account header-account-signin" ),
+    attr(name: "href", value: auth_login_route_path ),
+    attr(name: "data-account-signin", value: "" ),
+    attr(name: "title", value: "sign in with Google" ),
+  ], [ txt("Sign in") ])
   let avatar = el_attrs("span", [
     attr(name: "class", value: "issue-avatar" ),
     attr(name: "data-account-avatar", value: "" ),
@@ -267,17 +281,40 @@ fn header_account_nodes() -> List<Fragment> {
     attr(name: "class", value: "header-account-trigger" ),
     attr(name: "type", value: "button" ),
     attr(name: "data-account-trigger", value: "" ),
+    attr(name: "aria-haspopup", value: "menu" ),
+    attr(name: "aria-expanded", value: "false" ),
   ], [ avatar, name ])
+  let switch_item = el_attrs("a", [
+    attr(name: "class", value: "header-account-menu-item" ),
+    attr(name: "href", value: join([auth_login_route_path, "?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String], "") ),
+    attr(name: "role", value: "menuitem" ),
+  ], [ txt("Switch account") ])
+  let signout_btn = el_attrs("button", [
+    attr(name: "class", value: "header-account-menu-item header-account-signout-btn" ),
+    attr(name: "type", value: "submit" ),
+    attr(name: "role", value: "menuitem" ),
+  ], [ txt("Sign out") ])
+  let signout_form = el_attrs("form", [
+    attr(name: "class", value: "header-account-signout" ),
+    attr(name: "method", value: "post" ),
+    attr(name: "action", value: auth_logout_route_path ),
+  ], [ signout_btn ])
+  let menu = el_attrs("span", [
+    attr(name: "class", value: "header-account-menu" ),
+    attr(name: "data-account-menu", value: "" ),
+    attr(name: "role", value: "menu" ),
+    attr(name: "hidden", value: "" ),
+  ], [ switch_item, signout_form ])
   let session = el_attrs("span", [
     attr(name: "class", value: "header-account header-account-session" ),
     attr(name: "data-account-session", value: "" ),
     attr(name: "hidden", value: "" ),
-  ], [ trigger ])
-  [ el_class("span", "header-account-slot", [ session ]) ]
+  ], [ trigger, menu ])
+  [ el_class("span", "header-account-slot", [ signin, session ]) ]
 }
 
-// THE SHARED HEADER. Every page renders the same static account area (the hidden session
-// target); the client swap personalizes it per request where a session exists.
+// THE SHARED HEADER. Every page renders the same static account area (Sign in + the hidden
+// session target); the client swap personalizes it per request where a session exists.
 fn roadmap_header(page: String) -> Fragment {
   el("header", [
     el_class("div", "header-inner", concat(

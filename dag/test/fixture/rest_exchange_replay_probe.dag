@@ -2,6 +2,7 @@ module test.fixture.rest_exchange_replay_probe
 
 import std.types { Bool, Int, List, String }
 import extdeps.transports.rest { RestOutcome }
+import std.serialization { Text }
 import extdeps.github.workflow_runs { WorkflowRunList }
 import extdeps.cloud.gcp.gcp { WifProviderWire, WifProviderListWire, WifPoolWire }
 
@@ -28,6 +29,10 @@ type WireUncontractedShape {
 // WifProvidersPage and WifPool carry the OUTPUT SHAPES of extdeps.cloud.gcp.iam_admin
 // ListWorkloadIdentityPoolProviders and GetWorkloadIdentityPool verbatim, so a recorded IAM body
 // reaches the same type-directed decode gunbc.auth.heal_publisher_provision reads through.
+// TextBody spells response_format as the std.serialization WireFormat variant github.Pulls.Diff
+// uses, so a plain-text body must come back as text through dispatch_rest rather than through the
+// JSON decoder. FormatUnrecognized spells it as no WireFormat variant, which must refuse rather than
+// default to Json.
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -38,6 +43,26 @@ service test.RestReplay {
     }
     readonly
     transport rest { method: GET, path: "/answer" }
+  }
+
+  operation TextBody {
+    output {
+      text: String
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer", response_format: Text }
+    response { 200 => String }
+  }
+
+  operation FormatUnrecognized {
+    output {
+      text: String
+      observed: RestOutcome
+    }
+    readonly
+    transport rest { method: GET, path: "/answer", response_format: "Text" }
+    response { 200 => String }
   }
 
   operation RootArray {
