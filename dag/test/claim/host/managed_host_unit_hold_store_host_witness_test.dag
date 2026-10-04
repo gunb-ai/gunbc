@@ -1,0 +1,258 @@
+module test.claim.managed_host_unit_hold_store_host_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.measure { second }
+import std.materialization_ladder { Frame, SharedStateFrame }
+import std.effect_grant {
+  Read, Write, ServiceOpTree, NamespacePosition,
+  ModeledRealization, LifecycleByConstruction, Grant, Envelope,
+}
+import v2.std.operation_argv { OperationRef }
+import v2.std.operation_realization {
+  OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
+  OperationObserved, ShellObserved,
+  virtual_clock_origin,
+}
+import v2.std.witness_evaluation {
+  WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.shell { ShellProcessExited }
+import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings }
+import gunbc.process_environment_model { ModeledVariable, environment_binding }
+import gunbc.managed_host_unit_hold { unit_hold_store_root, maintenance_hold_take, maintenance_hold_release }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE OPERATOR'S TAKE AND RELEASE, EXECUTED ON A MACHINE THAT IS AND IS NOT THE STORE HOST. The
+// subjects are the production entries, called with the real managed host's label; the model answers
+// only what a machine has around the process: its short hostname, its process environment, and its
+// filesystem, where the hold store is an ordinary modeled directory. The claims assert the ROUTE --
+// which operations the entry dispatched -- so "refused before the reason lookup or any store
+// operation" and "reached the store effect" are read from what ran, not from the exit text alone.
+// Nothing here touches a real store: every operation is answered by this realization.
+type HoldHostWorld {
+  hostname: String
+  environment: List<ModeledVariable>
+  fs: ModeledFilesystem
+}
+
+data realization_identity: NonEmptyStr = "managed-host-unit-hold-store-host-witness" as NonEmptyStr
+
+data os_hostname_read_short_operation: OperationRef = OperationRef {
+  path: "dag/extdeps/tools/hostname.dag",
+  service: "os.Hostname",
+  operation: "ReadShort",
+}
+
+// `hostname -s` on the modeled machine: the short name and one newline, exit 0.
+fn hostname_handler(w: HoldHostWorld, call: OperationCall) -> OperationStep<HoldHostWorld> {
+  OperationObserved {
+    observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: concat(w.hostname, "\n"), stderr: "" } },
+    state: w,
+    elapsed: second(count: 0),
+  }
+}
+
+fn with_fs(w: HoldHostWorld, fs: ModeledFilesystem) -> HoldHostWorld {
+  HoldHostWorld { hostname: w.hostname, environment: w.environment, fs: fs }
+}
+
+data modeled_services: List<String> = ["os.Hostname", "shell.Env", "Filesystem"]
+
+fn modeled_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }
+    binding: ModeledRealization { realization: realization_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn hold_host_frame(world: HoldHostWorld) -> WitnessEvaluationFrame<HoldHostWorld> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "managed-host-unit-hold-store-host-witness", kind: SharedStateFrame }
+      grants: concat(map(modeled_services, s => modeled_grant(service: s, verb: Read)), map(modeled_services, s => modeled_grant(service: s, verb: Write)))
+    }
+    rest_fixtures: []
+    realization: Present { value: OperationRealization {
+      identity: realization_identity,
+      initial: world,
+      epoch: virtual_clock_origin(),
+      bindings: concat(
+        filesystem_bindings(get: fn(w) { w.fs }, put: with_fs, cwd: fn(w) { "/" }),
+        [
+          environment_binding(get: fn(w) { w.environment }),
+          OperationBinding { at: os_hostname_read_short_operation, handler: hostname_handler },
+        ],
+      ),
+      advance: fn(w, now) { w },
+    } }
+  }
+}
+
+fn empty_store() -> ModeledFilesystem {
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String], files: [], refused_reads: [] }
+}
+
+// A machine with the given short hostname, the operator's reason exported, and the given store.
+fn machine(hostname: String, fs: ModeledFilesystem) -> HoldHostWorld {
+  HoldHostWorld {
+    hostname: hostname,
+    environment: [ModeledVariable { name: "GUNBC_MTCOLLINS1_MAINTENANCE_REASON", value: "reseating DIMMs" }],
+    fs: fs,
+  }
+}
+
+fn services_of(route: List<DispatchRecord>) -> List<String> {
+  map(route, r => r.invocation.at.service)
+}
+
+fn dispatched(route: List<DispatchRecord>, service: String) -> Int {
+  count(filter(route, r => r.invocation.at.service == service))
+}
+
+fn store_writes(route: List<DispatchRecord>) -> Int {
+  count(filter(route, r => r.invocation.at.service == "Filesystem" && starts_with(s: r.invocation.at.operation, prefix: "Write")))
+}
+
+fn store_files(fs: ModeledFilesystem) -> List<ModeledFile> {
+  filter(fs.files, f => starts_with(s: f.path, prefix: unit_hold_store_root as String))
+}
+
+fn refused_as_off_the_store_host(e: ProcessExit, observed: String) -> Bool {
+  match e {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: join(["this process observes its own host as '", observed, "'"], ""))
+        && string_contains(s: r, pattern: "nothing was read or written")
+  }
+}
+
+fn succeeded(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// ONLY THE HOSTNAME WAS READ: one dispatch, to os.Hostname, and nothing to the environment or the
+// filesystem -- so neither the reason lookup nor any store operation ran.
+fn only_the_hostname_was_read(route: List<DispatchRecord>) -> Bool {
+  count(route) == 1
+    && dispatched(route: route, service: "os.Hostname") == 1
+    && dispatched(route: route, service: "shell.Env") == 0
+    && dispatched(route: route, service: "Filesystem") == 0
+}
+
+// THE STORE EFFECT WAS REACHED, IN ORDER: the hostname read comes first, the reason was looked up, and
+// the store was written.
+fn reached_the_store_after_the_hostname(route: List<DispatchRecord>) -> Bool {
+  (match services_of(route: route).first() { Present { value: s } => s == "os.Hostname"  Absent => false })
+    && dispatched(route: route, service: "os.Hostname") == 1
+    && store_writes(route: route) >= 1
+}
+
+// THE HELD STORE the release claims start from: the state the take leaves behind on the store host.
+fn store_after_take_on_the_store_host() -> ModeledFilesystem? {
+  match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: empty_store())), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
+    WitnessReturned { value, route, state } =>
+      match state {
+        Present { value: w } => if succeeded(e: value) { Present { value: w.fs } } else { none }
+        Absent => none
+      }
+    WitnessRefused { diagnostic: _, route: _, state: _ } => none
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => none
+  }
+}
+
+// TAKE, OBSERVED ON srv2: refused naming what the process observed, with the hostname read as the
+// only dispatch and the store left empty.
+test fn w_take_observed_off_the_store_host_refuses_before_the_reason_lookup_or_any_store_operation() -> Bool {
+  match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv2", fs: empty_store())), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
+    WitnessReturned { value, route, state } =>
+      refused_as_off_the_store_host(e: value, observed: "srv2")
+        && only_the_hostname_was_read(route: route)
+        && (match state { Present { value: w } => count(store_files(fs: w.fs)) == 0  Absent => false })
+    WitnessRefused { diagnostic: _, route: _, state: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+  }
+}
+
+// TAKE, OBSERVED ON srv1: the same entry on the store host reads the reason and commits the hold; the
+// store holds a slot afterwards.
+test fn w_take_observed_on_the_store_host_reaches_the_store_effect() -> Bool {
+  match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: empty_store())), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
+    WitnessReturned { value, route, state } =>
+      succeeded(e: value)
+        && reached_the_store_after_the_hostname(route: route)
+        && dispatched(route: route, service: "shell.Env") >= 1
+        && (match state { Present { value: w } => count(store_files(fs: w.fs)) >= 1  Absent => false })
+    WitnessRefused { diagnostic: _, route: _, state: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+  }
+}
+
+// RELEASE, OBSERVED ON srv2, OVER A STORE THAT HOLDS THE OPERATOR'S HOLD: refused, the hostname read
+// is the only dispatch, and every store file is byte-for-byte what it was.
+test fn w_release_observed_off_the_store_host_refuses_before_any_store_operation() -> Bool {
+  match store_after_take_on_the_store_host() {
+    Absent => false
+    Present { value: held } =>
+      match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv2", fs: held)), subject: fn(_scope) { maintenance_hold_release(host: "mtcollins1") }) {
+        WitnessReturned { value, route, state } =>
+          refused_as_off_the_store_host(e: value, observed: "srv2")
+            && only_the_hostname_was_read(route: route)
+            && count(store_files(fs: held)) >= 1
+            && (match state { Present { value: w } => store_files(fs: w.fs) == store_files(fs: held)  Absent => false })
+        WitnessRefused { diagnostic: _, route: _, state: _ } => false
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+      }
+  }
+}
+
+// RELEASE, OBSERVED ON srv1, OVER THE SAME HELD STORE: the entry reads the slot and commits the
+// release, and a second take on the store host then succeeds -- the slot is free again.
+test fn w_release_observed_on_the_store_host_reaches_the_store_effect() -> Bool {
+  match store_after_take_on_the_store_host() {
+    Absent => false
+    Present { value: held } =>
+      match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: held)), subject: fn(_scope) { maintenance_hold_release(host: "mtcollins1") }) {
+        WitnessReturned { value, route, state } =>
+          succeeded(e: value)
+            && reached_the_store_after_the_hostname(route: route)
+            && (match state {
+              Absent => false
+              Present { value: released } =>
+                match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: released.fs)), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
+                  WitnessReturned { value: again, route: _, state: _ } => succeeded(e: again)
+                  WitnessRefused { diagnostic: _, route: _, state: _ } => false
+                  WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+                }
+            })
+        WitnessRefused { diagnostic: _, route: _, state: _ } => false
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+      }
+  }
+}
+
+// CONTROL FOR THE HELD-STORE PREMISE: a second take on the store host over the held store is refused
+// as already held, so the two release claims above start from a store that really holds a hold.
+test fn w_a_second_take_on_the_store_host_is_refused_as_already_held() -> Bool {
+  match store_after_take_on_the_store_host() {
+    Absent => false
+    Present { value: held } =>
+      match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: held)), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
+        WitnessReturned { value, route: _, state: _ } =>
+          match value {
+            ExitSuccess => false
+            ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "unit already held by operator-maintenance:reseating DIMMs")
+          }
+        WitnessRefused { diagnostic: _, route: _, state: _ } => false
+        WitnessInterrupted { at: _, route: _, state: _, now: _ } => false
+      }
+  }
+}

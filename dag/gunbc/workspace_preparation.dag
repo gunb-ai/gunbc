@@ -1,0 +1,72 @@
+module gunbc.workspace_preparation
+
+import std.types { NonEmptyStr, String }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey }
+import product.fabric.demand { Demand }
+import product.fabric.selection { ResourceBudgetPolicy }
+import product.fabric.supply { GrantDuration }
+import product.fabric.budget { MoneyAccount }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { WorkspaceRequest }
+import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
+import gunbc.workspace_allocation_budget { workspace_budget_for_request, WorkspaceBudgetObserved, WorkspaceBudgetUnreadable }
+import gunbc.workspace_allocation_plan { workspace_reservation_prepare, WorkspaceReservationPrepared, WorkspaceReservationPreparationRefused }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
+import gunbc.workspace_allocation_store {
+  workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceWanted,
+  workspace_record_plan, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused,
+}
+
+type WorkspacePreparation
+  = WorkspacePreparationRecorded { plan: WorkspaceReservationPlan }
+  | WorkspacePreparationUnmet { reason: String }
+
+// Called while preparing the convergence slice. It persists an immutable selected target before
+// any hold effect. Retries return that target; this entry never launches, acquires or reselects it.
+fn workspace_prepare_recorded_intent(store: FabricStorageBinding, root: NonEmptyStr, request: WorkspaceRequest,
+  demand: Demand<NonEmptyStr>, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+  supply: WorkspaceDedicatedSupply, duration: GrantDuration,
+  resource_policy: ResourceBudgetPolicy<NonEmptyStr>,
+  initial_account: MoneyAccount) -> WorkspacePreparation {
+  let clock = clock_now_probed_at()
+  let lease_live = match clock {
+    Absent => false
+    Present { value: instant } => utc_instant_is_canonical(t: instant as String) && utc_instant_is_canonical(t: request.expires_at)
+      && utc_instant_seconds_after(later: request.expires_at, earlier: instant as String) > 0
+  }
+  if !lease_live { WorkspacePreparationUnmet { reason: "request lease is expired or the current clock is unavailable; convergence must retire it" } }
+  else { match workspace_read_owner(store: store, owner: request.owner) {
+    WorkspaceStoreUnreadable { reason: detail } => WorkspacePreparationUnmet { reason: detail }
+    WorkspaceStoreReadOk { snapshot: owner_state } => {
+      let requests = filter(owner_state.allocations, item => item.request.idempotency_key == request.idempotency_key)
+      if requests.count() != 1 { WorkspacePreparationUnmet { reason: "exactly one persisted authorized request is required before convergence preparation" } }
+      else { match requests.first() {
+        Absent => WorkspacePreparationUnmet { reason: "authorized request is missing" }
+        Present { value: recorded } => if recorded.request != request { WorkspacePreparationUnmet { reason: "request differs from durable idempotency identity" } }
+        else if recorded.desired != WorkspaceWanted { WorkspacePreparationUnmet { reason: "request is retired; only recovery and cleanup remain admitted" } }
+        else { match recorded.plan {
+          Present { value: existing_plan } => WorkspacePreparationRecorded { plan: existing_plan }
+          Absent => if supply.roster.count() == 0 { WorkspacePreparationUnmet { reason: "no currently commissioned dedicated workspace slot has an admitted observed offer" } }
+          else { match workspace_budget_for_request(store: store, request: request, initial: initial_account) {
+            WorkspaceBudgetUnreadable { reason: detail } => WorkspacePreparationUnmet { reason: detail }
+            WorkspaceBudgetObserved { account: advanced_account } => match workspace_reservation_prepare(root: root, request: request, demand: demand,
+              attempt: attempt, supply: supply, resource_policy: resource_policy, duration: duration, account: advanced_account) {
+              WorkspaceReservationPreparationRefused { reason: detail } => WorkspacePreparationUnmet { reason: detail as String }
+              WorkspaceReservationPrepared { plan: selected_plan } => match workspace_record_plan(store: store, plan: selected_plan) {
+                WorkspaceStoreWritten { allocation: saved } => match saved.plan {
+                  Present { value: saved_plan } => WorkspacePreparationRecorded { plan: saved_plan }
+                  Absent => WorkspacePreparationUnmet { reason: "prepared plan publication returned no plan" }
+                }
+                WorkspaceStoreConflict => WorkspacePreparationUnmet { reason: "owner intent changed during preparation; reread before retrying" }
+                WorkspaceStoreWriteRefused { reason: detail } => WorkspacePreparationUnmet { reason: detail }
+              }
+            }
+          } }
+        } }
+      } }
+    }
+  }
+  }
+}
