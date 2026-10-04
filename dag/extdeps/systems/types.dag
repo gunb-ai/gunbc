@@ -1,7 +1,7 @@
 module extdeps.systems.types
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt }
 import std.nat { Nat }
 import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
@@ -121,11 +121,51 @@ type PowerSupplyRedundancy
   = SuppliesOnePlusOne
   | SuppliesNonRedundant
 
+// A SUPPLY'S OUTPUT DEPENDS ON ITS INPUT, so it is a list of ratings by AC input range, as vendors
+// print them ("1000W @ 100-127Vac input / 2000W @ 200-240Vac input"). A rating whose input range the
+// source does not state carries no range, and is never assumed to hold at a site's voltage.
+type SupplyInputRange {
+  minimum_vac: Nat
+  maximum_vac: Nat
+}
+
+type SupplyOutputRating {
+  input: SupplyInputRange?
+  output: Watt
+}
+
 type ServerPowerSupplies {
   form: NonEmptyStr
   count: Nat
   redundancy: PowerSupplyRedundancy
-  output_per_supply: Watt
+  output_ratings: List<SupplyOutputRating>
+}
+
+// THE CARRIER INSIDE A SERVER, as its vendor documents it: the module connectors, each power input
+// with its rail where the document names one, and each connector by designator with the vendor's own
+// family name and function. Recorded so a different carrier (P4261) can be read against a documented
+// one -- as a pattern, never as its pinout.
+type BoardPowerInput {
+  designator: NonEmptyStr
+  label: NonEmptyStr
+  rail: Volt?
+}
+
+type BoardConnector {
+  designators: List<NonEmptyStr>
+  family: NonEmptyStr
+  function: NonEmptyStr
+  link: PcieLink?
+}
+
+type SuperchipCarrierBoardRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  module_connectors: List<NonEmptyStr>
+  power_inputs: List<BoardPowerInput>
+  connectors: List<BoardConnector>
+  on_board_devices: List<NonEmptyStr>
+  management_board: NonEmptyStr?
 }
 
 type ServerManagementController {
@@ -178,6 +218,7 @@ type SuperchipServerCatalogRow {
   supported_superchips: List<CoherentSuperchipCatalogRow>
   announced_superchips: List<CoherentSuperchipCatalogRow>
   module_power_ceiling: Watt
+  carrier: SuperchipCarrierBoardRow?
   power_supplies: ServerPowerSupplies
   management: ServerManagementController?
   host_network: List<SystemNetworkPort>
@@ -191,13 +232,27 @@ type SuperchipServerCatalogRow {
   figure_standing: CitedFigureStanding
 }
 
-// THE MOST A SERVER CAN DRAW FROM ITS SUPPLIES WITH REDUNDANCY HELD: with 1+1 supplies the system
-// must run on one, so its ceiling is one supply's rated output; non-redundant supplies sum. This is a
-// ceiling on draw, not a measurement of it, and a supply's rating is usually stated at high-line
-// input: on 120 V many server supplies deliver less, which the ceiling does not capture.
-fn server_supply_ceiling(row: SuperchipServerCatalogRow) -> Watt {
-  match row.power_supplies.redundancy {
-    SuppliesOnePlusOne => row.power_supplies.output_per_supply
-    SuppliesNonRedundant => watt(count: watt_count(w: row.power_supplies.output_per_supply) * row.power_supplies.count)
+// THE MOST A SERVER CAN DRAW FROM ITS SUPPLIES AT A GIVEN MAINS VOLTAGE, WITH REDUNDANCY HELD: the
+// rating whose input range contains the voltage, then one supply's worth if 1+1 (the system must run on
+// one) or all of them summed if not. Absent when no stated rating covers the voltage -- a "2000W"
+// printed without its input range answers nothing about a 120 V site. A ceiling on draw, not a
+// measurement of it.
+fn supply_rating_at(row: SuperchipServerCatalogRow, mains_vac: Nat) -> Watt? {
+  match (filter(row.power_supplies.output_ratings, r => match r.input {
+    Present { value: range } => range.minimum_vac <= mains_vac && mains_vac <= range.maximum_vac
+    Absent => false
+  })).first() {
+    Absent => Absent
+    Present { value: r } => Present { value: r.output }
+  }
+}
+
+fn server_supply_ceiling_at(row: SuperchipServerCatalogRow, mains_vac: Nat) -> Watt? {
+  match supply_rating_at(row: row, mains_vac: mains_vac) {
+    Absent => Absent
+    Present { value: w } => match row.power_supplies.redundancy {
+      SuppliesOnePlusOne => Present { value: w }
+      SuppliesNonRedundant => Present { value: watt(count: watt_count(w: w) * row.power_supplies.count) }
+    }
   }
 }

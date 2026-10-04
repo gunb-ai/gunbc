@@ -2,7 +2,7 @@ module test.claim.product.node_platform_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }
+import std.measure { Watt, byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }
 import std.pareto { ParetoEntry, PairDominates, PairNoDominance, compare_pair }
 import std.decision {
   SelectionNeedsEvidence,
@@ -13,7 +13,7 @@ import std.decision {
   ConstraintUnestablished,
 }
 import extdeps.external_authority { TranscribedUncited }
-import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling_at }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
 import product.build_selection { BuildAxisReading, MagnitudeWatts }
@@ -189,11 +189,12 @@ fn entry_power_micro(e: ParetoEntry) -> Int {
   fold(e.readings, init: 0 - 1, f: (acc, r) => if declaration_ref_eq(a: r.axis, b: node_power_ceiling_axis) { r.interval_micro.low } else { acc })
 }
 
-// The cited ASRock row reads a 2000 W ceiling (one CRPS of the 1+1 pair) and declares no power gap; the
-// uncited Gigabyte row reads no power and declares the gap with its read obligation.
-test fn cited_servers_read_power_and_uncited_ones_declare_it() -> Bool {
+// AT THE OPERATOR'S 120 V, the cited ASRock row reads a 1000 W ceiling (one CRPS of the 1+1 pair, at
+// its low-line rating) and declares no power gap; the uncited Gigabyte row reads no power and declares
+// the gap with its read obligation.
+test fn cited_servers_read_power_at_the_site_and_uncited_ones_declare_it() -> Bool {
   let asrock_ok = match server_node_entries(server: asrock_rack_mecai_gh200).first() {
-    Present { value: e } => entry_power_micro(e: e) == 2000 && !any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis))
+    Present { value: e } => entry_power_micro(e: e) == 1000 && !any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis))
     Absent => false
   }
   let gigabyte_ok = match server_node_entries(server: gigabyte_xh23_vg0_aaj1).first() {
@@ -203,8 +204,17 @@ test fn cited_servers_read_power_and_uncited_ones_declare_it() -> Bool {
   asrock_ok && gigabyte_ok && count(node_platform_field()) == 4
 }
 
-// Redundancy DISCRIMINATES the ceiling: the same two 2000 W supplies sum to 4000 W when not redundant.
-test fn redundancy_holds_the_ceiling_to_one_supply() -> Bool {
+fn ceiling_or_zero(w: Watt?) -> Int {
+  match w {
+    Present { value: x } => watt_count(w: x)
+    Absent => 0
+  }
+}
+
+// The ceiling DISCRIMINATES on input voltage and redundancy: ASRock reads 1000 W at 120 V and 2000 W at
+// 230 V, nothing at 150 V (no stated range covers it); a rating with no input range answers nothing at
+// 120 V; the same supplies non-redundant sum to 2000 W at 120 V.
+test fn the_ceiling_follows_mains_voltage_and_redundancy() -> Bool {
   let doubled = SuperchipServerCatalogRow {
     vendor: asrock_rack_mecai_gh200.vendor,
     model: asrock_rack_mecai_gh200.model,
@@ -213,7 +223,13 @@ test fn redundancy_holds_the_ceiling_to_one_supply() -> Bool {
     supported_superchips: asrock_rack_mecai_gh200.supported_superchips,
     announced_superchips: asrock_rack_mecai_gh200.announced_superchips,
     module_power_ceiling: asrock_rack_mecai_gh200.module_power_ceiling,
-    power_supplies: ServerPowerSupplies { form: "supplied", count: 2, redundancy: SuppliesNonRedundant, output_per_supply: watt(count: 2000) },
+    carrier: asrock_rack_mecai_gh200.carrier,
+    power_supplies: ServerPowerSupplies {
+      form: "supplied",
+      count: 2,
+      redundancy: SuppliesNonRedundant,
+      output_ratings: asrock_rack_mecai_gh200.power_supplies.output_ratings,
+    },
     management: asrock_rack_mecai_gh200.management,
     host_network: asrock_rack_mecai_gh200.host_network,
     storage_bays: asrock_rack_mecai_gh200.storage_bays,
@@ -225,16 +241,19 @@ test fn redundancy_holds_the_ceiling_to_one_supply() -> Bool {
     non_operating_humidity: asrock_rack_mecai_gh200.non_operating_humidity,
     figure_standing: asrock_rack_mecai_gh200.figure_standing,
   }
-  watt_count(w: server_supply_ceiling(row: asrock_rack_mecai_gh200)) == 2000
-    && watt_count(w: server_supply_ceiling(row: doubled)) == 4000
+  ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 120)) == 1000
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 230)) == 2000
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 150)) == 0
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: gigabyte_xh23_vg0_aaj1, mains_vac: 120)) == 0
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: doubled, mains_vac: 120)) == 2000
 }
 
 // The rendering carries every field and names what is unread instead of dropping it.
 test fn server_lines_name_what_is_unread() -> Bool {
   let a = complete_server_line(row: asrock_rack_mecai_gh200)
   let g = complete_server_line(row: gigabyte_xh23_vg0_aaj1)
-  contains(a, "420 x 438 x 87 mm") && contains(a, "ASPEED AST2600") && contains(a, "Micro USB (COM)")
-    && contains(a, "non-operating -40 to 70 C") && contains(a, "20-90% non-condensing")
+  contains(a, "420 x 438 x 87 mm") && contains(a, "1000 W @ 100-127 VAC / 2000 W @ 200-240 VAC") && contains(a, "carrier ARLINGTON-MB")
+    && contains(a, "Micro USB (COM)") && contains(a, "operating 10 to 35 C") && contains(a, "non-operating -40 to 70 C")
     && contains(a, "announced GH200 Hopper GPU (144GB HBM3e)") && contains(a, "-- cited")
-    && contains(g, "BMC unread") && contains(g, "width unread") && contains(g, "Intel X550-AT2") && contains(g, "UNCITED")
+    && contains(g, "BMC unread") && contains(g, "width unread") && contains(g, "2000 W (input range unstated)") && contains(g, "carrier unread") && contains(g, "UNCITED")
 }

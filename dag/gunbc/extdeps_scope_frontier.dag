@@ -413,6 +413,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/systems/nvidia.dag",
   "dag/extdeps/systems/nvidia_gh200.dag",
   "dag/extdeps/systems/asrock_rack_mecai_gh200.dag",
+  "dag/extdeps/boards/asrock_rack_arlington_mb.dag",
   "dag/extdeps/systems/gigabyte_xh23_vg0_aaj1.dag",
   "dag/extdeps/systems/nvidia_dgx_spark_pxe.dag",
   "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",

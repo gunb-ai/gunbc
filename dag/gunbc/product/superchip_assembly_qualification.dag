@@ -9,7 +9,8 @@ import extdeps.systems.types { CoherentSuperchipCatalogRow }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, gh200_rail_variants, ModuleRailVariant }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
-import extdeps.systems.types { SuperchipServerCatalogRow, FrontPanelPort }
+import extdeps.systems.types { SuperchipServerCatalogRow, SuperchipCarrierBoardRow, BoardPowerInput }
+import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
 import product.p4261_carrier_layout {
   CarrierLayoutObservation,
   p4261_k1_layout,
@@ -397,26 +398,36 @@ fn module_rail_lead(unit: SuperchipUnitObservation) -> String {
 }
 
 // A DOCUMENTED GH200 CARRIER, as a reference pattern for what P4261 leaves open: ASRock Rack's
-// MECAI-GH200 puts its BMC and management port on its own carrier and exposes a COM micro-USB, and
-// feeds it from CRPS supplies. A pattern frames the questions; it says nothing about P4261's pinout.
-fn is_com_port(f: FrontPanelPort) -> Bool {
-  match f.function {
-    Present { value: x } => x == "COM"
-    Absent => false
+// ARLINGTON-MB (extdeps.boards.asrock_rack_arlington_mb, from the MECAI-GH200 user manual). A pattern
+// frames the questions; it says nothing about P4261's pinout, and ARLINGTON's parts are not assumed to
+// fit P4261.
+fn reference_management_pattern(c: SuperchipCarrierBoardRow) -> String {
+  join([
+    "reference: ", c.model as String, " carries ",
+    match c.management_board {
+      Present { value: m } => m as String
+      Absent => "an unread management controller"
+    },
+    ", with ", join(map(c.on_board_devices, d => d as String), ", "), " on the carrier itself; the P4261 photographs show no comparable BMC slot, which fits a BMC on another board (the controller + HMC lead) without establishing it",
+  ], "")
+}
+
+fn input_text(i: BoardPowerInput) -> String {
+  match i.rail {
+    Present { value: v } => join([i.designator as String, " ", to_string(volt_count(v: v)), " V"], "")
+    Absent => join([i.designator as String, " (rail unprinted)"], "")
   }
 }
 
-fn reference_management_pattern(row: SuperchipServerCatalogRow) -> String {
-  let mgmt = match row.management {
-    Present { value: m } => join([m.bmc as String, " BMC with ", m.dedicated_management_lan as String], "")
-    Absent => "an unread management controller"
+fn reference_supply_pattern(server: SuperchipServerCatalogRow) -> String {
+  match server.carrier {
+    Absent => join(["reference: ", server.model as String, " documents no carrier inputs"], "")
+    Present { value: c } => join([
+      "reference: ", server.model as String, "'s carrier ", c.model as String, " takes ", join(map(c.power_inputs, i => input_text(i: i)), ", "),
+      " from a power-distribution board fed by its ", server.power_supplies.form as String,
+      " supplies -- a documented 12 V carrier; whether it supports a 0215 (possibly 54 V) module is a question for its vendor",
+    ], "")
   }
-  let console = join(map(filter(row.front_panel, f => is_com_port(f: f)), f => f.connector as String), ", ")
-  join(["reference: ", row.model as String, " carries ", mgmt, if console == "" { "" } else { join([" and a ", console, " COM console"], "") }, " on its own platform"], "")
-}
-
-fn reference_supply_pattern(row: SuperchipServerCatalogRow) -> String {
-  join(["reference: ", row.model as String, " feeds its GH200 from ", to_string(row.power_supplies.count), "x ", row.power_supplies.form as String, " ", to_string(watt_count(w: row.power_supplies.output_per_supply)), " W supplies; CRPS is a 12 V-output form factor, which suggests that platform's carrier takes 12 V -- whether it supports a 0215 (possibly 54 V) module is a question for its vendor"], "")
 }
 
 fn power_path_obligation(a: SuperchipAssembly) -> String {
@@ -426,7 +437,7 @@ fn power_path_obligation(a: SuperchipAssembly) -> String {
     to_string(watt_count(w: a.row.module_power_floor)), "-", to_string(watt_count(w: a.row.module_power_ceiling)),
     " W configurable range plus carrier, fan and storage load. What the photographs bound: ", carrier_input_reading(layout: a.carrier.layout),
     ". What the module suggests: ", module_rail_lead(unit: a.unit),
-    ". ", reference_supply_pattern(row: asrock_rack_mecai_gh200),
+    ". ", reference_supply_pattern(server: asrock_rack_mecai_gh200),
     ". No P4261 power-input pinout or power-on sequence has been established: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, connect nothing because its housing fits, and transfer no controller, pin function, signal level or timing from another NVIDIA platform",
   ], "")
 }
@@ -499,7 +510,7 @@ fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
       bench_requirement(requirement: "protective shutdown", reading: a.bench.protective_shutdown, obligation: "over-temperature shutdown, and loss-of-flow shutdown if liquid-cooled, verified before first power-on; default thermal trip settings retained; pumps and fans fed from a verified supply rather than an unidentified carrier header"),
     ] },
     StageGate { stage: BootQualified, requirements: [
-      bench_requirement(requirement: "management and boot path", reading: a.bench.management_path, obligation: join(["whether ", carrier_label(c: a.carrier), " carries its own BMC, firmware storage, console and power-control path or needs boards from its original system: ", management_io_text(layout: a.carrier.layout), ", and carries ", edge_connector_text(layout: a.carrier.layout), ". ", reference_management_pattern(row: asrock_rack_mecai_gh200), ". ", controller_card_lead], "")),
+      bench_requirement(requirement: "management and boot path", reading: a.bench.management_path, obligation: join(["whether ", carrier_label(c: a.carrier), " carries its own BMC, firmware storage, console and power-control path or needs boards from its original system: ", management_io_text(layout: a.carrier.layout), ", and carries ", edge_connector_text(layout: a.carrier.layout), ". ", reference_management_pattern(c: asrock_rack_arlington_mb), ". ", controller_card_lead], "")),
       bench_requirement(requirement: "boot storage", reading: a.bench.boot_storage, obligation: join(["a boot device the Grace CPU can reach through ", carrier_label(c: a.carrier), " (an M.2 slot, such as the controller card's, or NVMe behind one of the carrier's PCIe connectors) holding an arm64 OS image the module firmware accepts"], "")),
       boot_requirement(a: a),
       inventory_requirement(a: a),

@@ -53,6 +53,8 @@ test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bo
         && mentions(lines: later, fragment: "at most 75 V")
         && mentions(lines: later, fragment: "reads as SKU215")
         && mentions(lines: later, fragment: "shows no RJ45")
+        && mentions(lines: later, fragment: "ARLINGTON-MB takes J7 12 V, J135 12 V, J9 (rail unprinted)")
+        && mentions(lines: later, fragment: "GenZ 4C+ slot J31")
     _ => false
   }
 }

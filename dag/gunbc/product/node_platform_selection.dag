@@ -47,7 +47,8 @@ import extdeps.systems.types {
   CoherentSuperchipCatalogRow,
   coherent_superchip_coherent_capacity,
   SuperchipServerCatalogRow,
-  server_supply_ceiling,
+  server_supply_ceiling_at,
+  SupplyOutputRating,
   SuppliesOnePlusOne,
   SuppliesNonRedundant,
   StorageBay,
@@ -59,7 +60,8 @@ import extdeps.systems.types {
 }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
-import std.measure { watt_count, millimeter_count, celsius_count }
+import std.measure { Watt, watt_count, millimeter_count, celsius_count }
+import std.nat { Nat }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, extdeps_external_authority_anchor }
 import product.superchip_assembly_qualification {
@@ -351,6 +353,11 @@ fn gh200_node_entry(row: CoherentSuperchipCatalogRow, node_power_ceiling: BuildA
 // its memory axes missing.
 data candidate_server_identity_module: String = "product.node_platform_selection"
 
+// THE SITE'S MAINS VOLTAGE, which decides a server supply's ceiling: the operator is in New York City
+// and expects 120 V ("i'm in NYC so 120v i guess", 2026-10-04). An operator expectation, not a reading;
+// strategy.gh200_qualification check-site-circuit is the task that reads it.
+data operator_site_mains_vac: Nat = 120
+
 fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReading> {
   map([
     BuildAxisReading { axis: gpu_local_capacity_axis, magnitude: MagnitudeBytes { bytes: row.gpu.memory.capacity } },
@@ -359,29 +366,46 @@ fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReadi
   ], r => to_axis_reading(r: r))
 }
 
+fn server_power_gap(server: SuperchipServerCatalogRow) -> NonEmptyStr? {
+  match cited_figure_read_obligation(standing: server.figure_standing) {
+    Present { value: o } => Present { value: o }
+    Absent => match server_supply_ceiling_at(row: server, mains_vac: operator_site_mains_vac) {
+      Present { value: _ } => Absent
+      Absent => Present { value: join(["no supply output rating is stated for ", to_string(operator_site_mains_vac), " VAC input"], "") as NonEmptyStr }
+    }
+  }
+}
+
 fn server_node_entries(server: SuperchipServerCatalogRow) -> List<ParetoEntry> {
   match server.supported_superchips.first() {
     Absent => []
     Present { value: config } => {
       let identity = decl_ref(module_path: candidate_server_identity_module, decl_name: join(["candidate_server_", server.model as String], ""))
       let label = join([server.model as String, " complete server (", config.gpu.model as String, ")"], "") as NonEmptyStr
-      match cited_figure_read_obligation(standing: server.figure_standing) {
-        Absent => [ParetoEntry {
-          identity: identity,
-          display_label: label,
-          readings: concat(superchip_memory_readings(row: config), [
-            to_axis_reading(r: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: server_supply_ceiling(row: server) } }),
-          ]),
-          missing_inputs: gh200_memory_gaps(row: config),
-        }]
-        Present { value: o } => [ParetoEntry {
+      match server_power_gap(server: server) {
+        Present { value: cause } => [ParetoEntry {
           identity: identity,
           display_label: label,
           readings: superchip_memory_readings(row: config),
-          missing_inputs: concat(gh200_memory_gaps(row: config), [AxisGap { axis: node_power_ceiling_axis, cause: o }]),
+          missing_inputs: concat(gh200_memory_gaps(row: config), [AxisGap { axis: node_power_ceiling_axis, cause: cause }]),
+        }]
+        Absent => [ParetoEntry {
+          identity: identity,
+          display_label: label,
+          readings: concat(superchip_memory_readings(row: config), flat_map(optional_watts(w: server_supply_ceiling_at(row: server, mains_vac: operator_site_mains_vac)), w => [
+            to_axis_reading(r: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: w } }),
+          ])),
+          missing_inputs: gh200_memory_gaps(row: config),
         }]
       }
     }
+  }
+}
+
+fn optional_watts(w: Watt?) -> List<Watt> {
+  match w {
+    Present { value: x } => [x]
+    Absent => []
   }
 }
 
@@ -430,6 +454,13 @@ fn humidity_text(range: HumidityRange?) -> String {
   }
 }
 
+fn rating_text(r: SupplyOutputRating) -> String {
+  match r.input {
+    Present { value: i } => join([to_string(watt_count(w: r.output)), " W @ ", to_string(i.minimum_vac), "-", to_string(i.maximum_vac), " VAC"], "")
+    Absent => join([to_string(watt_count(w: r.output)), " W (input range unstated)"], "")
+  }
+}
+
 fn complete_server_line(row: SuperchipServerCatalogRow) -> String {
   let dims = match row.dimensions {
     Present { value: d } => join([to_string(millimeter_count(m: d.width)), " x ", to_string(millimeter_count(m: d.depth)), " x ", to_string(millimeter_count(m: d.height)), " mm"], "")
@@ -439,7 +470,11 @@ fn complete_server_line(row: SuperchipServerCatalogRow) -> String {
     SuppliesOnePlusOne => " (1+1 redundant)"
     SuppliesNonRedundant => " (non-redundant)"
   }
-  let supplies = join([to_string(row.power_supplies.count), "x ", row.power_supplies.form as String, " ", to_string(watt_count(w: row.power_supplies.output_per_supply)), " W", redundancy], "")
+  let supplies = join([to_string(row.power_supplies.count), "x ", row.power_supplies.form as String, " (", join(map(row.power_supplies.output_ratings, r => rating_text(r: r)), " / "), ")", redundancy], "")
+  let carrier = match row.carrier {
+    Present { value: c } => join(["carrier ", c.model as String, optional_text(value: c.management_board, prefix: ", management on ", suffix: "", fallback: "")], "")
+    Absent => "carrier unread"
+  }
   let mgmt = match row.management {
     Present { value: m } => join(["BMC ", m.bmc as String, ", management LAN ", m.dedicated_management_lan as String], "")
     Absent => "BMC unread"
@@ -466,7 +501,7 @@ fn complete_server_line(row: SuperchipServerCatalogRow) -> String {
     Present { value: o } => join(["UNCITED: ", o as String], "")
   }
   join([
-    row.model as String, " [", row.form_factor as String, "]: ", dims, "; ", supplies, "; module up to ", to_string(watt_count(w: row.module_power_ceiling)), " W; ",
+    row.model as String, " [", row.form_factor as String, "]: ", dims, "; ", supplies, "; module up to ", to_string(watt_count(w: row.module_power_ceiling)), " W; ", carrier, "; ",
     mgmt, "; ", net, "; ", join(map(row.storage_bays, b => bay_text(b: b)), "; "), "; ", join(map(row.expansion_slots, x => slot_text(x: x)), "; "), "; ",
     front, "; ", optional_text(value: row.fans, prefix: "fans ", suffix: "", fallback: "fans unread"), "; ", temp,
     "; supported modules ", join(map(row.supported_superchips, c => c.gpu.model as String), ", "), announced,
