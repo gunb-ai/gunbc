@@ -1,8 +1,8 @@
 module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, NonEmptyStr, Set, String }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { filter }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 
 // THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
@@ -135,8 +135,8 @@ fn filter_in_branch_condition_cases() -> List<NativeEmissionCase> {
 // pure function's return uses. It rendered with an empty emit info, so a type argument was judged
 // against an unobserved unit-variant index and became a compile_error! -- gunbc.durable_cas_file_store
 // `-> CasOutcome<NonEmptyStr>`. control_effectful_generic_return is effectful (it reads the
-// filesystem), so this closure does not compile while that rule is broken; the cases then decide the
-// same generic carrier answers its arms.
+// filesystem), so this closure does not compile while that rule is broken; the cases then call it
+// for real on a path no host provisions, and decide the same generic carrier answers its arms.
 type ControlReadBox<T>
   = ControlReadFull { v: T }
   | ControlReadEmpty
@@ -162,7 +162,28 @@ fn effectful_generic_return_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase {
       identity: "generic_return_red_empty_arm_answers_empty",
       held: control_read_box_value(b: ControlReadEmpty) == ""
+    },
+    NativeEmissionCase {
+      identity: "generic_return_effectful_call_answers_empty_on_absent_path",
+      held: control_read_box_value(b: control_effectful_generic_return(path: "/gunbc-native-emission-controls-absent/none")) == ""
     }
+  ]
+}
+
+// RULE: the NativeClaimDriver binds its declared Filesystem resource (std.compiler_entry
+// NativeClaimDriver; v1.compiler.emit_rust native_claim_report_effect_demand). Reaching Filesystem
+// makes native_claim_report effectful, so this whole program runs only if the rendered main binds
+// the filesystem_io handler and awaits the report: remove the binding and the main calls an async,
+// handler-taking report with neither, which rustc refuses -- the red is the label's, not a row's.
+// The path sits under a root no host provisions, so the case decides the same way everywhere.
+fn control_absent_path_read_is_refused() -> Bool {
+  let read = Filesystem.Read(path: "/gunbc-native-emission-controls-absent/none")
+  !read.success && read.error != ""
+}
+
+fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "claim_driver_filesystem_absent_path_read_is_refused", held: control_absent_path_read_is_refused() }
   ]
 }
 
@@ -181,13 +202,15 @@ data native_emission_expected_identities: List<String> = [
   "filter_guard_nested_else_arm",
   "filter_guard_receipt_blank_tail_accepts",
   "filter_guard_receipt_red_nonblank_tail_refuses",
+  "filter_guard_receipt_red_empty_tag_short_circuits",
+  "claim_driver_filesystem_absent_path_read_is_refused",
   "generic_return_full_arm_answers_its_value",
   "generic_return_red_empty_arm_answers_empty",
-  "filter_guard_receipt_red_empty_tag_short_circuits"
+  "generic_return_effectful_call_answers_empty_on_absent_path"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), effectful_generic_return_cases())
+  concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_generic_return_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
