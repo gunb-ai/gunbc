@@ -874,8 +874,7 @@ fn infer_declaration_wrapper_facts_from_entries(
 // already gives a type-denoting binding (the dag_binding_denotation arm of infer_node_facts):
 // TypeDenotationKind. That grants no member, construction or representation-sensitive coercion, and
 // for a generic declaration (`type MachineWidth<bits>`) it says only that the declaration names a type
-// constructor -- a use's arity and kinds are checked at resolve by the binder authority
-// (v2.std.type_binder type_application_conformance). It is not the empty product: an
+// constructor -- a use's arity stays the binder authority's to check. It is not the empty product: an
 // authored empty record is a member, and forms through product introduction.
 fn infer_opaque_declaration_facts(node: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: node, partials: partials) {
