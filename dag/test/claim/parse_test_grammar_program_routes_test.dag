@@ -32,17 +32,17 @@ fn gpr_arg_is_named(text: String) -> Symbol {
   }
 }
 
-fn a_name_colon_argument_takes_the_named_route_holds_verdict() -> Bool {
+test fn a_name_colon_argument_takes_the_named_route_holds() -> Bool {
   gpr_arg_is_named(text: "x: 1") == ^gpr_named
 }
 
-fn a_bare_argument_takes_the_positional_route_holds_verdict() -> Bool {
+test fn a_bare_argument_takes_the_positional_route_holds() -> Bool {
   gpr_arg_is_named(text: "x") == ^gpr_positional
 }
 
 // `match_arm` (gunbc#13056): the expression alternative was removed, so an expression arm body now
 // takes the guarded `match_arm_stmt_body` route, and never the `empty_block_body` one.
-fn an_expression_arm_body_takes_the_statement_body_route_holds_verdict() -> Bool {
+test fn an_expression_arm_body_takes_the_statement_body_route_holds() -> Bool {
   match route_parse_at(text: "S { node: node } => node", production: ^dag_production_match_arm) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -53,47 +53,11 @@ fn an_expression_arm_body_takes_the_statement_body_route_holds_verdict() -> Bool
 
 // `if_expr` (gunbc#13056): one `if cond` head, then the then-form or the block form. The then-form
 // carries no block body, so it is told from the block form by the absence of an fn_body shell.
-fn if_then_else_takes_the_then_form_route_holds_verdict() -> Bool {
+test fn if_then_else_takes_the_then_form_route_holds() -> Bool {
   match route_parse_at(text: "if c then a else b", production: ^dag_production_if_expr) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       (length(xs: route_shells(n: tree, emitted: ^dag_surface_if_expr, acc: [])) == 1)
         && (length(xs: route_shells(n: tree, emitted: ^dag_surface_fn_body, acc: [])) == 0)
   }
-}
-
-// ONE WARM FILL, ONE PARSE PER CLAIM INSIDE IT. Each claim's body is unchanged in its `_verdict` fn;
-// gpr_verdicts evaluates them once and the floor forces it at strict preparation
-// (v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm), so no claim pays its
-// own parse against the new-witness budget. Portable because it holds only Bools.
-type GprVerdicts {
-  a_name_colon_argument_takes_the_named_route_holds: Bool
-  a_bare_argument_takes_the_positional_route_holds: Bool
-  an_expression_arm_body_takes_the_statement_body_route_holds: Bool
-  if_then_else_takes_the_then_form_route_holds: Bool
-}
-
-fn gpr_verdicts() -> GprVerdicts {
-  GprVerdicts {
-    a_name_colon_argument_takes_the_named_route_holds: a_name_colon_argument_takes_the_named_route_holds_verdict(),
-    a_bare_argument_takes_the_positional_route_holds: a_bare_argument_takes_the_positional_route_holds_verdict(),
-    an_expression_arm_body_takes_the_statement_body_route_holds: an_expression_arm_body_takes_the_statement_body_route_holds_verdict(),
-    if_then_else_takes_the_then_form_route_holds: if_then_else_takes_the_then_form_route_holds_verdict()
-  }
-}
-
-test fn a_name_colon_argument_takes_the_named_route_holds() -> Bool {
-  gpr_verdicts().a_name_colon_argument_takes_the_named_route_holds
-}
-
-test fn a_bare_argument_takes_the_positional_route_holds() -> Bool {
-  gpr_verdicts().a_bare_argument_takes_the_positional_route_holds
-}
-
-test fn an_expression_arm_body_takes_the_statement_body_route_holds() -> Bool {
-  gpr_verdicts().an_expression_arm_body_takes_the_statement_body_route_holds
-}
-
-test fn if_then_else_takes_the_then_form_route_holds() -> Bool {
-  gpr_verdicts().if_then_else_takes_the_then_form_route_holds
 }

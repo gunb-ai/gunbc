@@ -638,11 +638,6 @@ import v2.std.algebra { any }
 // stores four. Each claim that paid its own parse measured at the new-witness budget's edge on the
 // floor runs of #13056 (eval steps 66-72k, enrolment margin refused on cpu). Portable because each
 // holds only Bools.
-// THE GRAMMAR-PROGRAM ROUTE-CONTROL ROWS (gunbc#13126): tmc_verdicts, gpr_verdicts, dcr_verdicts and
-// ndr_verdicts each evaluate their module's claims once, one parse per claim, into Bool verdicts. On
-// the floor run at f942bdf the per-claim parses measured 83-116k eval steps over the new-witness
-// budget (marker channel, the two arg routes) and 61-67k at its edge (declaration-choice, newline
-// minus). Portable because each holds only Bools.
 // THE BARE node STATEMENT ROW: test.claim.parse_test_bare_node_statement_route bns_verdicts parses three
 // one-function modules once each and stores three Bool verdicts, on the same ground. Portable because it
 // holds only Bools.
@@ -939,10 +934,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "test.claim.parse_test_else_less_if_value_category.elif_verdicts",
   "test.claim.parse_test_brace_and_lambda_head_route.bhr_verdicts",
   "test.claim.parse_test_bare_node_statement_route.bns_verdicts",
-  "test.claim.parse_test_marker_channel.tmc_verdicts",
-  "test.claim.parse_test_grammar_program_routes.gpr_verdicts",
-  "test.claim.parse_test_declaration_choice_route.dcr_verdicts",
-  "test.claim.parse_test_newline_dual_role_operator.ndr_verdicts",
   "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
   "v2.test.emit.dag_target_text_round_trip.trt_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
