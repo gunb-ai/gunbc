@@ -248,7 +248,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",

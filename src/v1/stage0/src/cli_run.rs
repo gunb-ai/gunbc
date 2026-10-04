@@ -22310,8 +22310,8 @@ fn serve_wire_header_line(
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response). The
-/// headers list carries typed `ServeWireHeader`s in write order -- a handler that
-/// sets no headers produces the same wire shape as before.
+/// headers list carries typed `ServeWireHeader`s in write order and is required: a
+/// handler that sets none returns the empty list, and a record without the field refuses.
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -22332,8 +22332,9 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
+        // `headers` is a required field of ServeWireResponse: a record without it is a different
+        // shape and refuses like any other wrong shape, never read as "no headers".
         let headers = match ctx.field(fields, "headers") {
-            None => Vec::new(),
             Some(v1_interpreter::Value::List(items)) => {
                 let mut lines = Vec::with_capacity(items.len());
                 for item in items.iter() {
