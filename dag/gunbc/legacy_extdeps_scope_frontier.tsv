@@ -52,7 +52,6 @@ dag/extdeps/cloud/gcp/auth_print_access_token.dag
 dag/extdeps/cloud/gcp/errors.dag
 dag/extdeps/cloud/gcp/gcp.dag
 dag/extdeps/cloud/gcp/iam_admin.dag
-dag/extdeps/cloud/gcp/iam.dag
 dag/extdeps/cloud/gcp/secret_manager.dag
 dag/extdeps/cloud/gcp/secret_ref.dag
 dag/extdeps/cloud/gcp/serviceusage.dag
@@ -90,13 +89,9 @@ dag/extdeps/ctrl/gunbc_pin.dag
 dag/extdeps/currency/currency.dag
 dag/extdeps/dhcp/v4.dag
 dag/extdeps/dns/domain_name.dag
-dag/extdeps/docker/container_inspect.dag
-dag/extdeps/docker/container_stats.dag
 dag/extdeps/docker/docker.dag
-dag/extdeps/docker/endpoint.dag
 dag/extdeps/ebay/ebay_contracts.dag
 dag/extdeps/ebay/ebay.dag
-dag/extdeps/ebay/errors.dag
 dag/extdeps/ebay/inventory.dag
 dag/extdeps/ebay/oauth.dag
 dag/extdeps/entropy/entropy.dag
@@ -274,8 +269,6 @@ dag/extdeps/rust/cargo.dag
 dag/extdeps/rust/rustup.dag
 dag/extdeps/rust/std_process.dag
 dag/extdeps/rust/version.dag
-dag/extdeps/sec/edgar.dag
-dag/extdeps/sec/edgar_rest.dag
 dag/extdeps/sec/facts.dag
 dag/extdeps/sec/issuer/atlassian.dag
 dag/extdeps/sec/issuer/atlassian_facts.dag

@@ -23,6 +23,7 @@ import extdeps.languages.json.parse {
   JsonMemberPresence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable,
   json_member_presence,
 }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 
 type ContainerState
   = Running
@@ -38,6 +39,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
+}
+
+// Reading: Docker's Engine API v1.47 reference owns the inspect response's HostConfig object; type HostConfig transcribes its documented resource fields and is dispatched by the docker client route, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.docker.container_inspect", decl_name: "HostConfig", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type ContainerStateDetail {

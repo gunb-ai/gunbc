@@ -6,6 +6,8 @@ import extdeps.uri { Uri, Https }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data docker_default_endpoint: String = "unix:///var/run/docker.sock"
 
@@ -36,4 +38,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }
+}
+
+// Reading: Docker's Engine documentation owns the daemon's default socket endpoint and the DOCKER_HOST override; data docker_default_endpoint (unix:///var/run/docker.sock) is the documented default consumed by the dispatched docker clients, so the datum is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }

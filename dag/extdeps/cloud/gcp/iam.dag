@@ -10,12 +10,23 @@ import v2.std.algebra { filter, fold_list }
 import v2.std.optional { Absent, Present }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/overview"
   }
+}
+
+// Reading: Google Cloud IAM's overview owns the policy binding structure; type GcpBinding (role, members, condition) transcribes it and is dispatched by the iam_admin route, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.cloud.gcp.iam", decl_name: "GcpBinding", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type GcpRole {

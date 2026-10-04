@@ -609,6 +609,13 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/network/ipv6.dag",
   "dag/extdeps/github/gists.dag",
   "dag/extdeps/filesystem/posix.dag",
+  "dag/extdeps/docker/container_stats.dag",
+  "dag/extdeps/docker/container_inspect.dag",
+  "dag/extdeps/docker/endpoint.dag",
+  "dag/extdeps/sec/edgar_rest.dag",
+  "dag/extdeps/sec/edgar.dag",
+  "dag/extdeps/ebay/errors.dag",
+  "dag/extdeps/cloud/gcp/iam.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
