@@ -68,8 +68,9 @@ import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.live_deploy.role_singleton_convergence {
-  assess_and_admit, role_singleton_refusal_detail, admitted_spec,
+  assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
+  RoleSingletonNoop, RoleSingletonInstall, AdoptUnmarkedHolder, RoleSingletonRefused,
 }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
@@ -127,6 +128,7 @@ import gunbc.fleet_converge_receipt {
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
 }
 import gunbc.live_deploy.apply_receipt {
+  LiveDeployRoleSingletonDisposition, RoleSingletonsNoop, RoleSingletonsInstalled, RoleSingletonsAdopted, RoleSingletonsRefusedBeforeApply,
   LiveDeployApplyReceipt, LiveDeployFleetProvenance,
   LiveDeployApplyOutcome, LiveDeployReadinessOutcome,
   read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
@@ -1040,6 +1042,18 @@ fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDepl
   }
 }
 
+// THE ADMITTED DECISION, AS THE RECEIPT RECORDS IT. Adopted names the holder and host whose marker the
+// apply wrote, so the retirement of AdoptUnmarkedHolder (its FrontierRow) has an exact-host receipt to
+// point at; Installed names the first install; Noop is everything else that was admitted.
+fn role_singleton_disposition_of(admission: RoleSingletonAdmission) -> LiveDeployRoleSingletonDisposition {
+  match admitted_decision(admission: admission) {
+    RoleSingletonNoop => RoleSingletonsNoop
+    RoleSingletonInstall { holder } => RoleSingletonsInstalled { deployment: holder.instance.deployment.name as String, host: holder.instance.host_identity as String }
+    AdoptUnmarkedHolder { holder, host, retirement: _ } => RoleSingletonsAdopted { deployment: holder.instance.deployment.name as String, host: host as String }
+    RoleSingletonRefused { cause } => RoleSingletonsRefusedBeforeApply { detail: role_singleton_refusal_detail(cause: cause) }
+  }
+}
+
 fn live_deploy_transaction_receipt_for(
   spec: DeploymentSpec,
   run: ActionsRunBinding,
@@ -1047,6 +1061,7 @@ fn live_deploy_transaction_receipt_for(
   candidate: CandidateRelease,
   candidate_tree: String,
   apply_outcome: LiveDeployApplyOutcome,
+  role_singleton_disposition: LiveDeployRoleSingletonDisposition,
   readiness: LiveDeployReadinessOutcome,
   provenance: LiveDeployFleetProvenance,
 ) -> LiveDeployApplyReceipt {
@@ -1059,6 +1074,7 @@ fn live_deploy_transaction_receipt_for(
     candidate_surface_identity: candidate.expected_surface_identity.digest as String,
     candidate_tree_oid: candidate_tree,
     apply_outcome: apply_outcome,
+    role_singleton_disposition: role_singleton_disposition,
     readiness: readiness,
     provenance: provenance,
     completed_at: clock_now_probed_at_or_unknown() as String,
@@ -1078,20 +1094,33 @@ fn live_deploy_transaction_decided(
       if !reconciliation_converged(r: preflight) {
         live_deploy_write_transaction_receipt(
           spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
+          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: (match preflight { NotConverged { reason: why, applied: _ } => why  Converged { evidence: _, applied: _ } => "preflight" }) }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: "not assessed: the access preflight refused first" }, readiness: LiveDeployReadinessRefused { detail: "not observed: preflight refused" }, provenance: provenance),
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
       } else {
-        let applied = live_deploy_apply_with_access(spec: spec, access: access, candidate: candidate)
-        let outcome = match applied {
-          Converged { evidence: _, applied: _ } => LiveDeployApplyConverged
-          NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
+        match assess_and_admit(spec: spec, desired: prod_role_actuated_realization(), own: access.transport) {
+          RoleSingletonNotAdmitted { cause } => {
+            let why = join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], "")
+            live_deploy_write_transaction_receipt(
+              spec: spec,
+              receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: LiveDeployApplyNotConverged { reason: why }, role_singleton_disposition: RoleSingletonsRefusedBeforeApply { detail: why }, readiness: LiveDeployReadinessRefused { detail: "not observed: the role-singleton assessment refused before any member was planned" }, provenance: provenance),
+              exit: exit_failure(reason: why),
+            )
+          }
+          RoleSingletonAdmitted { admission } => {
+            let admitted = admitted_spec(admission: admission)
+            let applied = live_deploy_apply_admitted_via_transport(admission: admission, candidate: candidate, transport: access.transport, access: access)
+            let outcome = match applied {
+              Converged { evidence: _, applied: _ } => LiveDeployApplyConverged
+              NotConverged { reason: why, applied: _ } => LiveDeployApplyNotConverged { reason: why }
+            }
+            live_deploy_write_transaction_receipt(
+              spec: admitted,
+              receipt: live_deploy_transaction_receipt_for(spec: admitted, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, role_singleton_disposition: role_singleton_disposition_of(admission: admission), readiness: live_deploy_post_apply_readiness(spec: admitted, access: access), provenance: provenance),
+              exit: live_deploy_reconciliation_exit(r: applied),
+            )
+          }
         }
-        live_deploy_write_transaction_receipt(
-          spec: spec,
-          receipt: live_deploy_transaction_receipt_for(spec: spec, run: run, expected: expected, candidate: candidate, candidate_tree: candidate_tree, apply_outcome: outcome, readiness: live_deploy_post_apply_readiness(spec: spec, access: access), provenance: provenance),
-          exit: live_deploy_reconciliation_exit(r: applied),
-        )
   }
 }
 

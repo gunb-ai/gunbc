@@ -58,12 +58,18 @@ import gunbc.live_deploy.spec {
   FabricStorageServeMapping,
   FabricStorageStoreDirectory,
   FabricStorageOwnershipMarker,
+  EnsuredOwnershipMarker,
+  deployment_srv1_target,
+  srv1_live_deployment_names,
   deployment_spec_for,
   deployment_owns_the_host_approval_broker,
   deployment_fabric_storage_door_socket,
 }
-import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.live_deploy.apply { role_singleton_disposition_of }
+import gunbc.live_deploy.apply_receipt { RoleSingletonsAdopted }
 import gunbc.live_deploy.role_singleton_convergence {
+  adopt_unmarked_holder_frontier,
   RoleSingletonConvergence,
   RoleSingletonNoop,
   RoleSingletonInstall,
@@ -106,6 +112,7 @@ import gunbc.fabric_storage_placement {
   fabric_storage_placement_under,
   fabric_storage_store_directories_for,
   fabric_storage_door_socket,
+  fabric_storage_ownership_marker_path,
 }
 import gunbc.auth.approval_request_client {
   ApprovalLoopbackOriginResolved,
@@ -348,7 +355,7 @@ fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
     }
     RoleSingletonNoop => false
     RoleSingletonInstall { holder: _ } => false
-    AdoptUnmarkedHolder { holder: _, host: _ } => false
+    AdoptUnmarkedHolder { holder: _, host: _, retirement: _ } => false
   }
 }
 
@@ -456,15 +463,50 @@ fn spec_carries_store_marker(spec: DeploymentSpec) -> Bool {
   })
 }
 
+fn adopt_world() -> List<HostRoleSingletonReading> {
+  [read_on(host: "srv1", sightings: units_without_marker(host: "srv1", d: srv1_daily_workspace_deployment)), read_on(host: "srv2", sightings: [])]
+}
+
+fn spec_marker_ensure_is_exact(spec: DeploymentSpec) -> Bool {
+  any(spec.steps, s => match s {
+    Dependency { step } => match step.subject {
+      EnsuredOwnershipMarker { path, owner: _ } => (path as String) == (fabric_storage_ownership_marker_path(instance: srv1_live_dashboard_instance()) as String)
+      _ => false
+    }
+    ArtifactStep { step: _ } => false
+  })
+}
+
+// ADOPTION, EXACTLY, AT THE ADMISSION AND RECEIPT BOUNDARIES: (a) the exact holder spec on the observed
+// host is admitted; (b) every non-holder spec refuses as stale, so a lab or srv2 apply cannot ride the
+// adoption and re-adopt forever; (c) the holder spec pointed at the wrong target refuses; (d) the
+// admitted plan carries the exact ownership-marker ensure and the receipt disposition names Adopted;
+// (e) once the marker is observed the same holder converges as Noop. The arm carries its retirement row.
 test fn an_unmarked_holder_on_its_own_target_is_adopted_and_the_plan_writes_the_marker() -> Bool {
   let real = prod_role_actuated_realization()
-  let adopted = match decide(desired: real, readings: [read_on(host: "srv1", sightings: units_without_marker(host: "srv1", d: srv1_daily_workspace_deployment)), read_on(host: "srv2", sightings: [])]) {
-    AdoptUnmarkedHolder { holder, host } => holder.instance.deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
+  let decision = decide(desired: real, readings: adopt_world())
+  let adopted = match decision {
+    AdoptUnmarkedHolder { holder, host, retirement } =>
+      holder.instance.deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
+        && (retirement.path as String) == (adopt_unmarked_holder_frontier.path as String)
     _ => false
   }
-  let live = roster_specs_under(realization: real) |> filter(s => (s.instance_id as String) == (srv1_live_dashboard_instance().instance_id as String))
-  adopted && count(live) == 1 && all(live, s => spec_carries_store_marker(spec: s))
-    && all(roster_specs_under(realization: real) |> filter(s => !((s.instance_id as String) == (srv1_live_dashboard_instance().instance_id as String))), s => !spec_carries_store_marker(spec: s))
+  let live_id = srv1_live_dashboard_instance().instance_id as String
+  let holder_admitted = all(spec_of(realization: real, id: live_id), s => match admit_role_singletons(spec: s, desired: real, decision: decision) {
+    RoleSingletonAdmitted { admission } =>
+      spec_marker_ensure_is_exact(spec: admitted_spec(admission: admission))
+        && match role_singleton_disposition_of(admission: admission) {
+          RoleSingletonsAdopted { deployment, host } => deployment == (srv1_daily_workspace_deployment.name as String) && host == "srv1"
+          _ => false
+        }
+    RoleSingletonNotAdmitted { cause: _ } => false
+  })
+  let others_refused = all(roster_specs_under(realization: real) |> filter(s => !((s.instance_id as String) == live_id)), s => admission_refused_as_stale(r: admit_role_singletons(spec: s, desired: real, decision: decision)))
+  let wrong_target = deployment_spec_for(realization: real, instance: srv1_live_dashboard_instance(), target: deployment_srv2_target(), names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()))
+  let after = match decide(desired: real, readings: srv1_holds()) { RoleSingletonNoop => true  _ => false }
+  adopted && count(spec_of(realization: real, id: live_id)) == 1 && holder_admitted && others_refused
+    && admission_refused_as_stale(r: admit_role_singletons(spec: wrong_target, desired: real, decision: decision))
+    && after
 }
 
 test fn an_unmarked_holder_on_the_wrong_host_is_refused_not_adopted() -> Bool {

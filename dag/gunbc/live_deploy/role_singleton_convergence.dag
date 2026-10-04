@@ -1,6 +1,8 @@
 module gunbc.live_deploy.role_singleton_convergence
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
 import v2.std.collection { Present, Absent }
 import gunbc.deployment_risk { DeploymentId }
 import gunbc.roadmap_dashboard_instance {
@@ -98,6 +100,19 @@ type RoleSingletonRefusal
   | RoleSingletonPartial { deployment: DeploymentId, host: NonEmptyStr, missing: List<RoleSingletonMember> }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
 
+// ── The adoption arm's retirement ───────────────────────────────────────────────────────────────
+// THE ARM CARRIES THIS ROW (AdoptUnmarkedHolder.retirement), so every adoption names the condition
+// that deletes it. After adoption a missing marker is corruption or partial state, never re-adopted.
+data adopt_unmarked_holder_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: every gunbc.live_deploy.desired DesiredDeployment realization carries a store ownership marker -- shown by an exact-host live_deploy apply receipt whose role_singleton_disposition records RoleSingletonsAdopted for the holder, followed by an independent observation (gunbc.live_deploy.role_singleton_convergence role_singleton_observation_of) returning exactly one complete, marked realization and RoleSingletonNoop. Then delete the AdoptUnmarkedHolder arm. SUFFICIENT FOR: that receipt and that observation; a marker written by hand, or an observation that is not independent of the apply, is not this trigger." as NonEmptyStr
+)
+
+data adopt_unmarked_holder_frontier: FrontierRow = frontier_row_path(
+  path: "gunbc.live_deploy.role_singleton_convergence AdoptUnmarkedHolder",
+  reason: "a one-time migration of the realization that predates the store ownership marker; any other partial state refuses as RoleSingletonPartial",
+  dissolution: adopt_unmarked_holder_dissolution,
+)
+
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
 // AdoptUnmarkedHolder IS THE ADOPTION OF A PRE-MARKER REALIZATION. It exists for realizations installed
 // before the store carried an ownership marker: the desired holder's fabric unit and broker are observed
@@ -108,7 +123,7 @@ type RoleSingletonRefusal
 type RoleSingletonConvergence
   = RoleSingletonNoop
   | RoleSingletonInstall { holder: ProdRoleHolder }
-  | AdoptUnmarkedHolder { holder: ProdRoleHolder, host: NonEmptyStr }
+  | AdoptUnmarkedHolder { holder: ProdRoleHolder, host: NonEmptyStr, retirement: FrontierRow }
   | RoleSingletonRefused { cause: RoleSingletonRefusal }
 
 // ── The observation ─────────────────────────────────────────────────────────────────────────────
@@ -271,7 +286,7 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
             let missing = missing_members(r: r)
             if count(missing) == 0 { RoleSingletonNoop }
             else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) {
-              AdoptUnmarkedHolder { holder: holder, host: r.host }
+              AdoptUnmarkedHolder { holder: holder, host: r.host, retirement: adopt_unmarked_holder_frontier }
             } else {
               RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
             }
@@ -327,7 +342,10 @@ fn admit_role_singletons(spec: DeploymentSpec, desired: ProdRoleRealization, dec
   match decision {
     RoleSingletonRefused { cause } => RoleSingletonNotAdmitted { cause: cause }
     RoleSingletonNoop => if agrees { admitted } else { stale_holding }
-    AdoptUnmarkedHolder { holder: _, host: _ } => if agrees { admitted } else { stale_holding }
+    AdoptUnmarkedHolder { holder: _, host, retirement: _ } =>
+      if !agrees { stale_holding }
+      else if desired_is_this_spec && (spec.target.ssh_host as String) == (host as String) { admitted }
+      else { stale(spec: spec, detail: "the holder's marker adoption is pending; only the observed holder spec on the observed host may act") }
     RoleSingletonInstall { holder: _ } =>
       if !agrees { stale_holding }
       else if desired_is_this_spec { admitted }

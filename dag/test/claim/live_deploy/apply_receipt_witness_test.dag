@@ -20,6 +20,7 @@ fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
     candidate_surface_identity: "0011223344556677",
     candidate_tree_oid: apply_receipt_fixture_tree,
     apply_outcome: LiveDeployApplyConverged,
+    role_singleton_disposition: RoleSingletonsNoop,
     readiness: LiveDeployReadinessObserved { revision: apply_receipt_fixture_r, surface: "0011223344556677" },
     provenance: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: "a1b2c3d4e5f60718", plan_receipt_identity: "1111111111111111", apply_receipt_identity: "2222222222222222" },
     completed_at: "2026-08-30T12:00:00Z",
@@ -45,6 +46,7 @@ test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool
     run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
     candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
     apply_outcome: LiveDeployApplyNotConverged { reason: "terminal no-op: this run installed nothing" },
+    role_singleton_disposition: RoleSingletonsNoop,
     readiness: LiveDeployReadinessRefused { detail: "not observed" },
     provenance: base.provenance, completed_at: base.completed_at,
   }
