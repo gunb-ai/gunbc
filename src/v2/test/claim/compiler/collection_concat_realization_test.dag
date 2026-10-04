@@ -110,8 +110,3 @@ test fn cca_bound_row_is_the_concat_primitive_at_log_cost() -> Bool {
   }
 }
 
-// PROBE (temporary): does a DECLARED generic of the same shape refuse the same inputs?
-data cca_probe_generic_int: String = "module p\n\nimport v2.std.collection { List }\n\nfn g<T>(a: List<T>, b: List<T>) -> List<T> {\n  a\n}\n\nfn f(a: Int, b: Int) -> Int {\n  g(a, b)\n}\n"
-data cca_probe_plain_int: String = "module p\n\nimport v2.std.collection { List }\n\nfn g(a: List<Int>, b: List<Int>) -> List<Int> {\n  a\n}\n\nfn f(a: Int, b: Int) -> Int {\n  g(a, b)\n}\n"
-test fn cca_probe_generic_int_refuses() -> Bool { cca_reading(src: cca_probe_generic_int).infer_reason != ^accepted }
-test fn cca_probe_plain_int_refuses() -> Bool { cca_reading(src: cca_probe_plain_int).infer_reason != ^accepted }

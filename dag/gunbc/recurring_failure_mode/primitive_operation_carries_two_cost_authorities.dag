@@ -1,0 +1,23 @@
+module gunbc.recurring_failure_mode.primitive_operation_carries_two_cost_authorities
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data primitive_operation_carries_two_cost_authorities: RecurringFailureMode = RecurringFailureMode {
+  identity: "primitive_operation_carries_two_cost_authorities" as NonEmptyStr,
+
+  receipts: [
+    "**One primitive operation carries two cost claims that disagree.** std.primitives concat_contract declares concat's work as n + m on an ephemeral carrier and log(n + m) on the persistent carrier (CarrierSensitive). The std.algebra collection_concat_shape template row, the same operation's signature, declares cost_shape ShapeLinearScan. A reader who asks the row gets linear; a reader who asks the contract gets logarithmic on the carrier the corpus actually runs. Found by stern-swift-290 while binding v2's bare concat to that row (XL-2 step 1). Neither home names the other. That is a DESIGN section 3 fork of a cost fact, and section 6's bare-minimum-cost rule is unenforceable while the answer depends on which home is read.",
+
+    "DISPOSITION NOW: the contract is the cost authority. v2.test.claim.compiler.collection_concat_realization cca_bound_row_is_the_concat_primitive_at_log_cost asserts that the row the head binds is concat_contract's operation and that the persistent cost is log(n + m). The row's ShapeLinearScan is recorded here as the disagreement it is. It is not edited, because the template table's cost_shape vocabulary has no carrier-sensitive arm to state the contract's fact.",
+
+    "RUNG FOUND AT: mitigatable (a reviewer has to know which home to read). CEILING: structurally impossible (one declaration carries the cost). NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: one cost authority per primitive identity, meaning the primitive's definition, realization and cost declared once and read by every consumer, sufficient for the collection roster row to carry no cost of its own or to derive its cost from the contract.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.primitives", decl_name: "concat_contract", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "collection_concat_shape", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_concat_realization", decl_name: "cca_bound_row_is_the_concat_primitive_at_log_cost", field: WholeDeclaration },
+  ],
+}
