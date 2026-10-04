@@ -1641,12 +1641,7 @@ fn roadmap_serve_declared_serve_endpoint(instance: HostDashboardInstance) -> Tai
 // rather than paying a process spawn per request.
 fn roadmap_serve_selection_requires_tailnet_path(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
   match sel {
-    SelectedDynamic { handler: h, params: _ } =>
-      match h {
-        AllocationCreateHandler => true
-        AllocationReleaseHandler => true
-        _ => false
-      }
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
     SelectedStatic { route: _ } => false
     MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false

@@ -316,12 +316,7 @@ test fn seam_browser_supplied_terms_are_refused() -> Bool {
 
 fn seam_selects_an_allocation_write(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
   match sel {
-    SelectedDynamic { handler: h, params: _ } =>
-      match h {
-        AllocationCreateHandler => true
-        AllocationReleaseHandler => true
-        _ => false
-      }
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
     SelectedStatic { route: _ } => false
     MethodNotAllowed { allowed: _ } => false
     NoRouteMatched => false
