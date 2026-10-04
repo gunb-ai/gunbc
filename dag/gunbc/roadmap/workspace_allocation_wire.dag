@@ -7,14 +7,6 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 
 // One JSON contract for allocation creation and incarnation-bound release. Authority-bearing
 // owner, image, access and expiry fields are supplied by verified session and server policy.
-// A write the server cannot admit for want of its deployment path answers this availability value
-// beside its reason and cause (503 {availability, reason, cause}); the client branches on it and
-// stops offering the write. DECLARED FRONTIER: the producer is the write seam, gunbc#13271, whose
-// workspace_allocation_routes workspace_write_unavailable_response emits it when the serve-route
-// readback cannot admit a signed-in write; until that lands no route answers it and the client's
-// branch is unreached. Trigger: #13271 merging, at which point its response reads this row.
-data workspace_write_unavailable_wire: String = "unavailable"
-
 type WorkspaceCreateSubmission { csrf_token: String, idempotency_key: WorkspaceAllocationId, profile: String }
 
 // A submission is an object with exactly the members its contract names; any other JSON value
@@ -75,3 +67,9 @@ fn workspace_release_submission(body: String) -> WorkspaceReleaseSubmission? {
     }
   }
 }
+
+// The availability word a write answers when the server cannot vouch for the tailnet path
+// (gunbc.workspace_allocation_routes workspace_write_unavailable_response, 503 {availability,
+// reason, cause}); the browser client (gunbc.roadmap_allocation_client) compares against it and
+// stops offering the write.
+data workspace_write_unavailable_wire: String = "unavailable"

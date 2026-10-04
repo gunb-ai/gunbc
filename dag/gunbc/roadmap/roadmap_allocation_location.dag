@@ -14,3 +14,4 @@ data allocation_release_suffix: String = "/release"
 
 
 fn allocation_item_route() -> String { concat(allocation_item_prefix, "\{allocation_id\}") }
+fn allocation_release_route() -> String { concat(allocation_item_route(), allocation_release_suffix) }

@@ -9,8 +9,8 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route }
-import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
+import gunbc.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
@@ -23,7 +23,13 @@ import gunbc.roadmap_allocation_client { allocation_client_source }
 
 import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
 
-import extdeps.tailscale.serve { ServeStatusUnreadable }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import gunbc.auth.tailnet_serve_readback {
+  TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken, tailnet_serve_readback_take, tailnet_route_standing,
+}
+import gunbc.live_deploy.desired {
+  desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
+}
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
@@ -32,7 +38,9 @@ import gunbc.auth.request_authentication {
   GoogleOidcSession,
   FabricServiceEvidence,
   SessionStandingInvalid,
-  request_access_path_of,
+  request_access_path_of_standing,
+  TailnetReadbackNotDemanded,
+  RequestIngress, IngressUnattested, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
@@ -271,8 +279,10 @@ type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
   | AllocationPageHandler
+  | AllocationCreateHandler
   | AllocationListHandler
   | AllocationGetHandler
+  | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
@@ -353,8 +363,10 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
+    ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
     ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
     ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
+    ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -1298,7 +1310,9 @@ fn roadmap_serve_invoke_over(
       ))
     }
     AllocationPageHandler => allocation_page_response(request: request)
+    AllocationCreateHandler => workspace_route_create(request: request)
     AllocationListHandler => workspace_route_list(request: request)
+    AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
@@ -1566,27 +1580,113 @@ fn roadmap_serve_selection_response(
 }
 
 // THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
-// modeled from the instance bind and the tailnet header through the ACL and serve-route
-// authorities (a header alone mints no tailnet path -- the readback does, and this revision
-// performs none, so a tailnet header reads as transport absent). Authentication evidence is the
-// session cookie the seam passes through, resolved against the session store
-// (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent cookie is
-// AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid with its
-// cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
+// modeled from the instance bind, the tailnet header and the serve-route readback through the ACL
+// and serve-route authorities: a header alone mints no tailnet path, and neither does a reading
+// that is absent, stale, unreadable, or shows another backend at this instance's declared route.
+// Authentication evidence is the session cookie the seam passes through, resolved against the
+// session store (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent
+// cookie is AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid
+// with its cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
 fn roadmap_serve_request_security(
   instance: HostDashboardInstance,
   tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
   cookie_header: String = "",
 ) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
-    access_path: request_access_path_of(
-      listen_host: instance.listen_host,
-      tailscale_header: tailscale_identity,
-      serve_status: ServeStatusUnreadable,
-      serve_route: none,
-      acl_policy: operator_tailscale_acl_policy,
-    ),
+    access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
     authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+  }
+}
+
+// THE ACCESS-PATH HALF OF THE SEAM. The route the reading is compared to is the one the
+// desired-deployment roster declares for this instance, so the route a write is admitted on and
+// the route the deployment installs are one value.
+fn roadmap_serve_access_path(
+  instance: HostDashboardInstance,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  roadmap_serve_access_path_over(
+    listen_host: instance.listen_host,
+    declared: roadmap_serve_declared_serve_endpoint(instance: instance),
+    tailscale_identity: tailscale_identity,
+    ingress: ingress,
+    readback: readback,
+    decided_at: decided_at,
+  )
+}
+
+// The same fold over a supplied bind and declared route.
+fn roadmap_serve_access_path_over(
+  listen_host: NonEmptyStr,
+  declared: TailscaleServeEndpoint?,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  request_access_path_of_standing(
+    listen_host: listen_host,
+    tailscale_header: tailscale_identity,
+    ingress: ingress,
+    standing: tailnet_route_standing(readback: readback, declared: declared, decided_at: decided_at),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+}
+
+// An instance outside the desired-deployment roster, or one whose bind differs from its roster
+// row, has no declared serve route, so no reading can vouch for a tailnet path to it.
+fn roadmap_serve_declared_serve_endpoint(instance: HostDashboardInstance) -> TailscaleServeEndpoint? {
+  match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+    DesiredDeploymentFound { row } =>
+      if row.instance.listen_port == instance.listen_port && (row.instance.listen_host as String) == (instance.listen_host as String) {
+        Present { value: row.names.tailscale_serve_endpoint }
+      } else {
+        none
+      }
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => none
+    DesiredDeploymentRosterRefused { refusal: _ } => none
+  }
+}
+
+// WHICH SELECTED ROUTES DEMAND THE READING: the ones whose write law requires the tailnet path
+// (gunbc.workspace_allocation_routes workspace_allocation_deployment_access_policy). Every other
+// route decides nothing over the access path's tailnet arm, so it is handed an untaken reading
+// rather than paying a process spawn per request -- as is a connection whose ingress is not the
+// proxy, which no reading could vouch for.
+fn roadmap_serve_selection_requires_tailnet_path(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
+  match sel {
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn roadmap_serve_tailnet_readback(sel: RouteSelection<RoadmapServeHandler>, tailscale_identity: String, ingress: RequestIngress) -> TailnetServeReadback {
+  if !roadmap_serve_selection_requires_tailnet_path(sel: sel) || tailscale_identity == "" || !request_ingress_is_the_proxy(ingress: ingress) {
+    TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
+  } else {
+    tailnet_serve_readback_take()
+  }
+}
+
+// The instant the access path is decided at, read AFTER the readback so the reading's age is
+// measured rather than assumed. An unreadable clock is the empty instant, which no reading is
+// fresh against.
+fn roadmap_serve_decided_at(readback: TailnetServeReadback) -> String {
+  match readback {
+    TailnetServeReadbackUntaken { gap: _ } => ""
+    TailnetServeReadbackTaken { status_json: _, observed_at: _ } =>
+      match clock_now_probed_at() {
+        Present { value: now } => now as String
+        Absent => ""
+      }
   }
 }
 
@@ -1598,6 +1698,7 @@ fn roadmap_serve_respond_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
   cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
@@ -1621,12 +1722,14 @@ fn roadmap_serve_respond_over(
               " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
             ], ""),
           )
-        ServedRouteTableBuilt { table: t } =>
+        ServedRouteTableBuilt { table: t } => {
+          let sel = serve_select_route(table: t, method: m, path: path)
+          let readback = roadmap_serve_tailnet_readback(sel: sel, tailscale_identity: tailscale_identity, ingress: ingress)
           roadmap_serve_selection_response_over(
             instance: instance,
             plan: plan,
             daily_body: daily_body,
-            sel: serve_select_route(table: t, method: m, path: path),
+            sel: sel,
             cookie_header: cookie_header,
             request: ServeHttpRequest {
               method: m,
@@ -1635,11 +1738,15 @@ fn roadmap_serve_respond_over(
               security: roadmap_serve_request_security(
                 instance: instance,
                 tailscale_identity: tailscale_identity,
+                ingress: ingress,
+                readback: readback,
+                decided_at: roadmap_serve_decided_at(readback: readback),
                 cookie_header: cookie_header,
               ),
             },
             release_revision: release_revision,
           )
+        }
       }
   }
 }
@@ -1661,6 +1768,7 @@ fn roadmap_serve_respond_for_instance(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     cookie_header: cookie_header,
     release_revision: release_revision,
   )
@@ -1730,6 +1838,7 @@ fn roadmap_serve_handle_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
@@ -1739,16 +1848,19 @@ fn roadmap_serve_handle_over(
     ServeRequestHeaderAbsent =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, cookie_header: "", release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: "", release_revision: release_revision,
       ))
     ServeRequestHeaderSingle { value: cookie_header } =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, cookie_header: cookie_header, release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: cookie_header, release_revision: release_revision,
       ))
   }
 }
 
+// EVERY ENTRY BELOW IS LAUNCHED ON A TCP LISTENER, which attests no peer, so each hands the seam
+// IngressUnattested: its requests cannot mint the tailnet path and the tailnet-required writes
+// answer unavailable there.
 fn roadmap_serve_handle(
   method: String,
   path: String,
@@ -1765,6 +1877,7 @@ fn roadmap_serve_handle(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1793,6 +1906,7 @@ fn roadmap_serve_handle_macbook_local(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1814,6 +1928,7 @@ fn roadmap_serve_handle_srv1_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1835,6 +1950,7 @@ fn roadmap_serve_handle_srv2_preview(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1859,6 +1975,7 @@ fn roadmap_serve_handle_srv2_deploy(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1880,6 +1997,7 @@ fn roadmap_serve_handle_srv2_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
