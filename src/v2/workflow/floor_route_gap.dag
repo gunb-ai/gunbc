@@ -2131,7 +2131,8 @@ fn floor_route_gap_expectation_chunk_36() -> List<FloorRouteGapExpectation> {
 // effect is shell.Mktemp.Dir, which declares no mock_response, so the nominal floor holds it; the
 // local-repo wet schedule executes every one under the runner's node (premise
 // RunnerBrowserToolchainReadyForJobUser). Observed: required-floor run 37219149856 held each at Dir and
-// the wet lane reported observed=passed for all seven.
+// the wet lane reported observed=passed for all seven. The eighth (typed_unavailable_disables_create)
+// is added by prediction from the same first effect.
 fn floor_route_gap_expectation_chunk_37() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_json_reject_keeps_intent", operation: "Dir", ground: NoMockResponse {} },
@@ -2147,7 +2148,9 @@ fn floor_route_gap_expectation_chunk_37() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_fetch_reject_is_retryable", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_list_reconciles_recorded_intent", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } } } } } } }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.allocation_client_execution_wet_witness.client_typed_unavailable_disables_create", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} } } } } } } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
