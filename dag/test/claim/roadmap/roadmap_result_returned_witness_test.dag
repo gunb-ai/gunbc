@@ -16,22 +16,28 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, EventPrincipal, EventPrincipalAuthenticated,
   Claimed, Released, Progress, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   event_principal_label, roadmap_event_envelope, roadmap_event_wire_text, RoadmapResultBinding, roadmap_result_returned_event,
+  roadmap_event_admitted_after, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
 }
 import gunbc.roadmap.roadmap_event_carrier {
   EventFileContent, roadmap_events_decode_reads, roadmap_all_events_of_reads,
   RoadmapEventsRead, EventsRead, EventsReadRefused, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  RoadmapResultAuthority, ResultAuthorityEstablished, ResultAuthorityRefused, roadmap_result_authority_of_record,
+  RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused, roadmap_result_append_of,
+  EventAppended, EventAlreadyPresent, EventAppendRefused,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemPermissionDenied,
 }
-import gunbc.roadmap.roadmap_attempt_request_binding {
-  AttemptLaunchRequest, LaunchForClaim, LaunchContinuing, LaunchAutonomous, attempt_launch_request_for_origin,
+import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
-  AttemptRequestBindingAdmission, RequestBindingAdmitted, RequestBindingNotAdmitted, attempt_request_binding_admission,
   AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, attempt_request_binding_commit_of,
   attempt_request_binding_read_of,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
+}
+import gunbc.roadmap.roadmap_attempt_request_binding {
+  AttemptLaunchRequest, LaunchForClaim, LaunchContinuing, LaunchAutonomous, attempt_launch_request_for_origin,
+  AttemptRequestBindingAdmission, RequestBindingAdmitted, RequestBindingNotAdmitted, attempt_request_binding_admission,
 }
 import gunbc.roadmap.roadmap_result_returned {
   AttemptResultStanding, AttemptResultTerminal, AttemptResultPending, AttemptResultUnstatable, attempt_result_standing,
@@ -400,6 +406,47 @@ test fn an_answered_attempt_is_already_returned_only_for_the_same_binding_and_ou
     ResultReturnRefused { step: _, reason: _ } => false
   }
   same && other_outcome && other_claim && another_attempt_appends
+}
+
+fn rr_authority_refused_at(a: RoadmapResultAuthority, step: String) -> Bool {
+  match a {
+    ResultAuthorityRefused { step: s, reason } => s == step && string_length(s: reason) > 0
+    ResultAuthorityEstablished { binding: _ } => false
+  }
+}
+
+// THE WRITER'S CLAIM COMES FROM THE ATTEMPT'S OWN RECORD, SO C2 CANNOT POISON K. Attempt K is durably
+// bound to claim C1; C2 is a later, perfectly valid claim on the same issue. The append authority
+// is a function of the issue, the attempt and K's request record -- it has no claim parameter -- and
+// it establishes C1. The only remaining way to offer K/C2 is a raw ResultReturned handed to the
+// generic append, and that is refused, so K's result slot is NOT occupied: the log still holds only
+// the two claims. The correct K/C1 result is then admitted on the head. An attempt with no record,
+// an autonomous one, an unreadable record and a keyless attempt establish no authority and refuse.
+test fn the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_claim_cannot_poison_it() -> Bool {
+  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
+  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
+  let log = [c1, c2]
+  let established = roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: rr_bound(claim: c1.id))
+  let derives_c1 = established == ResultAuthorityEstablished { binding: rr_binding(claim: c1.id) }
+  let poison = RoadmapEvent { node: rr_node(), author: rr_fabric(), parent: Present { value: c2.id }, kind: ResultReturned { attempt: rr_attempt as NonEmptyStr, claim: c2.id, outcome: rr_published() }, recorded_at: "t3" }
+  let c2_refused = !roadmap_event_admitted_after(envs: log, event: poison)
+  let c1_still_appendable = match established {
+    ResultAuthorityRefused { step: _, reason: _ } => false
+    ResultAuthorityEstablished { binding } =>
+      match roadmap_bound_result_admission(envs: log, binding: binding, outcome: rr_published()) {
+        ResultAdmitted { parent } => match parent { Present { value: p } => (p as String) == (c2.id as String)  Absent => false }
+        ResultAlreadyOnLog { id: _ } => false
+        ResultNotAdmitted { step: _, reason: _ } => false
+      }
+  }
+  let no_authority = rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingAbsent), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingRead { binding: RequestAutonomous }), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingUnreadable { reason: "denied" }), step: "result-binding")
+    && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: "", record: rr_bound(claim: c1.id)), step: "result-attempt")
+  let outcome_maps = roadmap_result_append_of(append: EventAppended { id: c1.id }) == ResultAppended { id: c1.id }
+    && roadmap_result_append_of(append: EventAlreadyPresent { id: c1.id }) == ResultAppendAlreadyPresent { id: c1.id }
+    && roadmap_result_append_of(append: EventAppendRefused { id: c1.id, step: "revision-conflict", reason: "moved" }) == ResultAppendRefused { step: "revision-conflict", reason: "moved" }
+  derives_c1 && c2_refused && c1_still_appendable && no_authority && outcome_maps
 }
 
 fn rr_precheck_owed(p: ResultReturnPrecheck, claim: RoadmapEventId) -> Bool {

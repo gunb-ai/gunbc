@@ -29,9 +29,9 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_bound_result_append,
   roadmap_events_read_all, roadmap_events_read,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapEventsRead, EventsRead, EventsReadRefused,
-  EventAppended, EventAlreadyPresent, EventAppendRefused,
+  RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused,
 }
-import gunbc.roadmap.roadmap_attempt_request_binding {
+import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
   attempt_request_binding_read_for_instance,
@@ -169,8 +169,9 @@ fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: Roadmap
 
 // THE WRITE DECISION, PURE, OVER EVERY ISSUE'S EVENTS AS READ: the same admission the bound append
 // applies inside its own snapshot (roadmap_bound_result_admission), asked here first so a pass that
-// has nothing to write performs no append. Append carries the binding and the outcome, never an
-// event: the carrier builds the event. Already returned names the identical result on the log.
+// has nothing to write performs no append. This is a PRECHECK and decides nothing about what is
+// written: the append is handed the issue, the attempt and the outcome, re-reads the attempt's own
+// request record, and derives the claim itself. Already returned names the identical result on the log.
 // Refused carries the rule that refused -- a result for the attempt on another issue, a different
 // result on this one, a claim the history does not carry, a history with no single head.
 type ResultReturnDecision
@@ -215,7 +216,7 @@ fn result_return_keyed_attempts(attempts: List<DispatchAttemptRef>) -> List<Disp
 }
 
 fn result_return_for_progress(
-  layout: RoadmapEventCarrierLayout,
+  instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
   binding: RoadmapResultBinding,
   envelopes: List<RoadmapEventEnvelope>,
@@ -233,12 +234,12 @@ fn result_return_for_progress(
         ResultReturnRefused { step, reason } =>
           ResultReturnFailed { node_id: progress.node_id, attempt_key: progress.attempt_key, step: step, reason: reason }
         ResultReturnAppend { binding: bound, outcome: final } =>
-          match roadmap_bound_result_append(layout: layout, binding: bound, outcome: final, author: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, recorded_at: recorded_at) {
-            EventAppended { id } =>
+          match roadmap_bound_result_append(instance: instance, node: bound.node, attempt: bound.attempt as String, outcome: final, author: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, recorded_at: recorded_at) {
+            ResultAppended { id } =>
               ResultReturnRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String, outcome_word: attempt_result_outcome_word(o: final) }
-            EventAlreadyPresent { id } =>
+            ResultAppendAlreadyPresent { id } =>
               ResultReturnAlreadyRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String }
-            EventAppendRefused { id: _, step, reason } =>
+            ResultAppendRefused { step, reason } =>
               ResultReturnFailed { node_id: progress.node_id, attempt_key: progress.attempt_key, step: step, reason: reason }
           }
       }
@@ -269,7 +270,6 @@ fn result_return_precheck(node_id: String, attempt_key: String, binding: Attempt
 
 fn result_return_attempt(
   instance: HostDashboardInstance,
-  layout: RoadmapEventCarrierLayout,
   panes: BeltAttemptPanes,
   attempt: DispatchAttemptRef,
   envelopes: List<RoadmapEventEnvelope>,
@@ -284,7 +284,7 @@ fn result_return_attempt(
     ResultPrecheckSettled { outcome } => outcome
     ResultPrecheckOwed { binding } =>
       result_return_for_progress(
-        layout: layout,
+        instance: instance,
         progress: workflow_attempt_progress(evidence: belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: attempt.attempt_key)),
         binding: binding,
         envelopes: envelopes,
@@ -312,8 +312,7 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
     DashboardObserveOnly =>
       ResultReturnPassWithheld { reason: join(["dashboard instance ", instance.instance_id as String, " is observe-only, so no result was appended"], "") }
     DashboardActuating => {
-      let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-      match roadmap_events_read_all(layout: layout) {
+      match roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
         AllEventsReadRefused { step, reason } => ResultReturnPassRefused { step: join(["events/", step], ""), reason: reason }
         AllEventsRead { envelopes } =>
           match belt_attempts_observe_for_instance(instance: instance) {
@@ -325,7 +324,7 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
               } else {
                 let panes = belt_attempt_panes_observe_for_instance(instance: instance)
                 ResultReturnPassRan {
-                  outcomes: map(keyed, a => result_return_attempt(instance: instance, layout: layout, panes: panes, attempt: a, envelopes: envelopes, recorded_at: recorded_at)),
+                  outcomes: map(keyed, a => result_return_attempt(instance: instance, panes: panes, attempt: a, envelopes: envelopes, recorded_at: recorded_at)),
                 }
               }
             }
