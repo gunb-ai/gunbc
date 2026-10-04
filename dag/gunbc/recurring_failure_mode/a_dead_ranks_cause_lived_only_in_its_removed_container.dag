@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_dead_ranks_cause_lived_only_in_its_removed_container
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_dead_ranks_cause_lived_only_in_its_removed_container: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dead_ranks_cause_lived_only_in_its_removed_container" as NonEmptyStr,
+
+  receipts: [
+    "A DEAD RANK'S CAUSE IS UNRECOVERABLE BECAUSE ITS LOG LIVED ONLY IN THE --rm CONTAINER. The native arm's units run `docker run --rm` in the foreground, and the engine's own log is written inside the container; when the process exits the container is removed and its log with it, and the unit's journal held none of the container's output. A terminal state of a serving rank -- the one moment its diagnostic matters most -- is therefore the moment it is destroyed.",
+
+    "SPECIMEN, 2026-10-04, gunbc#13040, Group A nvfp4-8 (launch run 37190290418): the head unit gunbc-glm53-stair-head.service 'Main process exited, code=exited, status=1/FAILURE' at 10:11:43Z after 2h06m of container CPU, during the FlashInfer autotune phase; the container was gone (--rm) and its exit cause is NOT known. The timing fits the engine's VLLM_ENGINE_READY_TIMEOUT_S (3600 s), but that is inference, recorded as such.",
+
+    "RUNG FOUND AT: outside the modeled guarantee and silently lost -- an unobservable terminal cause. CEILING: mechanically preventable: the unit can carry a capture of the container's log tail on ANY terminal state as part of the arm (an ExecStopPost-style capture to a host path under the transaction, or a log driver that outlives the container), declared in the arm spec and expected by the readback. NEXT-RUNG TRIGGER: the arm unit (gunbc.spark.native_serving_realization arm_host_unit_file_for) declares a terminal-state log capture to a host path, and the transaction's rollback and receipt read it, so a dead rank's receipt carries its last lines.",
+  ],
+
+  evidence: [],
+}
