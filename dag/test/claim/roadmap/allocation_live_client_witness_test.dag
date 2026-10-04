@@ -1,0 +1,88 @@
+module test.claim.allocation_live_client_witness_test
+
+import std.types { String, Bool }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, AllocationViewerSignedIn, AllocationViewerSignedOut }
+import gunbc.roadmap_allocation_style { allocation_css }
+import gunbc.roadmap_allocation_client { allocation_live_source }
+import gunbc.roadmap_allocation_location { allocation_list_path, allocation_item_prefix, allocation_release_suffix }
+import gunbc.workspace_allocation { workspace_profiles, workspace_profile_wire, workspace_profile_parse }
+import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+
+// The roadmap stylesheet is supplied: no claim below reads it, and rendering the real one is the
+// whole cost of the page. The route that supplies roadmap_css() and the real session's token is
+// gunbc.roadmap_serve allocation_page_response.
+data fx_roadmap_stylesheet: String = ".fx-roadmap-sheet{}"
+data fx_csrf: String = "fx-csrf-token"
+
+fn allocation_preview_signed_in() -> String {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedIn { csrf: fx_csrf }, roadmap_stylesheet: fx_roadmap_stylesheet)) {
+    EmitOk { html } => html
+    EmitRejected { reason } => reason
+  }
+}
+
+fn allocation_preview_signed_out() -> String {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: AllocationViewerSignedOut, roadmap_stylesheet: fx_roadmap_stylesheet)) {
+    EmitOk { html } => html
+    EmitRejected { reason } => reason
+  }
+}
+
+// The offered sizes are exactly the backend's profiles: every profile's wire value is a radio the
+// create route parses back to that profile, and the free-form draft fields are gone. The draft this
+// replaced (arbitrary CPU and memory, a 20 GiB disk, an 8 hour lifetime) fails every conjunct.
+test fn witness_allocation_page_offers_exactly_the_backend_profiles() -> Bool {
+  let html = allocation_preview_signed_in()
+  all(workspace_profiles(), p => string_contains(s: html, pattern: concat("value=\"", concat(workspace_profile_wire(profile: p) as String, "\"")))
+      && match workspace_profile_parse(value: workspace_profile_wire(profile: p) as String) { Present { value: parsed } => parsed == p Absent => false })
+    && string_contains(s: html, pattern: "2 vCPU · 4 GiB memory")
+    && string_contains(s: html, pattern: "4 vCPU · 8 GiB memory")
+    && string_contains(s: html, pattern: "8 GiB, discarded on release")
+    && string_contains(s: html, pattern: "Up to 60 minutes")
+    && !string_contains(s: html, pattern: "type=\"number\"")
+    && !string_contains(s: html, pattern: "Lifetime (hours)")
+}
+
+test fn witness_allocation_profile_outside_the_list_refuses() -> Bool {
+  match workspace_profile_parse(value: "8cpu-16gib") { Present { value: _ } => false Absent => match workspace_profile_parse(value: "") { Present { value: _ } => false Absent => true } }
+}
+
+// The token rides the page for a signed-in viewer, and the create control is live: whether a write
+// is admitted is the server's answer to the POST, never a decision the page makes before it.
+test fn witness_allocation_signed_in_page_carries_csrf_and_a_live_control() -> Bool {
+  let html = allocation_preview_signed_in()
+  string_contains(s: html, pattern: concat("data-csrf=\"", concat(fx_csrf, "\"")))
+    && string_contains(s: html, pattern: "id=\"allocation-create\" aria-describedby=\"allocation-status\">")
+    && !string_contains(s: html, pattern: "<fieldset disabled")
+}
+
+test fn witness_allocation_signed_out_cannot_request() -> Bool {
+  let html = allocation_preview_signed_out()
+  string_contains(s: html, pattern: "<fieldset disabled")
+    && string_contains(s: html, pattern: "data-csrf=\"\"")
+    && string_contains(s: html, pattern: "/auth/login")
+}
+
+// The client calls the routes the table mounts, sends the token and its persisted pending intent,
+// renders the connection only as the server's text, and never assembles an SSH command. A write
+// answered with the typed unavailable value disables the write controls and shows reason and cause.
+// The retry-safety behaviour itself is executed, not grepped, by
+// test.claim.roadmap.allocation_client_execution_wet_witness.
+test fn witness_allocation_client_drives_the_real_contract() -> Bool {
+  let js = allocation_live_source()
+  string_contains(s: js, pattern: concat("'", concat(allocation_list_path, "'")))
+    && string_contains(s: js, pattern: concat("'", concat(allocation_item_prefix, "'")))
+    && string_contains(s: js, pattern: concat("'", concat(allocation_release_suffix, "'")))
+    && string_contains(s: js, pattern: "csrf_token: allocationCsrf")
+    && string_contains(s: js, pattern: "idempotency_key: intent.key, profile: intent.profile")
+    && string_contains(s: js, pattern: "localStorage.setItem(allocationIntentStore, JSON.stringify(allocationHeldIntent))")
+    && string_contains(s: js, pattern: "code.textContent = a.connection")
+    && string_contains(s: js, pattern: concat("body.availability === '", concat(workspace_write_unavailable_wire, "'")))
+    && string_contains(s: js, pattern: "body.cause")
+    && !string_contains(s: js, pattern: "ssh")
+}
+
+test fn witness_allocation_head_carries_the_supplied_stylesheet_then_the_allocation_rules() -> Bool {
+  string_contains(s: allocation_preview_signed_in(), pattern: concat("<style>", concat(fx_roadmap_stylesheet, allocation_css())))
+}

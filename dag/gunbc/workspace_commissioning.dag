@@ -1,10 +1,12 @@
 module gunbc.workspace_commissioning
 
-import std.types { String, NonEmptyStr, Int, List }
+import std.decl_ref { decl_ref }
+import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.measure { ByteSize, HardwareThreadCount, byte_size_count, hardware_thread_count_value }
 import gunbc.workspace_commissioning_evidence { WorkspaceInitialReadinessPermit, workspace_initial_readiness_permit }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
-import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max }
+import gunbc.runner_slot_allocation { gunbc_microvm_shakedown_slot_memory_max, gunbc_runner_slot_desired_for }
+import gunbc.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_host_budget { HostAllocationVerdict, HostAllocationConserves, HostAllocationOversubscribed, HostAllocationUnchargeable }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, SanitationObservation, SlotScopedNetwork, cell_readiness_from_observations }
@@ -55,7 +57,9 @@ fn workspace_commissioning_admit(
     } else { match budget {
       HostAllocationOversubscribed => WorkspaceCommissioningRefused { reason: "host budget cannot conserve the dedicated envelope" }
       HostAllocationUnchargeable { cause: detail } => WorkspaceCommissioningRefused { reason: detail }
-      HostAllocationConserves => if hardware_thread_count_value(t: cpu_budget) < workspace_profile_vcpus(profile: LargeWorkspace) || byte_size_count(b: attempt_envelope) != byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) {
+      HostAllocationConserves => if !workspace_commissioning_cpu_matches_boundary(slot: slot, cpu_budget: cpu_budget) {
+        WorkspaceCommissioningRefused { reason: "commissioning CPU budget must equal the slot boundary authority" }
+      } else if hardware_thread_count_value(t: cpu_budget) < workspace_profile_vcpus(profile: LargeWorkspace) || byte_size_count(b: attempt_envelope) != byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) {
         WorkspaceCommissioningRefused { reason: "commissioning must reserve at least four vCPUs and exactly the existing 28GiB attempt envelope" }
       } else { match prior_purpose {
         WorkspacePriorPurposeActive => WorkspaceCommissioningRefused { reason: "competing slot purpose remains active" }
@@ -76,5 +80,26 @@ fn workspace_commissioning_admit(
         }
       } }
     } }
+  }
+}
+
+// Reconstruct the original commissioning basis only from the protected store's prepared/committed readback.
+// Current readiness remains separately observed; this does not write or reset any cell generation.
+fn workspace_commissioning_restore_recorded(slot: RunnerSlotIdentity, plan_hash: NonEmptyStr,
+  cpu_budget: HardwareThreadCount, attempt_envelope: ByteSize) -> WorkspaceCommissionedSlot
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_current_supply"), decl_ref(module_path: "gunbc.workspace_commissioning_store", decl_name: "workspace_commissioning_store_restore_admission")]
+{
+  WorkspaceCommissionedSlot { slot: slot, cpu_budget: cpu_budget, attempt_envelope: attempt_envelope,
+    commissioning_plan_hash: plan_hash, settled_generation: 0,
+    initial_readiness: workspace_initial_readiness_permit(cell: runner_slot_instance_name(slot: slot) as CellId, settled_generation: 0) }
+}
+
+
+// Workspace provenance projects the same finite CPU boundary that fleet convergence installs.
+// An unbounded runner boundary supplies no finite workspace grant and cannot mint one from a credential.
+fn workspace_commissioning_cpu_matches_boundary(slot: RunnerSlotIdentity, cpu_budget: HardwareThreadCount) -> Bool {
+  match gunbc_runner_slot_desired_for(slot: slot).cpu_quota {
+    CpuQuotaResolved { threads } => threads == cpu_budget
+    SlotCpuQuotaUnbounded => false
   }
 }
