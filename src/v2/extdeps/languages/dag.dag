@@ -187,7 +187,11 @@ import v2.std.compilers.target_model {
   Prepend,
   BlockEvaluationMode,
   ValueProducing,
-  derive_bodied_arrow_scaffold}
+  derive_bodied_arrow_scaffold,
+  TargetBindLetShape,
+  TargetLoopShape,
+  TargetRecordConstructShape
+}
 import v2.std.logic { bool_node }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
@@ -203,7 +207,10 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
-  invariant_port_locus
+  invariant_port_locus,
+  bind_outcome,
+  diagnostics_merge,
+  outcome_with_diagnostics
 }
 import std.algebra { Empty, list_append, list_snoc_item }
 import std.decl_ref { decl_ref }
@@ -2108,7 +2115,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
       left: dag_grammar_ident_or_type_decl_modifier_name(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
-        right: dag_grammar_nonterminal(production: ^dag_production_expr)
+        right: dag_grammar_arrow_lambda_body_expr()
       )
     ),
     right: dag_grammar_sequence(
@@ -2130,7 +2137,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
                 left: dag_grammar_terminal(token_class: ^dag_token_rparen),
                 right: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
-                  right: dag_grammar_nonterminal(production: ^dag_production_expr)
+                  right: dag_grammar_arrow_lambda_body_expr()
                 )
               )
             )
@@ -2138,6 +2145,34 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
         )
       )
     )
+  )
+}
+
+// A LAMBDA'S BODY IS AN EXPRESSION, OR A STATEMENT SEQUENCE THAT BEGINS WITH A LET. The unbraced
+// form `r =>` / `let slug = f(r)` / `[a, b]` ends where the enclosing argument list continues: no
+// statement begins with `,` or `)`, so the repetition stops there by construction. The two
+// alternatives are disjoint: the statement body's first statement is a let (dag_grammar_let_expr,
+// with its two sugar spellings), and the expression alternative is guarded by exactly the let-sugar
+// heads (dag_grammar_let_sugar_head_expr) -- the same guard the expression statement carries, since
+// `let` itself begins no expression. A body that does not begin with a let is an expression, as it
+// always was.
+fn dag_grammar_arrow_lambda_body_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_lambda_stmt_body),
+    right: dag_grammar_sequence(
+      left: grammar_expr_not_predicate(element: dag_grammar_let_sugar_head_expr()),
+      right: dag_grammar_nonterminal(production: ^dag_production_expr)
+    )
+  )
+}
+
+// The statement body is the spine `head stmt*` that body_lower_stmt_spine reads for every statement
+// sequence: its head is a statement whose captured child is a let (lambda_let_stmt, so its first
+// token is a let head and nothing else), its rest the ordinary statements.
+fn dag_grammar_lambda_stmt_body_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: ^dag_production_lambda_let_stmt),
+    right: dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
   )
 }
 
@@ -3591,6 +3626,16 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_empty_block_body_expr(),
     emitted: ^dag_surface_empty_block_body
   )
+  let lambda_stmt_body = dag_grammar_production(
+    name: ^dag_production_lambda_stmt_body,
+    expression: dag_grammar_lambda_stmt_body_expr(),
+    emitted: ^dag_surface_lambda_stmt_body
+  )
+  let lambda_let_stmt = dag_grammar_production(
+    name: ^dag_production_lambda_let_stmt,
+    expression: dag_grammar_nonterminal(production: ^dag_production_let_expr),
+    emitted: ^dag_surface_lambda_let_stmt
+  )
   let match_arm_stmt_body = dag_grammar_production(
     name: ^dag_production_match_arm_stmt_body,
     expression: dag_grammar_match_arm_stmt_body_expr(),
@@ -3719,6 +3764,8 @@ fn dag_grammar_root() -> GrammarRoot {
       match_expr,
       empty_block_body,
       match_arm_stmt_body,
+      lambda_stmt_body,
+      lambda_let_stmt,
       match_arm,
       pattern,
       field_pattern,

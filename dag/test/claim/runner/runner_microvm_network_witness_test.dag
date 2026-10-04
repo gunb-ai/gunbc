@@ -6,7 +6,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.network.mac { MacAddressScope, LocallyAdministered, mac_address_scope, render_mac_address }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv1 }
 import gunbc.runner_microvm_network {
   runner_microvm_host_network_install_operations, runner_microvm_nft_ruleset_path,
   runner_microvm_nft_ruleset_dir,

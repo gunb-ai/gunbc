@@ -19,11 +19,12 @@ import gunbc.machine_intake_oob_boot_handoff { BootReadbackConfirmed, boot_readb
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
+import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_targets,
-  mtcollins1_smpro_socket_records, smpro_socket_word, smpro_outcome_word, smpro_outcome_text,
+  SmproPassObservation, smpro_site_probe_bound, smpro_pass_dossier_text, smpro_site_targets,
+  smpro_socket_records, smpro_socket_word, smpro_outcome_word, smpro_outcome_text,
 }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_table_text, mtcollins1_sensor_anomalies }
 import extdeps.bmc.redfish_memory_inventory {
@@ -349,12 +350,12 @@ type SensorReading
   | SensorsUnread { cause: BmcReadCause }
   | SensorsNotTaken { reason: NonEmptyStr }
 
-// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_mtcollins1_smpro_observation). The bundle's own
+// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_ampere_smpro_observation, read through the managed host's subject). The bundle's own
 // pass is taken after the attempt; the run record below carries the two passes taken while power
 // was established on. Its probes are kept whole, every one with its raw observation, including when none of
 // them was answered: the dossier is rendered for any outcome list.
 type SmproReading
-  = SmproProbed { outcomes: List<SmproProbeOutcome> }
+  = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
 type MembersReading<T>
@@ -417,7 +418,7 @@ data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-bo
 // pass right after the handoff observed power on (gunbc.machine_intake_oob_boot_handoff
 // BootControlIssued now carries an observed transition, not an exit code) and a second the first
 // time a poll saw the census envelope open. Both are read-only and fold-sequenced exactly as the
-// post-attempt pass (mtcollins1_smpro_sequenced).
+// post-attempt pass (gunbc.machine_intake_ampere_smpro_observation smpro_pass_sequenced).
 //
 // WHETHER THE OVERRIDE WAS CONSUMED BY THIS ATTEMPT. The IPMI boot override is one-shot: the
 // controller clears boot parameter 5's valid flag when a boot consumes it, and on its own timeout.
@@ -831,7 +832,9 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }
-    _ => MediaLossNotAffirmed
+    HandoffMediaAttempted { before: _, handoff: HandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
+    HandoffMediaNotReached { reason: _ } => MediaLossNotAffirmed
+        HandoffMediaWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
   }
 }
 
@@ -1117,7 +1120,7 @@ fn mtcollins1_census_socket_count() -> Int {
 
 fn smpro_text(s: SmproReading) -> String {
   match s {
-    SmproProbed { outcomes: os } => mtcollins1_smpro_dossier_text(outcomes: os)
+    SmproProbed { observation: o } => smpro_pass_dossier_text(obs: o)
     SmproNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
@@ -1326,7 +1329,8 @@ fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead
 fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
     SmproNotTaken { reason: _ } => BmcChannelNotAttempted
-    SmproProbed { outcomes: os } =>
+    SmproProbed { observation: obs } => {
+      let os = obs.outcomes
       if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true SmproTransportFailed { raw: _, timed_out: _ } => false SmproNotSent { socket: _, register: _, reason: _ } => false SmproRequestUnencodable { socket: _, register: _, detail: _ } => false }) { BmcChannelAnswered }
       else {
         match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] SmproWordRead { raw: _, word: _ } => [] SmproControllerRefused { raw: _, completion: _ } => [] SmproResponseMalformed { raw: _, detail: _ } => [] SmproNotSent { socket: _, register: _, reason: _ } => [] SmproRequestUnencodable { socket: _, register: _, detail: _ } => [] }).first() {
@@ -1334,6 +1338,7 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
           Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
         }
       }
+    }
   } }
 }
 
@@ -1383,7 +1388,7 @@ fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChann
 // re-read: each field is a section already taken, or a standing derived from one.
 fn smpro_pass(label: NonEmptyStr, s: SmproReading) -> List<SmproPassEvidence> {
   match s {
-    SmproProbed { outcomes: os } => [SmproPassEvidence { label: label, outcomes: os }]
+    SmproProbed { observation: o } => [SmproPassEvidence { label: label, observation: o }]
     SmproNotTaken { reason: _ } => []
   }
 }
@@ -1438,19 +1443,19 @@ fn kvm_coverage(rec: KvmObserverRecord) -> CarrierStanding {
 }
 
 fn smpro_answered(s: SmproReading) -> Bool {
-  match s { SmproProbed { outcomes: os } => any(os, o => match smpro_outcome_word(o: o) { Present { value: _ } => true Absent => false }) SmproNotTaken { reason: _ } => false }
+  match s { SmproProbed { observation: o } => any(o.outcomes, o => match smpro_outcome_word(o: o) { Present { value: _ } => true Absent => false }) SmproNotTaken { reason: _ } => false }
 }
 
 fn smpro_coverage(readings: List<SmproReading>) -> CarrierStanding {
   if any(readings, r => smpro_answered(s: r)) { CarrierRead }
-  else if any(readings, r => match r { SmproProbed { outcomes: _ } => true SmproNotTaken { reason: _ } => false }) { CarrierRefused { cause: "no SMpro register word was read in any pass" } }
+  else if any(readings, r => match r { SmproProbed { observation: _ } => true SmproNotTaken { reason: _ } => false }) { CarrierRefused { cause: "no SMpro register word was read in any pass" } }
   else { CarrierNotTaken { reason: "no SMpro pass was taken" } }
 }
 
 // THE ERROR-RECORD REGISTERS, covered apart from the boot-stage pair (#13058): a pass whose CUR and
 // BOOTSTAGE read while GPI_RAS_ERR or a record word refused is a gap in THIS carrier, not in progress.
 fn record_gaps(os: List<SmproProbeOutcome>, socket: Int) -> List<String> {
-  let r = mtcollins1_smpro_socket_records(outcomes: os, socket: socket)
+  let r = smpro_socket_records(outcomes: os, socket: socket)
   let gpi = match smpro_socket_word(outcomes: os, socket: socket, register: smpro_gpi_ras_err_reg.name) {
     Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR was not probed")]
     Present { value: o } => match smpro_outcome_word(o: o) { Present { value: _ } => [] Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR ", smpro_outcome_text(o: o))] }
@@ -1460,9 +1465,9 @@ fn record_gaps(os: List<SmproProbeOutcome>, socket: Int) -> List<String> {
 }
 
 fn smpro_error_coverage(readings: List<SmproReading>) -> CarrierStanding {
-  let passes = flat_map(readings, r => match r { SmproProbed { outcomes: os } => [os] SmproNotTaken { reason: _ } => [] })
-  let gaps = flat_map(passes, os => flat_map(mtcollins1_smpro_targets, t => record_gaps(os: os, socket: t.socket)))
-  let wanted = count(passes) * count(mtcollins1_smpro_targets) * 3
+  let passes = flat_map(readings, r => match r { SmproProbed { observation: o } => [o] SmproNotTaken { reason: _ } => [] })
+  let gaps = flat_map(passes, o => flat_map(smpro_site_targets(site: o.subject.site), t => record_gaps(os: o.outcomes, socket: t.socket)))
+  let wanted = fold(passes, init: 0, f: (acc, o) => acc + count(smpro_site_targets(site: o.subject.site)) * 3)
   if count(passes) == 0 { CarrierNotTaken { reason: "no SMpro pass was taken" } }
   else if count(gaps) == 0 { CarrierRead }
   else if count(gaps) >= wanted { CarrierRefused { cause: (match gaps.first() { Present { value: g } => g Absent => "every error-record read failed" }) as NonEmptyStr } }
@@ -1827,12 +1832,12 @@ data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
 
 // The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
 // pass can send
-// (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run under
+// (gunbc.machine_intake_ampere_smpro_observation smpro_site_probe_bound) each run under
 // the same coreutils bound. The reads taken under the unit hold -- the two in-run SMpro passes, the
 // two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
 // allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
-  4 + mtcollins1_smpro_probe_count()
+  4 + smpro_site_probe_bound(standing: mtcollins1_smpro_site())
 }
 
 data mtcollins1_boot_redfish_read_budget: Int = 48

@@ -3605,7 +3605,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       renders_clap_cli: has_pipeline,
       renders_async_services: has_services
     })
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name)
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, registry: ctx.registry)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -12564,6 +12564,12 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
   }
 }
 
+// A unit-element accumulator rendering is an inference gap, not a type, so both fold realizations
+// leave it to the target's inference rather than annotate it.
+fn rust_fold_safe_acc_type(acc_type_str: String) -> String {
+  if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+}
+
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, elem_borrowed: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda =>
@@ -12571,7 +12577,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
 
-      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+      let safe_acc_type = rust_fold_safe_acc_type(acc_type_str: acc_type_str)
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
@@ -12782,13 +12788,91 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
   }
-  let fold_fn = match args |> skip(1) |> first {
-    Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
-    Absent => "compile_error!(\"missing fold function argument\")"
-  }
   let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
-  concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+  let iter_str = apply_type_template1(template: iter_template, arg0: recv_str)
+  let step_awaits = match args |> skip(1) |> first {
+    Present { value: a } => rust_expr_reaches_awaited_call(n: arg_value(n: a), registry: registry, source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+  if step_awaits {
+    emit_rust_effectful_fold_loop(lambda_expr: fold_lambda_node, iter_str: iter_str, init_str: init_str, acc_type_str: lambda_acc_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+  } else {
+    let fold_fn = match args |> skip(1) |> first {
+      Present { value: a } =>
+        emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+      Absent => "compile_error!(\"missing fold function argument\")"
+    }
+    concat(iter_str, ".fold(", init_str, ", ", fold_fn, ")")
+  }
+}
+
+// A FOLD IS A BOUNDED LOOP, AND `Iterator::fold` IS ONLY ONE REALIZATION OF IT -- THE ONE THAT
+// PRESUMES A PURE STEP. The step is handed to fold as a closure, and a Rust closure is a separate,
+// synchronous frame: an effectful callee inside it is emitted, by the one authority every call site
+// asks (item_is_effectful_callee, and the typed service-call predicate), with `.await?`, which is
+// E0728 in that frame (four sites on the approval broker's native closure, among them
+// gunbc.auth.approval_decision_store pending_escalations). The closure is the wrong link, not the
+// await: the enclosing fn is already async BECAUSE it reaches that effect, so the step belongs in
+// the enclosing frame, where both the await and the `?` mean what they mean everywhere else in the
+// fn -- the effect's refusal propagates out of the fold exactly as it would out of a let. That is
+// the same move the tail-call lowering makes for effectful recursion (a loop over a mutable state
+// slot in the caller's frame, not a recursive async call), applied to the Loop behavior fold
+// already is. The step's parameters are bound as lets per element in declaration order, so the
+// body is emitted by the ordinary expression emitter against the same lambda scope the closure
+// realization uses; nothing about the body is re-derived here.
+fn emit_rust_effectful_fold_loop(lambda_expr: Node, iter_str: String, init_str: String, acc_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match lambda_expr.expr_data {
+    ExprLambda =>
+      let si = scope.type_env.source_indices
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: si)
+      let pn = lambda_expr.children |> skip(1)
+      let acc_param_type = rust_fold_safe_acc_type(acc_type_str: acc_type_str)
+      let acc_name = match ps |> first { Present { value: n } => n  Absent => "_" }
+      let elem_name = match ps |> skip(1) |> first { Present { value: n } => n  Absent => "_" }
+      let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
+      let body_str = emit_typed_expr(texpr: lambda_body(texpr: lambda_expr), registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let acc_ident = if acc_name == "_" { "_" } else { emit_ident(name: acc_name, target: Rust) }
+      let elem_ident = if elem_name == "_" { "_" } else { emit_ident(name: elem_name, target: Rust) }
+      let acc_decl = if acc_param_type == "_" || acc_param_type == "" { "" } else { concat(": ", acc_param_type) }
+      let acc_unwrap = if acc_name != "_" && set_contains(emit_info.owned_bindings, acc_name) {
+        concat("let ", acc_ident, " = v1_rt::take_owned(", acc_ident, "); ")
+      } else { "" }
+      concat(
+        "{ let mut __fold_acc", acc_decl, " = ", init_str, "; ",
+        "for __fold_elem in ", iter_str, " { ",
+        "let ", acc_ident, " = __fold_acc; ", acc_unwrap,
+        "let ", elem_ident, " = __fold_elem; ",
+        "__fold_acc = { ", body_str, " }; ",
+        "} __fold_acc }"
+      )
+    _ => emit_rust_compile_error_expr(message: "effectful fold step is not a lambda: an effectful function value has no synchronous closure realization and no loop realization")
+  }
+}
+
+// DOES EMITTING THIS EXPRESSION PRODUCE AN `.await?` -- asked of the same two authorities that write
+// one: a source call whose callee item_is_effectful_callee, and a service op through a receiver
+// is_typed_service_call_receiver admits. Nested lambdas are walked too: an await anywhere inside the
+// step forces the step into the async frame, and a nested fold realizes its own loop by this rule.
+fn rust_expr_reaches_awaited_call(n: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let here = match n.expr_data {
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match call_semantics_target(cs: cs) {
+        SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+          match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl }) {
+            Present { value: info } => item_is_effectful_callee(info: info)
+            Absent => false
+          }
+        _ => false
+      }
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: ServiceMethodSemantics { service_name: _, op_params: _ } } =>
+          is_typed_service_call_receiver(receiver: method_receiver(texpr: n), source_indices: source_indices)
+        _ => false
+      }
+    _ => false
+  }
+  here || n.children |> any(c => rust_expr_reaches_awaited_call(n: c, registry: registry, source_indices: source_indices))
 }
 
 fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -17322,6 +17406,7 @@ data compiler_entry_direct_ingest_driver: String = "DirectIngestDriver"
 
 data compiler_entry_native_cli_driver: String = "NativeCliDriver"
 data compiler_entry_native_claim_driver: String = "NativeClaimDriver"
+data compiler_entry_native_serve_driver: String = "NativeServeDriver"
 
 type CompilerPipelineEntryDecl {
   module_name: String
@@ -17408,6 +17493,7 @@ fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
       || d.driver == compiler_entry_direct_ingest_driver
       || d.driver == compiler_entry_native_cli_driver
       || d.driver == compiler_entry_native_claim_driver
+      || d.driver == compiler_entry_native_serve_driver
     Absent => true
   }
 }
@@ -17415,6 +17501,13 @@ fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
 fn compiler_pipeline_entry_is_native_claim(modules: List<TypedModule>) -> Bool {
   match compiler_pipeline_entry_decl(modules: modules) {
     Present { value: d } => d.driver == compiler_entry_native_claim_driver
+    Absent => false
+  }
+}
+
+fn compiler_pipeline_entry_is_native_serve(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_native_serve_driver
     Absent => false
   }
 }
@@ -17464,7 +17557,7 @@ fn emit_unknown_compiler_pipeline_driver_main_rs(module_name: String, driver_rea
       escape_string_literal_body(s: module_name),
       " declares a driver this emitter does not recognise (read as [",
       escape_string_literal_body(s: driver_reading),
-      "]); std.compiler_entry declares RetainedHostCliKernel, DirectIngestDriver and SourceRootEvalDriver, and an unrecognised reading is a defect in the declaration or in the name read off it -- never a reason to render one of the arms anyway\");\n"
+      "]); std.compiler_entry CompilerEntryDriver declares the drivers this emitter renders, and an unrecognised reading is a defect in the declaration or in the name read off it -- never a reason to render one of the arms anyway\");\n"
     ),
   }
 }
@@ -17506,7 +17599,7 @@ fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
 // a library: its main is the typed entry-point-absent refusal. The derived "workflow" CLI that used
 // to answer below the pipeline arms -- one clap subcommand per function carrying `uses` or reaching
 // a service -- is deleted: it renamed the effect axis an entry role, and no built closure reached it.
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String) -> TextFile {
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, registry: Map<String, ItemInfo>) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
@@ -17528,7 +17621,14 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
-      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_native_claim_driver_main_rs(
+        crate_name: crate_name,
+        pipeline_module: pipeline_module,
+        demand: native_claim_report_effect_demand(registry: registry, pipeline_module: pipeline_module)
+      )
+    }
+    if compiler_pipeline_entry_is_native_serve(modules: modules) {
+      return emit_native_serve_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -17673,8 +17773,83 @@ fn emit_host_source_root_read_rs(crate_name: String) -> String {
 // gunbc test reads (0 held, 1 not held, 2 no observation). No code is taken from the program, so no
 // program can reach a fourth status or a failure spelled as 0. The reason goes to stderr so the case
 // rows on stdout stay the whole observation a reader joins by identity.
-fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+// WHAT THE REPORT DEMANDS OF ITS HOST, read from the one effect authority (item_is_effectful_callee
+// over the registry row the report's declaration produces), never from the entry module's imports.
+// The declared resource set of a NativeClaimDriver is {Filesystem}: a pure report gets the sync main
+// below unchanged, a report whose only demand is the Filesystem service gets that service bound to
+// the existing filesystem_io handler -- the binding NativeCliDriver's main already performs -- and
+// anything else is a typed refusal in place of a main, because binding an effect this driver does
+// not declare would be a transport no row admitted.
+type NativeClaimEffectDemand
+  = NativeClaimPure
+  | NativeClaimFilesystem
+  | NativeClaimUndeclaredEffect { detail: String }
+
+fn native_claim_report_effect_demand(registry: Map<String, ItemInfo>, pipeline_module: String) -> NativeClaimEffectDemand {
+  match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: pipeline_module, decl_name: "native_claim_report" }) {
+    Present { value: info } =>
+      if !item_is_effectful_callee(info: info) { NativeClaimPure }
+      else if (item_resource_names(info: info) |> count) == 0 && (info.service_names |> count) == 1 && (info.service_names |> all(sn => service_var_name(service_name: sn) == "filesystem")) { NativeClaimFilesystem }
+      else { NativeClaimUndeclaredEffect { detail: concat("services [", concat(info.service_names |> join(separator: ", "), concat("] resources [", concat(item_resource_names(info: info) |> join(separator: ", "), "]")))) } }
+    Absent => NativeClaimUndeclaredEffect { detail: "native_claim_report has no registry row" }
+  }
+}
+
+fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String, demand: NativeClaimEffectDemand) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  match demand {
+    NativeClaimPure => emit_native_claim_driver_pure_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod)
+    NativeClaimFilesystem => emit_native_claim_driver_filesystem_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod)
+    NativeClaimUndeclaredEffect { detail } => TextFile {
+      path: concat(rust_source_root(), "main", rust_source_ext()),
+      content: concat("// Generated by v1 compiler -- do not edit.\n\ncompile_error!(\"REFUSED: a NativeClaimDriver report may demand only the Filesystem service; ", concat(escape_string_literal_body(s: detail), "\");\n"))
+    }
+  }
+}
+
+// The report's terminal mapping is shared by both mains: held 0, not held 1, no observation 2.
+fn native_claim_terminal_exit_lines() -> String {
+  concat(
+      "    print!(\"\{\}\", report.stdout);", "\n",
+      "    match &*report.terminal \{", "\n",
+      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
+      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
+      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
+      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+}
+
+// A transport error out of the bound handler is no observation (2), never a held or not-held case:
+// the report did not finish deciding.
+fn emit_native_claim_driver_filesystem_main_rs(crate_name: String, pipeline_mod: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::native_claim_report;", "\n",
+      "\n",
+      "#[tokio::main(flavor = \"current_thread\")]", "\n",
+      "async fn main() \{", "\n",
+      "    let filesystem = ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());", "\n",
+      "    let report = match native_claim_report(&filesystem).await \{", "\n",
+      "        Ok(report) => report,", "\n",
+      "        Err(cause) => \{ eprintln!(\"NO OBSERVATION: native filesystem transport: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      native_claim_terminal_exit_lines(),
+      "\}", "\n")
+  }
+}
+
+fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: String) -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -17687,19 +17862,156 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
       "\n",
       "fn main() \{", "\n",
       "    let report = native_claim_report();", "\n",
-      "    print!(\"\{\}\", report.stdout);", "\n",
-      "    match &*report.terminal \{", "\n",
-      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
-      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
-      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
-      "            std::process::exit(1);", "\n",
-      "        \}", "\n",
-      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
-      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
-      "            std::process::exit(2);", "\n",
+      native_claim_terminal_exit_lines(),
+      "\}", "\n")
+  }
+}
+
+// THE NATIVE SERVE DRIVER'S MAIN: BIND, ACCEPT, READ, CALL, WRITE -- AND NOTHING THAT DECIDES.
+// std.compiler_entry NativeServeDriver declares the contract and gunbc.native_serve carries every
+// decision as a fold: native_serve_start reads argv and refuses before any bind; native_serve_frame
+// judges the request line and header lines this main read and says how many body bytes follow;
+// native_serve_route answers /livez before the handler; the entry's native_serve_handle answers
+// the rest. This main counts bytes against the contract's head limit, applies its read timeout,
+// strips line terminators, and writes what gunbc.native_serve native_serve_outgoing hands it
+// (status, content type, the header lines that fold rendered and admitted, and the body) with its
+// byte length. The
+// status line carries an empty reason phrase (RFC 9112 section 4 permits it), so no status table
+// is restated here. Serial by design, as the seed's loop is. No per-request budget is armed:
+// that is the declared drop gunbc.rung_drop.native_serve_request_budget_unrealized.
+fn emit_native_serve_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use std::io::\{BufRead, Read, Write\};", "\n",
+      "use std::rc::Rc;", "\n",
+      "\n",
+      "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count\};", "\n",
+      "use ", crate_name, "::gunbc_native_serve::\{", "\n",
+      "    native_serve_announcement, native_serve_frame, native_serve_handler_name, native_serve_read_refused,", "\n",
+      "    native_serve_outgoing, native_serve_route, native_serve_start, NativeServeContract, NativeServeFrame,", "\n",
+      "    NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
+      "\};", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::native_serve_handle;", "\n",
+      "\n",
+      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "    let mut head = format!(", "\n",
+      "        \"HTTP/1.1 \{\} \\r\\nContent-Type: \{\}\\r\\nContent-Length: \{\}\\r\\nConnection: close\\r\\n\",", "\n",
+      "        response.status, response.content_type_label, response.body.len()", "\n",
+      "    );", "\n",
+      "    for line in response.header_lines.iter() \{ head.push_str(line); head.push_str(\"\\r\\n\"); \}", "\n",
+      "    head.push_str(\"\\r\\n\");", "\n",
+      "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())) \{", "\n",
+      "        eprintln!(\"native-serve: write error: \{\}\", cause);", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> \{", "\n",
+      "    let mut bytes = Vec::new();", "\n",
+      "    match reader.read_until(b'\\n', &mut bytes) \{", "\n",
+      "        Ok(0) => return Ok(None),", "\n",
+      "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),", "\n",
+      "        Ok(n) => *budget -= n,", "\n",
+      "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),", "\n",
+      "        Err(cause) => return Err(format!(\"read: \{\}\", cause)),", "\n",
+      "    \}", "\n",
+      "    if bytes.ends_with(b\"\\n\") \{ bytes.pop(); \}", "\n",
+      "    if bytes.ends_with(b\"\\r\") \{ bytes.pop(); \}", "\n",
+      "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())", "\n",
+      "\}", "\n",
+      "\n",
+      "enum Exchange \{", "\n",
+      "    Idle,", "\n",
+      "    Answer(Rc<ServeWireResponse>),", "\n",
+      "\}", "\n",
+      "\n",
+      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64) -> Exchange \{", "\n",
+      "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
+      "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
+      "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
+      "    let request_line = match read_line(&mut reader, &mut budget) \{", "\n",
+      "        Ok(Some(line)) => line,", "\n",
+      "        Ok(None) => return Exchange::Idle,", "\n",
+      "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),", "\n",
+      "    \};", "\n",
+      "    let mut header_lines = Vec::new();", "\n",
+      "    loop \{", "\n",
+      "        match read_line(&mut reader, &mut budget) \{", "\n",
+      "            Ok(Some(line)) if line.is_empty() => break,", "\n",
+      "            Ok(Some(line)) => header_lines.push(line),", "\n",
+      "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),", "\n",
+      "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),", "\n",
       "        \}", "\n",
       "    \}", "\n",
-      "\}", "\n")
+      "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) \{", "\n",
+      "        NativeServeFrame::NativeServeFrameRefused \{ response \} => return Exchange::Answer(response.clone()),", "\n",
+      "        NativeServeFrame::NativeServeFramed \{ head, body_length \} => \{", "\n",
+      "            let mut body = vec![0u8; *body_length as usize];", "\n",
+      "            if let Err(cause) = reader.read_exact(&mut body) \{", "\n",
+      "                return Exchange::Answer(native_serve_read_refused(format!(\"read body: \{\}\", cause)));", "\n",
+      "            \}", "\n",
+      "            match String::from_utf8(body) \{", "\n",
+      "                Ok(text) => (head.clone(), text),", "\n",
+      "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),", "\n",
+      "            \}", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
+      "    let (head, body) = head;", "\n",
+      "    match &*native_serve_route(contract.clone(), head.clone(), native_serve_handler_name(), bound_host.to_string(), bound_port) \{", "\n",
+      "        NativeServeRoute::NativeServeAnswered \{ response \} => Exchange::Answer(response.clone()),", "\n",
+      "        NativeServeRoute::NativeServeToHandler => Exchange::Answer(native_serve_handle(", "\n",
+      "            head.method.clone(),", "\n",
+      "            head.target.clone(),", "\n",
+      "            body,", "\n",
+      "            head.tailscale_identity.clone(),", "\n",
+      "            contract.release_revision.clone(),", "\n",
+      "        )),", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "\n",
+      "fn main() \{", "\n",
+      "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
+      "    let contract = match &*native_serve_start(Rc::new(argv.into())) \{", "\n",
+      "        NativeServeStart::NativeServeListen \{ contract \} => contract.clone(),", "\n",
+      "        NativeServeStart::NativeServeStartRefused \{ reason \} => \{", "\n",
+      "            eprintln!(\"REFUSED: \{\}\", reason);", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \};", "\n",
+      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
+      "        Ok(listener) => listener,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound = match listener.local_addr() \{", "\n",
+      "        Ok(addr) => addr,", "\n",
+      "        Err(cause) => \{ eprintln!(\"REFUSED: bound but could not read the bound address: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      "    let bound_host = bound.ip().to_string();", "\n",
+      "    let bound_port = bound.port() as i64;", "\n",
+      "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
+      "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
+      "    for accepted in listener.incoming() \{", "\n",
+      "        let mut stream = match accepted \{", "\n",
+      "            Ok(stream) => stream,", "\n",
+      "            Err(cause) => \{ eprintln!(\"native-serve: accept error: \{\}\", cause); continue; \}", "\n",
+      "        \};", "\n",
+      "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) \{", "\n",
+      "            eprintln!(\"native-serve: set_read_timeout: \{\}\", cause);", "\n",
+      "            continue;", "\n",
+      "        \}", "\n",
+      "        match exchange(&stream, &contract, &bound_host, bound_port) \{", "\n",
+      "            Exchange::Idle => \{\}", "\n",
+      "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n"
+    )
   }
 }
 
@@ -18108,6 +18420,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for refusal in context.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
+      "    // THE ADVISORY POPULATION IS THE SAME CONTEXT FACT `census` REPORTS, printed in the same", "\n",
+      "    // shape, so a saved whole-tree receipt carries it without a second pass. Its count is taken", "\n",
+      "    // here, from the context that produced the rows, not from the threaded one at the end.", "\n",
+      "    for advised in context.accepted_file_advisories.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "    \}", "\n",
+      "    let advised_files = context.accepted_file_advisories.len();", "\n",
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
       "    let roster_started = Instant::now();", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
@@ -18192,6 +18511,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"corpus_reads\": corpus_reads,", "\n",
       "            \"modules\": modules.len(),", "\n",
       "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"advised_files\": advised_files,", "\n",
       "            \"resolved\": resolved_ok,", "\n",
       "            \"file_refused\": file_refused,", "\n",
       "            \"resolve_refused\": resolve_refused,", "\n",

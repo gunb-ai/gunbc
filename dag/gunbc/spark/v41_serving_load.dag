@@ -16,7 +16,8 @@ import extdeps.linux.diskstats { DiskstatsReading, DiskReadMeasured, DiskReadUnm
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete }
 import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
-import gunbc.fleet_intent_network { operator_host_srv6, srv6_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv6_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv6 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
