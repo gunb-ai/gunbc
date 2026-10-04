@@ -185,6 +185,7 @@ import gunbc.roadmap.roadmap_fanin {
 import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
   legacy_attempt_supersedable_detail,
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
 
 // THE ATTEMPT'S WORKTREE, OBSERVED RATHER THAN INFERRED. The Workspace segment read complete from the
@@ -210,11 +211,6 @@ fn attempt_worktree_observation_of(path: String, marker: FilesystemFileObservati
 // The modeled-state pointer's standing, carried as a typed fact: an attempt whose pointer is
 // established absent is a legacy attempt; an attempt whose pointer could not be read has
 // UNKNOWN standing, and no downstream route may mint legacy standing from that unknown.
-type WorkflowModeledStateStanding
-  = WorkflowModeledStateObserved
-  | WorkflowModeledStateAbsent
-  | WorkflowModeledStateUnreadable { cause: NonEmptyStr }
-
 type WorkflowAttemptEvidence {
   node_id: String
   attempt_key: String

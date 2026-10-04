@@ -522,10 +522,12 @@ import gunbc.roadmap_session_placement {
   session_placement_observe_for_attempt, SessionPlacementUnreadable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
+import gunbc.roadmap_workflow_command {
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
+}
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
   WorkflowAttemptEvidence,
-  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
   workflow_attempt_progress_json_members,

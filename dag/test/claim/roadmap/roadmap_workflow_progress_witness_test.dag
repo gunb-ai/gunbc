@@ -15,8 +15,10 @@ import gunbc.roadmap_provider_events {
   ProviderFailed,
   ProviderEventsRefused,
 }
-import gunbc.roadmap_workflow_progress {
+import gunbc.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
+}
+import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
   review_segment,
   WorkflowAttemptEvidence,

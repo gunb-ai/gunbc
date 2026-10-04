@@ -1,11 +1,18 @@
 module gunbc.roadmap_workflow_command
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash }
 import gunbc.roadmap_verification_receipt { VerificationSubject }
-import gunbc.roadmap_workflow_progress { WorkflowModeledStateStanding, WorkflowModeledStateAbsent }
 
 type AttemptKey = String
+
+// The attempt's modeled-state pointer standing, as an established fact of the read that observed it:
+// Observed carries the evidence; Absent is established absence; Unreadable is a pointer that could
+// not be read, with the owner's located cause -- never treated as absence.
+type WorkflowModeledStateStanding
+  = WorkflowModeledStateObserved
+  | WorkflowModeledStateAbsent
+  | WorkflowModeledStateUnreadable { cause: NonEmptyStr }
 
 // THE THREE RETRY SHAPES ARE FIRST-CLASS COMMANDS, NOT INCIDENTAL TMUX CLEANUP. RetryMechanism
 // retries a failed mechanism at the same input identity without a new attempt or a consumed review
