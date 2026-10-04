@@ -1,0 +1,223 @@
+module test.claim.product.superchip_assembly_qualification_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { gibibyte, gibibyte_to_byte_size }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+import product.superchip_assembly_qualification {
+  SuperchipAssembly,
+  SuperchipUnitObservation,
+  CarrierUnitObservation,
+  BenchRecord,
+  ReadVerified,
+  ReadContradicted,
+  MezzanineFacePhotographed,
+  OneAtEachEndOfLongAxis,
+  CarrierBootObserved,
+  InventoryMeasured,
+  AssemblyWorkloadQualified,
+  AssemblyBlockedAt,
+  AssemblyRefusedAt,
+  MechanicallyMated,
+  SafeToEnergize,
+  BootQualified,
+  qualification_stage_label,
+  assembly_qualification,
+  unit_catalog_match,
+  UnitGpuTierConsistentWithRow,
+  UnitClaimOutsideCatalog,
+  first_assembly,
+  second_assembly,
+  gh200_dv5_unit,
+  gh200_dv2_80gb_listing,
+  p4261_k1_carrier,
+}
+
+fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
+  any(lines, l => contains(l as String, fragment))
+}
+
+// THE REAL PATH: the first planned assembly, DV5 on K1, as bought. Its faces agree at photo grain, so
+// it is not refused; nothing past a photograph has been read, so it stands at the first stage, and the
+// rest of the bench plan -- the power path carrying the row's 1000 W ceiling, boot storage, the
+// measured inventory -- is listed after it.
+test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bool {
+  match assembly_qualification(a: first_assembly) {
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && mentions(lines: here, fragment: "consistent at photo grain")
+        && mentions(lines: later, fragment: "rev K1")
+        && mentions(lines: later, fragment: "1000 W ceiling")
+        && mentions(lines: later, fragment: "boot storage")
+        && mentions(lines: later, fragment: "site AC supply")
+    _ => false
+  }
+}
+
+// THE 480GB OVERCLAIM, held closed: a "96GB HBM3" listing is consistent with the GPU tier only, and
+// the inventory obligation says it establishes nothing about LPDDR5X.
+test fn a_gpu_tier_claim_says_nothing_about_lpddr5x() -> Bool {
+  let consistent = match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+    UnitGpuTierConsistentWithRow { row: _, as_listed: l } => l == "96GB HBM3"
+    _ => false
+  }
+  let says_so = match assembly_qualification(a: first_assembly) {
+    AssemblyBlockedAt { stage: _, open_here: _, open_later: later } =>
+      mentions(lines: later, fragment: "says nothing of LPDDR5X, which the datasheet admits at 120, 240 or 480 GB")
+    _ => false
+  }
+  consistent && says_so
+}
+
+test fn the_80gb_listing_is_outside_the_catalog() -> Bool {
+  match unit_catalog_match(unit: gh200_dv2_80gb_listing, row: nvidia_gh200_480gb_catalog) {
+    UnitClaimOutsideCatalog { as_listed: l } => l == "80GB HBM2"
+    _ => false
+  }
+}
+
+// The second assembly has neither face photographed, so mating is open on both counts.
+test fn the_second_assembly_owes_both_photographs() -> Bool {
+  match assembly_qualification(a: second_assembly) {
+    AssemblyBlockedAt { stage: _, open_here: here, open_later: _ } =>
+      mentions(lines: here, fragment: "photograph the underside of the 699-2G530-0204-DV2 unit")
+        && mentions(lines: here, fragment: "photograph the module-side face of the P4261 rev H1 carrier")
+    _ => false
+  }
+}
+
+// ── SUPPLIED BENCH VALUES ─────────────────────────────────────────────────────────────────────
+
+data fully_read_bench: BenchRecord = BenchRecord {
+  connector_identity: ReadVerified { evidence: "supplied: mating pair confirmed in the vendor catalog" },
+  mounting_stack: ReadVerified { evidence: "supplied" },
+  power_path: ReadVerified { evidence: "supplied" },
+  site_ac_supply: ReadVerified { evidence: "supplied" },
+  thermal_path: ReadVerified { evidence: "supplied" },
+  protective_shutdown: ReadVerified { evidence: "supplied" },
+  management_path: ReadVerified { evidence: "supplied" },
+  boot_storage: ReadVerified { evidence: "supplied" },
+  module_power_limit: ReadVerified { evidence: "supplied" },
+  served_workload: ReadVerified { evidence: "supplied" },
+}
+
+fn booted_and_measured() -> SuperchipAssembly {
+  SuperchipAssembly {
+    unit: SuperchipUnitObservation {
+      board_designation: gh200_dv5_unit.board_designation,
+      board_part_number: gh200_dv5_unit.board_part_number,
+      die_marking: gh200_dv5_unit.die_marking,
+      listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+      mezzanine_face: gh200_dv5_unit.mezzanine_face,
+      measured_inventory: InventoryMeasured {
+        gpu_memory: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+        cpu_memory: gibibyte_to_byte_size(g: gibibyte(count: 480)),
+        evidence: "supplied inventory receipt",
+      },
+      source: "supplied",
+    },
+    carrier: CarrierUnitObservation {
+      carrier_designation: p4261_k1_carrier.carrier_designation,
+      carrier_part_number: p4261_k1_carrier.carrier_part_number,
+      revision: p4261_k1_carrier.revision,
+      module_face: p4261_k1_carrier.module_face,
+      provenance: p4261_k1_carrier.provenance,
+      boot: CarrierBootObserved { module_part_number: "699-2G530-0215-DV5", evidence: "supplied boot receipt" },
+      source: "supplied",
+    },
+    row: nvidia_gh200_480gb_catalog,
+    bench: fully_read_bench,
+  }
+}
+
+// The ladder's green is AUTHORABLE: every requirement read, this module observed booting on this
+// carrier and its inventory measured, and the assembly is workload-qualified.
+test fn a_fully_read_assembly_is_workload_qualified() -> Bool {
+  match assembly_qualification(a: booted_and_measured()) {
+    AssemblyWorkloadQualified { evidence: e } => count(e) == 12
+    _ => false
+  }
+}
+
+// A boot of a DIFFERENT module is not a boot of this one: with everything else read, the assembly
+// stops at boot qualification and says which module the carrier ran.
+test fn a_boot_of_another_module_does_not_qualify_this_one() -> Bool {
+  let a = booted_and_measured()
+  let other = SuperchipAssembly {
+    unit: a.unit,
+    carrier: CarrierUnitObservation {
+      carrier_designation: a.carrier.carrier_designation,
+      carrier_part_number: a.carrier.carrier_part_number,
+      revision: a.carrier.revision,
+      module_face: a.carrier.module_face,
+      provenance: a.carrier.provenance,
+      boot: CarrierBootObserved { module_part_number: "699-2G530-0206-QS1", evidence: "supplied" },
+      source: a.carrier.source,
+    },
+    row: a.row,
+    bench: a.bench,
+  }
+  match assembly_qualification(a: other) {
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: _ } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: BootQualified)
+        && mentions(lines: here, fragment: "was observed running 699-2G530-0206-QS1")
+    _ => false
+  }
+}
+
+// A CONTRADICTION REFUSES AT ITS STAGE even while earlier stages are still open: thermal shown
+// impossible refuses at safe-to-energize on the live, otherwise-unread first assembly.
+test fn a_contradicted_requirement_refuses_at_its_stage() -> Bool {
+  let a = SuperchipAssembly {
+    unit: first_assembly.unit,
+    carrier: first_assembly.carrier,
+    row: first_assembly.row,
+    bench: BenchRecord {
+      connector_identity: first_assembly.bench.connector_identity,
+      mounting_stack: first_assembly.bench.mounting_stack,
+      power_path: first_assembly.bench.power_path,
+      site_ac_supply: first_assembly.bench.site_ac_supply,
+      thermal_path: ReadContradicted { reason: "supplied: no assembly fits the lidless package" },
+      protective_shutdown: first_assembly.bench.protective_shutdown,
+      management_path: first_assembly.bench.management_path,
+      boot_storage: first_assembly.bench.boot_storage,
+      module_power_limit: first_assembly.bench.module_power_limit,
+      served_workload: first_assembly.bench.served_workload,
+    },
+  }
+  match assembly_qualification(a: a) {
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: SafeToEnergize)
+        && mentions(lines: rs, fragment: "no assembly fits the lidless package")
+    _ => false
+  }
+}
+
+// The photographed faces DISCRIMINATE: a carrier face with a different connector count refutes
+// mating outright.
+test fn a_mismatched_connector_face_refuses_mating() -> Bool {
+  let a = SuperchipAssembly {
+    unit: first_assembly.unit,
+    carrier: CarrierUnitObservation {
+      carrier_designation: p4261_k1_carrier.carrier_designation,
+      carrier_part_number: p4261_k1_carrier.carrier_part_number,
+      revision: p4261_k1_carrier.revision,
+      module_face: MezzanineFacePhotographed {
+        connector_count: 3,
+        contact_rows_per_connector: 6,
+        arrangement: OneAtEachEndOfLongAxis,
+        source: "supplied",
+      },
+      provenance: p4261_k1_carrier.provenance,
+      boot: p4261_k1_carrier.boot,
+      source: "supplied",
+    },
+    row: first_assembly.row,
+    bench: first_assembly.bench,
+  }
+  match assembly_qualification(a: a) {
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
+        && mentions(lines: rs, fragment: "carrier shows 3")
+    _ => false
+  }
+}

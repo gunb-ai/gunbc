@@ -1,9 +1,7 @@
 module product.node_platform_selection
 
-import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.types { List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size }
 import std.pareto { AxisGap, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   DecisionVariable,
@@ -44,7 +42,6 @@ import extdeps.external_authority {
   TranscribedUncited,
   cited_figure_read_obligation,
 }
-import extdeps.memory.types { MemoryKind, Hbm }
 import extdeps.systems.types {
   IntegratedComputeSystemCatalogRow,
   CoherentSuperchipCatalogRow,
@@ -52,6 +49,15 @@ import extdeps.systems.types {
 }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, extdeps_external_authority_anchor }
+import product.superchip_assembly_qualification {
+  SuperchipAssembly,
+  AssemblyWorkloadQualified,
+  AssemblyBlockedAt,
+  AssemblyRefusedAt,
+  assembly_qualification,
+  qualification_stage_label,
+  planned_assemblies,
+}
 import product.build_selection {
   BuildAxisReading,
   MagnitudeBytes,
@@ -60,7 +66,7 @@ import product.build_selection {
   to_axis_reading,
 }
 
-// GH200-0 (2026-10-03). THE QUESTION: should the serving fleet's node platform move from DGX Spark
+// GH200-0 (2026-10-03), GH200-1 (same day). THE QUESTION: should the serving fleet's node platform move from DGX Spark
 // to GH200 superchips on NVIDIA's P4261 dev carrier. The operator's stated intent is to sell the
 // Sparks and move, "assuming I can actually get it working" -- and that clause is the whole shape of
 // this module: the platform comparison is computable from cited catalog rows today, while getting it
@@ -75,303 +81,8 @@ import product.build_selection {
 // unit-carrying magnitude collapse (BuildAxisReading / to_axis_reading), so a byte count, a
 // bandwidth and a wattage still reach std.pareto through the one total function that names them.
 
-// ── WHAT WAS OBSERVED, NOT WHAT NVIDIA PUBLISHES ──────────────────────────────────────────────
-//
-// Listing transcriptions the operator supplied. These are receipts in this layer (DESIGN §3,
-// external upstream decomposition): NVIDIA publishes the PG530 family and the 480GB product, and
-// nothing about any particular unit, revision suffix or carrier board. listed_gpu_memory is the
-// SELLER'S claim, kept as a claim so it can be checked against the catalog rather than believed.
-type ListedGpuMemoryClaim
-  = GpuMemoryClaimed { capacity: ByteSize, memory_kind: MemoryKind, as_listed: NonEmptyStr }
-  | GpuMemoryNotClaimed
-
-// THE FACE A MODULE AND ITS CARRIER MEET ON, as far as a photograph shows it. A GH200 module mates to
-// its carrier through high-density mezzanine connectors on its underside (ServeTheHome, below); what a
-// photograph can establish is how many there are, how many contact rows each shows, and where they
-// sit. It cannot establish pin count, pinout or keying, so a face read from a photograph is recorded at
-// that grain and no finer.
-type ConnectorArrangement
-  = OneAtEachEndOfLongAxis
-  | ArrangementOther { described: NonEmptyStr }
-
-type MezzanineFaceObservation
-  = MezzanineFacePhotographed {
-      connector_count: Nat
-      contact_rows_per_connector: Nat
-      arrangement: ConnectorArrangement
-      source: NonEmptyStr
-    }
-  | MezzanineFaceUnobserved { obligation: NonEmptyStr }
-
-type SuperchipUnitObservation {
-  board_designation: NonEmptyStr
-  board_part_number: NonEmptyStr
-  die_marking: NonEmptyStr
-  listed_gpu_memory: ListedGpuMemoryClaim
-  mezzanine_face: MezzanineFaceObservation
-  source: NonEmptyStr
-}
-
-// Whether the carrier was ever SEEN running a module, and which one. A seller's "it came out of a
-// working machine" is provenance, not this: it names no module and no boot, so it is carried as
-// provenance and leaves the boot unobserved.
-type CarrierBootObservation
-  = CarrierBootUnobserved
-  | CarrierBootObserved { module_part_number: NonEmptyStr, evidence: NonEmptyStr }
-
-type CarrierUnitObservation {
-  carrier_designation: NonEmptyStr
-  carrier_part_number: NonEmptyStr
-  revision: NonEmptyStr
-  module_face: MezzanineFaceObservation
-  provenance: NonEmptyStr
-  boot: CarrierBootObservation
-  source: NonEmptyStr
-}
-
-// The unit the operator is buying: listing title "NVIDIA GH200 699-2G530-0215-DV5 Grace Hopper Dev
-// Superchip 96GB H100 SXM5", item specifics Memory Size 96GB / Memory Type HBM3; the die photograph
-// reads "GH100-888K-A1 QUAL SAMPLE".
-data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
-  board_designation: "PG530",
-  board_part_number: "699-2G530-0215-DV5",
-  die_marking: "GH100-888K-A1 QUAL SAMPLE",
-  listed_gpu_memory: GpuMemoryClaimed {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
-    memory_kind: Hbm,
-    as_listed: "96GB HBM3",
-  },
-  mezzanine_face: MezzanineFacePhotographed {
-    connector_count: 2,
-    contact_rows_per_connector: 6,
-    arrangement: OneAtEachEndOfLongAxis,
-    source: "listing photograph of the module underside, label '699-2G530-0215-DV5 C1 Made in USA', model PG530",
-  },
-  source: "eBay item 298619132349, transcribed by the operator 2026-10-03",
-}
-
-// A second listing the operator asked about: "Nvidia GH100 PG530 80GB HBM2 Graphics Accelerator Qual
-// Sample GH100-888K-A1 699-2G530-0204-DV2 B". extdeps.memory.types carries one Hbm kind and does not
-// split HBM generations, so "HBM2" lands as Hbm and the claim is decided by its capacity alone: 80GB is
-// neither of the datasheet's PG530 configurations. as_listed keeps the generation the seller wrote.
-data gh200_dv2_80gb_listing: SuperchipUnitObservation = SuperchipUnitObservation {
-  board_designation: "PG530",
-  board_part_number: "699-2G530-0204-DV2",
-  die_marking: "GH100-888K-A1 QUAL SAMPLE",
-  listed_gpu_memory: GpuMemoryClaimed {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)),
-    memory_kind: Hbm,
-    as_listed: "80GB HBM2",
-  },
-  mezzanine_face: MezzanineFaceUnobserved {
-    obligation: "photograph the underside of the 699-2G530-0204-DV2 unit" as NonEmptyStr,
-  },
-  source: "eBay listing title transcribed by the operator 2026-10-03; item number not supplied",
-}
-
-// Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
-// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen. The sticker's
-// "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
-// consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
-// J4, one toward each short edge, each flanked by mounting holes.
-data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
-  carrier_designation: "P4261",
-  carrier_part_number: "694-24261-0000-100",
-  revision: "K1",
-  module_face: MezzanineFacePhotographed {
-    connector_count: 2,
-    contact_rows_per_connector: 6,
-    arrangement: OneAtEachEndOfLongAxis,
-    source: "seller photographs of the carrier: receptacles J3 and J4",
-  },
-  provenance: "seller: 'told when I purchased this board was out of a working machine'; untested, no visible damage",
-  boot: CarrierBootUnobserved,
-  source: "eBay listing 'Nvidia GH200 P4261 694-24261-000-100 K1 Grace Hopper Superchip Dev BaseBoard' (item 157373033242) and its photographs; no NVIDIA document names P4261",
-}
-
-// The second offer: same designation and part number, revision H1. No photographs were supplied, so
-// its face is unobserved rather than assumed equal to K1's -- a revision letter is exactly where a
-// connector or pinout change would hide.
-data p4261_h1_carrier: CarrierUnitObservation = CarrierUnitObservation {
-  carrier_designation: "P4261",
-  carrier_part_number: "694-24261-000-100",
-  revision: "H1",
-  module_face: MezzanineFaceUnobserved {
-    obligation: "photograph the module-side face of the P4261 rev H1 carrier" as NonEmptyStr,
-  },
-  provenance: "listing title only",
-  boot: CarrierBootUnobserved,
-  source: "eBay listing title 'Nvidia GH200 P4261 694-24261-000-100 H1 Grace Hopper Superchip Dev BaseBoard' (item 146879310053)",
-}
-
-data offered_carriers: List<CarrierUnitObservation> = [p4261_k1_carrier, p4261_h1_carrier]
-
-// ── DOES A LISTED UNIT MATCH THE CATALOG ROW ─────────────────────────────────────────────────
-//
-// A designation match is necessary and not sufficient: PG530 names the board family, and the
-// datasheet admits only 96GB HBM3 or 144GB HBM3e for it. A seller claim outside that is not a cheaper
-// variant, it is either a mis-titled listing or a pre-production configuration, and the remedy is the
-// same -- read the unit -- so both land in one refusing arm that names the discriminator.
-type UnitCatalogMatch
-  = UnitMatchesCatalogRow { row: CoherentSuperchipCatalogRow }
-  | UnitDesignationOutsideRow { observed: NonEmptyStr, row_designation: NonEmptyStr }
-  | UnitClaimOutsideCatalog { as_listed: NonEmptyStr, discriminator: NonEmptyStr }
-  | UnitMemoryUnclaimed { discriminator: NonEmptyStr }
-
-data unit_memory_discriminator: NonEmptyStr = "read the unit: nvidia-smi total memory on a working carrier, or the HBM stack count and markings in a die photograph" as NonEmptyStr
-
-fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
-  if unit.board_designation != row.board_designation {
-    UnitDesignationOutsideRow { observed: unit.board_designation, row_designation: row.board_designation }
-  } else {
-    match unit.listed_gpu_memory {
-      GpuMemoryNotClaimed => UnitMemoryUnclaimed { discriminator: unit_memory_discriminator }
-      GpuMemoryClaimed { capacity: c, memory_kind: k, as_listed: l } =>
-        if byte_size_count(b: c) == byte_size_count(b: row.gpu.memory.capacity) && k == row.gpu.memory.memory_kind {
-          UnitMatchesCatalogRow { row: row }
-        } else {
-          UnitClaimOutsideCatalog { as_listed: l, discriminator: unit_memory_discriminator }
-        }
-    }
-  }
-}
-
-// ── WILL THIS MODULE RUN ON THAT CARRIER ─────────────────────────────────────────────────────
-//
-// ServeTheHome's GH200 teardown (servethehome.com, 2023-11-06) establishes that a GH200 and a Grace
-// CPU Superchip use different module connectors and that "the base carrier board and the NVIDIA module
-// must be matched". It establishes nothing about revisions within the GH200 family, and nothing public
-// names P4261 at all. So the pairing of THIS module revision with THIS carrier revision is a bet, typed
-// as one, and only an observation of the pair running (or a seller's statement of what it ran with)
-// moves it.
-type CarrierPairingStanding
-  = PairingUnestablished { obligation: NonEmptyStr }
-  | PairingObserved { evidence: NonEmptyStr }
-  | PairingRefuted { reason: NonEmptyStr }
-
-// THE MECHANICAL HALF, decidable from two photographs. Agreement here is necessary and nowhere near
-// sufficient: two faces with the same connector count, row count and placement can still differ in
-// pin count, pinout, keying or the power and sideband signals behind them. So agreement is reported
-// at the grain it was read at, with the next grain named, and only DISAGREEMENT is final.
-type MechanicalInterfaceStanding
-  = InterfaceConsistentAtPhotoGrain { basis: NonEmptyStr, next_grain: NonEmptyStr }
-  | InterfaceMismatch { reason: NonEmptyStr }
-  | InterfaceUnobserved { obligations: List<NonEmptyStr> }
-
-data connector_part_grain_obligation: NonEmptyStr = "read the housing markings of one module connector and one carrier receptacle and confirm in the connector vendor's catalog that they are a mating plug/receptacle pair" as NonEmptyStr
-
-fn arrangement_eq(a: ConnectorArrangement, b: ConnectorArrangement) -> Bool {
-  match a {
-    OneAtEachEndOfLongAxis => match b {
-      OneAtEachEndOfLongAxis => true
-      ArrangementOther { described: _ } => false
-    }
-    ArrangementOther { described: da } => match b {
-      OneAtEachEndOfLongAxis => false
-      ArrangementOther { described: db } => da == db
-    }
-  }
-}
-
-fn face_obligations(face: MezzanineFaceObservation) -> List<NonEmptyStr> {
-  match face {
-    MezzanineFaceUnobserved { obligation: o } => [o]
-    MezzanineFacePhotographed { connector_count: _, contact_rows_per_connector: _, arrangement: _, source: _ } => []
-  }
-}
-
-fn mechanical_interface(module_face: MezzanineFaceObservation, carrier_face: MezzanineFaceObservation) -> MechanicalInterfaceStanding {
-  match module_face {
-    MezzanineFaceUnobserved { obligation: _ } =>
-      InterfaceUnobserved { obligations: concat(face_obligations(face: module_face), face_obligations(face: carrier_face)) }
-    MezzanineFacePhotographed { connector_count: mc, contact_rows_per_connector: mr, arrangement: ma, source: ms } =>
-      match carrier_face {
-        MezzanineFaceUnobserved { obligation: o } => InterfaceUnobserved { obligations: [o] }
-        MezzanineFacePhotographed { connector_count: cc, contact_rows_per_connector: cr, arrangement: ca, source: cs } =>
-          if mc != cc {
-            InterfaceMismatch { reason: join(["module shows ", to_string(mc), " connectors, carrier shows ", to_string(cc)], "") as NonEmptyStr }
-          } else if mr != cr {
-            InterfaceMismatch { reason: join(["module connectors show ", to_string(mr), " contact rows, carrier receptacles ", to_string(cr)], "") as NonEmptyStr }
-          } else if !arrangement_eq(a: ma, b: ca) {
-            InterfaceMismatch { reason: "module and carrier connectors are placed differently" as NonEmptyStr }
-          } else {
-            InterfaceConsistentAtPhotoGrain {
-              basis: join([to_string(mc), " connectors of ", to_string(mr), " contact rows, one at each end, on both faces (", ms as String, "; ", cs as String, ")"], "") as NonEmptyStr,
-              next_grain: connector_part_grain_obligation,
-            }
-          }
-      }
-  }
-}
-
-// THE ELECTRICAL HALF, which no photograph reaches: power-up sequencing, the carrier's firmware and
-// BMC, and whether this carrier revision drives this module revision. Only a boot settles it.
-fn electrical_obligation(unit: SuperchipUnitObservation, carrier: CarrierUnitObservation) -> NonEmptyStr {
-  join([
-    "observe module ", unit.board_part_number as String,
-    " booting to BMC and OS on carrier ", carrier.carrier_designation as String, " rev ", carrier.revision as String,
-    ", or a statement naming the 699-2G530 module this carrier ran with (provenance so far: ", carrier.provenance as String, ")",
-  ], "") as NonEmptyStr
-}
-
-fn carrier_pairing(unit: SuperchipUnitObservation, carrier: CarrierUnitObservation) -> CarrierPairingStanding {
-  match mechanical_interface(module_face: unit.mezzanine_face, carrier_face: carrier.module_face) {
-    InterfaceMismatch { reason: r } => PairingRefuted { reason: r }
-    InterfaceUnobserved { obligations: os } =>
-      PairingUnestablished {
-        obligation: join(concat(map(os, o => o as String), [electrical_obligation(unit: unit, carrier: carrier) as String]), "; ") as NonEmptyStr,
-      }
-    InterfaceConsistentAtPhotoGrain { basis: b, next_grain: n } =>
-      match carrier.boot {
-        CarrierBootObserved { module_part_number: m, evidence: e } =>
-          if m == unit.board_part_number {
-            PairingObserved { evidence: e }
-          } else {
-            PairingUnestablished {
-              obligation: join(["carrier rev ", carrier.revision as String, " was observed running ", m as String, ", not ", unit.board_part_number as String, "; ", electrical_obligation(unit: unit, carrier: carrier) as String], "") as NonEmptyStr,
-            }
-          }
-        CarrierBootUnobserved =>
-          PairingUnestablished {
-            obligation: join(["carrier rev ", carrier.revision as String, " is mechanically consistent at photo grain (", b as String, "); still owed: ", n as String, "; ", electrical_obligation(unit: unit, carrier: carrier) as String], "") as NonEmptyStr,
-          }
-      }
-  }
-}
-
-// THE DECISION NEEDS ONE CARRIER THAT WORKS, NOT EVERY OFFERED ONE. So a single observed pairing
-// satisfies the constraint; it is refuted only when every offered carrier is refuted; otherwise it is
-// unestablished and carries every open carrier's obligation, so the shopping list names them all.
-fn unit_pairing_across(unit: SuperchipUnitObservation, carriers: List<CarrierUnitObservation>) -> CarrierPairingStanding {
-  let standings = map(carriers, c => carrier_pairing(unit: unit, carrier: c))
-  let observed = flat_map(standings, st => match st {
-    PairingObserved { evidence: e } => [e]
-    _ => []
-  })
-  let open = flat_map(standings, st => match st {
-    PairingUnestablished { obligation: o } => [o as String]
-    _ => []
-  })
-  let refuted = flat_map(standings, st => match st {
-    PairingRefuted { reason: r } => [r as String]
-    _ => []
-  })
-  match observed.first() {
-    Present { value: e } => PairingObserved { evidence: e }
-    Absent =>
-  if count(open) > 0 {
-    PairingUnestablished { obligation: join(open, " | ") as NonEmptyStr }
-  } else if count(refuted) > 0 {
-    PairingRefuted { reason: join(refuted, " | ") as NonEmptyStr }
-  } else {
-    PairingUnestablished { obligation: "no carrier has been offered for this module" as NonEmptyStr }
-  }
-  }
-}
-
-fn dv5_carrier_pairing() -> CarrierPairingStanding {
-  unit_pairing_across(unit: gh200_dv5_unit, carriers: offered_carriers)
-}
+// The module and carrier units, and what it takes to qualify one assembly of them, live in
+// product.superchip_assembly_qualification; this decision consumes its verdict as a hard constraint.
 
 // ── THE DECISION SUBJECT ─────────────────────────────────────────────────────────────────────
 
@@ -387,16 +98,11 @@ data param_served_model: ContextParameter = ContextParameter {
   identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_served_model"),
 }
 
-data constraint_carrier_pairing: DecisionConstraint = DecisionConstraint {
-  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_carrier_pairing"),
-}
-
-data constraint_module_cooling: DecisionConstraint = DecisionConstraint {
-  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_module_cooling"),
-}
-
-data constraint_carrier_power_delivery: DecisionConstraint = DecisionConstraint {
-  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_carrier_power_delivery"),
+// THE SPARKS ARE NOT SOLD UNTIL ONE GH200 ASSEMBLY HAS DEMONSTRATED THE WORKLOAD. Mating, power,
+// cooling, boot and inventory are all inside that one verdict, so they are one constraint here rather
+// than restated beside it.
+data constraint_assembly_qualified: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_assembly_qualified"),
 }
 
 data gh200_datasheet_ground: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
@@ -440,7 +146,7 @@ data node_platform_subject: DecisionSubject = DecisionSubject {
   identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_subject"),
   question: "should the serving fleet's node platform move from DGX Spark to GH200 Grace Hopper superchips on P4261 carriers" as NonEmptyStr,
   parameters: [param_platform_prices, param_served_model],
-  constraints: [constraint_carrier_pairing, constraint_module_cooling, constraint_carrier_power_delivery],
+  constraints: [constraint_assembly_qualified],
   objective: node_platform_objective,
   choice_domain: node_platform_choice_domain,
 }
@@ -464,32 +170,47 @@ fn categorical_sensitivity(term: ObjectiveTerm) -> ObjectiveTermSensitivity {
   }
 }
 
-fn pairing_disposition(standing: CarrierPairingStanding) -> ConstraintDisposition {
-  match standing {
-    PairingUnestablished { obligation: o } =>
-      ConstraintUnestablished { constraint: constraint_carrier_pairing.identity, obligation: o }
-    PairingObserved { evidence: e } =>
-      ConstraintSatisfied { constraint: constraint_carrier_pairing.identity, evidence: e }
-    PairingRefuted { reason: r } =>
-      ConstraintViolated { constraint: constraint_carrier_pairing.identity, evidence: r }
+// ONE QUALIFIED ASSEMBLY SATISFIES THE CONSTRAINT; it is violated only when every planned assembly is
+// refused; otherwise it is open and carries the open requirements of the first assembly not refused --
+// the one the bench is working on.
+fn assembly_disposition(assemblies: List<SuperchipAssembly>) -> ConstraintDisposition {
+  let standings = map(assemblies, a => assembly_qualification(a: a))
+  let qualified = flat_map(standings, st => match st {
+    AssemblyWorkloadQualified { evidence: e } => [join(map(e, x => x as String), "; ")]
+    _ => []
+  })
+  let open = flat_map(standings, st => match st {
+    AssemblyBlockedAt { stage: sg, open_here: here, open_later: later } =>
+      [join([
+        "blocked at ", qualification_stage_label(stage: sg) as String, ": ",
+        join(map(concat(here, later), o => o as String), " | "),
+      ], "")]
+    _ => []
+  })
+  let refused = flat_map(standings, st => match st {
+    AssemblyRefusedAt { stage: sg, reasons: rs } =>
+      [join(["refused at ", qualification_stage_label(stage: sg) as String, ": ", join(map(rs, r => r as String), "; ")], "")]
+    _ => []
+  })
+  match qualified.first() {
+    Present { value: e } => ConstraintSatisfied { constraint: constraint_assembly_qualified.identity, evidence: e as NonEmptyStr }
+    Absent =>
+      match open.first() {
+        Present { value: o } => ConstraintUnestablished { constraint: constraint_assembly_qualified.identity, obligation: o as NonEmptyStr }
+        Absent =>
+          match refused.first() {
+            Present { value: _ } => ConstraintViolated { constraint: constraint_assembly_qualified.identity, evidence: join(refused, " || ") as NonEmptyStr }
+            Absent => ConstraintUnestablished { constraint: constraint_assembly_qualified.identity, obligation: "no GH200 assembly is planned" as NonEmptyStr }
+          }
+      }
   }
 }
 
-fn node_platform_assessment(pairing: CarrierPairingStanding) -> DecisionAssessment {
+fn node_platform_assessment(assemblies: List<SuperchipAssembly>) -> DecisionAssessment {
   DecisionAssessment {
     subject: node_platform_subject,
     sensitivities: map(node_platform_objective.terms, t => categorical_sensitivity(term: t)),
-    constraints: [
-      pairing_disposition(standing: pairing),
-      ConstraintUnestablished {
-        constraint: constraint_module_cooling.identity,
-        obligation: "a thermal solution for this module: the Hopper die is lidless and sits at a different height from the lidded Grace package; the datasheet admits air or liquid cooling up to the 1000 W module ceiling" as NonEmptyStr,
-      },
-      ConstraintUnestablished {
-        constraint: constraint_carrier_power_delivery.identity,
-        obligation: "the P4261 carrier's power-input requirement and BMC firmware state, read from the unit or its seller" as NonEmptyStr,
-      },
-    ],
+    constraints: [assembly_disposition(assemblies: assemblies)],
     parameters: [
       ParameterUnestablished {
         parameter: param_platform_prices.identity,
@@ -627,16 +348,16 @@ data node_platform_policy: DeclarationRef = decl_ref(
   decl_name: "node_platform_policy",
 )
 data node_platform_evidence: DeclarationRef = decl_ref(
-  module_path: "product.node_platform_selection",
-  decl_name: "gh200_dv5_unit",
+  module_path: "product.superchip_assembly_qualification",
+  decl_name: "planned_assemblies",
 )
 
 // THE LIVE STANDING. Today it is SelectionNeedsEvidence, and the needs it lists are the shopping
-// list: the carrier pairing, cooling, carrier power, prices, the served model and the GH200 node's
-// power ceiling. node_platform_readiness below is its runnable rendering.
+// list: the first assembly's qualification, prices, the served model and the GH200 node's power
+// ceiling. node_platform_readiness below is its runnable rendering.
 fn node_platform_selection() -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
-    assessment: node_platform_assessment(pairing: dv5_carrier_pairing()),
+    assessment: node_platform_assessment(assemblies: planned_assemblies),
     candidate_field_identity: node_platform_field_identity,
     field: node_platform_field(),
     axes: node_platform_axes(),

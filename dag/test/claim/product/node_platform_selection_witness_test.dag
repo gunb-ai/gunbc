@@ -9,7 +9,8 @@ import std.decision {
   SubjectClosureIncomplete,
   UnfundedAxis,
   SelectionEvidenceNeed,
-  ConstraintViolated,
+  ConstraintSatisfied,
+  ConstraintUnestablished,
 }
 import extdeps.external_authority { TranscribedUncited }
 import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity }
@@ -22,30 +23,14 @@ import product.node_platform_selection {
   spark_node_entry,
   gh200_node_entry,
   node_power_ceiling_axis,
-  gpu_local_capacity_axis,
-  coherent_capacity_axis,
-  gh200_dv5_unit,
-  gh200_dv2_80gb_listing,
-  p4261_k1_carrier,
-  unit_catalog_match,
-  UnitMatchesCatalogRow,
-  UnitClaimOutsideCatalog,
-  dv5_carrier_pairing,
-  carrier_pairing,
-  unit_pairing_across,
-  CarrierUnitObservation,
-  MezzanineFacePhotographed,
-  OneAtEachEndOfLongAxis,
-  CarrierBootObserved,
-  PairingUnestablished,
-  PairingObserved,
-  PairingRefuted,
-  pairing_disposition,
+  assembly_disposition,
 }
+import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly, second_assembly }
+import test.claim.product.superchip_assembly_qualification_witness { fully_read_bench, booted_and_measured }
 
 // THE REAL PATH, executed: the live selection over the cited catalog rows and the operator's
-// observed units. It must not settle -- the carrier pairing is unestablished -- and the pairing
-// obligation must be among its needs, naming the exact module and both offered carrier revisions. This is the
+// planned assemblies. It must not settle -- no assembly is qualified -- and the first
+// assembly's open requirements must be among its needs, naming the module being qualified. This is the
 // inhabitance claim for the supplied-value comparisons below.
 fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
   match need {
@@ -55,54 +40,40 @@ fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
   }
 }
 
-test fn live_selection_needs_the_carrier_pairing_before_it_can_choose() -> Bool {
+test fn live_selection_waits_on_the_first_assembly_before_it_can_choose() -> Bool {
   match node_platform_selection() {
     SelectionNeedsEvidence { needs: ns } =>
-      any(ns, n => need_mentions(need: n, fragment: "699-2G530-0215-DV5"))
-        && any(ns, n => need_mentions(need: n, fragment: "carrier P4261 rev K1"))
-        && any(ns, n => need_mentions(need: n, fragment: "carrier P4261 rev H1"))
+      any(ns, n => need_mentions(need: n, fragment: "blocked at mechanically mated"))
+        && any(ns, n => need_mentions(need: n, fragment: "699-2G530-0215-DV5"))
         && any(ns, n => need_mentions(need: n, fragment: "node power ceiling is unobserved"))
     _ => false
   }
+}
+
+// The constraint the sale hangs on DISCRIMINATES: one workload-qualified assembly satisfies it, even
+// beside an unqualified one; the live purchase leaves it open.
+test fn one_qualified_assembly_satisfies_the_sale_constraint() -> Bool {
+  let qualified = SuperchipAssembly {
+    unit: booted_and_measured().unit,
+    carrier: booted_and_measured().carrier,
+    row: first_assembly.row,
+    bench: fully_read_bench,
+  }
+  let satisfied = match assembly_disposition(assemblies: [second_assembly, qualified]) {
+    ConstraintSatisfied { constraint: _, evidence: _ } => true
+    _ => false
+  }
+  let live_open = match assembly_disposition(assemblies: [first_assembly, second_assembly]) {
+    ConstraintUnestablished { constraint: _, obligation: o } => contains(o as String, "699-2G530-0215-DV5")
+    _ => false
+  }
+  satisfied && live_open
 }
 
 // The 480GB product's coherent memory is derived, not read off the name: 96 GiB HBM + 480 GiB LPDDR5X.
 test fn gh200_coherent_capacity_is_both_tiers() -> Bool {
   byte_size_count(b: coherent_superchip_coherent_capacity(row: nvidia_gh200_480gb_catalog))
     == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 576)))
-}
-
-test fn the_96gb_unit_matches_the_catalog_row() -> Bool {
-  match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
-    UnitMatchesCatalogRow { row: _ } => true
-    _ => false
-  }
-}
-
-// The DISCRIMINATING RED for the catalog match: same PG530 designation, same die marking, a capacity
-// no PG530 configuration has.
-test fn the_80gb_listing_is_outside_the_catalog() -> Bool {
-  match unit_catalog_match(unit: gh200_dv2_80gb_listing, row: nvidia_gh200_480gb_catalog) {
-    UnitClaimOutsideCatalog { as_listed: l, discriminator: _ } => l == "80GB HBM2"
-    _ => false
-  }
-}
-
-// The live pairing over BOTH offered carriers: K1 is photographed and reads consistent at photo grain
-// with the next grain named; H1 is unphotographed and says so. Neither is a boot, so it stays open.
-test fn live_pairing_is_unestablished_and_a_refutation_becomes_a_violation() -> Bool {
-  let live = match dv5_carrier_pairing() {
-    PairingUnestablished { obligation: o } =>
-      contains(o as String, "rev K1 is mechanically consistent at photo grain")
-        && contains(o as String, "mating plug/receptacle pair")
-        && contains(o as String, "photograph the module-side face of the P4261 rev H1 carrier")
-    _ => false
-  }
-  let refuted = match pairing_disposition(standing: PairingRefuted { reason: "connector mismatch" as NonEmptyStr }) {
-    ConstraintViolated { constraint: _, evidence: _ } => true
-    _ => false
-  }
-  live && refuted
 }
 
 // SUPPLIED VALUES at the comparison interface. With a node power ceiling supplied, a GH200 node and a
@@ -204,53 +175,4 @@ test fn an_uncited_gh200_row_cannot_rank() -> Bool {
     },
   )
   count(entry.missing_inputs) == 3
-}
-
-fn k1_with(face_connectors: Nat, boot_module: NonEmptyStr?) -> CarrierUnitObservation {
-  CarrierUnitObservation {
-    carrier_designation: p4261_k1_carrier.carrier_designation,
-    carrier_part_number: p4261_k1_carrier.carrier_part_number,
-    revision: p4261_k1_carrier.revision,
-    module_face: MezzanineFacePhotographed {
-      connector_count: face_connectors,
-      contact_rows_per_connector: 6,
-      arrangement: OneAtEachEndOfLongAxis,
-      source: "supplied",
-    },
-    provenance: p4261_k1_carrier.provenance,
-    boot: match boot_module {
-      Present { value: m } => CarrierBootObserved { module_part_number: m, evidence: "supplied boot receipt" as NonEmptyStr }
-      Absent => p4261_k1_carrier.boot
-    },
-    source: "supplied",
-  }
-}
-
-// The mechanical comparison DISCRIMINATES: a carrier face with a different connector count refutes.
-test fn a_mismatched_connector_face_refutes_the_pairing() -> Bool {
-  match carrier_pairing(unit: gh200_dv5_unit, carrier: k1_with(face_connectors: 3, boot_module: Absent)) {
-    PairingRefuted { reason: r } => contains(r as String, "carrier shows 3")
-    _ => false
-  }
-}
-
-// Only a boot of THIS module settles the pairing, and one working carrier is enough for the decision
-// even when another offered carrier is refuted.
-test fn a_boot_of_this_module_settles_it_and_one_working_carrier_suffices() -> Bool {
-  let booted = k1_with(face_connectors: 2, boot_module: Present { value: "699-2G530-0215-DV5" as NonEmptyStr })
-  let other_module = k1_with(face_connectors: 2, boot_module: Present { value: "699-2G530-0206-QS1" as NonEmptyStr })
-  let mismatched = k1_with(face_connectors: 3, boot_module: Absent)
-  let settles = match carrier_pairing(unit: gh200_dv5_unit, carrier: booted) {
-    PairingObserved { evidence: _ } => true
-    _ => false
-  }
-  let different_module_does_not = match carrier_pairing(unit: gh200_dv5_unit, carrier: other_module) {
-    PairingUnestablished { obligation: o } => contains(o as String, "was observed running 699-2G530-0206-QS1")
-    _ => false
-  }
-  let one_suffices = match unit_pairing_across(unit: gh200_dv5_unit, carriers: [mismatched, booted]) {
-    PairingObserved { evidence: _ } => true
-    _ => false
-  }
-  settles && different_module_does_not && one_suffices
 }

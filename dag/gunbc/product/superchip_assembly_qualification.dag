@@ -1,0 +1,581 @@
+module product.superchip_assembly_qualification
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size, watt_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.memory.types { MemoryKind, Hbm }
+import extdeps.systems.types { CoherentSuperchipCatalogRow }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+
+// GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator is buying
+// two PG530 modules and two P4261 carriers and will qualify one pair before duplicating it -- and
+// before any Spark is sold (product.node_platform_selection consumes this module's verdict as its hard
+// constraint). A pair is not "compatible" by an authored flag: four results are DERIVED, each from the
+// evidence that can actually establish it, in the order a bench reaches them:
+//
+//   MechanicallyMated  connector identity and geometry, mounting stack
+//   SafeToEnergize     the complete power path, the site's AC, a thermal path for every heat region,
+//                      protective shutdown
+//   BootQualified      management/firmware path, boot storage, an observed boot of THIS module on THIS
+//                      carrier, the unit's measured memory inventory
+//   WorkloadQualified  module-scope power limit holding, the served model demonstrated
+//
+// Each requirement is Verified, Contradicted or Undetermined, and the three never substitute for one
+// another: a photograph establishes a label or a connector layout, a datasheet a family figure, a
+// seller's word provenance, and only a boot receipt the operation of a particular pair. Unknown stays
+// Undetermined -- never an invented success, never an invented incompatibility.
+//
+// WHY NOT product.cooling_qualification: that module grades an installed CPU cooler against cited
+// catalog rows (retention mount, supported-board population, design power vs TDP). A GH200 thermal
+// assembly has no catalog row in this corpus and no socket mount, so its grade here is evidence about
+// the assembly; the divergence ends when a cited GH200 thermal-assembly row exists to grade against.
+
+// ── WHAT WAS OBSERVED, NOT WHAT NVIDIA PUBLISHES ──────────────────────────────────────────────
+//
+// Listing transcriptions the operator supplied. These are receipts in this layer (DESIGN §3,
+// external upstream decomposition): NVIDIA publishes the GH200 product family, and nothing about any
+// particular unit, revision suffix or carrier board. Three facts are kept apart because each settles a
+// different question: the PUBLISHED family configuration (extdeps.systems.nvidia_gh200), the SELLER'S
+// claim (listed_gpu_memory, kept as a claim so it can be checked rather than believed), and the
+// MEASURED inventory of a serial-numbered unit (measured_inventory), which only a running unit yields.
+type ListedGpuMemoryClaim
+  = GpuMemoryClaimed { capacity: ByteSize, memory_kind: MemoryKind, as_listed: NonEmptyStr }
+  | GpuMemoryNotClaimed
+
+// THE FACE A MODULE AND ITS CARRIER MEET ON, as far as a photograph shows it. A GH200 module mates to
+// its carrier through high-density mezzanine connectors on its underside (ServeTheHome, below); what a
+// photograph can establish is how many there are, how many contact rows each shows, and where they
+// sit. It cannot establish pin count, pinout or keying, so a face read from a photograph is recorded at
+// that grain and no finer.
+type ConnectorArrangement
+  = OneAtEachEndOfLongAxis
+  | ArrangementOther { described: NonEmptyStr }
+
+type MezzanineFaceObservation
+  = MezzanineFacePhotographed {
+      connector_count: Nat
+      contact_rows_per_connector: Nat
+      arrangement: ConnectorArrangement
+      source: NonEmptyStr
+    }
+  | MezzanineFaceUnobserved { obligation: NonEmptyStr }
+
+type UnitInventoryObservation
+  = InventoryUnmeasured
+  | InventoryMeasured { gpu_memory: ByteSize, cpu_memory: ByteSize, evidence: NonEmptyStr }
+
+type SuperchipUnitObservation {
+  board_designation: NonEmptyStr
+  board_part_number: NonEmptyStr
+  die_marking: NonEmptyStr
+  listed_gpu_memory: ListedGpuMemoryClaim
+  mezzanine_face: MezzanineFaceObservation
+  measured_inventory: UnitInventoryObservation
+  source: NonEmptyStr
+}
+
+// Whether the carrier was ever SEEN running a module, and which one. A seller's "it came out of a
+// working machine" is provenance, not this: it names no module and no boot, so it is carried as
+// provenance and leaves the boot unobserved.
+type CarrierBootObservation
+  = CarrierBootUnobserved
+  | CarrierBootObserved { module_part_number: NonEmptyStr, evidence: NonEmptyStr }
+
+type CarrierUnitObservation {
+  carrier_designation: NonEmptyStr
+  carrier_part_number: NonEmptyStr
+  revision: NonEmptyStr
+  module_face: MezzanineFaceObservation
+  provenance: NonEmptyStr
+  boot: CarrierBootObservation
+  source: NonEmptyStr
+}
+
+// The unit the operator is buying: listing title "NVIDIA GH200 699-2G530-0215-DV5 Grace Hopper Dev
+// Superchip 96GB H100 SXM5", item specifics Memory Size 96GB / Memory Type HBM3; the die photograph
+// reads "GH100-888K-A1 QUAL SAMPLE".
+data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
+  board_designation: "PG530",
+  board_part_number: "699-2G530-0215-DV5",
+  die_marking: "GH100-888K-A1 QUAL SAMPLE",
+  listed_gpu_memory: GpuMemoryClaimed {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Hbm,
+    as_listed: "96GB HBM3",
+  },
+  mezzanine_face: MezzanineFacePhotographed {
+    connector_count: 2,
+    contact_rows_per_connector: 6,
+    arrangement: OneAtEachEndOfLongAxis,
+    source: "listing photograph of the module underside, label '699-2G530-0215-DV5 C1 Made in USA', model PG530",
+  },
+  measured_inventory: InventoryUnmeasured,
+  source: "eBay item 298619132349, transcribed by the operator 2026-10-03",
+}
+
+// A second listing the operator asked about: "Nvidia GH100 PG530 80GB HBM2 Graphics Accelerator Qual
+// Sample GH100-888K-A1 699-2G530-0204-DV2 B". extdeps.memory.types carries one Hbm kind and does not
+// split HBM generations, so "HBM2" lands as Hbm and the claim is decided by its capacity alone: 80GB is
+// neither of the datasheet's PG530 configurations. as_listed keeps the generation the seller wrote.
+data gh200_dv2_80gb_listing: SuperchipUnitObservation = SuperchipUnitObservation {
+  board_designation: "PG530",
+  board_part_number: "699-2G530-0204-DV2",
+  die_marking: "GH100-888K-A1 QUAL SAMPLE",
+  listed_gpu_memory: GpuMemoryClaimed {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)),
+    memory_kind: Hbm,
+    as_listed: "80GB HBM2",
+  },
+  mezzanine_face: MezzanineFaceUnobserved {
+    obligation: "photograph the underside of the 699-2G530-0204-DV2 unit" as NonEmptyStr,
+  },
+  measured_inventory: InventoryUnmeasured,
+  source: "eBay listing title transcribed by the operator 2026-10-03; item number not supplied",
+}
+
+// Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
+// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen. The sticker's
+// "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
+// consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
+// J4, one toward each short edge, each flanked by mounting holes.
+data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  carrier_designation: "P4261",
+  carrier_part_number: "694-24261-0000-100",
+  revision: "K1",
+  module_face: MezzanineFacePhotographed {
+    connector_count: 2,
+    contact_rows_per_connector: 6,
+    arrangement: OneAtEachEndOfLongAxis,
+    source: "seller photographs of the carrier: receptacles J3 and J4",
+  },
+  provenance: "seller: 'told when I purchased this board was out of a working machine'; untested, no visible damage",
+  boot: CarrierBootUnobserved,
+  source: "eBay listing 'Nvidia GH200 P4261 694-24261-000-100 K1 Grace Hopper Superchip Dev BaseBoard' (item 157373033242) and its photographs; no NVIDIA document names P4261",
+}
+
+// The second offer: same designation and part number, revision H1. No photographs were supplied, so
+// its face is unobserved rather than assumed equal to K1's -- a revision letter is exactly where a
+// connector or pinout change would hide.
+data p4261_h1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  carrier_designation: "P4261",
+  carrier_part_number: "694-24261-000-100",
+  revision: "H1",
+  module_face: MezzanineFaceUnobserved {
+    obligation: "photograph the module-side face of the P4261 rev H1 carrier" as NonEmptyStr,
+  },
+  provenance: "listing title only",
+  boot: CarrierBootUnobserved,
+  source: "eBay listing title 'Nvidia GH200 P4261 694-24261-000-100 H1 Grace Hopper Superchip Dev BaseBoard' (item 146879310053)",
+}
+
+
+// ── WHAT A LISTING CLAIM IS CONSISTENT WITH ──────────────────────────────────────────────────
+//
+// A listing can only be compared on what it claims, and these listings claim the GPU tier and nothing
+// else. So the agreeing arm is named for exactly that grain: a "96GB HBM3" claim is CONSISTENT with the
+// datasheet's GPU tier and establishes nothing about the unit's LPDDR5X, which the datasheet admits at
+// 120, 240 or 480 GB. (GH200-0 first named this arm UnitMatchesCatalogRow, which read a GPU-tier claim
+// as the whole 480GB row; the narrower name is the correction.) A claim outside every published
+// configuration is either a mis-titled listing or a pre-production configuration, and the remedy is the
+// same -- measure the unit -- so both land in one arm that names the discriminator.
+type UnitCatalogMatch
+  = UnitGpuTierConsistentWithRow { row: CoherentSuperchipCatalogRow, as_listed: NonEmptyStr }
+  | UnitDesignationOutsideRow { observed: NonEmptyStr, row_designation: NonEmptyStr }
+  | UnitClaimOutsideCatalog { as_listed: NonEmptyStr }
+  | UnitMemoryUnclaimed
+
+fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
+  if unit.board_designation != row.board_designation {
+    UnitDesignationOutsideRow { observed: unit.board_designation, row_designation: row.board_designation }
+  } else {
+    match unit.listed_gpu_memory {
+      GpuMemoryNotClaimed => UnitMemoryUnclaimed
+      GpuMemoryClaimed { capacity: c, memory_kind: k, as_listed: l } =>
+        if byte_size_count(b: c) == byte_size_count(b: row.gpu.memory.capacity) && k == row.gpu.memory.memory_kind {
+          UnitGpuTierConsistentWithRow { row: row, as_listed: l }
+        } else {
+          UnitClaimOutsideCatalog { as_listed: l }
+        }
+    }
+  }
+}
+
+fn listing_claim_note(m: UnitCatalogMatch) -> String {
+  match m {
+    UnitGpuTierConsistentWithRow { row: _, as_listed: l } =>
+      join(["the listing's '", l as String, "' is consistent with the datasheet GPU tier and says nothing of LPDDR5X, which the datasheet admits at 120, 240 or 480 GB"], "")
+    UnitClaimOutsideCatalog { as_listed: l } =>
+      join(["the listing's '", l as String, "' is outside every published GH200 configuration (96GB HBM3, 144GB HBM3e)"], "")
+    UnitDesignationOutsideRow { observed: o, row_designation: r } =>
+      join(["the unit's designation ", o as String, " is not the row's ", r as String], "")
+    UnitMemoryUnclaimed => "the listing claims no memory configuration"
+  }
+}
+
+// ── WILL THIS MODULE MATE WITH THAT CARRIER ─────────────────────────────────────────────────
+//
+// ServeTheHome's GH200 teardown (servethehome.com, 2023-11-06) establishes that a GH200 and a Grace
+// CPU Superchip use different module connectors and that "the base carrier board and the NVIDIA module
+// must be matched". It establishes nothing about revisions within the GH200 family, and no NVIDIA
+// document names P4261.
+// THE MECHANICAL HALF, decidable from two photographs. Agreement here is necessary and nowhere near
+// sufficient: two faces with the same connector count, row count and placement can still differ in
+// pin count, pinout, keying or the power and sideband signals behind them. So agreement is reported
+// at the grain it was read at, with the next grain named, and only DISAGREEMENT is final.
+type MechanicalInterfaceStanding
+  = InterfaceConsistentAtPhotoGrain { basis: NonEmptyStr, next_grain: NonEmptyStr }
+  | InterfaceMismatch { reason: NonEmptyStr }
+  | InterfaceUnobserved { obligations: List<NonEmptyStr> }
+
+data connector_part_grain_obligation: NonEmptyStr = "read the housing markings of one module connector and one carrier receptacle and confirm in the connector vendor's catalog that they are a mating plug/receptacle pair" as NonEmptyStr
+
+fn arrangement_eq(a: ConnectorArrangement, b: ConnectorArrangement) -> Bool {
+  match a {
+    OneAtEachEndOfLongAxis => match b {
+      OneAtEachEndOfLongAxis => true
+      ArrangementOther { described: _ } => false
+    }
+    ArrangementOther { described: da } => match b {
+      OneAtEachEndOfLongAxis => false
+      ArrangementOther { described: db } => da == db
+    }
+  }
+}
+
+fn face_obligations(face: MezzanineFaceObservation) -> List<NonEmptyStr> {
+  match face {
+    MezzanineFaceUnobserved { obligation: o } => [o]
+    MezzanineFacePhotographed { connector_count: _, contact_rows_per_connector: _, arrangement: _, source: _ } => []
+  }
+}
+
+fn mechanical_interface(module_face: MezzanineFaceObservation, carrier_face: MezzanineFaceObservation) -> MechanicalInterfaceStanding {
+  match module_face {
+    MezzanineFaceUnobserved { obligation: _ } =>
+      InterfaceUnobserved { obligations: concat(face_obligations(face: module_face), face_obligations(face: carrier_face)) }
+    MezzanineFacePhotographed { connector_count: mc, contact_rows_per_connector: mr, arrangement: ma, source: ms } =>
+      match carrier_face {
+        MezzanineFaceUnobserved { obligation: o } => InterfaceUnobserved { obligations: [o] }
+        MezzanineFacePhotographed { connector_count: cc, contact_rows_per_connector: cr, arrangement: ca, source: cs } =>
+          if mc != cc {
+            InterfaceMismatch { reason: join(["module shows ", to_string(mc), " connectors, carrier shows ", to_string(cc)], "") as NonEmptyStr }
+          } else if mr != cr {
+            InterfaceMismatch { reason: join(["module connectors show ", to_string(mr), " contact rows, carrier receptacles ", to_string(cr)], "") as NonEmptyStr }
+          } else if !arrangement_eq(a: ma, b: ca) {
+            InterfaceMismatch { reason: "module and carrier connectors are placed differently" as NonEmptyStr }
+          } else {
+            InterfaceConsistentAtPhotoGrain {
+              basis: join([to_string(mc), " connectors of ", to_string(mr), " contact rows, one at each end, on both faces (", ms as String, "; ", cs as String, ")"], "") as NonEmptyStr,
+              next_grain: connector_part_grain_obligation,
+            }
+          }
+      }
+  }
+}
+
+
+// ── THE LADDER ───────────────────────────────────────────────────────────────────────────────
+
+type EvidenceStanding
+  = EvidenceVerified { evidence: NonEmptyStr }
+  | EvidenceContradicted { reason: NonEmptyStr }
+  | EvidenceUndetermined { obligation: NonEmptyStr }
+
+type QualificationRequirement {
+  requirement: NonEmptyStr
+  standing: EvidenceStanding
+}
+
+type QualificationStage = MechanicallyMated | SafeToEnergize | BootQualified | WorkloadQualified
+
+fn qualification_stage_label(stage: QualificationStage) -> NonEmptyStr {
+  match stage {
+    MechanicallyMated => "mechanically mated" as NonEmptyStr
+    SafeToEnergize => "safe to energize" as NonEmptyStr
+    BootQualified => "boot-qualified" as NonEmptyStr
+    WorkloadQualified => "workload-qualified" as NonEmptyStr
+  }
+}
+
+type StageGate {
+  stage: QualificationStage
+  requirements: List<QualificationRequirement>
+}
+
+// WHAT THE BENCH HAS READ, one slot per requirement no photograph or listing can settle. Every slot
+// starts NotYetRead, and that is what makes the ladder honest in both directions: an unread slot is an
+// open requirement whose obligation text is derived from the parts, and a read slot -- verified or
+// contradicted -- is what moves it. Without these slots the requirements could never be satisfied,
+// and a gate whose green is unauthorable is decoration (DESIGN §4b).
+type BenchReading
+  = NotYetRead
+  | ReadVerified { evidence: NonEmptyStr }
+  | ReadContradicted { reason: NonEmptyStr }
+
+type BenchRecord {
+  connector_identity: BenchReading
+  mounting_stack: BenchReading
+  power_path: BenchReading
+  site_ac_supply: BenchReading
+  thermal_path: BenchReading
+  protective_shutdown: BenchReading
+  management_path: BenchReading
+  boot_storage: BenchReading
+  module_power_limit: BenchReading
+  served_workload: BenchReading
+}
+
+data bench_unread: BenchRecord = BenchRecord {
+  connector_identity: NotYetRead,
+  mounting_stack: NotYetRead,
+  power_path: NotYetRead,
+  site_ac_supply: NotYetRead,
+  thermal_path: NotYetRead,
+  protective_shutdown: NotYetRead,
+  management_path: NotYetRead,
+  boot_storage: NotYetRead,
+  module_power_limit: NotYetRead,
+  served_workload: NotYetRead,
+}
+
+type SuperchipAssembly {
+  unit: SuperchipUnitObservation
+  carrier: CarrierUnitObservation
+  row: CoherentSuperchipCatalogRow
+  bench: BenchRecord
+}
+
+fn bench_requirement(requirement: NonEmptyStr, reading: BenchReading, obligation: String) -> QualificationRequirement {
+  match reading {
+    NotYetRead => undetermined(requirement: requirement, obligation: obligation)
+    ReadVerified { evidence: e } => verified(requirement: requirement, evidence: e)
+    ReadContradicted { reason: r } => contradicted(requirement: requirement, reason: r)
+  }
+}
+
+fn verified(requirement: NonEmptyStr, evidence: NonEmptyStr) -> QualificationRequirement {
+  QualificationRequirement { requirement: requirement, standing: EvidenceVerified { evidence: evidence } }
+}
+
+fn undetermined(requirement: NonEmptyStr, obligation: String) -> QualificationRequirement {
+  QualificationRequirement { requirement: requirement, standing: EvidenceUndetermined { obligation: obligation as NonEmptyStr } }
+}
+
+fn contradicted(requirement: NonEmptyStr, reason: NonEmptyStr) -> QualificationRequirement {
+  QualificationRequirement { requirement: requirement, standing: EvidenceContradicted { reason: reason } }
+}
+
+fn carrier_label(c: CarrierUnitObservation) -> String {
+  join([c.carrier_designation as String, " ", c.carrier_part_number as String, " rev ", c.revision as String], "")
+}
+
+fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {
+  let name = "mating connectors" as NonEmptyStr
+  match mechanical_interface(module_face: a.unit.mezzanine_face, carrier_face: a.carrier.module_face) {
+    InterfaceMismatch { reason: r } => contradicted(requirement: name, reason: r)
+    InterfaceUnobserved { obligations: os } => undetermined(requirement: name, obligation: join(map(os, o => o as String), "; "))
+    InterfaceConsistentAtPhotoGrain { basis: b, next_grain: n } =>
+      bench_requirement(requirement: name, reading: a.bench.connector_identity,
+        obligation: join(["consistent at photo grain (", b as String, "); next: ", n as String], ""))
+  }
+}
+
+// THE POWER FIGURES ARE THE ROW'S, not restated: the module's cited 450-1000 W configurable range sets
+// what the supply path must deliver before any OS-applied limit exists, since a limit set by
+// nvidia-smi cannot protect a boot that precedes it.
+fn power_path_obligation(a: SuperchipAssembly) -> String {
+  join([
+    "the complete power path for carrier ", carrier_label(c: a.carrier),
+    ": rail voltages, connector pinout and orientation, standby rail, enable and power-good signals and sequencing, then AC supply, PSU, any distribution or conversion board and the exact harness, delivering the module's ",
+    to_string(watt_count(w: a.row.module_power_ceiling)), " W ceiling (configurable from ", to_string(watt_count(w: a.row.module_power_floor)),
+    " W) plus carrier, fan and storage load at startup. No authoritative P4261 power-input pinout has been found: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, and connect nothing because its housing fits",
+  ], "")
+}
+
+fn thermal_obligation(a: SuperchipAssembly) -> String {
+  join([
+    "a thermal assembly with an identified cooling path for every heat region of ", a.unit.board_part_number as String,
+    " -- the lidless Hopper/HBM package, the Grace package and the module power stages -- rated for the ",
+    to_string(watt_count(w: a.row.module_power_ceiling)),
+    " W module ceiling, with its mounting stack, contact heights and interface materials; the datasheet admits air or liquid cooling. Sourcing lead, fit unverified: CoolIT CP-NV-GH200-SUPERCHIP cold-plate series",
+  ], "")
+}
+
+fn boot_requirement(a: SuperchipAssembly) -> QualificationRequirement {
+  let name = "observed boot of this module on this carrier" as NonEmptyStr
+  match a.carrier.boot {
+    CarrierBootObserved { module_part_number: m, evidence: e } =>
+      if m == a.unit.board_part_number {
+        verified(requirement: name, evidence: e)
+      } else {
+        undetermined(requirement: name, obligation: join(["carrier ", carrier_label(c: a.carrier), " was observed running ", m as String, ", not ", a.unit.board_part_number as String], ""))
+      }
+    CarrierBootUnobserved =>
+      undetermined(requirement: name, obligation: join([
+        "observe ", a.unit.board_part_number as String, " booting to BMC and OS on ", carrier_label(c: a.carrier),
+        ", capturing console output, firmware versions and FRU identity (provenance so far: ", a.carrier.provenance as String, ")",
+      ], ""))
+  }
+}
+
+fn inventory_requirement(a: SuperchipAssembly) -> QualificationRequirement {
+  let name = "measured memory inventory" as NonEmptyStr
+  match a.unit.measured_inventory {
+    InventoryMeasured { gpu_memory: _, cpu_memory: _, evidence: e } => verified(requirement: name, evidence: e)
+    InventoryUnmeasured =>
+      undetermined(requirement: name, obligation: join([
+        "measure ", a.unit.board_part_number as String, "'s HBM and LPDDR5X on a running carrier (nvidia-smi -q, numactl -H, ipmitool fru print): ",
+        listing_claim_note(m: unit_catalog_match(unit: a.unit, row: a.row)),
+      ], ""))
+  }
+}
+
+// THE CONTROLLER CARD LEAD (operator-supplied photographs, 2026-10-04): a separately sold NVIDIA board
+// listed as "GH200控制器" (GH200 controller) -- PCIe x16 edge, a single RJ45, a stacked RJ45 with two
+// USB 3 ports, VGA, an M.2 slot and micro-USB. The P4261 photographs show no network, USB, video or
+// console connector of its own, which makes this card the likely carrier of exactly what the
+// management requirement asks about. That is an inference from what each board lacks and carries, kept
+// as a lead inside the obligation: neither board has been seen connected to the other, and P4261 shows
+// no x16 slot, so the attachment route is part of what is owed.
+data controller_card_lead: String = "Candidate: the separately sold NVIDIA 'GH200 controller' card (PCIe x16 edge, RJ45, RJ45 + 2x USB 3, VGA, M.2, micro-USB), which carries the management, video and console I/O the P4261 photographs lack; owed: which board it mates with, through what cable or riser, and whether the original system used it"
+
+fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
+  [
+    StageGate { stage: MechanicallyMated, requirements: [
+      mating_requirement(a: a),
+      bench_requirement(requirement: "mounting and support stack", reading: a.bench.mounting_stack, obligation: "the module's standoffs, backing plate and fasteners with their preload, as fitted in its original system; no powered insertion or reseating"),
+    ] },
+    StageGate { stage: SafeToEnergize, requirements: [
+      bench_requirement(requirement: "power path", reading: a.bench.power_path, obligation: power_path_obligation(a: a)),
+      bench_requirement(requirement: "site AC supply", reading: a.bench.site_ac_supply, obligation: "the AC voltage available where the assembly runs (120, 208 or 240 V) and a circuit rated for its wall draw, with the PSU's output rating read at that input voltage"),
+      bench_requirement(requirement: "thermal path for every heat region", reading: a.bench.thermal_path, obligation: thermal_obligation(a: a)),
+      bench_requirement(requirement: "protective shutdown", reading: a.bench.protective_shutdown, obligation: "over-temperature shutdown, and loss-of-flow shutdown if liquid-cooled, verified before first power-on; default thermal trip settings retained; pumps and fans fed from a verified supply rather than an unidentified carrier header"),
+    ] },
+    StageGate { stage: BootQualified, requirements: [
+      bench_requirement(requirement: "management and boot path", reading: a.bench.management_path, obligation: join(["whether ", carrier_label(c: a.carrier), " carries its own BMC, firmware storage, console and power-control path or needs boards from its original system. ", controller_card_lead], "")),
+      bench_requirement(requirement: "boot storage", reading: a.bench.boot_storage, obligation: join(["a boot device the Grace CPU can reach through ", carrier_label(c: a.carrier), " (an M.2 slot, such as the controller card's, or NVMe behind one of the carrier's PCIe connectors) holding an arm64 OS image the module firmware accepts"], "")),
+      boot_requirement(a: a),
+      inventory_requirement(a: a),
+    ] },
+    StageGate { stage: WorkloadQualified, requirements: [
+      bench_requirement(requirement: "module-scope power limit", reading: a.bench.module_power_limit, obligation: "nvidia-smi -q -d POWER reports module-scope readings and a module limit (-sc 1) is accepted and holds under load on this qualification-sample module"),
+      bench_requirement(requirement: "served workload", reading: a.bench.served_workload, obligation: "the target model served at acceptable throughput, with its weight and KV placement across HBM and LPDDR5X observed rather than assumed"),
+    ] },
+  ]
+}
+
+type AssemblyQualification
+  = AssemblyWorkloadQualified { evidence: List<NonEmptyStr> }
+  | AssemblyBlockedAt { stage: QualificationStage, open_here: List<NonEmptyStr>, open_later: List<NonEmptyStr> }
+  | AssemblyRefusedAt { stage: QualificationStage, reasons: List<NonEmptyStr> }
+
+fn requirement_line(r: QualificationRequirement, detail: NonEmptyStr) -> NonEmptyStr {
+  join([r.requirement as String, ": ", detail as String], "") as NonEmptyStr
+}
+
+fn gate_contradictions(g: StageGate) -> List<NonEmptyStr> {
+  flat_map(g.requirements, r => match r.standing {
+    EvidenceContradicted { reason: x } => [requirement_line(r: r, detail: x)]
+    _ => []
+  })
+}
+
+fn gate_open(g: StageGate) -> List<NonEmptyStr> {
+  flat_map(g.requirements, r => match r.standing {
+    EvidenceUndetermined { obligation: o } => [requirement_line(r: r, detail: o)]
+    _ => []
+  })
+}
+
+fn gate_evidence(g: StageGate) -> List<NonEmptyStr> {
+  flat_map(g.requirements, r => match r.standing {
+    EvidenceVerified { evidence: e } => [requirement_line(r: r, detail: e)]
+    _ => []
+  })
+}
+
+// A CONTRADICTION ANYWHERE REFUSES, at the earliest stage that carries one: an assembly whose cooling
+// is shown impossible will not qualify however its connectors read. Otherwise the assembly stands at
+// the first stage with an open requirement, and the later stages' open requirements are listed beside
+// it -- they are the rest of the bench plan, not evidence that any later stage has passed.
+fn assembly_qualification(a: SuperchipAssembly) -> AssemblyQualification {
+  let gates = assembly_gates(a: a)
+  match (filter(gates, g => count(gate_contradictions(g: g)) > 0)).first() {
+    Present { value: g } => AssemblyRefusedAt { stage: g.stage, reasons: gate_contradictions(g: g) }
+    Absent =>
+      match (filter(gates, g => count(gate_open(g: g)) > 0)).first() {
+        Present { value: g } => AssemblyBlockedAt {
+          stage: g.stage,
+          open_here: gate_open(g: g),
+          open_later: flat_map(filter(gates, h => stage_after(a: h.stage, b: g.stage)), h => gate_open(g: h)),
+        }
+        Absent => AssemblyWorkloadQualified { evidence: flat_map(gates, g => gate_evidence(g: g)) }
+      }
+  }
+}
+
+fn stage_rank(s: QualificationStage) -> Nat {
+  match s {
+    MechanicallyMated => 0
+    SafeToEnergize => 1
+    BootQualified => 2
+    WorkloadQualified => 3
+  }
+}
+
+fn stage_after(a: QualificationStage, b: QualificationStage) -> Bool {
+  stage_rank(s: a) > stage_rank(s: b)
+}
+
+// ── THE PURCHASE ─────────────────────────────────────────────────────────────────────────────
+//
+// Two modules and two carriers, paired for qualification. DV5 on K1 goes first: it is the only pair
+// with BOTH mating faces photographed, and the DV5 listing is the one consistent with the published GPU
+// tier. DV2 on H1 is the second assembly and carries every open question the first one does, plus its
+// own unphotographed faces and an outside-catalog memory claim.
+data first_assembly: SuperchipAssembly = SuperchipAssembly {
+  unit: gh200_dv5_unit,
+  carrier: p4261_k1_carrier,
+  row: nvidia_gh200_480gb_catalog,
+  bench: bench_unread,
+}
+
+data second_assembly: SuperchipAssembly = SuperchipAssembly {
+  unit: gh200_dv2_80gb_listing,
+  carrier: p4261_h1_carrier,
+  row: nvidia_gh200_480gb_catalog,
+  bench: bench_unread,
+}
+
+data planned_assemblies: List<SuperchipAssembly> = [first_assembly, second_assembly]
+
+fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
+  let head = join([a.unit.board_part_number as String, " on ", carrier_label(c: a.carrier)], "")
+  match assembly_qualification(a: a) {
+    AssemblyWorkloadQualified { evidence: _ } => [join([head, ": workload-qualified"], "")]
+    AssemblyRefusedAt { stage: s, reasons: rs } =>
+      concat([join([head, ": REFUSED at ", qualification_stage_label(stage: s) as String], "")], map(rs, r => join(["  x ", r as String], "")))
+    AssemblyBlockedAt { stage: s, open_here: here, open_later: later } =>
+      concat(
+        concat([join([head, ": blocked at ", qualification_stage_label(stage: s) as String], "")], map(here, o => join(["  - ", o as String], ""))),
+        concat(["  then:"], map(later, o => join(["  - ", o as String], ""))),
+      )
+  }
+}
+
+// THE BENCH PLAN, for the operator:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/product/superchip_assembly_qualification.dag --function assembly_qualification_report
+// Exit 0 only when some planned assembly is workload-qualified; otherwise exit 1 with every assembly's
+// open requirements, stage by stage.
+fn assembly_qualification_report() -> ProcessExit {
+  let qualified = filter(planned_assemblies, a => match assembly_qualification(a: a) {
+    AssemblyWorkloadQualified { evidence: _ } => true
+    _ => false
+  })
+  if count(qualified) > 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(flat_map(planned_assemblies, a => assembly_report_lines(a: a)), "\n"))
+  }
+}
