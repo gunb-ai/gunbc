@@ -1,6 +1,6 @@
 module test.claim.fabric_storage_r2_head
 
-import std.types { String, NonEmptyStr, Int, Bool }
+import std.types { String, NonEmptyStr, Int, Bool, List }
 import v2.std.optional { Present, Absent }
 import std.fabric_storage {
   FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq,
@@ -25,6 +25,7 @@ import gunbc.fabric_storage_r2_head {
   R2HeadAdvanceSettledUnwritten, R2HeadAdvancePut, r2_head_advance_plan,
   R2HeadAdvancedTo, R2HeadMovedFrom, R2HeadStoreRefused,
   R2HeadAdvanceKnown, R2HeadAdvanceOutcomeUnknown, r2_head_result_of,
+  R2HeadStagingCustody, r2_head_staging_of, r2_head_staging_join,
   R2HeadCredential, r2_head_binding, r2_head_read_target, r2_head_write_target,
   r2_head_cas_ground, r2_head_cas_ground_headers, r2_head_cas_ground_linearizability,
   r2_head_cas_admission, R2HeadCasAdmittedArm, R2HeadCasNotGrounded,
@@ -37,6 +38,13 @@ import gunbc.fabric_storage_r2_head {
 
 fn obj(body: NonEmptyStr) -> FabricObjectRef { fabric_object_ref_of(object: FabricObject { links: [], body: body }) }
 fn tag(v: NonEmptyStr) -> ObjectEntityTag { ObjectEntityTag { value: v } }
+fn none_left() -> R2HeadStagingCustody { R2HeadStagingCustody { residue_paths: [] } }
+
+fn paths_are(st: R2HeadStagingCustody, expected: List<String>) -> Bool {
+  length(st.residue_paths) == length(expected)
+    && fold(st.residue_paths, init: "", f: (acc, p) => join([acc, p as String, "|"], "")) == fold(expected, init: "", f: (acc, p) => join([acc, p, "|"], ""))
+}
+
 fn at(o: NonEmptyStr, g: Int) -> FabricHeadReading { FabricHeadAt { object: obj(body: o), generation: g } }
 
 test fn the_head_body_round_trips_in_the_fabric_wire_words() -> Bool {
@@ -88,27 +96,27 @@ test fn an_ambiguous_put_is_reconciled_only_by_a_readback_of_the_same_head() -> 
   let expected = ExpectHeadAt { object: obj(body: "a") }
   let succ = at(o: "b", g: 5)
   let unknown = R2PutOutcomeUnknown { cause: "502 from the store" }
-  let confirmed = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: succ } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let confirmed = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: succ } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: o, generation: g }, credential: _, staging: _ } => fabric_object_ref_eq(a: o, b: obj(body: "b")) && g == 5
     other => false
   }
-  let unchanged = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "a", g: 4) } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let unchanged = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "a", g: 4) } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
     other => false
   }
-  let unread = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: "down" } } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let unread = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadReadRefused { fault: FabricStoreUnreachable { detail: "down" } } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
     other => false
   }
-  let moved = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let moved = match r2_head_result_of(expected: expected, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: _ }, credential: _, staging: _ } => true
     other => false
   }
-  let refused = match r2_head_result_of(expected: expected, successor: succ, verdict: R2PutRefused { cause: "403 from the store" }, readback: none, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let refused = match r2_head_result_of(expected: expected, successor: succ, verdict: R2PutRefused { cause: "403 from the store" }, readback: none, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceKnown { settled: R2HeadStoreRefused { fault: FabricStoreRefused { cause: _ } }, credential: _, staging: _ } => true
     other => false
   }
-  let later = match r2_head_result_of(expected: ExpectHeadAt { object: obj(body: "a") }, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 6) } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let later = match r2_head_result_of(expected: ExpectHeadAt { object: obj(body: "a") }, successor: succ, verdict: unknown, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 6) } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: _, staging: _ } => true
     other => false
   }
@@ -142,11 +150,11 @@ test fn a_get_403_is_store_refused_and_no_answer_is_unreachable() -> Bool {
 
 test fn a_412_is_the_lost_race_answered_with_the_readback() -> Bool {
   let expected = ExpectHeadAt { object: obj(body: "a") }
-  let moved = match r2_head_result_of(expected: expected, successor: at(o: "b", g: 5), verdict: R2ObjectTagMoved, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let moved = match r2_head_result_of(expected: expected, successor: at(o: "b", g: 5), verdict: R2ObjectTagMoved, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 5) } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: FabricHeadAt { object: o, generation: _ } }, credential: _, staging: _ } => fabric_object_ref_eq(a: o, b: obj(body: "c"))
     other => false
   }
-  let created_lost = match r2_head_result_of(expected: ExpectHeadAbsent, successor: at(o: "b", g: 1), verdict: R2ObjectAlreadyPresent, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 1) } }, credential: WriteCredentialShredded, staging: R2StagingRemoved) {
+  let created_lost = match r2_head_result_of(expected: ExpectHeadAbsent, successor: at(o: "b", g: 1), verdict: R2ObjectAlreadyPresent, readback: Present { value: FabricHeadObserved { reading: at(o: "c", g: 1) } }, credential: WriteCredentialShredded, staging: none_left()) {
     R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: _, observed: _ }, credential: _, staging: _ } => true
     other => false
   }
@@ -157,12 +165,22 @@ test fn a_412_is_the_lost_race_answered_with_the_readback() -> Bool {
 // still advanced, with both residues reported beside it.
 test fn residues_ride_beside_a_commit_and_never_erase_it() -> Bool {
   let r = r2_head_result_of(expected: ExpectHeadAbsent, successor: at(o: "b", g: 1), verdict: R2ObjectStored { tag: none }, readback: none,
-    credential: WriteCredentialResidueRemains { cause: "left" }, staging: R2StagingResidue { path: "/tmp/stage" })
+    credential: WriteCredentialResidueRemains { cause: "left" }, staging: R2HeadStagingCustody { residue_paths: ["/tmp/stage"] })
   let kept = match r {
-    R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: _, generation: g }, credential: WriteCredentialResidueRemains { cause: _ }, staging: R2StagingResidue { path: p } } => g == 1 && (p as String) == "/tmp/stage"
+    R2HeadAdvanceKnown { settled: R2HeadAdvancedTo { object: _, generation: g }, credential: WriteCredentialResidueRemains { cause: _ }, staging: st } => g == 1 && paths_are(st: st, expected: ["/tmp/stage"])
     other => false
   }
   kept
+}
+
+// EVERY RESIDUE SURVIVES COMPOSITION: an advance whose first observe and readback both failed to clean
+// up reports BOTH paths, in order, and a clean step adds none.
+test fn two_failed_cleanups_report_both_paths() -> Bool {
+  let joined = r2_head_staging_join(
+    a: r2_head_staging_of(custody: R2StagingResidue { path: "/tmp/read-a" }),
+    b: r2_head_staging_join(a: r2_head_staging_of(custody: R2StagingRemoved), b: r2_head_staging_of(custody: R2StagingResidue { path: "/tmp/read-c" })),
+  )
+  paths_are(st: joined, expected: ["/tmp/read-a", "/tmp/read-c"]) && paths_are(st: r2_head_staging_of(custody: R2StagingNotCreated), expected: [])
 }
 
 // ONE HEAD, ONE LOCATOR: the credentials may differ, the locator may not -- both transfer targets
