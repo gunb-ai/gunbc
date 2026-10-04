@@ -2,7 +2,6 @@ module v2.test.claim.local_binding_shadow
 
 import v2.test.claim.local_binding_shadow_peer { shadow_pred, shadow_sentinel, unshadowed_sentinel }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

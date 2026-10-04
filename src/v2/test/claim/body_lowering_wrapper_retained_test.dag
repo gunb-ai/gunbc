@@ -7,7 +7,6 @@ import v2.compiler.body_lowering_fold {
   body_lowering_refuse_retained
 }
 import v2.std.diagnostic { Accepted, NodeLocus, None, Rejected, Some }
-import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, TypeNode, content_hash, node_synthetic }
 
 // The retention minter's shape (MQ-4). Retention is a VARIANT of the lowering's result, not an

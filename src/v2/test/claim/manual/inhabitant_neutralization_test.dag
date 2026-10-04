@@ -30,7 +30,6 @@ import v2.std.inhabitant_neutralization {
   target_inhabitant_for_std_projection
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,

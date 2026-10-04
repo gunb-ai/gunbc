@@ -20,8 +20,8 @@ pub use crate::extdeps_languages_rust_derive_contracts::{
     rust_vec_freemonoid_supplemental_generic_bound_rows,
 };
 pub use crate::extdeps_languages_rust_emit::{
-    rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
-    rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
+    rust_supplemental_impls_group_completion, rust_trait_derive_attr_from_traits,
+    rust_trait_derive_spelling,
 };
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
@@ -33,7 +33,6 @@ use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
 };
 pub use crate::std_trait_derive_shape::{
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
-    repr_grounding_supplemental_bool_host_bridge_target,
 };
 pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -4412,23 +4411,10 @@ pub fn v1_emit_enum_supplemental_impls(
                     ),
                 )
             } else {
-                if (crate::std_trait_derive_shape::repr_grounding_supplemental_bool_host_bridge_target(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy)) {
-                    crate::extdeps_languages_rust_emit::rust_supplemental_impls_bool_coproduct()
-                } else {
-                    "".to_string()
-                }
+                "".to_string()
             }
         }
     }
-}
-
-pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> Rc<DissolutionCondition> {
-    thread_local! {
-        static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an e".to_string())
-        };
-    }
-    CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
 pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_on(

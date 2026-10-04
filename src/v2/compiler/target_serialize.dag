@@ -157,9 +157,6 @@ import v2.std.algebra {
   is_empty,
   list_tail
 }
-import v2.std.logic {
-  Bool
-}
 import v2.std.text {
   String
 }
