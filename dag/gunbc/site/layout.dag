@@ -177,6 +177,8 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
       decl(prop: FontFamily, value: "var(--font-sans)"),
       decl(prop: FontWeight, value: "inherit"),
+      decl(prop: FontSize, value: "inherit"),
+      decl(prop: LineHeight, value: "inherit"),
       decl(prop: LetterSpacing, value: "normal")
     ] },
     StaticRule { selector: RawSelector { text: "html" }, decls: [

@@ -997,9 +997,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-action-hover)"),
       decl(prop: MinWidth, value: scale_var(t: width_status)),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-line .taskbar-signal" }, decls: [
-      decl(prop: MarginLeft, value: "auto"),
-    ] },
 
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-empty=\"1\"] .issue-empty" }, decls: [
       decl(prop: Display, value: "block"),
