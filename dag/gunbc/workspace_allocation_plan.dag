@@ -6,7 +6,7 @@ import std.types { NonEmptyStr, String, Int }
 import std.measure { money_amount_micro }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
-import std.durable_exclusive_hold { DurableHoldOwnerRef, HoldSlotHeld, HoldSlotAbsent, HoldSlotFree, HoldSlotUndecodable, HoldObservationUnavailable, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, HoldSlotHeld, HoldSlotAbsent, HoldSlotFree, HoldSlotUndecodable, HoldObservationUnavailable, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import product.fabric.demand { Demand }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
@@ -139,6 +139,56 @@ fn workspace_reservation_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: Dur
     }
     FileHoldAcquireNotEligible { slot_key: _, refusal: _ } => WorkspaceReservationApplyRefused { reason: "prepared slot cannot be acquired; retain plan and reread this target" }
   }
+}
+
+// AN ELECTED ACTOR THAT DIED BEFORE ITS HOLD CAS. The actor record is immutable per plan, so a
+// replacement controller cannot impersonate it; without this decision the owner stays Acquiring
+// with quota held forever. Takeover needs BOTH facts, read in this order: the recorded actor's
+// systemd invocation is terminal (the slot unit now runs another invocation, or none), and a fresh
+// hold observation of the exact slot. Only then can no effect of the old actor still be queued.
+type WorkspacePriorActorStanding
+  = PriorActorRunning
+  | PriorActorTerminal
+  | PriorActorUnobservable { reason: NonEmptyStr }
+
+type WorkspaceActorIntent
+  = ActorIntentAcquire
+  | ActorIntentRetire
+
+type WorkspaceActorTakeoverDecision
+  = TakeoverRecoverHeld { reservation: WorkspaceReservation }
+  | TakeoverRearmActor
+  | TakeoverCancelActor
+  | TakeoverRetain { reason: NonEmptyStr }
+
+fn workspace_actor_takeover_decision(plan: WorkspaceReservationPlan, hold: DurableHoldObservation, prior: WorkspacePriorActorStanding, intent: WorkspaceActorIntent) -> WorkspaceActorTakeoverDecision {
+  let reservation = plan.reservation
+  let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer))
+  match hold {
+    HoldSlotHeld { generation, owner: observed_owner } =>
+      if observed_owner == owner && cas_generation_count(g: generation) == reservation.generation { TakeoverRecoverHeld { reservation: reservation } }
+      else { TakeoverRetain { reason: "slot is held by another reservation or incarnation" } }
+    HoldSlotUndecodable { generation: _, detail: _ } => TakeoverRetain { reason: "slot hold is undecodable; the acquisition obligation is retained" }
+    HoldObservationUnavailable { cause: _ } => TakeoverRetain { reason: "slot hold is unreadable; the acquisition obligation is retained" }
+    HoldSlotAbsent => workspace_actor_takeover_unheld(prior: prior, intent: intent)
+    HoldSlotFree { generation: _, released_by: _ } => workspace_actor_takeover_unheld(prior: prior, intent: intent)
+  }
+}
+
+fn workspace_actor_takeover_unheld(prior: WorkspacePriorActorStanding, intent: WorkspaceActorIntent) -> WorkspaceActorTakeoverDecision {
+  match prior {
+    PriorActorRunning => TakeoverRetain { reason: "the elected acquisition actor is still running" }
+    PriorActorUnobservable { reason } => TakeoverRetain { reason: reason }
+    PriorActorTerminal => match intent {
+      ActorIntentAcquire => TakeoverRearmActor
+      ActorIntentRetire => TakeoverCancelActor
+    }
+  }
+}
+
+// The fresh hold observation of this plan's exact slot, taken after the prior actor's standing.
+fn workspace_reservation_hold_observation(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> DurableHoldObservation {
+  observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: plan.reservation.slot))
 }
 
 // Retired intent observes a possible prior acquisition and never creates a new hold.

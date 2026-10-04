@@ -2513,6 +2513,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "terminal_elected_actor_without_hold_settles_retirement" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "terminal_elected_actor_without_hold_settles_retirement",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "running_elected_actor_retains_quota" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "running_elected_actor_retains_quota",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "concurrent_actor_replacement_admits_exactly_one" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "concurrent_actor_replacement_admits_exactly_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_allocation_storage_wet_witness_test", function: "workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head" },
       entry: "dag/test/claim/workspace_allocation_storage_wet_witness_test.dag",
       function: "workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head",

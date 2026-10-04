@@ -48,7 +48,7 @@ fn workspace_http_create_over(
         Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
         Permit => match workspace_read_owner(store: store, owner: session.principal) {
           WorkspaceStoreUnreadable { reason } => workspace_http_reason(status: 503, reason: reason)
-          WorkspaceStoreReadOk { snapshot } => match first(filter(snapshot.allocations, a => a.request.idempotency_key == submission.idempotency_key)) {
+          WorkspaceStoreReadOk { snapshot } => match first(filter(snapshot.allocations, a => a.request.idempotency_key == submission.idempotency_key.value)) {
             Present { value: prior } => match workspace_profile_parse(value: submission.profile) {
               Present { value: selected } => if selected == prior.request.profile {
                 workspace_http_json(status: 200, value: workspace_http_snapshot(allocation: prior, now: observed_at))
@@ -58,7 +58,7 @@ fn workspace_http_create_over(
             Absent => match workspace_request_admit(
               security: request.security, policy: policy, deployment_policy: deployment_policy,
               observed_at: observed_at, expires_at: new_expires_at, csrf_presented: submission.csrf_token,
-              idempotency_key: submission.idempotency_key as String, profile_wire: submission.profile,
+              idempotency_key: submission.idempotency_key, profile_wire: submission.profile,
               pinned_image: pinned_image, enrolled_public_key_ref: public_key_ref,
             ) {
               WorkspaceRequestAdmitted { request: admitted } => workspace_http_create_result(store: store, admitted: admitted, observed_at: observed_at, result: workspace_record_request_at(store: store, request: admitted, observed_at: observed_at))

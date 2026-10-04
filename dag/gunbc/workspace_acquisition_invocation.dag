@@ -7,15 +7,17 @@ import std.algebra { trim }
 import std.resources { Filesystem }
 import std.decl_ref { decl_ref }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
-import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasObservedReadable, CasReadablePresent }
+import std.durable_compare_and_set { CasGeneration, ExpectSlotAbsent, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent }
 import gunbc.durable_cas_fabric_storage { fabric_storage_compare_and_set, fabric_storage_observe_cas_slot }
-import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_json, workspace_reservation_plan_reservation }
 import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { InvocationIDProperty, MainPID, systemd_unit_property_wire }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
+import gunbc.workspace_allocation_plan { WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable }
 
 // The environment identifier is accepted only when the manager identifies this interpreter as
 // the selected controller's MainPID. An inherited or caller-supplied identifier is insufficient.
@@ -109,5 +111,97 @@ fn workspace_actor_protocol_observed(store: FabricStorageBinding, plan: Workspac
   match fabric_storage_observe_cas_slot(store: store, key: workspace_acquisition_protocol_key(plan: plan)) {
     CasObservedReadable { readable: CasReadablePresent { version: recorded } } => recorded.value == "actor-journal/1"
     other => false
+  }
+}
+
+fn workspace_acquisition_actor_key(plan: WorkspaceReservationPlan) -> NonEmptyStr {
+  concat("workspace-acquisition-actor-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_plan_json(plan: plan)) as NonEmptyStr)) as String) as NonEmptyStr
+}
+
+// The recorded actor slot, read as a value: the exact generation is what any replacement fences on.
+type WorkspaceRecordedActor
+  = RecordedActorAbsent
+  | RecordedActorInvocation { generation: CasGeneration, invocation: NonEmptyStr }
+  | RecordedActorCancelled { generation: CasGeneration }
+  | RecordedActorUnreadable { reason: NonEmptyStr }
+
+fn workspace_recorded_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan) -> WorkspaceRecordedActor {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_acquisition_actor_key(plan: plan)) {
+    CasObservedReadable { readable: CasReadableAbsent } => RecordedActorAbsent
+    CasObservedReadable { readable: CasReadablePresent { version: recorded } } => workspace_recorded_actor_decode(generation: recorded.generation, wire: recorded.value as String)
+    CasObservedUnreadable { cause: _ } => RecordedActorUnreadable { reason: "acquisition actor slot is unreadable" }
+  }
+}
+
+fn workspace_recorded_actor_decode(generation: CasGeneration, wire: String) -> WorkspaceRecordedActor {
+  match parse_json_document(s: wire) {
+    JsonDocumentUnreadable { gap: _ } => RecordedActorUnreadable { reason: "acquisition actor record is not JSON" }
+    JsonDocumentParsed { value: record } => match json_field_value(r: json_field_string(obj: record, key: "invocation")) {
+      Present { value: invocation } => if invocation == "" { RecordedActorUnreadable { reason: "acquisition actor names an empty invocation" } }
+        else { RecordedActorInvocation { generation: generation, invocation: invocation as NonEmptyStr } }
+      Absent => match json_field_value(r: json_field_string(obj: record, key: "cancelled_before_actor")) {
+        Present { value: _ } => RecordedActorCancelled { generation: generation }
+        Absent => match json_field_value(r: json_field_string(obj: record, key: "cancelled_after_actor")) {
+          Present { value: _ } => RecordedActorCancelled { generation: generation }
+          Absent => RecordedActorUnreadable { reason: "acquisition actor record names neither an invocation nor a cancellation" }
+        }
+      }
+    }
+  }
+}
+
+// The slot unit's current InvocationID, read once by the effectful caller and supplied to the
+// takeover so the decision is a function of what was observed.
+type WorkspaceSlotInvocationReading
+  = SlotInvocationObserved { current: String }
+  | SlotInvocationUnreadable
+
+fn workspace_slot_invocation_reading(plan: WorkspaceReservationPlan) -> WorkspaceSlotInvocationReading {
+  let unit = microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: workspace_reservation_plan_reservation(plan: plan).slot))
+  let observed = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty))
+  if !observed.success { SlotInvocationUnreadable } else { SlotInvocationObserved { current: trim(s: observed.value) } }
+}
+
+// An invocation ID names one start of the unit. If the unit now carries another (or none), the
+// recorded actor's process has ended and can issue no further hold effect.
+fn workspace_prior_actor_standing(recorded: NonEmptyStr, slot: WorkspaceSlotInvocationReading) -> WorkspacePriorActorStanding {
+  match slot {
+    SlotInvocationUnreadable => PriorActorUnobservable { reason: "the slot unit's invocation is unreadable; the elected actor may still be running" }
+    SlotInvocationObserved { current } => if current == (recorded as String) { PriorActorRunning } else { PriorActorTerminal }
+  }
+}
+
+// Replace a terminal actor with this invocation, fenced on the exact recorded generation: of two
+// concurrent replacements only one commits, so only one can go on to issue the hold CAS.
+fn workspace_rearm_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, invocation: NonEmptyStr) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor"),
+    decl_ref(module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", decl_name: "actor_rearm_race"),
+  ]
+{
+  let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "invocation", value: json_string(s: invocation as String))])) as NonEmptyStr
+  workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
+}
+
+// Cancel a terminal actor of a retired acquisition, fenced the same way; the tombstone names the
+// invocation it ended so a late reader can attribute the cancellation.
+fn workspace_cancel_elected_actor(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, prior: NonEmptyStr) -> Bool
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_take_over_actor")]
+{
+  let plan_wire = serialize_json(v: workspace_reservation_plan_json(plan: plan))
+  let wire = serialize_json(v: json_object(members: [json_kv(key: "plan", value: json_string(s: plan_wire)), json_kv(key: "cancelled_after_actor", value: json_string(s: prior as String))])) as NonEmptyStr
+  workspace_actor_slot_replace(store: store, plan: plan, generation: generation, wire: wire)
+}
+
+fn workspace_actor_slot_replace(store: FabricStorageBinding, plan: WorkspaceReservationPlan, generation: CasGeneration, wire: NonEmptyStr) -> Bool {
+  let key = workspace_acquisition_actor_key(plan: plan)
+  match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotGeneration { generation: generation }, proposed: wire) {
+    DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+      CasCommitted { committed: _ } => true
+      CasPreconditionFailed { expected: _, observed: _ } => false
+      CasStoreRefused { cause: _ } => false
+    }
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => false
   }
 }

@@ -21,6 +21,31 @@ import product.fabric.isolation { tenant_workload_isolation_requirement }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
 
+// THE PUBLIC ALLOCATION ID IS ONE PATH SEGMENT. The idempotency key a request is created under is
+// the id GET /allocations/{allocation_id} and its release route bind, and the route matcher takes
+// one raw segment without percent-decoding. So the only admitted shape is the unpadded base64url
+// alphabet [A-Za-z0-9_-] (RFC 4648 section 5), 1 to 128 characters -- the same rule
+// gunbc.auth.auth_store_key admits for file-naming identifiers. A key with "/", "?", a space or a
+// non-ASCII scalar has no WorkspaceAllocationId, so it can never be recorded unaddressable. Both the
+// HTTP submission and the durable-record decoder construct through workspace_allocation_id_of.
+type WorkspaceAllocationId sole_constructor {
+  value: NonEmptyStr
+}
+
+data workspace_allocation_id_max_length: Int = 128
+
+fn workspace_allocation_id_code_point_admitted(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45 || cp == 95
+}
+
+fn workspace_allocation_id_of(raw: String) -> WorkspaceAllocationId? {
+  if raw == "" || string_length(s: raw) > workspace_allocation_id_max_length || !all(raw |> chars, cp => workspace_allocation_id_code_point_admitted(cp: cp)) {
+    none
+  } else {
+    Present { value: WorkspaceAllocationId { value: raw as NonEmptyStr } }
+  }
+}
+
 // Fixed demo policy: disposable disk, one hour lease, exact guest grants.
 type WorkspaceProfile = SmallWorkspace | LargeWorkspace
 
@@ -126,7 +151,9 @@ fn workspace_request_json(request: WorkspaceRequest) -> JsonValue {
 
 fn workspace_request_from_json(value: JsonValue) -> WorkspaceRequest? {
   match workspace_json_string(value: value, key: "owner") { Absent => none Present { value: wire_owner } => {
-  match workspace_json_string(value: value, key: "key") { Absent => none Present { value: wire_key } => {
+  match workspace_json_string(value: value, key: "key") { Absent => none Present { value: raw_key } => {
+  match workspace_allocation_id_of(raw: raw_key) { Absent => none Present { value: allocation_id } => {
+  let wire_key = allocation_id.value as String
   match workspace_json_string(value: value, key: "profile") { Absent => none Present { value: raw_profile } => {
   match workspace_json_string(value: value, key: "image") { Absent => none Present { value: wire_image } => {
   match workspace_json_string(value: value, key: "public_key_ref") { Absent => none Present { value: wire_public_key_ref } => {
@@ -146,6 +173,7 @@ fn workspace_request_from_json(value: JsonValue) -> WorkspaceRequest? {
       }
     }
   }
+  } }
   } }
   } }
   } }
