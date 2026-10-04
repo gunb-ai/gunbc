@@ -1,5 +1,6 @@
 module test.claim.product.node_platform_selection_witness
 
+import v2.std.algebra { any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Watt, byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }
@@ -40,8 +41,8 @@ import test.claim.product.superchip_assembly_qualification_witness { fully_read_
 // inhabitance claim for the supplied-value comparisons below.
 fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
   match need {
-    SubjectClosureIncomplete { subject: _, obligation: o } => contains(o as String, fragment)
-    UnfundedAxis { gap: g } => contains(g.cause as String, fragment)
+    SubjectClosureIncomplete { subject: _, obligation: o } => (o as String).contains(fragment)
+    UnfundedAxis { gap: g } => (g.cause as String).contains(fragment)
     _ => false
   }
 }
@@ -70,7 +71,7 @@ test fn one_qualified_assembly_satisfies_the_sale_constraint() -> Bool {
     _ => false
   }
   let live_open = match assembly_disposition(assemblies: [first_assembly]) {
-    ConstraintUnestablished { constraint: _, obligation: o } => contains(o as String, "699-2G530-0215-DV5")
+    ConstraintUnestablished { constraint: _, obligation: o } => (o as String).contains("699-2G530-0215-DV5")
     _ => false
   }
   satisfied && live_open
@@ -198,7 +199,7 @@ test fn cited_servers_read_power_at_the_site_and_uncited_ones_declare_it() -> Bo
     Absent => false
   }
   let gigabyte_ok = match server_node_entries(server: gigabyte_xh23_vg0_aaj1).first() {
-    Present { value: e } => entry_power_micro(e: e) == 0 - 1 && any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis) && contains(g.cause as String, "404"))
+    Present { value: e } => entry_power_micro(e: e) == 0 - 1 && any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis) && (g.cause as String).contains("404"))
     Absent => false
   }
   asrock_ok && gigabyte_ok && count(node_platform_field()) == 4
@@ -252,8 +253,8 @@ test fn the_ceiling_follows_mains_voltage_and_redundancy() -> Bool {
 test fn server_lines_name_what_is_unread() -> Bool {
   let a = complete_server_line(row: asrock_rack_mecai_gh200)
   let g = complete_server_line(row: gigabyte_xh23_vg0_aaj1)
-  contains(a, "420 x 438 x 87 mm") && contains(a, "1000 W @ 100-127 VAC / 2000 W @ 200-240 VAC") && contains(a, "carrier ARLINGTON-MB")
-    && contains(a, "Micro USB (COM)") && contains(a, "operating 10 to 35 C") && contains(a, "non-operating -40 to 70 C")
-    && contains(a, "announced GH200 Hopper GPU (144GB HBM3e)") && contains(a, "-- cited")
-    && contains(g, "BMC unread") && contains(g, "width unread") && contains(g, "2000 W (input range unstated)") && contains(g, "carrier unread") && contains(g, "UNCITED")
+  a.contains("420 x 438 x 87 mm") && a.contains("1000 W @ 100-127 VAC / 2000 W @ 200-240 VAC") && a.contains("carrier ARLINGTON-MB")
+    && a.contains("Micro USB (COM)") && a.contains("operating 10 to 35 C") && a.contains("non-operating -40 to 70 C")
+    && a.contains("announced GH200 Hopper GPU (144GB HBM3e)") && a.contains("-- cited")
+    && g.contains("BMC unread") && g.contains("width unread") && g.contains("2000 W (input range unstated)") && g.contains("carrier unread") && g.contains("UNCITED")
 }

@@ -1,5 +1,6 @@
 module product.superchip_assembly_qualification
 
+import v2.std.algebra { filter }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size, watt_count, volt_count }
@@ -433,7 +434,7 @@ fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {
 // and extdeps.systems.nvidia_gh200 carries the uncited lead that an earlier NVIDIA guide tied SKU215 to
 // 54 V. Both steps are bets and the text says so; neither says what the carrier's connector takes.
 fn module_rail_lead(unit: SuperchipUnitObservation) -> String {
-  match (filter(gh200_rail_variants, v => contains(unit.board_part_number as String, join(["-0", v.sku as String, "-"], "")))).first() {
+  match (filter(gh200_rail_variants, v => (unit.board_part_number as String).contains(join(["-0", v.sku as String, "-"], "")))).first() {
     Absent => "no rail-variant lead matches this module's part number"
     Present { value: v } =>
       join([

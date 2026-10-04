@@ -25,7 +25,7 @@ import product.p4261_carrier_layout {
 test fn the_main_input_is_bounded_by_the_fuse_at_75_volts() -> Bool {
   match path_bound(layout: p4261_k1_layout, path: MainInputPath) {
     BoundByRatedParts { maximum: m, limiting: l, placement: p } =>
-      volt_count(v: m) == 75 && contains(l as String, "fuse") && contains(p as String, "by adjacency only")
+      volt_count(v: m) == 75 && (l as String).contains("fuse") && (p as String).contains("by adjacency only")
     NoRatedPartOnPath => false
   }
 }
@@ -34,7 +34,7 @@ test fn the_main_input_is_bounded_by_the_fuse_at_75_volts() -> Bool {
 test fn the_hot_swap_parts_indicate_without_deciding() -> Bool {
   match main_bus_indication(layout: p4261_k1_layout) {
     IndicatesFortyEightToFiftyFourVoltClass { basis: b, decided_by: d } =>
-      contains(b as String, "IPB017N10N5LF") && contains(b as String, "VDS=56V") && contains(d as String, "power-distribution board")
+      (b as String).contains("IPB017N10N5LF") && (b as String).contains("VDS=56V") && (d as String).contains("power-distribution board")
     _ => false
   }
 }
@@ -93,5 +93,5 @@ test fn a_lower_rated_part_lowers_only_its_own_path() -> Bool {
 // The rendered reading says both what is bounded and what is not.
 test fn the_reading_names_its_limits() -> Bool {
   let r = carrier_input_reading(layout: p4261_k1_layout)
-  contains(r, "at most 75 V") && contains(r, "48-54 V class") && contains(r, "Neither bound is the rail")
+  r.contains("at most 75 V") && r.contains("48-54 V class") && r.contains("Neither bound is the rail")
 }

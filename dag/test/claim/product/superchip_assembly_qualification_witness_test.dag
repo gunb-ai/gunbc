@@ -1,5 +1,6 @@
 module test.claim.product.superchip_assembly_qualification_witness
 
+import v2.std.algebra { any }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { gibibyte, gibibyte_to_byte_size }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
@@ -39,7 +40,7 @@ import product.superchip_assembly_qualification {
 }
 
 fn mentions(lines: List<NonEmptyStr>, fragment: String) -> Bool {
-  any(lines, l => contains(l as String, fragment))
+  any(lines, l => (l as String).contains(fragment))
 }
 
 // THE REAL PATH: the first planned assembly, DV5 on K1, as bought. Its faces agree at photo grain, so
@@ -74,7 +75,7 @@ test fn each_memory_tier_is_matched_on_its_own_claim() -> Bool {
     _ => false
   }
   let cpu = match unit_cpu_memory_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
-    UnitCpuTierConsistentWithRow { as_listed: l } => contains(l as String, "480GB usable")
+    UnitCpuTierConsistentWithRow { as_listed: l } => (l as String).contains("480GB usable")
     _ => false
   }
   let still_owed = match assembly_qualification(a: first_assembly) {
