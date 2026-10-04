@@ -7,13 +7,13 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_object, json_kv, json_string, json_int, json_array }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
-import std.content_hash { content_hash_of_value }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed }
+import std.content_hash { content_hash_of_value, lower_hex_40 }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
-import std.measure { Kibibyte, kibibyte_count }
+import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import gunbc.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
@@ -391,6 +391,12 @@ fn owed_entry(field: String, o: ServiceEvidenceOwed) -> ServiceEvidenceEntry {
   } } }
 }
 
+// THE THREE FIELDS WITH A TYPED OBSERVED CARRIER today, named once: the ordered view writes them and
+// the snapshot decoder reads their carriers back by the same names.
+data field_placement: String = "placement"
+data field_workload_class: String = "workload_class"
+data field_resource_request: String = "resource_request"
+
 fn placement_json(v: PlacementObserved) -> JsonValue {
   json_object([
     json_kv(key: "host", value: json_string(s: v.host)),
@@ -433,8 +439,8 @@ fn kibibyte_entry(field: String, r: ServiceEvidenceReading<Kibibyte>) -> Service
 
 fn service_evidence_entries(r: ServiceEvidenceReadings) -> List<ServiceEvidenceEntry> {
   [
-    workload_class_entry(field: "workload_class", r: r.workload_class),
-    kibibyte_entry(field: "resource_request", r: r.resource_request),
+    workload_class_entry(field: field_workload_class, r: r.workload_class),
+    kibibyte_entry(field: field_resource_request, r: r.resource_request),
     owed_entry(field: "wait_time", o: r.wait_time),
     owed_entry(field: "execution_time", o: r.execution_time),
     owed_entry(field: "completion_time", o: r.completion_time),
@@ -442,7 +448,7 @@ fn service_evidence_entries(r: ServiceEvidenceReadings) -> List<ServiceEvidenceE
     owed_entry(field: "cache_misses", o: r.cache_misses),
     owed_entry(field: "cache_shared_misses", o: r.cache_shared_misses),
     owed_entry(field: "cache_corrupt_hit_refusals", o: r.cache_corrupt_hit_refusals),
-    placement_entry(field: "placement", r: r.placement),
+    placement_entry(field: field_placement, r: r.placement),
     owed_entry(field: "seat_utilization", o: r.seat_utilization),
     owed_entry(field: "artifact_bytes", o: r.artifact_bytes),
     owed_entry(field: "egress", o: r.egress),
@@ -519,15 +525,24 @@ fn service_evidence_entry_json(x: ServiceEvidenceEntry) -> JsonValue {
 
 data service_evidence_receipt_schema: String = "service-evidence-receipt/v2"
 
-fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
+// THE ONE ENCODER of the wire's top level, used by the receipt and by the snapshot decoder's re-encode.
+fn service_evidence_wire_of(instance_id: String, node_id: String, attempt_key: String, revision_hex: String, entries: List<ServiceEvidenceEntry>) -> String {
   serialize_json(v: json_object([
     json_kv(key: "schema", value: json_string(s: service_evidence_receipt_schema)),
-    json_kv(key: "instance_id", value: json_string(s: r.binding.instance_id as String)),
-    json_kv(key: "node_id", value: json_string(s: r.binding.node_id as String)),
-    json_kv(key: "attempt_key", value: json_string(s: r.binding.attempt_key as String)),
-    json_kv(key: "launch_revision", value: json_string(s: r.binding.revision_hex as String)),
-    json_kv(key: "fields", value: json_array(map(service_evidence_entries(r: service_evidence_readings(r: r)), x => service_evidence_entry_json(x: x)))),
+    json_kv(key: "instance_id", value: json_string(s: instance_id)),
+    json_kv(key: "node_id", value: json_string(s: node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+    json_kv(key: "launch_revision", value: json_string(s: revision_hex)),
+    json_kv(key: "fields", value: json_array(map(entries, x => service_evidence_entry_json(x: x)))),
   ]))
+}
+
+fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
+  service_evidence_wire_of(
+    instance_id: r.binding.instance_id as String, node_id: r.binding.node_id as String,
+    attempt_key: r.binding.attempt_key as String, revision_hex: r.binding.revision_hex as String,
+    entries: service_evidence_entries(r: service_evidence_readings(r: r)),
+  )
 }
 
 fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String {
@@ -596,6 +611,7 @@ type ServiceEvidenceSnapshot sole_constructor {
   instance_id: String
   node_id: String
   attempt_key: String
+  launch_revision: String
   fields: List<ServiceEvidenceSnapshotField>
 }
 
@@ -617,16 +633,97 @@ fn snapshot_string(v: JsonValue, key: String) -> String {
   }
 }
 
-fn snapshot_field_of(v: JsonValue) -> ServiceEvidenceSnapshotField? {
+// THE STANDING PAYLOAD, decoded to the typed entry the encoder writes. An observed field must be one
+// of the fields with a typed carrier, carry that carrier's members, and name the reader that produces
+// it; an owed field must carry exactly one producer arm with all its members. The decoded entry is
+// re-encoded by the module's own encoder, and the whole wire must re-encode to the persisted bytes, so
+// an extra, missing or reordered member anywhere refuses.
+data service_evidence_readers: List<ServiceEvidenceReader> = [MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader]
+data pending_service_readers: List<PendingServiceReader> = [PendingMetering, PendingSharedComputation, PendingResultReturned]
+
+fn reader_of_wire(w: String) -> ServiceEvidenceReader? {
+  first(filter(service_evidence_readers, r => service_evidence_reader_wire(r: r) == w))
+}
+
+fn pending_of(w: String, pr: Int) -> PendingServiceReader? {
+  first(filter(pending_service_readers, p => service_evidence_reader_wire(r: pending_reader(r: p)) == w && reader_pending_pr(r: p) == pr))
+}
+
+fn snapshot_int(v: JsonValue, key: String) -> Int? {
+  match json_field_int(obj: v, key: key) { FieldRead { value: n } => Present { value: n }  FieldAbsent => none  FieldMalformed { cause: _ } => none }
+}
+
+fn snapshot_member(v: JsonValue, key: String) -> JsonValue? {
+  match json_field(obj: v, key: key) { FieldRead { value: x } => Present { value: x }  FieldAbsent => none  FieldMalformed { cause: _ } => none }
+}
+
+fn snapshot_producer_of(p: JsonValue) -> ServiceEvidenceProducer? {
+  let kind = snapshot_string(v: p, key: "kind")
+  if kind == "pending_reader" {
+    match snapshot_int(v: p, key: "pr") {
+      Absent => none
+      Present { value: pr } => match pending_of(w: snapshot_string(v: p, key: "reader"), pr: pr) { Absent => none  Present { value: r } => Present { value: PendingReader { reader: r } } }
+    }
+  } else if kind == "reader_record_absent" {
+    match reader_of_wire(w: snapshot_string(v: p, key: "reader")) { Absent => none  Present { value: r } => Present { value: ReaderRecordAbsent { reader: r } } }
+  } else if kind == "unbuilt_producer" {
+    let owner = snapshot_string(v: p, key: "owner_node")
+    if owner == "" { none } else { Present { value: UnbuiltProducer { owner_node: owner } } }
+  } else { none }
+}
+
+// The typed carrier of an observed value, re-encoded by that carrier's own encoder.
+fn snapshot_observed_value_of(field: String, v: JsonValue) -> JsonValue? {
+  if field == field_placement {
+    let host = snapshot_string(v: v, key: "host")
+    let partition = snapshot_string(v: v, key: "partition")
+    let unit = snapshot_string(v: v, key: "unit")
+    if host == "" || partition == "" || unit == "" { none } else { Present { value: placement_json(v: PlacementObserved { host: host, partition: partition, unit: unit }) } }
+  } else if field == field_workload_class {
+    let g = snapshot_string(v: v, key: "class_grant")
+    if g == "" { none } else { Present { value: workload_class_json(v: WorkloadClassObserved { class_grant: g }) } }
+  } else if field == field_resource_request {
+    match snapshot_int(v: v, key: "kib") {
+      Absent => none
+      Present { value: n } => if n < 0 { none } else { Present { value: kibibyte_json(v: kibibyte(count: n)) } }
+    }
+  } else { none }
+}
+
+type SnapshotEntry {
+  entry: ServiceEvidenceEntry
+  field: ServiceEvidenceSnapshotField
+}
+
+fn snapshot_field_of(v: JsonValue) -> SnapshotEntry? {
   let standing = snapshot_string(v: v, key: "standing")
   let field = snapshot_string(v: v, key: "field")
   if field == "" { none }
-  else if standing == "observed" { Present { value: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldObserved } } }
-  else if standing == "owed" { Present { value: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldOwed } } }
+  else if standing == "observed" {
+    match snapshot_member(v: v, key: "value") {
+      Absent => none
+      Present { value: raw } =>
+        match snapshot_observed_value_of(field: field, v: raw) {
+          Absent => none
+          Present { value: typed } =>
+            if snapshot_string(v: v, key: "source") != service_evidence_reader_wire(r: SessionPlacementReader) { none }
+            else { Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingObserved { value: typed, source: SessionPlacementReader } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldObserved } } } }
+        }
+    }
+  } else if standing == "owed" {
+    match snapshot_member(v: v, key: "producer") {
+      Absent => none
+      Present { value: p } =>
+        match snapshot_producer_of(p: p) {
+          Absent => none
+          Present { value: producer } => Present { value: SnapshotEntry { entry: ServiceEvidenceEntry { field: field, standing: StandingOwed { producer: producer } }, field: ServiceEvidenceSnapshotField { field: field, standing: SnapshotFieldOwed } } }
+        }
+    }
+  }
   else { none }
 }
 
-fn snapshot_fields_of(v: JsonValue) -> List<ServiceEvidenceSnapshotField>? {
+fn snapshot_fields_of(v: JsonValue) -> List<SnapshotEntry>? {
   match json_field(obj: v, key: "fields") {
     FieldRead { value: arr } =>
       match arr {
@@ -669,12 +766,19 @@ fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDeco
         SnapshotInvalid { reason: join(["the service evidence snapshot's schema is not ", service_evidence_receipt_schema], "") }
       } else if snapshot_string(v: v, key: "instance_id") == "" || snapshot_string(v: v, key: "node_id") == "" || snapshot_string(v: v, key: "attempt_key") == "" {
         SnapshotInvalid { reason: "the service evidence snapshot names no instance, node or attempt" }
+      } else if !lower_hex_40(value: snapshot_string(v: v, key: "launch_revision")) {
+        SnapshotInvalid { reason: "the service evidence snapshot's launch_revision is not a 40-hex revision" }
       } else {
         match snapshot_fields_of(v: v) {
-          Absent => SnapshotInvalid { reason: "the service evidence snapshot has a field that is malformed, refused or not observed-or-owed" }
-          Present { value: fields } =>
-            if !snapshot_names_are_canonical(names: map(fields, f => f.field)) {
+          Absent => SnapshotInvalid { reason: "the service evidence snapshot has a field whose standing payload is malformed, refused, or not the typed carrier and producer its encoder writes" }
+          Present { value: decoded } =>
+            if !snapshot_names_are_canonical(names: map(decoded, d => d.field.field)) {
               SnapshotInvalid { reason: "the service evidence snapshot's fields are not exactly the canonical population, once each, in order" }
+            } else if service_evidence_wire_of(
+                instance_id: snapshot_string(v: v, key: "instance_id"), node_id: snapshot_string(v: v, key: "node_id"),
+                attempt_key: snapshot_string(v: v, key: "attempt_key"), revision_hex: snapshot_string(v: v, key: "launch_revision"),
+                entries: map(decoded, d => d.entry)) != wire {
+              SnapshotInvalid { reason: "the service evidence snapshot does not re-encode to its persisted bytes, so it is not a wire this module writes" }
             } else {
               SnapshotDecoded { snapshot: ServiceEvidenceSnapshot {
                 wire: wire,
@@ -682,7 +786,8 @@ fn service_evidence_snapshot_decode(wire: String) -> ServiceEvidenceSnapshotDeco
                 instance_id: snapshot_string(v: v, key: "instance_id"),
                 node_id: snapshot_string(v: v, key: "node_id"),
                 attempt_key: snapshot_string(v: v, key: "attempt_key"),
-                fields: fields,
+                launch_revision: snapshot_string(v: v, key: "launch_revision"),
+                fields: map(decoded, d => d.field),
               } }
             }
         }

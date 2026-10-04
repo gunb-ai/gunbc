@@ -699,7 +699,10 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
       match readable {
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
+            StartReceiptDecoded { receipt } =>
+              if receipt.service_evidence.instance_id != (instance.instance_id as String) {
+                DogfoodStartRefused { reason: "the recorded start receipt pins service evidence from another instance" }
+              } else { DogfoodStartAlreadyRecorded }
             StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["the recorded start receipt is invalid and cannot be rewritten: ", reason], "") }
           }
         CasReadableAbsent =>
@@ -767,7 +770,7 @@ fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
         CasReadableAbsent => false
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt: _ } => true
+            StartReceiptDecoded { receipt } => receipt.service_evidence.instance_id == (instance.instance_id as String)
             StartReceiptInvalid { reason: _ } => false
           }
       }

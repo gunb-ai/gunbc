@@ -5,7 +5,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileIndeterminate,
   filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome,
 }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_launch_admission { LaunchIdentity, launch_identity_json, attempt_launch_record_json, launch_identity_null_revision, Operator }
 import gunbc.roadmap_belt { ManualReady }
@@ -21,8 +21,8 @@ import gunbc.roadmap_service_evidence {
   SessionPlacementRead,
   service_evidence_bind_attempt, service_evidence_readings, service_evidence_entries,
   service_evidence_unsourced_fields, service_evidence_closing_probe, service_evidence_receipt_wire, service_evidence_receipt_digest,
-  ServiceEvidenceSnapshotDecode, SnapshotDecoded, SnapshotInvalid, SnapshotFieldObserved, SnapshotFieldOwed,
-  service_evidence_snapshot_decode, service_evidence_snapshot_of_receipt, service_evidence_canonical_field_names,
+  ServiceEvidenceSnapshotDecode, SnapshotDecoded, SnapshotInvalid,
+  service_evidence_snapshot_decode,
 }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
@@ -367,69 +367,91 @@ test fn the_pinned_digest_follows_the_binding() -> Bool {
 // ── THE PINNED SNAPSHOT ──
 //
 // A pinning consumer persists the canonical wire and reads it back only through
-// service_evidence_snapshot_decode. These claims author wires over a chosen field-name population, all
-// owed, and ask whether the decoder admits them: exactly the canonical population, once each, in order.
-fn snapshot_wire_of(names: List<String>, standing: String) -> String {
-  serialize_json(v: json_object([
-    json_kv(key: "schema", value: json_string(s: "service-evidence-receipt/v2")),
-    json_kv(key: "instance_id", value: json_string(s: "i1")),
-    json_kv(key: "node_id", value: json_string(s: "n1")),
-    json_kv(key: "attempt_key", value: json_string(s: "a1")),
-    json_kv(key: "launch_revision", value: json_string(s: "0000000000000000000000000000000000000000")),
-    json_kv(key: "fields", value: json_array(map(names, n => json_object([json_kv(key: "field", value: json_string(s: n)), json_kv(key: "standing", value: json_string(s: standing))])))),
-  ]))
-}
+// service_evidence_snapshot_decode, which decodes every standing payload to its typed entry and
+// requires the whole wire to re-encode to the persisted bytes. canonical_wire is the exact wire the
+// encoder writes for the probe-shaped receipt below; the first claim holds that inhabitance, and every
+// other claim derives its subject from that literal by one targeted edit, so each pays one decode.
+data canonical_wire: String = "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"g5-node-a\", \"attempt_key\": \"feedfacefeedface\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"workload_class\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"resource_request\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"wait_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"execution_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"pr\": 13073}}, {\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"pr\": 13075}}, {\"field\": \"cache_hits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_shared_misses\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"cache_corrupt_hit_refusals\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}, {\"field\": \"seat_utilization\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"artifact_bytes\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_belt_actuate shared_computation_observe_for_attempt\", \"pr\": 13097}}, {\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"pr\": 13075}}, {\"field\": \"recovery_action\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"operator_intervention_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, {\"field\": \"hardware_health\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fleet-health-0-live-receipt\"}}, {\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"pending_reader\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\", \"pr\": 13073}}, {\"field\": \"billable_credits\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"failure-billing-outcomes\"}}, {\"field\": \"workspace_recovery_point\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}, {\"field\": \"workspace_recovery_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"fabric-storage\"}}]}"
+
+data placement_owed: String = "{\"field\": \"placement\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}}"
+
+data placement_observed: String = "{\"field\": \"placement\", \"standing\": \"observed\", \"value\": {\"host\": \"srv2\", \"partition\": \"p\", \"unit\": \"u\"}, \"source\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"}"
 
 fn snapshot_admits(wire: String) -> Bool {
   match service_evidence_snapshot_decode(wire: wire) { SnapshotDecoded { snapshot: _ } => true  SnapshotInvalid { reason: _ } => false }
 }
 
-fn canonical() -> List<String> { service_evidence_canonical_field_names() }
+fn edited(from: String, to: String) -> String { replace(s: canonical_wire, from: from, to: to) }
 
-
-test fn the_canonical_population_decodes() -> Bool {
-  snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "owed"))
+test fn the_encoder_writes_the_canonical_wire_literal() -> Bool {
+  service_evidence_receipt_wire(r: ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: SessionPlacementAbsent { unit: "gunbc-session-g5-node-a" }) }) == canonical_wire
 }
 
-test fn the_live_wire_round_trips_with_its_digest_and_binding() -> Bool {
-  let r = ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: SessionPlacementAbsent { unit: "gunbc-session-g5-node-a" }) }
-  match service_evidence_snapshot_of_receipt(r: r) {
-    SnapshotDecoded { snapshot } => snapshot.node_id == node_a && snapshot.attempt_key == key_a && length(snapshot.fields) == 21 && snapshot.digest != ""
+test fn the_canonical_wire_decodes_with_its_binding_and_revision() -> Bool {
+  match service_evidence_snapshot_decode(wire: canonical_wire) {
+    SnapshotDecoded { snapshot } => snapshot.node_id == node_a && snapshot.attempt_key == key_a && snapshot.instance_id == "i1" && length(snapshot.fields) == 21 && snapshot.digest != ""
     SnapshotInvalid { reason: _ } => false
   }
 }
 
-// Omission, a duplicate that keeps the count at 21, an unknown name, a reordering, and the two-field
-// fixture #13208 first enrolled: none is the canonical population. One decode per claim.
-fn names_with(head: List<String>, drop: Int) -> List<String> { concat(head, skip(canonical(), drop)) }
-fn canonical_at(i: Int) -> String { match first(skip(canonical(), i)) { Present { value: n } => n  Absent => "" } }
-
-test fn an_omitted_field_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: skip(canonical(), 1), standing: "owed"))
+test fn an_observed_typed_value_from_its_reader_decodes() -> Bool {
+  snapshot_admits(wire: edited(from: placement_owed, to: placement_observed))
 }
 
-test fn a_count_preserving_duplicate_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 0), canonical_at(i: 0)], drop: 2), standing: "owed"))
+test fn an_observed_field_without_its_value_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: placement_owed, to: replace(s: placement_observed, from: "\"value\": {\"host\": \"srv2\", \"partition\": \"p\", \"unit\": \"u\"}, ", to: "")))
+}
+
+test fn an_observed_field_without_its_source_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: placement_owed, to: replace(s: placement_observed, from: ", \"source\": \"gunbc.roadmap_session_placement session_placement_observe_for_attempt\"", to: "")))
+}
+
+test fn an_observed_field_from_the_wrong_reader_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: placement_owed, to: replace(s: placement_observed, from: "gunbc.roadmap_session_placement session_placement_observe_for_attempt", to: "gunbc.roadmap_attempt_metering metering_observe_for_attempt")))
+}
+
+test fn an_owed_field_without_its_producer_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: placement_owed, to: "{\"field\": \"placement\", \"standing\": \"owed\"}"))
+}
+
+test fn a_malformed_producer_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "\"kind\": \"reader_record_absent\"", to: "\"kind\": \"something_else\""))
+}
+
+test fn a_pending_reader_with_the_wrong_pull_request_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "\"pr\": 13073", to: "\"pr\": 1"))
+}
+
+test fn a_missing_or_malformed_launch_revision_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "0000000000000000000000000000000000000000", to: "zz"))
+}
+
+test fn an_extra_member_does_not_re_encode_and_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "\"schema\": \"service-evidence-receipt/v2\", ", to: "\"schema\": \"service-evidence-receipt/v2\", \"extra\": 1, "))
 }
 
 test fn an_unknown_field_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 0), "unknown_field"], drop: 2), standing: "owed"))
+  !snapshot_admits(wire: edited(from: "\"field\": \"egress\"", to: "\"field\": \"egresz\""))
+}
+
+test fn a_count_preserving_duplicate_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "\"field\": \"egress\"", to: "\"field\": \"wait_time\""))
 }
 
 test fn a_reordered_population_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 1), canonical_at(i: 0)], drop: 2), standing: "owed"))
+  !snapshot_admits(wire: replace(s: edited(from: "\"field\": \"workload_class\"", to: "\"field\": \"TMP\""), from: "\"field\": \"resource_request\"", to: "\"field\": \"workload_class\""))
 }
 
-test fn the_two_field_fixture_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: ["placement", "wait_time"], standing: "owed"))
+test fn an_omitted_field_does_not_decode() -> Bool {
+  !snapshot_admits(wire: edited(from: "{\"field\": \"egress\", \"standing\": \"owed\", \"producer\": {\"kind\": \"unbuilt_producer\", \"owner_node\": \"service-evidence-capture\"}}, ", to: ""))
 }
 
 test fn a_refused_standing_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "refused"))
+  !snapshot_admits(wire: edited(from: placement_owed, to: "{\"field\": \"placement\", \"standing\": \"refused\", \"reason\": \"torn\"}"))
 }
 
-test fn an_unknown_standing_or_a_non_document_does_not_decode() -> Bool {
-  !snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "maybe"))
+test fn a_summary_shaped_wire_does_not_decode() -> Bool {
+  !snapshot_admits(wire: "{\"schema\": \"service-evidence-receipt/v2\", \"instance_id\": \"i1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"launch_revision\": \"0000000000000000000000000000000000000000\", \"fields\": [{\"field\": \"placement\", \"standing\": \"owed\"}]}")
     && !snapshot_admits(wire: "not json")
 }
 

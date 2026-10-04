@@ -55,15 +55,17 @@ fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
 
 data head: String = "b04485cffb000000000000000000000000000000"
 
-fn evidence_wire() -> String {
+fn evidence_wire(instance_id: String) -> String {
   service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
-    binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+    binding: AttemptBinding { instance_id: instance_id as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
     inputs: ServiceEvidenceInputs { session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" } } },
   })
 }
 
-fn wire(pr: String) -> String {
-  let ev = evidence_wire()
+fn wire(pr: String) -> String { wire_for(pr: pr, instance_id: "dogfood-wet") }
+
+fn wire_for(pr: String, instance_id: String) -> String {
+  let ev = evidence_wire(instance_id: instance_id)
   serialize_json(v: json_object([
     json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v3")),
     json_kv(key: "node_id", value: json_string(s: "n1")),
@@ -139,3 +141,14 @@ test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded()
     && is_refused(r: dogfood_start_record_for_instance(instance: instance))
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }
+
+// EVIDENCE FROM ANOTHER INSTANCE IS NOT THIS INSTANCE'S START: a receipt whose pinned service evidence
+// names another instance, copied into this instance's slot, is refused by the recorder and does not
+// satisfy the acceptance read, even though node and attempt match.
+test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "foreign"))
+  plant(root: dogfood_start_store_root(instance: instance), bytes: wire_for(pr: "4242", instance_id: "some-other-instance"))
+    && is_refused(r: dogfood_start_record_for_instance(instance: instance))
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}
+
