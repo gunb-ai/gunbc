@@ -3979,9 +3979,20 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
 // Only a target neither reader reads is unsupported_form, located at it.
 // THE INTERIOR OF A LOWERED VALUE IS LOWERED BY POSITION. The reify pass walks a value a producer
 // already built, so a composite under it that the parse did not stamp is that producer's own output,
-// not a node of unknown provenance: it is kept as it stands, where it used to pass the deleted
-// allowlist. A stamped composite or a leaf under it is still read as the parse wrote it. This
-// reading is confined to the reify pass; everywhere else an unstamped, unwrapped composite refuses.
+// not a node of unknown provenance: it is kept as it stands. A stamped composite or a leaf under it
+// is still read as the parse wrote it. This reading is confined to the reify pass; everywhere else
+// an unstamped, unwrapped composite refuses.
+// WHY THIS IS NOT A WIDENED FAILURE ARM (review 75108). body_term_of has exactly one Rejected arm:
+// a composite that is neither wrapped nor parse-stamped. The parse stamps every composite it mints,
+// and reify's input is the fold's own output (body_lower_reify_arrow_body is reached only from a
+// producer holding a body it lowered), so under reify that arm can hold only a producer's internal
+// structure. Refusing it was measured, not assumed: propagating the refusal turned three real paths
+// red (v2.test.claim.namespace_xl0.reference_conservation the_if_arm_call_argument_is_conserved_holds,
+// caret_symbol_payloads_are_conserved_holds, a_list_literal_call_argument_conserves_every_element_holds).
+// The reading is grounded in provenance by position, not in a shape list, and that is its rung:
+// mitigation, held by the reify call graph rather than by a type. The climb is the stage ceiling
+// named above, a sealed BodyTerm term tree in which a producer's interior is itself a term, after
+// which this arm deletes and an unplaceable composite refuses here as everywhere else.
 // The question is asked of the term authority: a parse production or a leaf is read as the parse
 // wrote it; a Lowered term, or a composite body_term_of cannot place, is lowered by position here.
 fn body_lower_reify_interior_is_lowered(node: Node) -> Bool {
