@@ -13,7 +13,6 @@ import gunbc.fabric_m0_origin_readback {
   OriginObjectAbsent,
   OriginFetchUnavailable,
   origin_reading_digest,
-  origin_reading_path,
 }
 import product.fabric.identity { WorkKey }
 import product.fabric.work {
@@ -164,7 +163,7 @@ fn readback_digest_verdict(subject: NonEmptyStr, recorded: Sha256Digest, readbac
         ObligationUnsatisfied {
           subject: subject,
           cause: "origin readback digest differs from the committed record; the readback digested "
-            + origin_reading_path(reading: r),
+            + (origin_reading_digest(reading: r).hex as String),
         }
       }
     ReadbackAbsent => ObligationUnsatisfied { subject: subject, cause: "required artifact absent at origin" }
