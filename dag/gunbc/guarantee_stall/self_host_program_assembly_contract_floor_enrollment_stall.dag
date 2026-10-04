@@ -1,0 +1,34 @@
+module gunbc.guarantee_stall.self_host_program_assembly_contract_floor_enrollment_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
+
+// A STALL AND NOT A DROP, AND THE DIFFERENCE IS A FACT ABOUT HISTORY. Before the self-host behavioral
+// rows carried .dag contracts, the program_assembly row's contract was a hand-written Rust driver
+// that no per-change path compiled or ran; nothing about this row was ever on the merge path. The
+// migration put fourteen of the fifteen contracts on the required floor as claims. This one could
+// not follow: the floor measured 214,850 eval steps for its three assemblies against a per-claim
+// budget of 72,300 (required run 37169119743), and one assemble_program_from_ingest costs about
+// the whole budget whatever its source says. So the rung did not fall here; it failed to climb with
+// its siblings, and a drop row would assert a previous rung that executed evidence never
+// established.
+//
+// WHAT STILL HOLDS FOR THIS CONTRACT. Its module is typechecked on every change against the real
+// declarations, so an API cut refuses at the cut. Its interpreted and emitted runs both execute in
+// the self-host behavioral receipt (tools.self_host_curated_seed_linked_harness
+// cssl_driver_claim_runs names the function by derivation from the roster row), which is
+// dispatch-only. What is missing is the per-change interpreted run: a change that made
+// assemble_program_from_ingest accept an unparseable ingest would not refuse on the merge path, and
+// would be found at the next receipt.
+data self_host_program_assembly_contract_floor_enrollment_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v2.test.claim.self_host_contract.program_assembly_emitted_contract program_assembly_emitted_contract_holds_and_its_planted_fault_does_not is deliberately not a required-floor claim, because one assemble_program_from_ingest costs about the floor's whole per-claim budget; a behavioral regression in program assembly therefore does not refuse on the merge path and is found only when the dispatch-only self-host behavioral receipt runs",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "the text-independent cost of one assemble_program_from_ingest falling under the required floor's per-claim eval-step budget (v2.workflow.required_floor claim_eval_step_budget_for_identity), with margin for the contract's assemblies",
+  },
+  population: BoundedPopulation {
+    members: ["v2.test.claim.self_host_contract.program_assembly_emitted_contract.program_assembly_emitted_contract_holds_and_its_planted_fault_does_not"]
+  },
+  next_rung_trigger: climbs_when(capability: "the per-assembly fixed cost of assemble_program_from_ingest dropping under the required floor's per-claim budget, SUFFICIENT FOR this contract's interpreted claim being enrolled as a floor claim (a test fn in a *_test.dag module) that reaches its verdict inside the budget and the enrolment margin"),
+}
