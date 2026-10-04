@@ -360,7 +360,7 @@ fn file_hold_recovery_assess(
   retention: CasSlotRetention,
 ) -> FileHoldRecoveryAssessment
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
   ]
 {

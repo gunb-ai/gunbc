@@ -1,7 +1,6 @@
 module test.claim.long.dag_arrow_lambda_witness_test
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.algebra { fold_list }
 import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens }

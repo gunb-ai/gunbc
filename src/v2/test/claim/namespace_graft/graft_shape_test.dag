@@ -13,7 +13,6 @@ import v2.extdeps.languages.dag {
 import v2.std.algebra { fold_list_node }
 import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.compiler.namespace_graft {
   module_header_containment_graft,
   namespace_graft_is_metadata_edge,

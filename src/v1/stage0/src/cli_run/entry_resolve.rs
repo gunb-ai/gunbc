@@ -3908,7 +3908,7 @@ mod cross_tree_bare_census {
                 sf,
                 &index,
                 |root| super::super::closure_name_census(&index, root),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
             );
             if let Err(e) = r {
                 refusals.push(e);
