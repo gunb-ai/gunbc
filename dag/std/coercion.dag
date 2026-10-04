@@ -357,8 +357,8 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
 // meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
 // exists until a row needs it.
 type ConversionPhase
-  = UnfoldPhase { producer: LiteralUnfolding }
-  | InverseUnfoldPhase { producer: LiteralUnfolding }
+  = UnfoldPhase { row: LiteralHomomorphism }
+  | InverseUnfoldPhase { row: LiteralHomomorphism }
 
 // A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
 // String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
@@ -369,12 +369,51 @@ type ConversionEndpoint
   = KernelMintedCarrier { minted_name: NonEmptyStr }
   | DeclaredCarrier { declaration: DeclarationRef, element: DeclarationRef? }
 
+// THE PHASE IS THE ONLY SOURCE OF THE ENDPOINTS, AND THE ROUTE IS THE ONLY NAME (calm-boar-904's
+// #13143 objection, the correlated-field class of #13060). A plan stored route, endpoints and phase
+// independently while the judgment checked only the endpoints, so an unfold route carrying an inverse
+// phase was admitted with every control green. Now a phase carries the full declared literal
+// homomorphism row, the endpoints are DERIVED from it -- the unfold runs from the row's kernel literal
+// carrier to its destination, the inverse reverses exactly those -- and the plan's name is its route
+// function's declared name (O5: the function IS the plan). No field can disagree with another,
+// because there is no second field to disagree.
 type ConversionPlan {
-  identity: NonEmptyStr
   route: DeclarationRef
-  source: ConversionEndpoint
-  target: ConversionEndpoint
   phase: ConversionPhase
+}
+
+fn conversion_plan_identity(plan: ConversionPlan) -> NonEmptyStr {
+  plan.route.decl_name
+}
+
+// The kernel carrier a literal of each source kind is minted as -- the unfold's starting side.
+fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> ConversionEndpoint {
+  match kind {
+    KernelIntLiteral => KernelMintedCarrier { minted_name: "Int" as NonEmptyStr }
+    KernelStringLiteral => KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+    KernelFloatLiteral => KernelMintedCarrier { minted_name: "Float" as NonEmptyStr }
+    KernelBoolLiteral => KernelMintedCarrier { minted_name: "Bool" as NonEmptyStr }
+    KernelSymbolLiteral => KernelMintedCarrier { minted_name: "Symbol" as NonEmptyStr }
+    KernelNullLiteral => KernelMintedCarrier { minted_name: "Null" as NonEmptyStr }
+  }
+}
+
+fn literal_homomorphism_destination(row: LiteralHomomorphism) -> ConversionEndpoint {
+  DeclaredCarrier { declaration: row.destination, element: row.element }
+}
+
+fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+  }
+}
+
+fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+  }
 }
 
 // HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no
@@ -439,7 +478,7 @@ fn judge_conversion_plan(
     match named |> first {
       Absent => ConversionPlanAbsent { route: route }
       Present { value: plan } =>
-        if conversion_endpoint_eq(a: plan.source, b: source) && conversion_endpoint_eq(a: plan.target, b: target) {
+        if conversion_endpoint_eq(a: conversion_plan_source(plan: plan), b: source) && conversion_endpoint_eq(a: conversion_plan_target(plan: plan), b: target) {
           ConversionPlanAdmitted { plan: plan }
         } else {
           ConversionPlanEndpointMismatch { plan: plan }

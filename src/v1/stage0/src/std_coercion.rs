@@ -14,8 +14,8 @@ use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_literal_elaboration::LiteralUnfolding;
-use crate::std_literal_elaboration::LiteralUnfolding::*;
+use crate::std_literal_elaboration::LiteralSourceKind::*;
+pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -297,18 +297,14 @@ pub fn is_dag_cast_domain_type(name: String) -> bool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ConversionPhase {
-    UnfoldPhase { producer: Rc<LiteralUnfolding> },
-    InverseUnfoldPhase { producer: Rc<LiteralUnfolding> },
+    UnfoldPhase { row: Rc<LiteralHomomorphism> },
+    InverseUnfoldPhase { row: Rc<LiteralHomomorphism> },
 }
 impl ConversionPhase {
-    pub fn producer(&self) -> Rc<LiteralUnfolding> {
+    pub fn row(&self) -> Rc<LiteralHomomorphism> {
         match self {
-            ConversionPhase::UnfoldPhase {
-                producer: __val, ..
-            } => __val.clone(),
-            ConversionPhase::InverseUnfoldPhase {
-                producer: __val, ..
-            } => __val.clone(),
+            ConversionPhase::UnfoldPhase { row: __val, .. } => __val.clone(),
+            ConversionPhase::InverseUnfoldPhase { row: __val, .. } => __val.clone(),
         }
     }
 }
@@ -327,11 +323,66 @@ pub enum ConversionEndpoint {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConversionPlan {
-    pub identity: NonEmptyStr,
     pub route: Rc<DeclarationRef>,
-    pub source: Rc<ConversionEndpoint>,
-    pub target: Rc<ConversionEndpoint>,
     pub phase: Rc<ConversionPhase>,
+}
+
+pub fn conversion_plan_identity(plan: Rc<ConversionPlan>) -> String {
+    plan.route.clone().decl_name.clone()
+}
+
+pub fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> Rc<ConversionEndpoint> {
+    match kind.clone() {
+        LiteralSourceKind::KernelIntLiteral => Rc::new(ConversionEndpoint::KernelMintedCarrier {
+            minted_name: "Int".to_string(),
+        }),
+        LiteralSourceKind::KernelStringLiteral => {
+            Rc::new(ConversionEndpoint::KernelMintedCarrier {
+                minted_name: "String".to_string(),
+            })
+        }
+        LiteralSourceKind::KernelFloatLiteral => Rc::new(ConversionEndpoint::KernelMintedCarrier {
+            minted_name: "Float".to_string(),
+        }),
+        LiteralSourceKind::KernelBoolLiteral => Rc::new(ConversionEndpoint::KernelMintedCarrier {
+            minted_name: "Bool".to_string(),
+        }),
+        LiteralSourceKind::KernelSymbolLiteral => {
+            Rc::new(ConversionEndpoint::KernelMintedCarrier {
+                minted_name: "Symbol".to_string(),
+            })
+        }
+        LiteralSourceKind::KernelNullLiteral => Rc::new(ConversionEndpoint::KernelMintedCarrier {
+            minted_name: "Null".to_string(),
+        }),
+    }
+}
+
+pub fn literal_homomorphism_destination(row: Rc<LiteralHomomorphism>) -> Rc<ConversionEndpoint> {
+    Rc::new(ConversionEndpoint::DeclaredCarrier {
+        declaration: row.destination.clone(),
+        element: row.element.clone(),
+    })
+}
+
+pub fn conversion_plan_source(plan: Rc<ConversionPlan>) -> Rc<ConversionEndpoint> {
+    match (*plan.phase.clone()).clone() {
+        ConversionPhase::UnfoldPhase { row: r, .. } => {
+            kernel_carrier_of_literal_source(r.source_kind.clone())
+        }
+        ConversionPhase::InverseUnfoldPhase { row: r, .. } => {
+            literal_homomorphism_destination(r.clone())
+        }
+    }
+}
+
+pub fn conversion_plan_target(plan: Rc<ConversionPlan>) -> Rc<ConversionEndpoint> {
+    match (*plan.phase.clone()).clone() {
+        ConversionPhase::UnfoldPhase { row: r, .. } => literal_homomorphism_destination(r.clone()),
+        ConversionPhase::InverseUnfoldPhase { row: r, .. } => {
+            kernel_carrier_of_literal_source(r.source_kind.clone())
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -435,9 +486,13 @@ pub fn judge_conversion_plan(
                         })
                     }
                     Some(plan) => {
-                        if (conversion_endpoint_eq(plan.source.clone(), source.clone())
-                            && conversion_endpoint_eq(plan.target.clone(), target.clone()))
-                        {
+                        if (conversion_endpoint_eq(
+                            conversion_plan_source(plan.clone()),
+                            source.clone(),
+                        ) && conversion_endpoint_eq(
+                            conversion_plan_target(plan.clone()),
+                            target.clone(),
+                        )) {
                             Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
                                 plan: plan.clone(),
                             })
