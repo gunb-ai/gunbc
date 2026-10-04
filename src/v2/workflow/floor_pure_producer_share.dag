@@ -99,6 +99,37 @@ type CallSiteDemandCause
   | ArgumentNotClosedConstant
   | CallShapeUnread
 
+// WHAT A DEMANDING CLAIM READS OFF THE VALUE, observed at the call site: the seed reports, for each
+// site of a closed identity, the field projected IMMEDIATELY off the call (`f(x).field`) or, when
+// the call's result is consumed any other way (bound, passed, compared, returned), the WHOLE value.
+// A projected access the observer could not read is its own typed fact, never guessed at a grain.
+//
+// THE GRAIN'S LIMIT, stated so it is not read as more: a result bound by `let` and projected later
+// reads as `WholeValue`, because the observer does not follow binders. That can only admit a share
+// the projection rule would decline at a finer grain -- never one the fold without this rule would
+// have declined -- so it is a missed refusal with a located population, not a widening; its
+// next-rung trigger is the dependency read
+// set of demand-engine M1 (docs/plans/demand-engine-program.md), which carries every projection a
+// consumer reads off a value rather than only the immediate one.
+//   ProjectionFieldNameUnreadable -- the call is a field access's base, and reading the field's
+//                                    name failed: a projection of unknown grain.
+//   ProjectionFieldNameEmpty      -- the call is a field access's base, and the field's name
+//                                    reads empty.
+type ConsumerReadCause
+  = ProjectionFieldNameUnreadable
+  | ProjectionFieldNameEmpty
+
+type ConsumerRead
+  = WholeValue
+  | ProjectedField { field: String }
+  | ConsumerReadUnobserved { cause: ConsumerReadCause }
+
+// One distinct (claim, read) pair; the seed emits each pair once however many sites repeat it.
+type ClaimConsumerRead {
+  claim: String
+  read: ConsumerRead
+}
+
 // `producer` is the callee's qualified declaration; `argument_preimage` the canonical normalized
 // argument row; `claims` the DISTINCT claims DECLARED in the prepared subject whose reach contains
 // a site of this identity (each becomes one ladder demand at its claim frame); `planned_claims`
@@ -122,6 +153,7 @@ type CallSiteDemandObservation
       claims: List<String>
       planned_claims: Int
       sites: List<String>
+      reads: List<ClaimConsumerRead>
     }
   | UnadmissibleCallSiteDemand {
       cause: CallSiteDemandCause
@@ -230,6 +262,8 @@ type ShareDerivationDecline
   | RefusedByMeasurement
   | CarriedInputProducer
   | LadderOwesNoCarry { verdict: LadderVerdict }
+  | BundleOfDisjointProjections { sole_projections: List<String> }
+  | ConsumerReadUnknown { cause: ConsumerReadCause }
 
 type DeclinedShareRow {
   producer: String
@@ -279,7 +313,8 @@ fn closed_demand_decline(
   planned_claims: Int,
   refused_names: List<String>,
   carried_names: List<String>,
-  debt: List<SingleClaimFillDebtModule>
+  debt: List<SingleClaimFillDebtModule>,
+  reads: List<ClaimConsumerRead>
 ) -> List<ShareDerivationDecline> {
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
@@ -291,12 +326,72 @@ fn closed_demand_decline(
     [CarriedInputProducer]
   } else if length(xs: sole_active_debt_claim(claims: claims, debt: debt)) == 1 {
     []
+  } else if length(xs: unobserved_read_causes(reads: reads)) > 0 {
+    list_map(xs: unobserved_read_causes(reads: reads), f: fn(k) { ConsumerReadUnknown { cause: k } })
+  } else if length(xs: sole_projections(claims: claims, reads: reads)) > 0 {
+    [BundleOfDisjointProjections { sole_projections: sole_projections(claims: claims, reads: reads) }]
   } else {
     ladder_decline(verdict: closed_demand_ladder_verdict(
       identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
       claims: claims
     ))
   }
+}
+
+// THE BUNDLE REFUSAL (follow-up to #13043, flag by stern-bear-500). Two or more declared claims
+// demanding one closed identity owe a carry only if they demand the SAME computed value. A
+// producer that bundles distinct work into one record, each claim reading its own field, is not
+// one shared value: admitting it nets every claim's own slice out of that claim's budget, which is
+// DESIGN section 5's cost externalization performed by authoring pattern. So a claim demands a
+// projection when it reads that field off the call or reads the whole value (the whole value
+// contains every field), and the identity is admitted only when EVERY projected field is demanded
+// by at least two declared claims. Decided explicitly for the mixed case: a whole-value reader
+// beside a projecting one is admitted, because the projected slice is genuinely demanded twice --
+// once as itself, once inside the whole. A field only one claim demands is that claim's own work,
+// and the row is declined naming each such field. Only one claim per identity reads the fold's
+// sole projections, so the seed's per-(claim, read) dedupe makes the list duplicate-free.
+fn read_unobserved_cause(read: ConsumerRead) -> List<ConsumerReadCause> {
+  match read {
+    WholeValue => []
+    ProjectedField { field: _ } => []
+    ConsumerReadUnobserved { cause: k } => [k]
+  }
+}
+
+// An unreadable consumer stops the decision: a projection the observer could not see might be a
+// bundle slice, so the row is declined with the cause rather than judged at a guessed grain.
+fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCause> {
+  list_flat_map(xs: reads, f: fn(r) { read_unobserved_cause(read: r.read) })
+}
+
+fn read_demands_field(read: ConsumerRead, field: String) -> Bool {
+  match read {
+    WholeValue => true
+    ProjectedField { field: f } => f == field
+    ConsumerReadUnobserved { cause: _ } => false
+  }
+}
+
+fn claim_demands_field(claim: String, field: String, reads: List<ClaimConsumerRead>) -> Bool {
+  any(xs: reads, predicate: fn(r) { r.claim == claim && read_demands_field(read: r.read, field: field) })
+}
+
+fn projected_field_of(read: ConsumerRead) -> List<String> {
+  match read {
+    WholeValue => []
+    ProjectedField { field: f } => [f]
+    ConsumerReadUnobserved { cause: _ } => []
+  }
+}
+
+// The projected fields exactly one declared claim demands: each is a bundle slice.
+fn sole_projections(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<String> {
+  filter(
+    xs: list_flat_map(xs: reads, f: fn(r) { projected_field_of(read: r.read) }),
+    predicate: fn(field) {
+      length(xs: filter(xs: claims, predicate: fn(c) { claim_demands_field(claim: c, field: field, reads: reads) })) == 1
+    }
+  )
 }
 
 // The identity's sole demanding claim, when there is exactly one and it is an ACTIVE debt member;
@@ -325,8 +420,8 @@ fn derived_share_rows_for(
   debt: List<SingleClaimFillDebtModule>
 ) -> List<DerivedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s } =>
-      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt)) == 0 {
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: s, reads: rs } =>
+      if length(xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt, reads: rs)) == 0 {
         [DerivedShareRow { producer: p, argument_preimage: a, identity: share_ladder_identity(producer: p, argument_preimage: a), basis: share_basis_of(claims: c, debt: debt), claims: length(xs: c), sites: s }]
       } else {
         []
@@ -342,9 +437,9 @@ fn declined_share_rows_for(
   debt: List<SingleClaimFillDebtModule>
 ) -> List<DeclinedShareRow> {
   match observation {
-    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _ } =>
+    ClosedCallSiteDemand { producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, sites: _, reads: rs } =>
       list_map(
-        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt),
+        xs: closed_demand_decline(producer: p, argument_preimage: a, identity: i, claims: c, planned_claims: n, refused_names: refused_names, carried_names: carried_names, debt: debt, reads: rs),
         f: fn(d) { DeclinedShareRow { producer: p, argument_preimage: a, decline: d } }
       )
     UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => []
@@ -353,7 +448,7 @@ fn declined_share_rows_for(
 
 fn unadmissible_counts_for(observation: CallSiteDemandObservation) -> List<UnadmissibleDemandCount> {
   match observation {
-    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => []
+    ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _, reads: _ } => []
     UnadmissibleCallSiteDemand { cause: k, claims: c, sites: n } =>
       [UnadmissibleDemandCount { cause: k, claims: c, sites: n }]
   }
@@ -439,7 +534,7 @@ fn floor_cross_claim_share_derivation(
 fn closed_observation_count(observations: List<CallSiteDemandObservation>) -> Int {
   length(xs: filter(xs: observations, predicate: fn(o) {
     match o {
-      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _ } => true
+      ClosedCallSiteDemand { producer: _, argument_preimage: _, identity: _, claims: _, planned_claims: _, sites: _, reads: _ } => true
       UnadmissibleCallSiteDemand { cause: _, claims: _, sites: _ } => false
     }
   }))

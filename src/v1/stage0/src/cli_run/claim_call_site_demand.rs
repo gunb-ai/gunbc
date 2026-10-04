@@ -75,6 +75,8 @@ pub(crate) enum CallSiteDemandRow {
         /// How many of `claims` this run plans.
         planned_claims: u64,
         sites: Vec<String>,
+        /// Each distinct (claim, read) pair over this identity's sites, claims as in `claims`.
+        reads: Vec<(String, ConsumerRead)>,
     },
     Unadmissible {
         cause: CallSiteDemandCause,
@@ -94,10 +96,38 @@ pub(crate) fn render_site(site: &SiteKey) -> String {
     format!("{}:{}-{}", site.0, site.1, site.2)
 }
 
+/// The `.dag` `ConsumerRead`: what the expression consuming a call site's result reads off it.
+/// Only the IMMEDIATE projection is observed (`f(x).field`); any other consumer reads the whole
+/// value. A projection whose field name cannot be read is `Unread` with its `.dag`
+/// `ConsumerReadCause` -- `ConsumerReadUnobserved { cause }` -- never a guessed grain.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum ConsumerRead {
+    WholeValue,
+    ProjectedField(String),
+    Unread(ConsumerReadCause),
+}
+
+/// The `.dag` `ConsumerReadCause` arms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum ConsumerReadCause {
+    ProjectionFieldNameUnreadable,
+    ProjectionFieldNameEmpty,
+}
+
+impl ConsumerReadCause {
+    pub(crate) fn variant(self) -> &'static str {
+        match self {
+            ConsumerReadCause::ProjectionFieldNameUnreadable => "ProjectionFieldNameUnreadable",
+            ConsumerReadCause::ProjectionFieldNameEmpty => "ProjectionFieldNameEmpty",
+        }
+    }
+}
+
 enum SiteFact {
     Closed {
         producer: String,
         preimage: String,
+        read: ConsumerRead,
     },
     Unadmissible(CallSiteDemandCause),
     /// An unadmissible site whose callee IS known, kept by producer so a reader can disposition
@@ -132,6 +162,8 @@ struct IdentityCell {
     /// How many of them are planned (index below the planned count).
     planned: u64,
     sites: BTreeSet<SiteKey>,
+    /// (claim index, read), each pair once.
+    reads: BTreeSet<(usize, ConsumerRead)>,
 }
 
 impl<'a> CallSiteDemandObserver<'a> {
@@ -192,9 +224,17 @@ impl<'a> CallSiteDemandObserver<'a> {
                 }
                 for (site, fact) in &facts.sites {
                     let cell = match fact {
-                        SiteFact::Closed { producer, preimage } => closed
-                            .entry((producer.clone(), preimage.clone()))
-                            .or_default(),
+                        SiteFact::Closed {
+                            producer,
+                            preimage,
+                            read,
+                        } => {
+                            let cell = closed
+                                .entry((producer.clone(), preimage.clone()))
+                                .or_default();
+                            cell.reads.insert((index, read.clone()));
+                            cell
+                        }
                         SiteFact::Unadmissible(cause) => open.entry(*cause).or_default(),
                         SiteFact::UnadmissibleOf { producer, cause } => {
                             let by = open_by_producer
@@ -233,6 +273,13 @@ impl<'a> CallSiteDemandObserver<'a> {
                         .collect(),
                     planned_claims: cell.planned,
                     sites: cell.sites.iter().map(render_site).collect(),
+                    reads: cell
+                        .reads
+                        .iter()
+                        .map(|(i, read)| {
+                            (format!("{}.{}", claims[*i].0, claims[*i].1), read.clone())
+                        })
+                        .collect(),
                 },
             )
             .collect();
@@ -386,6 +433,36 @@ impl<'a> CallSiteDemandObserver<'a> {
             }
             nodes.push(n);
         }
+        // The immediate projection off each call site whose result is a field access's base. Once
+        // the base is known to be a call, a field name that panics or reads empty is `Unread` with
+        // its cause, counted by the fold -- never defaulted to the whole value.
+        let mut projections: HashMap<SiteKey, ConsumerRead> = HashMap::new();
+        for n in &nodes {
+            if !matches!(n.expr_data.as_ref(), ExprData::ExprFieldAccess { .. }) {
+                continue;
+            }
+            // A field access with no readable base child has no call as its base, so no call site
+            // is projected by it.
+            let Ok(base) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::v1_std_core::field_access_base(n.clone())
+            })) else {
+                continue;
+            };
+            if !matches!(base.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+                continue;
+            }
+            let field = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::v1_std_core::field_access_field_at(n.clone(), self.source_indices.clone())
+            }));
+            let read = match field {
+                Err(_) => ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameUnreadable),
+                Ok(f) if f.is_empty() => {
+                    ConsumerRead::Unread(ConsumerReadCause::ProjectionFieldNameEmpty)
+                }
+                Ok(f) => ConsumerRead::ProjectedField(f),
+            };
+            projections.insert(site_key_of(&base), read);
+        }
         let mut reads: BTreeSet<(String, String)> = BTreeSet::new();
         let mut sites: Vec<(SiteKey, SiteFact)> = Vec::new();
         for n in &nodes {
@@ -395,7 +472,11 @@ impl<'a> CallSiteDemandObserver<'a> {
                     // becomes that site's typed, counted cause.
                     let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let target = self.call_target(module, n);
-                        let fact = self.site_fact(module, n, target.clone(), &binders);
+                        let read = projections
+                            .get(&site_key_of(n))
+                            .cloned()
+                            .unwrap_or(ConsumerRead::WholeValue);
+                        let fact = self.site_fact(module, n, target.clone(), &binders, read);
                         (target.ok(), fact)
                     }));
                     let (target, fact) = match read {
@@ -441,6 +522,7 @@ impl<'a> CallSiteDemandObserver<'a> {
         call: &Rc<Node>,
         target: Result<(String, String), CallSiteDemandCause>,
         binders: &HashSet<String>,
+        read: ConsumerRead,
     ) -> SiteFact {
         let target = match target {
             Ok(t) => t,
@@ -460,6 +542,7 @@ impl<'a> CallSiteDemandObserver<'a> {
             Some(preimage) => SiteFact::Closed {
                 producer: format!("{}.{}", target.0, target.1),
                 preimage,
+                read,
             },
             None => SiteFact::UnadmissibleOf {
                 producer: format!("{}.{}", target.0, target.1),
@@ -722,5 +805,50 @@ mod tests {
             "the effectful nullary call must be counted under CalleeDeclaresEffects: {rows:?}"
         );
         assert!(closed_claims(&rows, "fixture.n7.reads", "").is_none());
+    }
+    // THE PROJECTION FACT: the bundle shape of #13113 in miniature. Two claims read different
+    // fields projected immediately off one closed call, a third reads one of them, and a fourth
+    // consumes the whole value; each (claim, read) pair is reported once, so the fold can tell a
+    // bundle of disjoint slices from one shared value.
+    const BUNDLE: &str = "module fixture.n7\n\
+         type Pair {\n  a: Bool\n  b: Bool\n}\n\
+         fn verdicts() -> Pair { Pair { a: true, b: false } }\n\
+         fn claim_a() -> Bool { verdicts().a }\n\
+         fn claim_b() -> Bool { verdicts().b }\n\
+         fn claim_a_again() -> Bool { verdicts().a && verdicts().a }\n\
+         fn claim_whole() -> Bool { verdicts() == verdicts() }\n";
+
+    fn reads_of(rows: &[CallSiteDemandRow], producer: &str) -> Vec<(String, ConsumerRead)> {
+        rows.iter()
+            .find_map(|r| match r {
+                CallSiteDemandRow::Closed {
+                    producer: p, reads, ..
+                } if p == producer => Some(reads.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn each_claims_immediate_projection_is_reported_once_and_a_bare_use_reads_the_whole() {
+        let rows = observe_source(
+            BUNDLE,
+            &["claim_a", "claim_b", "claim_a_again", "claim_whole"],
+        );
+        let reads = reads_of(&rows, "fixture.n7.verdicts");
+        let field = |f: &str| ConsumerRead::ProjectedField(f.to_string());
+        assert_eq!(
+            reads,
+            vec![
+                ("fixture.n7.claim_a".to_string(), field("a")),
+                ("fixture.n7.claim_b".to_string(), field("b")),
+                ("fixture.n7.claim_a_again".to_string(), field("a")),
+                (
+                    "fixture.n7.claim_whole".to_string(),
+                    ConsumerRead::WholeValue
+                ),
+            ],
+            "{rows:?}"
+        );
     }
 }

@@ -14,7 +14,9 @@ import v2.workflow.floor_pure_producer_share {
   CallSiteDemandCause, ArgumentNotClosedConstant, CalleeDeclaresEffects,
   CrossClaimShareDerivation, DeclinedShareRow,
   ShareDerivationDecline, DemandedByOneClaim, ReachedByNoPlannedClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
-  LadderOwesNoCarry,
+  LadderOwesNoCarry, BundleOfDisjointProjections, ConsumerReadUnknown,
+  ClaimConsumerRead, ConsumerRead, WholeValue, ProjectedField, ConsumerReadUnobserved,
+  ConsumerReadCause, ProjectionFieldNameUnreadable,
   ShareBasis, SharedByDeclaredDemand, SingleClaimFillDebt,
   SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
   fill_debt_active_claims,
@@ -67,6 +69,11 @@ fn probe_claim_names(claims: Int) -> List<String> {
   }
 }
 
+// Every claim reads the whole value: the shape of one shared computed value.
+fn whole_reads(claims: List<String>) -> List<ClaimConsumerRead> {
+  list_map(xs: claims, f: fn(c) { ClaimConsumerRead { claim: c, read: WholeValue } })
+}
+
 fn probe_closed(producer: String, claims: Int) -> CallSiteDemandObservation {
   ClosedCallSiteDemand {
     producer: producer,
@@ -74,7 +81,8 @@ fn probe_closed(producer: String, claims: Int) -> CallSiteDemandObservation {
     identity: probe_identity(),
     claims: probe_claim_names(claims: claims),
     planned_claims: 1,
-    sites: ["v2/test/probe.dag:10-40"]
+    sites: ["v2/test/probe.dag:10-40"],
+    reads: whole_reads(claims: probe_claim_names(claims: claims))
   }
 }
 
@@ -105,7 +113,8 @@ fn probe_single_claim(producer: String, claim: String) -> CallSiteDemandObservat
     identity: probe_identity(),
     claims: [claim],
     planned_claims: 1,
-    sites: ["v2/test/debt.dag:10-40"]
+    sites: ["v2/test/debt.dag:10-40"],
+    reads: whole_reads(claims: [claim])
   }
 }
 
@@ -128,6 +137,8 @@ fn decline_tag(decline: ShareDerivationDecline) -> String {
     RefusedByMeasurement => "RefusedByMeasurement"
     CarriedInputProducer => "CarriedInputProducer"
     LadderOwesNoCarry { verdict: _ } => "LadderOwesNoCarry"
+    BundleOfDisjointProjections { sole_projections: _ } => "BundleOfDisjointProjections"
+    ConsumerReadUnknown { cause: _ } => "ConsumerReadUnknown"
   }
 }
 
@@ -170,7 +181,8 @@ test fn declared_demand_no_planned_claim_reaches_is_declined_and_named() -> Bool
       identity: probe_identity(),
       claims: probe_claim_names(claims: 4),
       planned_claims: 0,
-      sites: ["v2/test/probe.dag:70-80"]
+      sites: ["v2/test/probe.dag:70-80"],
+      reads: whole_reads(claims: probe_claim_names(claims: 4))
     }
   ])
   (length(xs: d.admitted) == 0)
@@ -208,7 +220,8 @@ test fn a_shared_identity_is_based_on_demand_not_debt() -> Bool {
       identity: probe_identity(),
       claims: ["v2.test.debt.owes_its_fixture", "v2.test.debt.another"],
       planned_claims: 2,
-      sites: ["v2/test/debt.dag:50-60"]
+      sites: ["v2/test/debt.dag:50-60"],
+      reads: whole_reads(claims: ["v2.test.debt.owes_its_fixture", "v2.test.debt.another"])
     }
   ])
   (length(xs: d.admitted) == 1)
@@ -247,7 +260,8 @@ test fn an_identity_of_unknown_grade_is_declined() -> Bool {
       identity: IdentityUnknown { cause: MissingConcept { detail: "authored fixture" } },
       claims: probe_claim_names(claims: 3),
       planned_claims: 3,
-      sites: ["v2/test/probe.dag:50-60"]
+      sites: ["v2/test/probe.dag:50-60"],
+      reads: whole_reads(claims: probe_claim_names(claims: 3))
     }
   ])
   (length(xs: d.admitted) == 0)
@@ -352,4 +366,88 @@ test fn a_superseded_row_does_not_transfer_to_other_producers() -> Bool {
   refused_row_carriers_transfer(
     verdict: SupersededBySingleAuthorityRepair { repaired_by: "an authored fixture" }
   ) == false
+}
+
+// ── THE BUNDLE REFUSAL ────────────────────────────────────────────────────────────────────
+// One closed identity, two declared claims, varied ONLY in what each claim reads off the value.
+// The shape is #13113's `trt_verdicts` in miniature: one record of distinct verdicts, each claim
+// projecting its own field. A fold without the refusal admits all four; a fold refusing every
+// projection reds the same-field and mixed controls.
+fn probe_reads(producer: String, reads: List<ClaimConsumerRead>) -> CallSiteDemandObservation {
+  ClosedCallSiteDemand {
+    producer: producer,
+    argument_preimage: "()",
+    identity: probe_identity(),
+    claims: probe_claim_names(claims: 2),
+    planned_claims: 2,
+    sites: ["v2/test/bundle.dag:10-40", "v2/test/bundle.dag:50-80"],
+    reads: reads
+  }
+}
+
+fn reads_of(first: ConsumerRead, second: ConsumerRead) -> List<ClaimConsumerRead> {
+  [
+    ClaimConsumerRead { claim: "v2.test.probe.claim_1", read: first },
+    ClaimConsumerRead { claim: "v2.test.probe.claim_2", read: second }
+  ]
+}
+
+fn sole_projections_named(d: CrossClaimShareDerivation, fields: List<String>) -> Bool {
+  any(xs: d.declined, predicate: fn(row) {
+    match row.decline {
+      BundleOfDisjointProjections { sole_projections: s } =>
+        (length(xs: s) == length(xs: fields))
+          && (length(xs: filter(xs: fields, predicate: fn(f) { any(xs: s, predicate: fn(x) { x == f }) })) == length(xs: fields))
+      _ => false
+    }
+  })
+}
+
+test fn two_claims_reading_the_same_projection_are_admitted() -> Bool {
+  let d = probe_derive(observations: [probe_reads(producer: "v2.probe.bundle.same_field", reads: reads_of(first: ProjectedField { field: "bare_body" }, second: ProjectedField { field: "bare_body" }))])
+  (length(xs: d.admitted) == 1) && (length(xs: d.declined) == 0)
+}
+
+test fn two_claims_reading_disjoint_projections_are_declined_as_a_bundle() -> Bool {
+  let d = probe_derive(observations: [probe_reads(producer: "v2.probe.bundle.trt_verdicts", reads: reads_of(first: ProjectedField { field: "bare_body" }, second: ProjectedField { field: "minus_body" }))])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.bundle.trt_verdicts", decline: BundleOfDisjointProjections { sole_projections: [] })
+    && sole_projections_named(d: d, fields: ["bare_body", "minus_body"])
+}
+
+// THE MIXED CASE, DECIDED: a whole-value reader demands every field, so the projecting claim's
+// slice is demanded twice and the identity is one shared value: admitted.
+test fn a_whole_value_reader_beside_a_projecting_one_is_admitted() -> Bool {
+  let d = probe_derive(observations: [probe_reads(producer: "v2.probe.bundle.mixed", reads: reads_of(first: WholeValue, second: ProjectedField { field: "bind_body" }))])
+  (length(xs: d.admitted) == 1) && (length(xs: d.declined) == 0)
+}
+
+// A slice only one claim reads is declined even when another slice is shared: the shared field
+// is not named, the private one is.
+test fn a_private_slice_beside_a_shared_one_is_declined_naming_only_the_private_slice() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.probe.bundle.partly_shared",
+      argument_preimage: "()",
+      identity: probe_identity(),
+      claims: probe_claim_names(claims: 3),
+      planned_claims: 3,
+      sites: ["v2/test/bundle.dag:90-99"],
+      reads: [
+        ClaimConsumerRead { claim: "v2.test.probe.claim_1", read: ProjectedField { field: "x" } },
+        ClaimConsumerRead { claim: "v2.test.probe.claim_2", read: ProjectedField { field: "x" } },
+        ClaimConsumerRead { claim: "v2.test.probe.claim_3", read: ProjectedField { field: "y" } }
+      ]
+    }
+  ])
+  (length(xs: d.admitted) == 0) && sole_projections_named(d: d, fields: ["y"])
+}
+
+// NEVER WIDEN: a consumer whose projection the observer could not read is declined with the
+// cause, never judged as the whole value.
+test fn an_unreadable_consumer_is_declined_with_its_cause() -> Bool {
+  let d = probe_derive(observations: [probe_reads(producer: "v2.probe.bundle.unread", reads: reads_of(first: WholeValue, second: ConsumerReadUnobserved { cause: ProjectionFieldNameUnreadable }))])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.bundle.unread", decline: ConsumerReadUnknown { cause: ProjectionFieldNameUnreadable })
+    && cross_claim_share_derivation_reconciles(observations: [probe_reads(producer: "v2.probe.bundle.unread", reads: reads_of(first: WholeValue, second: ConsumerReadUnobserved { cause: ProjectionFieldNameUnreadable }))], derivation: d)
 }
