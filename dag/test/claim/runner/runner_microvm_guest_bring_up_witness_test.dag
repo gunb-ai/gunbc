@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present, Absent }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused }
 import gunbc.runner_microvm_lifecycle {

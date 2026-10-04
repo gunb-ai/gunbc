@@ -6,7 +6,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import product.placement_supply { HostIdentity }
 import gunbc.ci_fleet { mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu }
 import gunbc.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.runner_slot_allocation { compute_host_cpu_admitted_width }
 import gunbc.machine_intake_host_capture_envelope { BoundHostCaptureEnvelope, HostCaptureBoundSection, KernelBootId }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }

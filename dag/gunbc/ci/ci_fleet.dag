@@ -16,7 +16,7 @@ import gunbc.fleet_intent {
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
