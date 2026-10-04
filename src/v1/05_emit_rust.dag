@@ -12571,6 +12571,12 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
   }
 }
 
+// A unit-element accumulator rendering is an inference gap, not a type, so both fold realizations
+// leave it to the target's inference rather than annotate it.
+fn rust_fold_safe_acc_type(acc_type_str: String) -> String {
+  if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+}
+
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, elem_borrowed: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda =>
@@ -12578,7 +12584,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
 
-      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+      let safe_acc_type = rust_fold_safe_acc_type(acc_type_str: acc_type_str)
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
@@ -12789,13 +12795,91 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
   }
-  let fold_fn = match args |> skip(1) |> first {
-    Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
-    Absent => "compile_error!(\"missing fold function argument\")"
-  }
   let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
-  concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
+  let iter_str = apply_type_template1(template: iter_template, arg0: recv_str)
+  let step_awaits = match args |> skip(1) |> first {
+    Present { value: a } => rust_expr_reaches_awaited_call(n: arg_value(n: a), registry: registry, source_indices: scope.type_env.source_indices)
+    Absent => false
+  }
+  if step_awaits {
+    emit_rust_effectful_fold_loop(lambda_expr: fold_lambda_node, iter_str: iter_str, init_str: init_str, acc_type_str: lambda_acc_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+  } else {
+    let fold_fn = match args |> skip(1) |> first {
+      Present { value: a } =>
+        emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+      Absent => "compile_error!(\"missing fold function argument\")"
+    }
+    concat(iter_str, ".fold(", init_str, ", ", fold_fn, ")")
+  }
+}
+
+// A FOLD IS A BOUNDED LOOP, AND `Iterator::fold` IS ONLY ONE REALIZATION OF IT -- THE ONE THAT
+// PRESUMES A PURE STEP. The step is handed to fold as a closure, and a Rust closure is a separate,
+// synchronous frame: an effectful callee inside it is emitted, by the one authority every call site
+// asks (item_is_effectful_callee, and the typed service-call predicate), with `.await?`, which is
+// E0728 in that frame (four sites on the approval broker's native closure, among them
+// gunbc.auth.approval_decision_store pending_escalations). The closure is the wrong link, not the
+// await: the enclosing fn is already async BECAUSE it reaches that effect, so the step belongs in
+// the enclosing frame, where both the await and the `?` mean what they mean everywhere else in the
+// fn -- the effect's refusal propagates out of the fold exactly as it would out of a let. That is
+// the same move the tail-call lowering makes for effectful recursion (a loop over a mutable state
+// slot in the caller's frame, not a recursive async call), applied to the Loop behavior fold
+// already is. The step's parameters are bound as lets per element in declaration order, so the
+// body is emitted by the ordinary expression emitter against the same lambda scope the closure
+// realization uses; nothing about the body is re-derived here.
+fn emit_rust_effectful_fold_loop(lambda_expr: Node, iter_str: String, init_str: String, acc_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  match lambda_expr.expr_data {
+    ExprLambda =>
+      let si = scope.type_env.source_indices
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: si)
+      let pn = lambda_expr.children |> skip(1)
+      let acc_param_type = rust_fold_safe_acc_type(acc_type_str: acc_type_str)
+      let acc_name = match ps |> first { Present { value: n } => n  Absent => "_" }
+      let elem_name = match ps |> skip(1) |> first { Present { value: n } => n  Absent => "_" }
+      let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
+      let body_str = emit_typed_expr(texpr: lambda_body(texpr: lambda_expr), registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      let acc_ident = if acc_name == "_" { "_" } else { emit_ident(name: acc_name, target: Rust) }
+      let elem_ident = if elem_name == "_" { "_" } else { emit_ident(name: elem_name, target: Rust) }
+      let acc_decl = if acc_param_type == "_" || acc_param_type == "" { "" } else { concat(": ", acc_param_type) }
+      let acc_unwrap = if acc_name != "_" && set_contains(emit_info.owned_bindings, acc_name) {
+        concat("let ", acc_ident, " = v1_rt::take_owned(", acc_ident, "); ")
+      } else { "" }
+      concat(
+        "{ let mut __fold_acc", acc_decl, " = ", init_str, "; ",
+        "for __fold_elem in ", iter_str, " { ",
+        "let ", acc_ident, " = __fold_acc; ", acc_unwrap,
+        "let ", elem_ident, " = __fold_elem; ",
+        "__fold_acc = { ", body_str, " }; ",
+        "} __fold_acc }"
+      )
+    _ => emit_rust_compile_error_expr(message: "effectful fold step is not a lambda: an effectful function value has no synchronous closure realization and no loop realization")
+  }
+}
+
+// DOES EMITTING THIS EXPRESSION PRODUCE AN `.await?` -- asked of the same two authorities that write
+// one: a source call whose callee item_is_effectful_callee, and a service op through a receiver
+// is_typed_service_call_receiver admits. Nested lambdas are walked too: an await anywhere inside the
+// step forces the step into the async frame, and a nested fold realizes its own loop by this rule.
+fn rust_expr_reaches_awaited_call(n: Node, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let here = match n.expr_data {
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match call_semantics_target(cs: cs) {
+        SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+          match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: owner, decl_name: decl }) {
+            Present { value: info } => item_is_effectful_callee(info: info)
+            Absent => false
+          }
+        _ => false
+      }
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: ServiceMethodSemantics { service_name: _, op_params: _ } } =>
+          is_typed_service_call_receiver(receiver: method_receiver(texpr: n), source_indices: source_indices)
+        _ => false
+      }
+    _ => false
+  }
+  here || n.children |> any(c => rust_expr_reaches_awaited_call(n: c, registry: registry, source_indices: source_indices))
 }
 
 fn fold_lambda_element_unused(lambda_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -18183,6 +18267,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for refusal in context.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
+      "    // THE ADVISORY POPULATION IS THE SAME CONTEXT FACT `census` REPORTS, printed in the same", "\n",
+      "    // shape, so a saved whole-tree receipt carries it without a second pass. Its count is taken", "\n",
+      "    // here, from the context that produced the rows, not from the threaded one at the end.", "\n",
+      "    for advised in context.accepted_file_advisories.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "    \}", "\n",
+      "    let advised_files = context.accepted_file_advisories.len();", "\n",
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
       "    let roster_started = Instant::now();", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
@@ -18267,6 +18358,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"corpus_reads\": corpus_reads,", "\n",
       "            \"modules\": modules.len(),", "\n",
       "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"advised_files\": advised_files,", "\n",
       "            \"resolved\": resolved_ok,", "\n",
       "            \"file_refused\": file_refused,", "\n",
       "            \"resolve_refused\": resolve_refused,", "\n",
