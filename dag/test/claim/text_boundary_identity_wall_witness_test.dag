@@ -257,3 +257,11 @@ test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool {
 test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool {
   admitted(source: "module probe_generic_free_monoid_structural\nimport v2.std.algebra { length }\nimport v2.std.text { string_is_empty }\nfn n(t: v2.std.text.String) -> Int { length(xs: t) }\n")
 }
+
+// THE STRUCTURAL ARGUMENT THAT MUST NOT REFUSE: the shape of target_model apply_emit_spelling_escapes,
+// where a qualified v2.std.text String is the empty value of a generic fold. The first version of the
+// generic-formal check refused it (emit-build), so this accepted control keeps that false refusal from
+// coming back however the host-text reading is tuned.
+test fn c_qualified_text_as_generic_fold_empty_admitted() -> Bool {
+  admitted(source: "module probe_fold_qualified_empty\nimport std.types { List }\nimport v2.std.algebra { fold_list }\nimport v2.std.text { string_is_empty }\nfn f(spelling: v2.std.text.String, xs: List<Int>) -> v2.std.text.String { fold_list(xs: xs, empty: spelling, cons: fn(acc, x) { acc }) }\n")
+}
