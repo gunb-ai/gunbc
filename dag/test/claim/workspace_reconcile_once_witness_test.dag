@@ -56,7 +56,10 @@ test fn canonical_host_offer_round_trips() -> Bool {
 }
 
 test fn host_offer_naming_another_host_than_the_transport_target_refuses() -> Bool {
-  decodes(line: offer_line(), host: "srv1") && !decodes(line: offer_line(), host: "srv3")
+  decodes(line: offer_line(), host: "srv1") && match workspace_host_offer_decode(text: offer_line(), expected_host: "srv3") {
+    WorkspaceHostOfferUndecodable { host: h, reason: r } => (h as String) == "srv3" && r == "host offer names a host other than the observed transport target"
+    WorkspaceHostOfferDecoded { read: _ } => false
+  }
 }
 
 test fn host_offer_with_an_unknown_field_refuses() -> Bool {
