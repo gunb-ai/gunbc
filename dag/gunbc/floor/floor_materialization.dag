@@ -142,66 +142,16 @@ fn floor_index_build_materialization_without_provider(gates: List<Gate>, witness
 // always pay (merry-moth-539's caution, confirmed by the fail-closed gate that redded the
 // mispredicted 4).
 
-// S2a increment C (cross-worker-typecheck-share-design.md §4.5) — process-scoped typecheck store
-// share, declared alongside P1 index-build share.
-
-data floor_typecheck_store_share_note: String = "C2 — the in-process TYPECHECK-STORE share, declared. Adaptive floor workers arm ONE process-scoped typed_module_cache via SharedTypecheckCaches when the memory governor's target_width > 1 (cli_run.rs cross_worker_store + shared_typecheck_store.rs serde byte transport); at width=1 workers stay on private per-index Rc (serde retention without cross-worker benefit breaks CI budget — design §7). The pump thread keeps process_shared_index (private Rc). Identity union-typecheck-store(dag,src/v2) is deliberately distinct from P1's union-index-build. 🟡 dissolve-on: serde byte transport retires when store-path Rc→Arc lands (design §4.2)."
-
-data floor_typecheck_store_share_provider_id: String = "process_shared_typecheck_store"
+// The typecheck-store identity, demanded across processes (C3 below). The in-process share of it
+// across adaptive floor workers (C2) was DELETED with the discovery-corpus width machinery, whose
+// worker shards were its only consumer sites and which no production route reached.
 
 data floor_typecheck_store_identity: String = "union-typecheck-store(dag,src/v2)"
 
-data floor_typecheck_store_share_provider: CacheProvider = provider_row(
-  id: floor_typecheck_store_share_provider_id,
-  scope: [floor_executor_process_frame()],
-  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
-  tier: ReferenceTier,
-  retention: scope_released_retention(capacity: CapacityUnbounded)
-)
-
-data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]
-
-// The two minimum co-readers of the adaptive worker pool at W>=2
-// (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory
-// governor; the ladder counts declared readonly sites, not live W. The pump thread uses private
-// process_shared_index (P1); only admitted worker shards clone Arc<RwLock<SharedTypecheckCaches>>
-// and read the shared typed store.
-
-data floor_typecheck_store_consumer_sites: List<String> = [
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard",
-  "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard:co-reader"
-]
-
-fn floor_typecheck_store_value_usage() -> ValueUsage {
-  ValueUsage {
-    identity: floor_typecheck_store_identity,
-    consumers: floor_typecheck_store_consumer_sites
-      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
-  }
-}
-
-fn floor_typecheck_store_reader_count() -> Int {
-  floor_typecheck_store_consumer_sites |> count
-}
-
-fn floor_typecheck_store_materialization() -> ValueMaterialization {
-  value_materialization(
-    usage: floor_typecheck_store_value_usage(),
-    providers: floor_typecheck_store_share_providers
-  )
-}
-
 data floor_typecheck_store_no_providers: List<CacheProvider> = []
 
-fn floor_typecheck_store_materialization_without_provider() -> ValueMaterialization {
-  value_materialization(
-    usage: floor_typecheck_store_value_usage(),
-    providers: floor_typecheck_store_no_providers
-  )
-}
-
-// C3 — the cross-process tier over the SAME identity as C2. C2 discharges typed-module plurality
-// inside ONE executor process; C3 is the demand that remains when that process is gone. The frame is
+// C3 — the cross-process tier over the typecheck-store identity: the demand between executor
+// processes. The frame is
 // UnboundedSiblingsFrame, not SharedStateFrame: recurring invocations of the fold on a runner host
 // are successive siblings with no shared mutable state to rewire, so there is no LCA process in
 // which the repetition could have been carried, and only a STORE tier can discharge it. No provider

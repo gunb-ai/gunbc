@@ -123,8 +123,6 @@ fn demand_engine_program_body() -> List<MarkdownBlock> {
         row(cells: [cell(text: "hand-authored DependencyView rows"), cell(text: "`v2.program` `program_run_dependencies` and fixture rows")]),
         row(cells: [cell(text: "v2.lens.parallelism (no independent arm; coupling evidence always unresolved)"), cell(text: "`v2.lens.parallelism`")]),
         row(cells: [cell(text: "eval as a recursive child fold"), cell(text: "`00_compile` native driver, `v2.program`, `runtime_run`")]),
-        row(cells: [cell(text: "floor discovery width (`DiscoveryWidthPolicy`, `CONTROLLED_WIDTH`)"), cell(text: "required-floor discovery Rust")]),
-        row(cells: [cell(text: "`derived_realization_schedule.rs`"), cell(text: "`derived_realization_schedule.rs`")]),
         row(cells: [cell(text: "`std.realize_pack` advisory width"), cell(text: "`std.realize_pack`")]),
         row(cells: [cell(text: "`std.realization_width` fallback / minimum-one"), cell(text: "`std.realization_width`")]),
         row(cells: [cell(text: "parse sweep unbounded threads"), cell(text: "`claim_executor`, `declaration_index`, `module_path_index`, `namespace_baseline`")]),

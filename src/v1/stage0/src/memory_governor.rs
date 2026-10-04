@@ -1,7 +1,8 @@
 //! Host memory budget authority and scheduler-hold observation mirrors.
 //!
-//! The AIMD admission controller that lived here is deleted — concurrency is now a
-//! fixed width derived up front by `derived_realization_schedule` from `std.realize_pack`
+//! The AIMD admission controller that lived here is deleted. The fixed-width scheduler that
+//! replaced it (`derived_realization_schedule`) is deleted too, with the discovery-corpus path
+//! that was its only consumer.
 
 // CLIPPY ROSTER -- 12 finding(s) this module trips today, listed one lint per line with
 // its count. Until this commit the generated crate root allowed `clippy::all` plus six
@@ -17,8 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-/// Census anchor for observation witnesses — hold-line mirrors only; scheduling moved to
-/// `derived_realization_schedule`.
+/// Census anchor for observation witnesses — hold-line mirrors only.
 pub const GOVERNOR_CENSUS_MARKER: &str = "[governor]";
 
 fn governor_emoji() -> bool {

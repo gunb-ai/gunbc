@@ -25799,39 +25799,6 @@ fn refuse_stale_frozen_path_deferrals(
     ))
 }
 
-fn refuse_unexecuted_deferred_witnesses(
-    orphans: &[DeferredAdmissionRefusal],
-) -> Result<(), String> {
-    if orphans.is_empty() {
-        return Ok(());
-    }
-    let unclassified = orphans
-        .iter()
-        .filter(|o| o.cause == DeferredAdmissionCause::UnclassifiedPathDeferral)
-        .count();
-    let mut lines: Vec<String> = orphans
-        .iter()
-        .take(8)
-        .map(|o| format!("{} [{}] ({})", o.function, o.cause.label(), o.entry))
-        .collect();
-    if orphans.len() > 8 {
-        lines.push(format!("… and {} more orphan row(s)", orphans.len() - 8));
-    }
-    Err(format!(
-        "WITNESS ADMISSION REFUSAL count={} ({unclassified} UnclassifiedPathDeferral) — enrolled \
-         witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
-         admission invariant). An UnexecutedDeferredWitness matches no policy at all: put it on \
-         falsifier_self_host_wet, bin_witness_wet, falsifier_rehomed_bin_wet, known_red_probe, or \
-         a fixture roster. An UnclassifiedPathDeferral sits under an OfflineLocalRecipe directory, \
-         which stopped being an admission answer on 2026-08-04: a directory cannot decide that a \
-         witness runs, so give it an exact row in gunbc.explicit_witness_admission naming the \
-         cadence that executes it — moving a file under a long/ or offline path removes it from \
-         per-PR discovery and executes it NOWHERE. Rows: {}",
-        orphans.len(),
-        lines.join("; ")
-    ))
-}
-
 fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
     if rows.is_empty() {
         return;
@@ -30378,64 +30345,6 @@ mod node_frontier_plumbing_controls {
     // that is what the first shape of this test asserted, and it was false the moment the freeze
     // started tolerating rows. What holds is: no row REFUSES, and the tolerated population is
     // counted as UNCOVERED rather than folded into the green.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn witness_admission_deferred_rows_refuse_none_and_frozen_debt_is_counted_uncovered() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let excludes = super::witness_exclusion_substrings();
-        let deferred =
-            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
-        let standings = super::classify_deferred_discovery_rows(&deferred);
-        let orphans = super::refusals_from_standings(&standings);
-        super::refuse_unexecuted_deferred_witnesses(&orphans)
-            .unwrap_or_else(|e| panic!("live deferred corpus must contain no refusing row: {e}"));
-        let debt = super::count_legacy_frozen_debt_rows(&standings);
-        assert!(
-            debt > 0,
-            "the frozen legacy debt is non-empty today; a zero here means the freeze stopped \
-             being consulted, not that the debt was paid"
-        );
-        assert!(
-            standings
-                .iter()
-                .filter(|r| r.standing == super::WitnessExecutionStanding::LegacyFrozenPathDeferral)
-                .all(|r| !super::witness_standing_has_executing_consumer(r.standing)),
-            "every tolerated row must answer NO to the coverage question"
-        );
-        let normalize = deferred
-            .iter()
-            .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
-            .expect("03_normalize behavioral receipt must be deferred from discovery");
-        assert!(
-            normalize
-                .entry
-                .contains("self_host_03_normalize_behavioral_witness_test"),
-            "03_normalize receipt entry: got {}",
-            normalize.entry
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn witness_admission_orphan_synthetic_row_refuses() {
-        let orphan = super::DeferredDiscoveryRow {
-            entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag".to_string(),
-            function: "synthetic_orphan_no_consumer_holds".to_string(),
-            exclude_reason: "synthetic_orphan_admission_witness_test.dag".to_string(),
-            reads_live_tree: false,
-        };
-        let orphans = super::collect_unexecuted_deferred_witnesses(&[orphan]);
-        assert_eq!(orphans.len(), 1);
-        assert_eq!(
-            orphans[0].cause,
-            super::DeferredAdmissionCause::UnexecutedDeferredWitness
-        );
-        let err = super::refuse_unexecuted_deferred_witnesses(&orphans).expect_err("orphan");
-        assert!(err.contains("UnexecutedDeferredWitness"));
-    }
-
     fn long_lane_row(function: &str) -> super::DeferredDiscoveryRow {
         super::DeferredDiscoveryRow {
             entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag".to_string(),
@@ -30448,54 +30357,6 @@ mod node_frontier_plumbing_controls {
     // THE WALL, and its discriminator. The row, the offline path policy and the rosters are held
     // identical across both halves; only freeze membership moves. Before 2026-08-04 the offline
     // pattern alone admitted this row, so the refusing half could not have been written.
-    #[test]
-    fn unfrozen_offline_path_row_refuses_as_unclassified_path_deferral() {
-        let offline = vec!["test/claim/long/".to_string()];
-        let row = long_lane_row("relocated_matrix_holds");
-        let refused = super::refusals_from_standings(&super::classify_deferred_discovery_rows_in(
-            std::slice::from_ref(&row),
-            &[],
-            &offline,
-            &[],
-            &[],
-        ));
-        assert_eq!(refused.len(), 1, "an unfrozen offline row must refuse");
-        assert_eq!(
-            refused[0].cause,
-            super::DeferredAdmissionCause::UnclassifiedPathDeferral
-        );
-        let err = super::refuse_unexecuted_deferred_witnesses(&refused).expect_err("refusal");
-        assert!(err.contains("UnclassifiedPathDeferral"));
-        assert!(err.contains("relocated_matrix_holds"));
-
-        let frozen = vec![super::witness_admission_manifest_key(
-            &row.entry,
-            &row.function,
-        )];
-        let standings = super::classify_deferred_discovery_rows_in(
-            std::slice::from_ref(&row),
-            &[],
-            &offline,
-            &[],
-            &frozen,
-        );
-        assert!(
-            super::refusals_from_standings(&standings).is_empty(),
-            "the same row inside the frozen population does not refuse"
-        );
-        // ...and it is TOLERATED, not COVERED. One success arm for both is the defect this split
-        // repaired: the floor may proceed while the coverage question still answers no.
-        assert_eq!(
-            standings[0].standing,
-            super::WitnessExecutionStanding::LegacyFrozenPathDeferral
-        );
-        assert!(
-            !super::witness_standing_has_executing_consumer(standings[0].standing),
-            "a frozen row must never read as covered"
-        );
-        assert_eq!(super::count_legacy_frozen_debt_rows(&standings), 1);
-    }
-
     // A sibling function under the same frozen ENTRY is a different identity: the freeze is a
     // join over (entry, function), so adding a test decl to an already-frozen file still refuses.
     #[test]
@@ -33092,10 +32953,10 @@ mod moduleless_entry_skip_tests {
 mod discovery_summary_merge_tests {
     use super::{
         compute_histogram_data, finalize_discovery_summary, merge_discovery_summaries,
-        project_witness_cost_receipt, repo_relative_dag_path, run_discovery_corpus_with_options,
-        top_n_slowest_witnesses, witness_execution_leg_cache_put, ClaimOutcome,
-        DiscoveryCorpusOptions, DiscoveryRow, DiscoverySummary, DiscoveryWidthPolicy,
-        DiscoveryWitnessOutcome, EntryResolveReceipt, ResolveStageNanos,
+        project_witness_cost_receipt, repo_relative_dag_path, top_n_slowest_witnesses,
+        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
+        DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        ResolveStageNanos,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -33325,49 +33186,6 @@ mod discovery_summary_merge_tests {
             duplicate.contains("multiple parent resolve-phase events"),
             "{duplicate}"
         );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn production_discovery_projects_one_real_witness() {
-        let roots = source_roots();
-        let entry = std::path::Path::new(&roots[0])
-            .join("test/claim/witness_row_cost_projection_witness_test.dag")
-            .to_string_lossy()
-            .into_owned();
-        let function = "witness_row_cost_projection_holds".to_string();
-        // Execution-leg derivation has its own discriminating test and currently resolves a
-        // workspace-relative authority against process CWD. Cargo runs unit tests from the
-        // package directory, so prime the independently proven default for this fixture rather
-        // than mutating process-wide CWD. The discovery, timing, event, and projection path below
-        // remains the production path this test owns.
-        witness_execution_leg_cache_put(&repo_relative_dag_path(&entry), "InterpretedLeg");
-        let summary = run_discovery_corpus_with_options(
-            &roots,
-            &[],
-            &[(entry.clone(), function.clone())],
-            ExecutionMode::Hermetic,
-            DiscoveryWidthPolicy::Serial,
-            DiscoveryCorpusOptions {
-                execution_authority_source_roots: roots.clone(),
-                explicit_roster_only: true,
-                exclude_substrings: Vec::new(),
-                ..Default::default()
-            },
-        )
-        .expect("one-row discovery must execute");
-        assert_eq!(summary.total, 1);
-        assert_eq!(summary.passed, 1);
-        assert_eq!(summary.witness_outcomes.len(), 1);
-        assert_eq!(summary.entry_resolve_receipts.len(), 1);
-
-        let rows = project_witness_cost_receipt(&roots, &summary)
-            .expect("real discovery summary must pass the authored projector");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].entry, entry);
-        assert_eq!(rows[0].function, function);
-        assert_eq!(rows[0].outcome, "Done");
-        assert_eq!(rows[0].detail, "");
     }
 }
 
