@@ -161,6 +161,7 @@ import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
+  v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings,
   v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
@@ -8573,6 +8574,7 @@ fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
   eq_param_names: List<String>,
   map_key_param_names: List<String>,
+  set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
@@ -8588,7 +8590,13 @@ fn v1_fn_bounds_by_param(
       Absent => map_insert(m, n, rust_map_key_bound_traits())
     }
   )
-  static_param_names |> fold(init: with_key, f: (m, n) =>
+  let with_set = set_element_param_names |> fold(init: with_key, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, unique_strings(items: concat(traits, v1_set_element_bound_spellings())))
+      Absent => map_insert(m, n, v1_set_element_bound_spellings())
+    }
+  )
+  static_param_names |> fold(init: with_set, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
       Absent => map_insert(m, n, ["'static"])
@@ -9236,6 +9244,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     generic_param_names: generic_param_names,
     source_indices: si
   )
+  let set_element_param_names = v1_fn_signature_set_element_param_names(
+    signature_type_exprs: list_push(value_params |> map(p => param_node_type_expr(n: p)), inferred),
+    generic_param_names: generic_param_names,
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: si
+  )
   let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
   let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
   let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
@@ -9255,9 +9269,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     clone_param_names: clone_param_names,
     eq_param_names: eq_param_names,
     map_key_param_names: map_key_param_names,
+    set_element_param_names: set_element_param_names,
     static_param_names: static_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (static_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (set_element_param_names |> count) > 0 || (static_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
@@ -11923,6 +11938,26 @@ fn rust_param_type_is_type_variable(param_type: Node, source_indices: Map<String
   }
 }
 
+// A FUNCTION VALUE IS NEVER ITSELF AN EMPTY OPTIONAL. A typed LAMBDA node carries its BODY's type
+// as its own inferred type (v1.compiler.infer_types, the ExprLambda arm: `inferred:
+// body_typed.inferred`), so a lambda returning `String?` read here as "an optional argument", and
+// against a parameter declared `fn(X) -> T` -- an arrow, neither `?` nor a bare type variable,
+// hence "required" -- the guard appended `.expect(..)` to the lambda. Rust parses that suffix into
+// the closure BODY, so the closure then returned the unwrapped payload:
+// `store_object_line_fold(.., malformed: t => Present { value: t })` instantiated at T = String?
+// emitted `|t| Some(t.clone()).expect(..)`, a closure returning String where the instantiation
+// demands Option<String> (E0308, two sites in std.materialization_object), and at runtime it would
+// have panicked on every `none` arm the fold exists to return. The argument's SHAPE is the fact
+// asked: a lambda expression, or a value whose type is an arrow, is a callable and is passed as
+// written. Whether a callable's return type inhabits the parameter's declared return is the
+// inhabitance judgment's question at inference, never an unwrap decided here.
+fn rust_call_arg_is_function_value(arg: Node) -> Bool {
+  match arg.expr_data {
+    ExprLambda => true
+    _ => resolved_type(n: arg).connective == Arrow
+  }
+}
+
 fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String, source_indices: Map<String, NewlineIndex>) -> String {
   match callee {
     Present { value: info } =>
@@ -11930,7 +11965,7 @@ fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo
         Present { value: param } =>
           let param_type = param_node_type_expr(n: param)
           let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
-          let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
+          let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional && !rust_call_arg_is_function_value(arg: arg)
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
           } else {
