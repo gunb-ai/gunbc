@@ -51,3 +51,18 @@ test fn a_direct_index_write_is_an_admission_refusal() -> Bool {
 test fn a_direct_settled_acquire_is_an_admission_refusal() -> Bool {
   admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled") == 1
 }
+
+// THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
+// generations, are reachable only from the store's own paths -- a direct call could write an
+// unindexed file, or apply this store's window to a slot that keeps every generation.
+data direct_create_new_source: String = "module probe_store_direct_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
+
+data direct_settle_slot_source: String = "module probe_store_direct_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
+
+test fn a_direct_store_file_create_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_create_new_source, callee: "local_store_create_new") == 1
+}
+
+test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot") == 1
+}

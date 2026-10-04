@@ -279,12 +279,22 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
   }
 }
 
-fn local_store_read(path: String) -> FilesystemExactRead {
+fn local_store_read(path: String) -> FilesystemExactRead
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
+  ]
+{
   let r = Filesystem.Read(path: path)
   filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind)
 }
 
-fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew {
+fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_initialize"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+  ]
+{
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
 }
@@ -609,7 +619,12 @@ fn local_store_stale_generations(gs: List<CasGeneration>, k: Int) -> List<CasGen
   gs |> filter(g => cas_generation_count(g: g) <= head - k)
 }
 
-fn local_store_settle_slot(root_path: String, key: NonEmptyStr) -> LocalStoreSlotSettlement {
+fn local_store_settle_slot(root_path: String, key: NonEmptyStr) -> LocalStoreSlotSettlement
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_current"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_family_hold"),
+  ]
+{
   match cas_generation_window(k: local_store_index_window_k) {
     CasGenerationWindowTooNarrow { k: k } => LocalStoreSlotWindowTooNarrow { k: k }
     CasGenerationWindowAdmitted { window: w } =>
@@ -682,7 +697,15 @@ type LocalStoreIndexRead
   = LocalStoreIndexAt { index: LocalStoreIndex, expected: CasExpectation }
   | LocalStoreIndexUnavailable { refusal: LocalStoreIndexRefusal }
 
-fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead {
+fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_indexed_names"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "only_canonical_object_names_are_indexed_or_swept_by_real_execution"),
+    decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "index_row_count"),
+  ]
+{
   match local_store_index_retention() {
     Absent => LocalStoreIndexUnavailable { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
     Present { value: retention } =>
@@ -922,7 +945,14 @@ type LocalStoreHoldCheck
   = LocalStoreHoldCurrent
   | LocalStoreHoldNotCurrent { observed: DurableHoldObservation }
 
-fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck {
+fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_held"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_held"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_under"),
+  ]
+{
   let observed = observe_file_hold(root: materialization_store_root_path(root: held.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), retention: held.retention)
   match observed {
     HoldSlotHeld { generation: g, owner: o } =>
