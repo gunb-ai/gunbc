@@ -2,7 +2,7 @@ module gunbc.spark.serving_arm_launch
 
 import std.types { List, NonEmptyStr, String, Port }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }

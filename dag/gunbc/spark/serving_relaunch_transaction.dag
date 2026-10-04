@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
   DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping, DockerMount, BindMount, VolumeMount, TmpfsMount,

@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { byte_size, Kibibyte }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }

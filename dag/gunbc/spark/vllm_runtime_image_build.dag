@@ -8,7 +8,7 @@ import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, Second, second, ByteSize, byte_size, byte_size_count, Kibibyte, kibibyte }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
 import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live, release_host_effect_live, spark_unplaced_hosts_of, spark_host_standings_live, CurrentStandingsRead, CurrentStandingsUnread }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }

@@ -15,7 +15,7 @@ import v2.std.algebra { zip_map }
 import std.measure { Kibibyte, kibibyte, basis_point_count, BasisPoint }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash, content_hash_atom }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.docker.cli { DockerEnvAssignment, docker_ps_running_all_command }
 import gunbc.compute.host_occupancy { HostOccupant, ServingUnitActive, GpuComputeProcess, HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead, host_operation_leg, HostOperationLegRead, HostOperationLegUnread, read_host_occupancy, admit_host_occupancy, host_occupancy_refusal, host_occupant_wire }
 import gunbc.host_operation_exec { SystemctlStop, NvidiaSmiQueryComputeApps, ProcfsReadPidCgroup }

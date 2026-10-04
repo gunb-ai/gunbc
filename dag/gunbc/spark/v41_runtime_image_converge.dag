@@ -7,9 +7,9 @@ import v2.std.optional { Present, Absent }
 
 import extdeps.container.oci.digest { OciContentDigest, OciSha256Digest, parse_oci_content_digest_wire, render_oci_content_digest_wire }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-
-import product.placement_supply { HostIdentity }
-
+import std.measure { Second, second }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec }
 import extdeps.exec.command { argv_words }
 import extdeps.flashinfer.flashinfer { FlashInferWheel, flashinfer_0_7_1rc1_wheel_url }
 import extdeps.posix.sh_invocation { posix_sh_script_command }

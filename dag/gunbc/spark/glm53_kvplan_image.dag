@@ -16,7 +16,7 @@ import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld
 import gunbc.spark.vllm_runtime_image_build { VllmImageDistributionSubject }
 import extdeps.container.oci.digest { OciSha256Digest }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.runtime_architecture_registry_reading { registry_dump_architectures, registry_dump_count }
 

@@ -3,7 +3,7 @@ module gunbc.spark.glm53_staircase_load
 import std.types { String, List, NonEmptyStr }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint }
 import gunbc.spark.serving_arm { serving_checkpoint_row, serving_runtime_row, runtime_pin_reference }

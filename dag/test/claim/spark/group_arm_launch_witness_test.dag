@@ -8,7 +8,7 @@ import extdeps.systemd { Active }
 import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }
 import gunbc.compute.host_occupancy { HostOccupant, HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.serving_capacity_intent { scheduler_envelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused }
 import gunbc.spark.group_arm_launch {

@@ -1045,7 +1045,7 @@ fn docker_inspect_nested_network_settings(obj: JsonValue) -> NestedObjectRead<Ne
 // ONE FOLD, NOT THREE INSTANTIATIONS OF IT. A first cut carried a byte-identical copy per nested
 // type because the field access at ONE call site could not infer `T` -- and the answer to that is
 // to name the type at that site, not to mint three declarations of one concept in a shared decoder.
-fn nested_value(r: NestedObjectRead<T>) -> T? {
+fn nested_value<T>(r: NestedObjectRead<T>) -> T? {
   match r {
     NestedAbsent => none
     NestedMalformed { causes: _ } => none
@@ -1053,7 +1053,7 @@ fn nested_value(r: NestedObjectRead<T>) -> T? {
   }
 }
 
-fn nested_causes(r: NestedObjectRead<T>) -> List<String> {
+fn nested_causes<T>(r: NestedObjectRead<T>) -> List<String> {
   match r {
     NestedAbsent => []
     NestedMalformed { causes: cs } => cs

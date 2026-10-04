@@ -4,7 +4,7 @@ import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_ca
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
 import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_bootstrap_principal_session {

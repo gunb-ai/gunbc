@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.types { Int }
 import v2.std.optional { Present, Absent }
 import std.content_hash { sha256_hex_digest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory }
 import gunbc.artifact_acquisition {
   AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquire_artifact, acquisition_refusal_text,

@@ -8,7 +8,7 @@ import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork }
 import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import extdeps.vllm.engine_args { VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, VllmPrefixCachingRequest, PrefixCachingExplicit }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
 import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }

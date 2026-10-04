@@ -1,6 +1,6 @@
 module gunbc.spark.arm_group_launch_dispatch
 
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { String, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }

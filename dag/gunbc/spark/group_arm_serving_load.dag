@@ -9,7 +9,7 @@ import std.measure { token_count_value }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
 import gunbc.spark.serving_promotion { WorkloadCalibrationReceipt }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, vllm_bench_serve_request, RandomDatasetSpec, SendAllImmediately, OpenaiChat }
 import extdeps.linux.psi { PsiReading, parse_psi }

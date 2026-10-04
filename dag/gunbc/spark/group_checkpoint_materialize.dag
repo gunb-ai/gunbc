@@ -8,7 +8,7 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.artifact_acquisition { AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.snapshot_rail_replica { replicate_snapshot_over_rail, SnapshotReplicated, SnapshotReplicaRefused, snapshot_hub_paths }
 import std.measure { gibibyte_count }
 import std.algebra { trim }
