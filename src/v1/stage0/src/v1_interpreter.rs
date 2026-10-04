@@ -6170,6 +6170,20 @@ pub fn run_in_context_with_args(
     })
 }
 
+/// The authored parameter names `entry_fn` declares, in declaration order; `None` when the
+/// closure holds no such function. A host seam that calls one entry reads this to supply
+/// arguments from the entry's declaration rather than from a host-side list of names.
+pub fn declared_parameter_names(ctx: &InterpContext, entry_fn: &str) -> Option<Vec<String>> {
+    let fn_node = ctx.lookup_fn(entry_fn)?;
+    Some(
+        fn_node
+            .params
+            .iter()
+            .map(|p| authored_name_at(ctx.si(), p.clone()))
+            .collect(),
+    )
+}
+
 /// Peak parent-chain depth observed across `call_function` frames in the last
 /// `run_in_context*` invocation (test witness for lexical-base scoping).
 #[cfg(any(test, feature = "interp_test_witness"))]

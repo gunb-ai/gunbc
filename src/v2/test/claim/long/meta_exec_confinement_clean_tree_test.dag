@@ -13,7 +13,6 @@ import v2.std.layer_import_scan { layer_import_facts_live }
 import v2.std.algebra { is_empty }
 import std.algebra { list_append }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

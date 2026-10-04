@@ -19,9 +19,12 @@ import gunbc.machine_intake_mtcollins1_smpro_error_reading {
   SmproErrorWindow,
   mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
-  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, mtcollins1_smpro_dossier_text,
+import gunbc.machine_intake_ampere_smpro_observation {
+  SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_dossier_text,
+  SmproPassObservation, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture,
 }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, SmproPassEvidence,
   HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead, WatchdogUnobserved,
@@ -31,6 +34,20 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED OUTCOMES, RENDERED AGAINST mtcollins1's REAL ADMITTED SITE. A refused site yields no
+// observation: the account then sees no pass and the dossier the marker, so claims expecting a
+// record fail rather than pass on an empty fold.
+fn observed(outcomes: List<SmproProbeOutcome>) -> SmproPassObservation? {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => Present { value: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }
+    SmproSiteRefused { cause: _ } => none
+  }
+}
+
+fn dossier_of(outcomes: List<SmproProbeOutcome>) -> String {
+  match observed(outcomes: outcomes) { Present { value: o } => smpro_pass_dossier_text(obs: o) Absent => "FIXTURE SITE REFUSED" }
+}
 
 // ── field predicates ────────────────────────────────────────────────────────────────────────────
 
@@ -243,7 +260,7 @@ fn account_of(outcomes: List<SmproProbeOutcome>) -> PowerOnAccount {
       requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
       cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
     },
-    handoff: HandoffPoweredOn, smpro: [SmproPassEvidence { label: "pass", outcomes: outcomes }],
+    handoff: HandoffPoweredOn, smpro: match observed(outcomes: outcomes) { Present { value: o } => [SmproPassEvidence { label: "pass", observation: o }] Absent => [] },
     console: ConsoleNotRead, sel: SelEventsNotRead, watchdog: WatchdogUnobserved { reason: "witness" },
     bmc_anomalies: [], census_ended: false, coverage: [],
   })
@@ -274,5 +291,5 @@ test fn red_a_missing_info_word_decodes_nothing_and_says_why() -> Bool {
   let os = pmpro_words(socket: 1, info_hi: "22 44")
   let without_hi = concat(os.take(n: 3), os.skip(n: 4))
   !any(mtcollins1_power_on_account_notes(a: account_of(outcomes: without_hi)), x => contains(x, "ERR_CCIX"))
-    && contains(mtcollins1_smpro_dossier_text(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
+    && contains(dossier_of(outcomes: without_hi), "SMpro socket 1: PMpro records UNAVAILABLE (ERR_PMPRO_INFO_HI was not probed)")
 }

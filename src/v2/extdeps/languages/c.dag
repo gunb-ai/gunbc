@@ -142,7 +142,6 @@ import v2.std.compilers.compilation_unit {
   resolve_member_interfaces,
   type_definition_row_identity
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

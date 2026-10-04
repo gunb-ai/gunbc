@@ -1,4 +1,5 @@
 module std.primitives
+import std.types { List }
 
 type Certainty = Proven | Amortized | Expected | Conservative
 

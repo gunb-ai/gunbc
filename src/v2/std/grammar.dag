@@ -42,7 +42,6 @@ import v2.std.node_query {
   named_child_lookup
 }
 import v2.std.compilers.lexing { LexRules }
-import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node {
   Atom,

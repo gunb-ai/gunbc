@@ -1,8 +1,8 @@
 module std.induction
 
-import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int }
+import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentUnknown, DivideByTwo, NonIncreasing, OneStep, Strict, TreeSize }
 
-import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound }
+import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
 import std.algebra {
@@ -11,7 +11,12 @@ import std.algebra {
   ShapeIterateBody,
   ShapeLinearScan,
   ShapeSortBody,
+  Equal,
+  Greater,
+  Less,
+  Ordering
 }
+import std.types { List }
 
 
 type RecursionShape

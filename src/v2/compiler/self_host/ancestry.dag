@@ -3,7 +3,6 @@ module v2.compiler.self_host.ancestry
 import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
-import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
