@@ -2110,6 +2110,13 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   }
 }
 
+// A DECLARATION'S OWN FORMALS ARE UNBOUND ATOMS TOO. A fold whose init is a bare constructor
+// (`init: Ok { value: .. }`) carries the parametric DECLARATION as its accumulator type, and its
+// renderer spells the declaration's formals as arguments: `Rc<Result<ok, err>>` on
+// extdeps.dns.domain_name parse_dns_label_list, two E0425s. The walk below read children and an
+// applied binding but never `params`, so a declaration node with no applied binding answered
+// "bound" and the closure annotation was written. With no applied binding, a formal outside the
+// fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
@@ -2129,7 +2136,7 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
   } else {
     match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
       Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => false
+      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
     }
   }
 }

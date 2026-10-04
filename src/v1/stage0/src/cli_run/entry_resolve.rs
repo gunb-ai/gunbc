@@ -1033,7 +1033,6 @@ pub fn try_process_shared_index_for_pool(
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
@@ -1046,10 +1045,6 @@ pub fn try_process_shared_index_for_pool(
         walk_started.elapsed(),
     );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
-    discovery_phase_totals::add(
-        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
-        build_started.elapsed(),
-    );
     PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });

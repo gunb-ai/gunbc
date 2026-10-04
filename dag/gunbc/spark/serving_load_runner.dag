@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { second }
 import v2.std.optional { Present, Absent }
 import v2.std.collection { list_at_optional }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.tools.curl { curl_bounded_get_argv }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
