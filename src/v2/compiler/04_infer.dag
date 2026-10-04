@@ -3295,7 +3295,8 @@ fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Sy
       } else {
         optional_absent()
       }
-    _ => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -3327,9 +3328,11 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
                   }
                 })
               }
-            _ => InferFormalShapeMismatch
+            TypeNode { connective: _ } => InferFormalShapeMismatch
+            ComputationNode { behavior: _ } => InferFormalShapeMismatch
           }
-        _ => InferFormalMatched { instances: instances }
+        TypeNode { connective: _ } => InferFormalMatched { instances: instances }
+        ComputationNode { behavior: _ } => InferFormalMatched { instances: instances }
       }
   }
 }
@@ -3355,7 +3358,8 @@ fn infer_type_instantiated(t: Node, instances: List<TypeVariableInstance>) -> No
             } else {
               Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
             }
-          _ => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+          TypeNode { connective: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
+          ComputationNode { behavior: _ } => Node { kind: self.kind, children: [], occurrence_id: self.occurrence_id }
         }
       },
       step: fn(acc, edge, sub) {
