@@ -10,9 +10,9 @@ import extdeps.languages.typescript.program {
 // Undo restores order, focus and expansion together. Unknown or cyclic nesting never invents a project.
 //
 // THE ISSUE LINK NAVIGATES; THE ROW FOCUSES (owner ruling): clicking the title link follows the
-// link to the issue page, and the project's topological strip is a separate trigger -- the
-// "topological sort" chip, or focusing a row by clicking its body (not its title) or pressing
-// Enter/Space on it. Intercepting the link click to open the strip instead stole navigation.
+// link to the issue page. Focusing a row by clicking its body (not its title) or pressing
+// Enter/Space opens its project strip. The global topological-sort trigger was removed by the
+// owner on 2026-10-04. Intercepting a title link to open the strip instead would steal navigation.
 fn issue_sort_bind_statements() -> List<TsStmt> {
 [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".roadmap-frontier")]), property: "forEach"), args: [ts_arrow(params: ["root"], body: ts_block(stmts: [
@@ -22,10 +22,9 @@ ts_return(expr: none)
 ]), else_stmt: none),
 ts_const(name: "list", value: ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelector"), args: [ts_lit_str(value: "ul")])),
 ts_const(name: "buttons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelectorAll"), args: [ts_lit_str(value: "[data-sort-key]")])])),
-ts_const(name: "topological", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-topological")])),
 ts_const(name: "undo", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-undo")])),
 ts_const(name: "status", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-status")])),
-ts_if(cond: ts_binop(left: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "list")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "topological"))), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "undo"))), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "status"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "list")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "undo"))), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "status"))), then: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_const(name: "rows", value: ts_arrow(params: [], body: ts_block(stmts: [
@@ -65,9 +64,8 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "textContent"), op: "=", right: ts_binop(left: ts_ident(name: "label"), op: "+", right: ts_cond(test: ts_ident(name: "active"), consequent: ts_cond(test: ts_binop(left: ts_ident(name: "direction"), op: "===", right: ts_lit_str(value: "ascending")), consequent: ts_lit_str(value: " ↑"), alternate: ts_lit_str(value: " ↓")), alternate: ts_lit_str(value: ""))))),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "setAttribute"), args: [ts_lit_str(value: "aria-label"), ts_binop(left: ts_binop(left: ts_lit_str(value: "Sort by "), op: "+", right: ts_ident(name: "label")), op: "+", right: ts_cond(test: ts_binop(left: ts_ident(name: "active"), op: "&&", right: ts_binop(left: ts_ident(name: "direction"), op: "===", right: ts_lit_str(value: "ascending"))), consequent: ts_lit_str(value: ", descending next"), alternate: ts_lit_str(value: ", ascending next")))]))
 ]))])),
-ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "topological"), property: "setAttribute"), args: [ts_lit_str(value: "aria-pressed"), ts_cond(test: ts_ident(name: "topo"), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false"))])),
-ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "topological"), property: "classList"), property: "toggle"), args: [ts_lit_str(value: "chip-on"), ts_ident(name: "topo")])),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "undo"), property: "disabled"), op: "=", right: ts_binop(left: ts_member(object: ts_ident(name: "history"), property: "length"), op: "===", right: ts_lit_num(text: "0")))),
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "undo"), property: "hidden"), op: "=", right: ts_binop(left: ts_member(object: ts_ident(name: "history"), property: "length"), op: "===", right: ts_lit_num(text: "0")))),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "controls"), property: "hidden"), op: "=", right: ts_prefix(op: "!", expr: ts_ident(name: "project")))),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "detail"), property: "href"), op: "=", right: ts_binop(left: ts_lit_str(value: "/issue/"), op: "+", right: ts_call(callee: ts_ident(name: "encodeURIComponent"), args: [ts_ident(name: "selected")])))),
 ts_const(name: "completed", value: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "rows"), args: []), property: "filter"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [
@@ -204,30 +202,6 @@ ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "All issues; original order restored.")))
 ]))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "undo"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_ident(name: "restore")])),
-ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "topological"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
-ts_if(cond: ts_ident(name: "topo"), then: ts_block(stmts: [
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "remember"), args: [])),
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "place"), args: [ts_ident(name: "initial")])),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "false"))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "project"), op: "=", right: ts_lit_str(value: ""))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "selected"), op: "=", right: ts_lit_str(value: ""))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "expanded"), op: "=", right: ts_ident(name: "false"))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_lit_str(value: ""))),
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Topological mode off; original order restored."))),
-ts_return(expr: none)
-]), else_stmt: none),
-ts_const(name: "ordered", value: ts_call(callee: ts_ident(name: "orderedTopologically"), args: [])),
-ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "ordered")), then: ts_block(stmts: [
-ts_return(expr: none)
-]), else_stmt: none),
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "remember"), args: [])),
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "place"), args: [ts_ident(name: "ordered")])),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "true"))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_lit_str(value: ""))),
-ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Prerequisites before dependents. Select a task to focus its project.")))
-]))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "buttons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
 ts_const(name: "nextKey", value: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortKey")),

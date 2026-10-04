@@ -33,8 +33,26 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: MaxWidth, value: "100%"),
       decl(prop: Padding, value: "var(--space-24)")
     ] },
+    StaticRule { selector: RawSelector { text: ".workspace-meta, .workspace-toolbar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_pair(a: space_4, b: space_12))
+    ] },
+    StaticRule { selector: RawSelector { text: ".workspace-meta .program-progress" }, decls: [
+      decl(prop: MarginLeft, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-hidden-summary" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole)
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-sort-undo[hidden], .issue-sort-status:empty" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
     StaticRule { selector: RawSelector { text: ".issue-controls" }, decls: [
       decl(prop: Display, value: "flex"),
+      decl(prop: Flex, value: "1 1 40ch"),
+      decl(prop: MinWidth, value: "0"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: FlexWrap, value: "wrap")

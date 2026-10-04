@@ -78,8 +78,14 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Width, value: "100%"),
       decl(prop: Height, value: "100%")
     ] },
-    StaticRule { selector: RawSelector { text: ".header-account-slot" }, decls: [
+    StaticRule { selector: RawSelector { text: ".header-utilities" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-4)"),
       decl(prop: MarginLeft, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-slot" }, decls: [
+      decl(prop: MarginLeft, value: "var(--space-4)")
     ] },
     StaticRule { selector: RawSelector { text: ".header-account" }, decls: [
       decl(prop: Display, value: "inline-flex"),
@@ -196,14 +202,6 @@ fn site_layout_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".header-inner h1" }, decls: [
       decl(prop: FontSize, value: "var(--text-18)"),
       decl(prop: Margin, value: "0")
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-inner button" }, decls: [
-      decl(prop: MinHeight, value: scale_var(t: height_control)),
-      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
-      decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: FontSize, value: "var(--text-13)"),
-      decl(prop: FontFamily, value: "var(--font-sans)"),
-      decl(prop: LetterSpacing, value: "normal")
     ] },
     StaticRule { selector: RawSelector { text: "main" }, decls: [
       decl(prop: MinWidth, value: "0"),

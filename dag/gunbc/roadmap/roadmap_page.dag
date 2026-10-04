@@ -1634,12 +1634,8 @@ fn issue_controls_markup() -> Fragment {
       ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
-        attr(name: "class", value: "site-button-compact issue-topological"),
-        attr(name: "aria-pressed", value: "false"),
-      ], [ txt("Topological sort") ]),
-      el_attrs("button", [
-        attr(name: "type", value: "button"),
         attr(name: "class", value: "site-button-compact issue-sort-undo"),
+        attr(name: "hidden", value: "hidden"),
         attr(name: "disabled", value: "disabled"),
       ], [ txt("Undo sort") ]),
       el_attrs("span", [
@@ -1769,7 +1765,6 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
   let membership_index_of_table = membership_index(memberships: memberships)
   let dependency_index_of_table = issue_dependency_index(edges: edges)
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
-    el_class("h2", "issue-table-heading", [ txt("Issue search results") ]),
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
     el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
@@ -2789,12 +2784,17 @@ el_class("main", "project-suite", [
 // chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
 // calls it.
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
+  let hidden_summary = if ws.hidden_not_ready == 0 { [] } else { [
+    el_attrs("span", [
+      attr(name: "class", value: "issue-hidden-summary"),
+      attr(name: "title", value: hidden_not_ready_summary(ws: ws))
+    ], [txt(join([to_string(ws.hidden_not_ready), " not ready hidden"], ""))])
+  ] }
   el_class("section", "roadmap-frontier", [
-    el_class("div", "view-table", concat(
-      [ issue_controls_markup() ],
-      concat(
-        if ws.hidden_not_ready == 0 { [] } else { [ el_class("p", "issue-hidden-summary", [ txt(hidden_not_ready_summary(ws: ws)) ]) ] },
-        [ el_class("div", "issue-table-scroll", [ issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships) ]) ]))),
+    el_class("div", "view-table", [
+      el_class("div", "workspace-toolbar", concat([issue_controls_markup()], hidden_summary)),
+      el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
+    ])
   ])
 }
 
@@ -2813,7 +2813,6 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
 
 fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
   el_class("section", "program-progress", [
-    el_class("span", "program-progress-name", [ txt(v.name) ]),
     el_class("span", "program-progress-count", [
       txt(join([to_string(v.ready_obligation_count), " ready now"], "")),
     ]),
@@ -2985,9 +2984,9 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     Absent => []
   }
   site_document(title: "gunbc — daily workspace", heading: "workspace", styles: stylesheet, content: [
-el_class("main", "daily-workspace", concat(main_prefix, concat(program_strip, concat(
+el_class("main", "daily-workspace", concat([el_class("div", "workspace-meta", concat(main_prefix, program_strip))], concat(
           workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)])))),
+          [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)]))),
 dispatch_client_script()
 ])
 }

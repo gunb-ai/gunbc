@@ -43,7 +43,6 @@ import gunbc.fleet_capacity_panel {
   capacity_subject_reserved_width, capacity_metric_reserved_width,
 }
 import gunbc.roadmap_component { dispatch_reserved_width, disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width, roadmap_row_height, roadmap_row_gutter, workflow_controls_class, node_activity_class, activity_summary_class, activity_detail_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, activity_located_reason_class, session_facts_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class, dashboard_instance_class, node_attempt_stale_class }
-import gunbc.site.controls { theme_toggle_class, theme_toggle_reserved_width, sound_toggle_class, sound_toggle_reserved_width }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.google.issue_tracker { issue_tracker_visual_tokens, issue_tracker_visual_tokens_dark, IssueTrackerVisualTokens, issue_results_row_tracks }
 import std.integer { uint8_channel_inclusive_max_value_derived }
@@ -1006,14 +1005,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-line .taskbar-signal" }, decls: [
       decl(prop: MarginLeft, value: "auto"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-table-heading" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontWeight, value: "500"),
-      decl(prop: Margin, value: "0"),
-      decl(prop: Padding, value: scale_pair(a: space_8, b: space_12)),
-      decl(prop: GridColumn, value: "1 / -1"),
-    ] },
 
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-empty=\"1\"] .issue-empty" }, decls: [
       decl(prop: Display, value: "block"),
@@ -1280,21 +1271,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
     ] },
     StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
-    StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: MarginLeft, value: "auto"),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: MinWidth, value: sound_toggle_reserved_width()),
-      decl(prop: TextAlign, value: "center"),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-    ] },
     StaticRule { selector: ClassSelector { name: "taskbar" }, decls: [
       decl(prop: Position, value: "relative"),
       decl(prop: Display, value: "flex"),
@@ -1687,21 +1663,6 @@ fn roadmap_instance_rules_tail() -> List<BuildRule> {
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
       decl(prop: Cursor, value: "pointer"),
       decl(prop: MinWidth, value: swatch_toggle_reserved_width()),
-      decl(prop: TextAlign, value: "center"),
-      decl(prop: TextTransform, value: "lowercase"),
-      decl(prop: LetterSpacing, value: "0.03em"),
-    ] },
-    StaticRule { selector: ClassSelector { name: theme_toggle_class }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_10)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      role_decl(prop: Color, r: TextDimRole),
-      role_decl(prop: Background, r: SurfaceRole),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: MarginLeft, value: scale_var(t: space_2)),
-      decl(prop: Cursor, value: "pointer"),
-      decl(prop: MinWidth, value: theme_toggle_reserved_width()),
       decl(prop: TextAlign, value: "center"),
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),

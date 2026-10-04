@@ -46,14 +46,14 @@ fn site_document_over(title: String, heading: String, styles: SiteStyles, conten
 
 fn sound_toggle_control() -> Fragment {
   el_attrs("button", [
-    attr(name: "class", value: sound_toggle_class ),
+    attr(name: "class", value: join([sound_toggle_class, " site-button-compact"], "") ),
     attr(name: "type", value: "button" ),
   ], [ txt("sound") ])
 }
 
 fn theme_toggle_control() -> Fragment {
   el_attrs("button", [
-    attr(name: "class", value: theme_toggle_class ),
+    attr(name: "class", value: join([theme_toggle_class, " site-button-compact"], "") ),
     attr(name: "type", value: "button" ),
   ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
 }
@@ -120,7 +120,7 @@ fn site_header(page: String, navigation: List<Fragment> = site_navigation()) -> 
 fn site_header_over(page: String, navigation: List<Fragment>, shell: SiteShell) -> Fragment {
   el("header", [el_class("div", "header-inner", concat(
     [site_brand_link(), el("h1", [txt(page)])],
-    concat(navigation, match shell { ApplicationShell => concat([sound_toggle_control(), theme_toggle_control()], header_account_nodes()) ApprovalShell => [] })
+    concat(navigation, match shell { ApplicationShell => [el_class("div", "header-utilities", concat([sound_toggle_control(), theme_toggle_control()], header_account_nodes()))] ApprovalShell => [] })
   ))])
 }
 
