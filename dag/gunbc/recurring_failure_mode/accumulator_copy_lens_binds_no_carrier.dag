@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.accumulator_copy_lens_binds_no_carrier
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data accumulator_copy_lens_binds_no_carrier: RecurringFailureMode = RecurringFailureMode {
+  identity: "accumulator_copy_lens_binds_no_carrier" as NonEmptyStr,
+
+  receipts: [
+    "**the accumulator-copy lens finds the fold but binds no carrier, so it reports no suspect on a planted quadratic copy** (INVALID STATE: a quadratic fold is reported clean or unreported). `v2.test.long.accumulator_copy_fold_analysis` runs 5 of 24 on main (claim_batch, BuildBuddy, 2026-10-04, swift-bat-688). Passing: `quadratic_ingest_has_lowered_loop`, `quadratic_ingest_has_no_surface_fold_call`, `identity_fold_has_no_finding`, `out_of_iteration_append_is_out_of_domain`, `item_inside_computed_argument_stays_clean`. Failing, among 19: `quadratic_fold_has_suspect`, `real_branch_body_quadratic_is_caught`, `let_alias_is_proven_suspect`, `report_counters_state_the_domain`. So the seam Loop is still lowered and enumerated, and what is lost is the binding of the lambda's accumulator parameter to the fold carrier.",
+    "DISTINGUISHING FACTS. Not `fold_shape_visible_to_no_lens`: there the fold never reaches the lens. Here it does, and only the carrier is unbound, so every positive control fails while every clean control passes. A lens that cannot bind answers clean, which is the absorbing arm DESIGN section 5 names. Candidate cause, NOT bisected: gunbc#13028 changed the lambda-binder projection base to a lexical reference.",
+    "RUNG FOUND AT: below the floor, silent (the lens is a mechanically preventable rung only while its positive controls run, and they have been red unseen; the module is outside the required gate and rostered in `gunbc.witness.witness_deferral_freeze`). NEXT TRIGGER: the lens binds the carrier of every lowered fold Loop it enumerates, or refuses that Loop by name; bisect the entry first.",
+  ],
+
+  evidence: [],
+}
