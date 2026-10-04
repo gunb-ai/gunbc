@@ -13,7 +13,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_g
 import gunbc.spark.serving_capacity_intent { scheduler_envelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused }
 import gunbc.spark.group_arm_launch {
   GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmHostOccupancy,
-  GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmittedForAdoptionOnly, ArmOwnFence, ArmOwnFenceHeld, ArmOwnFenceAbsent, ArmOwnFenceUnread, GroupArmLaunchAdmissionRefused,
+  GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmittedForAdoptionOnly, ArmOwnFence, ArmOwnFenceHeld, ArmOwnFenceAbsent, ArmOwnFenceUnread, ArmOwnRollbackUnresolved, GroupArmLaunchAdmissionRefused,
   ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit,
   ArmSuccessorKeyed, ArmSuccessorUnkeyed, group_arm_launch_admission, group_arm_read_units, group_arm_row_successor, group_arm_launch_plan,
   group_arm_released_launch_causes,
@@ -350,5 +350,19 @@ test fn w_an_inactive_incumbent_without_this_arms_fence_still_refuses() -> Bool 
   with_w_plan(f: fn(p, rk, ck) {
     w_refused_with(a: w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_dangling_on_srv6(fence: ArmOwnFenceAbsent), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))), fragment: "is not read back active")
       && w_refused_with(a: w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_dangling_on_srv6(fence: ArmOwnFenceUnread { cause: "witness" }), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))), fragment: "is not read back active")
+  })
+}
+
+// A HOST CARRYING THIS ARM'S UNRESOLVED-ROLLBACK MARKER, its restored units running and declared, admits
+// to resolution only (the leftover stage's recovery readback), never to a fresh apply.
+test fn w_a_marker_on_a_running_restored_arm_admits_to_resolution_only() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let occ = map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnRollbackUnresolved, admission: HostOccupiedBy {
+      occupant: ServingUnitActive { unit: w_old_unit, state: Active }, others: [] as List<HostOccupant>, gpu_used: mebibyte(count: 99000) } })
+    match w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: occ, incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))) {
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: hs } => length(hs) == 4
+      GroupArmLaunchAdmitted => false
+      GroupArmLaunchAdmissionRefused { causes: _ } => false
+    }
   })
 }

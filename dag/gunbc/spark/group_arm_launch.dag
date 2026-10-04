@@ -35,7 +35,7 @@ import gunbc.spark.serving_promotion { no_promotion_receipts }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
-import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
+import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, spark_native_unresolved_rollback_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }
 import gunbc.spark.pair_serving_authority_log {
   PreparationState, Prepared, AppendClaimed, Finalized, Aborted,
@@ -273,6 +273,7 @@ type GroupArmHostOccupancy {
 // spark_native_fence_suffix on the arm's own unit paths) -- read, never inferred; unread is its own arm.
 type ArmOwnFence
   = ArmOwnFenceHeld
+  | ArmOwnRollbackUnresolved
   | ArmOwnFenceAbsent
   | ArmOwnFenceUnread { cause: String }
 
@@ -405,6 +406,7 @@ fn group_arm_host_dangling_under_own_fence(h: HostIdentity, declared: List<NonEm
   }
   let held = match o.own_fence {
     ArmOwnFenceHeld => true
+    ArmOwnRollbackUnresolved => false
     ArmOwnFenceAbsent => false
     ArmOwnFenceUnread { cause: _ } => false
   }
@@ -416,7 +418,14 @@ fn group_arm_host_dangling_under_own_fence(h: HostIdentity, declared: List<NonEm
 fn group_arm_adoption_hosts(hosts: List<HostIdentity>, occupancy: List<GroupArmHostOccupancy>, incumbent: ArmDeclaredIncumbent) -> List<HostIdentity> {
   filter(hosts, h => match first(filter(occupancy, o => (o.host as String) == (h as String))) {
     Absent => false
-    Present { value: o } => group_arm_host_dangling_under_own_fence(h: h, declared: incumbent_units_on(i: incumbent, host: h), o: o)
+    Present { value: o } =>
+      group_arm_host_dangling_under_own_fence(h: h, declared: incumbent_units_on(i: incumbent, host: h), o: o)
+        || (match o.own_fence {
+              ArmOwnRollbackUnresolved => true
+              ArmOwnFenceHeld => false
+              ArmOwnFenceAbsent => false
+              ArmOwnFenceUnread { cause: _ } => false
+            })
   })
 }
 
@@ -704,11 +713,13 @@ fn group_arm_read_occupancy(ctx: SparkMaterializeContext, hosts: List<HostIdenti
 
 fn group_arm_read_own_fence(run: fn(List<String>) -> ArgvRun, units: ArmUnitIdentity) -> ArmOwnFence {
   let paths = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_fence_suffix], ""))
-  match run(["sh", "-c", join(["for f in ", join(paths, " "), "; do if [ -e \"$f\" ]; then echo own-fence=held; exit 0; fi; done; echo own-fence=absent"], "")]) {
+  let markers = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_unresolved_rollback_suffix], ""))
+  match run(["sh", "-c", join(["for f in ", join(paths, " "), "; do if [ -e \"$f\" ]; then echo own-fence=held; exit 0; fi; done; for f in ", join(markers, " "), "; do if [ -e \"$f\" ]; then echo own-fence=rollback-unresolved; exit 0; fi; done; echo own-fence=absent"], "")]) {
     ArgvLegDidNotRun { cause: c } => ArmOwnFenceUnread { cause: c }
     ArgvRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { ArmOwnFenceUnread { cause: join(["exit ", to_string(code), ": ", trim(s: err)], "") } }
       else if string_contains(s: out, pattern: "own-fence=held") { ArmOwnFenceHeld }
+      else if string_contains(s: out, pattern: "own-fence=rollback-unresolved") { ArmOwnRollbackUnresolved }
       else if string_contains(s: out, pattern: "own-fence=absent") { ArmOwnFenceAbsent }
       else { ArmOwnFenceUnread { cause: "the fence read printed neither answer" } }
   }

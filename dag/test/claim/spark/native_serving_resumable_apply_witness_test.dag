@@ -12,7 +12,7 @@ import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_apply {
   spark_native_leg_with_retry, spark_native_leg_attempt_count,
   spark_native_unreached_leg_attempt_budget,
-  SparkNativeLeftoverDecision, LeftoversNone, LeftoversResolvable, LeftoversRefused, LeftoversAdoptable,
+  SparkNativeLeftoverDecision, LeftoversNone, LeftoversResolvable, LeftoversRefused, LeftoversAdoptable, LeftoversRecoverable, RecoverRolledBack,
   SparkNativeAdoption, AdoptNothing, AdoptTransaction, AdoptRefused, spark_native_adoption_of,
   SparkNativeLeftoverResolution, ResolveHadNoUnitAndNothingStands, ResolveIncumbentUnitUntouched, ResolveFenceOnly,
   spark_native_leftover_decision_of_leg,
@@ -151,6 +151,7 @@ fn observed_with(fence: String, age: String, backup: String, marker: String, unr
     "incumbent_backup=", backup, "\n",
     "had_no_unit=", marker, "\n",
     "unresolved_rollback=", unresolved, "\n",
+    if unresolved == "present" { "unresolved_holder=2026-10-04T08:59:18Z/ccb8bf05\n" } else { "" },
     "unit_file=", unit, "\n",
     "unit_vs_backup=", same, "\n",
     "container=", ctr, "\n",
@@ -171,6 +172,7 @@ fn resolution_is(d: SparkNativeLeftoverDecision, want: SparkNativeLeftoverResolu
       }
     LeftoversNone { host: _ } => false
     LeftoversAdoptable { host: _, holder: _, running: _ } => false
+    LeftoversRecoverable { host: _, holder: _ } => false
     LeftoversRefused { host: _, cause: _ } => false
   }
 }
@@ -181,6 +183,7 @@ fn refused_with(d: SparkNativeLeftoverDecision, word: String) -> Bool {
     LeftoversNone { host: _ } => false
     LeftoversResolvable { host: _, resolution: _, holder: _ } => false
     LeftoversAdoptable { host: _, holder: _, running: _ } => false
+    LeftoversRecoverable { host: _, holder: _ } => false
   }
 }
 
@@ -250,6 +253,7 @@ test fn w_a_clean_host_has_no_leftovers() -> Bool {
     LeftoversNone { host: _ } => true
     LeftoversResolvable { host: _, resolution: _, holder: _ } => false
     LeftoversAdoptable { host: _, holder: _, running: _ } => false
+    LeftoversRecoverable { host: _, holder: _ } => false
     LeftoversRefused { host: _, cause: _ } => false
   }
 }
@@ -279,6 +283,7 @@ test fn w_the_had_no_unit_resolution_rechecks_and_removes_only_marker_and_fence(
 test fn w_a_host_carrying_this_arms_planned_unit_under_an_old_fence_is_adoptable() -> Bool {
   match decide(stdout: observed_with(fence: "present", age: "86400", backup: "present", marker: "absent", unresolved: "absent", unit: "present", same: "not-same", ctr: "present", planned: "same", running: "yes")) {
     LeftoversAdoptable { host: _, holder: t, running: r } => r && t == "2026-10-01T03:12:44Z/0f0e0d0c-0b0a-0908-0706-050403020100"
+    LeftoversRecoverable { host: _, holder: _ } => false
     LeftoversNone { host: _ } => false
     LeftoversResolvable { host: _, resolution: _, holder: _ } => false
     LeftoversRefused { host: _, cause: _ } => false
@@ -311,6 +316,7 @@ test fn w_an_adopted_transaction_with_a_dead_rank_names_it_for_rollback() -> Boo
   ]) {
     AdoptTransaction { holder: t, dead: d } => t == "T1" && count(d) == 1 && all(d, h => (h as String) == "srv6")
     AdoptNothing => false
+    RecoverRolledBack { holder: _ } => false
     AdoptRefused { cause: _ } => false
   }
 }
@@ -323,6 +329,7 @@ test fn w_an_adopted_transaction_with_every_rank_running_resumes_at_readback() -
   ]) {
     AdoptTransaction { holder: _, dead: d } => count(d) == 0
     AdoptNothing => false
+    RecoverRolledBack { holder: _ } => false
     AdoptRefused { cause: _ } => false
   }
 }
@@ -338,7 +345,45 @@ test fn w_a_partial_or_split_adoption_refuses() -> Bool {
     LeftoversAdoptable { host: operator_host_srv5, holder: "T2", running: true },
   ])
   let nothing_held = spark_native_adoption_of(decisions: [LeftoversNone { host: operator_host_srv6 }])
-  (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "PARTIAL")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false })
-    && (match two_holders { AdoptRefused { cause: c } => string_contains(s: c, pattern: "SPLIT")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false })
-    && (match nothing_held { AdoptNothing => true  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
+  (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "PARTIAL")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
+    && (match two_holders { AdoptRefused { cause: c } => string_contains(s: c, pattern: "SPLIT")  AdoptNothing => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
+    && (match nothing_held { AdoptNothing => true  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false  RecoverRolledBack { holder: _ } => false })
+}
+
+// ── A ROLLED-BACK ARM RECOVERS THROUGH THE SAME READBACK, OR ITS MARKER STAYS ─────────────────
+//
+// After run 37200831946's... the nvfp4-8 rollback restored the fp8-24 units and left the marker. A host
+// whose RESTORED unit is this launch's planned unit (byte-identical, read on the host) with its rank
+// running is recoverable; the transaction then runs only the readback, and only a clean readback clears
+// the marker. The RED: the same marker with the rank not running -- or the unit not the plan -- refuses.
+test fn w_a_restored_running_arm_under_its_marker_is_recoverable() -> Bool {
+  match decide(stdout: observed_with(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "present", planned: "same", running: "yes")) {
+    LeftoversRecoverable { host: _, holder: t } => t == "2026-10-04T08:59:18Z/ccb8bf05"
+    LeftoversAdoptable { host: _, holder: _, running: _ } => false
+    LeftoversNone { host: _ } => false
+    LeftoversResolvable { host: _, resolution: _, holder: _ } => false
+    LeftoversRefused { host: _, cause: _ } => false
+  }
+}
+
+test fn w_a_marker_over_a_dead_or_unplanned_rank_still_refuses() -> Bool {
+  refused_with(
+    d: decide(stdout: observed_with(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "absent", planned: "same", running: "no")),
+    word: "LEFTOVER-UNRESOLVED-ROLLBACK")
+    && refused_with(
+      d: decide(stdout: observed_with(fence: "absent", age: "", backup: "absent", marker: "absent", unresolved: "present", unit: "present", same: "not-same", ctr: "present", planned: "not-same", running: "yes")),
+      word: "LEFTOVER-UNRESOLVED-ROLLBACK")
+}
+
+test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
+  let whole = spark_native_adoption_of(decisions: [
+    LeftoversRecoverable { host: operator_host_srv6, holder: "T1" },
+    LeftoversRecoverable { host: operator_host_srv5, holder: "T1" },
+  ])
+  let partial = spark_native_adoption_of(decisions: [
+    LeftoversRecoverable { host: operator_host_srv6, holder: "T1" },
+    LeftoversNone { host: operator_host_srv5 },
+  ])
+  (match whole { RecoverRolledBack { holder: t } => t == "T1"  AdoptNothing => false  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
+    && (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "RECOVERY-PARTIAL")  AdoptNothing => false  RecoverRolledBack { holder: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
 }
