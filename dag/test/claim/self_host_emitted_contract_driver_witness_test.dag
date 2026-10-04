@@ -96,12 +96,15 @@ fn row_contract_is_under_the_contract_directory(cfg: ModuleBehavioralTransportCo
 
 // The real roster inhabits the carrier: every row names a contract module and function, and no
 // two rows share one. A row with an empty contract, or two rows pointed at one contract, would
-// make a held verdict say nothing about its own subject.
+// make a held verdict say nothing about its own subject. Each property is stated over ALL rows --
+// compared to the roster's own count, never to a headcount copied from the tree, so adding or
+// removing a row does not move the claim -- and the roster is required to be inhabited, because
+// over an empty roster both would hold vacuously.
 test fn every_roster_row_names_its_own_contract() -> Bool {
   let rows = compiler_module_behavioral_transport_roster
-  (rows |> count) == 15
-    && (rows |> filter(cfg => row_contract_is_under_the_contract_directory(cfg: cfg)) |> count) == 15
+  (rows |> count) > 0
+    && (rows |> filter(cfg => row_contract_is_under_the_contract_directory(cfg: cfg)) |> count) == (rows |> count)
     && (rows
       |> filter(cfg => (rows |> filter(other => other.driver.contract_function == cfg.driver.contract_function) |> count) == 1)
-      |> count) == 15
+      |> count) == (rows |> count)
 }
