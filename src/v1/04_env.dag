@@ -1884,7 +1884,10 @@ fn text_representation_is_text_arm(r: TextRepresentation) -> Bool {
 // representation crossing with no implicit route, so it is refused whatever the element (reported by
 // neat-boar-16: std.effect_grant passed a host String to v2.std.algebra length and only rustc caught
 // it). The declaration read is the same one text_representation_by_identity uses, so an alias of
-// FreeMonoid is judged through its declaration, never its spelling.
+// FreeMonoid is judged through its declaration, never its spelling. The caller passes the argument's
+// UNPEELED resolved type (peeling a qualified v2.std.text String alias yields a node that reads as host
+// text) and skips callable formals (a callable's return carrier is not the formal), both measured on
+// target_model apply_emit_spelling_escapes, where the first version refused a structural argument.
 fn host_text_into_structural_sequence(formal: Node, actual: Node, env: TypeEnv) -> Bool {
   match text_representation_by_identity(n: actual, env: env) {
     HostText =>
