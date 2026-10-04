@@ -38,7 +38,7 @@ on:
       staircase_step:
         description: "spark_arm_group_launch(_plan) with arm glm53-group-a only: the staircase step (gunbc.spark.glm53_arm_staircase), checkpoint and sequence ceiling over the cold 8 x 262144 floor. A closed choice; a step outside the staircase has no spelling. Must be empty for v41-group-a"
         required: false
-        options: [fp8-8, fp8-12, fp8-16, fp8-24, nvfp4-8, nvfp4-16, nvfp4-24, nvfp4-32]
+        options: [fp8-8, fp8-12, fp8-16, fp8-24, fp8-32, fp8-64, fp8-128, nvfp4-8, nvfp4-16, nvfp4-24, nvfp4-32]
         type: choice
       incumbent:
         description: "spark_arm_group_launch(_plan) with arm glm53-group-a only: the serve this step supersedes, as a DECLARED unit roster (never discovered): previous-step (this arm's own units from the step before) or none. Must be empty for v41-group-a"

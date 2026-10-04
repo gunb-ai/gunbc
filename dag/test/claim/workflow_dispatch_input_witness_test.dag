@@ -906,11 +906,11 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
 // which D0 must serialise with, still shares D0's group. Reverting the mode's row to the executor
 // domain turns the first conjunct red.
 test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool {
-  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1")
-  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
-    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1")
-    && issue != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1")
-    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2")
-    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1")
+  let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1", target: "srv1", run_id: "0")
+  issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
+    && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1", target: "srv1", run_id: "0")
+    && issue != fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv1", run_id: "0")
+    && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2", target: "srv2", run_id: "0")
+    && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
     && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
 }

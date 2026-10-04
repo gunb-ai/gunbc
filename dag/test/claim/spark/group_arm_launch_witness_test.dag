@@ -42,7 +42,7 @@ test fn w_every_staircase_step_round_trips_and_an_off_staircase_word_is_no_step(
     Present { value: back } => (glm53_step_wire(s: back) as String) == (glm53_step_wire(s: s) as String)
     Absent => false
   })
-    && length(glm53_staircase_steps) == 8
+    && length(glm53_staircase_steps) == 11
     && match glm53_step_of_wire(word: "fp8-10") { Present { value: _ } => false  Absent => true }
     && match glm53_step_of_wire(word: "nvfp4-12") { Present { value: _ } => false  Absent => true }
 }
