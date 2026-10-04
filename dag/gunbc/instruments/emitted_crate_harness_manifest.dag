@@ -99,12 +99,14 @@ fn harness_manifest_over_emitted(emitted: String, target: HarnessCrateTarget, li
 // it. A read that returned empty bytes is a genuine not-usable fact; an absence established by a
 // succeeded listing is its own world; an observation that could not be made REFUSES with its cause
 // and is never folded into either -- there is no fallback roster to write in their place, so a
-// crate the emitter did not describe is not built under a description the harness made up.
+// crate the emitter did not describe is not built under a description the harness made up. The
+// plan's variants are named Plan* because a variant name cannot live in two coproducts: the
+// derivation below carries the same worlds at its own grain, with the path attached.
 type HarnessManifestPlan
   = HarnessManifestPlanned { content: String }
-  | EmittedManifestNotUsable
-  | EmittedManifestAbsentConfirmed(FilesystemEstablishedAbsence)
-  | EmittedManifestUnobservable { cause: String }
+  | PlanEmittedNotUsable
+  | PlanEmittedAbsentConfirmed(FilesystemEstablishedAbsence)
+  | PlanEmittedUnobservable { cause: String }
 
 fn plan_harness_manifest(
   emitted: HarnessEmittedManifestObservation,
@@ -114,16 +116,16 @@ fn plan_harness_manifest(
   match emitted {
     HarnessEmittedManifestRead { content: content } =>
       if content == "" {
-        EmittedManifestNotUsable
+        PlanEmittedNotUsable
       } else {
         HarnessManifestPlanned {
           content: harness_manifest_over_emitted(emitted: content, target: target, linkage: linkage)
         }
       }
     HarnessEmittedManifestAbsent(e) =>
-      EmittedManifestAbsentConfirmed(e)
+      PlanEmittedAbsentConfirmed(e)
     HarnessEmittedManifestUnobservable { cause: c } =>
-      EmittedManifestUnobservable { cause: c }
+      PlanEmittedUnobservable { cause: c }
   }
 }
 
@@ -137,9 +139,9 @@ fn derive_harness_manifest_in_place(
   let path = concat(crate_dir, "/Cargo.toml")
   let observed = harness_emitted_manifest_observation_of(o: filesystem_file_observation_of_path(path: path))
   match plan_harness_manifest(emitted: observed, target: target, linkage: linkage) {
-    EmittedManifestNotUsable => EmittedManifestNotUsable { path: path }
-    EmittedManifestAbsentConfirmed(e) => EmittedManifestAbsent { path: path, established: e }
-    EmittedManifestUnobservable { cause: c } => EmittedManifestUnobservable { path: path, cause: c }
+    PlanEmittedNotUsable => EmittedManifestNotUsable { path: path }
+    PlanEmittedAbsentConfirmed(e) => EmittedManifestAbsent { path: path, established: e }
+    PlanEmittedUnobservable { cause: c } => EmittedManifestUnobservable { path: path, cause: c }
     HarnessManifestPlanned { content: content } => {
       let written = Filesystem.Write(path: path, content: content)
       if written.success {
