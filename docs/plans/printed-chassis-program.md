@@ -288,8 +288,8 @@ whether more printers are worth buying.
 | Fan form factor | 80 mm; **count derived**, not assumed | operator + derivation |
 | Rack unit | 2x2 block, composable | side-chat ruling |
 | Service law | fixed frame, removable cassette | operator requirement R9 |
-| PSU placement | cassette-resident | side-chat ruling |
-| External bundle | 2 x Ethernet + 1 x AC per node | operator |
+| PSU placement | shared 12 V supply system on fixed frame, one per four-node block | operator acceptance, 4 October 2026; supersedes cassette-resident PSU |
+| External bundle | 2 x Ethernet + 1 x protected, isolatable DC feed per node; AC at shared supply | operator acceptance, 4 October 2026 |
 
 ## Standing laws
 
@@ -321,7 +321,7 @@ because a step without one cannot be said to be done.
 | **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | coupon feedback recorded; independent qualification and repeatability pending |
 | **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | gauge in hand; 1–3 (F–C) alignment pass reported; full fixture/map open |
 | **PRINT-11** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
-| **PRINT-12** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
+| **PRINT-12** | CASSETTE | Shared fixed-frame PSU/distribution and node harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
 | **PRINT-13** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
 | **PRINT-14** | RACK | One fixed bay; cassette retained in service, removable after disconnect; empty bay structurally complete | |
 | **PRINT-15** | RACK | Management-node mount (Raspberry-Pi class) on the rack, carried as a bay peer rather than an accessory | |
@@ -1199,3 +1199,30 @@ Source commit: `8c944389c0dbcb25639d4c6069587863ae0d0fd5` in the separate Sites 
 Browser checks passed for selectable parts, PSU isolation, fan-count changes, height-conflict
 feedback, airflow visibility, orbit, rack withdrawal, requirements and mobile overflow.
 No additional gauge or chassis print was started.
+
+### Shared power accepted — supersedes cassette-resident PSU
+
+On 4 October 2026 the operator accepted shared power per four-node block. This replaces the earlier
+cassette-resident PSU requirement and its per-node AC bundle. Eight nodes comprise two independently
+powered four-node blocks. Each block has a fixed-frame 12 V supply system and four separately
+protected, isolatable and disconnectable node feeds. Cassettes retain their board, cooler and fans.
+The earlier roughly 400–600 W example concerned individual supplies and is not a shared-block rating.
+
+[ASRock manual §2.8](https://download.asrock.com/Manual/ALTRAD8UD-1L2T.pdf) documents direct +12 V
+DC input and distinguishes it from the ATX signal-adapter connection. This establishes a supported
+input mode, not a qualified multi-node distribution system. Required power connections, independent
+startup/shutdown behaviour, aggregate load/startup demand, branch fault protection, wire/connector
+ratings, voltage drop, protective-earth continuity and service isolation still require engineering.
+No connector pinout, fuse size, PSU wattage, redundancy or live hot-swap capability is selected here.
+A nonredundant shared supply is a four-node failure domain; redundancy remains an open decision.
+
+Concept 03 depicts one fixed top power shelf, one adjustable shared PSU space reservation, one
+four-branch distribution placeholder and stationary branch harnesses. A DC disconnect placeholder
+travels with each cassette. Withdrawal illustrates the node shut down and its branch isolated and
+disconnected first. Top-shelf placement and all distribution dimensions are visual proposals. Shared
+supply height is additional to the two node rows; cassette pitch is governed by cassette hardware.
+Older Concept 02 notes above are retained as history and are superseded for power topology.
+
+Concept 03 source: `7f77b6884f23af034fd1632e5918c3a21e988e5a` in the Sites repository.
+Browser checks passed: shared PSU isolation, no PSU on the cassette-only view, fan-count controls,
+height feedback, airflow visibility, rack withdrawal, requirements and mobile layout.
