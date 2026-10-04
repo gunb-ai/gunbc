@@ -92,7 +92,7 @@ import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
-import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused }
+import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
 import gunbc.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
 import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap_belt_actuate {
@@ -3336,7 +3336,7 @@ test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
     BeltPassFailed { reason: r } => string_contains(s: r, pattern: "disk full")
     _ => false
   })
-    && (match belt_metering_pass_outcome_from(outcomes: [MeteringNotDue, MeteringPersisted { path: "/a/metering.json" }]) {
+    && (match belt_metering_pass_outcome_from(outcomes: [MeteringNotDue, MeteringPersisted { path: "/a/metering.json", standing: MeteringStandingFinal }]) {
       BeltPassRecorded => true
       _ => false
     })

@@ -1552,8 +1552,8 @@ fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceili
 // THE POINTER TO THE SEAT A BOUND BINDING HOLDS, for gunbc.harness.harness_seat_pointer.
 fn harness_seat_pointer_of(binding: HarnessSeatBinding) -> HarnessSeatPointer? {
   match binding {
-    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: _ } =>
-      Present { value: HarnessSeatPointer { partition: p, reference: g.reference } }
+    HarnessSeatBound { url: _, grant: g, partition: p, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _, seat: r } =>
+      Present { value: HarnessSeatPointer { partition: p, reference: g.reference, owner: r.attempt } }
     HarnessSeatRefused { detail: _ } => none
     HarnessSeatPending { detail: _ } => none
   }
