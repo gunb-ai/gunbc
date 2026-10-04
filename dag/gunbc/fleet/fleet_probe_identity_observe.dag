@@ -179,10 +179,14 @@ fn fleet_probe_identity_observe_wet() -> ProcessExit
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let passwd_probe: ProcessOutcome? = match user {
     ProcessOutputPresent { text: ut } =>
-      Present { value: run_shell_command_capture(
-        command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
-        transport: LocalExec,
-      ) }
+      if trim(s: ut) == "" {
+        Absent
+      } else {
+        Present { value: run_shell_command_capture(
+          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
+          transport: LocalExec,
+        ) }
+      }
     _ => Absent
   }
   let passwd_home = passwd_home_observation(user: user, passwd: passwd_probe)

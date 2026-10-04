@@ -253,10 +253,14 @@ fn verify_enrollment_outcome() -> String
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let passwd_probe: ProcessOutcome? = match user {
     ProcessOutputPresent { text: ut } =>
-      Present { value: run_shell_command_capture(
-        command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
-        transport: LocalExec,
-      ) }
+      if trim(s: ut) == "" {
+        Absent
+      } else {
+        Present { value: run_shell_command_capture(
+          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
+          transport: LocalExec,
+        ) }
+      }
     _ => Absent
   }
   let ph = passwd_home_of(obs: passwd_home_observation(user: user, passwd: passwd_probe))
@@ -368,6 +372,17 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // its OWN temp HOME. The registry is therefore materialized into the CURRENT process's
 // HOME by fleet_host_key_enroll_apply, which the probe entry calls FIRST — enrollment
 // rides with every probe run instead of pretending to persist.
+// THE PIN, ONE DECLARED SEQUENCE OVER THE PROCESS'S OWN HOME. The deleted script ran a shell to do
+// five things -- mkdir -p, touch, grep for the marker, append four lines with $(pwd) inside a
+// substitution, chmod 600 -- and folded "config unreadable" into "config unpinned". Each step is
+// now its own declared carrier: the home is the process's own environment (shell.Env.Get; unset
+// refuses, where the shell would have built /.ssh at the filesystem root), the working directory is
+// a captured pwd (so the fragment path stays absolute, which is why the substitution existed -- ssh
+// resolves UserKnownHostsFile against the user's home, not the invoking directory), touch is the
+// put-if-absent create whose occupied arm says "read what is there", the marker check is a content
+// question over the read, the append is a modeled read-then-write of the SAME bytes `>>` would have
+// added, and the mode is a typed chmod. The fragment path is built once, from one capture, so the
+// pinned line and the staged file cannot disagree about where the fragment lives.
 fn fleet_host_key_enroll_apply() -> String
 {
   if length(fleet_host_key_enrollments) == 0 {
@@ -378,18 +393,6 @@ fn fleet_host_key_enroll_apply() -> String
     let endpoints = join(map(fleet_host_key_enrollments, k => k.endpoint), " ")
     let w = Filesystem.Write(path: staged, content: fragment)
     if w.success {
-      // THE PIN, ONE DECLARED SEQUENCE OVER THE PROCESS'S OWN HOME. The deleted script ran a shell
-      // to do five things -- mkdir -p, touch, grep for the marker, append four lines with $(pwd)
-      // inside a substitution, chmod 600 -- and folded "config unreadable" into "config unpinned".
-      // Each step is now its own declared carrier: the home is the process's own environment
-      // (shell.Env.Get; unset refuses, where the shell would have built /.ssh at the filesystem
-      // root), the working directory is a captured pwd (so the fragment path stays absolute, which
-      // is why the substitution existed -- ssh resolves UserKnownHostsFile against the user's home,
-      // not the invoking directory), touch is the put-if-absent create whose occupied arm says
-      // "read what is there", the marker check is a content question over the read, the append is a
-      // modeled read-then-write of the SAME bytes `>>` would have added, and the mode is a typed
-      // chmod. The fragment path is built once, from one capture, so the pinned line and the staged
-      // file cannot disagree about where the fragment lives.
       let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
         Absent => ""
         Present { value: raw } => trim(s: raw)
@@ -627,10 +630,14 @@ fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
     // file, so a refused check still means a byte-identical home.
     let passwd_probe: ProcessOutcome? = match user {
       ProcessOutputPresent { text: ut } =>
-        Present { value: run_shell_command_capture(
-          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
-          transport: LocalExec,
-        ) }
+        if trim(s: ut) == "" {
+          Absent
+        } else {
+          Present { value: run_shell_command_capture(
+            command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
+            transport: LocalExec,
+          ) }
+        }
       _ => Absent
     }
     let ph = passwd_home_of(obs: passwd_home_observation(user: user, passwd: passwd_probe))
