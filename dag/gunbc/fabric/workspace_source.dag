@@ -20,6 +20,7 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source }
 import gunbc.cloudflare.r2_origin { FabricWorkspace }
 import gunbc.fabric.fabric_blob_r2 { FabricBlobPutResult, put_fabric_blob }
+import gunbc.cloudflare.r2_staged_transfer { WriteCredentialShredded, WriteCredentialResidueRemains }
 import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host_effect { LocalShell }
@@ -429,10 +430,15 @@ fn workspace_source_publish(head: String, archive: String, staging: String) -> P
           let up_elapsed = nanosecond(count: observed_monotonic_nanos("workspace-source-upload-end") - up_start)
           let removed = shell.Remove.RecursiveForce(path: staging as FilePath)
           let receipt = join([head2, "upload=", workspace_put_words(put: put.verdict), " upload_ms=", to_string(nanosecond_count(n: up_elapsed) / 1000000), " staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], "")
+          match put.credential {
+            WriteCredentialResidueRemains { cause: why } =>
+              workspace_source_finish(receipt: join([receipt, "credential=RESIDUE ", why as String, "\nverdict=", if workspace_put_landed(put: put.verdict) { "published-with-residue" } else { "refused-upload-with-residue" }, "\n"], ""), outcome: exit_failure(reason: join(["workspace_source_pack: the write credential was left behind and requires cleanup: ", why as String, " (upload=", workspace_put_words(put: put.verdict), ")"], "")))
+            WriteCredentialShredded =>
           if workspace_put_landed(put: put.verdict) {
             workspace_source_finish(receipt: concat(receipt, "verdict=published\n"), outcome: ExitSuccess)
           } else {
             workspace_source_finish(receipt: concat(receipt, "verdict=refused-upload\n"), outcome: exit_failure(reason: concat("workspace_source_pack: the archive was not published: ", workspace_put_words(put: put.verdict))))
+          }
           }
         }
       }

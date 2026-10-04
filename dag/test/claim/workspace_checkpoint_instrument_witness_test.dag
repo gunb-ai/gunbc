@@ -6,7 +6,11 @@ import std.algebra { Cons, Empty }
 import std.measure { byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.fabric_blob { FabricBlobAddress }
-import std.fabric_storage { FabricObject, fabric_object_ref_of, fabric_object_ref_eq }
+import std.fabric_storage { FabricObject, FabricStoredObject, FabricObjectFetched, FabricObjectGetRefused, FabricObjectMissing, fabric_object_ref_of, fabric_object_ref_eq }
+import std.durable_compare_and_set { cas_generation_first }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cloudflare.r2_staged_transfer { R2ObjectAlreadyPresent, R2PutOutcomeUnknown, R2ObjectStored, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.fabric.fabric_object_r2 { fabric_object_r2_put_verdict, FabricObjectR2Stored, FabricObjectR2PresentVerified, FabricObjectR2OccupiedByOther, FabricObjectR2Refused, FabricObjectR2OutcomeUnknown }
 import std.checkpointed_workspace {
   WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceHeadEntry, WorkspaceRevision, WorkspaceFence,
   workspace_head_entry_object, workspace_head_entry_decode, workspace_stored_entry_of, WorkspaceStoredEntryAdmitted,
@@ -16,7 +20,7 @@ import extdeps.cloudflare.r2 { R2ObjectLocator, R2S3Endpoint, R2JurisdictionDefa
 import extdeps.tools.kopia { kopia_snapshot_summary_of }
 import gunbc.secret_provision { fleet_secret_ref }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
-import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded }
+import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_credential_exclusions, workspace_path_exclusion, workspace_source_tally,
   workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded,
@@ -26,6 +30,7 @@ import gunbc.fabric.workspace_checkpoint_instrument {
   WorkspaceMeasuredPart, PartMeasured, PartUnmeasured, workspace_bound_verdict, BoundHolds, BoundExceeded, BoundUndecided,
   workspace_quota_verdict, QuotaHolds, QuotaExceeded,
   workspace_instrument_commit, InstrumentCommitCasNotGrounded,
+  WorkspaceCustody, workspace_custody_clean, workspace_custody_of_head_advance, workspace_exit_with_custody,
   WorkspaceRestoredFile, workspace_restore_compare, RestoreByteEqual, RestoreMissingFile, RestoreExtraFile, RestoreBytesDiffer, RestoreCarriesUncommittedChunk,
 }
 
@@ -190,7 +195,7 @@ test fn an_ungrounded_cas_refuses_the_commit_with_its_read_obligation() -> Bool 
     write: R2HeadCredential { access_key_id: "write-key", token_value: fleet_secret_ref(secret_id: "cloudflare-r2-workspace-write-token") })
   match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: [entry(path: "a", c: "a")] }, built_on: none) {
     WorkspaceAdvancePlanned { plan: plan } =>
-      match workspace_instrument_commit(admission: R2HeadCasNotGrounded { read_obligation: "race two If-Match puts on one tag" }, plan: plan, binding: binding, token_source: WorkloadIdentityToken) {
+      match workspace_instrument_commit(admission: R2HeadCasNotGrounded { read_obligation: "race two If-Match puts on one tag" }, plan: plan, binding: binding, token_source: WorkloadIdentityToken).commit {
         InstrumentCommitCasNotGrounded { read_obligation: o } => (o as String) == "race two If-Match puts on one tag"
         other => false
       }
@@ -286,4 +291,62 @@ test fn the_kopia_manifest_summary_reads_files_and_bytes() -> Bool {
   let read = match kopia_snapshot_summary_of(manifest: manifest) { Present { value: s } => s.files == 1 && measure_count(m: s.bytes) == 3  Absent => false }
   let unread = match kopia_snapshot_summary_of(manifest: "{\"id\":\"d2eb\"}") { Absent => true  Present { value: _ } => false }
   read && unread
+}
+
+// ── THE OBJECT HALF: AN AMBIGUOUS PUT IS DECIDED ONLY BY MATCHING BYTES ───────────────────────
+
+data put_object: FabricObject = FabricObject { links: [], body: "workspace.revision;W2:ws;epoch=1;" }
+data other_object: FabricObject = FabricObject { links: [], body: "workspace.revision;W2:xx;epoch=1;" }
+
+fn occupant(content: FabricObject) -> std.fabric_storage.FabricObjectGet {
+  FabricObjectFetched { stored: FabricStoredObject { object: fabric_object_ref_of(object: put_object), content: content } }
+}
+
+// RED: the key answered "already present" and its occupant carries other bytes -- a structural
+// locator collision -- so the put is NOT stored. Positive control: matching bytes are.
+test fn an_occupied_key_with_other_bytes_is_not_stored() -> Bool {
+  let mismatch = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectAlreadyPresent, readback: Present { value: occupant(content: other_object) }) {
+    FabricObjectR2OccupiedByOther { object: _, fault: _ } => true
+    other => false
+  }
+  let matching = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectAlreadyPresent, readback: Present { value: occupant(content: put_object) }) {
+    FabricObjectR2PresentVerified { object: _ } => true
+    other => false
+  }
+  mismatch && matching
+}
+
+// RED: an outcome-unknown put with no readback, or a readback that found nothing, is NOT stored
+// and NOT "store unreachable": it stays a typed unknown.
+test fn an_unknown_put_without_a_resolving_readback_stays_unknown() -> Bool {
+  let unread = match fabric_object_r2_put_verdict(object: put_object, verdict: R2PutOutcomeUnknown { cause: "connection reset after upload" }, readback: none) {
+    FabricObjectR2OutcomeUnknown { object: _, cause: _ } => true
+    other => false
+  }
+  let missing = match fabric_object_r2_put_verdict(object: put_object, verdict: R2PutOutcomeUnknown { cause: "connection reset after upload" }, readback: Present { value: FabricObjectGetRefused { fault: FabricObjectMissing { object: fabric_object_ref_of(object: put_object) } } }) {
+    FabricObjectR2OutcomeUnknown { object: _, cause: _ } => true
+    other => false
+  }
+  let stored = match fabric_object_r2_put_verdict(object: put_object, verdict: R2ObjectStored { tag: none }, readback: none) {
+    FabricObjectR2Stored { object: _ } => true
+    other => false
+  }
+  unread && missing && stored
+}
+
+// RED: a head that ADVANCED while its write credential and a staging directory were left behind is
+// a commit that stands AND an exit that fails naming both. Positive control: clean custody exits
+// with the outcome it was given.
+test fn residue_survives_a_committed_advance_into_the_exit() -> Bool {
+  let advanced = R2HeadAdvanceKnown {
+    settled: R2HeadAdvancedTo { object: fabric_object_ref_of(object: put_object), generation: cas_generation_first() },
+    credential: WriteCredentialResidueRemains { cause: "the write credential's private directory could not be removed" },
+    staging: R2HeadStagingCustody { residue_paths: ["/tmp/tmp.head-stage"] },
+  }
+  let dirty = match workspace_exit_with_custody(outcome: ExitSuccess, custody: workspace_custody_of_head_advance(r: advanced)) {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "/tmp/tmp.head-stage") && string_contains(s: r, pattern: "private directory could not be removed")
+    ExitSuccess => false
+  }
+  let clean = match workspace_exit_with_custody(outcome: ExitSuccess, custody: workspace_custody_clean) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  dirty && clean
 }
