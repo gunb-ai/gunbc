@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, List, Int }
 import std.measure { RackUnit, rack_unit, measure_add }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
-  HostIdentity,
   PhysicalAssetIdentity,
   SiteIdentity,
   RackIdentity,
@@ -22,6 +21,7 @@ import product.placement_supply {
   BootstrapNeeded,
   BootstrapNotNeeded,
 }
+import product.host_identity { HostIdentity }
 import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }

@@ -3,7 +3,7 @@ module gunbc.fleet_runner_connectivity
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat, nat_range_inclusive }
 import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.ci_runner {
   GitHubSelfHostedRunnerRegistration,
   GitHubRunnerRegistrationStatus,

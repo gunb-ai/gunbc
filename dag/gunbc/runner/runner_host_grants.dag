@@ -50,7 +50,7 @@ import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_ensure_effect,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, runner_host_spec_of }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_instance_dir }
 import gunbc.runner_host_deploy { runner_index_seq }
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }

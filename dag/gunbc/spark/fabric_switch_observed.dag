@@ -2,7 +2,7 @@ module gunbc.spark.fabric_switch_observed
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.mikrotik.crs812 { crs812_qsfp56_dd_ports, crs812_lane_interface }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2 }
 import extdeps.transceiver.sff_8636 {

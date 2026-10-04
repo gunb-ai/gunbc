@@ -18,7 +18,7 @@ import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.currency.currency { CurrencyCode }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }

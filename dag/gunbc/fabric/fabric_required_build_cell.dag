@@ -12,7 +12,7 @@ import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer }
 import product.fabric.sanitation { CellId }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ownership { Owned }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.durable_cas_file_store { KeepAllGenerations, observe_cas_slot_state }
