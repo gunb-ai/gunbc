@@ -882,7 +882,13 @@ fn group_arm_engine_capacity_lines(ctx: SparkMaterializeContext) -> String {
 // upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
 data group_arm_runtime_source_modules: List<String> = [
   "vllm.benchmarks.datasets",
-  "vllm.benchmarks.serve",
+  "flashinfer.autotuner",
+  "flashinfer.fused_moe.core",
+  "vllm.utils.flashinfer",
+  "vllm.envs",
+  "vllm.model_executor.warmup.flashinfer_autotune_cache",
+  "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+  "vllm.distributed.parallel_state",
 ]
 
 fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
