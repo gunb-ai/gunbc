@@ -288,6 +288,38 @@ type ServeHttpRequest<AccessPath, Authentication> {
   security: RequestSecurityContext<AccessPath, Authentication>
 }
 
+// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and a
+// value). The name is lowercased by the seam because field names are case-insensitive (section
+// 5.1), so a handler compares against one spelling; the value is the field value with its
+// surrounding whitespace removed and nothing else interpreted. A served entry that reads headers
+// DECLARES `request_headers: List<ServeRequestHeader>` and receives every field of the request in
+// arrival order; an entry that declares no such parameter receives none. Which fields mean
+// anything is the handler's fact, never the seam's.
+type ServeRequestHeader {
+  name: String
+  value: String
+}
+
+// What a request carried under one field name. Three answers, because a field may repeat (section
+// 5.3) and whether repetition is admissible belongs to the field's owner, not to the reader:
+// absent, exactly one value, or more than one.
+type ServeRequestHeaderReading
+  = ServeRequestHeaderAbsent
+  | ServeRequestHeaderSingle { value: String }
+  | ServeRequestHeaderRepeated { occurrences: Int }
+
+fn serve_request_header_reading(headers: List<ServeRequestHeader>, name: String) -> ServeRequestHeaderReading {
+  let values = headers |> flat_map(h => if h.name == name { [h.value] } else { [] })
+  if count(values) > 1 {
+    ServeRequestHeaderRepeated { occurrences: count(values) }
+  } else {
+    match values |> first {
+      Absent => ServeRequestHeaderAbsent
+      Present { value: v } => ServeRequestHeaderSingle { value: v }
+    }
+  }
+}
+
 // THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body —
 // and the response HEADERS a route sets, as the typed carrier above. Headers live here rather
 // than on the wire projection because a redirect IS a Location header plus a status and a

@@ -3,6 +3,7 @@ import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAb
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler,
+  roadmap_serve_handle_over,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
@@ -54,6 +55,9 @@ import gunbc.roadmap_component { instrument_lab_links }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
+  ServeWireResponse, ServeRequestHeader,
+  ServeRequestHeaderReading, ServeRequestHeaderAbsent, ServeRequestHeaderSingle, ServeRequestHeaderRepeated,
+  serve_request_header_reading,
   RequestSecurityContext, ServedRouteTable,
   ServedRouteSpec, ServedRouteTableBuild, ServedRouteTableBuilt, ServedRouteTableBuildRefused,
   serve_build_route_table,
@@ -1047,4 +1051,61 @@ test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
     && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
+}
+
+// PLANTED REQUEST HEADERS AT THE READING: a field is selected by its name and nothing else, and
+// the three answers stay apart -- absent, one value, repeated with its count. A field whose name
+// merely contains the one asked for is not it.
+test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool {
+  let headers = [
+    ServeRequestHeader { name: "accept", value: "text/html" },
+    ServeRequestHeader { name: "x-cookie", value: "gunbc_session=planted" },
+    ServeRequestHeader { name: "cookie", value: "theme=dark" },
+  ]
+  serve_request_header_reading(headers: headers, name: "cookie") == ServeRequestHeaderSingle { value: "theme=dark" }
+    && serve_request_header_reading(headers: headers, name: "authorization") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(headers: [], name: "cookie") == ServeRequestHeaderAbsent
+    && serve_request_header_reading(
+      headers: concat(headers, [ServeRequestHeader { name: "cookie", value: "theme=light" }]),
+      name: "cookie",
+    ) == ServeRequestHeaderRepeated { occurrences: 2 }
+}
+
+fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { caller_supplied_plan_fixture() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: "GET",
+    path: "/issue/demo-node/assignment",
+    body: "",
+    tailscale_identity: "",
+    request_headers: headers,
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// THE SERVED ENTRY, declared request headers to wire record, on the real assignment-context
+// route. That route answers from the authentication evidence alone when no human session is
+// present, so the claim performs no host read: no Cookie field and a Cookie field carrying no
+// session both answer the signed-out 401; a malformed session cookie answers the invalid-session
+// 401, so the field's VALUE reached the cookie decode; two Cookie fields answer 400 before any
+// route runs. Deleting the header reading from the entry, or handing it a field other than
+// Cookie, makes this fail.
+test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool {
+  let absent = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
+  let other = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
+  let malformed = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
+  let repeated = witness_assignment_context_over_headers(headers: [
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=a" },
+    ServeRequestHeader { name: "cookie", value: "gunbc_session=b" },
+  ])
+  absent.status == 401
+    && absent.body == "Sign in to assign this issue."
+    && other.status == 401
+    && other.body == absent.body
+    && malformed.status == 401
+    && malformed.body == "Your session has expired or is unavailable. Sign in again."
+    && repeated.status == 400
+    && repeated.body == "bad request: duplicate cookie header\n"
 }
