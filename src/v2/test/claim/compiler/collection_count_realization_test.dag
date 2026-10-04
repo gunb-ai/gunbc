@@ -1,74 +1,119 @@
 module v2.test.claim.compiler.collection_count_realization
 
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.fold_lowering { collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
+import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import std.types { Bool, List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol, node_subtree_nodes }
-import std.types { Bool }
+import v2.std.node { Atom, Instantiation, Node, TypeNode, node_subtree_nodes, node_synthetic }
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.extdeps.languages.dag { dag_binding_denotation }
+import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: a bare `count` whose name no declaration claims binds to the std.algebra collection roster's
-// primitive-call row (collection_count_shape), and v2 infer types the call by that row: the free-monoid carrier
-// in, a STATED Int out -- the declared departure recorded on std.algebra algebra_count_length_name_fork_note
-// (trigger: v2 infer elaborates a literal at an expected type, sufficient for a Nat result with literals as
-// written). BOUNDARY: source text in, through the production assembly route, then infer. RED ON THE BASE:
-// `count(` refused resolve_reason_unbound_symbol, so no module reached infer.
+// primitive-call row (collection_count_shape), and v2 infer types the call by that row: the free-monoid carrier in,
+// a STATED Int out -- the declared departure on std.algebra algebra_count_length_name_fork_note.
+//
+// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route (assemble plus
+// infer, ccc_route_runs_on_the_real_path); the others supply the row's signature at its interface, through the
+// production projection, reader and matcher (v2.compiler.infer infer_match_generic_formal, gunbc#13187). DELETING THE
+// ROUTE REDS THE REAL-PATH CLAIM: remove the count row from collection_roster_rows and `count(` is refused
+// resolve_reason_unbound_symbol (mutation run cited in the PR).
 
-data ccc_size_compared_to_a_literal: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n"
-data ccc_size_in_arithmetic: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  count(xs) - 1\n}\n"
-data ccc_size_of_an_int: String = "module p\n\nfn f(x: Int) -> Int {\n  count(x)\n}\n"
-data ccc_size_declared_bool: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(xs: List<Int>) -> Bool {\n  count(xs)\n}\n"
+data ccc_route_source: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n\nfn g(xs: List<Pair>) -> Int {\n  count(xs)\n}\n"
 
-fn ccc_binds_row(tree: ResolvedTree) -> Bool {
-  fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
-    acc || (match declaration_reference_path_optional(node: n) {
-      Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_count_shape"
-      Absent => false
-    })
-  })
+type CccRouteReading {
+  row_references: Int
+  infer_accepted: Bool
 }
 
-type CccReading {
-  binds_row: Bool
-  reason: Symbol
-}
-
-fn ccc_reading(src: String) -> CccReading {
-  match fmi_assemble(src: src) {
-    Rejected { diagnostics: d } => CccReading { binds_row: false, reason: fmi_reason(o: Rejected { diagnostics: d }) }
-    Accepted { value: tree, diagnostics: _ } => CccReading { binds_row: ccc_binds_row(tree: tree), reason: fmi_reason(o: fmi_infer_tree(tree: tree)) }
+fn ccc_route_reading() -> CccRouteReading {
+  match fmi_assemble(src: ccc_route_source) {
+    Rejected { diagnostics: _ } => CccRouteReading { row_references: 0, infer_accepted: false }
+    Accepted { value: tree, diagnostics: _ } =>
+      CccRouteReading {
+        row_references: fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
+          match declaration_reference_path_optional(node: n) {
+            Present { value: p } => if qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_count_shape" { acc + 1 } else { acc }
+            Absent => acc
+          }
+        }),
+        infer_accepted: fmi_reason(o: fmi_infer_tree(tree: tree)) == ^accepted
+      }
   }
 }
 
-fn ccc_literal_reading() -> CccReading { ccc_reading(src: ccc_size_compared_to_a_literal) }
-fn ccc_arithmetic_reading() -> CccReading { ccc_reading(src: ccc_size_in_arithmetic) }
-fn ccc_int_reading() -> CccReading { ccc_reading(src: ccc_size_of_an_int) }
-fn ccc_declared_bool_reading() -> CccReading { ccc_reading(src: ccc_size_declared_bool) }
-
-// POSITIVE: count over a List binds the row and its Int compares against a literal as written.
-test fn ccc_list_size_compares_to_an_int_literal() -> Bool {
-  let r = ccc_literal_reading()
-  r.binds_row && r.reason == ^accepted
+// THE REAL PATH: both heads bind the row; a size compared with a literal, and a size returned at a declared Int,
+// are accepted.
+test fn ccc_route_runs_on_the_real_path() -> Bool {
+  let r = ccc_route_reading()
+  r.row_references == 2 && r.infer_accepted
 }
 
-// POSITIVE: the stated Int takes part in Int arithmetic.
-test fn ccc_list_size_in_int_arithmetic() -> Bool {
-  let r = ccc_arithmetic_reading()
-  r.binds_row && r.reason == ^accepted
+fn ccc_arrow() -> Optional<Node> {
+  match collection_roster_primitive_call_row_optional(head: ^count) {
+    Absent => Absent
+    Present { value: row } => collection_roster_signature_arrow(row: row)
+  }
 }
 
-// RED: the carrier is the free monoid, so the size of an Int refuses at the argument.
-test fn ccc_size_of_a_non_collection_refuses() -> Bool {
-  let r = ccc_int_reading()
-  r.binds_row && r.reason == ^application_argument_does_not_inhabit
+fn ccc_formals() -> List<Node> {
+  match ccc_arrow() {
+    Absent => Empty
+    Present { value: arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Absent => Empty
+        Present { value: domain } =>
+          match infer_formals_from_domain(domain: domain) {
+            Absent => Empty
+            Present { value: formals } => fold(formals, init: Empty, f: fn(acc, formal) { Cons { head: formal.declared, tail: acc } })
+          }
+      }
+  }
 }
 
-// RED: the row's result is Int, so returning it where Bool is declared refuses.
+fn ccc_int_type() -> Node {
+  match dag_binding_denotation(sym: ^dag_binding_type_int) {
+    Present { value: t } => t
+    Absent => node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: [])
+  }
+}
+
+// SUPPLIED: one formal, the free monoid.
+test fn ccc_signature_is_one_free_monoid_formal() -> Bool {
+  match ccc_formals() {
+    Cons { head: f, tail: Empty } =>
+      match f.kind {
+        TypeNode { connective: Instantiation } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// SUPPLIED, RED: an Int at the row's formal is a shape mismatch to the production matcher (the size of a non-collection).
+test fn ccc_size_of_a_non_collection_is_a_shape_mismatch() -> Bool {
+  match list_at_optional(xs: ccc_formals(), index: 0) {
+    Absent => false
+    Present { value: formal } =>
+      match infer_match_generic_formal(formal: formal, produced: ccc_int_type(), type_params: [^collection_roster_element], instances: Empty, declarations: empty_symbol_index()) {
+        InferFormalShapeMismatch => true
+        InferFormalMatched { instances: _ } => false
+      }
+  }
+}
+
+// SUPPLIED: the row's result is the stated kernel Int (the declared departure), read off the signature's codomain.
 test fn ccc_size_result_is_the_stated_int() -> Bool {
-  let r = ccc_declared_bool_reading()
-  r.binds_row && r.reason != ^accepted
+  match ccc_arrow() {
+    Absent => false
+    Present { value: arrow } => list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) == Present { value: ccc_int_type() }
+  }
 }
