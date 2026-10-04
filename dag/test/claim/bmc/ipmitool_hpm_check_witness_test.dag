@@ -8,6 +8,7 @@ import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
 import extdeps.bmc.ipmitool_hpm_check {
   HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
   HpmVersionHeld, HpmVersionAbsent, hpm_check_table_of,
+  HpmComponentRow, HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -48,4 +49,33 @@ test fn the_upgrade_progress_table_refuses_by_name() -> Bool {
 test fn a_row_that_is_not_five_cells_refuses_and_no_table_refuses() -> Bool {
   let broken = replace(s: ipmitool_hpm_check_bmc0_32, from: "|*  2|BIOS         |", to: "|*  2 BIOS         |")
   rows_of(t: hpm_check_table_of(stdout: broken)) == -2 && rows_of(t: hpm_check_table_of(stdout: "Error: Unable to establish IPMI v2 / RMCP+ session\n")) == -2
+}
+
+// THE CELL GRAMMAR: aux is exactly eight hex digits, the revision a nonnegative decimal major.minor.
+fn with_app_active(cell: String) -> Int {
+  rows_of(t: hpm_check_table_of(stdout: replace(s: ipmitool_hpm_check_bmc0_32, from: "   0.32 01112100 ", to: cell)))
+}
+
+test fn a_malformed_version_cell_refuses() -> Bool {
+  with_app_active(cell: "   0.32 0000000G ") == -2
+    && with_app_active(cell: "   0.32 garbage00 ") == -2
+    && with_app_active(cell: "  -1.00 00000000 ") == -2
+    && with_app_active(cell: "   0.32 01112100 ") == 5
+}
+
+// ONE COMPONENT PER NAME AND PER ID: a table naming one twice is unreadable, and a selection over rows
+// that do is ListedTwice.
+test fn a_component_named_twice_refuses_at_the_table_and_at_the_selection() -> Bool {
+  let twice = replace(s: ipmitool_hpm_check_bmc0_32, from: "|*  6|BOOTFW       |", to: "|*  6|APP          |")
+  let table_refuses = rows_of(t: hpm_check_table_of(stdout: twice)) == -2
+  let rows = [
+    HpmComponentRow { id: 1, name: "APP", cold_reset_required: true, active: HpmVersionAbsent, backup: HpmVersionAbsent, deferred: HpmVersionAbsent },
+    HpmComponentRow { id: 7, name: "APP", cold_reset_required: true, active: HpmVersionAbsent, backup: HpmVersionAbsent, deferred: HpmVersionAbsent },
+  ]
+  let selection_refuses = match hpm_component_named(rows: rows, name: "APP") {
+    HpmComponentListedTwice { name: _, ids: ids } => count(ids) == 2
+    HpmComponentSelected { row: _ } => false
+    HpmComponentNotListed { name: _, listed: _ } => false
+  }
+  table_refuses && selection_refuses
 }

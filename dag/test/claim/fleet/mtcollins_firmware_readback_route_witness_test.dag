@@ -3,8 +3,8 @@ module test.claim.mtcollins_firmware_readback_route_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
-import extdeps.firmware.types { MainboardCpld, HostBios }
-import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_upgrade_cpld_row_bmc0_45_3 }
+import extdeps.firmware.types { MainboardCpld, HostBios, BmcController }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_upgrade_cpld_row_bmc0_45_3, ipmitool_hpm_upgrade_app_row_bmc0_45_3 }
 import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, hpm_check_table_of }
 import gunbc.ensure { EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import gunbc.fleet.mtcollins_firmware_converge { HpmCheckComponent, SmproVersionRegister, readback_route_of, hpm_check_version_reading }
@@ -81,4 +81,31 @@ test fn every_hpm_route_names_a_component_the_capture_lists() -> Bool {
     EnsureAbsent { reason: _ } => false
   }
   bios && cpld
+}
+
+// THE APP PATCH IS READ FROM AUXILIARY BYTE 0, NEVER INVENTED. The 0.45.3 image's APP cell
+// (`0.45 03000000`, the File column of the real upgrade row) placed as the active cell reads exactly
+// 0.45.3 through the BMC route; a cell whose byte 0 is not hex is undecodable, not 0.45.0.
+data capture_app_row: String = "|*  1|APP          |   0.32 01112100 | ---.-- -------- |   0.00 00000000 |"
+
+fn app_table(active: String) -> HpmCheckTable {
+  let cs = cells_of(row: ipmitool_hpm_upgrade_app_row_bmc0_45_3)
+  let row = join(["", text_of(xs: cs, i: 1), text_of(xs: cs, i: 2), active, text_of(xs: cs, i: 4), "   0.00 00000000 ", ""], "|")
+  hpm_check_table_of(stdout: replace(s: ipmitool_hpm_check_bmc0_32, from: capture_app_row, to: row))
+}
+
+fn bmc_component() -> NonEmptyStr {
+  match readback_route_of(t: BmcController) {
+    HpmCheckComponent { component: c } => c
+    SmproVersionRegister { offset: _ } => "the BMC route is not hpm check"
+  }
+}
+
+test fn the_app_cell_of_the_0_45_3_image_reads_exactly_0_45_3() -> Bool {
+  let file_cell = text_of(xs: cells_of(row: ipmitool_hpm_upgrade_app_row_bmc0_45_3), i: 5)
+  match hpm_check_version_reading(table: app_table(active: file_cell), component: bmc_component()) {
+    EnsureObserved { evidence: v } => v.major == 0 && v.minor == 45 && v.patch == 3
+    EnsureInaccessible { reason: _ } => false
+    EnsureAbsent { reason: _ } => false
+  }
 }
