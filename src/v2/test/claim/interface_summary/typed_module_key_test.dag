@@ -9,7 +9,6 @@ import std.interface_summary {
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.types { NonEmptyStr }
-import v2.std.logic { Bool }
 
 data purpose_note: NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
 

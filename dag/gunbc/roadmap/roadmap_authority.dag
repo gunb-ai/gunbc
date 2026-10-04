@@ -2372,7 +2372,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
           displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
           first_slice: "Attribution before repair: for each failing member, record the stage, the fatal cause, the full cause chain, the earliest point where the derivation stops being justified, any shared root and any existing owner, then group the failures by root (DESIGN §6b). The repair plan is the N7 ledger (N7-0 to N7-5, with owners): N7-1 fold element typing and N7-4 the evaluation gate sit with the #12506 owner; N7-3, the match-variable typing regression, is queued after N7-1.",
-          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
+          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_attribution), keeps this red.",
           out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
           handback: "Every member of the target typed, with the run receipt for the label."
         ), on: "2026-10-02", note: "Rewritten to the N7 ledger: the target is the test label, and the walls this row used to list are retired (kept as history in the ledger).")),

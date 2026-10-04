@@ -3,7 +3,6 @@ module v2.compiler.self_host.generation
 import std.types { List }
 import v2.std.algebra { fold_list, for_all }
 import std.algebra { freemonoid_empty, list_snoc_item }
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -11,7 +10,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
-import v2.std.text { String, string_is_empty }
+import v2.std.text { String }
 import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 
 // Generation identity is INDEPENDENT AXES, never one scalar. A single opaque
@@ -241,7 +240,7 @@ type RosterScanAcc {
 fn roster_scan_step(acc: RosterScanAcc, member: SourceClosureMember) -> RosterScanAcc {
   match acc.verdict {
     RosterCanonicallyOrdered =>
-      if string_is_empty(s: member.identity) {
+      if member.identity == "" {
         RosterScanAcc {
           verdict: RosterMemberIdentityEmpty,
           previous: member.identity,

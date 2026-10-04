@@ -1,7 +1,6 @@
 module v2.test.long.infer_transform_binary_infix_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.test.claim.body_lowering.infer_transform_binary_infix_witness_helpers {
   infer_transform_add_vertical_discriminating_holds
 }
