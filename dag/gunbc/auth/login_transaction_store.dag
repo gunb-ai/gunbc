@@ -1,0 +1,313 @@
+module gunbc.auth.login_transaction_store
+
+// THE LOGIN TRANSACTION STORE: the short-lived state the authorization-code flow persists at
+// GET /auth/login and consumes at GET /auth/google/callback — state (the browser-session
+// binding), nonce (replayed into the ID token and checked by the verdict), the PKCE verifier,
+// the admitted return path, and a bounded lifetime. FILE-BACKED under the instance root beside
+// the session store (the same layout discipline: one content-shaped file per transaction,
+// owner-only), because the serving process and its successors must agree on the transactions
+// one process wrote and the next consumes — exactly the property the event carrier's
+// file-per-fact layout already keeps for events.
+//
+// STATE IS CONSUMED ON FIRST READ: a callback that presents a valid state deletes the
+// transaction as it uses it, so a replayed callback finds nothing — one transaction answers
+// exactly one callback. A lookup that finds the transaction EXPIRED still consumes it (the
+// expired document is no one's to retry), and an expired transaction refuses the callback
+// before any code exchange.
+
+import gunbc.auth.auth_store_key { AuthStoreKey, auth_store_key_of }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Timestamp }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_entry_presence,
+}
+import extdeps.languages.json.emit {
+  serialize_json, json_object, json_kv, json_string, JsonValue,
+}
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string, json_document_gap_text,
+  JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+
+data login_transaction_store_dir_segment: String = "auth-login-transactions"
+
+data login_transaction_file_suffix: String = ".json"
+
+data login_transaction_file_schema: String = "gunbc-login-transaction/v1"
+
+type LoginTransactionStoreLayout {
+  root: FilePath
+}
+
+fn login_transaction_store_layout_for_instance(instance: HostDashboardInstance) -> LoginTransactionStoreLayout {
+  LoginTransactionStoreLayout {
+    root: join([instance.instance_root as String, "/", login_transaction_store_dir_segment], "") as FilePath,
+  }
+}
+
+// A path is built only from an AuthStoreKey (gunbc.auth.auth_store_key): a request-supplied state
+// that is not one cannot name a file under the store.
+fn login_transaction_file_name(key: AuthStoreKey) -> String {
+  join([key.value as String, login_transaction_file_suffix], "")
+}
+
+fn login_transaction_file_path(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> String {
+  join([layout.root as String, "/", login_transaction_file_name(key: key)], "")
+}
+
+// ── The transaction file codec ─────────────────────────────────────────────────────────────────
+// ONE FILE PER TRANSACTION, the transaction record serialized as one JSON object. The wire is
+// the durable spelling the session store keeps: the return path rides verbatim (it was
+// admitted relative at creation, and the decode re-admits it — a stored absolute path refuses,
+// so a tampered store cannot widen the redirect).
+
+fn login_transaction_json(transaction: OidcLoginTransaction) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: login_transaction_file_schema)),
+    json_kv(key: "state", value: json_string(s: transaction.state as String)),
+    json_kv(key: "nonce", value: json_string(s: transaction.nonce as String)),
+    json_kv(key: "created_at", value: json_string(s: transaction.created_at)),
+    json_kv(key: "expires_at", value: json_string(s: transaction.expires_at)),
+    json_kv(key: "verifier", value: json_string(s: transaction.verifier.verifier as String)),
+    json_kv(key: "return_path", value: json_string(s: transaction.return_path.path as String)),
+  ]))
+}
+
+type LoginTransactionFileDecode
+  = LoginTransactionFileDecoded { transaction: OidcLoginTransaction }
+  | LoginTransactionFileMalformed { detail: String }
+
+fn login_transaction_of_json(text: String) -> LoginTransactionFileDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: g } =>
+      LoginTransactionFileMalformed { detail: concat("the transaction file is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: doc } =>
+      login_transaction_decode_members(doc: doc)
+  }
+}
+
+type LoginTransactionFileField
+  = LoginTransactionFileFieldRead { value: String }
+  | LoginTransactionFileFieldMalformed { detail: String }
+
+fn login_transaction_required_string(doc: JsonValue, key: String) -> LoginTransactionFileField {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => LoginTransactionFileFieldMalformed { detail: join(["member ", key, " is absent"], "") }
+    FieldMalformed { cause: c } => LoginTransactionFileFieldMalformed { detail: join(["member ", key, " refused: ", c], "") }
+    FieldRead { value: v } => LoginTransactionFileFieldRead { value: v }
+  }
+}
+
+fn login_transaction_decode_members(doc: JsonValue) -> LoginTransactionFileDecode {
+  match login_transaction_required_string(doc: doc, key: "schema") {
+    LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+    LoginTransactionFileFieldRead { value: schema } =>
+      if schema != login_transaction_file_schema {
+        LoginTransactionFileMalformed {
+          detail: join(["member schema is \"", schema, "\", not \"", login_transaction_file_schema, "\""], ""),
+        }
+      } else {
+        login_transaction_decode_body(doc: doc)
+      }
+  }
+}
+
+fn login_transaction_decode_body(doc: JsonValue) -> LoginTransactionFileDecode {
+  let state = login_transaction_required_string(doc: doc, key: "state")
+  let nonce = login_transaction_required_string(doc: doc, key: "nonce")
+  let created_at = login_transaction_required_string(doc: doc, key: "created_at")
+  let expires_at = login_transaction_required_string(doc: doc, key: "expires_at")
+  let verifier = login_transaction_required_string(doc: doc, key: "verifier")
+  let return_path = login_transaction_required_string(doc: doc, key: "return_path")
+  match state {
+    LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+    LoginTransactionFileFieldRead { value: state_value } =>
+      match nonce {
+        LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+        LoginTransactionFileFieldRead { value: nonce_value } =>
+          match created_at {
+            LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+            LoginTransactionFileFieldRead { value: created_at_value } =>
+              match expires_at {
+                LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+                LoginTransactionFileFieldRead { value: expires_at_value } =>
+                  match verifier {
+                    LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+                    LoginTransactionFileFieldRead { value: verifier_value } =>
+                      match return_path {
+                        LoginTransactionFileFieldMalformed { detail: d } => LoginTransactionFileMalformed { detail: d }
+                        LoginTransactionFileFieldRead { value: return_path_value } =>
+                          login_transaction_decode_finish(
+                            state: state_value,
+                            nonce: nonce_value,
+                            created_at: created_at_value,
+                            expires_at: expires_at_value,
+                            verifier: verifier_value,
+                            return_path: return_path_value,
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn login_transaction_decode_finish(
+  state: String,
+  nonce: String,
+  created_at: String,
+  expires_at: String,
+  verifier: String,
+  return_path: String,
+) -> LoginTransactionFileDecode {
+  if state == "" {
+    LoginTransactionFileMalformed { detail: "member state is empty" }
+  } else if nonce == "" {
+    LoginTransactionFileMalformed { detail: "member nonce is empty" }
+  } else if created_at == "" {
+    LoginTransactionFileMalformed { detail: "member created_at is empty" }
+  } else if expires_at == "" {
+    LoginTransactionFileMalformed { detail: "member expires_at is empty" }
+  } else if verifier == "" {
+    LoginTransactionFileMalformed { detail: "member verifier is empty" }
+  } else if starts_with(s: return_path, prefix: "/") && !starts_with(s: return_path, prefix: "//") {
+    LoginTransactionFileDecoded {
+      transaction: OidcLoginTransaction {
+        state: state as NonEmptyStr,
+        nonce: nonce as NonEmptyStr,
+        created_at: created_at,
+        expires_at: expires_at,
+        verifier: OidcPkceCodeVerifier { verifier: verifier as NonEmptyStr },
+        return_path: RelativeReturnPath { path: return_path as NonEmptyStr },
+      }
+    }
+  } else {
+    LoginTransactionFileMalformed { detail: "member return_path is not an admitted relative path spelling" }
+  }
+}
+
+// ── The store operations ───────────────────────────────────────────────────────────────────────
+// SAVE (login) AND CONSUME (callback) are the whole surface, the carrier's grain: the lookup
+// answers Found | Unknown | Unread | Malformed, and the callback's consume folds expiry in —
+// an expired transaction refuses AND is deleted, so the expired document cannot be replayed
+// either.
+
+type LoginTransactionStoreSave
+  = LoginTransactionSaved { state: NonEmptyStr }
+  | LoginTransactionSaveRefused { step: String, reason: String }
+
+fn login_transaction_store_save(layout: LoginTransactionStoreLayout, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
+  match auth_store_key_of(raw: transaction.state as String) {
+    Absent => LoginTransactionSaveRefused { step: "key", reason: "the transaction state is not a store key ([A-Za-z0-9_-], at most 128)" }
+    Present { value: key } => login_transaction_store_save_keyed(layout: layout, key: key, transaction: transaction)
+  }
+}
+
+fn login_transaction_store_save_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey, transaction: OidcLoginTransaction) -> LoginTransactionStoreSave {
+  let written = Filesystem.WriteOwnerOnly(
+    path: login_transaction_file_path(layout: layout, key: key),
+    content: login_transaction_json(transaction: transaction),
+  )
+  if written.success {
+    LoginTransactionSaved { state: transaction.state }
+  } else {
+    LoginTransactionSaveRefused { step: "write", reason: written.error }
+  }
+}
+
+type LoginTransactionStoreLookup
+  = LoginTransactionStoreFound { transaction: OidcLoginTransaction }
+  | LoginTransactionStoreUnknown { state: NonEmptyStr }
+  | LoginTransactionStoreUnread { state: NonEmptyStr, detail: String }
+  | LoginTransactionStoreEntryMalformed { state: NonEmptyStr, detail: String }
+
+// A state that is not a store key names no transaction: it cannot have been minted, so it is Unknown
+// without any filesystem read.
+fn login_transaction_store_lookup(layout: LoginTransactionStoreLayout, state: NonEmptyStr) -> LoginTransactionStoreLookup {
+  match auth_store_key_of(raw: state as String) {
+    Absent => LoginTransactionStoreUnknown { state: state }
+    Present { value: key } => login_transaction_store_lookup_keyed(layout: layout, key: key)
+  }
+}
+
+fn login_transaction_store_lookup_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> LoginTransactionStoreLookup {
+  let state = key.value
+  let name = login_transaction_file_name(key: key)
+  let path = login_transaction_file_path(layout: layout, key: key)
+  let listing_result = Filesystem.List(path: layout.root as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.root as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  let read_result = Filesystem.Read(path: path)
+  let observation = filesystem_file_observation(
+    listing: listing,
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+  )
+  match observation {
+    FilesystemFileAbsent(absence) =>
+      LoginTransactionStoreUnknown { state: absence.name as NonEmptyStr }
+    FilesystemFileRead { path: _, content: c } =>
+      match login_transaction_of_json(text: c) {
+        LoginTransactionFileDecoded { transaction: t } => LoginTransactionStoreFound { transaction: t }
+        LoginTransactionFileMalformed { detail: d } => LoginTransactionStoreEntryMalformed { state: state, detail: d }
+      }
+    FilesystemFileIndeterminate { cause: c } =>
+      LoginTransactionStoreUnread { state: state, detail: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } =>
+      LoginTransactionStoreUnread { state: state, detail: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      LoginTransactionStoreUnread { state: state, detail: c }
+  }
+}
+
+type LoginTransactionStoreDelete
+  = LoginTransactionDeleted { state: NonEmptyStr }
+  | LoginTransactionNothingToDelete { state: NonEmptyStr }
+  | LoginTransactionDeleteRefused { state: NonEmptyStr, detail: String }
+
+fn login_transaction_store_delete(layout: LoginTransactionStoreLayout, state: NonEmptyStr) -> LoginTransactionStoreDelete {
+  match auth_store_key_of(raw: state as String) {
+    Absent => LoginTransactionDeleteRefused { state: state, detail: "the transaction state is not a store key; nothing outside the store is touched" }
+    Present { value: key } => login_transaction_store_delete_keyed(layout: layout, key: key)
+  }
+}
+
+fn login_transaction_store_delete_keyed(layout: LoginTransactionStoreLayout, key: AuthStoreKey) -> LoginTransactionStoreDelete {
+  let state = key.value
+  let name = login_transaction_file_name(key: key)
+  let listing_result = Filesystem.List(path: layout.root as String)
+  let listing = filesystem_listing_observation(
+    directory: layout.root as String,
+    success: listing_result.success,
+    entries: listing_result.entries,
+    error: listing_result.error,
+  )
+  match filesystem_entry_presence(listing: listing, name: name) {
+    FilesystemEntryAbsent(absence) =>
+      LoginTransactionNothingToDelete { state: absence.name as NonEmptyStr }
+    FilesystemEntryListed { directory: _, name: _ } =>
+      let won = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384)
+      if !won.success { LoginTransactionDeleteRefused { state: state, detail: "transaction consumption already won or its durable claim failed" } }
+      else { let deleted = Filesystem.Delete(path: login_transaction_file_path(layout: layout, key: key))
+      if deleted.success {
+        LoginTransactionDeleted { state: state }
+      } else {
+        LoginTransactionDeleteRefused { state: state, detail: deleted.error }
+      } }
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
+      LoginTransactionDeleteRefused { state: state, detail: c }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: c } =>
+      LoginTransactionDeleteRefused { state: state, detail: c }
+  }
+}

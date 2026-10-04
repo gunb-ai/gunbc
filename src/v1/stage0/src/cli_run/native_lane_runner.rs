@@ -710,7 +710,15 @@ fn file_refusal_at_text(at: &serde_json::Value) -> Result<String, String> {
             .ok_or_else(|| format!("{variant} carries no {name}: {at}"))
     };
     Ok(match variant {
-        "FileRefusalAtLine" => format!("{}:{}", field("line")?, field("byte_column")?),
+        // `byte_column` is the `v2.std.source_position` `SourceByteColumn` brand, so its number is
+        // its `value`; a bare number there is a shape this decoder does not admit.
+        "FileRefusalAtLine" => format!(
+            "{}:{}",
+            field("line")?,
+            field("byte_column")?
+                .get("value")
+                .ok_or_else(|| format!("FileRefusalAtLine byte_column carries no value: {at}"))?
+        ),
         "FileRefusalAtWholeFile" => "<whole-file>".to_string(),
         "FileRefusalAtOtherFile" => format!("<other-file {}>", field("file")?),
         "FileRefusalAtInvariant" => format!("<invariant {}>", field("invariant")?),
@@ -2625,6 +2633,62 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     })
 }
 
+/// One `census-infer` run of the emitted compiler: its stdout and its exit status (`None` for a
+/// signal). The host decides nothing about either; the reader
+/// (`gunbc.instruments.type_declaration_use_census_reading`) does.
+pub struct CensusInferRun {
+    pub stdout: String,
+    pub status: Option<i32>,
+}
+
+/// The three runs `gunbc test //gunbc/instruments:type-declaration-use-census` reads, over ONE
+/// prepared binary: the fixture root, the unindexed root, and the whole tree. The two control
+/// roots are written by the caller from the reader's own fixture rows, so their contents have one
+/// authority.
+pub struct TypeDeclarationUseRuns {
+    pub fixture: CensusInferRun,
+    pub unindexed: CensusInferRun,
+    pub tree: CensusInferRun,
+}
+
+fn run_census_infer_with(
+    binary: &std::path::Path,
+    roots: &[String],
+) -> Result<CensusInferRun, String> {
+    let mut args = vec!["census-infer".to_string()];
+    args.extend(roots.iter().cloned());
+    let output = Command::new(binary).args(&args).output().map_err(|e| {
+        format!(
+            "TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    Ok(CensusInferRun {
+        stdout,
+        status: output.status.code(),
+    })
+}
+
+pub fn run_type_declaration_use_census_runs(
+    source_roots: &[String],
+    fixture_root: &str,
+    unindexed_root: &str,
+) -> Result<TypeDeclarationUseRuns, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let fixture = run_census_infer_with(&preparation.binary_path, &[fixture_root.to_string()])?;
+    let unindexed = run_census_infer_with(&preparation.binary_path, &[unindexed_root.to_string()])?;
+    let tree = run_census_infer_with(&preparation.binary_path, source_roots)?;
+    Ok(TypeDeclarationUseRuns {
+        fixture,
+        unindexed,
+        tree,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
@@ -3165,7 +3229,7 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":5}}}}]}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");

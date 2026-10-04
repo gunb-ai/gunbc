@@ -19,7 +19,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.compilers.target_model { target_value_expr_record_construct_gate }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
 import v2.std.node_query { construct_tag_optional, construct_tag_path_optional }
@@ -55,21 +54,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // unmarked Conj body v2.std.node arrow_body_record_construct_conforms must keep admitting beside the
 // construct marker. Narrowing that admission refused v2.std.diagnostic on the native route, and every
 // claim below shares this ingest, so the narrowing reddens all of them.
-data qc_provider_source: String = "module v2.test.qcp\n\nimport v2.std.logic { Bool }\n\ntype QcShape\n  = QcRow { n: Bool }\n  | QcNone\n\ntype QcBox {\n  n: Bool\n}\n\nfn qcp_box() -> QcBox { QcBox { n: true } }\n\nfn qcp_read() -> Bool { qcp_box().n }\n"
+data qc_provider_source: String = "module v2.test.qcp\n\nimport std.types { Bool }\n\ntype QcShape\n  = QcRow { n: Bool }\n  | QcNone\n\ntype QcBox {\n  n: Bool\n}\n\nfn qcp_box() -> QcBox { QcBox { n: true } }\n\nfn qcp_read() -> Bool { qcp_box().n }\n"
 
-data qc_provider_b_source: String = "module v2.test.qcp_b\n\nimport v2.std.logic { Bool }\n\ntype QcOther\n  = QcRow { n: Bool }\n  | QcElse\n"
+data qc_provider_b_source: String = "module v2.test.qcp_b\n\nimport std.types { Bool }\n\ntype QcOther\n  = QcRow { n: Bool }\n  | QcElse\n"
 
-data qc_bare_source: String = "module v2.test.qc_bare\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape, QcRow, QcNone }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n\nfn qc_empty() -> QcShape { QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    QcRow { n: x } => x\n    QcNone => false\n  }\n}\n"
+data qc_bare_source: String = "module v2.test.qc_bare\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape, QcRow, QcNone }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n\nfn qc_empty() -> QcShape { QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    QcRow { n: x } => x\n    QcNone => false\n  }\n}\n"
 
-data qc_qualified_source: String = "module v2.test.qc_qualified\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_empty() -> QcShape { v2.test.qcp.QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    v2.test.qcp.QcRow { n: x } => x\n    v2.test.qcp.QcNone => false\n  }\n}\n"
+data qc_qualified_source: String = "module v2.test.qc_qualified\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_empty() -> QcShape { v2.test.qcp.QcNone }\n\nfn qc_read(s: QcShape) -> Bool {\n  match s {\n    v2.test.qcp.QcRow { n: x } => x\n    v2.test.qcp.QcNone => false\n  }\n}\n"
 
-data qc_twins_source: String = "module v2.test.qc_twins\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape }\nimport v2.test.qcp_b { QcOther }\n\nfn qc_one() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_two() -> QcOther { v2.test.qcp_b.QcRow { n: false } }\n"
+data qc_twins_source: String = "module v2.test.qc_twins\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\nimport v2.test.qcp_b { QcOther }\n\nfn qc_one() -> QcShape { v2.test.qcp.QcRow { n: true } }\n\nfn qc_two() -> QcOther { v2.test.qcp_b.QcRow { n: false } }\n"
 
-data qc_type_tag_source: String = "module v2.test.qc_type_tag\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_wrong() -> QcShape { v2.test.qcp.QcShape { n: true } }\n"
+data qc_type_tag_source: String = "module v2.test.qc_type_tag\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_wrong() -> QcShape { v2.test.qcp.QcShape { n: true } }\n"
 
-data qc_unqualified_unimported_source: String = "module v2.test.qc_unimported\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n"
+data qc_unqualified_unimported_source: String = "module v2.test.qc_unimported\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { QcRow { n: true } }\n"
 
-data qc_bodyless_source: String = "module v2.test.qc_bodyless\n\nimport v2.std.logic { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow }\n"
+data qc_bodyless_source: String = "module v2.test.qc_bodyless\n\nimport std.types { Bool }\nimport v2.test.qcp { QcShape }\n\nfn qc_make() -> QcShape { v2.test.qcp.QcRow }\n"
 
 // The seven's own form, verbatim in its position: the then-arm of v2.compiler.tokenize
 // lex_walk_artifact constructs v2.std.diagnostic.Rejected with a record body. This module is

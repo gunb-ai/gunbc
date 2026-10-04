@@ -10,7 +10,6 @@ import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Atom, Authored, BinderTypeEdge, Conj, Edge, Node, Positional, StructuralLabel, Symbol, TypeNode, core_edge }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, KindInhabitance, TypeApplicationArityMismatch, TypeApplicationConforms, TypeApplicationKindNotInhabited, type_application_conformance, type_binder_set_children }
