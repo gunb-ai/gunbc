@@ -715,28 +715,17 @@ type LocalStoreReservation
 
 // A LIVE ROW IS NOT YET A PRESENT OBJECT. A row is written at reservation, before its object is
 // published, and a commit refused as cleanup outstanding leaves its row live with no object behind it.
-// So a request whose name is already live is decided by the object itself: (a) present -- it was
-// materialized, and the commit converges on it with no new bytes; (b) absent -- the reservation is
-// UNFINISHED, and it may proceed only if the bytes charged to live rows plus the doomed bytes still on
-// disk fit the budget. Otherwise a retry stays cleanup outstanding until the host confirms the doomed
-// bytes gone, exactly as a fresh request would; a retry is never a way around undeleted bytes.
-fn local_store_reserve_live_row(root_path: String, name: String, index: LocalStoreIndex, undeleted: Int, budget: ByteSize) -> LocalStoreReservation {
-  let converged = LocalStoreReserved { budget: budget, evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+// So only a PRESENT object converges with no new bytes. A live row whose object is absent is an
+// unfinished reservation and binds nothing: the current request runs the ordinary admission path at
+// ITS OWN size -- the cleanup-debt check, then store_put, which replaces the stale row's size under
+// the same key and evicts against the current figure, then the CAS write -- so a retry can neither
+// bypass undeleted bytes nor publish a result larger than the size it was charged.
+fn local_store_object_present(root_path: String, name: String) -> Bool {
   match local_store_read(path: store_path(root_path: root_path, name: name)) {
-    FilesystemExactPathRead { path: _, content: _ } => converged
-    FilesystemExactPathAbsent { path: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
-    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
-    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
-  }
-}
-
-fn local_store_reserve_unfinished(name: String, index: LocalStoreIndex, undeleted: Int, budget: ByteSize, converged: LocalStoreReservation) -> LocalStoreReservation {
-  let live = fold(index.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.bytes))
-  let own = fold(index.rows |> filter(r => r.name == name), init: 0, f: (acc, r) => acc + measure_count(m: r.bytes))
-  if live + undeleted > measure_count(m: budget) {
-    LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: byte_size(count: own), budget: budget, undeleted: byte_size(count: undeleted) } }
-  } else {
-    converged
+    FilesystemExactPathRead { path: _, content: _ } => true
+    FilesystemExactPathAbsent { path: _ } => false
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => false
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => false
   }
 }
 
@@ -765,8 +754,8 @@ fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreF
                 let live_names = local_store_name_set(names: index.rows |> map(r => r.name))
                 if artifact > budget_total {
                   LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: bytes, budget: ready.budget } }
-                } else if set_contains(live_names, name) {
-                  local_store_reserve_live_row(root_path: root_path, name: name, index: index, undeleted: undeleted, budget: ready.budget)
+                } else if set_contains(live_names, name) && local_store_object_present(root_path: root_path, name: name) {
+                  LocalStoreReserved { budget: ready.budget, evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
                 } else if artifact > budget_total - undeleted {
                   LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                 } else {
