@@ -7,10 +7,9 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_intent_network { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key, mtcollins1_unit_hold_store_host }
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
@@ -37,9 +36,10 @@ type ManagedHost sole_constructor {
 }
 
 // WHETHER DRIVING THIS HOST MUST TAKE ITS MAINTENANCE HOLD FIRST, and on which host the hold store
-// lives. Mt. Collins unit 1 is serviced by hand (gunbc.machine_intake_mtcollins1_maintenance_hold),
-// so a power cycle of it is gated by the same slot the boot takes; a write may only run where that
-// store is, or it would acquire a hold in an empty store the operator never sees.
+// lives. Mt. Collins unit 1 is serviced by hand, so a power cycle of it is gated by the same slot the
+// boot takes; a write may only run where that store is, or it would acquire a hold in an empty store
+// the operator never sees. This decision is the row's; gunbc.managed_host_unit_hold admits a host to
+// the hold procedure from it and is the only reader that turns it into a slot.
 type ResetUnitHold
   = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
   | ResetNoUnitHold
@@ -93,7 +93,7 @@ fn managed_hosts() -> List<ManagedHost> {
           access: mtcollins1_access_standing,
           capability_row: mtcollins1_capability_row,
           secure: secure,
-          unit_hold: ResetUnitHoldRequired { key: mtcollins1_unit_hold_key, store_host: mtcollins1_unit_hold_store_host },
+          unit_hold: ResetUnitHoldRequired { key: operator_host_mtcollins1 as NonEmptyStr, store_host: operator_host_srv1 as NonEmptyStr },
         },
       ]
   }
@@ -113,6 +113,9 @@ fn managed_host_fixture(
   admit_callers: [
     decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered"),
     decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_held_host_with_no_reason_variable_is_refused_for_maintenance"),
+    decl_ref(module_path: "test.claim.managed_host_unit_hold_witness", decl_name: "w_a_store_host_with_no_allocated_hostname_refuses_the_executor"),
     decl_ref(module_path: "test.claim.managed_host_boot_federation_witness", decl_name: "w_a_bound_host_with_no_boot_policy_is_unprovisioned"),
   ]
 {
