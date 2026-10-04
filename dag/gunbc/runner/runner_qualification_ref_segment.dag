@@ -1,39 +1,36 @@
 module gunbc.runner.runner_qualification_ref_segment
 
 import std.types { Bool, String }
+import extdeps.git.ref_format { git_ref_component_admissible }
+import extdeps.external_authority { CitedFigureStanding }
+import extdeps.github.git_database { github_ref_creation_enforces_check_ref_format }
 
 // ONE PREDICATE FOR WHAT FOLLOWS refs/heads/qualification/, shared by the branch the pin creates
 // (gunbc.runner.runner_qualification_ref_pin qualification_branch_name) and the selected workflow a
 // pinned group may carry (gunbc.runner_group_restriction_observation pinned_selected_workflow). Two
 // spellings of it let the group admit a ref the pin could never have created, or the reverse.
 //
-// A SINGLE VALID REF SEGMENT: non-empty, no slash, no `..`, no leading dot, no `.lock` suffix, and
-// none of the characters git refuses in a ref name (space, ~, ^, :, ?, *, [, \, and the @{ sequence).
+// A SINGLE VALID REF SEGMENT is git's own component rule (extdeps.git.ref_format
+// git_ref_component_admissible), consumed here rather than restated.
 fn qualification_ref_segment_admissible(segment: String) -> Bool {
-  string_length(s: segment) > 0
-    && !starts_with(s: segment, prefix: ".")
-    && !string_contains(s: segment, pattern: "/")
-    && !string_contains(s: segment, pattern: "..")
-    && !string_contains(s: segment, pattern: " ")
-    && !string_contains(s: segment, pattern: "~")
-    && !string_contains(s: segment, pattern: "^")
-    && !string_contains(s: segment, pattern: ":")
-    && !string_contains(s: segment, pattern: "?")
-    && !string_contains(s: segment, pattern: "*")
-    && !string_contains(s: segment, pattern: "[")
-    && !string_contains(s: segment, pattern: "\\")
-    && !string_contains(s: segment, pattern: "@{")
-    && !ends_with(s: segment, suffix: ".lock")
+  git_ref_component_admissible(component: segment)
 }
 
 // THE GROUP'S RESTING PIN NAMES A BRANCH THAT CANNOT EXIST. GitHub requires a selected workflow when
 // the dedicated group is created, and the group must admit no run until an attempt pins it. A ref
-// path component may not begin with a dot (git-check-ref-format, "no slash-separated component can
-// begin with a dot", git-scm.com/docs/git-check-ref-format, read 2026-10-04), so
-// refs/heads/qualification/.unpinned can never be created: its absence is structural, needing no
-// reserved name, no precondition read and no ruleset. Attempt branches are admissible segments, which
-// this sentinel is not, so no attempt can name it.
+// component may not begin with a dot (extdeps.git.ref_format, rule 1), so git cannot create
+// refs/heads/qualification/.unpinned: its absence is structural, needing no reserved name, no
+// precondition read and no ruleset. Attempt branches are admissible components, which this sentinel
+// is not, so no attempt can name it.
+//
+// WHAT IS INFERRED, NOT KNOWN: that GitHub's ref creation refuses it too. That is the typed bet
+// extdeps.github.git_database github_ref_creation_enforces_check_ref_format, carried here as
+// qualification_resting_segment_absence; it stays TranscribedUncited until a 422 or documentation
+// grounds it. If GitHub instead refuses this ref inside selected_workflows, the group create refuses
+// with a typed cause, and the fallback is a creation rule on a reserved name.
 data qualification_resting_segment: String = ".unpinned"
+
+data qualification_resting_segment_absence: CitedFigureStanding = github_ref_creation_enforces_check_ref_format
 
 // WHAT A PINNED GROUP MAY CARRY: an admissible attempt segment, or exactly the resting sentinel.
 fn qualification_pin_segment_in_family(segment: String) -> Bool {

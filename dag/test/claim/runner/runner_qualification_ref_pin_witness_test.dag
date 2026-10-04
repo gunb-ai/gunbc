@@ -1,5 +1,10 @@
 module test.claim.runner_qualification_ref_pin_witness
 
+import extdeps.git.ref_format { git_ref_component_admissible }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
+import gunbc.runner.runner_qualification_ref_segment {
+  qualification_ref_segment_admissible, qualification_pin_segment_in_family, qualification_resting_segment, qualification_resting_segment_absence,
+}
 import extdeps.github.rulesets { RulesetWire, RulesetConditionsWire, RulesetRefNameConditionWire, RulesetRuleWire }
 import gunbc.runner.runner_qualification_ruleset { qualification_ruleset_standing_of }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
@@ -197,4 +202,21 @@ fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool 
 test fn creating_a_qualification_branch_fires_no_generated_push_workflow() -> Bool {
   !(fleet_desired_admission_workflow.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
     && push_trigger_could_fire_on(trigger: Push { branches: ["qualification/**"], paths: [] }, branch: "qualification/q-1")
+}
+
+// THE RESTING PIN IS STRUCTURAL, AND WHAT IS ONLY INFERRED STAYS TYPED AS AN INFERENCE. git's own
+// component rule (extdeps.git.ref_format, rule 1: no component begins with a dot) refuses .unpinned, so
+// no attempt name -- which the same predicate admits -- can be it, while the pin family still accepts the
+// resting sentinel. That GitHub's ref creation enforces the rule is a bet, and it must stay
+// TranscribedUncited until a 422 or documentation grounds it; promoting it without that turns this red.
+test fn the_resting_pin_cannot_be_an_attempt_and_its_github_premise_stays_an_inference() -> Bool {
+  !git_ref_component_admissible(component: ".unpinned")
+    && git_ref_component_admissible(component: "q-1")
+    && named_refused(attempt: ".unpinned")
+    && qualification_pin_segment_in_family(segment: qualification_resting_segment)
+    && !qualification_ref_segment_admissible(segment: qualification_resting_segment)
+    && (match qualification_resting_segment_absence {
+      TranscribedUncited { read_obligation: _ } => true
+      CitedToAuthority { authority: _ } => false
+    })
 }

@@ -1,0 +1,57 @@
+module extdeps.git.ref_format
+
+import std.types { Bool, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+// GIT'S REF-NAME RULES, AS git-check-ref-format(1) STATES THEM (git-scm.com/docs/git-check-ref-format,
+// read 2026-10-04). This module owns the rule for ONE slash-separated component; which components a
+// consumer composes into a ref, and what it reserves, are the consumer's.
+//
+// The rules applied per component, in the document's own words:
+//   1. "no slash-separated component can begin with a dot . or end with the sequence .lock"
+//   3. "They cannot have two consecutive dots .. anywhere."
+//   4. "They cannot have ASCII control characters ..., space, tilde ~, caret ^, or colon : anywhere."
+//   5. "They cannot have question-mark ?, asterisk *, or open bracket [ anywhere."
+//   8. "They cannot contain a sequence @{."
+//  10. "They cannot contain a \"
+// A component is also non-empty and contains no slash (it is the text between slashes).
+// ASCII control characters are not spelled out below; a consumer whose components can carry them owes
+// that check, and the qualification attempt labels this module serves are minted, never free text.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-check-ref-format"
+  }
+}
+
+fn git_ref_component_admissible(component: String) -> Bool {
+  string_length(s: component) > 0
+    && !starts_with(s: component, prefix: ".")
+    && !ends_with(s: component, suffix: ".lock")
+    && !string_contains(s: component, pattern: "/")
+    && !string_contains(s: component, pattern: "..")
+    && !string_contains(s: component, pattern: " ")
+    && !string_contains(s: component, pattern: "~")
+    && !string_contains(s: component, pattern: "^")
+    && !string_contains(s: component, pattern: ":")
+    && !string_contains(s: component, pattern: "?")
+    && !string_contains(s: component, pattern: "*")
+    && !string_contains(s: component, pattern: "[")
+    && !string_contains(s: component, pattern: "\\")
+    && !string_contains(s: component, pattern: "@{")
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.git.ref_format",
+      decl_name: "git_ref_component_admissible",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.git.ref_format.extdeps_external_authority_anchor,
+  further_citations: []
+}

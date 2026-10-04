@@ -2,7 +2,7 @@ module extdeps.github.git_database
 
 import std.types { Int, List, NonEmptyStr, String, Secret, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
@@ -39,6 +39,16 @@ type GitRefObjectWire {
 }
 
 type GitRefDeletedBody {}
+
+// AN INFERENCE, NOT A CITED FACT (DESIGN 4d): that GitHub's ref-creation surfaces -- CreateRef here,
+// and a push -- refuse a ref name git-check-ref-format refuses (extdeps.git.ref_format). GitHub's
+// "Create a reference" documentation does not state which names it rejects, so this is a bet: git
+// itself cannot write such a ref, and GitHub stores refs in git. A consumer that rests a safety
+// property on it (gunbc.runner.runner_qualification_ref_segment, the dedicated group's resting pin)
+// carries it as this typed standing, and the read below names what would ground it.
+data github_ref_creation_enforces_check_ref_format: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an observed 422 from POST /repos/{owner}/{repo}/git/refs for refs/heads/qualification/.unpinned (or GitHub documentation stating the rejected names) would ground that a component beginning with a dot cannot be created through GitHub" as NonEmptyStr,
+}
 
 type GitRefWire {
   ref: String
