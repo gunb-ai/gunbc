@@ -86,14 +86,18 @@ fn ccc_int_type() -> Node {
   }
 }
 
+fn ccc_is_instantiation(t: Node) -> Bool {
+  match t.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: _ } => false
+    _ => false
+  }
+}
+
 // SUPPLIED: one formal, the free monoid.
 test fn ccc_signature_is_one_free_monoid_formal() -> Bool {
   match ccc_formals() {
-    Cons { head: f, tail: Empty } =>
-      match f.kind {
-        TypeNode { connective: Instantiation } => true
-        _ => false
-      }
+    Cons { head: f, tail: Empty } => ccc_is_instantiation(t: f)
     _ => false
   }
 }
