@@ -1628,18 +1628,6 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
   }
 
-  operation HashObjectInRepo {
-    requires opaque
-    input { repo: FilePath, path: FilePath }
-    output {
-      blob: String from "stdout"
-      exit_code: Int from "exit_code"
-      stderr: String from "stderr"
-    }
-    readonly
-    transport shell { argv: ["git", "-C", "{repo}", "hash-object", "{path}"] }
-  }
-
   operation FetchForcedRefInRepo {
     requires opaque
     input { repo: FilePath, remote: String, refspec: String }
