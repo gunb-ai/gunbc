@@ -288,9 +288,9 @@ fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMon
 fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
   match subject.normalized {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: _ } =>
+    Accepted { value: tree, diagnostics: residue } =>
       match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes()), explained: explained) {
-        Empty => Accepted { value: tree, diagnostics: _ }
+        Empty => Accepted { value: tree, diagnostics: residue }
         Cons { head: first, tail: rest } => Rejected { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
       }
   }
