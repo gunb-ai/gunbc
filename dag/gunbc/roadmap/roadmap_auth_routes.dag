@@ -3,7 +3,7 @@ module gunbc.roadmap_auth_routes
 import std.coercion { unicode_scalar_unfold }
 import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted, auth_login_browser_cookie }
 
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing, RequestAccessPath }
 import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCookieMalformed, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed, session_cookie_id_of_header, AuthenticatedSession, SessionMinted, SessionRefused, SessionRefusalCause, SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch, SessionClientTrackerWeb, mint_authenticated_session, session_cookie_set_cookie, session_cookie_clear, session_cookie_standing_reason }
 import gunbc.auth.session_store { session_store_layout_for_instance, session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable, oidc_deployment_config_read }
@@ -159,7 +159,7 @@ fn auth_form_component(raw: NonEmptyStr) -> String? {
   }
 }
 
-fn auth_login_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+fn auth_login_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let return_to = uri_query_param(path: request.path, key: "return_to")
   match admit_login_return_path(raw: if return_to == "" { "/" } else { return_to }) {
     ReturnPathRefused { raw: _, reason: r } =>
@@ -610,7 +610,7 @@ fn session_refusal_reason(c: SessionRefusalCause) -> String {
   }
 }
 
-fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
+fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   let deletion = match request.security.authentication {
     GoogleOidcSession { session } =>
       session_store_delete(layout: session_store_layout_for_instance(instance: instance), session_id: session.session_id)
