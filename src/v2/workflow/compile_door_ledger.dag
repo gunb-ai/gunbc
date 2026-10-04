@@ -19,7 +19,7 @@ import v2.lens.module_graph {
 import v2.lens.reference_deps { reference_deps_ingest_source_text }
 import v2.std.algebra { filter, fold_list, length, list_reverse }
 import v2.workflow.compile_door_cause_ownership {
-  cause_ownership_lookup, FatalGrain
+  cause_ownership_lookup
 }
 import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
@@ -329,9 +329,9 @@ fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
 // reason (v2.std.diagnostic diagnostics_fatal_reason, the chain's last), never its head, which is
 // an advisory whenever one rode along -- the grammar overlap residue heads every module's chain, so
 // a head-grain histogram counted the residue once per refused module and never the cause.
-// Attribution therefore asks the fatal-grain question.
+// Attribution therefore asks about the fatal cause.
 fn cause_is_attributed(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause, grain: FatalGrain) {
+  match cause_ownership_lookup(cause: cause) {
     Present { value: _ } => true
     Absent => false
   }
