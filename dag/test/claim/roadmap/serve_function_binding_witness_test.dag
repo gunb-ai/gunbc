@@ -23,7 +23,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the name its unit passes to `gunbc serve --function`, and each declared handler binds exactly one
 // instance; a row naming another instance's handler serves that other instance's state under its own
 // unit -- the MacBook row named srv1-live's roadmap_serve_handle while roadmap_serve_handle_macbook_local
-// existed. The control runs each handler on the health route and requires the answer to START with
+// existed. The control runs each handler on /instance.json (its per-instance identity route; /healthz
+// is release-only and identical for every instance) and requires the answer to START with
 // the identity prefix of the instance whose row names it, so a handler bound to any other instance
 // fails, and a row naming a handler this table does not carry fails as unbound.
 type ServeHandlerRow {
@@ -47,7 +48,7 @@ fn instance_serves_itself(instance: HostDashboardInstance) -> Bool {
   count(bound) == 1
     && all(bound, h => {
       let serve = h.handle
-      let answer = serve("GET", "/healthz", "", "", "0000000000000000000000000000000000000000" as CommitSha)
+      let answer = serve("GET", "/instance.json", "", "", "0000000000000000000000000000000000000000" as CommitSha)
       answer.status == 200
         && starts_with(s: answer.body, prefix: dashboard_instance_health_identity_prefix(instance_id: instance.instance_id as String))
     })
