@@ -21,7 +21,6 @@ import v2.extdeps.languages.dag {
   dag_type_atom_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 
 fn int_pair_arrow_signature() -> Node {
   let signature = declared_signature(params: dag_pick_arrow_domain_conj_node().children, source: dag_pick_arrow_domain_conj_node())

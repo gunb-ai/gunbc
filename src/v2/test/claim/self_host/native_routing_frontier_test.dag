@@ -25,7 +25,6 @@ import v2.compiler.self_host.parity_window {
 }
 import v2.compiler.self_host.parity_receipts_local { meet_join_local_observations, complement_local_observations }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 fn synthetic_routed_row(

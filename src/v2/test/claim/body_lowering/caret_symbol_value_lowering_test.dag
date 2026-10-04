@@ -1,15 +1,15 @@
 module v2.test.claim.body_lowering.caret_symbol_value_lowering
 
+import std.types { List }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model, dag_symbol_literal_name_optional }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.optional { Absent, Present }

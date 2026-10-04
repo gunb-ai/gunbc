@@ -1,5 +1,6 @@
 module v2.test.realization_vocabulary_containment.no_new_debt_gate
 
+import std.types { List }
 import v2.std.layer { LayerImportFact, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_grandfathered_edge_keys,
@@ -9,8 +10,6 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_containment_holds_canonical,
   RealizationVocabImportEdge
 }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

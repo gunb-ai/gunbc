@@ -22,9 +22,8 @@ import v2.std.operation_argv { ArgvEmpty, ArgvExpressionUnsupported, ArgvRefusal
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_lookup }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { OccurrenceSynthetic }

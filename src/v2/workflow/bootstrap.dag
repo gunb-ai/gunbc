@@ -24,7 +24,7 @@ import v2.extdeps.runtimes.v2_evaluator {
   V4EvaluatorRuntime,
   v2_evaluator_runtime
 }
-import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
+import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_fatal, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
 import std.types { NonEmptyStr }
 
@@ -812,5 +812,5 @@ data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstra
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+  Rejected { diagnostics: nd } => Violates { diagnostic: diagnostics_fatal(d: nd) }
 }

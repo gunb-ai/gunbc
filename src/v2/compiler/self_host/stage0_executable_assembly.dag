@@ -1,10 +1,9 @@
 module v2.compiler.self_host.stage0_executable_assembly
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.algebra { any, length }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition {
   Stage0PartitionCrateRow,

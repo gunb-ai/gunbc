@@ -592,6 +592,7 @@ fn served_observation_refusal_body(refusal: String, detail: String) -> String {
 
 fn served_observation_refusal_response(refusal: String, detail: String) -> ServeHttpResponse {
   ServeHttpResponse {
+    headers: [],
     status: 503,
     content_type: application_json_utf8,
     body: served_observation_refusal_body(refusal: refusal, detail: detail),
@@ -612,6 +613,7 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
       )
     ServedObservationBodyPresent { body: bytes } =>
       ServeHttpResponse {
+        headers: [],
         status: entry.status,
         content_type: served_observation_kind_media_type(kind: entry.kind, status: entry.status),
         body: bytes,
@@ -694,6 +696,7 @@ fn served_observation_standing_http_status(read: ServedObservationRead) -> Int {
 fn served_observation_standing_response_for_instance(instance: HostDashboardInstance) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
   ServeHttpResponse {
+    headers: [],
     status: served_observation_standing_http_status(read: read),
     content_type: application_json_utf8,
     body: serialize_json(v: served_observation_standing_json_value(read: read)),
