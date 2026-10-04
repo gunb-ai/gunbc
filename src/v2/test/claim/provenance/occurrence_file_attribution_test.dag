@@ -13,6 +13,7 @@ import v2.compiler.program_assembly {
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, fold_list, length }
+import v2.std.collection { list_at_optional }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.cli.compile_cli {
   CliEmitClosure,
@@ -451,6 +452,14 @@ fn supplied_advisory(reason: Symbol) -> Diagnostic {
   }
 }
 
+// The reason at a tail position, or a marker no supplied advisory carries.
+fn tail_reason_at(d: NonEmptyDiagnostics, index: Int) -> Symbol {
+  match list_at_optional(xs: d.tail, index: index) {
+    Present { value: x } => x.reason
+    Absent => ^tail_position_absent
+  }
+}
+
 // THE PER-FILE EXTEND KEEPS EVERY ADVISORY, IN ORDER, WITHOUT RE-COPYING THE CHAIN. Supplied chains
 // at program_assembly_advisories_extend's boundary: a first file's two advisories, then a second
 // file's one, must come out as the three in that order; an empty side leaves the other unchanged.
@@ -462,8 +471,8 @@ test fn the_assembly_advisory_extend_keeps_every_files_advisories_in_order_holds
     Some { diagnostics: d } =>
       d.head.reason == ^adv_a
         && length(xs: d.tail) == 2
-        && diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^adv_b)
-        && diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^adv_c)
+        && tail_reason_at(d: d, index: 0) == ^adv_b
+        && tail_reason_at(d: d, index: 1) == ^adv_c
         && advisory_count(d: program_assembly_advisories_extend(acc: None, more: second)) == 1
         && advisory_count(d: program_assembly_advisories_extend(acc: first, more: None)) == 2
   }
