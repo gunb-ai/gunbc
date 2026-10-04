@@ -571,9 +571,6 @@ fn self_enroll_apply(home: String, line: String) -> String {
       match filesystem_create_new(path: ak_path, success: touch.success, error: touch.error, error_kind: touch.error_kind) {
         FilesystemCreateRefused { path: _, kind: _, error: e } => join(["outcome=refused cause=authorized-keys create: ", e], "")
         FilesystemCreateKindUnrecognized { path: _, observed: o, error: e } => join(["outcome=refused cause=authorized-keys create (host error kind ", o, " unrecognized): ", e], "")
-        // FilesystemCreated and FilesystemCreateTargetOccupied both proceed: a fresh file and an
-        // existing one are the same next move (read what is there, append), which is the
-        // idempotence the shell's touch provided.
         _ => {
           match run_shell_commands(
             commands: [ chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "600", path: ak_path) ],
@@ -608,6 +605,18 @@ fn self_enroll_apply(home: String, line: String) -> String {
 // absent means write it, unreadable means stop and say so. Matching the arms makes the third
 // state impossible to fall through: a refusal now refuses instead of mutating the file.
 
+// THE PRESENCE CHECK AND THE APPLY, OVER THE SAME ESTABLISHED HOME. The deleted pair of scripts
+// each re-derived H with `getent passwd "$(whoami)" | cut -d: -f6` inside a substitution -- two
+// independent pipelines that could disagree -- and recovered the key line by re-reading the file
+// this same fn had just staged. One passwd decision serves both, and the key line is called from
+// its source. The check is a read-then-decide of the file: an admitted read whose lines admit the
+// key answers already-present; an admitted read without the key falls to the apply; a file the
+// host answers not-found for, or one it refuses to read, REFUSES -- the grep refusal it replaces,
+// with the missing case now named instead of folded into unreadable. Nothing is created before
+// the verdict: the check does not touch the file, so a refused check still means a byte-identical
+// home. The apply's fresh-file and occupied arms of the put-if-absent create both proceed: a new
+// key file and an existing one are the same next move (read what is there, append), which is the
+// idempotence the shell's touch provided.
 fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
@@ -616,16 +625,6 @@ fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
   let staged = "target/fleet-authorized-key-line"
   let w = Filesystem.Write(path: staged, content: concat(line, "\n"))
   let outcome = if w.success {
-    // THE PRESENCE CHECK AND THE APPLY, OVER THE SAME ESTABLISHED HOME. The deleted pair of
-    // scripts each re-derived H with `getent passwd "$(whoami)" | cut -d: -f6` inside a
-    // substitution -- two independent pipelines that could disagree -- and recovered the key line
-    // by re-reading the file this same fn had just staged. One passwd decision serves both, and
-    // the key line is called from its source. The check is a read-then-decide of the file: an
-    // admitted read whose lines admit the key answers already-present; an admitted read without
-    // the key falls to the apply; a file the host answers not-found for, or one it refuses to
-    // read, REFUSES -- the grep refusal it replaces, with the missing case now named instead of
-    // folded into unreadable. Nothing is created before the verdict: the check does not touch the
-    // file, so a refused check still means a byte-identical home.
     let passwd_probe: ProcessOutcome? = match user {
       ProcessOutputPresent { text: ut } =>
         if trim(s: ut) == "" {
