@@ -18,9 +18,11 @@ import gunbc.live_deploy.served_slice_charge { ServedDeploymentNotPlaced, Served
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.fleet_intent { ComputeHost, compute_host_cpu_threads }
-import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved }
+import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 
 type HostRunnerSlotAllocation {
   host: HostIdentity
@@ -91,6 +93,8 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // (gunbc.fabric_cell_converge) and the guest shape (gunbc.runner_microvm). A consumer with no slot in
 // hand -- width arithmetic, the fleet offer envelope -- keeps reading gunbc_runner_slot_desired,
 // because the fleet row IS the answer to a question asked of no particular slot.
+// A workspace-designated shakedown cell has the finite CPU envelope of its largest admitted
+// profile. CI-purpose cells retain the runner policy; guest sizing consumes this same boundary.
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
   if slot_is_microvm_shakedown_slot(slot: slot) {
@@ -100,7 +104,9 @@ fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired 
       memory_high: gunbc_microvm_shakedown_slot_memory_max,
       tasks_max: fleet.tasks_max,
       cpu_weight: fleet.cpu_weight,
-      cpu_quota: fleet.cpu_quota,
+      cpu_quota: if identity_is_workspace_execution_member(identity: slot) {
+        CpuQuotaResolved { threads: hardware_thread_count(count: workspace_profile_vcpus(profile: LargeWorkspace) as Int) }
+      } else { fleet.cpu_quota },
       labels: fleet.labels,
     }
   } else {

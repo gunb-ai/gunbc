@@ -1,0 +1,126 @@
+module gunbc.workspace_commissioning_controller
+
+import std.types { String }
+import gunbc.workspace_commissioning_executor_fence { WorkspaceExecutorControllerPermit, workspace_executor_controller_still_owned }
+import v2.std.algebra { filter }
+import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
+import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations, CellQuarantined }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
+import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
+import std.decl_ref { decl_ref }
+import gunbc.workspace_commissioning_admission_observe { workspace_commissioning_no_hold_refusal }
+import gunbc.workspace_commissioning { WorkspaceCommissionedSlot }
+import gunbc.workspace_commissioning_transaction {
+  WorkspaceCommissioningProvenance, workspace_commissioning_next,
+  WorkspaceCommissioningPrepare, WorkspaceCommissioningWriteReadiness, WorkspaceCommissioningCommit,
+  WorkspaceCommissioningAlreadyCommitted, WorkspaceCommissioningTransitionRefused,
+}
+import gunbc.workspace_commissioning_store {
+  WorkspaceCommittedCommissioning, workspace_commissioning_store_root,
+  workspace_commissioning_store_observe, WorkspaceCommissioningStoreObserved, WorkspaceCommissioningStoreRefused,
+  workspace_commissioning_store_publish, WorkspaceCommissioningStorePublished, WorkspaceCommissioningStoreConflict,
+  WorkspaceCommissioningStorePublicationRefused, workspace_commissioning_store_admit_supply,
+  WorkspaceCommissioningSupplyReady, WorkspaceCommissioningSupplyRefused,
+}
+import gunbc.runner_microvm_cell_readiness_store {
+  read_cell_readiness_store, persist_cell_readiness_write, StorePersisted, StorePersistCellNotAddressable, StorePersistReadbackFailed, StorePersistReadbackMismatch, StorePersistRefusedByStore, StorePersistWriteFailed,
+}
+
+type WorkspaceCommissioningReconciliation
+  = WorkspaceCommissioningProgress
+  | WorkspaceCommissioningComplete
+  | WorkspaceCommissioningReconciliationRefused { reason: String }
+
+// This is a mode of the installed slot controller, not another readiness writer. Its caller must
+// finish the fresh host, purpose, history, runtime and sanitation admission before entering here.
+// systemd serializes that slot's controller incarnation; preparation CAS additionally fences the
+// durable phase. Every successful effect is followed by a fresh read on the next step.
+fn workspace_commissioning_reconcile(admitted: WorkspaceCommissionedSlot,
+  provenance: WorkspaceCommissioningProvenance, network: SlotNetworkSanitationSubject, execution: WorkspaceExecutorControllerPermit) -> WorkspaceCommissioningReconciliation
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
+{
+  let result = [0, 1, 2, 3] |> fold(init: WorkspaceCommissioningProgress, f: (prior, phase) => match prior {
+    WorkspaceCommissioningProgress => workspace_commissioning_controller_step(admitted: admitted, provenance: provenance, network: network, execution: execution)
+    done => done
+  })
+  match result {
+    WorkspaceCommissioningProgress => WorkspaceCommissioningReconciliationRefused {
+      reason: "commissioning has an unsettled phase or CAS contention; reconverge without resetting readiness",
+    }
+    done => done
+  }
+}
+
+fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
+  provenance: WorkspaceCommissioningProvenance, network: SlotNetworkSanitationSubject, execution: WorkspaceExecutorControllerPermit) -> WorkspaceCommissioningReconciliation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_controller", decl_name: "workspace_commissioning_reconcile")]
+{
+  if !workspace_executor_controller_still_owned(permit: execution) || !workspace_commissioning_mutation_held(slot_key: runner_slot_instance_name(slot: provenance.slot), plan_hash: provenance.plan_hash) {
+    WorkspaceCommissioningReconciliationRefused { reason: "commissioning mutation exclusion changed before journal publication" }
+  } else {
+  match workspace_commissioning_no_hold_refusal(provenance: provenance) {
+    Present { value: reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+    Absent => {
+  match workspace_observe_initial_sanitation(subject: network) {
+    WorkspaceInitialSanitationUnavailable { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+    WorkspaceInitialSanitationReadback { observation } => if observation.slot != admitted.slot
+      || observation.observation_identity != provenance.sanitation_observation {
+      WorkspaceCommissioningReconciliationRefused { reason: "fresh sanitation differs from the reviewed commissioning subject; no phase may advance" }
+    } else { match cell_readiness_from_observations(cell: runner_slot_instance_name(slot: admitted.slot) as CellId,
+      network_scope: SlotScopedNetwork, observations: observation.observations) {
+      CellReady { cell: _ } => {
+  match workspace_commissioning_store_observe(root: workspace_commissioning_store_root, provenance: provenance) {
+    WorkspaceCommissioningStoreRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+    WorkspaceCommissioningStoreObserved { snapshot } => {
+      let transition = workspace_commissioning_next(admitted: admitted, provenance: provenance,
+        transaction: snapshot.reading, readiness: read_cell_readiness_store())
+      match transition {
+        WorkspaceCommissioningTransitionRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+        WorkspaceCommissioningAlreadyCommitted => match read_cell_readiness_store() {
+          StoreRead { ownership: StoreRootOwned, records } => {
+            let cell = runner_slot_instance_name(slot: provenance.slot) as String
+            let own = filter(records, r => (record_cell(record: r) as String) == cell)
+            if own.count() == 1 && (match own.first() {
+              Absent => false
+              Present { value: record } => match record_ready_cell_at(record: record, generation: 0) {
+                Present { value: ready } => (ready as String) == cell
+                Absent => false
+              }
+            }) { WorkspaceCommissioningComplete }
+            else { WorkspaceCommissioningReconciliationRefused { reason: "controller commit has no matching generation-zero readiness" } }
+          }
+          StoreRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ }, records: _ } => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
+          StoreUnreadable { reason: _ } => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
+        }
+        WorkspaceCommissioningWriteReadiness { write } => match persist_cell_readiness_write(write: write) {
+          StorePersisted { record: _ } => WorkspaceCommissioningProgress
+          StorePersistRefusedByStore { result: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistCellNotAddressable { spelling: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistWriteFailed { path: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistReadbackFailed { reason: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistReadbackMismatch { path: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+        }
+        WorkspaceCommissioningPrepare { record: _ } => match workspace_commissioning_store_publish(snapshot: snapshot, admitted: admitted) {
+          WorkspaceCommissioningStorePublished => WorkspaceCommissioningProgress
+          WorkspaceCommissioningStoreConflict => WorkspaceCommissioningProgress
+          WorkspaceCommissioningStorePublicationRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+        }
+        WorkspaceCommissioningCommit { record: _ } => match workspace_commissioning_store_publish(snapshot: snapshot, admitted: admitted) {
+          WorkspaceCommissioningStorePublished => WorkspaceCommissioningProgress
+          WorkspaceCommissioningStoreConflict => WorkspaceCommissioningProgress
+          WorkspaceCommissioningStorePublicationRefused { reason } => WorkspaceCommissioningReconciliationRefused { reason: reason }
+        }
+      }
+    }
+  }
+      }
+      CellQuarantined { cell: _, unproven: _ } => WorkspaceCommissioningReconciliationRefused { reason: "fresh initial sanitation is incomplete; commissioning remains outstanding" }
+    } }
+  }
+    }
+  }
+}
+
+}
