@@ -5593,11 +5593,42 @@ fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
   }
 }
 
+// A CONSTRUCTION'S TAG SPELLS THE VARIANT, NOT THE CARRIER. The source spelling may be bare
+// (`Boxed`) or module-qualified (`p.Boxed`); either way the variant's declaring path is the one the
+// symbol index records for that spelling, and the carrier is its parent. The global unique lookup
+// answers for both: a bare hit is the only declaration the name has in the closure; an ambiguous
+// hit cannot type the construction here (the descent and declared-return judges name the
+// construction's underivation downstream, and renaming one of the carriers is the fix).
+fn infer_construct_variant_declaring_path(index: SymbolIndex, reference: Node) -> Optional<QualifiedName> {
+  match declaration_reference_path_optional(node: reference) {
+    Absent =>
+      match node_atom_identity_optional(node: reference) {
+        Absent => optional_absent()
+        Present { value: tag } =>
+          match symbol_index_global_unique_lookup(index: index, name: tag) {
+            GlobalBareHit { node: _, path: declaring } => optional_present(value: declaring)
+            GlobalBareLookupAmbiguous { paths: _ } => optional_absent()
+            GlobalBareLookupUnbound => optional_absent()
+          }
+      }
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Absent => optional_absent()
+        Present { value: tag } =>
+          match symbol_index_global_unique_lookup(index: index, name: tag) {
+            GlobalBareHit { node: _, path: declaring } => optional_present(value: declaring)
+            GlobalBareLookupAmbiguous { paths: _ } => optional_absent()
+            GlobalBareLookupUnbound => optional_present(value: path)
+          }
+      }
+  }
+}
+
 fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConstructRead {
   match construct_tag_optional(n: node) {
     Absent => ConstructNotARecord
     Present { value: reference } =>
-      match declaration_reference_path_optional(node: reference) {
+      match infer_construct_variant_declaring_path(index: resolved.symbol_index, reference: reference) {
         Absent => ConstructNotARecord
         Present { value: path } =>
           match symbol_index_declared_payload_at(index: resolved.symbol_index, qualified_path: path) {

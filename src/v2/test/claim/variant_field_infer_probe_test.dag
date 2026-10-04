@@ -26,7 +26,8 @@ import v2.std.node {
   TypeNode
 }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
-import v2.std.node_query { construct_tag_optional, construct_tag_path_optional }
+import v2.std.node_query { construct_tag_optional }
+import v2.std.symbol_index { SymbolIndex }
 import v2.std.qualified_name { qualified_name_init }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -114,16 +115,20 @@ fn vfp_type_name(t: Node) -> Symbol {
   }
 }
 
-fn vfp_construction_tag_carrier(n: Optional<Node>) -> Symbol {
+fn vfp_construction_tag_carrier(index: SymbolIndex, n: Optional<Node>) -> Symbol {
   match n {
     Absent => ^vfp_subject_absent
     Present { value: node } =>
-      match construct_tag_path_optional(n: node) {
+      match construct_tag_optional(n: node) {
         Absent => ^vfp_tag_unresolved
-        Present { value: p } =>
-          match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
-            Present { value: s } => s
-            Absent => ^vfp_tag_no_carrier
+        Present { value: reference } =>
+          match infer_construct_variant_declaring_path(index: index, reference: reference) {
+            Absent => ^vfp_tag_unresolved
+            Present { value: p } =>
+              match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
+                Present { value: s } => s
+                Absent => ^vfp_tag_no_carrier
+              }
           }
       }
   }
@@ -200,6 +205,7 @@ fn vfp_reading(src: String) -> VfpReading {
           reasons: vfp_reasons(r: r),
           construction_fact: vfp_last(xs: vfp_reasons(r: r)),
           construction_tag_carrier: vfp_construction_tag_carrier(
+            index: resolved.symbol_index,
             n: vfp_find_construction(n: resolved.root)
           ),
           match_fact: vfp_last(xs: vfp_reasons(r: r)),
@@ -215,6 +221,7 @@ fn vfp_reading(src: String) -> VfpReading {
             subject: vfp_find_construction(n: resolved.root)
           ),
           construction_tag_carrier: vfp_construction_tag_carrier(
+            index: resolved.symbol_index,
             n: vfp_find_construction(n: resolved.root)
           ),
           match_fact: vfp_fact_in(
