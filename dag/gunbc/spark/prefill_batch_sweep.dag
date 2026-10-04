@@ -148,7 +148,8 @@ fn batch_arm_subject(budget: TokenCount) -> ServingPerformanceSubjectStanding {
       max_num_seqs: Absent,
       kv_cache_dtype: Absent,
       speculative: Present { value: SpeculativeDecodingOff },
-      collective_transport: Absent
+      collective_transport: Absent,
+      indexer_kv_dtype: none, scheduler_admission: none, launch_profile_key: none
     ),
     believed: join(["FourSparkTp4: the sweep ran on the group A head whose production topology is TP=4, and the 2048 arm's ~1.076 ms per computed token agrees to about 1% with tensor_parallel_comparison's TP=4 arm (1.0662) against its TP=2 arm (0.9838). Budget on this arm: ", to_string(token_count_value(t: budget))], "") as NonEmptyStr,
     would_settle: join(["read --tensor-parallel-size off the recorded systemd invocation ",
@@ -588,7 +589,8 @@ data spark_group_a_depth_rate: DepthDependentRate = DepthDependentRate {
       max_num_seqs: Absent,
       kv_cache_dtype: Absent,
       speculative: Present { value: SpeculativeDecodingOff },
-      collective_transport: Absent
+      collective_transport: Absent,
+      indexer_kv_dtype: none, scheduler_admission: none, launch_profile_key: none
     )
   ),
   base_micros_per_thousand_tokens: 923600,

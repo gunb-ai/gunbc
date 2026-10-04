@@ -14,6 +14,13 @@ import v2.compiler.compile {
   native_census_module_resolution,
   native_census_modules,
   native_census_residual_rows,
+  NativeCensusCauseGroup,
+  NativeCensusCascadeNone,
+  NativeCensusClosureIndexUnavailable,
+  native_census_cause_groups_add_residual,
+  native_census_cause_groups_empty,
+  native_census_cause_groups_from_file_refusals,
+  native_census_cause_group_rows,
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
@@ -29,7 +36,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal }
 import v2.compiler.resolve { ObservationComplete, ObservationIncomplete }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -56,13 +62,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // only unbound name in the tree is the one the middle specimen exists to carry. A probe whose
 // return type were also unbound would still be reported resolve_refused and would stop telling you
 // WHICH absence the census saw.
-data census_clean_source: String = "module v2.census_probe_clean\n\nimport v2.std.logic { Bool }\n\nfn census_probe_clean_value(p: Bool) -> Bool { p }\n"
+data census_clean_source: String = "module v2.census_probe_clean\n\nimport std.types { Bool }\n\nfn census_probe_clean_value(p: Bool) -> Bool { p }\n"
 
 // THE UNBOUND REFERENCE IS THE SUBJECT, and it is shaped like what an XL-2 rehearsal actually
 // leaves behind: the module parses and normalizes cleanly -- so the context admits the file and
 // mints no file refusal for it -- and refuses at NAME RESOLUTION, because the declaration its
 // reference named is no longer reachable. That is a stripped import's residual, one site of it.
-data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport v2.std.logic { Bool }\n\nfn census_probe_unbound_value(p: Bool) -> Bool { census_probe_absent_callee }\n"
+data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport std.types { Bool }\n\nfn census_probe_unbound_value(p: Bool) -> Bool { census_probe_absent_callee }\n"
 
 // TWO INDEPENDENT REFUSALS IN ONE MODULE -- THE DISCRIMINATOR FOR OCCURRENCE GRAIN.
 //
@@ -75,19 +81,19 @@ data census_unbound_source: String = "module v2.census_probe_unbound\n\nimport v
 // grain and an undercount at OCCURRENCE grain, which is the grain XL-2's rehearsal residual needs.
 // The single-site specimen above CANNOT tell those apart: it yields one row either way. So the
 // claim below is the only arm in this file with the power to fail when the walk hides refusals.
-data census_two_source: String = "module v2.census_probe_two\n\nimport v2.std.logic { Bool }\n\nfn census_probe_two_first(p: Bool) -> Bool { census_probe_absent_one }\n\nfn census_probe_two_second(p: Bool) -> Bool { census_probe_absent_two }\n"
+data census_two_source: String = "module v2.census_probe_two\n\nimport std.types { Bool }\n\nfn census_probe_two_first(p: Bool) -> Bool { census_probe_absent_one }\n\nfn census_probe_two_second(p: Bool) -> Bool { census_probe_absent_two }\n"
 
 // ONE CHAIN WITH A PENDING ADVISORY. The declaration names a value another probe module DOES
 // declare but this one never imports, so its one refusal carries the resolver's declared-elsewhere
 // advisory in front of its fatal: two diagnostics, ONE refused occurrence. A fan-out that made the
 // advisory a row of its own reports two residual sites here.
-data census_advised_source: String = "module v2.census_probe_advised\n\nimport v2.std.logic { Bool }\n\nfn census_probe_advised_first(p: Bool) -> Bool { census_probe_clean_value }\n"
+data census_advised_source: String = "module v2.census_probe_advised\n\nimport std.types { Bool }\n\nfn census_probe_advised_first(p: Bool) -> Bool { census_probe_clean_value }\n"
 
 // PENDING ADVISORIES STAY WITH THEIR OWN FATAL ACROSS CHAINS. The first declaration's refusal
 // carries the declared-elsewhere advisory; the second names a value nothing declares, so its chain
 // carries none. A walk that let the advisory drift onto the neighbouring chain, or duplicated it
 // there, is red on the claim that reads this module.
-data census_advised_two_source: String = "module v2.census_probe_advised_two\n\nimport v2.std.logic { Bool }\n\nfn census_probe_advised_two_first(p: Bool) -> Bool { census_probe_clean_value }\n\nfn census_probe_advised_two_second(p: Bool) -> Bool { census_probe_absent_three }\n"
+data census_advised_two_source: String = "module v2.census_probe_advised_two\n\nimport std.types { Bool }\n\nfn census_probe_advised_two_first(p: Bool) -> Bool { census_probe_clean_value }\n\nfn census_probe_advised_two_second(p: Bool) -> Bool { census_probe_absent_three }\n"
 
 // THE POISON SPECIMEN REFUSES IN THE FRONT END, before the resolver is entered at all. The bytes
 // are the same shape as the lane's committed malformed control (fixtures/native_lane_malformed):
@@ -465,4 +471,75 @@ fn census_probe_observed_complete(outcome: NativeCensusModuleOutcome) -> Bool {
         ObservationIncomplete { reason: _ } => false
       }
   }
+}
+
+// THE CENSUS GROUPS BY THE CAUSE THAT FIRED, AND THIS IS THE CONTROL THAT CAN TELL. The advised
+// module's one chain is [declared-elsewhere advisory, unbound fatal], produced by the real resolver
+// above: its head and its fatal DIFFER, which is the only shape in which grouping by head and
+// grouping by fatal give different answers. RED if the grouping keyed on the head -- the group would
+// be named resolve_unbound_name_is_declared_elsewhere, an advisory that refused nothing. The head is
+// still asserted on the member, so a grouping that dropped it is red too.
+fn census_cause_group_of(groups: List<NativeCensusCauseGroup>, reason: Symbol) -> Int {
+  fold_list(xs: groups, empty: 0, cons: fn(n, g) { if g.fatal_reason == reason { n + length(xs: g.members) } else { n } })
+}
+
+test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows, two: _, advised_two: _ } =>
+      {
+        let groups = fold_list(xs: rows, empty: native_census_cause_groups_empty(resolves: true), cons: fn(acc, row) {
+          native_census_cause_groups_add_residual(groups: acc, cascade: NativeCensusCascadeNone, row: row)
+        })
+        let listed = native_census_cause_group_rows(groups: groups)
+        length(xs: listed) == 1
+          && census_cause_group_of(groups: listed, reason: ^resolve_reason_unbound_symbol) == 1
+          && census_cause_group_of(groups: listed, reason: ^resolve_unbound_name_is_declared_elsewhere) == 0
+          && fold_list(xs: listed, empty: true, cons: fn(acc, g) {
+            fold_list(xs: g.members, empty: acc, cons: fn(acc2, m) { acc2 && m.head_reason == ^resolve_unbound_name_is_declared_elsewhere })
+          })
+      }
+  }
+}
+
+// THE FRONT-END HALF, AT ITS OWN INTERFACE. The rows are SUPPLIED (DESIGN section 3: a witness
+// discriminates at one interface) because the boundary under test is the grouping, and the real
+// front end's production of a head-distinct file refusal is the poison specimen above. Three rows
+// share ONE head and carry TWO fatals: grouped by head they are one group of three, grouped by fatal
+// two groups of two and one. Groups are in first-appearance order, so the tokenize group, first
+// seen on row a, leads; a fold that inverted the order is red here.
+fn census_first_group_reason(groups: List<NativeCensusCauseGroup>) -> Symbol {
+  match groups {
+    Empty => ^census_no_group
+    Cons { head: g, tail: _ } => g.fatal_reason
+  }
+}
+
+fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: path,
+    module: optional_absent(),
+    head_reason: ^parse_grammar_choice_overlap_residue,
+    fatal_reason: fatal,
+    chain: []
+  }
+}
+
+test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
+  let refusals = [
+    census_supplied_file_refusal(path: ^census_supplied_a, fatal: ^tokenize_lex_e0_source_not_exhausted),
+    census_supplied_file_refusal(path: ^census_supplied_b, fatal: ^parse_unexpected_token),
+    census_supplied_file_refusal(path: ^census_supplied_c, fatal: ^tokenize_lex_e0_source_not_exhausted)
+  ]
+  let groups = native_census_cause_groups_from_file_refusals(
+    refusals: refusals,
+    closure: NativeCensusClosureIndexUnavailable { reason: ^census_supplied_no_import_graph },
+    resolves: false
+  )
+  let listed = native_census_cause_group_rows(groups: groups)
+  length(xs: listed) == 2
+    && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
+    && census_cause_group_of(groups: listed, reason: ^parse_unexpected_token) == 1
+    && census_cause_group_of(groups: listed, reason: ^parse_grammar_choice_overlap_residue) == 0
+    && census_first_group_reason(groups: listed) == ^tokenize_lex_e0_source_not_exhausted
 }

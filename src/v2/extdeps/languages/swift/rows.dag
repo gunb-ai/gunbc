@@ -9,7 +9,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.std.node { Conj, Edge, Node, Authored, Positional, Symbol, TypeNode, Atom }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.witness { Holds, Violates }
 import v2.std.grammar {
   FormalProduction, FormalGrammarSymbol,
@@ -408,7 +408,7 @@ fn swift_rows_emit_source_file(f: SwiftSourceFile) -> SwiftRowEmission {
     Holds { value: row } =>
       match target_serialize_derived_row_bounded(remaining: 4096, target: swift_row_target_model(row: row), row: row) {
         Accepted { value: text, diagnostics: _ } => SwiftRowEmitted { source: render_target_text(t: text) }
-        Rejected { diagnostics: d } => SwiftRowEmissionRefused { reason: d.head.reason }
+        Rejected { diagnostics: d } => SwiftRowEmissionRefused { reason: diagnostics_fatal_reason(d: d) }
       }
     Violates { diagnostic: d } => SwiftRowEmissionRefused { reason: d.reason }
   }

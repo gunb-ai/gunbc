@@ -152,7 +152,7 @@ test fn w_nonliteral_kernel_string_at_text_return_boundary_refuses() -> Bool {
 // narrowed excludes still go red if any name-keyed override returns.
 test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_ops_probe\nimport v2.std.text { string_is_empty }\nimport v2.std.logic { Bool }\nfn probe(s: v2.std.text.String) -> Bool { string_is_empty(s: s) }\n",
+    "module test.claim.text_ops_probe\nimport v2.std.text { string_is_empty }\nimport std.types { Bool }\nfn probe(s: v2.std.text.String) -> Bool { string_is_empty(s: s) }\n",
     "src/v2_std_text.rs",
     ["pub fn string_is_empty", "crate::v2_std_algebra::is_empty"],
     ["s.chars()", "s.is_empty()"]

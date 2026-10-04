@@ -82,7 +82,7 @@ data fabric_storage_append_principal_unrefused: RungDrop = RungDrop {
     reason: ReplacementStaged { replacement: "gunbc.fabric_storage_serve fabric_storage_serve_handle, reached only through tailscale serve on srv1 (tailnet membership is the only boundary)" },
     population: [
       "SERVED WRITERS (FabricStorageServed, every executor but the placed host): gunbc.fabric_storage_serve fabric_storage_serve_handle",
-      "LOCAL WRITERS (FabricStorageLocalFiles, the placed host srv1): gunbc.fabric_storage_file_store fabric_storage_file_put / fabric_storage_file_advance, reached in process by gunbc.fabric_storage_client fabric_storage_binding_for",
+      "LOCAL WRITERS (FabricStorageLocalFiles, the placed host srv1): gunbc.fabric_storage_file_store fabric_storage_file_put / fabric_storage_file_advance, reached in process by gunbc.fabric_storage_binding fabric_storage_binding_for",
       "LOOPBACK (any account on the placed host): the served backend's TCP loopback listener, where a forged Tailscale-User-Login passes the served roster",
       "gunbc.fabric_event_log event_log_append",
       "gunbc.fabric_event_log event_log_append_with",

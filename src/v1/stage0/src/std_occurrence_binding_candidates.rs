@@ -68,7 +68,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
 pub use crate::std_roster_frontier::declaration_ref_eq;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2905,37 +2904,7 @@ pub fn resolve_type_reference_containment_binding(
             inputs.clone(),
             reference.clone(),
         ),
-        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
-            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
-                occurrence: reference.occurrence.clone(),
-                observed: reference.category.clone(),
-            },
-        ),
-        OccurrenceCategory::CallableOccurrence => Rc::new(
-            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
-                occurrence: reference.occurrence.clone(),
-                observed: reference.category.clone(),
-            },
-        ),
-        OccurrenceCategory::ConstructorOccurrence => Rc::new(
-            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
-                occurrence: reference.occurrence.clone(),
-                observed: reference.category.clone(),
-            },
-        ),
-        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
-            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
-                occurrence: reference.occurrence.clone(),
-                observed: reference.category.clone(),
-            },
-        ),
-        OccurrenceCategory::FieldOccurrence => Rc::new(
-            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
-                occurrence: reference.occurrence.clone(),
-                observed: reference.category.clone(),
-            },
-        ),
-        OccurrenceCategory::MethodOccurrence => Rc::new(
+        _ => Rc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
                 occurrence: reference.occurrence.clone(),
                 observed: reference.category.clone(),
@@ -3422,12 +3391,7 @@ pub fn section13_population_law_roster_adjudicate(
 }),
     std::option::Option::None => rows.iter().cloned().fold(Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Rc<Section13PopulationLawRosterVerdict>, row: Rc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => section13_adjudicate_row(row.clone(), observations.clone(), required_head.clone()),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw { law: _, .. } => verdict.clone(),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw { law: _, .. } => verdict.clone(),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _, .. } => verdict.clone(),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation { receipt: _, .. } => verdict.clone(),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _, .. } => verdict.clone(),
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger => verdict.clone(),
+    _ => verdict.clone(),
 }),
 },
 }
@@ -3438,15 +3402,12 @@ pub fn section13_population_law_roster_denominator_holds(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> bool {
-    match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone())).clone() {
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw { law: _, .. } => false,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw { law: _, .. } => false,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _, .. } => false,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation { receipt: _, .. } => false,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _, .. } => false,
-    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger => false,
-}
+    match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone()))
+        .clone()
+    {
+        Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
+        _ => false,
+    }
 }
 
 pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionCondition> {

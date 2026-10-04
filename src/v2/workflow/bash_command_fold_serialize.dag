@@ -2,6 +2,7 @@ module v2.workflow.bash_command_fold_serialize
 
 import v2.std.grammar { node_atom_identity_optional }
 
+import std.types { List }
 import v2.compiler.target_serialize { target_serialize_source_from_model, target_serialize_source_from_selected_row }
 import v2.extdeps.languages.bash {
   bash_stmt_andor_emitted,
@@ -45,7 +46,6 @@ import v2.std.algebra {
 }
 import v2.std.collection {
   Absent,
-  List,
   Map,
   Present,
   list_at_optional

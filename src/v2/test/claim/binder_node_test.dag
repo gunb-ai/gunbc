@@ -1,7 +1,6 @@
 module v2.test.claim.binder_node
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.lens.unit_modeling { field_unit_violation }
 import v2.std.type_binder { type_binder_node_conforms }

@@ -84,12 +84,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -199,15 +199,18 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
-            let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
-            v1_compiler_compile::compile_sources(
-                Rc::new(sources.into()),
-                crate::v1_compiler_artifact::RenderTarget::Rust,
-            )
+            let sources =
+                resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+            compile_fixture_rendering_only_what_is_read(sources, None)
         })
     }));
     let result = match compiled {
-        Ok(r) => r,
+        Ok(Ok(r)) => r,
+        Ok(Err(refusal)) => {
+            return CompileDiagnosticCensus::NotRunnable(format!(
+                "compile_dag_diagnostic_census: {refusal}"
+            ));
+        }
         Err(_) => {
             return CompileDiagnosticCensus::NotRunnable(
                 "compile_dag_diagnostic_census: the compile panicked before producing diagnostics"
@@ -470,7 +473,7 @@ pub fn compile_dag_multi_module_fixture(
         };
     }
     let source_digest = multi_module_fixture_source_digest(&sources, entry);
-    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let compiler_digest = crate::closure_identity::transform_content_digest();
     let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
         .iter()
         .map(|s| {
@@ -1616,7 +1619,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
     contents: &[String],
     entry: &str,
 ) -> ReferenceOccurrenceBindingCensus {
-    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let compiler_digest = crate::closure_identity::transform_content_digest();
     if paths.len() != contents.len() || paths.is_empty() {
         return ReferenceOccurrenceBindingCensus::Refused {
             cause: "reference binding census: manifest is empty or ragged".to_string(),
@@ -2009,7 +2012,7 @@ pub fn compile_dag_rust_emit_check(
     file_path: &str,
     includes: &[String],
     excludes: &[String],
-) -> bool {
+) -> Result<bool, FixtureRenderRefusal> {
     // Memo only under the floor guard, keyed on declared inputs AND the prepared
     // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
     // Outside the guard there is no snapshot, so a hit would lie about disk.
@@ -2023,7 +2026,7 @@ pub fn compile_dag_rust_emit_check(
         excludes,
         &inventory_digest,
     );
-    if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).copied())
+    if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         return hit;
@@ -2039,7 +2042,7 @@ pub fn compile_dag_rust_emit_check(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
     record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
-    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict.clone()));
     verdict
 }
 
@@ -2048,29 +2051,334 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
     file_path: &str,
     includes: &[String],
     excludes: &[String],
-) -> bool {
+) -> Result<bool, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
-    let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
-    let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources.into()),
-        crate::v1_compiler_artifact::RenderTarget::Rust,
-    );
+    let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+    let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
     let hard_diagnostics = result
         .diagnostics
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
-        false
-    } else {
-        match result.files.iter().find(|f| f.path == file_path) {
-            Some(f) => {
-                includes.iter().all(|n| f.content.contains(n.as_str()))
-                    && excludes.iter().all(|n| !f.content.contains(n.as_str()))
-            }
-            None => false,
+        return Ok(false);
+    }
+    match result.files.iter().find(|f| f.path == file_path) {
+        Some(f) => Ok(includes.iter().all(|n| f.content.contains(n.as_str()))
+            && excludes.iter().all(|n| !f.content.contains(n.as_str()))),
+        // A CLEAN COMPILE THAT DID NOT PRODUCE THE READ PATH IS NOT A RED VERDICT ABOUT ITS TEXT.
+        // The path named no module of the compiled closure and no crate-level file the emitter
+        // writes, so there was nothing to read; answering `false` would let a misspelled path pass
+        // as a discriminating red. Under the full render this was the same absence, read as false.
+        None => Err(FixtureRenderRefusal::ReadPathNotEmitted {
+            read_path: file_path.to_string(),
+            emitted: result.files.iter().map(|f| f.path.clone()).collect(),
+        }),
+    }
+}
+
+/// The path the census and the emit check give the caller's fixture source in the source vector.
+pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
+
+/// WHY A FIXTURE COMPILE NO LONGER RENDERS EVERY MODULE (floor repair C1, plan
+/// `docs/plans/floor-time-attribution-2026-10-02.md`).
+///
+/// Both fixture instruments compile the fixture's whole live import closure. That compile is
+/// their subject and is unchanged. Up to this commit they then rendered Rust for EVERY module of
+/// the closure (`RenderEveryModule`). The emit check reads ONE emitted file, and the census reads
+/// diagnostics, among them the per-module emit refusals of the modules it renders. So every
+/// closure module rendered beyond the read set was demanded by no consumer. That is §2 redundant
+/// demand, not a cost to cache: rendering is a pure function of (graph, module), and a module
+/// nobody reads owes no rendering at all.
+///
+/// The render set is DERIVED from the compiled graph, never authored by the caller:
+///   * the fixture's own modules, i.e. those whose declaration is spanned in
+///     [`FIXTURE_SOURCE_PATH`] (their emit refusals are the census's subject);
+///   * for the emit check, the closure module whose emitted path IS the read path, if any.
+///
+/// So the selection cannot name a module outside the compiled closure. It is a subset of the
+/// closure's own module names, so "names an outside module" has no constructor here.
+/// Crate-level files (`Cargo.toml`, `src/lib.rs`, `src/main.rs`, ...) are emitted under every
+/// selection, so a read of one needs no module selected.
+///
+/// WHAT NARROWS, stated so no receipt claims more than this reads (DESIGN §4b): a corpus module
+/// in the fixture's closure is no longer rendered, so ITS per-module emit refusal no longer
+/// reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks
+/// (anonymous records, effectful recursion, file-name and symbol collisions) run before
+/// selection and are unchanged. A corpus module's own emission is the subject of the
+/// generated-artifact lanes, which render it for real, not of a fixture claim.
+///
+/// REFUSES, NEVER WIDENS. If the graph holds no module spanned in the fixture source, there is
+/// no subject to render, and the answer is a typed refusal. It is never a fall back to
+/// `RenderEveryModule`, which would re-buy the work and hide the deficit (DESIGN §5, absorbing
+/// fallback).
+///
+/// The control that the selected bytes equal the full render's is
+/// [`compile_dag_render_selection_agreement`], which runs the full render for real.
+pub(crate) fn compile_fixture_rendering_only_what_is_read(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    read_path: Option<&str>,
+) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let selection = fixture_render_selection(&resolved, read_path)?;
+    Ok(v1_compiler_compile::emit_resolved_for_target_selected(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+        selection,
+    ))
+}
+
+/// One pinned control fixture of [`render_selection_agreement_receipt`].
+pub(crate) struct RenderSelectionAgreementFixture {
+    pub name: &'static str,
+    pub source: &'static str,
+    pub read_path: &'static str,
+    /// Whether the derived selection must render strictly fewer files than the full render.
+    /// `false` is the import-free RED: a closure that is only the fixture has nothing to narrow,
+    /// so a receipt that reported a narrowing there would be reading something other than the
+    /// render it ran.
+    pub narrows: bool,
+}
+
+/// THE PINNED CONTROL FIXTURES for floor repair C1, kept minimal so the receipt costs seconds.
+/// The two importing fixtures import two leaf `std` modules that have no imports of their own
+/// (`std.logic`, `std.error_primitives`). Reading one of them leaves the other unrendered,
+/// which is the narrowing.
+///
+/// THESE SOURCES ARE CORPUS CONSUMERS THAT NO IMPORT SCAN SEES. They are strings handed to the
+/// live module index, so a change that retires a module they import breaks the receipt and is
+/// told nothing. That happened once: gunbc#12846 retired `std.magnitude`, the receipt's first
+/// choice, and the floor refused on main+PR with `unresolved import`. That refusal is the
+/// receipt working: a fixture whose world moved stops the line rather than passing on some other
+/// mechanism (DESIGN §3). The two modules are chosen so that retiring them is a visible
+/// cascade: `std.logic` is imported across the corpus, and `std.error_primitives` by
+/// `std.algebra`. They are not chosen for being small. One reads the fixture's own module, one reads a module the fixture
+/// IMPORTS (the read-path arm of [`fixture_render_selection`]), and one is import-free (the red).
+pub(crate) const RENDER_SELECTION_AGREEMENT_FIXTURES: &[RenderSelectionAgreementFixture] = &[
+    RenderSelectionAgreementFixture {
+        name: "reads_fixture_module",
+        source: "module rsa_own\n\nimport std.logic { Classical }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(c: Classical, e: DivError) -> DivError {\n  e\n}\n",
+        read_path: "src/rsa_own.rs",
+        narrows: true,
+    },
+    RenderSelectionAgreementFixture {
+        name: "reads_imported_module",
+        source: "module rsa_importer\n\nimport std.logic { Classical }\nimport std.error_primitives { DivError }\n\nfn rsa_pick(c: Classical, e: DivError) -> DivError {\n  e\n}\n",
+        read_path: "src/std_logic.rs",
+        narrows: true,
+    },
+    RenderSelectionAgreementFixture {
+        name: "import_free_has_nothing_to_narrow",
+        source: "module rsa_alone\n\nfn rsa_one() -> Int {\n  1\n}\n",
+        read_path: "src/rsa_alone.rs",
+        narrows: false,
+    },
+];
+
+/// THE CONTROL FOR [`compile_fixture_rendering_only_what_is_read`], run by the required floor on
+/// every run (`required_floor_runner`, `[floor-receipt] receipt=render-selection-agreement`). It
+/// is also the one execution of the FULL render that the fixture instruments no longer perform:
+/// DESIGN §3's pairing obligation keeps one execution of the real path, and DESIGN §4b(4) keeps
+/// the discriminating red and the positive control enrolled.
+///
+/// For each of [`RENDER_SELECTION_AGREEMENT_FIXTURES`] it compiles once at this revision, renders
+/// the resolved graph with `RenderEveryModule` and with the derived selection, and requires:
+///   * the bytes at the read path are present in the full render and equal in both;
+///   * the two diagnostic lists are equal, element for element;
+///   * the selected render emitted strictly fewer files exactly when the fixture says it narrows.
+///
+/// The third condition checks the ROUTE, not the answer: a selection that silently widened to
+/// every module would agree on bytes and diagnostics trivially.
+///
+/// Any mismatch is returned as a located refusal naming the fixture, the read path and the first
+/// differing byte offset or diagnostic index. The caller refuses the floor with it and never
+/// warns. On success it returns, per fixture, (name, wall ms, full files, selected files) for the
+/// caller's log line.
+pub(crate) fn render_selection_agreement_receipt(
+) -> Result<Vec<(&'static str, u128, usize, usize)>, String> {
+    let mut observed = Vec::with_capacity(RENDER_SELECTION_AGREEMENT_FIXTURES.len());
+    for fx in RENDER_SELECTION_AGREEMENT_FIXTURES {
+        let fixture_started = std::time::Instant::now();
+        let refuse = |what: String| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=RenderSelectionDisagreement \
+                 receipt=render_selection_agreement_receipt fixture={} read_path={} -- {what}",
+                fx.name, fx.read_path
+            )
+        };
+        let module_index = build_module_path_index_from_witness_roots();
+        let sources =
+            resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, fx.source, &module_index);
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+        let selection = fixture_render_selection(&resolved, Some(fx.read_path))
+            .map_err(|r| refuse(r.to_string()))?;
+        let full = v1_compiler_compile::emit_resolved_for_target(
+            resolved.clone(),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let selected = v1_compiler_compile::emit_resolved_for_target_selected(
+            resolved,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+            selection,
+        );
+        let read = |r: &v1_compiler_compile::PipelineResult| {
+            r.files
+                .iter()
+                .find(|f| f.path == fx.read_path)
+                .map(|f| f.content.clone())
+        };
+        let Some(full_bytes) = read(&full) else {
+            let diagnostics: Vec<String> = full
+                .diagnostics
+                .iter()
+                .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+                .collect();
+            return Err(refuse(format!(
+                "the full render did not emit the read path ({} files, {} diagnostics: {})",
+                full.files.len(),
+                full.diagnostics.len(),
+                diagnostics.join(" | ")
+            )));
+        };
+        let Some(selected_bytes) = read(&selected) else {
+            return Err(refuse(
+                "the selected render did not emit the read path".to_string(),
+            ));
+        };
+        if full_bytes != selected_bytes {
+            let offset = full_bytes
+                .bytes()
+                .zip(selected_bytes.bytes())
+                .position(|(a, b)| a != b)
+                .unwrap_or(full_bytes.len().min(selected_bytes.len()));
+            return Err(refuse(format!(
+                "read-path bytes differ at byte {offset} (full {} bytes, selected {} bytes)",
+                full_bytes.len(),
+                selected_bytes.len()
+            )));
+        }
+        if full.diagnostics != selected.diagnostics {
+            let index = full
+                .diagnostics
+                .iter()
+                .zip(selected.diagnostics.iter())
+                .position(|(a, b)| a != b)
+                .unwrap_or(full.diagnostics.len().min(selected.diagnostics.len()));
+            let at = |d: &v1_compiler_compile::PipelineResult| {
+                d.diagnostics
+                    .get(index)
+                    .map(|e| diagnostic_to_message(e.diagnostic.clone()))
+                    .unwrap_or_else(|| "<absent>".to_string())
+            };
+            return Err(refuse(format!(
+                "diagnostics differ at index {index} (full {}, selected {}): full=`{}` selected=`{}`",
+                full.diagnostics.len(),
+                selected.diagnostics.len(),
+                at(&full),
+                at(&selected)
+            )));
+        }
+        let narrowed = selected.files.len() < full.files.len();
+        if narrowed != fx.narrows {
+            return Err(refuse(format!(
+                "route mismatch: expected narrows={} but full render emitted {} files and the \
+                 selected render {}",
+                fx.narrows,
+                full.files.len(),
+                selected.files.len()
+            )));
+        }
+        observed.push((
+            fx.name,
+            fixture_started.elapsed().as_millis(),
+            full.files.len(),
+            selected.files.len(),
+        ));
+    }
+    Ok(observed)
+}
+
+/// Why a fixture compile could not be answered. Typed, so a caller states which arm fired.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FixtureRenderRefusal {
+    /// The compiled graph holds no module whose declaration is spanned in the fixture source.
+    NoFixtureModuleInClosure {
+        fixture_path: String,
+        closure_modules: usize,
+    },
+    /// A clean compile emitted no file at the read path.
+    ReadPathNotEmitted {
+        read_path: String,
+        emitted: Vec<String>,
+    },
+}
+
+impl std::fmt::Display for FixtureRenderRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FixtureRenderRefusal::NoFixtureModuleInClosure {
+                fixture_path,
+                closure_modules,
+            } => write!(
+                f,
+                "render selection refused: none of the {closure_modules} compiled module(s) is \
+                 declared in fixture source '{fixture_path}', so there is no fixture module to \
+                 render (refused rather than rendering every module)"
+            ),
+            FixtureRenderRefusal::ReadPathNotEmitted { read_path, emitted } => write!(
+                f,
+                "read path '{read_path}' names no module of the compiled closure and no \
+                 crate-level file; the compile was clean and emitted {} file(s): {}",
+                emitted.len(),
+                emitted.join(", ")
+            ),
         }
     }
+}
+
+/// The render selection for a fixture compile, derived from the compiled graph (see
+/// [`compile_fixture_rendering_only_what_is_read`]). A graph that did not survive the front end
+/// is not emitted at all, so no selection is needed and an empty one is returned.
+pub(crate) fn fixture_render_selection(
+    resolved: &v1_compiler_compile::ResolvedPipelineResult,
+    read_path: Option<&str>,
+) -> Result<Rc<crate::v1_compiler_artifact::RustModuleRenderSelection>, FixtureRenderRefusal> {
+    use crate::v1_compiler_artifact::RustModuleRenderSelection;
+    let selected = |basenames: Vec<String>| {
+        Rc::new(RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: Rc::new(basenames.into()),
+        })
+    };
+    let Some(graph) = resolved.graph.as_ref() else {
+        return Ok(selected(Vec::new()));
+    };
+    let root = crate::v1_compiler_emit_rust::rust_source_root();
+    let mut fixture: Vec<String> = Vec::new();
+    let mut read: Vec<String> = Vec::new();
+    for tm in graph.modules.iter() {
+        let name = authored_name_at(tm.type_env.source_indices.clone(), tm.module.clone());
+        let path = crate::v1_compiler_emit_rust::rust_module_emit_path(name);
+        let basename = path
+            .strip_prefix(root.as_str())
+            .unwrap_or(&path)
+            .to_string();
+        if tm.module.span.file == FIXTURE_SOURCE_PATH {
+            fixture.push(basename.clone());
+        }
+        if read_path == Some(path.as_str()) {
+            read.push(basename);
+        }
+    }
+    if fixture.is_empty() {
+        return Err(FixtureRenderRefusal::NoFixtureModuleInClosure {
+            fixture_path: FIXTURE_SOURCE_PATH.to_string(),
+            closure_modules: graph.modules.len(),
+        });
+    }
+    fixture.extend(read);
+    fixture.sort();
+    fixture.dedup();
+    Ok(selected(fixture))
 }
 
 pub(crate) fn emit_source_root_entry_admission_data(
@@ -2314,7 +2622,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
-    out.push_str("import v2.std.collection { List }\n");
+    out.push_str("import std.types { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -2332,7 +2640,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
-        out.push_str("import v2.std.collection { List }\n");
+        out.push_str("import std.types { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -2572,5 +2880,28 @@ pub(crate) fn compile_xl1_primary_root_tap(
             occurrence_transport: transport,
             binding_rows: observations,
         },
+    }
+}
+
+#[cfg(test)]
+mod fixture_render_selection_probe {
+    use super::*;
+
+    // Runs the floor receipt by hand (`--ignored`) with its cost. Not enrolled here: the CI lane
+    // runs no unit tests; the floor runs the receipt itself.
+    #[test]
+    #[ignore]
+    #[allow(clippy::disallowed_macros)]
+    fn render_selection_agreement_receipt_by_hand() {
+        // The floor warms this index before the receipt; warm it here too so the cost is the
+        // receipt's own.
+        let _ = build_module_path_index_from_witness_roots();
+        let t = std::time::Instant::now();
+        let r = render_selection_agreement_receipt();
+        eprintln!(
+            "[c1-probe] receipt={r:?} wall_ms={}",
+            t.elapsed().as_millis()
+        );
+        assert!(r.is_ok());
     }
 }

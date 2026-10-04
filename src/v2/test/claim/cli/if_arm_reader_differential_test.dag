@@ -1,0 +1,131 @@
+module v2.test.claim.cli.if_arm_reader_differential
+
+import v2.cli.if_arm_reader_differential {
+  IardCensus,
+  IardCensusTaken,
+  IardGrammarUnprepared,
+  IardTally,
+  if_arm_reader_differential,
+  if_arm_reader_differential_text
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DIFFERENTIAL'S COMPARATOR, DISCRIMINATED BEFORE IT IS TRUSTED WITH A POPULATION.
+//
+// THE SUBJECT is v2.cli.if_arm_reader_differential if_arm_reader_differential: for each if_expr
+// capture it asks the frozen pre-gunbc#13029 readers and the positional
+// body_lower_if_row_arms_optional for each arm and counts the sites where they answer a different
+// occurrence. A census reporting zero is only evidence if its comparator can report one, so:
+//
+// THE POSITIVE CONTROL: `if a { if b { 1 } else { 2 } } else { 3 }`. The old else reader entered the
+// then-arm and answered the NESTED else `{ 2 }` for the OUTER if; the positional reader answers
+// `{ 3 }`. Exactly one site (the outer if) differs, on its else arm, and its row names the
+// declaration and the byte range of the site and of each arm.
+// THE NEGATIVE CONTROLS, where the old reader was right: an `else if` chain, and an if nested in the
+// ELSE arm. Every site there agrees, so a comparator that reported everything as differing is red.
+// A FILE THAT DOES NOT PARSE is counted as refused and named, never folded into zero sites.
+data iard_nested_then_source: String = "module v2.test.iard_nested_then\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn iard_nested_then_probe(a: Bool, b: Bool) -> Int {\n  if a {\n    if b { 1 } else { 2 }\n  } else {\n    3\n  }\n}\n"
+
+data iard_agreeing_source: String = "module v2.test.iard_agreeing\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\n\nfn iard_else_if_probe(a: Bool, b: Bool) -> Int {\n  if a { 1 } else if b { 2 } else { 3 }\n}\n\nfn iard_nested_else_probe(a: Bool, b: Bool) -> Int {\n  if a {\n    1\n  } else {\n    if b { 2 } else { 3 }\n  }\n}\n"
+
+data iard_multibyte_source: String = "module v2.test.iard_multibyte\n\nimport std.types { Bool }\nimport v2.std.integer { Int }\nimport v2.std.text { String }\n\ndata iard_multibyte_label: String = \"é—日本語 ✓ 𝄞\"\n\nfn iard_multibyte_probe(a: Bool, b: Bool) -> Int {\n  if a {\n    if b { 1 } else { 2 }\n  } else {\n    3\n  }\n}\n"
+
+data iard_unparsable_source: String = "module v2.test.iard_unparsable\n\nfn iard_broken( -> {\n"
+
+fn iard_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data iard_nested_then_ingest: SourceRootIngest = Cons {
+  head: iard_read(source: iard_nested_then_source, id: ^iard_nested_then_artifact, unit: ^iard_nested_then_cu, path: "src/v2/test/fixture/cli/iard_nested_then.dag"),
+  tail: Empty
+}
+
+data iard_multibyte_ingest: SourceRootIngest = Cons {
+  head: iard_read(source: iard_multibyte_source, id: ^iard_multibyte_artifact, unit: ^iard_multibyte_cu, path: "src/v2/test/fixture/cli/iard_multibyte.dag"),
+  tail: Empty
+}
+
+data iard_agreeing_ingest: SourceRootIngest = Cons {
+  head: iard_read(source: iard_agreeing_source, id: ^iard_agreeing_artifact, unit: ^iard_agreeing_cu, path: "src/v2/test/fixture/cli/iard_agreeing.dag"),
+  tail: Cons {
+    head: iard_read(source: iard_unparsable_source, id: ^iard_unparsable_artifact, unit: ^iard_unparsable_cu, path: "src/v2/test/fixture/cli/iard_unparsable.dag"),
+    tail: Empty
+  }
+}
+
+// ONE FRONT END PER INGEST, stored as the census's own portable answer (counts and rendered rows,
+// no Node), enrolled WARM in v2.workflow.floor_pure_producer_share so each claim reads it.
+type IardFixtureCensuses {
+  nested_then: IardCensus
+  multibyte: IardCensus
+  agreeing: IardCensus
+}
+
+fn iard_fixture_censuses() -> IardFixtureCensuses {
+  IardFixtureCensuses {
+    nested_then: if_arm_reader_differential(ingest: iard_nested_then_ingest),
+    multibyte: if_arm_reader_differential(ingest: iard_multibyte_ingest),
+    agreeing: if_arm_reader_differential(ingest: iard_agreeing_ingest)
+  }
+}
+
+fn iard_tally_holds(c: IardCensus, check: fn(IardTally) -> Bool) -> Bool {
+  match c {
+    IardGrammarUnprepared { reason: _ } => false
+    IardCensusTaken { tally: t } => check(t)
+  }
+}
+
+test fn an_if_nested_in_the_then_arm_differs_on_the_outer_else_only_holds() -> Bool {
+  iard_tally_holds(c: iard_fixture_censuses().nested_then, check: fn(t) {
+    (t.files_read == 1) && (t.files_refused == 0) && (t.sites == 2)
+      && (t.sites_differing == 1) && (t.else_differs == 1) && (t.then_differs == 0)
+  })
+}
+
+// THE EXPECTED EXTENTS ARE THE SOURCE'S UTF-8 OCTETS: the outer `if` token, the nested else's `{`
+// (what the old reader answered) and the outer else's `{` (the real arm).
+test fn the_differing_row_names_the_declaration_the_arm_and_each_byte_range_holds() -> Bool {
+  string_contains(
+    s: if_arm_reader_differential_text(c: iard_fixture_censuses().nested_then),
+    pattern: "if_arm_differs file=src/v2/test/fixture/cli/iard_nested_then.dag decl=iard_nested_then_probe at=[bytes=145..147] arm=else differ old_at=[bytes=172..173] new_at=[bytes=187..188]\n"
+  )
+}
+
+// MULTIBYTE UTF-8 BEFORE THE SITE (calm-boar-904's objection to gunbc#13051): the label holds
+// 2-, 3- and 4-octet scalars, so the outer `if` is at octet 234 but at scalar 220. A location
+// counted in scalars anywhere on the route reports 220 and is red here.
+test fn multibyte_source_before_a_site_is_located_in_octets_holds() -> Bool {
+  string_contains(
+    s: if_arm_reader_differential_text(c: iard_fixture_censuses().multibyte),
+    pattern: "if_arm_differs file=src/v2/test/fixture/cli/iard_multibyte.dag decl=iard_multibyte_probe at=[bytes=234..236] arm=else differ old_at=[bytes=261..262] new_at=[bytes=276..277]\n"
+  )
+}
+
+test fn an_else_if_chain_and_an_if_nested_in_the_else_arm_agree_holds() -> Bool {
+  iard_tally_holds(c: iard_fixture_censuses().agreeing, check: fn(t) {
+    (t.sites == 4) && (t.sites_differing == 0) && (t.else_differs == 0) && (t.then_differs == 0)
+  })
+}
+
+test fn a_file_that_does_not_parse_is_counted_refused_and_named_holds() -> Bool {
+  iard_tally_holds(c: iard_fixture_censuses().agreeing, check: fn(t) {
+    (t.files_read == 1) && (t.files_refused == 1)
+  })
+    && string_contains(s: if_arm_reader_differential_text(c: iard_fixture_censuses().agreeing), pattern: "file_refused file=src/v2/test/fixture/cli/iard_unparsable.dag reason=")
+}

@@ -21,7 +21,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }
@@ -93,7 +92,7 @@ fn report_drop_count(report: ReferenceConservationReport, wanted: Symbol) -> Int
 
 // ---- the clean control -------------------------------------------------------------------------
 
-data clean_control_source: String = "module v2.test.reference_conservation_clean\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_body(a: Bool, b: Bool) -> Bool { rc_callee(a) }\n\nfn rc_bare(c: Bool) -> Bool { c }\n\ndata rc_row: Int = 7\n\ntest fn rc_marked_holds() -> Bool { rc_bare(true) }\n"
+data clean_control_source: String = "module v2.test.reference_conservation_clean\n\nimport std.types { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_body(a: Bool, b: Bool) -> Bool { rc_callee(a) }\n\nfn rc_bare(c: Bool) -> Bool { c }\n\ndata rc_row: Int = 7\n\ntest fn rc_marked_holds() -> Bool { rc_bare(true) }\n"
 
 fn clean_control_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "clean", source: clean_control_source)
@@ -185,7 +184,7 @@ fn block_second_statement_numbers() -> ProcessExit {
 // drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a
 // reason that is not the if-arm. The argument's spelling is used NOWHERE else in its declaration, so
 // the declaration-scoped pool cannot account for it: a regression drops it and names exactly it.
-data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(rc_arm_arg) } else { c } }\n"
+data if_arm_call_argument_source: String = "module v2.test.reference_conservation_if_arm\n\nimport std.types { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\ndata rc_arm_arg: Bool = true\n\nfn rc_if_arm(c: Bool) -> Bool { if c { rc_callee(rc_arm_arg) } else { c } }\n"
 
 fn if_arm_call_argument_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "if_arm_call_argument", source: if_arm_call_argument_source)
@@ -206,7 +205,7 @@ test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
 // DroppedReference. On #12145's head babf511 and on main after it, the operand keeps its occurrence
 // and the row is gone. The fixture stays enrolled as the regression control DESIGN section 4b(4)
 // asks for: if the operator tower ever drops a later operand again, this goes red on that atom.
-data infix_right_operand_source: String = "module v2.test.reference_conservation_infix\n\nimport v2.std.logic { Bool }\n\ndata rc_lhs: Int = 1\n\ndata rc_rhs: Int = 2\n\nfn rc_compare() -> Bool { rc_lhs == rc_rhs }\n"
+data infix_right_operand_source: String = "module v2.test.reference_conservation_infix\n\nimport std.types { Bool }\n\ndata rc_lhs: Int = 1\n\ndata rc_rhs: Int = 2\n\nfn rc_compare() -> Bool { rc_lhs == rc_rhs }\n"
 
 fn infix_right_operand_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "infix_right_operand", source: infix_right_operand_source)
@@ -231,7 +230,7 @@ test fn the_infix_right_operand_is_conserved_holds() -> Bool {
 // DroppedReference row on that spelling) or if the name stops being a member (the check then
 // passes vacuously, which the non-zero-population half of the grammar claim
 // v2.test.parse.type_decl_modifier_g0_parse_probe caret_referenced_ident_publishes_the_lexeme_holds guards).
-data caret_symbol_payload_source: String = "module v2.test.reference_conservation_caret\n\nimport v2.std.logic { Bool }\n\nfn rc_caret(id: Symbol) -> Bool { if id == ^rc_sym_less { true } else { id == ^rc_sym_less_or_equal } }\n"
+data caret_symbol_payload_source: String = "module v2.test.reference_conservation_caret\n\nimport std.types { Bool }\n\nfn rc_caret(id: Symbol) -> Bool { if id == ^rc_sym_less { true } else { id == ^rc_sym_less_or_equal } }\n"
 
 fn caret_symbol_payload_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "caret_symbol_payload", source: caret_symbol_payload_source)
@@ -254,7 +253,7 @@ test fn caret_symbol_payloads_are_conserved_holds() -> Bool {
 // restated as a CONSERVED control (DESIGN section 4b(4)): the callee, the label and the value all
 // reach the lowered tree, and nothing is dropped. MUTATION RECEIPT: lowering the named actual as a
 // Positional edge reds it with rc_label dropped.
-data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
+data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport std.types { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
 
 fn named_argument_label_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "named_argument_label", source: named_argument_label_source)
@@ -538,7 +537,7 @@ test fn an_unadmitted_role_table_surfaces_beside_a_normalization_refusal_holds()
 // could be counted. The fixture's two literals differ, and each must be conserved with nothing
 // dropped. MUTATION RECEIPT (run, see the PR): a lowering that keeps the literal's occurrence but
 // rebuilds it without its payload reds this with each value RespelledInNormalizedTree.
-data string_literal_value_source: String = "module v2.test.reference_conservation_string\n\nimport v2.std.logic { Bool }\n\ndata rc_greeting: String = \"hello\"\n\nfn rc_quoted() -> String { \"a\\\"b\" }\n"
+data string_literal_value_source: String = "module v2.test.reference_conservation_string\n\nimport std.types { Bool }\n\ndata rc_greeting: String = \"hello\"\n\nfn rc_quoted() -> String { \"a\\\"b\" }\n"
 
 fn string_literal_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "string_literal_value", source: string_literal_value_source)

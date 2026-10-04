@@ -15,7 +15,6 @@ import v2.lens.no_dual_representation_test.scan {
   synthetic_literal_mirror_scan,
   synthetic_same_symbol_scan
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

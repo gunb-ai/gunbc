@@ -75,12 +75,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    LeafOwner, MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner, MatchPattern,
+    NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -102,8 +102,10 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun, NativeFrontierRun,
-    NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    run_type_declaration_use_census_runs, run_v2_demand_census, run_v2_native_census,
+    run_v2_native_cli, run_v2_native_frontier, CensusInferRun, NativeCensusRun,
+    NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
+    SelfHostHeld, TypeDeclarationUseRuns, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -124,16 +126,6 @@ pub use required_lane_resolution_census::{
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
-}
-
-pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> Vec<String> {
-    // The weaker column still has content provenance: `subject_digest_for_closure` keys the
-    // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
-    // both the request key and stored semantic digest. It does not prove judgment by this run.
-    // Required CI does not arm `GUNBC_RESOLVED_GRAPH_CACHE_DIR`, so this split has no reachable
-    // nonempty arm there today: its expected empty column must be read beside the in-run column,
-    // and its presence is not evidence that disk provenance has been exercised.
-    entry_resolve::required_lane_cross_process_content_judged_module_identities()
 }
 
 /// Module identities admitted by the same source-root ingestion used by compilation.
@@ -205,7 +197,6 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
-pub(crate) mod materialization_provider_consumer;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -246,30 +237,13 @@ pub use floor_discovery_snapshot::{
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
     FloorDiscoveryConsumerRole,
 };
-#[doc(hidden)]
-pub use materialization_provider_consumer::{
-    materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
-    reset_materialization_provider_ctx_for_test, resolve_closure_request_key_from_digests,
-    resolved_graph_parts_semantic_digest, serve_resolved_graph_stored_disk_probe,
-    serve_resolved_graph_stored_disk_probe_for_test, ResolvedGraphProviderOutcome,
-    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
-};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
-use crate::resolved_graph_cache::{
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
-    CacheRejectReason, CachedResolvedGraph,
-};
+use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
 use crate::std_keyed_row::KeyedRow;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResolveTypecheckGate {
-    Strict,
-    DiscoveryCorpusAdvisory,
-}
 
 #[cfg(test)]
 mod generated_cli_dispatch_allocator_integration_tests {
@@ -329,13 +303,6 @@ mod generated_cli_dispatch_allocator_integration_tests {
             1,
             "shifted executor must be used at the retained-host call site: {emitted}"
         );
-    }
-}
-
-fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
-    match gate {
-        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
     }
 }
 
@@ -758,7 +725,6 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
     ) {
@@ -1136,7 +1102,7 @@ pub(crate) mod bare_reference_scanner_tests {
     #[test]
     fn explicit_import_members_are_read_including_the_alias_binder() {
         let names = explicit_import_member_names(
-            "module t\nimport v2.std.logic { Bool, True as Yes }\nimport std.types\n",
+            "module t\nimport std.types { Bool, True as Yes }\nimport v2.std.logic\n",
         );
         assert!(names.contains("Bool"), "a plain member is named");
         assert!(
@@ -1148,7 +1114,7 @@ pub(crate) mod bare_reference_scanner_tests {
             "the aliased-away original is not the local binder"
         );
         assert!(
-            !names.contains("std.types"),
+            !names.contains("v2.std.logic"),
             "a memberless import names no members, and the module path is not a member"
         );
     }
@@ -4257,7 +4223,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, bool>,
+        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -6928,7 +6894,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let first = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "ephemeral-warm",
             super::ResolvedGraphMemoShare::Ephemeral,
         )
@@ -6941,7 +6906,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let second = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-serve",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -6974,7 +6938,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let resolved = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-after-erasing",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -7245,8 +7208,8 @@ fn runtime_data_dependency_touched_via_carrier_closure(
 #[cfg(test)]
 mod live_read_carrier_home_roster_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -7271,9 +7234,8 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     fn dag_carrier_home_modules() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
@@ -7429,7 +7391,7 @@ fn resolve_discovery_entry_for_corpus_row(
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+    let (graph, source_indices) = resolve_entry_with_index(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
     // Same thread, immediately after the resolve that filled it: this entry's split.
@@ -7464,7 +7426,7 @@ fn resolve_discovery_entry_for_corpus_row(
 /// `resolve_entry_with_parse_cache` starts from — so equality with the post-resolve union
 /// (`collect_typed_module_names` over what resolve loaded) holds by construction WITHOUT
 /// resolving: no parse, no typecheck, nothing installed into `resolved_graph_memo`. The #6938
-/// form ran the full `resolve_entry_with_index_for_discovery_corpus` per entry, so every floor
+/// form ran the full `resolve_entry_with_index` per entry, so every floor
 /// run resolved the ENTIRE roster on the width-1 pump thread and retained every resolved graph
 /// in the uncapped memo (~17 GB scoped runs became ~38 GB whole-corpus retention — the
 /// 2026-07-21 exit-137 floor kills). On a completed width-1 run this equals
@@ -9218,6 +9180,10 @@ struct BareCandidates {
     /// Unbound callees. The pull discriminator: the census strips fn bodies, so a 0-arg fn and
     /// a type alias share a census shape, but only the fn is called.
     call_position: BTreeSet<String>,
+    /// Names with at least one occurrence that is NOT a callee (`BarePositions::non_call`, plus
+    /// authored types and dotted heads). `call_position` minus this set is the names used ONLY
+    /// as callees.
+    non_call: BTreeSet<String>,
     /// Field chains and method-call chains (`cron.Tab.List` in `cron.Tab.List()`): a SERVICE
     /// reference's prefix is a services-census key (`cron.Tab`, `llm.Codex`) with no module
     /// spelling, so the consumer tries each dot-prefix against the services census.
@@ -9325,9 +9291,13 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
         .collect();
     let mut names = refs.positions.undotted.clone();
     names.extend(refs.authored_types.iter().cloned());
+    let mut non_call = refs.positions.non_call.clone();
+    non_call.extend(refs.authored_types.iter().cloned());
+    non_call.extend(refs.positions.dotted_heads.iter().cloned());
     BareCandidates {
         names,
         call_position: refs.positions.callees.clone(),
+        non_call,
         dotted_chains,
         dotted_heads: refs.positions.dotted_heads.clone(),
         self_declared: refs.self_declared.clone(),
@@ -9397,7 +9367,7 @@ fn bare_reference_pull_paths_for_source(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |_name, _module, provider| {
+        |_name, _module, provider, _role| {
             for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
                 let path = workspace_relative_repo_path(&path);
                 if seen.insert(path.clone()) {
@@ -9423,6 +9393,21 @@ pub(crate) struct UnimportedBareProvider {
     pub(crate) provider: String,
 }
 
+/// One file's judgment: the pairs it owes, and the pairs the compiler's non-declaration predicate
+/// suppressed, counted by WHY. `suppressed_kernel_method_only` is the declared COVERAGE FRONTIER: a
+/// kernel-method name is admitted by name because the receiver's type is unknown before typecheck,
+/// so a call on a receiver without that profile is a genuine unresolved call that this gate no
+/// longer reports. Typecheck still refuses it, but only in typed files. The count is printed on every
+/// gate run so its growth is visible. It dissolves when the gate judges post-typecheck call semantics
+/// for typed files, or when method resolution can be receiver-typed before typecheck (calm-boar-904
+/// ruling, gunbc#12951).
+#[derive(Default)]
+pub(crate) struct UnimportedBareProviderJudgment {
+    pub(crate) rows: Vec<UnimportedBareProvider>,
+    pub(crate) suppressed_builtin: usize,
+    pub(crate) suppressed_kernel_method_only: usize,
+}
+
 /// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
 /// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
 /// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
@@ -9431,8 +9416,15 @@ pub(crate) fn unimported_bare_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<UnimportedBareProvider>, String> {
+    Ok(unimported_bare_provider_judgment(sf, index)?.rows)
+}
+
+pub(crate) fn unimported_bare_provider_judgment(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<UnimportedBareProviderJudgment, String> {
     if !source_declares_import_lines(&sf.content) {
-        return Ok(Vec::new());
+        return Ok(UnimportedBareProviderJudgment::default());
     }
     let file = workspace_relative_repo_path(&sf.path);
     let closure: HashSet<String> =
@@ -9441,23 +9433,60 @@ pub(crate) fn unimported_bare_providers(
             .map(|p| workspace_relative_repo_path(p))
             .collect();
     let mut out = BTreeSet::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     visit_bare_reference_providers(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |name, module, provider| {
+        |name, module, provider, role| {
+            // A name the compiler can bind WITHOUT a declaration (a kernel method, an empty-collection
+            // constructor, a builtin) is not a read of a same-spelled declaration outside this file's
+            // closure: call inference never binds an out-of-scope declarer, and this file's import
+            // lines switch the global-bare fallback off. The predicate is the compiler's own
+            // (`v1.compiler.infer_method` `bare_call_non_declaration_binding`), not a list here, and the
+            // frontier counters are split by its own arms, so they cannot drift from it.
+            // Before it, positional `map_get(m, k)` calls were reported as unimported reads of
+            // v2.std.collection's `map_get`, a different contract, and the refusal told the author
+            // to add the import that would rebind the call to it (gunbc#12951).
             if provider != file && !closure.contains(provider) {
-                out.insert(UnimportedBareProvider {
-                    file: file.clone(),
-                    name: name.to_string(),
-                    provider_module: module.to_string(),
-                    provider: provider.to_string(),
-                });
+                use crate::v1_compiler_infer_method::NonDeclarationBinding as B;
+                // The classification describes CALL inference only, so it is consulted only when
+                // every occurrence of the name in this file is a callee. A value, pattern, type or
+                // dotted use reads the declaration whatever the calls bind, so a name with any
+                // non-call use is judged as a declaration read (calm-boar-904, gunbc#13116).
+                let binding = match role {
+                    BareUseRole::CallOnly => {
+                        crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+                            name.to_string(),
+                        )
+                    }
+                    BareUseRole::HasNonCallUse => B::DeclarationOnly,
+                };
+                match binding {
+                    B::EmptyCollectionConstructor | B::BuiltinFunction => {
+                        suppressed_builtin += 1;
+                    }
+                    B::KernelMethodOnly => {
+                        suppressed_kernel_method_only += 1;
+                    }
+                    B::DeclarationOnly => {
+                        out.insert(UnimportedBareProvider {
+                            file: file.clone(),
+                            name: name.to_string(),
+                            provider_module: module.to_string(),
+                            provider: provider.to_string(),
+                        });
+                    }
+                }
             }
             Ok(())
         },
     )?;
-    Ok(out.into_iter().collect())
+    Ok(UnimportedBareProviderJudgment {
+        rows: out.into_iter().collect(),
+        suppressed_builtin,
+        suppressed_kernel_method_only,
+    })
 }
 
 /// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
@@ -9569,7 +9598,7 @@ fn admit_bare_references_of_file(
             source,
             index,
             |root| closure_name_census(index, root),
-            |_, _, _| Ok(()),
+            |_, _, _, _| Ok(()),
         )
     };
     index
@@ -9685,11 +9714,23 @@ fn pool_census_for_name_uncounted(
 /// One resolver, two consumers: admission discards selected providers, and a demanded
 /// edge row expands them. Candidate classification remains `closure_bare_disposition`,
 /// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
+/// How a file uses one bare name, over ALL its occurrences. Call inference's
+/// `bare_call_non_declaration_binding` describes a CALL only, so a consumer may apply it only to
+/// `CallOnly`; any other use of the spelling reads whatever the name resolves to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BareUseRole {
+    /// Every occurrence of the name in the file is an unbound callee.
+    CallOnly,
+    /// At least one occurrence is a value, a dotted head, a record literal's type, a variant
+    /// pattern or a type: a read of a declaration whatever the calls bind.
+    HasNonCallUse,
+}
+
 fn visit_bare_reference_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
     census_for: impl Fn(Option<&str>) -> Result<Rc<SymbolIndex>, String>,
-    mut visit: impl FnMut(&str, &str, &str) -> Result<(), String>,
+    mut visit: impl FnMut(&str, &str, &str, BareUseRole) -> Result<(), String>,
 ) -> Result<(), String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
     let file_rel = workspace_relative_repo_path(&sf.path);
@@ -9993,7 +10034,15 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         }
-        visit(&name, &module_path, &dep_rel)?;
+        let role = if !service_head
+            && candidates.call_position.contains(&name)
+            && !candidates.non_call.contains(&name)
+        {
+            BareUseRole::CallOnly
+        } else {
+            BareUseRole::HasNonCallUse
+        };
+        visit(&name, &module_path, &dep_rel, role)?;
     }
     // The whole-pool name reading forces the same shared
     // parse. In practice the census above has already forced it, so this delta is
@@ -10236,12 +10285,107 @@ mod closure_edge_demand_tests {
                     closure_name_census(index, root)
                 }
             },
-            |_name, _module, path| {
+            |_name, _module, path, _role| {
                 providers.push(path.to_string());
                 Ok(())
             },
         )?;
         Ok(providers)
+    }
+
+    /// A BUILTIN CALL IS NOT AN UNIMPORTED READ OF A SAME-SPELLED DECLARATION (gunbc#12951). The
+    /// consumer declares an import, so its bare channel is off. It calls the builtin `map_get(m, k)`
+    /// positionally and `empty_map()`, while a module outside its closure declares functions with
+    /// those spellings. Discriminating RED: before the predicate, both were reported, and the
+    /// refusal advised importing the declarations, which would rebind the calls to a different
+    /// contract. Positive control: a NON-builtin function declared only there and called bare is
+    /// still reported, so the exemption is the compiler's precedence and not a widened list.
+    /// THE CLASSIFICATION DESCRIBES CALLS ONLY (calm-boar-904 objection on gunbc#13116). A
+    /// same-spelled builtin used in a NON-call position (a value, a pattern, a type) is a read of
+    /// the declaration, so its provider is still owed. Two shapes: a file that uses the name ONLY
+    /// as a value, and a file that BOTH calls it and uses it as a value. Discriminating RED:
+    /// before occurrence roles reached the gate, both were suppressed by spelling.
+    #[test]
+    fn a_non_call_use_of_a_builtin_spelling_still_reports_the_provider() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let value_only = "module near.consumer\nimport near.types { Unused }\n\
+                          fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", value_only),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a value-only use of a builtin spelling must still owe its provider: {found:?}"
+        );
+        let mixed = "module near.consumer\nimport near.types { Unused }\n\
+                     fn lookup_it(m: Map<String, Int>) -> Int? { map_get(m, \"k\") }\n\
+                     fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", mixed),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a file that both calls a builtin spelling and uses it as a value still owes the value use's provider: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_builtin_call_is_not_an_unimported_read_of_a_same_spelled_declaration() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n\
+                      fn empty_map(seed: Int) -> Int { seed }\n\
+                      fn far_only(value: Int) -> Int { value }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let consumer = |extra: &str| {
+            format!(
+                "module near.consumer\nimport near.types {{ Unused }}\n\
+                 fn lookup_it(m: Map<String, Int>) -> Int? {{ map_get(m, \"k\") }}\n\
+                 fn fresh() -> Map<String, Int> {{ empty_map() }}\n{extra}"
+            )
+        };
+        let clean = Fixture::new(&[
+            ("consumer.dag", consumer("").as_str()),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = clean.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().all(|v| v.name != "map_get" && v.name != "empty_map"),
+            "a builtin call was reported as an unimported read of a same-spelled declaration: {found:?}"
+        );
+        let control = Fixture::new(&[
+            (
+                "consumer.dag",
+                consumer("fn reach() -> Int { far_only(value: 1) }\n").as_str(),
+            ),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = control.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "far_only" && v.provider_module == "far.helper"),
+            "a genuine unimported bare call to a non-builtin must still be reported: {found:?}"
+        );
     }
 
     /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
@@ -11799,6 +11943,9 @@ pub enum WitnessRuntimeCause {
     CallContractMismatch,
     /// A host filesystem effect (create, write) failed. Not a type error: the world refused.
     HostIoFailed,
+    /// A fixture compile instrument refused to answer (`FixtureRenderRefusal`): the read path
+    /// was not emitted by a clean compile, or the closure held no fixture module.
+    FixtureRenderRefused,
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
     /// treating first-touch order as intrinsic claim cost.
@@ -11840,6 +11987,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::HostIoFailed => "host-io-failed",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
+            WitnessRuntimeCause::FixtureRenderRefused => "fixture-render-refused",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
     }
@@ -11881,6 +12029,7 @@ impl WitnessRuntimeCause {
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::HostIoFailed { .. } => WitnessRuntimeCause::HostIoFailed,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
+            E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
             | E::HermeticHostEffectRefused { .. }
@@ -12704,40 +12853,6 @@ pub fn exceeds_completed_cost_line(
     }
 }
 
-pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
-}
-
-/// Count of resolved-graph stores skipped because the provider-bootstrap window was
-/// open. The skip is bounded (only the provider's own closure resolves inside that
-/// window) and observable, so the deficit can never be masked by silence.
-static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-fn record_provider_bootstrap_store_skip() {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-}
-
-pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    struct Guard;
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-                c.set(c.get().saturating_sub(1));
-            });
-        }
-    }
-
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-        c.set(c.get().saturating_add(1));
-    });
-    let _guard = Guard;
-    f()
-}
-
 /// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
 ///
 /// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
@@ -12925,7 +13040,7 @@ pub fn build_live_read_selection_manifest(
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
     let (graph, indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        resolve_entry_with_index(index, LIVE_READ_CLASSIFICATION_ENTRY)
             .map_err(|e| {
                 format!(
                     "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
@@ -13086,10 +13201,9 @@ fn variant_parts(
 mod live_read_selection_manifest_producer_tests {
     use super::{
         build_live_read_selection_manifest, build_multi_entry_index,
-        decode_live_read_selection_row, make_eval_context,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, LiveReadCarrier,
-        LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
-        LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
+        decode_live_read_selection_row, make_eval_context, resolve_entry_with_index,
+        workspace_root, LiveReadCarrier, LiveReadClassification, LiveReadPathPattern,
+        LiveReadSelectionRequest, LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
@@ -13253,9 +13367,8 @@ mod live_read_selection_manifest_producer_tests {
     fn ctx_for_decoding() -> v1_interpreter::InterpContext {
         enter_workspace();
         let index = build_multi_entry_index(&source_roots());
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_CLASSIFICATION_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve lens: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_CLASSIFICATION_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve lens: {e}"));
         make_eval_context(&graph, indices, ExecutionMode::Wet)
     }
 
@@ -13612,14 +13725,10 @@ pub struct MultiEntryIndex {
     /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
     parsed_references:
         RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
-    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
-    // front of the cross-process store (materialization-ladder tier ordering:
-    // the share serves repeats, the store serves the process's FIRST touch of a
-    // subject, and a store hit is INSTALLED here so every later demand takes the
-    // reference). Always populated on first assembly — not gated on
-    // GUNBC_RESOLVED_GRAPH_CACHE_DIR (the disk tier is opt-in separately).
-    // Without the install-back, N same-subject resolves each retained an independent
-    // graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier and the only
+    // tier of the resolved graph: it serves same-subject repeats within the process and is
+    // populated on first assembly. Without it, N same-subject resolves each retained an
+    // independent graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
     resolved_graph_memo: RefCell<
         HashMap<
             String,
@@ -13630,10 +13739,6 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
-    /// Subjects whose current `resolved_graph_memo` value was installed from the on-disk
-    /// cross-process store rather than computed by this process. Kept alongside the memo so a
-    /// reference hit cannot erase the provenance distinction.
-    resolved_graph_memo_cross_process_subjects: RefCell<std::collections::HashSet<String>>,
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
@@ -13722,10 +13827,6 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
-    index
-        .resolved_graph_memo_cross_process_subjects
-        .borrow_mut()
-        .clear();
 }
 
 /// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
@@ -13909,13 +14010,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
-        "resolved_graph_memo" => {
-            index.resolved_graph_memo.borrow_mut().clear();
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .clear();
-        }
+        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
         }
@@ -14159,7 +14254,7 @@ fn shared_caches_write<'a>(
 ///   its import. The interface hash is the Inc-B `ModuleInterface.summary.interface_hash`
 ///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
 ///   `src/v1/04_infer.dag` the `interface_signature_fingerprint_v0_note` annotation).
-/// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
+/// - Compiler identity is `closure_identity::transform_content_digest` — the same
 ///   single authority the resolved-graph subject digest consumes (§3: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
 fn closure_path_to_authored_name_map<'a>(
@@ -14211,8 +14306,8 @@ fn note_interface_hash(
 //
 // Authority is the modeled carrier `dag/gunbc/executor_schedule_retention.dag`; the
 // consts below MIRROR it and `schedule_retention_policy_matches_modeled_authority`
-// (this module's tests) reds on drift — the `extdeps.realization.resolved_graph`
-// `SizeBounded`-cap lockstep pattern applied to a policy instead of a number.
+// (this module's tests) reds on drift — an exact modeled-authority lockstep applied to a
+// policy instead of a number.
 //
 // Correctness license (why evicting typed state can never yield a wrong verdict):
 // the typed-module cache is CONTENT-keyed, so a later entry that reaches an evicted
@@ -14811,17 +14906,11 @@ fn index_schedule_entry_completed(
     // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
     // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) if evict_enabled => {
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .remove(subj);
-            index
-                .resolved_graph_memo
-                .borrow_mut()
-                .remove(subj)
-                .is_some()
-        }
+        Some(subj) if evict_enabled => index
+            .resolved_graph_memo
+            .borrow_mut()
+            .remove(subj)
+            .is_some(),
         _ => false,
     };
     let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
@@ -15640,14 +15729,6 @@ fn emit_floor_drain_receipt(
             .unwrap_or_else(|| "unreadable".into()),
         typed_module_cache_cap(index),
     );
-    // The ladder's RetentionUnobserved refusal is discharged by an OBSERVATION,
-    // not by a declaration, so the persistent tier reports its live occupancy
-    // beside its throughput on the same receipt the floor already emits. Absent
-    // when the tier is not armed: a run that never opened a store must not
-    // print a zero that reads as an empty one.
-    if let Some(line) = shared_typecheck_store::persistent_typed_store_receipt_line() {
-        eprintln!("{line}");
-    }
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -15692,72 +15773,9 @@ fn index_get_typed(
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        if let Some(hit) = index.typed_module_cache.borrow().get(typed_key).cloned() {
-            return Ok(Some(hit));
-        }
-        return persist_get_typed(index, typed_key);
+        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
-    match shared_get_typed(store, typed_key)? {
-        Some(hit) => Ok(Some(hit)),
-        None => persist_get_typed(index, typed_key),
-    }
-}
-
-/// The host-persisted tier behind both in-process tiers
-/// (`gunbc.floor_materialization` `host_persisted_typecheck_store`). A hit here
-/// is served BEFORE `collect_parent_envs` and the typecheck compute at the one
-/// call site above, which is the expensive production computation this tier
-/// exists to skip; it is not a byte load placed after the work has been done.
-///
-/// A decode failure on a verified entry is a REFUSAL, not a miss: the entry
-/// passed the store's own magic/version/length/key verification, so a payload
-/// the transport cannot read is codec drift and the line stops here rather than
-/// widening into a silent recompute (DESIGN section 5). Absence, rejection at
-/// verification and IO failure are already counted misses inside the store.
-fn persist_get_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(None);
-    };
-    let Some(payload) = store.get(typed_key) else {
-        return Ok(None);
-    };
-    let decoded = SharedTypecheckCaches::decode_typed_snapshot(payload.as_slice()).map_err(|e| {
-        format!(
-            "persistent typed store refused: entry for key '{typed_key}' verified against its              header but its payload did not decode ({e}) -- this is codec drift between the              store format version and the transport, not a cache miss"
-        )
-    })?;
-    // Readmit into the in-process tier so the repeat within this process is a
-    // reference, not a second disk read.
-    if index.cross_worker_store.is_none() {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(typed_key.to_string(), decoded.clone());
-        enforce_typed_cache_entry_cap(index);
-    }
-    Ok(Some(decoded))
-}
-
-/// Write-through to the host-persisted tier. Publication failures (IO, ceiling
-/// reached) are counted inside the store and never fail the run: this tier is
-/// an optimization over a pure computation, so an unavailable store costs time
-/// and can never change a verdict.
-fn persist_put_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-    result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<(), String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(());
-    };
-    let bytes = SharedTypecheckCaches::encode_typed_snapshot(result)?;
-    store.put(typed_key, bytes.as_slice());
-    Ok(())
+    shared_get_typed(store, typed_key)
 }
 
 fn check_index_module_source_identity(
@@ -15853,7 +15871,6 @@ fn index_insert_typed(
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        persist_put_typed(index, &typed_key, &result)?;
         index
             .typed_module_cache
             .borrow_mut()
@@ -15861,7 +15878,6 @@ fn index_insert_typed(
         enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
-    persist_put_typed(index, &typed_key, &result)?;
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&typed_key)
@@ -17034,96 +17050,6 @@ pub fn render_exclusive_cost_partition_json(
 pub(crate) enum ResolvedGraphMemoShare {
     Memoize,
     Ephemeral,
-}
-
-fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
-    match outcome {
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
-            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
-            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedWrongContent => {
-            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: {label}"
-        )),
-        ResolvedGraphProviderOutcome::Miss => {
-            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
-            missing.join(", ")
-        )),
-        ResolvedGraphProviderOutcome::Hit => None,
-    }
-}
-
-#[doc(hidden)]
-pub fn provider_integrity_refusal_message_for_test(
-    outcome: ResolvedGraphProviderOutcome,
-) -> Option<String> {
-    provider_integrity_refusal_message(outcome)
-}
-
-fn install_cross_process_materialization_hit(
-    index: &MultiEntryIndex,
-    subject: &str,
-    cached: CachedResolvedGraph,
-    memo_share: ResolvedGraphMemoShare,
-) -> (
-    Rc<v1_compiler_compile::ResolvedGraph>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<im::Vector<Rc<ErrorNode>>>,
-) {
-    if memo_share == ResolvedGraphMemoShare::Memoize {
-        index
-            .resolved_graph_memo_cross_process_subjects
-            .borrow_mut()
-            .insert(subject.to_string());
-        index.resolved_graph_memo.borrow_mut().insert(
-            subject.to_string(),
-            (
-                cached.graph.clone(),
-                cached.source_indices.clone(),
-                cached.compile_clean_diags.clone(),
-            ),
-        );
-    }
-    (
-        cached.graph,
-        cached.source_indices,
-        cached.compile_clean_diags,
-    )
-}
-
-fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
-    match reason {
-        CacheRejectReason::ContentDigestMismatch => {
-            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
-        }
-        CacheRejectReason::BackendKeyMalformed => {
-            "resolved-graph-cache refused artifact: backend key malformed".to_string()
-        }
-        CacheRejectReason::PartDecodeFailure => {
-            "resolved-graph-cache refused artifact: part decode failure after hash verification"
-                .to_string()
-        }
-    }
 }
 
 fn join_via_index_stage_refusal(
@@ -19883,8 +19809,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     }
     let t2e = std::time::Instant::now();
     let source_count = all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     eprintln!(
         "[floor-phase] phase=closure-strict-resolve state=completed wall_ms={} sources={}",
         t2e.elapsed().as_millis(),
@@ -22146,7 +22071,6 @@ pub fn handle_serve(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
     ) {
@@ -22232,6 +22156,7 @@ pub fn handle_serve(
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
+                    &[],
                 ),
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
@@ -22256,7 +22181,7 @@ pub fn handle_serve(
                 // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
                 // deadline around a `format!` would be ceremony, and reaching the evaluator at all
                 // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some((method, path, _body, _identity)))
+                Ok(Some((method, path, _body, _identity, _cookie_header)))
                     if method == "GET" && path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
@@ -22273,15 +22198,17 @@ pub fn handle_serve(
                             serve_json_string(&bound.host),
                             bound.port,
                         ),
+                        &[],
                     )
                 }
-                Ok(Some((method, path, body, tailscale_identity))) => {
+                Ok(Some((method, path, body, tailscale_identity, cookie_header))) => {
                     let args = serve_handler_args(
                         method,
                         path,
                         body,
                         tailscale_identity,
                         release_revision.clone(),
+                        cookie_header,
                         if listener_attests_peer { Some(peer_user.clone()) } else { None },
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
@@ -22333,6 +22260,7 @@ pub fn handle_serve(
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
+                                        &[],
                                     )
                                 } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
@@ -22356,6 +22284,7 @@ pub fn handle_serve(
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
                                     ),
+                                    &[],
                                 )
                                 }
                             }
@@ -22364,23 +22293,26 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
+                                &[],
                             ),
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
+                            Some((status, content_type, resp_body, resp_headers)) => serve_write_response(
                                 &mut *stream,
                                 status,
                                 &content_type,
                                 &resp_body,
+                                &resp_headers,
                             ),
                             None => serve_write_response(
                                 &mut *stream,
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String, headers: List<ServeWireHeader> }} with no CR, LF or NUL in a header value\n",
                                     ctx.format_value(&val)
                                 ),
+                                &[],
                             ),
                         },
                     }
@@ -22426,6 +22358,15 @@ pub fn handle_serve(
 /// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
+
+/// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
+/// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
+/// browser can present it back. A request WITHOUT the header passes no `cookie_header` argument
+/// at all (the read yields `None`, never an empty string), and the `.dag` side's
+/// request-security context reads no session cookie as AuthAbsent, never as anonymous success
+/// (control: test.claim.auth.request_cookie_evidence_witness_test). Every other header stays out
+/// of the handlers exactly as before.
+const SERVE_COOKIE_HEADER: &str = "cookie";
 
 // ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
 // bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
@@ -22541,6 +22482,7 @@ fn serve_handler_args(
     body: String,
     tailscale_identity: String,
     release_revision: String,
+    cookie_header: Option<String>,
     attested_peer: Option<String>,
 ) -> Vec<(Option<String>, v1_interpreter::Value)> {
     let mut args = vec![
@@ -22556,6 +22498,9 @@ fn serve_handler_args(
             str_value(release_revision),
         ),
     ];
+    if let Some(cookie) = cookie_header {
+        args.push((Some("cookie_header".to_string()), str_value(cookie)));
+    }
     if let Some(peer) = attested_peer {
         args.push((Some("peer_user".to_string()), str_value(peer)));
     }
@@ -22595,7 +22540,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
 
 fn serve_read_request(
     stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String, Option<String>)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22643,6 +22588,7 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
+    let mut cookie_header: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -22683,6 +22629,12 @@ fn serve_read_request(
                 }
                 tailscale_identity = Some(value.trim().to_string());
             }
+            if name.eq_ignore_ascii_case(SERVE_COOKIE_HEADER) {
+                if cookie_header.is_some() {
+                    return Err(format!("duplicate {} header", SERVE_COOKIE_HEADER));
+                }
+                cookie_header = Some(value.trim().to_string());
+            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -22702,6 +22654,7 @@ fn serve_read_request(
         target,
         body,
         tailscale_identity.unwrap_or_default(),
+        cookie_header,
     )))
 }
 
@@ -22710,10 +22663,12 @@ fn serve_write_response(
     status: u16,
     content_type: &str,
     body: &str,
+    headers: &[String],
 ) {
     use std::io::Write;
     let reason = match status {
         200 => "OK",
+        302 => "Found",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -22724,12 +22679,18 @@ fn serve_write_response(
         503 => "Service Unavailable",
         _ => "",
     };
+    let mut extra = String::new();
+    for header in headers {
+        extra.push_str(header);
+        extra.push_str("\r\n");
+    }
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
         status,
         reason,
         content_type,
         body.len(),
+        extra,
         body
     );
     if let Err(e) = stream.write_all(response.as_bytes()) {
@@ -22737,12 +22698,52 @@ fn serve_write_response(
     }
 }
 
+/// One `.dag` `ServeWireHeader { name, value }` rendered as a header line. The name is the
+/// closed `ServeWireHeaderName` coproduct -- the framing headers this seam writes itself
+/// (Content-Length, Content-Type, Connection) have no constructor there -- and this match is its
+/// RFC 9110 spelling. The value is handler data, so the realization boundary refuses one carrying
+/// CR, LF or NUL rather than writing a split header. None = wrong shape or refused value.
+fn serve_wire_header_line(
+    item: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let v1_interpreter::Value::Record { type_name, fields } = item else {
+        return None;
+    };
+    if !ctx.sym_eq(*type_name, "ServeWireHeader") {
+        return None;
+    }
+    let name = match ctx.field(fields, "name") {
+        Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+            if ctx.sym_eq(*variant_name, "WireHeaderLocation") {
+                "Location"
+            } else if ctx.sym_eq(*variant_name, "WireHeaderSetCookie") {
+                "Set-Cookie"
+            } else if ctx.sym_eq(*variant_name, "WireHeaderCacheControl") {
+                "Cache-Control"
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    let value = match ctx.field(fields, "value") {
+        Some(Value::Str(s)) if !s.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) => {
+            s.to_string()
+        }
+        _ => return None,
+    };
+    Some(format!("{}: {}", name, value))
+}
+
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response).
+/// (surfaced as a typed 500 by the caller, never a fabricated response). The
+/// headers list carries typed `ServeWireHeader`s in write order and is required: a
+/// handler that sets none returns the empty list, and a record without the field refuses.
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
+) -> Option<(u16, String, String, Vec<String>)> {
     if let v1_interpreter::Value::Record { type_name, fields } = val {
         if !ctx.sym_eq(*type_name, "ServeWireResponse") {
             return None;
@@ -22759,7 +22760,19 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
-        return Some((status, content_type, body));
+        // `headers` is a required field of ServeWireResponse: a record without it is a different
+        // shape and refuses like any other wrong shape, never read as "no headers".
+        let headers = match ctx.field(fields, "headers") {
+            Some(v1_interpreter::Value::List(items)) => {
+                let mut lines = Vec::with_capacity(items.len());
+                for item in items.iter() {
+                    lines.push(serve_wire_header_line(item, ctx)?);
+                }
+                lines
+            }
+            _ => return None,
+        };
+        return Some((status, content_type, body, headers));
     }
     None
 }
@@ -24203,8 +24216,7 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) =
-            resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
+        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -24400,8 +24412,8 @@ pub fn emit_owned_data_manifest(
         "// GENERATED by discover_owned_data — ephemeral host transport. DO NOT COMMIT.\n",
     );
     out.push_str("module v2.test.claim.workflow.host_discovered_owned_data_manifest\n\n\n");
-    out.push_str("import v2.std.collection { List }\n");
-    out.push_str("import v2.std.logic { Bool }\n");
+    out.push_str("import std.types { List }\n");
+    out.push_str("import std.types { Bool }\n");
     out.push_str(
         "import v2.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
     );
@@ -27040,6 +27052,12 @@ pub enum DiscoveryWidthPolicy {
 pub(crate) struct FileLineRange {
     start: i64,
     end: i64,
+    /// A zero-width new-side range (`+L,0` under `-U0`): a PURE DELETION whose gap sits between
+    /// new-side lines L and L+1 (`start` = `end` = L+1). It names no surviving line, so
+    /// attribution charges it to a declaration only when the gap falls strictly INSIDE that
+    /// declaration's span; a gap between declarations removed whole declarations, which no
+    /// longer exist to select (`a_pure_deletion_force_runs_its_unchanged_neighbour`).
+    deletion_gap: bool,
 }
 
 fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
@@ -27098,14 +27116,17 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             // L+1 — attribute the single following line, mirroring
             // parse_unified_diff_changed_new_lines (anchoring at L false-fired
             // the module-line refusal for import strips under a module header).
-            let (start, end) = if count <= 0 {
+            let deletion_gap = count <= 0;
+            let (start, end) = if deletion_gap {
                 (start + 1, start + 1)
             } else {
                 (start, start + count - 1)
             };
-            out.entry(file)
-                .or_default()
-                .push(FileLineRange { start, end });
+            out.entry(file).or_default().push(FileLineRange {
+                start,
+                end,
+                deletion_gap,
+            });
         }
     }
     out
@@ -28083,8 +28104,8 @@ pub(crate) fn apply_effect_reach_derived_reads_live_tree(
 #[cfg(test)]
 mod effect_reach_host_sink_markers_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        EFFECT_REACH_HOST_SINK_MARKERS,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -28094,9 +28115,8 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
     fn dag_host_sink_callee_symbols() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, EFFECT_REACH_STD_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, EFFECT_REACH_STD_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "effect_reach_host_sink_callee_symbols_v0")
@@ -29038,7 +29058,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             ranges.get(file),
             Some(&vec![FileLineRange {
                 start: 101,
-                end: 103
+                end: 103,
+                deletion_gap: false
             }])
         );
     }
@@ -29262,6 +29283,62 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         std::collections::HashMap::from([(dest.to_string(), content)])
     }
 
+    // A PURE DELETION IS CHARGED BY WHERE ITS GAP LIES (`gunbc.recurring_failure_mode`
+    // `a_pure_deletion_force_runs_its_unchanged_neighbour`). The head file is supplied; the
+    // `-U0` diff removes a whole test fn that sat between `a` and `c`, then (second case) one
+    // line inside `a`. The between-declarations gap must charge NEITHER neighbour -- before the
+    // fix it charged `c`, the line after the gap -- and the interior gap must still charge `a`.
+    fn deletion_gap_sources(path: &str) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::from([(
+            path.to_string(),
+            "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c() -> Bool {\n  true\n}\n"
+                .to_string(),
+        )])
+    }
+
+    fn deletion_gap_edited(diff: &str, path: &str) -> HashSet<String> {
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+            &index,
+            diff,
+            &std::collections::HashMap::new(),
+            &deletion_gap_sources(path),
+        )
+        .expect("a deletion-only diff must attribute, not refuse");
+        edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == path)
+            .map(|(_, f)| f.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_deletion_between_declarations_charges_neither_neighbour() {
+        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7,4 +6,0 @@\n-test fn b() -> Bool {{\n-  true\n-}}\n-\n"
+        );
+        assert_eq!(
+            deletion_gap_edited(&diff, path),
+            HashSet::new(),
+            "a whole declaration deleted between `a` and `c` must not select either"
+        );
+    }
+
+    #[test]
+    fn a_deletion_inside_a_declaration_still_charges_it() {
+        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +4,0 @@\n-  && false\n"
+        );
+        assert_eq!(
+            deletion_gap_edited(&diff, path),
+            HashSet::from(["a".to_string()]),
+            "a line removed inside `a` edits `a`"
+        );
+    }
+
     // Path-keyed census at the NEW path is empty for a rename. Enrolment must read the
     // SOURCE path or every moved fn is gated as new.
     #[test]
@@ -29405,7 +29482,11 @@ deleted file mode 100644
         let ranges = parse_unified_diff_line_ranges(diff);
         assert_eq!(
             ranges.get(kept),
-            Some(&vec![FileLineRange { start: 9, end: 9 }]),
+            Some(&vec![FileLineRange {
+                start: 9,
+                end: 9,
+                deletion_gap: false
+            }]),
             "deleted-file hunk must not extend the preceding file's ranges"
         );
         assert_eq!(
@@ -29902,9 +29983,8 @@ mod module_grain_affected_equivalence_tests {
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
-        MultiEntryIndex,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index, workspace_root,
+        ModuleGraphFactsLive, MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -30085,9 +30165,8 @@ mod module_grain_affected_equivalence_tests {
             declared.len()
         );
         let t_mg = Instant::now();
-        let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
-                .expect("module_graph.dag resolves as an interpreter entry");
+        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
+            .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
         eprintln!(
             "[module-grain] module_graph.dag resolved in {:?}",
@@ -30293,7 +30372,7 @@ mod module_grain_affected_equivalence_tests {
         let rel_roots = pool_roots_rel();
         let index = build_multi_entry_index(&roots);
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
@@ -34260,6 +34339,10 @@ fn collect_type_ref_names_positioned(
         .bare_positions
         .undotted
         .extend(names.iter().cloned());
+    classify
+        .bare_positions
+        .non_call
+        .extend(names.iter().cloned());
     bare.extend(names);
 }
 
@@ -34444,6 +34527,10 @@ pub(crate) struct BarePositions {
     pub(crate) dotted_heads: BTreeSet<String>,
     /// Unbound callee names (`f` in `f(x)`).
     pub(crate) callees: BTreeSet<String>,
+    /// Names with at least one occurrence that is NOT a callee: a free variable, a dotted head, a
+    /// record literal's type, a variant pattern's constructor. A name in `callees` and not here is
+    /// used ONLY as a callee, which is the one role call inference's classification describes.
+    pub(crate) non_call: BTreeSet<String>,
     /// Receiver chain plus method (`cron.Tab.List` in `cron.Tab.List()`), which `chains` does not
     /// carry because it records field-access chains only.
     pub(crate) method_chains: Vec<Vec<String>>,
@@ -34727,6 +34814,7 @@ fn collect_node_refs_inner(
                         } else {
                             positions.undotted.insert(node.name.clone());
                         }
+                        positions.non_call.insert(node.name.clone());
                         // A free `ExprVar` IS a value-position read: nothing binds it here, so
                         // the interpreter resolves it through the file's declarations, then the
                         // author's imports, then the shared slot.
@@ -34760,6 +34848,7 @@ fn collect_node_refs_inner(
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
                     classify.bare_positions.undotted.insert(node.name.clone());
+                    classify.bare_positions.non_call.insert(node.name.clone());
                 }
                 for c in node.children.iter() {
                     collect_node_refs_inner(
@@ -34795,6 +34884,7 @@ fn collect_node_refs_inner(
                 if !name.is_empty() {
                     bare.insert(name.clone());
                     classify.bare_positions.undotted.insert(name.clone());
+                    classify.bare_positions.non_call.insert(name.clone());
                 }
             }
         }
@@ -35089,8 +35179,8 @@ mod reference_edge_producer_tests {
     fn reference_edge_dag_host_producer_divergence_control() {
         use super::{
             build_multi_entry_index, import_resolution_facts, make_eval_context,
-            reference_edges_as_import_facts, reference_resolution_facts,
-            resolve_entry_with_index_for_discovery_corpus, workspace_root,
+            reference_edges_as_import_facts, reference_resolution_facts, resolve_entry_with_index,
+            workspace_root,
         };
         use crate::v1_interpreter::{self, ExecutionMode};
 
@@ -35142,9 +35232,8 @@ mod reference_edge_producer_tests {
             pool[0].clone(),
         ];
         let index = build_multi_entry_index(&index_roots);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &module_graph_entry)
-                .expect("module_graph.dag resolves");
+        let (graph, indices) = resolve_entry_with_index(&index, &module_graph_entry)
+            .expect("module_graph.dag resolves");
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let args = [
             (Some("pool_roots".to_string()), str_list_value(&pool)),
@@ -42645,84 +42734,6 @@ pub fn clear_floor_prepared_authority() {
     crate::v1_interpreter::clear_cross_claim_pure_memos();
 }
 
-/// Measurement harness (`floor_prepared_toll_receipt` bin): print reclaimed wall time per item.
-pub fn run_floor_prepared_toll_receipt() {
-    let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
-    let exclusions = floor_prepared_subject_exclusions();
-    let index = build_module_index(&source_roots);
-    let mut inventory = Vec::with_capacity(index.len());
-    for (module_path, sf) in index.iter() {
-        if prepared_subject_exclusion_row_for(&sf.path, module_path, &exclusions).is_some() {
-            continue;
-        }
-        inventory.push(PreparedSourceView {
-            module_path: module_path.clone(),
-            source: sf.clone(),
-        });
-    }
-    let ws = workspace_root();
-    let pool_roots: Vec<String> = witness_layer_roots()
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
-
-    eprintln!(
-        "[floor-toll-receipt] inventory_modules={} pool_roots={}",
-        inventory.len(),
-        pool_roots.len()
-    );
-
-    let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
-        &pool_roots,
-        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
-        None,
-    )
-    .expect("disk parse");
-    let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
-        &pool_roots,
-        &[crate::v1_compiler_infer_items::ItemKind::TypeItem],
-        Some(&inventory),
-    )
-    .expect("inventory parse");
-    let item1_reclaimed = disk_ms.saturating_sub(inventory_ms);
-    eprintln!(
-        "[floor-toll-receipt] item1_pool_type_decl_parse disk_ms={} inventory_ms={} modules={} reclaimed_ms={}",
-        disk_ms, inventory_ms, inv_modules, item1_reclaimed
-    );
-
-    clear_floor_prepared_authority();
-    let languages_disk_ms = languages_decl_records_disk_scan_wall_ms();
-    let languages_inventory_ms = languages_decl_records_inventory_wall_ms(&inventory);
-    let item4_reclaimed = languages_disk_ms.saturating_sub(languages_inventory_ms);
-    eprintln!(
-        "[floor-toll-receipt] item4_languages_census disk_ms={} inventory_ms={} reclaimed_ms={}",
-        languages_disk_ms, languages_inventory_ms, item4_reclaimed
-    );
-
-    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
-
-    let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
-    let file_path = "src/cuartifact_ok.rs";
-    let includes = vec!["fn consistent".to_string()];
-    let excludes: Vec<String> = vec![];
-    let cold_started = std::time::Instant::now();
-    let first = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
-    let cold_ms = cold_started.elapsed().as_millis();
-    let warm_started = std::time::Instant::now();
-    let second = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
-    let warm_ms = warm_started.elapsed().as_millis();
-    let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
-    eprintln!(
-        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first} second={second} reclaimed_ms={}",
-        cold_ms, warm_ms, item3_reclaimed
-    );
-
-    eprintln!(
-        "[floor-toll-receipt] summary item1_reclaimed_ms={} item4_reclaimed_ms={} item3_compile_reclaimed_ms={}",
-        item1_reclaimed, item4_reclaimed, item3_reclaimed
-    );
-}
-
 fn register_floor_prepared_authority_guard(
     inventory: Vec<PreparedSourceView>,
 ) -> FloorPreparedAuthorityGuard {
@@ -43187,7 +43198,7 @@ pub fn prepare_repository_from_corpus(
         modules_resolved,
         modules_excluded,
     } = subject;
-    let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let resolved = resolved_graph_from_sources(sources);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((
@@ -46778,14 +46789,14 @@ pub use emitted_closure_compile_host::{
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
     fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
-    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
-    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
-    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
-    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
-    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
-    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
-    FixtureClosureOutcome,
+    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_append_concat_form_discrimination,
+    run_argv_word_list_splice_discrimination, run_empty_map_turbofish_discrimination,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    run_local_true_false_coproduct_discrimination, run_native_bool_variant_discrimination,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    run_shell_projection_arity_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
@@ -47343,6 +47354,7 @@ mod serve_unix_socket_door_tests {
             String::new(),
             "r".into(),
             None,
+            None,
         );
         assert_eq!(
             names(&tcp),
@@ -47360,9 +47372,30 @@ mod serve_unix_socket_door_tests {
             String::new(),
             String::new(),
             "r".into(),
+            None,
             Some("ghrunner".into()),
         );
         assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
+    }
+
+    #[test]
+    fn cookie_context_does_not_manufacture_a_tcp_peer() {
+        let args = serve_handler_args(
+            "GET".into(),
+            "/allocations".into(),
+            String::new(),
+            String::new(),
+            "revision".into(),
+            Some("session=opaque".into()),
+            None,
+        );
+        assert!(args
+            .iter()
+            .any(|(name, value)| name.as_deref() == Some("cookie_header")
+                && format!("{value:?}").contains("session=opaque")));
+        assert!(!args
+            .iter()
+            .any(|(name, _)| name.as_deref() == Some("peer_user")));
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.

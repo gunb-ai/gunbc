@@ -13,7 +13,7 @@ test fn w_pure_eval_authority_modules() -> Bool {
 
 test fn w_pinned_host_physics_roster() -> Bool {
   is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
-  is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
+  is_pinned_host_physics_stage0_file(basename: "closure_identity.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "cli_run.rs") &&
   !is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&

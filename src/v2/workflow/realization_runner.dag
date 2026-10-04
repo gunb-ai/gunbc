@@ -2,12 +2,10 @@ module v2.workflow.realization_runner
 
 import v2.std.algebra { contains, non_empty }
 import std.algebra { list_append, list_snoc_item }
-import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
 import std.measure { ByteSize, byte_size, measure_add }
-import std.types { Int }
+import std.types { Int, List }
 import std.content_hash { ContentHash }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -20,8 +18,6 @@ import v2.workflow.executor {
   parallel_executor_plan_from_dependencies
 }
 import v2.workflow.scheduler { scheduler_execution_dependencies }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type RunnerOrderingResult = RunnerOrderingOnly {}
 
@@ -86,37 +82,22 @@ fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
 // construction (each pass either visits a new interned row or empties the frontier — a visited ref
 // is skipped, so even a cyclic row table converges to its reachable set); the Unsettled arm is the
 // typed fail-closed backstop should that bound argument ever be violated, not a reachable state we
-// can construct. Artifact well-formedness itself (interning — at most one row per hash — and
-// acyclicity via child-before-parent row order) is the codec's obligation:
-// node_keyed_graph_rows_interned checks the former, and the hash-consed single-pass decode refuses
-// a forward or missing child ref, which makes an encoded cycle unrepresentable.
+// can construct. Artifact well-formedness itself has two halves. Interning -- at most one row per
+// hash -- is checked here by node_keyed_graph_rows_interned. Acyclicity via child-before-parent row
+// order has NO owner today: it was enforced by the hand-Rust codec's hash-consed single-pass decode,
+// which refused a forward or missing child ref, and that decode was deleted on 2026-10-03 (below).
+// The walk's Unsettled arm still refuses rather than looping on a cyclic table, so the gap is a
+// missing construction-time refusal, not an unbounded walk; its owner is whichever realization next
+// decodes this artifact from bytes.
 
-data node_keyed_graph_codec_seed_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.realization_runner",
-    decl_name: "NodeKeyedGraphArtifact",
-    field: WholeDeclaration
-  }
-}
-
-// Seed-retained frontier row (DESIGN section 7: seed-retained = declared, with reason and migration
-// trigger, never silent). The byte codec realizing NodeKeyedGraphArtifact — trait
-// NodeKeyedGraphEncode plus
-// node_keyed_graph_encode/node_keyed_graph_decode/node_keyed_graph_row_facts in
-// src/v1/stage0/src/resolved_graph_cache.rs (hand-maintained registry), with its sharing witnesses
-// formerly in src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs (deleted 2026-08-11,
-// gunbc#8146; unwitnessed pending a host surface that can observe rebuilt sharing) — is HOST RUST
-// because it is realization, not model: byte-level IO plus Rc pointer identity, neither expressible
-// in the substrate today (no bytes carrier; pointer sharing is a host-realization fact the model
-// deliberately does not carry). Reason it exists at all: the tree-codec un-sharing defect at the
-// resolved-graph cache write (3.4GiB working set -> 17GiB encode). Dissolution trigger, concrete:
-// when the section-4 one-grammar-both-directions emission rows extend to a binary medium (a bytes
-// carrier + extdeps/languages-style row table for this format), the kernel becomes row-derived
-// emission dispatched from THIS schema (RealizationDispatch via the bound declaration) and the
-// hand-Rust retires with the seed; the sharing witnesses migrate to whatever surface can then
-// observe rebuilt sharing. Until that trigger, the kernel rides the resolved_graph_cache.rs
-// hand-maintained registry row and this disposition is its count.
+// The model below has NO host realization. A hand-Rust byte codec for NodeKeyedGraphArtifact (trait
+// NodeKeyedGraphEncode, node_keyed_graph_encode/decode/row_facts) lived in
+// src/v1/stage0/src/resolved_graph_cache.rs and was deleted with that file on 2026-10-03: nothing
+// called it after its sharing witnesses were deleted (2026-08-11, gunbc#8146), and the resolved-graph
+// disk write it existed to shrink (the tree-codec un-sharing defect, 3.4GiB working set -> 17GiB
+// encode) was itself disarmed. A future realization is row-derived emission over a bytes carrier
+// (the section-4 one-grammar-both-directions rows extended to a binary medium), dispatched from THIS
+// schema, together with a host surface that can observe rebuilt sharing.
 
 type NodeKeyedGraphRow {
   content_hash: ContentHash
