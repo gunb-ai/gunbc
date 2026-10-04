@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.optional_type_parameter_emitted_without_its_cardinality
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data optional_type_parameter_emitted_without_its_cardinality: RecurringFailureMode = RecurringFailureMode {
+  identity: "optional_type_parameter_emitted_without_its_cardinality" as NonEmptyStr,
+
+  receipts: [
+    "**an optional type parameter is emitted without its cardinality** (INVALID STATE: a generic declaration writes `K?` on one of its own type parameters -- `type Plain<K, V> { get: K? }`, `type PartialFunction<K, V> { lookup: fn(K) -> V? }` -- and the Rust emitter spells the parameter by its bare name, dropping the Optional: `pub get: K`. The four arms of v1.compiler.emit_rust that spell a type parameter (the declared-generic leaf in render_rust_decl_type and in the signature renderer, the TypeVariable arms of render_rust_type and render_rust_applied_type_arg) returned to_pascal(name) and never consulted return_cardinality, which every other leaf routes through rust_carrier_optional_wrap.",
+
+    "HARM: silent wrongness. An absent value has no representation in the emitted type, so a program that stores Absent in such a field either fails to compile at the construction site or, through a generic instantiation that happens to be optional, carries the wrong shape. Measured on main (2026-10-04): `get: K?` in a generic record emitted `pub get: K`. A `fn(K) -> V?` field kept its Option only by accident: the parameter resolved through a module-scope binding (v1.compiler.infer build_type_env param_bindings) instead of as a type parameter, so it reached a different, cardinality-aware arm. Scoping type parameters to their declaration (native broker 1C, rule 2) removed that accident and made the defect visible on std.algebra PartialFunction and FinitelySupportedFunction.",
+
+    "DISTINGUISHING FACTS: the same `?` on a non-parameter leaf (`get: Int?`) emits Option<i64>. Only a leaf the emitter recognises as one of the declaration's generic parameters drops it, and only on the arms that spell the parameter by name.",
+
+    "RUNG FOUND AT: outside the ladder (silent). CLIMBED TO: mechanically preventable. Every type-parameter spelling arm wraps through rust_carrier_optional_wrap, and gunbc.instruments.native_emission_controls carries an optional-parameter carrier that is constructed with Absent and with Present and read back natively: drop the wrap and its emission refuses at rustc (no Absent for a bare K), which is the label's red. CEILING: 3 (structurally guaranteed), once cardinality is part of the type-reference node the emitter is handed rather than a field each arm must remember to read.",
+
+    "NEXT-RUNG TRIGGER, as the capability: type references reach emission as one carrier that renders cardinality and spelling together, SUFFICIENT THAT no renderer arm can return a type spelling without its Optional wrap.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_carrier_optional_wrap", field: WholeDeclaration },
+  ],
+}
