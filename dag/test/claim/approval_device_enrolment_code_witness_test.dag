@@ -104,7 +104,6 @@ fn the_remote_verb_words_carry_the_release_shape(reading: SystemdRunCommandReadi
     }
   }
 }
-}
 
 // The step runs on srv1 and nowhere else; the mode is rostered, wired, and consumes the fleet SSH
 // key like its keyring sibling.

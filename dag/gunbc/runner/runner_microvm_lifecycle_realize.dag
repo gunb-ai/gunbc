@@ -1174,9 +1174,6 @@ fn run_jailer_in_cell(attempt: MicroVmAttempt, invocation_id: NonEmptyStr, recei
       }
   }
 }
-    }
-  }
-}
 
 // --- waiting for a terminal condition ---
 
