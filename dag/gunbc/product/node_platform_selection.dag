@@ -2,7 +2,7 @@ module product.node_platform_selection
 
 import std.types { List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.pareto { AxisGap, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
 import std.decision {
   DecisionVariable,
   ContextParameter,
@@ -46,7 +46,20 @@ import extdeps.systems.types {
   IntegratedComputeSystemCatalogRow,
   CoherentSuperchipCatalogRow,
   coherent_superchip_coherent_capacity,
+  SuperchipServerCatalogRow,
+  server_supply_ceiling,
+  SuppliesOnePlusOne,
+  SuppliesNonRedundant,
+  StorageBay,
+  ExpansionSlot,
+  FrontPanelPort,
+  SystemNetworkPort,
+  TemperatureRange,
+  HumidityRange,
 }
+import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
+import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
+import std.measure { watt_count, millimeter_count, celsius_count }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, extdeps_external_authority_anchor }
 import product.superchip_assembly_qualification {
@@ -328,11 +341,147 @@ fn gh200_node_entry(row: CoherentSuperchipCatalogRow, node_power_ceiling: BuildA
   }
 }
 
+// ── COMPLETE GH200 SERVERS AS CANDIDATES ─────────────────────────────────────────────────────
+//
+// GH200-4 (2026-10-04). A complete OEM server is the alternative route to the loose P4261 assembly, so it
+// stands in the same field. Its memory readings come from the GH200 row it supports (first listed), so
+// they are NVIDIA's figures, not the vendor's; its power ceiling is what its supplies can deliver with
+// redundancy held (extdeps.systems.types server_supply_ceiling), read only when the server row is
+// cited -- an uncited server row declares the power axis missing, as an uncited superchip row declares
+// its memory axes missing.
+data candidate_server_identity_module: String = "product.node_platform_selection"
+
+fn superchip_memory_readings(row: CoherentSuperchipCatalogRow) -> List<AxisReading> {
+  map([
+    BuildAxisReading { axis: gpu_local_capacity_axis, magnitude: MagnitudeBytes { bytes: row.gpu.memory.capacity } },
+    BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.gpu.memory_bandwidth } },
+    BuildAxisReading { axis: coherent_capacity_axis, magnitude: MagnitudeBytes { bytes: coherent_superchip_coherent_capacity(row: row) } },
+  ], r => to_axis_reading(r: r))
+}
+
+fn server_node_entries(server: SuperchipServerCatalogRow) -> List<ParetoEntry> {
+  match server.supported_superchips.first() {
+    Absent => []
+    Present { value: config } => {
+      let identity = decl_ref(module_path: candidate_server_identity_module, decl_name: join(["candidate_server_", server.model as String], ""))
+      let label = join([server.model as String, " complete server (", config.gpu.model as String, ")"], "") as NonEmptyStr
+      match cited_figure_read_obligation(standing: server.figure_standing) {
+        Absent => [ParetoEntry {
+          identity: identity,
+          display_label: label,
+          readings: concat(superchip_memory_readings(row: config), [
+            to_axis_reading(r: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: server_supply_ceiling(row: server) } }),
+          ]),
+          missing_inputs: gh200_memory_gaps(row: config),
+        }]
+        Present { value: o } => [ParetoEntry {
+          identity: identity,
+          display_label: label,
+          readings: superchip_memory_readings(row: config),
+          missing_inputs: concat(gh200_memory_gaps(row: config), [AxisGap { axis: node_power_ceiling_axis, cause: o }]),
+        }]
+      }
+    }
+  }
+}
+
+data candidate_servers: List<SuperchipServerCatalogRow> = [asrock_rack_mecai_gh200, gigabyte_xh23_vg0_aaj1]
+
+// ONE LINE PER SERVER for an operator comparing routes: every field the row carries, rendered, with
+// absent fields named as unread rather than dropped.
+fn optional_text(value: NonEmptyStr?, prefix: String, suffix: String, fallback: String) -> String {
+  match value {
+    Present { value: v } => join([prefix, v as String, suffix], "")
+    Absent => fallback
+  }
+}
+
+fn bay_text(b: StorageBay) -> String {
+  let width = match b.link {
+    Present { value: l } => join([", x", to_string(l.lane_count)], "")
+    Absent => ", width unread"
+  }
+  join([to_string(b.count), "x ", b.form_factor as String, " (", b.placement as String, width, ")"], "")
+}
+
+fn slot_text(x: ExpansionSlot) -> String {
+  join([to_string(x.count), "x ", x.mechanical as String, " x", to_string(x.link.lane_count), optional_text(value: x.intended_for, prefix: " for ", suffix: "", fallback: "")], "")
+}
+
+fn front_text(f: FrontPanelPort) -> String {
+  join([to_string(f.count), "x ", f.connector as String, optional_text(value: f.function, prefix: " (", suffix: ")", fallback: "")], "")
+}
+
+fn port_text(n: SystemNetworkPort) -> String {
+  optional_text(value: n.product_name, prefix: "", suffix: "", fallback: "unnamed port")
+}
+
+fn temperature_text(label: String, range: TemperatureRange?) -> String {
+  match range {
+    Present { value: t } => join([label, " ", to_string(celsius_count(c: t.minimum)), " to ", to_string(celsius_count(c: t.maximum)), " C"], "")
+    Absent => join([label, " temperature unread"], "")
+  }
+}
+
+fn humidity_text(range: HumidityRange?) -> String {
+  match range {
+    Present { value: h } => join(["non-operating humidity ", to_string(h.minimum_percent), "-", to_string(h.maximum_percent), "% ", h.condition as String], "")
+    Absent => "humidity unread"
+  }
+}
+
+fn complete_server_line(row: SuperchipServerCatalogRow) -> String {
+  let dims = match row.dimensions {
+    Present { value: d } => join([to_string(millimeter_count(m: d.width)), " x ", to_string(millimeter_count(m: d.depth)), " x ", to_string(millimeter_count(m: d.height)), " mm"], "")
+    Absent => "dimensions unread"
+  }
+  let redundancy = match row.power_supplies.redundancy {
+    SuppliesOnePlusOne => " (1+1 redundant)"
+    SuppliesNonRedundant => " (non-redundant)"
+  }
+  let supplies = join([to_string(row.power_supplies.count), "x ", row.power_supplies.form as String, " ", to_string(watt_count(w: row.power_supplies.output_per_supply)), " W", redundancy], "")
+  let mgmt = match row.management {
+    Present { value: m } => join(["BMC ", m.bmc as String, ", management LAN ", m.dedicated_management_lan as String], "")
+    Absent => "BMC unread"
+  }
+  let net = match row.host_network.first() {
+    Absent => "no onboard host LAN"
+    Present { value: _ } => join(["host LAN ", join(map(row.host_network, n => port_text(n: n)), ", ")], "")
+  }
+  let front = match row.front_panel.first() {
+    Absent => "front panel unread"
+    Present { value: _ } => join(map(row.front_panel, f => front_text(f: f)), ", ")
+  }
+  let temp = join([
+    temperature_text(label: "operating", range: row.operating_temperature), ", ",
+    temperature_text(label: "non-operating", range: row.non_operating_temperature), ", ",
+    humidity_text(range: row.non_operating_humidity),
+  ], "")
+  let announced = match row.announced_superchips.first() {
+    Present { value: _ } => join(["; announced ", join(map(row.announced_superchips, c => c.gpu.model as String), ", ")], "")
+    Absent => ""
+  }
+  let standing = match cited_figure_read_obligation(standing: row.figure_standing) {
+    Absent => "cited"
+    Present { value: o } => join(["UNCITED: ", o as String], "")
+  }
+  join([
+    row.model as String, " [", row.form_factor as String, "]: ", dims, "; ", supplies, "; module up to ", to_string(watt_count(w: row.module_power_ceiling)), " W; ",
+    mgmt, "; ", net, "; ", join(map(row.storage_bays, b => bay_text(b: b)), "; "), "; ", join(map(row.expansion_slots, x => slot_text(x: x)), "; "), "; ",
+    front, "; ", optional_text(value: row.fans, prefix: "fans ", suffix: "", fallback: "fans unread"), "; ", temp,
+    "; supported modules ", join(map(row.supported_superchips, c => c.gpu.model as String), ", "), announced,
+    " -- ", standing,
+  ], "")
+}
+
 fn node_platform_field() -> List<ParetoEntry> {
-  [
-    spark_node_entry(row: nvidia_dgx_spark_4tb_catalog),
-    gh200_node_entry(row: nvidia_gh200_480gb_catalog, node_power_ceiling: Absent),
-  ]
+  concat(
+    [
+      spark_node_entry(row: nvidia_dgx_spark_4tb_catalog),
+      gh200_node_entry(row: nvidia_gh200_480gb_catalog, node_power_ceiling: Absent),
+    ],
+    flat_map(candidate_servers, srv => server_node_entries(server: srv)),
+  )
 }
 
 data node_platform_field_identity: DeclarationRef = decl_ref(

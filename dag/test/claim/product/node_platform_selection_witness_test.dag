@@ -2,7 +2,7 @@ module test.claim.product.node_platform_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, watt }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }
 import std.pareto { ParetoEntry, PairDominates, PairNoDominance, compare_pair }
 import std.decision {
   SelectionNeedsEvidence,
@@ -13,7 +13,7 @@ import std.decision {
   ConstraintUnestablished,
 }
 import extdeps.external_authority { TranscribedUncited }
-import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling }
 import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
 import product.build_selection { BuildAxisReading, MagnitudeWatts }
@@ -24,7 +24,13 @@ import product.node_platform_selection {
   gh200_node_entry,
   node_power_ceiling_axis,
   assembly_disposition,
+  server_node_entries,
+  complete_server_line,
+  node_platform_field,
 }
+import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
+import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
+import std.decl_ref { declaration_ref_eq }
 import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly }
 import test.claim.product.superchip_assembly_qualification_witness { fully_read_bench, booted_and_measured }
 
@@ -175,4 +181,60 @@ test fn an_uncited_gh200_row_cannot_rank() -> Bool {
     },
   )
   count(entry.missing_inputs) == 3
+}
+
+// ── COMPLETE SERVERS ─────────────────────────────────────────────────────────────────────────
+
+fn entry_power_micro(e: ParetoEntry) -> Int {
+  fold(e.readings, init: 0 - 1, f: (acc, r) => if declaration_ref_eq(a: r.axis, b: node_power_ceiling_axis) { r.interval_micro.low } else { acc })
+}
+
+// The cited ASRock row reads a 2000 W ceiling (one CRPS of the 1+1 pair) and declares no power gap; the
+// uncited Gigabyte row reads no power and declares the gap with its read obligation.
+test fn cited_servers_read_power_and_uncited_ones_declare_it() -> Bool {
+  let asrock_ok = match server_node_entries(server: asrock_rack_mecai_gh200).first() {
+    Present { value: e } => entry_power_micro(e: e) == 2000 && !any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis))
+    Absent => false
+  }
+  let gigabyte_ok = match server_node_entries(server: gigabyte_xh23_vg0_aaj1).first() {
+    Present { value: e } => entry_power_micro(e: e) == 0 - 1 && any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: node_power_ceiling_axis) && contains(g.cause as String, "404"))
+    Absent => false
+  }
+  asrock_ok && gigabyte_ok && count(node_platform_field()) == 4
+}
+
+// Redundancy DISCRIMINATES the ceiling: the same two 2000 W supplies sum to 4000 W when not redundant.
+test fn redundancy_holds_the_ceiling_to_one_supply() -> Bool {
+  let doubled = SuperchipServerCatalogRow {
+    vendor: asrock_rack_mecai_gh200.vendor,
+    model: asrock_rack_mecai_gh200.model,
+    form_factor: asrock_rack_mecai_gh200.form_factor,
+    dimensions: asrock_rack_mecai_gh200.dimensions,
+    supported_superchips: asrock_rack_mecai_gh200.supported_superchips,
+    announced_superchips: asrock_rack_mecai_gh200.announced_superchips,
+    module_power_ceiling: asrock_rack_mecai_gh200.module_power_ceiling,
+    power_supplies: ServerPowerSupplies { form: "supplied", count: 2, redundancy: SuppliesNonRedundant, output_per_supply: watt(count: 2000) },
+    management: asrock_rack_mecai_gh200.management,
+    host_network: asrock_rack_mecai_gh200.host_network,
+    storage_bays: asrock_rack_mecai_gh200.storage_bays,
+    expansion_slots: asrock_rack_mecai_gh200.expansion_slots,
+    front_panel: asrock_rack_mecai_gh200.front_panel,
+    fans: asrock_rack_mecai_gh200.fans,
+    operating_temperature: asrock_rack_mecai_gh200.operating_temperature,
+    non_operating_temperature: asrock_rack_mecai_gh200.non_operating_temperature,
+    non_operating_humidity: asrock_rack_mecai_gh200.non_operating_humidity,
+    figure_standing: asrock_rack_mecai_gh200.figure_standing,
+  }
+  watt_count(w: server_supply_ceiling(row: asrock_rack_mecai_gh200)) == 2000
+    && watt_count(w: server_supply_ceiling(row: doubled)) == 4000
+}
+
+// The rendering carries every field and names what is unread instead of dropping it.
+test fn server_lines_name_what_is_unread() -> Bool {
+  let a = complete_server_line(row: asrock_rack_mecai_gh200)
+  let g = complete_server_line(row: gigabyte_xh23_vg0_aaj1)
+  contains(a, "420 x 438 x 87 mm") && contains(a, "ASPEED AST2600") && contains(a, "Micro USB (COM)")
+    && contains(a, "non-operating -40 to 70 C") && contains(a, "20-90% non-condensing")
+    && contains(a, "announced GH200 Hopper GPU (144GB HBM3e)") && contains(a, "-- cited")
+    && contains(g, "BMC unread") && contains(g, "width unread") && contains(g, "Intel X550-AT2") && contains(g, "UNCITED")
 }

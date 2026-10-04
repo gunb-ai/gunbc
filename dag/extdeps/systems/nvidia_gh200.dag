@@ -133,6 +133,43 @@ data nvidia_gh200_480gb_catalog: CoherentSuperchipCatalogRow = CoherentSuperchip
   figure_standing: gh200_datasheet_figures_standing,
 }
 
+// THE 144GB HBM3e PRODUCT, the datasheet's second column cell ('144GB HBM3e', 'Up to 4.9TB/s'). Its
+// LPDDR5X tier is the same 480GB / 384 GB/s pairing as the HBM3 product: NVIDIA's product page gives
+// "up to 624GB of combined CPU and GPU fast memory", which is 144 + 480. Modeled now because a
+// complete server row (extdeps.systems.gigabyte_xh23_vg0_aaj1) lists it as its configuration.
+data nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GH200 Hopper GPU (144GB HBM3e)",
+  microarchitecture: "Hopper",
+  execution_lane_count: hardware_thread_count(16896),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)),
+    memory_kind: Hbm,
+  },
+  memory_bandwidth: bandwidth(count: 4900000000000),
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+}
+
+data nvidia_gh200_624gb_hbm3e_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {
+  vendor: nvidia,
+  model: "NVIDIA GH200 Grace Hopper Superchip 144GB HBM3e",
+  board_designation: "not cited for the HBM3e product",
+  cpu_architecture: Aarch64,
+  cpu_core_clusters: gh200_grace_core_clusters,
+  gpu: nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog,
+  cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+  chip_to_chip_bandwidth_per_direction: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth_per_direction,
+  module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+  module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+  figure_standing: gh200_datasheet_figures_standing,
+}
+
 // ── MODULE POWER-RAIL VARIANTS: A LEAD, NOT A CITATION ─────────────────────────────────────────
 //
 // GH200-2 (2026-10-04). Search-indexed text of an EARLIER revision of NVIDIA's firmware update guide

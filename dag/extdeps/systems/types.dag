@@ -1,7 +1,9 @@
 module extdeps.systems.types
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count }
+import std.nat { Nat }
+import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
@@ -105,4 +107,97 @@ type CoherentSuperchipCatalogRow {
 // link. Derived, never authored, so the two tiers cannot disagree with their sum.
 fn coherent_superchip_coherent_capacity(row: CoherentSuperchipCatalogRow) -> ByteSize {
   byte_size(count: byte_size_count(b: row.gpu.memory.capacity) + byte_size_count(b: row.cpu_memory.memory.capacity))
+}
+
+// ── COMPLETE SUPERCHIP SERVERS ───────────────────────────────────────────────────────────────
+//
+// A COMPLETE SERVER IS THE THIRD SHAPE, beside the sealed integrated system and the bare superchip: an
+// OEM chassis built around ONE superchip module, with its own carrier, power supplies, management
+// controller, storage and slots. It references the module rows it supports rather than restating
+// their memory figures, so a server cannot disagree with NVIDIA about what a GH200 holds. Supported and
+// announced module configurations are kept apart because a vendor's "coming soon" is not a shipping
+// configuration.
+type PowerSupplyRedundancy
+  = SuppliesOnePlusOne
+  | SuppliesNonRedundant
+
+type ServerPowerSupplies {
+  form: NonEmptyStr
+  count: Nat
+  redundancy: PowerSupplyRedundancy
+  output_per_supply: Watt
+}
+
+type ServerManagementController {
+  bmc: NonEmptyStr
+  dedicated_management_lan: NonEmptyStr
+}
+
+type StorageBay {
+  count: Nat
+  form_factor: NonEmptyStr
+  link: PcieLink?
+  placement: NonEmptyStr
+}
+
+type ExpansionSlot {
+  count: Nat
+  mechanical: NonEmptyStr
+  link: PcieLink
+  intended_for: NonEmptyStr?
+}
+
+type FrontPanelPort {
+  count: Nat
+  connector: NonEmptyStr
+  function: NonEmptyStr?
+}
+
+type ChassisDimensions {
+  width: Millimeter
+  depth: Millimeter
+  height: Millimeter
+}
+
+type TemperatureRange {
+  minimum: Celsius
+  maximum: Celsius
+}
+
+type HumidityRange {
+  minimum_percent: Nat
+  maximum_percent: Nat
+  condition: NonEmptyStr
+}
+
+type SuperchipServerCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  form_factor: NonEmptyStr
+  dimensions: ChassisDimensions?
+  supported_superchips: List<CoherentSuperchipCatalogRow>
+  announced_superchips: List<CoherentSuperchipCatalogRow>
+  module_power_ceiling: Watt
+  power_supplies: ServerPowerSupplies
+  management: ServerManagementController?
+  host_network: List<SystemNetworkPort>
+  storage_bays: List<StorageBay>
+  expansion_slots: List<ExpansionSlot>
+  front_panel: List<FrontPanelPort>
+  fans: NonEmptyStr?
+  operating_temperature: TemperatureRange?
+  non_operating_temperature: TemperatureRange?
+  non_operating_humidity: HumidityRange?
+  figure_standing: CitedFigureStanding
+}
+
+// THE MOST A SERVER CAN DRAW FROM ITS SUPPLIES WITH REDUNDANCY HELD: with 1+1 supplies the system
+// must run on one, so its ceiling is one supply's rated output; non-redundant supplies sum. This is a
+// ceiling on draw, not a measurement of it, and a supply's rating is usually stated at high-line
+// input: on 120 V many server supplies deliver less, which the ceiling does not capture.
+fn server_supply_ceiling(row: SuperchipServerCatalogRow) -> Watt {
+  match row.power_supplies.redundancy {
+    SuppliesOnePlusOne => row.power_supplies.output_per_supply
+    SuppliesNonRedundant => watt(count: watt_count(w: row.power_supplies.output_per_supply) * row.power_supplies.count)
+  }
 }
