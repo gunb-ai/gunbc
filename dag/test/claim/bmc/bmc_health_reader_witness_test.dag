@@ -26,7 +26,7 @@ import gunbc.tools.bmc_health_reader_converge {
 import gunbc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
 import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeSucceeded, RestExchangeUnreached }
 import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
