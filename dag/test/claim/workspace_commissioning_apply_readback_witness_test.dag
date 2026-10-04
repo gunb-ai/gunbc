@@ -1,5 +1,6 @@
 module test.claim.workspace_commissioning_apply_readback_witness
 
+import gunbc.build_cache_instance { runner_slot_instance_name }
 import std.types { Bool, String, NonEmptyStr }
 import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotFree, HoldSlotAbsent, HoldSlotUndecodable, DurableHoldReleaseRef }
 import gunbc.workspace_slot_mutation {
@@ -14,7 +15,7 @@ import test.claim.workspace_commissioning_transaction_witness { transaction_fixt
 data expected_invocation: NonEmptyStr = "fixture-invocation" as NonEmptyStr
 
 fn observed_terminal(text: String, status: String, invocation: NonEmptyStr) -> Bool {
-  workspace_commissioning_terminal_succeeded(slot: transaction_fixture_provenance().slot, invocation: expected_invocation,
+  workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: transaction_fixture_provenance().slot) as String, invocation: expected_invocation,
     result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
       invocation_id: invocation, exec_main_status: UnitPropertyRead { value: status },
       controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: text } })
@@ -31,7 +32,7 @@ test fn failed_or_other_invocation_cannot_complete_commissioning() -> Bool {
 }
 
 test fn unreadable_exit_status_cannot_complete_commissioning() -> Bool {
-  !workspace_commissioning_terminal_succeeded(slot: transaction_fixture_provenance().slot, invocation: expected_invocation,
+  !workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: transaction_fixture_provenance().slot) as String, invocation: expected_invocation,
     result: SlotStartCompleted { unit: "gunbc-microvm-slot@srv1-13.service" as NonEmptyStr,
       invocation_id: expected_invocation, exec_main_status: UnitPropertyUnread { property: "ExecMainStatus" as NonEmptyStr, detail: "unreadable" },
       controller_receipt: ControllerReceiptRead { path: "fixture-receipt", text: outcome_text(o: SlotControllerCommissioned) } })

@@ -134,6 +134,7 @@ import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved, microvm_shakedown_runner_group_name,
   runner_group_restriction_not_yet_observed, observe_shakedown_runner_group_restriction,
 }
+import gunbc.runner_jit_mint { MicroVmSlotBinding }
 import gunbc.runner.runner_jit_perform {
   dispatch_jit_mint, JitMintDispatch, JitMintDispatchRefused, JitMintDispatchAuthorized,
   DispatchRefusedRunnerGroupUnrestricted,
@@ -329,9 +330,12 @@ fn controller_credential_authority() -> GitHubCredentialAuthority {
   }
 }
 
-fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch {
+fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+] {
   dispatch_jit_mint(
-    binding: binding,
+    binding: MicroVmSlotBinding { binding: binding },
     authority: controller_credential_authority(),
     control_plane: state,
     organization: github_organization_ref(),
@@ -376,7 +380,7 @@ fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlP
         mint_under_observed_group(binding: binding, state: state)
       other => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } }
     }
-    JitMintDispatchAuthorized { attempt: _, app: _, installation: _, organization: _, request: _ } =>
+    JitMintDispatchAuthorized { dispatch: _ } =>
       mint_under_observed_group(binding: binding, state: state)
   }
 }
@@ -527,7 +531,7 @@ fn minted_registration(mint: JitMintPerformance) -> Int? {
   match mint {
     JitMintReceived { delivery: d } =>
       match d {
-        JitCredentialBoundToAttempt { attempt: _, credential: _, runner_id: id } => Present { value: id }
+        JitCredentialBoundToAttempt { slot: _, credential: _, runner_id: id } => Present { value: id }
         JitCredentialNotDispatched { refusal: _ } => none
         JitCredentialMintNotCreated { outcome: _ } => none
       }

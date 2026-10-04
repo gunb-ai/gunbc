@@ -5,7 +5,7 @@ import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironm
 import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
 
 import std.types { String, Bool, NonEmptyStr, List, Int, list_length }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_cell_converge { fabric_cell_expected_slots }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
@@ -49,7 +49,7 @@ import gunbc.runner_unit { runner_slot_unit_name, runner_unit_template_name, run
 import gunbc.live_deploy.spec { deployment_owned_steps_retract_order }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.host_axis_caps { CapMember }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

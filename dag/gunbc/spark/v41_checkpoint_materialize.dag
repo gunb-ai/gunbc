@@ -214,7 +214,7 @@ data v41_checkpoint_blob_policy: SparkFileBlobPolicy = SparkFileBlobPolicy {
 fn v41_attempt(ctx: SparkMaterializeContext, subject: AcquisitionSubject, origin: AcquisitionSource) -> AcquisitionAttempt {
   if (origin.identity as String) == (v41_hub_cache_source_identity as String) {
     match spark_remote_run(ctx: ctx, argv: ["test", "-f", v41_hub_cache_copy_path(path: subject.identity) as String]) {
-      RemoteUnreachable { cause: _ } => AttemptUnreachable
+      RemoteUnreachable { cause: _, reach: _ } => AttemptUnreachable
       RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
         if e != 0 { AttemptUnreachable } else { spark_file_blob_attempt(ctx: ctx, policy: v41_checkpoint_blob_policy, subject: subject, origin: origin) }
     }
@@ -286,18 +286,18 @@ fn v41_required_bytes(files: List<DeepseekV41PublishedFile>, listing: List<Strin
 fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedFile>) -> V41DiskReading {
   let dir = v41_checkpoint_directory as String
   match spark_remote_run(ctx: ctx, argv: ["test", "-d", dir]) {
-    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory probe did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41DiskUnread { cause: join(["the directory probe did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: present, stdout: _, stderr: _ } =>
       if present != 0 && present != 1 { V41DiskUnread { cause: join(["the directory probe exited ", to_string(present)], "") as NonEmptyStr } } else {
         match v41_list_directory(ctx: ctx, present: present == 0) {
           Absent => V41DiskUnread { cause: "the directory listing did not answer" as NonEmptyStr }
           Present { value: listing } =>
             match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", dir]) {
-              RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the directory could not be created for the free-space read: ", c], "") as NonEmptyStr }
+              RemoteUnreachable { cause: c, reach: _ } => V41DiskUnread { cause: join(["the directory could not be created for the free-space read: ", c], "") as NonEmptyStr }
               RemoteRan { exit_code: m, stdout: _, stderr: merr } =>
                 if m != 0 { V41DiskUnread { cause: join(["mkdir exited ", to_string(m), ": ", trim(s: merr)], "") as NonEmptyStr } } else {
                   match spark_remote_run(ctx: ctx, argv: host_disk_free_space_argv(path: dir)) {
-                    RemoteUnreachable { cause: c } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
+                    RemoteUnreachable { cause: c, reach: _ } => V41DiskUnread { cause: join(["the free-space read did not run: ", c], "") as NonEmptyStr }
                     RemoteRan { exit_code: e2, stdout: avail, stderr: err2 } =>
                       match host_disk_observation_of_df(exit_code: e2, stdout: avail, stderr: err2, observed_on: "spark_v41_checkpoint_materialize" as NonEmptyStr) {
                         DiskObservationRefused { detail: d } => V41DiskUnread { cause: d }
@@ -319,7 +319,7 @@ fn v41_read_disk(ctx: SparkMaterializeContext, files: List<DeepseekV41PublishedF
 fn v41_list_directory(ctx: SparkMaterializeContext, present: Bool) -> String? {
   if !present { Present { value: "" } } else {
     match spark_remote_run(ctx: ctx, argv: find_regular_file_sizes_argv(root: v41_checkpoint_directory as String)) {
-      RemoteUnreachable { cause: _ } => none
+      RemoteUnreachable { cause: _, reach: _ } => none
       RemoteRan { exit_code: e, stdout: out, stderr: _ } => if e != 0 { none } else { Present { value: out } }
     }
   }
@@ -349,7 +349,7 @@ type V41SpanReadOutcome
 
 fn v41_read_span(ctx: SparkMaterializeContext, sp: V41PublishedSpan) -> V41SpanReadOutcome {
   match spark_remote_run(ctx: ctx, argv: v41_span_read_argv(sp: sp)) {
-    RemoteUnreachable { cause: c } => V41SpanUnread { span: sp, cause: c as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => V41SpanUnread { span: sp, cause: c as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { V41SpanUnread { span: sp, cause: join(["the span read exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
         match sha256sum_line_digest(line: out) {
@@ -474,14 +474,14 @@ fn v41_index_selection_of_verified(ctx: SparkMaterializeContext, path: NonEmptyS
     SparkFileDigestUnread { cause: c } => V41IndexSelectionUnread { cause: c }
     SparkFileDigestRead { hex: h } =>
       match spark_remote_run(ctx: ctx, argv: ["wc", "--bytes", path as String]) {
-        RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the size read did not run: ", c], "") as NonEmptyStr }
+        RemoteUnreachable { cause: c, reach: _ } => V41IndexSelectionUnread { cause: join(["the size read did not run: ", c], "") as NonEmptyStr }
         RemoteRan { exit_code: e, stdout: out, stderr: _ } =>
           if e != 0 { V41IndexSelectionUnread { cause: join(["wc exited ", to_string(e)], "") as NonEmptyStr } } else {
             match v41_wc_bytes(out: out) {
               Absent => V41IndexSelectionUnread { cause: join(["wc answered no byte count: ", out], "") as NonEmptyStr }
               Present { value: b } =>
                 match spark_remote_run(ctx: ctx, argv: ["cat", "--", path as String]) {
-                  RemoteUnreachable { cause: c } => V41IndexSelectionUnread { cause: join(["the index read did not run: ", c], "") as NonEmptyStr }
+                  RemoteUnreachable { cause: c, reach: _ } => V41IndexSelectionUnread { cause: join(["the index read did not run: ", c], "") as NonEmptyStr }
                   RemoteRan { exit_code: e2, stdout: text, stderr: _ } =>
                     if e2 != 0 { V41IndexSelectionUnread { cause: join(["cat exited ", to_string(e2)], "") as NonEmptyStr } } else {
                       V41IndexSelectionRead { sha256_hex: h, bytes: b, parse: v41_select_index_document(text: text, selector: v41_index_engram_selector) }

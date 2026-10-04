@@ -1,0 +1,68 @@
+module test.claim.workspace_allocation_write_seam_wet_witness_test
+
+import std.types { Bool, String }
+import extdeps.shell
+import test.claim.request_authentication_witness_test { witness_mint_session }
+import test.claim.workspace_allocation_http_witness_test {
+  seam_security, seam_create, seam_create_body, seam_matching_readback, seam_decided_at, seam_observed_at, seam_tailnet_login,
+}
+import gunbc.auth.session { SessionMinted, SessionRefused }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadbackUntaken }
+import gunbc.auth.request_authentication { TailnetReadbackNotDemanded }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.http.server { ServeHttpRequest }
+import gunbc.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
+import gunbc.workspace_allocation_routes { workspace_route_release_over }
+import gunbc.workspace_allocation_store { workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, WorkspaceRetired, WorkspaceWanted }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
+import gunbc.principal_projection { principal_ref_eq }
+
+// THE WRITE LANDS. A valid session, its CSRF token, an enrolled owner and a fresh reading showing
+// the declared route, through the serve seam's access path and the mounted create route, into a
+// real file store: the owner's ledger then holds one wanted allocation whose image, key reference
+// and expiry are the server's terms. Before it, the same request without the reading is answered
+// unavailable and the ledger stays empty; after it, the release route retires that allocation.
+test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let store = FabricStorageLocalFiles { root: root }
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+      SessionRefused { cause: _ } => false
+      SessionMinted { session } => {
+        let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+        let no_path = seam_security(session: session, header: seam_tailnet_login, readback: TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }, decided_at: seam_decided_at)
+        let refused = seam_create(security: no_path, owner: session, store: store, body: seam_create_body(csrf: "csrf-1"))
+        let empty_after_refusal = match workspace_read_owner(store: store, owner: session.principal) {
+          WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 0
+          WorkspaceStoreUnreadable { reason: _ } => false
+        }
+        let created = seam_create(security: good_path, owner: session, store: store, body: seam_create_body(csrf: "csrf-1"))
+        let landed = match workspace_read_owner(store: store, owner: session.principal) {
+          WorkspaceStoreUnreadable { reason: _ } => false
+          WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 1 && all(snapshot.allocations, a =>
+            principal_ref_eq(a: a.request.owner, b: session.principal)
+              && (a.request.idempotency_key as String) == "seam-request-1"
+              && (a.request.image as String) == (workspace_demo_image_identity() as String)
+              && (a.request.public_key_ref as String) == "seam-witness-key"
+              && a.request.expires_at == "2026-09-25T01:00:00Z"
+              && a.desired == WorkspaceWanted)
+        }
+        let released = workspace_route_release_over(
+          request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", security: good_path },
+          store: store, policy: WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: session.principal, public_key_ref: "seam-witness-key" }] },
+          observed_at: seam_decided_at, allocation_id: "seam-request-1")
+        let retired = match workspace_read_owner(store: store, owner: session.principal) {
+          WorkspaceStoreUnreadable { reason: _ } => false
+          WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 1 && all(snapshot.allocations, a => a.desired == WorkspaceRetired)
+        }
+        refused.status == 503 && empty_after_refusal && created.status == 200 && landed && released.status == 200 && retired
+      }
+    }
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}

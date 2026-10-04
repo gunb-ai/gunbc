@@ -2,7 +2,7 @@ module gunbc.spark.host_occupancy_admission
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.measure { Kibibyte }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_operation_exec { SystemctlStop, SystemctlStart }
 import gunbc.compute.host_occupancy {
   HostOccupant, ServingUnitActive, GpuComputeProcess,
@@ -13,7 +13,7 @@ import gunbc.compute.host_occupancy {
   read_host_occupancy, admit_host_occupancy, host_occupancy_refusal, host_occupant_wire,
 }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run, spark_argv_run_of_unreachable }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
 import gunbc.spark.pair_serving_apply { spark_pair_retired_head_unit, spark_pair_retired_worker_unit }
 
@@ -33,12 +33,14 @@ fn spark_serving_units() -> List<NonEmptyStr> {
   [spark_pair_head_unit_name, spark_pair_worker_unit_name, spark_pair_retired_head_unit, spark_pair_retired_worker_unit]
 }
 
-// THE PRIVILEGED LEG THE V4.1 EFFECTS ALREADY HOLD, as an ArgvRun. A leg that did not reach the host
-// is a leg that did not run -- the reader turns that into Unread, never into vacant.
+// THE PRIVILEGED LEG THE V4.1 EFFECTS ALREADY HOLD, as an ArgvRun, through the one projection
+// (gunbc.spark.model_snapshot_materialize spark_argv_run_of_unreachable): a leg that sent nothing did
+// not run, a leg whose result never arrived may have run -- the reader turns both into Unread, never
+// into vacant.
 fn spark_ctx_argv_run(ctx: SparkMaterializeContext) -> fn(List<String>) -> ArgvRun {
   fn(argv) {
     match spark_remote_run(ctx: ctx, argv: argv) {
-      RemoteUnreachable { cause: c } => ArgvLegDidNotRun { cause: c }
+      RemoteUnreachable { cause: c, reach: r } => spark_argv_run_of_unreachable(cause: c, reach: r)
       RemoteRan { exit_code: code, stdout: out, stderr: err } => ArgvRan { exit_code: code, stdout: out, stderr: err }
     }
   }

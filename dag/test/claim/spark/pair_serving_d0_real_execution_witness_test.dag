@@ -62,15 +62,15 @@ import test.claim.spark.pair_serving_d0_witness { d0w_rec_of, d0w_pending }
 import gunbc.spark.pair_serving_authority { ReleasedToFleet, PairRealizationUnestablished }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import std.scoped_authorization { ClaimedBy, CompletedBy, AbortedBy }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.host_commitment {
   spark_claimed_members_under, spark_host_standings_current, CurrentStandings, CurrentStandingsRead, CurrentStandingsUnread, admit_unplaced_host_in, SparkHostAdmission, SparkHostAdmitted, SparkHostRefused,
   SparkHostStanding, SparkHostUncommitted, SparkHostCommitted, spark_standing_of, spark_authority_held_causes_of, MemberOfClaimedServingGroup,
 }
-import gunbc.fleet_intent_network { operator_host_srv10 }
-import product.placement_supply { host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_srv10 }
+import product.host_identity { host_identity_eq }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -2,22 +2,144 @@ module gunbc.workspace_allocation_routes
 
 import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Timestamp }
+import extdeps.clock { Clock }
 import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
-import gunbc.auth.request_authentication { RequestAccessPath, RequestAuthenticationEvidence }
+import gunbc.auth.request_authentication {
+  RequestAccessPath, RequestAuthenticationEvidence, DeploymentAccessPolicy,
+  AccessPathTailnetUnobserved, AccessPathTailnetProxy, AccessPathDirectHttps, AccessPathLocalDev,
+  GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent,
+  TailnetRouteGap, tailnet_route_gap_sentence, tailnet_route_gap_label,
+}
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { workspace_lease_bound_seconds }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
 
 import gunbc.workspace_allocation_policy { workspace_authorization_policy }
 
-import gunbc.workspace_allocation_http { workspace_http_list_over, workspace_http_get_over, workspace_http_reason }
+import gunbc.workspace_allocation_http { workspace_http_create_over, workspace_http_list_over, workspace_http_get_over, workspace_http_release_over, workspace_http_reason, workspace_http_json }
 
-// ONLY THE READ ROUTES ARE MOUNTED. Create and release require the tailnet deployment path
-// (DeploymentAccessPolicy { tailnet_path_required: true }), and the server seam
-// gunbc.roadmap_serve roadmap_serve_request_security does not yet read back the Tailscale serve
-// route, so AccessPathTailnetProxy cannot be constructed there and a mounted write could never be
-// admitted. The writes stay unmounted -- the policy is not weakened -- until that seam executes a
-// serve-route/ACL readback; gunbc.workspace_allocation_http workspace_http_create_over and
-// workspace_http_release_over are the handlers that mount then, witnessed under the required path.
+// THE ALLOCATION WRITES REQUIRE THE TAILNET PATH. This row is the deployment-path conjunct both
+// write routes hand the write law; the shared seam (gunbc.roadmap_serve
+// roadmap_serve_request_security) mints that path only from a fresh serve-status readback showing
+// this instance's declared route, so a write arriving any other way is not admitted.
+data workspace_allocation_deployment_access_policy: DeploymentAccessPolicy = DeploymentAccessPolicy {
+  tailnet_path_required: true,
+}
+
+// THE WRITES ARE UNAVAILABLE, AS OPPOSED TO REFUSED, when a signed-in request arrived carrying a
+// tailnet header this server could not vouch for: the caller did nothing a retry or a different
+// request would change, the host's serve route or its reading is what is missing. That answer is
+// derived from the request's own access path, never a constant: 503 with the availability word,
+// the cause's sentence and its label. Every other standing goes to the write law, whose refusals
+// stay 4xx with a reason. An unauthenticated request is not told the host's standing.
+fn workspace_write_unavailable_response(gap: TailnetRouteGap) -> ServeHttpResponse {
+  workspace_http_json(status: 503, value: json_object(members: [
+    json_kv(key: "availability", value: json_string(s: workspace_write_unavailable_wire)),
+    json_kv(key: "reason", value: json_string(s: concat("Allocation requests are unavailable; no request was recorded: ", tailnet_route_gap_sentence(gap: gap)))),
+    json_kv(key: "cause", value: json_string(s: tailnet_route_gap_label(gap: gap) as String)),
+  ]))
+}
+
+fn workspace_write_unavailable_gap(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> TailnetRouteGap? {
+  match request.security.authentication {
+    GoogleOidcSession { session: _ } =>
+      match request.security.access_path {
+        AccessPathTailnetUnobserved { gap: g } => Present { value: g }
+        AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => none
+        AccessPathDirectHttps => none
+        AccessPathLocalDev => none
+      }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => none
+    SessionStandingInvalid { standing: _ } => none
+    AuthAbsent => none
+  }
+}
+
+// THE SERVER'S TERMS FOR A NEW ALLOCATION. The browser submits a CSRF token, an idempotency key
+// and a profile; expiry and image digest are decided here, and the guest public key reference is
+// the signed-in owner's enrollment, resolved by admission.
+type WorkspaceCreateTerms {
+  expires_at: Timestamp
+  pinned_image: NonEmptyStr
+}
+
+fn workspace_create_terms(expires_at: Timestamp) -> WorkspaceCreateTerms {
+  WorkspaceCreateTerms {
+    expires_at: expires_at,
+    pinned_image: workspace_demo_image_identity(),
+  }
+}
+
+// The create route over a supplied store, clock reading and terms: the mounted route supplies the
+// fabric state store and the wall clock, and nothing else differs.
+fn workspace_route_create_over(
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  store: FabricStorageBinding,
+  policy: WorkspaceAuthorizationPolicy,
+  observed_at: Timestamp,
+  terms: WorkspaceCreateTerms,
+) -> ServeHttpResponse {
+  match workspace_write_unavailable_gap(request: request) {
+    Present { value: gap } => workspace_write_unavailable_response(gap: gap)
+    Absent => workspace_http_create_over(
+      request: request, store: store, policy: policy,
+      deployment_policy: workspace_allocation_deployment_access_policy,
+      observed_at: observed_at, new_expires_at: terms.expires_at,
+      pinned_image: terms.pinned_image,
+    )
+  }
+}
+
+fn workspace_route_release_over(
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  store: FabricStorageBinding,
+  policy: WorkspaceAuthorizationPolicy,
+  observed_at: Timestamp,
+  allocation_id: NonEmptyStr,
+) -> ServeHttpResponse {
+  match workspace_write_unavailable_gap(request: request) {
+    Present { value: gap } => workspace_write_unavailable_response(gap: gap)
+    Absent => workspace_http_release_over(
+      request: request, store: store, policy: policy,
+      deployment_policy: workspace_allocation_deployment_access_policy,
+      observed_at: observed_at, allocation_id: allocation_id,
+    )
+  }
+}
+
+// Recording intent is all a create does: it never reserves, starts a controller or probes a host.
+// The lease runs the full policy bound from the server's own clock reading.
+fn workspace_route_create(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => if !utc_instant_is_canonical(t: observed as String) {
+      workspace_http_reason(status: 503, reason: "Allocation clock is not canonical UTC")
+    } else {
+      workspace_route_create_over(
+        request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(),
+        observed_at: observed,
+        terms: workspace_create_terms(expires_at: Clock.TimestampAdd(timestamp: observed as String, offset: workspace_lease_bound_seconds()).result),
+      )
+    }
+  }
+}
+
+fn workspace_route_release(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, allocation_id: NonEmptyStr) -> ServeHttpResponse {
+  match clock_now_probed_at() {
+    Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")
+    Present { value: observed } => workspace_route_release_over(
+      request: request, store: fabric_state_storage_binding(), policy: workspace_authorization_policy(),
+      observed_at: observed, allocation_id: allocation_id,
+    )
+  }
+}
+
 fn workspace_route_list(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
   match clock_now_probed_at() {
     Absent => workspace_http_reason(status: 503, reason: "Allocation clock unavailable")

@@ -9,6 +9,24 @@ import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment, workspace_write_admission }
 import std.access { Permit, Deny }
+import std.types { String, Bool, NonEmptyStr, Int }
+import extdeps.ietf.http_semantics { POST }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
+import gunbc.workspace_allocation_http { workspace_http_reason }
+import extdeps.tailscale.serve { tailscale_serve_route_key_eq, TailscaleServeEndpoint }
+import gunbc.auth.request_authentication {
+  AccessPathTailnetUnobserved, TailnetRouteGap, RequestIngress, IngressUnattested, IngressAttestedPeer,
+  TailnetIngressUnattested, TailnetIngressNotTheProxy, TailnetRouteBackendNotASocket, TailnetReadbackNotDemanded, TailnetReadbackCommandFailed, TailnetReadbackNotSpawned,
+  TailnetRouteUndeclared, TailnetReadbackUntaken, TailnetReadbackStale, TailnetStatusUnreadable, TailnetRouteNotProxied, TailnetRouteProxiesElsewhere,
+}
+import gunbc.auth.request_authentication { AccessPathTailnetProxy, AccessPathDirectHttps, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved, SessionStandingInvalid }
+import gunbc.auth.session { SessionCookieMalformed }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken }
+import gunbc.roadmap_serve { roadmap_serve_access_path, roadmap_serve_access_path_over, roadmap_serve_route_table_build, RoadmapServeHandler, AllocationCreateHandler, AllocationReleaseHandler }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.workspace_allocation_routes { workspace_route_create_over, workspace_route_release_over, workspace_create_terms }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced }
+import extdeps.http.server { RouteSelection, ServedRouteTableBuilt, ServedRouteTableBuildRefused, serve_select_route, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched }
 
 test fn witness_allocation_enrollment_and_csrf_both_required() -> Bool {
   match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
@@ -31,6 +49,7 @@ fn allocation_tailnet_security(session: AuthenticatedSession, route_observed: Bo
     access_path: request_access_path_of(
       listen_host: "127.0.0.1",
       tailscale_header: "operator@example.invalid",
+      ingress: seam_proxy_ingress(),
       serve_status: ServeStatusProxies { targets: ["http://127.0.0.1:8080"] },
       serve_route: if route_observed { Present { value: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount } } } else { none },
       acl_policy: operator_tailscale_acl_policy,
@@ -41,8 +60,8 @@ fn allocation_tailnet_security(session: AuthenticatedSession, route_observed: Bo
 
 // Under the policy the allocation writes actually require (tailnet_path_required: true): a
 // logged-in, enrolled, CSRF-matching write admits only on an observed tailnet serve route. Without
-// the route readback -- which is what the server seam supplies today, and why the writes are not
-// mounted -- the same request is refused rather than admitted on a weaker path.
+// the route the same request is refused rather than admitted on a weaker path. This claim is over
+// the access-path fold alone; the claims below it run the mounted routes over the serve seam.
 test fn allocation_write_requires_an_observed_tailnet_route() -> Bool {
   match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
     SessionRefused { cause: _ } => false
@@ -56,5 +75,314 @@ test fn allocation_write_requires_an_observed_tailnet_route() -> Bool {
         && match unobserved { Deny { refusal: _ } => true Permit => false }
         && match local { Deny { refusal: _ } => true Permit => false }
     }
+  }
+}
+
+// ── The mounted writes over the serve seam ───────────────────────────────────────────────────────
+// Every claim below builds its access path through the serve seam's fold (gunbc.roadmap_serve
+// roadmap_serve_access_path_over, or roadmap_serve_access_path on the production instance), with
+// the ingress, the declared route and the serve-status reading SUPPLIED: the status text is the
+// shape `tailscale serve status --json` prints (extdeps.tailscale.serve
+// tailscale_serve_status_route_proxy_targets), and the command itself is not run here. The
+// refusing claims hand the route an unplaced store, which a refused write never reaches.
+
+data seam_decided_at: String = "2026-09-25T00:10:00Z"
+data seam_observed_at: String = "2026-09-25T00:09:58Z"
+data seam_tailnet_login: String = "operator@example.invalid"
+
+fn seam_status_json(host_port: String, proxy: String) -> String {
+  join(["\{\"TCP\":\{\"443\":\{\"HTTPS\":true\}\},\"Web\":\{\"", host_port, "\":\{\"Handlers\":\{\"/\":\{\"Proxy\":\"", proxy, "\"\}\}\}\}\}"], "")
+}
+
+// The declared route of a socket-backed deployment, and the ingress tailscale serve produces on
+// it. No rostered instance declares a socket backend today (see
+// seam_production_instance_declares_a_tcp_route_and_mints_no_tailnet_path), so the declared route
+// is supplied to the seam's own fold, roadmap_serve_access_path_over.
+data seam_socket_backend: String = "unix:/run/gunbc-fixture/roadmap.sock"
+
+fn seam_declared() -> TailscaleServeEndpoint? {
+  Present { value: TailscaleServeEndpoint { https_port: 443, mount: ServeRootMount, backend: seam_socket_backend as NonEmptyStr } }
+}
+
+fn seam_proxy_ingress() -> RequestIngress {
+  IngressAttestedPeer { peer_user: "root" }
+}
+
+fn seam_matching_readback(observed_at: String) -> TailnetServeReadback {
+  TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: seam_socket_backend), observed_at: observed_at }
+}
+
+fn seam_path(header: String, ingress: RequestIngress, readback: TailnetServeReadback, decided_at: String) -> RequestAccessPath {
+  roadmap_serve_access_path_over(listen_host: "127.0.0.1" as NonEmptyStr, declared: seam_declared(), tailscale_identity: header, ingress: ingress, readback: readback, decided_at: decided_at)
+}
+
+fn seam_security(session: AuthenticatedSession, header: String, readback: TailnetServeReadback, decided_at: String) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
+  RequestSecurityContext {
+    access_path: seam_path(header: header, ingress: seam_proxy_ingress(), readback: readback, decided_at: decided_at),
+    authentication: GoogleOidcSession { session: session },
+  }
+}
+
+fn seam_create_body(csrf: String) -> String {
+  join(["\{\"csrf_token\":\"", csrf, "\",\"idempotency_key\":\"seam-request-1\",\"profile\":\"2cpu-4gib\"\}"], "")
+}
+
+fn seam_create(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>, owner: AuthenticatedSession, store: FabricStorageBinding, body: String) -> ServeHttpResponse {
+  workspace_route_create_over(
+    request: ServeHttpRequest { method: POST, path: "/allocations", body: body, security: security },
+    store: store,
+    policy: WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: owner.principal, public_key_ref: "witness-key" }] },
+    observed_at: seam_decided_at,
+    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+  )
+}
+
+fn seam_create_status(header: String, readback: TailnetServeReadback, decided_at: String) -> Int {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => 0
+    SessionMinted { session } =>
+      seam_create(security: seam_security(session: session, header: header, readback: readback, decided_at: decided_at), owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "csrf-1")).status
+  }
+}
+
+fn seam_create_response(header: String, readback: TailnetServeReadback, decided_at: String) -> ServeHttpResponse {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => workspace_http_reason(status: 500, reason: "fixture session refused")
+    SessionMinted { session } =>
+      seam_create(security: seam_security(session: session, header: header, readback: readback, decided_at: decided_at), owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "csrf-1"))
+  }
+}
+
+// The typed unavailable answer: 503, the availability word, and the cause label.
+fn seam_unavailable_with(header: String, readback: TailnetServeReadback, decided_at: String, cause: String) -> Bool {
+  let r = seam_create_response(header: header, readback: readback, decided_at: decided_at)
+  r.status == 503
+    && string_contains(s: r.body, pattern: "\"availability\": \"unavailable\"")
+    && string_contains(s: r.body, pattern: join(["\"cause\": \"", cause, "\""], ""))
+}
+
+// POSITIVE CONTROL for every refusal below, and the route assertion the pairing owes: a fresh
+// reading showing the declared route yields AccessPathTailnetProxy carrying that route key and the
+// header's login, and the create passes admission -- it is answered by the unplaced store this
+// claim hands it ("allocation store could not be read", no availability member), which only a
+// write that got past the write law reaches. The landed write is
+// test.claim.workspace_allocation_write_seam_wet_witness_test.
+test fn seam_fresh_matching_route_mints_the_tailnet_path_and_passes_admission() -> Bool {
+  let path = seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+  let minted = match path {
+    AccessPathTailnetProxy { transport_observation: _, route_readback: rb } => match rb {
+      TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => tailscale_serve_route_key_eq(a: r, b: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount })
+      TailnetRouteReadbackUnobserved { reason: _ } => false
+    }
+    AccessPathTailnetUnobserved { gap: _ } => false
+    AccessPathDirectHttps => false
+    AccessPathLocalDev => false
+  }
+  let r = seam_create_response(header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+  minted && r.status == 503
+    && string_contains(s: r.body, pattern: "allocation store could not be read")
+    && !string_contains(s: r.body, pattern: "availability")
+}
+
+// MISSING ROUTE: the status document is readable and carries no handler at the declared route.
+test fn seam_missing_route_refuses_the_write() -> Bool {
+  seam_unavailable_with(header: seam_tailnet_login, readback: TailnetServeReadbackTaken { status_json: "\{\"TCP\":\{\}\}", observed_at: seam_observed_at }, decided_at: seam_decided_at, cause: "route-not-proxied")
+}
+
+// MISMATCHED ROUTE: the declared listener and mount proxy another backend, and this backend is
+// proxied on another listener only.
+test fn seam_mismatched_route_refuses_the_write() -> Bool {
+  let other_backend = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: "http://127.0.0.1:9999"), observed_at: seam_observed_at }
+  let other_listener = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:8443", proxy: seam_socket_backend), observed_at: seam_observed_at }
+  seam_unavailable_with(header: seam_tailnet_login, readback: other_backend, decided_at: seam_decided_at, cause: "route-proxies-elsewhere")
+    && seam_unavailable_with(header: seam_tailnet_login, readback: other_listener, decided_at: seam_decided_at, cause: "route-not-proxied")
+}
+
+// DIRECT LOCAL INGRESS WITH A FORGED HEADER. A fresh reading showing the declared route is a fact
+// about the node; it does not say who dialed this connection. The same header and the same
+// reading on a listener that attests no peer, or from an ordinary local account, mint no tailnet
+// path and the write is answered unavailable naming that cause -- while the proxy's connection,
+// with nothing else changed, mints it. RED if a reading and a header alone ever suffice.
+test fn seam_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bool {
+  let reading = seam_matching_readback(observed_at: seam_observed_at)
+  let unattested = seam_path(header: seam_tailnet_login, ingress: IngressUnattested, readback: reading, decided_at: seam_decided_at)
+  let local_account = seam_path(header: seam_tailnet_login, ingress: IngressAttestedPeer { peer_user: "briansrls" }, readback: reading, decided_at: seam_decided_at)
+  let proxied = seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: reading, decided_at: seam_decided_at)
+  let refused = match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session } => {
+      let r = seam_create(security: RequestSecurityContext { access_path: unattested, authentication: GoogleOidcSession { session: session } }, owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "csrf-1"))
+      r.status == 503 && string_contains(s: r.body, pattern: "\"cause\": \"ingress-unattested\"")
+    }
+  }
+  unattested == AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+    && local_account == AccessPathTailnetUnobserved { gap: TailnetIngressNotTheProxy { peer_user: "briansrls" } }
+    && refused
+    && match proxied {
+      AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => true
+      AccessPathTailnetUnobserved { gap: _ } => false
+      AccessPathDirectHttps => false
+      AccessPathLocalDev => false
+    }
+}
+
+// THE PRODUCTION INSTANCE AS DECLARED TODAY mints no tailnet path. Its roster row declares a
+// route to a TCP port and its entry is launched on a TCP listener, so through the seam on the
+// real instance: the entry's own ingress is unattested, and even the proxy's ingress with a fresh
+// reading showing that TCP route is refused because the port is reachable without the proxy.
+test fn seam_production_instance_declares_a_tcp_route_and_mints_no_tailnet_path() -> Bool {
+  let tcp_reading = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: "http://127.0.0.1:8080"), observed_at: seam_observed_at }
+  let as_launched = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: IngressUnattested, readback: tcp_reading, decided_at: seam_decided_at)
+  let even_proxied = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: tcp_reading, decided_at: seam_decided_at)
+  as_launched == AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+    && even_proxied == AccessPathTailnetUnobserved { gap: TailnetRouteBackendNotASocket }
+}
+
+// NO READABLE READING: the status command failed, or printed an unreadable document. The header
+// alone mints nothing.
+test fn seam_header_without_a_readable_reading_refuses_the_write() -> Bool {
+  seam_unavailable_with(header: seam_tailnet_login, readback: seam_permission_denied_readback(), decided_at: seam_decided_at, cause: "readback-command-failed")
+    && seam_unavailable_with(header: seam_tailnet_login, readback: TailnetServeReadbackTaken { status_json: "not-json", observed_at: seam_observed_at }, decided_at: seam_decided_at, cause: "status-unreadable")
+}
+
+// A HOST MISCONFIGURATION IS DIAGNOSABLE. Each cause a header goes unvouched for is its own arm
+// on the access path, and the refusal the owner is sent names it: a serving principal that may
+// not read the serve config reads as the command's own exit status and text, distinct from a
+// route that is not installed, a route proxying elsewhere, an unreadable document, a stale
+// reading and a missing binary. RED if any two of these collapse into one cause or one sentence.
+fn seam_permission_denied_readback() -> TailnetServeReadback {
+  TailnetServeReadbackUntaken { gap: TailnetReadbackCommandFailed { exit_code: 1, stderr: "Access denied: serve config access denied" } }
+}
+
+fn seam_gap(readback: TailnetServeReadback, decided_at: String) -> TailnetRouteGap? {
+  match seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: readback, decided_at: decided_at) {
+    AccessPathTailnetUnobserved { gap: g } => Present { value: g }
+    AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => none
+    AccessPathDirectHttps => none
+    AccessPathLocalDev => none
+  }
+}
+
+fn seam_refusal_body(readback: TailnetServeReadback) -> String {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => ""
+    SessionMinted { session } =>
+      seam_create(security: seam_security(session: session, header: seam_tailnet_login, readback: readback, decided_at: seam_decided_at), owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "csrf-1")).body
+  }
+}
+
+test fn seam_each_unvouched_cause_is_its_own_arm() -> Bool {
+  let denied = seam_gap(readback: seam_permission_denied_readback(), decided_at: seam_decided_at)
+  let no_binary = seam_gap(readback: TailnetServeReadbackUntaken { gap: TailnetReadbackNotSpawned { cause: "No such file or directory" } }, decided_at: seam_decided_at)
+  let unreadable = seam_gap(readback: TailnetServeReadbackTaken { status_json: "not-json", observed_at: seam_observed_at }, decided_at: seam_decided_at)
+  let not_proxied = seam_gap(readback: TailnetServeReadbackTaken { status_json: "\{\"TCP\":\{\}\}", observed_at: seam_observed_at }, decided_at: seam_decided_at)
+  let elsewhere = seam_gap(readback: TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: "unix:/run/other.sock"), observed_at: seam_observed_at }, decided_at: seam_decided_at)
+  let stale = seam_gap(readback: seam_matching_readback(observed_at: "2026-09-25T00:09:00Z"), decided_at: seam_decided_at)
+  denied == Present { value: TailnetReadbackUntaken { gap: TailnetReadbackCommandFailed { exit_code: 1, stderr: "Access denied: serve config access denied" } } }
+    && no_binary == Present { value: TailnetReadbackUntaken { gap: TailnetReadbackNotSpawned { cause: "No such file or directory" } } }
+    && unreadable == Present { value: TailnetStatusUnreadable }
+    && not_proxied == Present { value: TailnetRouteNotProxied }
+    && elsewhere == Present { value: TailnetRouteProxiesElsewhere { targets: ["unix:/run/other.sock"] } }
+    && stale == Present { value: TailnetReadbackStale }
+}
+
+test fn seam_permission_denied_refusal_names_the_command_failure() -> Bool {
+  let denied = seam_refusal_body(readback: seam_permission_denied_readback())
+  let not_proxied = seam_refusal_body(readback: TailnetServeReadbackTaken { status_json: "\{\"TCP\":\{\}\}", observed_at: seam_observed_at })
+  string_contains(s: denied, pattern: "tailscale serve status exited 1")
+    && string_contains(s: denied, pattern: "Access denied: serve config access denied")
+    && string_contains(s: denied, pattern: "readback-command-failed")
+    && !string_contains(s: not_proxied, pattern: "exited")
+    && string_contains(s: not_proxied, pattern: "no proxy at this instance's declared route")
+}
+
+// MALFORMED IDENTITY, on both identity axes: a matching fresh route with no tailnet login is not a
+// tailnet path, and a matching fresh route with a malformed session cookie is not an authenticated
+// owner -- nor is that caller told why the host could not vouch for a header.
+test fn seam_malformed_identity_refuses_the_write() -> Bool {
+  let no_login = seam_create_status(header: "", readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+  let malformed_session = workspace_route_create_over(
+    request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+      access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at),
+      authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
+    } },
+    store: FabricStorageBindingUnplaced,
+    policy: WorkspaceAuthorizationPolicy { enrollments: [] },
+    observed_at: seam_decided_at,
+    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+  ).status
+  let unauthenticated_unvouched = workspace_route_create_over(
+    request: ServeHttpRequest { method: POST, path: "/allocations", body: seam_create_body(csrf: "csrf-1"), security: RequestSecurityContext {
+      access_path: seam_path(header: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: seam_permission_denied_readback(), decided_at: seam_decided_at),
+      authentication: SessionStandingInvalid { standing: SessionCookieMalformed { detail: "two session cookies" } },
+    } },
+    store: FabricStorageBindingUnplaced,
+    policy: WorkspaceAuthorizationPolicy { enrollments: [] },
+    observed_at: seam_decided_at,
+    terms: workspace_create_terms(expires_at: "2026-09-25T01:00:00Z"),
+  )
+  no_login == 403 && malformed_session == 401
+    && unauthenticated_unvouched.status == 401 && !string_contains(s: unauthenticated_unvouched.body, pattern: "Access denied")
+}
+
+// STALE READBACK: a matching reading older than the freshness bound, one dated after the decision,
+// and one decided against an unreadable clock all refuse.
+test fn seam_stale_readback_refuses_the_write() -> Bool {
+  seam_unavailable_with(header: seam_tailnet_login, readback: seam_matching_readback(observed_at: "2026-09-25T00:09:00Z"), decided_at: seam_decided_at, cause: "readback-stale")
+    && seam_unavailable_with(header: seam_tailnet_login, readback: seam_matching_readback(observed_at: "2026-09-25T00:10:30Z"), decided_at: seam_decided_at, cause: "readback-stale")
+    && seam_unavailable_with(header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: "", cause: "readback-stale")
+}
+
+// CSRF and release ride the same law on the tailnet path: a wrong token refuses a create, and a
+// release without the route refuses while one with it passes admission.
+test fn seam_csrf_and_release_are_held_to_the_same_law() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session } => {
+      let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+      let no_path = seam_security(session: session, header: seam_tailnet_login, readback: TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }, decided_at: seam_decided_at)
+      let allowed = WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: session.principal, public_key_ref: "witness-key" }] }
+      let release_body = "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}"
+      let release_refused = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: no_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+      let release_admitted = workspace_route_release_over(request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: release_body, security: good_path }, store: FabricStorageBindingUnplaced, policy: allowed, observed_at: seam_decided_at, allocation_id: "seam-request-1")
+      seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: seam_create_body(csrf: "wrong")).status == 403
+        && release_refused.status == 503 && string_contains(s: release_refused.body, pattern: "readback-not-demanded")
+        && release_admitted.status == 409
+    }
+  }
+}
+
+// THE BROWSER NAMES NO TERMS: a create body carrying an image, key or expiry member is refused as
+// malformed before any admission, on the admitted path.
+test fn seam_browser_supplied_terms_are_refused() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T01:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session } => {
+      let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
+      let with_image = "\{\"csrf_token\":\"csrf-1\",\"idempotency_key\":\"seam-request-1\",\"profile\":\"2cpu-4gib\",\"image\":\"sha256:browser\"\}"
+      let with_expiry = "\{\"csrf_token\":\"csrf-1\",\"idempotency_key\":\"seam-request-1\",\"expires_at\":\"2027-01-01T00:00:00Z\"\}"
+      seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: with_image).status == 400
+        && seam_create(security: good_path, owner: session, store: FabricStorageBindingUnplaced, body: with_expiry).status == 400
+    }
+  }
+}
+
+fn seam_selects_an_allocation_write(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
+  match sel {
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+// BOTH WRITES ARE MOUNTED: the route table selects a handler for POST /allocations and for POST
+// /allocations/{id}/release rather than answering 405 or 404.
+test fn seam_both_allocation_writes_are_mounted() -> Bool {
+  match roadmap_serve_route_table_build() {
+    ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
+    ServedRouteTableBuilt { table: t } =>
+      seam_selects_an_allocation_write(sel: serve_select_route(table: t, method: POST, path: "/allocations"))
+        && seam_selects_an_allocation_write(sel: serve_select_route(table: t, method: POST, path: "/allocations/seam-request-1/release"))
   }
 }

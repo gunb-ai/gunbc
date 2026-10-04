@@ -9,7 +9,7 @@ import gunbc.command_runner { run_shell_command_capture }
 import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.provider_route { CompliancePostureRevision }
 import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }

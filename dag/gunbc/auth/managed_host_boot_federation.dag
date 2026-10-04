@@ -2,7 +2,7 @@ module gunbc.auth.managed_host_boot_federation
 
 import std.types { Bool, List, Map, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { IamCondition, role_secretmanager_secret_accessor }
 import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_version_resource_by_number }
@@ -10,7 +10,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_w
 import gunbc.auth.gcp_secret_access { SecretAccessGrant }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_bmc_secure { BmcSecured, BmcSecureRefused }
 import gunbc.managed_host {
   ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
