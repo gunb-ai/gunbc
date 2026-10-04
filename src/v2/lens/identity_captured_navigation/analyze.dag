@@ -1,5 +1,7 @@
 module v2.lens.identity_captured_navigation.analyze
 
+import v2.lens.identity_captured_navigation { Finding, IdentityNodeEscapesAsValue, Suspect }
+
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }

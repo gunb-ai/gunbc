@@ -32,6 +32,7 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.provenance { SpanIndex }
 import v2.std.program_segment {
+import v2.std.text { String }
   partition_boundary_fail_closed,
   program_segment_whole_program
 }

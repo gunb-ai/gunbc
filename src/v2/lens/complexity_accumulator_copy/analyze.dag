@@ -1,5 +1,10 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
+import std.types { List }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.integer { Int }
+import v2.std.node { Node, Symbol }
+
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }
