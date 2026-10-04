@@ -15,6 +15,8 @@ data optional_compared_with_required_value: RecurringFailureMode = RecurringFail
 
     "WALL: v1.compiler.infer equality_admission_diags refuses Eq/Ne when exactly one operand's resolved type is optional (CardOptional on the typed operand, the fact the emitter reads, or the nominal Optional coproduct), as the blocking EqualityOptionalityMismatch. The presence idiom (`== none`, `== Absent`, `== []`) is exempt before the arm runs, as it already was for the function-member wall. Each refused corpus site was rewritten to say the meaning it intends (an explicit Present comparison or a match), never by inserting a lift.",
 
+    "THE POPULATION IS WIDER THAN OPTIONAL FIELDS, measured by the floor's strict compile over 2565 modules once the arm landed: six sites, and five were not record fields at all but the two optional-returning list reads -- `.first()` (extdeps.github.expressions ingest_template_with; extdeps.sudo.nopasswd_execute_probe_check_op) and indexing `xs[i]` (three sites in gunbc.floor_cost_distribution). Each was written as if the read returned the element. The interpreter happened to answer them by the bare-representation arm, which is why they never failed: the program was right only because of how a value was stored.",
+
     "EVIDENCE: test.claim.self_host_equality_admission_witness. Reds: a `Kind?` field compared with a bare variant in both operand orders, each refused once and blocking. Controls: an explicit `== Present { value: .. }`, a match on the optional, and two optionals compared with each other, all admitted.",
 
     "RUNG FOUND AT: below the ladder on the interpretation path (silent, representation-dependent answer), 1 on the Rust emission path (rustc refusal).",

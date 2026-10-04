@@ -471,9 +471,9 @@ fn censored_eval_steps(fields: List<String>, columns: ClaimCostColumns) -> Int? 
 }
 
 fn parse_claim_cost_reading(fields: List<String>, columns: ClaimCostColumns) -> ClaimCostReading? {
-  if fields[columns.cost_reading] == "observed" {
+  if fields[columns.cost_reading] == Present { value: "observed" } {
     observed_cost_reading(fields: fields, columns: columns)
-  } else if fields[columns.cost_reading] == "right_censored" {
+  } else if fields[columns.cost_reading] == Present { value: "right_censored" } {
     right_censored_cost_reading(fields: fields, columns: columns)
   } else {
     none
@@ -530,7 +530,7 @@ fn parse_claim_cost_line(line: String, columns: ClaimCostColumns) -> FloorCostRo
     )
     if count(fields) <= widest {
       none
-    } else if fields[columns.identity] == "identity" {
+    } else if fields[columns.identity] == Present { value: "identity" } {
       none
     } else {
       match parse_claim_cost_reading(fields: fields, columns: columns) {
