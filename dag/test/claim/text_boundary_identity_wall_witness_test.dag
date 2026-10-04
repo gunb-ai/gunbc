@@ -105,7 +105,7 @@ test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool {
 // DECLARATION-BOUND formal, not passed through as the caller's reading of the spelling.
 test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> v2.std.logic.Bool { string_is_empty(s: s) }\n",
+    "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> Bool { string_is_empty(s: s) }\n",
     "src/test_claim_text_unfold_caller_probe.rs",
     [".chars().map(|c| c as i64)"],
     ["string_is_empty(s)", "string_is_empty(s.clone())"]
@@ -116,7 +116,7 @@ test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
 // which it did not while the formal was re-resolved in the caller as host text.
 test fn u_kernel_literal_at_foreign_bare_structural_parameter_unfolds() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.text_unfold_caller_literal_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> v2.std.logic.Bool { string_is_empty(s: \"hi\") }\n",
+    "module test.claim.text_unfold_caller_literal_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> Bool { string_is_empty(s: \"hi\") }\n",
     "src/test_claim_text_unfold_caller_literal_probe.rs",
     ["vec![104, 105]"],
     ["\"hi\".to_string()"]
@@ -134,7 +134,7 @@ test fn c_structural_value_at_structural_parameter_is_admitted() -> Bool {
 }
 
 test fn c_structural_value_at_foreign_structural_parameter_is_admitted() -> Bool {
-  admitted(source: "module probe_structural_into_foreign\nimport v2.std.text { string_is_empty }\nfn probe(t: v2.std.text.String) -> v2.std.logic.Bool { string_is_empty(s: t) }\n")
+  admitted(source: "module probe_structural_into_foreign\nimport v2.std.text { string_is_empty }\nfn probe(t: v2.std.text.String) -> Bool { string_is_empty(s: t) }\n")
 }
 
 // The literal half stays on its homomorphism: a kernel LITERAL at a structural position is the

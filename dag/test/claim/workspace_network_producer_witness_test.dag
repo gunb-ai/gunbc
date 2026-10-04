@@ -1,0 +1,10 @@
+module test.claim.workspace_network_producer_witness_test
+
+import std.types { Bool }
+import gunbc.runner_microvm_network_observe { tap_holders_reading }
+import gunbc.runner_microvm_network { TapPresentUnheld, TapHoldersUnreadable }
+
+test fn network_producer_requires_successful_tun_census() -> Bool {
+  (match tap_holders_reading(success: true, value: "holders=0") { TapPresentUnheld => true other => false })
+    && (match tap_holders_reading(success: false, value: "holders=0") { TapHoldersUnreadable { reason: _ } => true other => false })
+}

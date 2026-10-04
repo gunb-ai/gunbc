@@ -20,7 +20,7 @@ import gunbc.auth.approval_gate {
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.git.plumbing
