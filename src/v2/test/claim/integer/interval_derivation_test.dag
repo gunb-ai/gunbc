@@ -4,7 +4,6 @@ import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { Equal, Ordering, fold_list, length }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.integer {
   D0, D1, D2, D3, D4, D5, D6, D7, D8, D9,
   DecimalNonZeroMagnitude,

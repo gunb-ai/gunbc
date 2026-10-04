@@ -1,10 +1,10 @@
 module v2.std.logic
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { Bool }
 import std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 
-type Bool = True | False
 type BoolWidthFact {}
 type BoolEncodingFact {}
 type BoolPrimitiveFacts {

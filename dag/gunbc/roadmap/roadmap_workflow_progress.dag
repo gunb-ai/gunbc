@@ -38,6 +38,7 @@ import gunbc.roadmap_provider_events {
 import gunbc.harness.harness_throughput { HarnessRoundLedger, throughput_cell_text, harness_throughput_from_ledger }
 import gunbc.roadmap.roadmap_review_role { CriterionReviewEvidence }
 import gunbc.roadmap.roadmap_review_function { ReviewReport }
+import gunbc.roadmap_session_placement { SessionPlacementObservation }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_reconcile }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind,
@@ -230,6 +231,7 @@ type WorkflowAttemptEvidence {
   integration: IntegrationReceiptObservation
   review: ReviewReport
   goal_audit: List<CriterionReviewEvidence>
+  session_placement: SessionPlacementObservation
 }
 
 type WorkflowAttemptProgress {
