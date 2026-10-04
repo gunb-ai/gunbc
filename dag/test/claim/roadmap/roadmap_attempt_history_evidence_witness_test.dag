@@ -3,6 +3,7 @@ module test.claim.roadmap_attempt_history_evidence_witness_test
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
 }
@@ -24,6 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // production by the belt's history scan (gunbc.roadmap_dogfood_route) over srv2's attempt state.
 fn instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "attempt-history-witness" as NonEmptyStr),
     instance_id: "attempt-history-witness" as NonEmptyStr,
     layout: srv1_host_layout(),
     root: "/instance" as FilePath,

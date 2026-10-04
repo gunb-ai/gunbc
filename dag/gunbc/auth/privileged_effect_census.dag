@@ -15,7 +15,7 @@ import gunbc.spark.bootstrap_provision {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
 import gunbc.github_app_acquisition { census_app_registration_submit_step }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.auth.managed_host_boot_federation { BootFederationProvisioned, BootFederationUnprovisioned, boot_federation_for, boot_federation_service_account_member }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
@@ -566,7 +566,22 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
     effect: PrivilegedEffect {
-      subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config" as NonEmptyStr,
+      subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config for one slot -- a microVM attempt or a transient unit on a managed host -- pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
+    effect: PrivilegedEffect {
+      subject: "on every slot exit, delete the slot's JIT runner registration from the organization under the controller's installation token and confirm it absent from the organization's runner listing, pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
       frequency: EveryProvision,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

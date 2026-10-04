@@ -5,7 +5,7 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
 import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthorization }
 
