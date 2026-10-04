@@ -471,12 +471,15 @@ fn fleet_host_key_enroll_apply_after_create(cfg: String, endpoints: String, frag
 // THE PINNED-CONFIG DECISION, PURE OVER A SUPPLIED READ. The marker is a content question: does
 // the config already carry the fleet pin? Already-pinned answers PinConfigAlreadyPinned -- no
 // write happens, and the read's bytes are left exactly as they were. Otherwise the answer is the
-// APPEND PAYLOAD: the four pin lines with the leading blank line the shell's first `echo`
-// contributed, in the same order the shell's grouped echo-redirect added them, with the fragment
-// path absolute from one pwd capture. The caller appends the payload (tee -a, O_APPEND), so the
-// config's other lines are never rewritten and a pin another process adds meanwhile survives; the
-// payload begins with a newline so a config that does not end in one is not glued to the pin. A
-// witness supplies every value; nothing here reads a file or runs a process.
+// APPEND PAYLOAD. The deleted shell began its block with `echo '# gunbc-fleet-pin' >> CFG` -- the
+// marker line directly, no leading blank line -- whose bytes are right whenever the config ends in
+// a newline (the normal case) or is empty, and wrong only when a config lacks the trailing
+// newline, where the pin would glue onto the last line. The payload reproduces the shell's bytes
+// in the right case and repairs exactly the wrong one: the separator before the marker is EMPTY
+// when the file is empty or newline-terminated, and ONE newline otherwise. That repair is ours,
+// not the shell's. The caller appends the payload (tee -a, O_APPEND), so the config's other lines
+// are never rewritten and a pin another process adds meanwhile survives. A witness supplies every
+// value; nothing here reads a file or runs a process.
 type PinnedConfigDecision
   = PinConfigAlreadyPinned
   | PinConfigNextContent { payload: String }
@@ -487,7 +490,8 @@ fn pinned_config_content(existing: String, endpoints: String, fragment_path: Str
   } else {
     PinConfigNextContent {
       payload: join([
-        "\n# gunbc-fleet-pin\nHost ",
+        if existing == "" || ends_with(s: existing, suffix: "\n") { "" } else { "\n" },
+        "# gunbc-fleet-pin\nHost ",
         endpoints,
         "\n  StrictHostKeyChecking yes\n  UserKnownHostsFile ",
         fragment_path,
@@ -599,6 +603,26 @@ fn self_enroll_presence_decision(observed: FilesystemExactRead, line: String) ->
   }
 }
 
+// THE PRODUCTION INTEGRATION THE WET FN RUNS AND THE RECEIPT EXERCISES. Over an established home:
+// read the key file, take the presence verdict, and apply ONLY when the verdict says so — the
+// route the deleted pair of scripts ran as one substitution. The wet fn feeds it the passwd-probe
+// home; the real-execution receipt feeds it a scratch home, so what executes against a throwaway
+// directory is THIS route, not a bypass of it. Nothing here derives the home: that is the caller's
+// one probe, and one passwd decision serves everything downstream of it.
+fn fleet_authorized_key_enroll_route(ph: String, line: String) -> String
+{
+  let ak_path = concat(ph, "/.ssh/authorized_keys")
+  let rc = Filesystem.Read(path: ak_path)
+  match self_enroll_presence_decision(
+    observed: filesystem_exact_read(path: ak_path, content: rc.content, success: rc.success, error: rc.error, error_kind: rc.error_kind),
+    line: line,
+  ) {
+    SelfEnrollAlreadyPresent => "outcome=already-present"
+    SelfEnrollApply => self_enroll_apply(home: ph, line: line)
+    SelfEnrollRefuse { cause: c } => join(["outcome=refused cause=", c], "")
+  }
+}
+
 fn self_enroll_apply(home: String, line: String) -> String {
   let ssh_dir = concat(home, "/.ssh")
   let ak_path = concat(ssh_dir, "/authorized_keys")
@@ -680,16 +704,7 @@ fn fleet_authorized_key_self_enroll_wet() -> ProcessExit
     if ph == "" {
       "outcome=refused cause=passwd home unavailable, not applying"
     } else {
-      let ak_path = concat(ph, "/.ssh/authorized_keys")
-      let rc = Filesystem.Read(path: ak_path)
-      match self_enroll_presence_decision(
-        observed: filesystem_exact_read(path: ak_path, content: rc.content, success: rc.success, error: rc.error, error_kind: rc.error_kind),
-        line: line,
-      ) {
-        SelfEnrollAlreadyPresent => "outcome=already-present"
-        SelfEnrollApply => self_enroll_apply(home: ph, line: line)
-        SelfEnrollRefuse { cause: c } => join(["outcome=refused cause=", c], "")
-      }
+      fleet_authorized_key_enroll_route(ph: ph, line: line)
     }
   } else {
     join(["outcome=refused cause=staging: ", w.error], "")

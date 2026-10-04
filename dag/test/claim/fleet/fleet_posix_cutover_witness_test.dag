@@ -165,12 +165,12 @@ test fn witness_pinned_config_is_idempotent() -> Bool {
   }
 }
 
-// POSITIVE CONTROL: an unpinned config's answer is the APPEND PAYLOAD -- the leading blank line
-// the shell's first `echo` contributed, then the four pin lines in the order the grouped
-// echo-redirect added them, with the absolute fragment path in the fourth. The payload does NOT
-// include the file's existing bytes: the caller appends it (tee -a), so the config's other lines
-// are never rewritten, and the payload begins with a newline so a config not ending in one is not
-// glued to the pin.
+// POSITIVE CONTROL: an unpinned, newline-terminated config's answer is the APPEND PAYLOAD -- the
+// marker line directly, as the deleted shell's `echo '# gunbc-fleet-pin' >> CFG` wrote it, then
+// the three pin lines with the absolute fragment path in the fourth. The payload does NOT include
+// the file's existing bytes: the caller appends it (tee -a), so the config's other lines are never
+// rewritten, and NO separator is added when the file already ends in a newline -- the payload is
+// byte-identical to the shell's block in this case.
 test fn witness_pinned_config_payload_carries_the_four_lines() -> Bool {
   match pinned_config_content(
     existing: "Host github.com\n  User git\n",
@@ -178,10 +178,39 @@ test fn witness_pinned_config_payload_carries_the_four_lines() -> Bool {
     fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
   ) {
     PinConfigNextContent { payload: payload } =>
-      payload == "\n# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
+      payload == "# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
         && string_contains(s: payload, pattern: "# gunbc-fleet-pin")
         && string_contains(s: payload, pattern: "StrictHostKeyChecking yes")
         && string_contains(s: payload, pattern: "UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE EMPTY-FILE ARM: an EMPTY config gets no separator -- the payload starts with the
+// marker, exactly the shell's bytes.
+test fn witness_pinned_config_payload_of_an_empty_config_has_no_separator() -> Bool {
+  match pinned_config_content(
+    existing: "",
+    endpoints: "srv2.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { payload: payload } =>
+      starts_with(s: payload, prefix: "# gunbc-fleet-pin")
+    _ => false
+  }
+}
+
+// THE INTENTIONAL REPAIR, PINNED: a config that does NOT end in a newline gets exactly one
+// separating newline before the marker -- without it the pin would glue onto the last line, the
+// one case the deleted shell's bytes got wrong. Red if the separator vanishes or doubles.
+test fn witness_pinned_config_payload_repairs_an_unterminated_config() -> Bool {
+  match pinned_config_content(
+    existing: "Host github.com\n  User git",
+    endpoints: "srv2.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { payload: payload } =>
+      starts_with(s: payload, prefix: "\n# gunbc-fleet-pin")
     _ => false
   }
 }

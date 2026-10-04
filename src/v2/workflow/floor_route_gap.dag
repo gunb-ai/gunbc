@@ -2119,10 +2119,12 @@ fn floor_route_gap_expectation_chunk_36() -> List<FloorRouteGapExpectation> {
 // rows, and the ci_layer_roots row for fleet_authorized_key_enroll_real_path_witness_test.dag.
 fn floor_route_gap_expectation_chunk_37() -> List<FloorRouteGapExpectation> {
   Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test.fleet_authorized_key_enroll_create_mode_append_readback_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test.fleet_authorized_key_enroll_route_twice_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test.fleet_authorized_key_enroll_of_a_fresh_home_applies_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} } }
+    head: FloorRouteGapExpectation { identity: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test.fleet_host_key_enroll_config_pin_route_by_real_execution", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test.fleet_probe_identity_observe_receipt_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail: Empty {} } } }
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {

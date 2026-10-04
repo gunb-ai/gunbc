@@ -1,40 +1,53 @@
 module test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test
 
 import std.logic { Bool }
-import std.types { String, FilePath }
+import std.types { String, FilePath, NonEmptyStr }
+import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { trim }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.gnu_coreutils { ls_long_directory_command }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.fleet_host_key_enrollment {
+import gunbc.fleet.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
-  self_enroll_apply,
+  fleet_authorized_key_enroll_route,
+  fleet_host_key_enroll_apply,
   self_enroll_presence_decision,
   authorized_keys_admits_line,
   SelfEnrollAlreadyPresent,
   SelfEnrollApply,
   SelfEnrollRefuse,
 }
+import gunbc.fleet.fleet_probe_identity_observe {
+  fleet_probe_identity_observe_wet,
+  fleet_probe_identity_receipt_path,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE CLAIMS FOR THE AUTHORIZED-KEY ENROLLMENT (DESIGN section 3, the pairing
-// obligation). The enrollment cutover's every decision (the passwd-home probe, the presence
-// verdict, the create-or-append) is witnessed hermetically over SUPPLIED outcomes, so nothing in
-// those witnesses executes the real sequence; this file is the executing half. It drives the REAL
-// self_enroll_apply against a HOME the claim creates with shell.Mktemp.Dir and removes with
-// shell.Remove.RecursiveForce: mkdir -p and chmod 700 of the ssh directory and chmod 600 of the
-// key file over LocalExec (shell.Exec.RunArgv), the owner-only create-exclusive
-// Filesystem.WriteCreateNew, the tee -a append whose key line reaches tee on STDIN
-// (shell.Exec.RunArgvStdin), and the readback (Filesystem.Read, then the verify's cat). The first
-// effect is shell.Mktemp.Dir and has no mock_response, so the hermetic route refuses before any
-// verdict; the file is excluded from the discovery corpus and executed by the required floor's
-// local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule). THE NEGATIVE
-// HALF: no network, no ssh leg, no sudo, no cargo, no git, no remote host, no install media, and
-// nothing touched outside the directory the claim created.
+// THE INHABITANCE CLAIMS FOR THE AUTHORIZED-KEY ENROLLMENT AND THE PROBE RECEIPT (DESIGN section
+// 3, the pairing obligation). The cutover's every decision (the passwd-home probe, the presence
+// verdict, the create-or-append, the ssh-config pin) is witnessed hermetically over SUPPLIED
+// outcomes, so nothing in those witnesses executes the real routes; this file is the executing
+// half, and every claim drives a PRODUCTION integration, not a re-implementation:
+// fleet_authorized_key_enroll_route (read -> verdict -> conditional apply), the
+// fleet_host_key_enroll_apply config-pin route (registry -> staging write -> HOME resolution ->
+// mkdir/touch -> tee -a pin -> chmod -> readback), and fleet_probe_identity_observe_wet (the probe
+// receipt's own write + readback). THE ADMITTED EFFECTS, named rather than folded into a
+// neighbour: a temp-directory write (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as
+// excl_local_repo_wet_tempdir_write_reason); mkdir -p and chmod 700/600 over LocalExec
+// (shell.Exec.RunArgv); the owner-only create-exclusive Filesystem.WriteCreateNew; the tee -a
+// appends whose payloads (the key line, the pin block) reach tee on STDIN
+// (shell.Exec.RunArgvStdin); the reads and captures (Filesystem.Read, Filesystem.ReadText,
+// shell.Exec.RunArgv stdout through run_shell_command_capture, Filesystem.Env.Get for HOME). The
+// config-pin claim runs against the PROCESS'S OWN HOME -- that is the production route's own
+// semantics (the deleted script pinned the same way); the runner home is ephemeral and the
+// pin's marker makes every re-run a no-op. THE NEGATIVE HALF: no network, no ssh leg, no sudo, no
+// cargo, no git, no remote host, no install media; nothing outside the created temp directory and
+// (for the pin claim) the process's own ssh directory and the checkout's target/.
 
 fn fe_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
@@ -57,21 +70,22 @@ fn fe_appended_exactly_once(home: String, line: String) -> Bool {
     && count(filter(split(s: rc.content, delimiter: "\n"), fn(l) { l == line })) == 1
 }
 
-// THE MODE EVIDENCE: ls -ld of the key file opens with the owner-only mode. The append step runs
-// only after chmod 600 is admitted, so an outcome=enrolled already implies the chmod held; this
-// assertion makes the mode OBSERVED, not merely sequenced.
-fn fe_mode_is_owner_only(home: String) -> Bool {
-  match run_shell_command_capture(command: ls_long_directory_command(path: fe_ak_path(home: home)), transport: LocalExec) {
+// THE MODE EVIDENCE, BOTH MODES: ls -ld of the ssh directory opens with the owner-only directory
+// mode, and of the key file with the owner-only file mode. The append runs only after chmod 600 is
+// admitted, and the directory's chmod 700 precedes the create, so an outcome=enrolled already
+// implies both held; these assertions make the modes OBSERVED, not merely sequenced.
+fn fe_mode_is(listing_prefix: String, path: String) -> Bool {
+  match run_shell_command_capture(command: ls_long_directory_command(path: path), transport: LocalExec) {
     ProcessOutputPresent { text: listing } =>
-      string_contains(s: listing, pattern: "-rw-------")
+      string_contains(s: listing, pattern: listing_prefix)
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
   }
 }
 
-// THE IDEMPOTENT RE-RUN: a second presence verdict over the enrolled file answers
-// AlreadyPresent -- the guard that makes a re-run of the wet fn a no-op instead of a duplicate
-// line.
+// THE SECOND VERDICT: the production route's presence answer over the enrolled file is
+// AlreadyPresent -- the guard that makes a second invocation of the route a no-op instead of a
+// duplicate line.
 fn fe_second_verdict_is_already_present(home: String, line: String) -> Bool {
   let rc = Filesystem.Read(path: fe_ak_path(home: home))
   match self_enroll_presence_decision(
@@ -84,32 +98,61 @@ fn fe_second_verdict_is_already_present(home: String, line: String) -> Bool {
   }
 }
 
-// 1. THE CLAIM THAT PAIRS WITH THE CUTOVER'S SUPPLIED-INPUT WITNESSES: one real enrollment
-// against a scratch HOME -- mkdir -p, owner-only create, chmod 700/600, the tee -a append with
-// the key line on stdin, and the readback verification -- then the mode observed from ls -ld, the
-// line present exactly once, and the second presence verdict AlreadyPresent.
-test fn fleet_authorized_key_enroll_create_mode_append_readback_by_real_execution() -> Bool {
+// 1. THE CLAIM THAT PAIRS WITH THE CUTOVER'S SUPPLIED-INPUT WITNESSES: the PRODUCTION integration
+// (fleet_authorized_key_enroll_route: read -> verdict -> conditional apply) invoked TWICE on one
+// scratch HOME. First invocation: the key file is absent (the deleted grep folded that into
+// `|| echo absent`), the verdict applies, and the outcome is enrolled. Second invocation on the
+// same home: the verdict answers already-present, the raw line count is STILL exactly one, and
+// both modes are observed from ls -ld (directory 0700, key file 0600).
+test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
   fe_with_temp_dir(scenario: fn(dir) {
     let home = dir as String
     let line = fleet_automation_authorized_keys_line()
-    match self_enroll_apply(home: home, line: line) {
-      outcome =>
-        string_contains(s: outcome, pattern: "outcome=enrolled")
-          && fe_mode_is_owner_only(home: home)
-          && fe_appended_exactly_once(home: home, line: line)
-          && fe_second_verdict_is_already_present(home: home, line: line)
-    }
+    string_contains(s: fleet_authorized_key_enroll_route(ph: home, line: line), pattern: "outcome=enrolled")
+      && fe_mode_is("drwx------", concat(home, "/.ssh"))
+      && fe_mode_is("-rw-------", fe_ak_path(home: home))
+      && fe_appended_exactly_once(home: home, line: line)
+      && string_contains(s: fleet_authorized_key_enroll_route(ph: home, line: line), pattern: "outcome=already-present")
+      && fe_appended_exactly_once(home: home, line: line)
   })
 }
 
-// 2. THE FRESH-HOME ROUTE THE REVIEW LANDED (the absent key file applies, as the deleted grep's
-// `|| echo absent` did): the first enrollment on a scratch HOME runs the apply route, not a
-// refusal -- the same sequence as claim 1 seen from the verdict side, so a future edit that
-// refuses the missing-file case goes red HERE before it strands a fresh host.
-test fn fleet_authorized_key_enroll_of_a_fresh_home_applies_by_real_execution() -> Bool {
-  fe_with_temp_dir(scenario: fn(dir) {
-    let home = dir as String
-    let line = fleet_automation_authorized_keys_line()
-    string_contains(s: self_enroll_apply(home: home, line: line), pattern: "outcome=enrolled")
-  })
+// 2. THE CONFIG-PIN ROUTE BY REAL EXECUTION: fleet_host_key_enroll_apply itself -- the registry
+// scan, the fragment staging into the checkout's target/, HOME resolution, mkdir -p of the ssh
+// directory, the put-if-absent of the config, the tee -a pin (the block on stdin), chmod 600, and
+// the ssh-keygen -F readback. The first invocation converges; a SECOND invocation must be a no-op
+// -- the marker still appears exactly once in the config. The pin rides the process's own HOME,
+// which is the production route's own semantics; the runner home is ephemeral.
+fn fe_home_dir() -> String {
+  match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+}
+
+test fn fleet_host_key_enroll_config_pin_route_by_real_execution() -> Bool {
+  let first = fleet_host_key_enroll_apply()
+  let cfg_after_first = Filesystem.Read(path: concat(fe_home_dir(), "/.ssh/config"))
+  let second = fleet_host_key_enroll_apply()
+  !string_contains(s: first, pattern: "outcome=refused")
+    && cfg_after_first.success
+    && string_contains(s: cfg_after_first.content, pattern: "gunbc-fleet-pin")
+    && string_contains(s: cfg_after_first.content, pattern: "target/fleet-known-hosts-fragment")
+    && count(filter(split(s: cfg_after_first.content, delimiter: "\n"), fn(l) { trim(s: l) == "# gunbc-fleet-pin" })) == 1
+    && !string_contains(s: second, pattern: "outcome=refused")
+    && fe_mode_is("-rw-------", concat(fe_home_dir(), "/.ssh/config"))
+}
+
+// 3. THE PROBE RECEIPT'S OWN ROUTE BY REAL EXECUTION: fleet_probe_identity_observe_wet runs its
+// whoami/getent/hostname/gcloud legs against the real host and writes the receipt; the claim reads
+// the written file back and requires the schema lines to be there -- the write-then-readback the
+// receipt exists to observe.
+test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
+  let exit = fleet_probe_identity_observe_wet()
+  let rc = Filesystem.Read(path: fleet_probe_identity_receipt_path)
+  exit.success
+    && rc.success
+    && string_contains(s: rc.content, pattern: "user=")
+    && string_contains(s: rc.content, pattern: "hostname=")
+    && string_contains(s: rc.content, pattern: "gcloud-binary")
 }
