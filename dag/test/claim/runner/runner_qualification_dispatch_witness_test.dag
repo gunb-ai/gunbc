@@ -1,7 +1,5 @@
 module test.claim.runner_qualification_dispatch_witness
 
-import extdeps.github.rulesets { RulesetWire, RulesetConditionsWire, RulesetRefNameConditionWire, RulesetRuleWire }
-import gunbc.runner.runner_qualification_ruleset { qualification_ruleset_standing_of }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
@@ -48,17 +46,6 @@ import gunbc.runner.runner_qualification_dispatch {
   RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunOnAnotherBranch, RunNotCompleted,
   RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique,
   RunNeverReachedAttemptRunner, RunRunnerNameDisagrees, RunRegisteredRunnerRanAnotherJob, RunFloorJobNotStarted,
-}
-
-data enforced_ruleset_readback: RulesetWire = RulesetWire {
-  id: 41,
-  name: "runner-qualification-pins",
-  target: "branch",
-  enforcement: "active",
-  current_user_can_bypass: "never",
-  conditions: RulesetConditionsWire { ref_name: RulesetRefNameConditionWire { include: ["refs/heads/qualification/**"], exclude: [] } },
-  rules: [RulesetRuleWire { type: "update", parameters: none }, RulesetRuleWire { type: "non_fast_forward", parameters: none }],
-  bypass_actors: Present { value: [] },
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -152,7 +139,6 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
             match qualification_ref_pin_of(
               name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
-              ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
               QualificationRefPinned { pin: p } =>
@@ -216,7 +202,6 @@ test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_a
             match qualification_ref_pin_of(
               name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
-              ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
               QualificationRefPinned { pin: p } =>
@@ -358,7 +343,6 @@ test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
             match qualification_ref_pin_of(
               name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
-              ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
               QualificationRefPinned { pin: p } =>

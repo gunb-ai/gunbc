@@ -5,8 +5,6 @@ import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.runner.runner_qualification_ref_segment {
   qualification_ref_segment_admissible, qualification_pin_segment_in_family, qualification_resting_segment, qualification_resting_segment_absence,
 }
-import extdeps.github.rulesets { RulesetWire, RulesetConditionsWire, RulesetRefNameConditionWire, RulesetRuleWire }
-import gunbc.runner.runner_qualification_ruleset { qualification_ruleset_standing_of }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest {
@@ -25,19 +23,8 @@ import gunbc.runner.runner_qualification_ref_pin {
   qualification_selected_workflow, qualification_runner_group_name, qualification_unpinned_selected_workflow,
   qualification_group_target, QualificationGroupTargeted, QualificationGroupNotTargetable,
   branch_create_refusal, PinBranchPreexisting, PinBranchCreateRefused, PinBranchCreateAmbiguous,
-  qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused, PinBranchReadbackMismatch, PinGroupReadbackRefused, PinRulesetNotEnforced,
+  qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused, PinBranchReadbackMismatch, PinGroupReadbackRefused,
   classify_branch_removal, QualificationBranchRemoved, QualificationBranchRemovalRefused, BranchStillPresent, BranchReadUnreadable,
-}
-
-data enforced_ruleset_readback: RulesetWire = RulesetWire {
-  id: 41,
-  name: "runner-qualification-pins",
-  target: "branch",
-  enforcement: "active",
-  current_user_can_bypass: "never",
-  conditions: RulesetConditionsWire { ref_name: RulesetRefNameConditionWire { include: ["refs/heads/qualification/**"], exclude: [] } },
-  rules: [RulesetRuleWire { type: "update", parameters: none }, RulesetRuleWire { type: "non_fast_forward", parameters: none }],
-  bypass_actors: Present { value: [] },
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -131,29 +118,23 @@ fn group_selecting(id: Int, selected: List<NonEmptyStr>) -> RunnerGroupIdentity 
   RunnerGroupIdentity { id: id, name: qualification_runner_group_name, visibility: SelectedRepositories, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: selected }
 }
 
-// THE PIN IS MINTED ONLY FROM A READBACK AT THE EXACT REVISION, A GROUP OBSERVED PINNED TO THE BRANCH,
-// AND THE QUALIFICATION RULESET READ BACK ENFORCED -- the standing that makes the branch unable to move
-// between the pin and the dispatch. REDs: the branch read back at another commit; no enforced ruleset
-// (so a branch that could still move to B before CreateDispatch yields no pin and no dispatch); the
-// group not observed restricted to the qualification workflow at the branch. Positive control: all hold.
+// THE PIN IS MINTED ONLY FROM A READBACK AT THE EXACT REVISION AND A GROUP OBSERVED PINNED TO THE
+// BRANCH. REDs: the branch read back at another commit; the group not observed restricted to the
+// qualification workflow at the branch. Positive control: both hold.
 test fn the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group() -> Bool {
   match qualification_branch_name(attempt: "q-1") {
     QualificationBranchNameRefused { attempt: _, cause: _ } => false
     QualificationBranchNamed { name: n } => {
       let pinned_group = group_restricted_to(workflow: qualification_selected_workflow(branch: n.branch))
-      (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: pinned_group, ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback)) {
+      (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: pinned_group) {
         QualificationRefPinned { pin: p } => (p.name.branch as String) == "qualification/q-1" && (p.revision as String) == (revision as String) && p.group.group.value == 3
         QualificationRefPinRefused { attempt: _, refusal: _ } => false
       })
-        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: "2222222222222222222222222222222222222222", group: pinned_group, ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback)) {
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: "2222222222222222222222222222222222222222", group: pinned_group) {
           QualificationRefPinRefused { attempt: _, refusal: PinBranchReadbackMismatch { pinned: _, observed: _ } } => true
           _ => false
         })
-        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: pinned_group, ruleset: qualification_ruleset_standing_of(read: RestExchangeStatusRefused { status: 404, body: "fixture: no such ruleset" }, ruleset: enforced_ruleset_readback)) {
-          QualificationRefPinRefused { attempt: _, refusal: PinRulesetNotEnforced { refusal: _ } } => true
-          _ => false
-        })
-        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: RunnerGroupRestrictionRefused { name: qualification_runner_group_name, cause: RunnerGroupAbsent }, ruleset: qualification_ruleset_standing_of(read: RestExchangeSucceeded, ruleset: enforced_ruleset_readback)) {
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: RunnerGroupRestrictionRefused { name: qualification_runner_group_name, cause: RunnerGroupAbsent }) {
           QualificationRefPinRefused { attempt: _, refusal: PinGroupReadbackRefused { standing: _ } } => true
           _ => false
         })

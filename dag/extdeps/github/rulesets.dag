@@ -695,18 +695,10 @@ fn ref_name_conditions(include: List<String>, exclude: List<String>) -> RulesetC
 // wrong the day it is renamed.
 data default_branch_ref_alias: String = "~DEFAULT_BRANCH"
 
-// CREATE (docs.github.com/en/rest/repos/rules#create-a-repository-ruleset, REST 2022-11-28, read
-// 2026-10-04): POST /repos/{owner}/{repo}/rulesets with name, target, enforcement, conditions, rules
-// and bypass_actors answers 201 with the ruleset; it requires the repository Administration (write)
-// permission. Its consumer is gunbc.runner.runner_qualification_ruleset.
-//
-// THE BEARER IS AN INPUT WHEN ONE IS GIVEN, as for github.GitDatabase and github.WorkflowRuns: a
-// caller passing "" (gunbc.repo.repo_ruleset) falls through to GITHUB_TOKEN exactly as before.
 service github.Rulesets {
   config {
     endpoint: default_api_base
     auth: Bearer
-    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
@@ -809,52 +801,6 @@ service github.Rulesets {
     }
     response {
       200 => RulesetWire
-      401 => GitHubErrorShape
-      403 => GitHubErrorShape
-      404 => GitHubErrorShape
-      422 => GitHubErrorShape
-      5xx => GitHubErrorShape
-    }
-  }
-
-  operation Create {
-    requires Network
-    input {
-      auth_token: Secret
-      owner: String
-      repo: String
-      name: String
-      target: String
-      enforcement: String
-      conditions: RulesetConditionsWire
-      rules: List<RulesetRuleWire>
-      bypass_actors: List<RulesetBypassActor>
-    }
-    output {
-      id: Int
-      name: String
-      target: String
-      enforcement: String
-      current_user_can_bypass: String
-      conditions: RulesetConditionsWire
-      rules: List<RulesetRuleWire>
-      bypass_actors: List<RulesetBypassActor>?
-      outcome: RestOutcome
-    }
-    transport rest {
-      method: POST,
-      path: "/repos/\{owner\}/\{repo\}/rulesets",
-      body: {
-        name: name,
-        target: target,
-        enforcement: enforcement,
-        conditions: conditions,
-        rules: rules,
-        bypass_actors: bypass_actors,
-      }
-    }
-    response {
-      201 => RulesetWire
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       404 => GitHubErrorShape
