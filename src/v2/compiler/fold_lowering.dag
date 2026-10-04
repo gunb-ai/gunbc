@@ -75,7 +75,7 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_node, declar
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, anonymous_signature_arrow, arrow_declared_parameter_order }
 import v2.std.type_binder { type_param_names, type_params_edge }
 import v2.std.list_introduction { list_introduction_head_path }
-import std.algebra { AlgebraTypeTemplate, ReceiverElement, ReceiverSelf }
+import std.algebra { AlgebraTypeTemplate, AlgebraTypeVariable, CallableOf, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { any, fold_list, length }
 
@@ -315,7 +315,15 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
   match t {
     ReceiverSelf => optional_present(value: collection_roster_free_monoid_type())
     ReceiverElement => optional_present(value: collection_roster_element_type())
-    _ => optional_absent()
+    ReceiverKey => optional_absent()
+    ReceiverValue => optional_absent()
+    NamedTemplate { name: _ } => optional_absent()
+    ContainerOf { source: _, element: _ } => optional_absent()
+    OptionalOf { inner: _ } => optional_absent()
+    WitnessOf { inner: _ } => optional_absent()
+    TupleOf { first: _, second: _ } => optional_absent()
+    CallableOf { params: _, return_type: _ } => optional_absent()
+    AlgebraTypeVariable { id: _ } => optional_absent()
   }
 }
 
