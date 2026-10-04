@@ -11,6 +11,7 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, list_append }
+import v2.std.algebra { length }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -173,13 +174,30 @@ test fn lel_count_compared_with_a_literal_executes_on_the_seed() -> Bool {
 }
 
 // PROBES (temporary)
-test fn lelp_neg_main_accepted() -> Bool { lel_reason(src: lel_prelude + "fn k() -> Bool {\n  gi(n: -1)\n}\n") == ^accepted }
-test fn lelp_neg_at_nat_undecided() -> Bool { lel_negative_literal_at_nat_reason() == ^accepted }
-test fn lelp_lit_lit_ok() -> Bool { lel_literal_against_literal_reason() == ^accepted }
-test fn lelp_nat_vs_expr_refuses() -> Bool { lel_nat_compared_to_int_expression_reason() != ^accepted }
-test fn lelp_eval_zero_absent() -> Bool { lel_eval_zero() == optional_absent() }
-test fn lelp_eval_zero_true() -> Bool { lel_eval_zero() == optional_present(value: true) }
-test fn lelp_eval_zero_false() -> Bool { lel_eval_zero() == optional_present(value: false) }
-test fn lelp_eval_one_absent() -> Bool { lel_eval_one() == optional_absent() }
-test fn lelp_eval_one_false() -> Bool { lel_eval_one() == optional_present(value: false) }
-test fn lelp_eval_src_infers() -> Bool { lel_reason(src: lel_eval_prelude + "fn k() -> Bool {\n  z(n: Zero)\n}\n") == ^accepted }
+fn lelp_calls(src: String) -> Int {
+  match lel_inferred(src: src) {
+    Rejected { diagnostics: _ } => 0 - 1
+    Accepted { value: inferred, diagnostics: _ } => length(xs: lel_calls_to(root: inferred.root, name: ^z))
+  }
+}
+fn lelp_eval_ok(src: String) -> Bool {
+  match lel_inferred(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: inferred, diagnostics: _ } =>
+      match lel_calls_to(root: inferred.root, name: ^z) {
+        Cons { head: call, tail: Empty } =>
+          match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+        Cons { head: _, tail: _ } => false
+        Empty => false
+      }
+  }
+}
+data lelp_true_src: String = "module p\n\nimport std.nat { Nat, Zero, Succ }\n\nfn z(n: Nat) -> Bool {\n  true\n}\n\nfn k() -> Bool {\n  z(n: Zero)\n}\n"
+data lelp_eq_src: String = lel_eval_prelude + "fn k() -> Bool {\n  z(n: Zero)\n}\n"
+test fn lelp_one_call_found() -> Bool { lelp_calls(src: lelp_eq_src) == 1 }
+test fn lelp_true_body_evaluates() -> Bool { lelp_eval_ok(src: lelp_true_src) }
+test fn lelp_eq_body_evaluates() -> Bool { lelp_eval_ok(src: lelp_eq_src) }
+test fn lelp_true_body_is_true() -> Bool { lel_eval_bool(src: lelp_true_src) == optional_present(value: true) }
