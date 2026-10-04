@@ -1,5 +1,6 @@
 module v2.test.claim.field_projection.field_projection_stages
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
 import v2.std.collection { map_insert }

@@ -64,70 +64,70 @@ fn gfi_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_alias_agrees) }
 fn gfi_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_alias_disagrees) }
 
 // RED: an Int at a List<T> formal -- the constructor does not match.
-test fn gfi_non_list_argument_at_a_list_formal_refuses() -> Bool {
+test fn gfi_non_list_argument_at_a_list_formal_refuses() -> Bool  {
   gfi_not_a_list_reason() == ^application_argument_does_not_inhabit
 }
 
 // RED: T bound to Int by the first List<T>, then List<Pair> at the second.
-test fn gfi_one_variable_at_two_instances_refuses() -> Bool {
+test fn gfi_one_variable_at_two_instances_refuses() -> Bool  {
   gfi_two_instances_reason() == ^application_argument_does_not_inhabit
 }
 
 // RED, NESTED: List<List<T>> binds T to Int, and a Pair at the bare T refuses.
-test fn gfi_nested_instance_disagreement_refuses() -> Bool {
+test fn gfi_nested_instance_disagreement_refuses() -> Bool  {
   gfi_nested_mismatch_reason() == ^application_argument_does_not_inhabit
 }
 
 // ACCEPTED: one consistent instance.
-test fn gfi_one_consistent_instance_is_accepted() -> Bool {
+test fn gfi_one_consistent_instance_is_accepted() -> Bool  {
   gfi_one_instance_reason() == ^accepted
 }
 
 // ACCEPTED, NESTED: List<List<Int>> and Int agree on T.
-test fn gfi_nested_consistent_instance_is_accepted() -> Bool {
+test fn gfi_nested_consistent_instance_is_accepted() -> Bool  {
   gfi_nested_agrees_reason() == ^accepted
 }
 
 // ALIAS: List<T> is std.algebra FreeMonoid<T> under another spelling. A FreeMonoid<T> formal takes a
 // List<Pair> argument (the alias unfolds, so the constructors are one), and still refuses a second instance.
-test fn gfi_alias_argument_at_its_aliased_formal_is_accepted() -> Bool {
+test fn gfi_alias_argument_at_its_aliased_formal_is_accepted() -> Bool  {
   gfi_alias_agrees_reason() == ^accepted
 }
 
-test fn gfi_alias_argument_at_two_instances_refuses() -> Bool {
+test fn gfi_alias_argument_at_two_instances_refuses() -> Bool  {
   gfi_alias_disagrees_reason() == ^application_argument_does_not_inhabit
 }
 
 // REFINEMENT (review 75350): a where-refinement of List<Int> at a List<T> formal binds T through its
 // declared carrier, as it inhabits a declared List<Int> -- the judge's subsumption fact, asked on mismatch.
-test fn gfi_refined_argument_matches_through_its_carrier() -> Bool {
+test fn gfi_refined_argument_matches_through_its_carrier() -> Bool  {
   gfi_refined_carrier_reason() == ^accepted
 }
 
 // A RECORD WRAPPING A LIST IS NOT A LIST (Refined<List<T>>, NonEmptyList's shape, is a record): refused at
 // a List<T> formal, and refused identically at a declared List<Int> -- the generic verdict equals the plain one.
-test fn gfi_record_wrapper_refuses_as_the_plain_formal_does() -> Bool {
+test fn gfi_record_wrapper_refuses_as_the_plain_formal_does() -> Bool  {
   gfi_record_wrapper_generic_reason() == ^application_argument_does_not_inhabit
     && gfi_record_wrapper_plain_reason() == ^application_argument_does_not_inhabit
 }
 
 // ONE ALIAS RULE ON BOTH ROUTES (review 75435): a PLAIN FreeMonoid<Pair> formal takes a List<Pair> argument,
 // as the generic FreeMonoid<T> formal does, and refuses List<Int>.
-test fn gfi_plain_formal_takes_its_alias() -> Bool {
+test fn gfi_plain_formal_takes_its_alias() -> Bool  {
   gfi_plain_alias_agrees_reason() == ^accepted
     && gfi_plain_alias_disagrees_reason() == ^application_argument_does_not_inhabit
 }
 
 // A REFINEMENT IS NOT A TRANSPARENT ALIAS (calm-boar-904): a declared Pos refuses a raw Int on the plain route,
 // and List<Pos> / List<Int> at one T refuses on the generic route.
-test fn gfi_refined_type_still_refuses_its_raw_carrier() -> Bool {
+test fn gfi_refined_type_still_refuses_its_raw_carrier() -> Bool  {
   gfi_refined_refuses_raw_plain_reason() == ^application_argument_does_not_inhabit
     && gfi_refined_refuses_raw_generic_reason() == ^application_argument_does_not_inhabit
 }
 
 // AN ALIAS OF A REFINED TYPE KEEPS THE REFINEMENT: it unfolds to Pos, not past it, so a raw Int refuses and a
 // Pos is admitted.
-test fn gfi_alias_of_a_refined_type_keeps_the_refinement() -> Bool {
+test fn gfi_alias_of_a_refined_type_keeps_the_refinement() -> Bool  {
   gfi_alias_of_refined_refuses_raw_reason() == ^application_argument_does_not_inhabit
     && gfi_alias_of_refined_admits_refined_reason() == ^accepted
 }
