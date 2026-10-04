@@ -1,11 +1,8 @@
 module test.claim.workspace_dispatch_witness
 
 import std.types { Bool, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.workspace_commissioning_dispatch { workspace_dispatch_stage_cli, workspace_dispatch_complete_cli }
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text, workspace_commissioning_input_decode, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputRefused }
-import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_transport }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import test.claim.workspace_executor_plan_witness { executor_plan_fixture_body, executor_plan_fixture_receipt, executor_plan_fixture_credential }
 
@@ -29,19 +26,6 @@ fn torn_or_substituted_bundle_is_refused_control() -> Bool {
   let changed = WorkspaceCommissioningInputBytes { body: bytes.body, shell: "changed", receipt: bytes.receipt, credential: bytes.credential }
   (match workspace_commissioning_input_decode(text: workspace_commissioning_input_text(bytes: changed)) { WorkspaceCommissioningInputRefused { reason: _ } => true _ => false })
     && (match workspace_commissioning_input_decode(text: "\{}") { WorkspaceCommissioningInputRefused { reason: _ } => true _ => false })
-}
-
-fn export_dispatch() -> ProcessExit {
-  let root = "/tmp/workspace-dispatch-controls"
-  let script = workspace_dispatch_transport(stage_command: concat(root, "/stage"), complete_command: concat(root, "/complete"),
-    unit: "gunbc-workspace-commissioning@srv1-13.service", slot: "srv1-13", lock: concat(root, "/fleet.lock"), systemctl: concat(root, "/systemctl"))
-  let wrote = Filesystem.Write(path: "target/workspace-dispatch.sh", content: script)
-  if wrote.success { ExitSuccess } else { exit_failure(reason: wrote.error) }
-}
-
-// Export the actual modeled native transport for the separate process-boundary controls.
-test fn export_native_dispatch_for_controls() -> Bool {
-  match export_dispatch() { ExitSuccess => true _ => false }
 }
 
 test fn protected_bundle_roundtrips_as_one_value() -> Bool { protected_bundle_roundtrips_as_one_value_control() }

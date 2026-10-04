@@ -74,12 +74,17 @@ fn workspace_executor_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
     && (match record.phase {
       ExecutorSubmissionRecorded => record.invocation == ""
       ExecutorSubmissionFenced => record.invocation == ""
-      ExecutorInvocationRecorded => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
-      ExecutorReadbackAccepted => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
-      ExecutorReleaseObserved => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
-      ExecutorGenerationCommitted => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
-        && record.invocation != record.previous_invocation
+      ExecutorInvocationRecorded => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorReadbackAccepted => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorReleaseObserved => workspace_executor_invoked_record_coherent(record: record)
+      ExecutorGenerationCommitted => workspace_executor_invoked_record_coherent(record: record)
     })
+}
+
+// Every phase after invocation names a fresh controller invocation distinct from the drained one.
+fn workspace_executor_invoked_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
+  content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+    && record.invocation != record.previous_invocation
 }
 
 // The reviewed subject and mutation generation never change. A replacement submitter can
@@ -91,20 +96,26 @@ fn workspace_executor_record_follows(previous: WorkspaceExecutorRecord, next: Wo
     && (previous == next || (match previous.phase {
       ExecutorSubmissionFenced => next.phase == ExecutorSubmissionRecorded
         && previous.submitter != next.submitter
-      ExecutorSubmissionRecorded => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
-      ExecutorInvocationRecorded => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
-      ExecutorReadbackAccepted => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
-      ExecutorReleaseObserved => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
-      ExecutorGenerationCommitted => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
-        && (match previous.phase {
-          ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded || next.phase == ExecutorSubmissionFenced
-          ExecutorInvocationRecorded => next.phase == ExecutorReadbackAccepted && previous.invocation == next.invocation
-          ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
-          ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
-          ExecutorSubmissionFenced => false
-          ExecutorGenerationCommitted => false
-        })
+      ExecutorSubmissionRecorded => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorInvocationRecorded => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorReadbackAccepted => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorReleaseObserved => workspace_executor_same_submitter_advance(previous: previous, next: next)
+      ExecutorGenerationCommitted => workspace_executor_same_submitter_advance(previous: previous, next: next)
     }))
+}
+
+// An unfenced record advances only by one phase, under the same submitter and drained
+// predecessor, and every phase after invocation keeps the exact controller invocation.
+fn workspace_executor_same_submitter_advance(previous: WorkspaceExecutorRecord, next: WorkspaceExecutorRecord) -> Bool {
+  previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+    && (match previous.phase {
+      ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded || next.phase == ExecutorSubmissionFenced
+      ExecutorInvocationRecorded => next.phase == ExecutorReadbackAccepted && previous.invocation == next.invocation
+      ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
+      ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
+      ExecutorSubmissionFenced => false
+      ExecutorGenerationCommitted => false
+    })
 }
 
 fn workspace_executor_record_json(record: WorkspaceExecutorRecord) -> JsonValue {
