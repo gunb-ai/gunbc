@@ -14,7 +14,7 @@ import extdeps.currency.currency { Usd }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run { SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity, Shape, HardRequirements }
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.identity { FabricIdentity }
