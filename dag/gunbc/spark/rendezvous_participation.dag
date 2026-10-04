@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
 import v2.std.algebra { length, filter }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.iproute2.ss { ss_established_to_peer_argv, ss_enumeration_line_count }
 import extdeps.systemd {
   SystemdUnitProperty, InvocationIDProperty, systemd_unit_property_wire,

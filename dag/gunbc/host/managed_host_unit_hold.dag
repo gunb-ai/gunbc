@@ -45,7 +45,7 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import std.decl_ref { decl_ref }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired, managed_hosts }
 import gunbc.host_maintenance_hold_reason { maintenance_hold_reason_env }
 import extdeps.tools.hostname

@@ -2,7 +2,7 @@ module gunbc.fleet_fan_tach_observation
 
 import std.types { Int, List, NonEmptyStr }
 import std.measure { rpm }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
