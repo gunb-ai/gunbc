@@ -54,15 +54,12 @@ fn aca_normalized(text: String) -> Outcome<NormalizedTree> {
       bind_outcome(
         o: tokenize(text: text, file: ^aca_fixture, rules: dag_lex()),
         f: fn(token_stream) {
-          bind_outcome(
-            o: program_assembly_phase_normalize_seeded(
+          program_assembly_normalized_outcome(
+            phase: program_assembly_phase_normalize_seeded(
               parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
               seed: OccurrenceIdAllocator { next_id: 10 },
               scope: Fnv1a64Structural { digest: "00000000000000ad" }
-            ),
-            f: fn(phase) {
-              program_assembly_normalized_outcome(phase: phase)
-            }
+            )
           )
         }
       )
@@ -216,4 +213,19 @@ test fn the_native_wall_refuses_a_cross_module_call_from_outside_the_list_holds(
 
 test fn the_native_wall_admits_a_cross_module_call_from_the_listed_caller_holds() -> Bool {
   aca_accepted_clean(r: aca_cross_control_inferred())
+}
+
+// DBG-PROBE (temporary): prints the observed refusal reason for the cross fixtures.
+fn dbg_cross_red_reason() -> Symbol {
+  match aca_cross_red_inferred() {
+    Accepted { value: _, diagnostics: _ } => ^dbg_cross_red_accepted
+    Rejected { diagnostics: ned } => ned.head.reason
+  }
+}
+
+fn dbg_cross_control_standing() -> Symbol {
+  match aca_cross_control_inferred() {
+    Accepted { value: _, diagnostics: _ } => ^dbg_control_accepted
+    Rejected { diagnostics: ned } => ned.head.reason
+  }
 }
