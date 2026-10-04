@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, measure_count }
+import std.measure { ByteSize, measure_count, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest }
 import std.fabric_blob {
   FabricBlobAddress, FabricBlobReading, fabric_blob_object_name, fabric_blob_reading_digest, fabric_blob_reading_size,
@@ -386,7 +386,7 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
     } else {
       let pack_start = observed_monotonic_nanos("workspace-source-pack-start")
       let packed = workspace_run_ok(run: run_shell_command_observe_outcome(command: tar_create_from_list_command(archive: archive, from_directory: "/", member_list: list_path), transport: LocalExec))
-      let pack_ns = observed_monotonic_nanos("workspace-source-pack-end") - pack_start
+      let pack_elapsed = nanosecond(count: observed_monotonic_nanos("workspace-source-pack-end") - pack_start)
       match packed {
         Present { value: why } => workspace_source_finish(receipt: concat(head, "verdict=refused-pack-failed\n"), outcome: exit_failure(reason: concat("workspace_source_pack: tar refused: ", why)))
         Absent =>
@@ -405,7 +405,7 @@ fn workspace_source_pack_readable(head: String, tallies: List<WorkspaceSourceTal
                     if n != length(members) {
                       workspace_source_finish(receipt: concat(head, "verdict=refused-member-count-mismatch\n"), outcome: exit_failure(reason: join(["workspace_source_pack: the archive holds ", to_string(n), " members but the list named ", to_string(length(members))], "")))
                     } else {
-                      workspace_source_publish(head: concat(head, join(["archive_members=", to_string(n), " pack_ms=", to_string(pack_ns / 1000000), "\n"], "")), archive: archive, staging: staging.path as String)
+                      workspace_source_publish(head: concat(head, join(["archive_members=", to_string(n), " pack_ms=", to_string(nanosecond_count(n: pack_elapsed) / 1000000), "\n"], "")), archive: archive, staging: staging.path as String)
                     }
                 }
               }
@@ -426,9 +426,9 @@ fn workspace_source_publish(head: String, archive: String, staging: String) -> P
         AccessTokenSourceSelected { source: s } => {
           let up_start = observed_monotonic_nanos("workspace-source-upload-start")
           let put = put_fabric_blob(address: address, reading: r, key: fabric_workspace_source_key(address: address), bound: fabric_workspace_object_bound(), purpose: FabricWorkspace {}, token_source: s)
-          let up_ns = observed_monotonic_nanos("workspace-source-upload-end") - up_start
+          let up_elapsed = nanosecond(count: observed_monotonic_nanos("workspace-source-upload-end") - up_start)
           let removed = shell.Remove.RecursiveForce(path: staging as FilePath)
-          let receipt = join([head2, "upload=", workspace_put_words(put: put.verdict), " upload_ms=", to_string(up_ns / 1000000), " staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], "")
+          let receipt = join([head2, "upload=", workspace_put_words(put: put.verdict), " upload_ms=", to_string(nanosecond_count(n: up_elapsed) / 1000000), " staging_removed=", if removed.success { "yes" } else { "no" }, "\n"], "")
           if workspace_put_landed(put: put.verdict) {
             workspace_source_finish(receipt: concat(receipt, "verdict=published\n"), outcome: ExitSuccess)
           } else {

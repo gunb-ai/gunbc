@@ -2,6 +2,7 @@ module extdeps.tools.kopia
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.algebra { Cons, Empty }
+import std.measure { ByteSize, byte_size }
 import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -116,7 +117,7 @@ fn kopia_snapshot_create_command(program: ProgramIdentity, source: String, confi
 // following their keys in the printed JSON; a manifest that does not carry both is unread, never zero.
 type KopiaSnapshotSummary {
   files: Int
-  bytes: Int
+  bytes: ByteSize
 }
 
 fn kopia_text_after(text: String, key: String) -> String? {
@@ -151,7 +152,7 @@ fn kopia_snapshot_summary_of(manifest: String) -> KopiaSnapshotSummary? {
         Present { value: bytes } =>
           match kopia_json_int_after(text: summ, key: "\"files\":") {
             Absent => none
-            Present { value: files } => Present { value: KopiaSnapshotSummary { files: files, bytes: bytes } }
+            Present { value: files } => if bytes < 0 || files < 0 { none } else { Present { value: KopiaSnapshotSummary { files: files, bytes: byte_size(count: bytes) } } }
           }
       }
   }

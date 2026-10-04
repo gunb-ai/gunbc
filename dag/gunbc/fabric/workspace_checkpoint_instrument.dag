@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Map }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty, MapIntroductionEntry, map_from_entries }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, byte_size, measure_count, ObservationInstant, ProcessMonotonic, WallClock, nanosecond }
+import std.measure { ByteSize, byte_size, measure_count, ObservationInstant, ProcessMonotonic, WallClock, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import std.durable_compare_and_set { CasGenerationPublicationRefused }
 import std.fabric_blob {
@@ -135,64 +135,65 @@ fn workspace_snapshot_capability_words(c: WorkspaceSnapshotCapability) -> String
 // they are inputs to verdicts here, never a std.checkpointed_workspace policy: that policy also needs
 // an outage deadline the draft does not state, and constructing one would author a number nobody set.
 type WorkspaceDraftNumbers {
-  checkpoint_target_ms: Int
-  window_ms: Int
-  quota_bytes: Int
+  checkpoint_target: Nanosecond
+  window: Nanosecond
+  quota: ByteSize
 }
 
 data workspace_draft_numbers: WorkspaceDraftNumbers = WorkspaceDraftNumbers {
-  checkpoint_target_ms: 10000,
-  window_ms: 60000,
-  quota_bytes: 10000000000,
+  checkpoint_target: nanosecond(count: 10000000000),
+  window: nanosecond(count: 60000000000),
+  quota: byte_size(count: 10000000000),
 }
 
 // A MEASURED PART: a duration in milliseconds, or the reason it was not measured.
 type WorkspaceMeasuredPart
-  = PartMeasured { label: NonEmptyStr, ms: Int }
+  = PartMeasured { label: NonEmptyStr, elapsed: Nanosecond }
   | PartUnmeasured { label: NonEmptyStr, reason: String }
 
 // A BOUND'S VERDICT OVER A SUM OF PARTS. Every part measured decides it; a missing part leaves it
 // undecided UNLESS the measured parts alone already exceed the bound, which no missing part can undo.
 type WorkspaceBoundVerdict
-  = BoundHolds { total_ms: Int, bound_ms: Int }
-  | BoundExceeded { at_least_ms: Int, bound_ms: Int, complete: Bool }
-  | BoundUndecided { measured_ms: Int, bound_ms: Int, missing: List<String> }
+  = BoundHolds { total: Nanosecond, bound: Nanosecond }
+  | BoundExceeded { at_least: Nanosecond, bound: Nanosecond, complete: Bool }
+  | BoundUndecided { measured: Nanosecond, bound: Nanosecond, missing: List<String> }
 
-fn workspace_parts_measured_ms(parts: List<WorkspaceMeasuredPart>) -> Int {
-  fold(parts, init: 0, f: (acc, p) => match p {
-    PartMeasured { label: _, ms: m } => acc + m
+fn workspace_parts_measured(parts: List<WorkspaceMeasuredPart>) -> Nanosecond {
+  nanosecond(count: fold(parts, init: 0, f: (acc, p) => match p {
+    PartMeasured { label: _, elapsed: e } => acc + nanosecond_count(n: e)
     PartUnmeasured { label: _, reason: _ } => acc
-  })
+  }))
 }
 
 fn workspace_parts_missing(parts: List<WorkspaceMeasuredPart>) -> List<String> {
   flat_map(parts, p => match p {
-    PartMeasured { label: _, ms: _ } => []
+    PartMeasured { label: _, elapsed: _ } => []
     PartUnmeasured { label: l, reason: r } => [join([l as String, ": ", r], "")]
   })
 }
 
-fn workspace_bound_verdict(parts: List<WorkspaceMeasuredPart>, bound_ms: Int) -> WorkspaceBoundVerdict {
-  let measured = workspace_parts_measured_ms(parts: parts)
+fn workspace_bound_verdict(parts: List<WorkspaceMeasuredPart>, bound: Nanosecond) -> WorkspaceBoundVerdict {
+  let measured = workspace_parts_measured(parts: parts)
   let missing = workspace_parts_missing(parts: parts)
+  let over = nanosecond_count(n: measured) > nanosecond_count(n: bound)
   match missing {
-    Empty => if measured <= bound_ms { BoundHolds { total_ms: measured, bound_ms: bound_ms } } else { BoundExceeded { at_least_ms: measured, bound_ms: bound_ms, complete: true } }
+    Empty => if !over { BoundHolds { total: measured, bound: bound } } else { BoundExceeded { at_least: measured, bound: bound, complete: true } }
     Cons { head: _, tail: _ } =>
-      if measured > bound_ms { BoundExceeded { at_least_ms: measured, bound_ms: bound_ms, complete: false } } else { BoundUndecided { measured_ms: measured, bound_ms: bound_ms, missing: missing } }
+      if over { BoundExceeded { at_least: measured, bound: bound, complete: false } } else { BoundUndecided { measured: measured, bound: bound, missing: missing } }
   }
 }
 
 type WorkspaceQuotaVerdict
-  = QuotaHolds { bytes: Int, quota_bytes: Int }
-  | QuotaExceeded { bytes: Int, quota_bytes: Int }
+  = QuotaHolds { size: ByteSize, quota: ByteSize }
+  | QuotaExceeded { size: ByteSize, quota: ByteSize }
 
-fn workspace_quota_verdict(bytes: Int, quota_bytes: Int) -> WorkspaceQuotaVerdict {
-  if bytes <= quota_bytes { QuotaHolds { bytes: bytes, quota_bytes: quota_bytes } } else { QuotaExceeded { bytes: bytes, quota_bytes: quota_bytes } }
+fn workspace_quota_verdict(size: ByteSize, quota: ByteSize) -> WorkspaceQuotaVerdict {
+  if measure_count(m: size) <= measure_count(m: quota) { QuotaHolds { size: size, quota: quota } } else { QuotaExceeded { size: size, quota: quota } }
 }
 
 fn workspace_part_words(p: WorkspaceMeasuredPart) -> String {
   match p {
-    PartMeasured { label: l, ms: m } => join([l as String, "=", to_string(m), "ms"], "")
+    PartMeasured { label: l, elapsed: e } => join([l as String, "=", workspace_ms_words(n: e)], "")
     PartUnmeasured { label: l, reason: r } => join([l as String, "=unmeasured(", r, ")"], "")
   }
 }
@@ -200,16 +201,16 @@ fn workspace_part_words(p: WorkspaceMeasuredPart) -> String {
 fn workspace_bound_words(name: String, parts: List<WorkspaceMeasuredPart>, v: WorkspaceBoundVerdict) -> String {
   let inputs = join(map(parts, p => workspace_part_words(p: p)), " + ")
   match v {
-    BoundHolds { total_ms: t, bound_ms: b } => join([name, "=holds total_ms=", to_string(t), " bound_ms=", to_string(b), " inputs: ", inputs], "")
-    BoundExceeded { at_least_ms: t, bound_ms: b, complete: c } => join([name, "=exceeded at_least_ms=", to_string(t), " bound_ms=", to_string(b), if c { " complete" } else { " by-measured-parts-alone" }, " inputs: ", inputs], "")
-    BoundUndecided { measured_ms: t, bound_ms: b, missing: m } => join([name, "=undecided measured_ms=", to_string(t), " bound_ms=", to_string(b), " missing: ", join(m, "; "), " inputs: ", inputs], "")
+    BoundHolds { total: t, bound: b } => join([name, "=holds total=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " inputs: ", inputs], "")
+    BoundExceeded { at_least: t, bound: b, complete: c } => join([name, "=exceeded at_least=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), if c { " complete" } else { " by-measured-parts-alone" }, " inputs: ", inputs], "")
+    BoundUndecided { measured: t, bound: b, missing: m } => join([name, "=undecided measured=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " missing: ", join(m, "; "), " inputs: ", inputs], "")
   }
 }
 
 fn workspace_quota_words(v: WorkspaceQuotaVerdict) -> String {
   match v {
-    QuotaHolds { bytes: n, quota_bytes: q } => join(["quota=holds bytes=", to_string(n), " quota_bytes=", to_string(q)], "")
-    QuotaExceeded { bytes: n, quota_bytes: q } => join(["quota=exceeded bytes=", to_string(n), " quota_bytes=", to_string(q)], "")
+    QuotaHolds { size: n, quota: q } => join(["quota=holds bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
+    QuotaExceeded { size: n, quota: q } => join(["quota=exceeded bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
   }
 }
 
@@ -480,7 +481,7 @@ fn workspace_closure(binding: R2HeadBinding, token_source: AccessTokenSource) ->
 // checkpoint uploads only changed content. A symbolic link is not a std.checkpointed_workspace entry
 // (an entry is path, chunk, size), so links are counted and named as not carried, never followed.
 type WorkspaceUpload
-  = WorkspaceUploaded { entries: List<WorkspaceEntry>, stored: Int, occupied: Int, bytes: Int, symlinks: Int }
+  = WorkspaceUploaded { entries: List<WorkspaceEntry>, stored: Int, occupied: Int, bytes: ByteSize, symlinks: Int }
   | WorkspaceUploadRefused { detail: String }
 
 // ONE ENUMERATION LINE'S OUTCOME. The lines are mapped once and then summarized, so the cost is
@@ -521,7 +522,7 @@ fn workspace_upload_summary(outcomes: List<WorkspaceChunkOutcome>) -> WorkspaceU
         entries: entries,
         stored: length(filter(outcomes, o => match o { ChunkStored { entry: _ } => true  ChunkOccupied { entry: _ } => false  ChunkSymlinkNotCarried => false  ChunkRefused { detail: _ } => false })),
         occupied: length(filter(outcomes, o => match o { ChunkOccupied { entry: _ } => true  ChunkStored { entry: _ } => false  ChunkSymlinkNotCarried => false  ChunkRefused { detail: _ } => false })),
-        bytes: fold(entries, init: 0, f: (acc, e) => acc + measure_count(m: e.size)),
+        bytes: byte_size(count: fold(entries, init: 0, f: (acc, e) => acc + measure_count(m: e.size))),
         symlinks: length(filter(outcomes, o => match o { ChunkSymlinkNotCarried => true  ChunkStored { entry: _ } => false  ChunkOccupied { entry: _ } => false  ChunkRefused { detail: _ } => false })),
       }
     }
@@ -572,8 +573,14 @@ fn workspace_run_local(command: ArgvCommand) -> ProcessRunOutcome {
   run_shell_command_observe_outcome(command: command, transport: LocalExec)
 }
 
-fn workspace_ms_since(start: Int, label: String) -> Int {
-  (observed_monotonic_nanos(label) - start) / 1000000
+// THE ELAPSED SPAN SINCE A MONOTONIC READING OF THIS PROCESS, as the canonical std.measure carrier.
+// The receipt renders it in milliseconds; the value is never carried as a bare count.
+fn workspace_elapsed_since(start: Int, label: String) -> Nanosecond {
+  nanosecond(count: observed_monotonic_nanos(label) - start)
+}
+
+fn workspace_ms_words(n: Nanosecond) -> String {
+  join([to_string(nanosecond_count(n: n) / 1000000), "ms"], "")
 }
 
 // ── THE DISPATCH SUBJECT ───────────────────────────────────────────────────────────────────────
@@ -694,7 +701,7 @@ fn kopia_place(scratch: NonEmptyStr) -> KopiaPlacement {
 // the read-only snapshot, so the tool reads the same frozen tree the chunk upload reads. Only the
 // snapshot create is timed; repository creation is setup.
 type KopiaScan
-  = KopiaScanned { ms: Int, summary: KopiaSnapshotSummary? }
+  = KopiaScanned { elapsed: Nanosecond, summary: KopiaSnapshotSummary? }
   | KopiaScanRefused { cause: String }
 
 fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
@@ -710,11 +717,11 @@ fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
         Absent => {
           let start = observed_monotonic_nanos("workspace-kopia-scan-start")
           let run = workspace_run_local(command: kopia_snapshot_create_command(program: program, source: source as String, config_file: config, password: password, log_directory: logs))
-          let ms = workspace_ms_since(start: start, label: "workspace-kopia-scan-end")
+          let elapsed = workspace_elapsed_since(start: start, label: "workspace-kopia-scan-end")
           match run {
             ProcessNotSpawned { program: p, cause: c } => KopiaScanRefused { cause: join([p as String, " did not run: ", c as String], "") }
             ProcessRan { observation: o } =>
-              if o.exit_code != 0 { KopiaScanRefused { cause: join(["kopia snapshot create exit ", to_string(o.exit_code), ": ", o.stderr], "") } } else { KopiaScanned { ms: ms, summary: kopia_snapshot_summary_of(manifest: o.stdout) } }
+              if o.exit_code != 0 { KopiaScanRefused { cause: join(["kopia snapshot create exit ", to_string(o.exit_code), ": ", o.stderr], "") } } else { KopiaScanned { elapsed: elapsed, summary: kopia_snapshot_summary_of(manifest: o.stdout) } }
           }
         }
       }
@@ -725,9 +732,9 @@ fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
 fn kopia_scan_words(scan: KopiaScan) -> String {
   match scan {
     KopiaScanRefused { cause: c } => join(["scan=refused ", c], "")
-    KopiaScanned { ms: m, summary: s } =>
-      join(["scan_tool=kopia-", kopia_release.version as String, " scan_ms=", to_string(m), match s {
-        Present { value: k } => join([" kopia_files=", to_string(k.files), " kopia_bytes=", to_string(k.bytes)], "")
+    KopiaScanned { elapsed: e, summary: s } =>
+      join(["scan_tool=kopia-", kopia_release.version as String, " scan=", workspace_ms_words(n: e), match s {
+        Present { value: k } => join([" kopia_files=", to_string(k.files), " kopia_bytes=", to_string(measure_count(m: k.bytes))], "")
         Absent => " kopia_summary=unread"
       }], "")
   }
@@ -735,7 +742,7 @@ fn kopia_scan_words(scan: KopiaScan) -> String {
 
 fn kopia_scan_part(scan: KopiaScan) -> WorkspaceMeasuredPart {
   match scan {
-    KopiaScanned { ms: m, summary: _ } => PartMeasured { label: "scan", ms: m }
+    KopiaScanned { elapsed: e, summary: _ } => PartMeasured { label: "scan", elapsed: e }
     KopiaScanRefused { cause: c } => PartUnmeasured { label: "scan", reason: c }
   }
 }
@@ -816,41 +823,40 @@ fn workspace_measure_on_btrfs(parent: NonEmptyStr, run: NonEmptyStr, token_sourc
 
 fn workspace_measure_extracted(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, head: String) -> ProcessExit {
   let snap_start = observed_monotonic_nanos("workspace-snapshot-start")
-  let snap = workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_snapshot_read_only_command(source: workspace as String, destination: snapshot as String)))
-  let snap_ms = workspace_ms_since(start: snap_start, label: "workspace-snapshot-end")
-  match snap {
+  let snap_refusal = workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_snapshot_read_only_command(source: workspace as String, destination: snapshot as String)))
+  let snap = workspace_elapsed_since(start: snap_start, label: "workspace-snapshot-end")
+  match snap_refusal {
     Present { value: why } => workspace_finish(path: workspace_measure_receipt_path, receipt: concat(head, "snapshot_method=btrfs-subvolume-snapshot-ro verdict=refused-snapshot\n"), outcome: exit_failure(reason: concat("workspace_checkpoint_measure: the snapshot failed: ", why)))
     Absent => {
       let scan = kopia_scan(scratch: scratch, source: snapshot)
       let up_start = observed_monotonic_nanos("workspace-upload-start")
       let upload = workspace_upload_tree(root: snapshot, token_source: token_source)
-      let upload_ms = workspace_ms_since(start: up_start, label: "workspace-upload-end")
-      workspace_measure_report(workspace: workspace, snapshot: snapshot, scratch: scratch, run: run, token_source: token_source, head: head, snap_ms: snap_ms, scan: scan, upload: upload, upload_ms: upload_ms)
+      let upload_elapsed = workspace_elapsed_since(start: up_start, label: "workspace-upload-end")
+      workspace_measure_report(workspace: workspace, snapshot: snapshot, scratch: scratch, run: run, token_source: token_source, head: head, snap: snap, scan: scan, upload: upload, upload_elapsed: upload_elapsed)
     }
   }
 }
 
-fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, head: String, snap_ms: Int, scan: KopiaScan, upload: WorkspaceUpload, upload_ms: Int) -> ProcessExit {
+fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, head: String, snap: Nanosecond, scan: KopiaScan, upload: WorkspaceUpload, upload_elapsed: Nanosecond) -> ProcessExit {
   let writer = WorkspaceWriterEpoch { workspace: join(["stage0-", run as String], "") as NonEmptyStr, epoch: 1 }
-  let commit_and_ms = match upload {
-    WorkspaceUploadRefused { detail: d } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: concat("the upload refused: ", d) } }
+  let timed_commit = match upload {
+    WorkspaceUploadRefused { detail: d } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: concat("the upload refused: ", d) } }
     WorkspaceUploaded { entries: es, stored: _, occupied: _, bytes: _, symlinks: _ } => workspace_timed_commit(writer: writer, entries: es, token_source: token_source)
   }
   let upload_part = match upload {
-    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _ } => PartMeasured { label: "upload", ms: upload_ms }
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _ } => PartMeasured { label: "upload", elapsed: upload_elapsed }
     WorkspaceUploadRefused { detail: d } => PartUnmeasured { label: "upload", reason: d }
   }
-  let snapshot_parts = [PartMeasured { label: "snapshot", ms: snap_ms }, upload_part, commit_and_ms.ms]
-  let scan_parts = [kopia_scan_part(scan: scan), upload_part, commit_and_ms.ms]
+  let snapshot_parts = [PartMeasured { label: "snapshot", elapsed: snap }, upload_part, timed_commit.part]
+  let scan_parts = [kopia_scan_part(scan: scan), upload_part, timed_commit.part]
   let n = workspace_draft_numbers
-  let bytes = match upload { WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _ } => b  WorkspaceUploadRefused { detail: _ } => 0 }
   let upload_words = match upload {
     WorkspaceUploaded { entries: es, stored: st, occupied: oc, bytes: b, symlinks: sl } =>
-      join(["files=", to_string(length(es)), " bytes=", to_string(b), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " upload_ms=", to_string(upload_ms)], "")
+      join(["files=", to_string(length(es)), " bytes=", to_string(measure_count(m: b)), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " upload=", workspace_ms_words(n: upload_elapsed)], "")
     WorkspaceUploadRefused { detail: d } => join(["upload=refused ", d], "")
   }
   let quota_line = match upload {
-    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _ } => workspace_quota_words(v: workspace_quota_verdict(bytes: b, quota_bytes: n.quota_bytes))
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _ } => workspace_quota_words(v: workspace_quota_verdict(size: b, quota: n.quota))
     WorkspaceUploadRefused { detail: _ } => "quota=undecided (the upload refused, so no byte total was established)"
   }
   let cleanup = join([
@@ -860,18 +866,18 @@ fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scrat
   ], "")
   let receipt = join([
     head,
-    "snapshot_method=btrfs-subvolume-snapshot-ro snapshot_ms=", to_string(snap_ms), "\n",
+    "snapshot_method=btrfs-subvolume-snapshot-ro snapshot=", workspace_ms_words(n: snap), "\n",
     kopia_scan_words(scan: scan), "\n",
     upload_words, "\n",
-    "commit=", match commit_and_ms.commit { Present { value: c } => workspace_commit_words(c: c)  Absent => "not-attempted" }, " ", workspace_part_words(p: commit_and_ms.ms), "\n",
-    workspace_bound_words(name: "snapshot_path_vs_target", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound_ms: n.checkpoint_target_ms)), "\n",
-    workspace_bound_words(name: "snapshot_path_vs_window", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound_ms: n.window_ms)), "\n",
-    workspace_bound_words(name: "scan_path_vs_target", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound_ms: n.checkpoint_target_ms)), "\n",
-    workspace_bound_words(name: "scan_path_vs_window", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound_ms: n.window_ms)), "\n",
+    "commit=", match timed_commit.commit { Present { value: c } => workspace_commit_words(c: c)  Absent => "not-attempted" }, " ", workspace_part_words(p: timed_commit.part), "\n",
+    workspace_bound_words(name: "snapshot_path_vs_target", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.checkpoint_target)), "\n",
+    workspace_bound_words(name: "snapshot_path_vs_window", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.window)), "\n",
+    workspace_bound_words(name: "scan_path_vs_target", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.checkpoint_target)), "\n",
+    workspace_bound_words(name: "scan_path_vs_window", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.window)), "\n",
     quota_line, "\n",
     cleanup, "\n",
   ], "")
-  let committed = match commit_and_ms.commit { Present { value: c } => workspace_commit_is_committed(c: c)  Absent => false }
+  let committed = match timed_commit.commit { Present { value: c } => workspace_commit_is_committed(c: c)  Absent => false }
   if committed {
     workspace_finish(path: workspace_measure_receipt_path, receipt: concat(receipt, "verdict=measured\n"), outcome: ExitSuccess)
   } else {
@@ -888,29 +894,29 @@ fn process_ok(run: ProcessRunOutcome) -> Bool {
 
 type WorkspaceTimedCommit {
   commit: WorkspaceInstrumentCommit?
-  ms: WorkspaceMeasuredPart
+  part: WorkspaceMeasuredPart
 }
 
 // THE COMMIT, TIMED ONLY WHEN IT COMMITTED: a refused or unknown commit has no commit time, and its
 // absence is a named unmeasured part rather than the time a refusal took.
 fn workspace_timed_commit(writer: WorkspaceWriterEpoch, entries: List<WorkspaceEntry>, token_source: AccessTokenSource) -> WorkspaceTimedCommit {
   match workspace_head_binding(workspace: writer.workspace) {
-    WorkspaceHeadUnbound { cause: c } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: c as String } }
+    WorkspaceHeadUnbound { cause: c } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: c as String } }
     WorkspaceHeadBound { binding: b } =>
       match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: entries }, built_on: none) {
         WorkspaceAdvancePlanned { plan: plan } => {
           let start = observed_monotonic_nanos("workspace-commit-start")
           let commit = workspace_instrument_commit(admission: r2_head_cas_admission(ground: r2_head_cas_ground()), plan: plan, binding: b, token_source: token_source)
-          let ms = workspace_ms_since(start: start, label: "workspace-commit-end")
+          let elapsed = workspace_elapsed_since(start: start, label: "workspace-commit-end")
           WorkspaceTimedCommit {
             commit: Present { value: commit },
-            ms: if workspace_commit_is_committed(c: commit) { PartMeasured { label: "commit", ms: ms } } else { PartUnmeasured { label: "commit", reason: workspace_commit_words(c: commit) } },
+            part: if workspace_commit_is_committed(c: commit) { PartMeasured { label: "commit", elapsed: elapsed } } else { PartUnmeasured { label: "commit", reason: workspace_commit_words(c: commit) } },
           }
         }
-        WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as stale" } }
-        WorkspaceRevisionEpochNotCurrent { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: "the plan refused a first entry's epoch" } }
-        WorkspaceAdvanceForeignWorkspace { writer: _, built_on: _ } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as foreign" } }
-        WorkspaceFenceNotLater { fence_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, ms: PartUnmeasured { label: "commit", reason: "the plan refused a revision as a fence" } }
+        WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as stale" } }
+        WorkspaceRevisionEpochNotCurrent { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry's epoch" } }
+        WorkspaceAdvanceForeignWorkspace { writer: _, built_on: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as foreign" } }
+        WorkspaceFenceNotLater { fence_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a revision as a fence" } }
       }
   }
 }

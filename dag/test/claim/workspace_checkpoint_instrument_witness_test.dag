@@ -3,7 +3,7 @@ module test.claim.workspace_checkpoint_instrument
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
-import std.measure { byte_size }
+import std.measure { byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import std.fabric_blob { FabricBlobAddress }
 import std.fabric_storage { FabricObject, fabric_object_ref_of, fabric_object_ref_eq }
@@ -39,6 +39,10 @@ fn digest(c: String) -> Sha256Digest {
     Present { value: d } => d
     Absent => digest(c: "0")
   }
+}
+
+fn ms(n: Int) -> Nanosecond {
+  nanosecond(count: n * 1000000)
 }
 
 fn address(c: String) -> FabricBlobAddress {
@@ -145,32 +149,32 @@ test fn a_clean_archive_reads_back_its_member_count() -> Bool {
 // ── VERDICTS ───────────────────────────────────────────────────────────────────────────────────
 
 test fn every_part_measured_under_the_bound_holds() -> Bool {
-  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", ms: 40 }, PartMeasured { label: "upload", ms: 9000 }, PartMeasured { label: "commit", ms: 200 }], bound_ms: 10000) {
-    BoundHolds { total_ms: t, bound_ms: b } => t == 9240 && b == 10000
-    BoundExceeded { at_least_ms: _, bound_ms: _, complete: _ } => false
-    BoundUndecided { measured_ms: _, bound_ms: _, missing: _ } => false
+  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", elapsed: ms(n: 40) }, PartMeasured { label: "upload", elapsed: ms(n: 9000) }, PartMeasured { label: "commit", elapsed: ms(n: 200) }], bound: ms(n: 10000)) {
+    BoundHolds { total: t, bound: b } => nanosecond_count(n: t) == 9240000000 && nanosecond_count(n: b) == 10000000000
+    BoundExceeded { at_least: _, bound: _, complete: _ } => false
+    BoundUndecided { measured: _, bound: _, missing: _ } => false
   }
 }
 
 test fn a_missing_part_leaves_a_fitting_sum_undecided() -> Bool {
-  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", ms: 40 }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound_ms: 10000) {
-    BoundUndecided { measured_ms: m, bound_ms: _, missing: ms } => m == 40 && ms == ["commit: cas not grounded"]
-    BoundHolds { total_ms: _, bound_ms: _ } => false
-    BoundExceeded { at_least_ms: _, bound_ms: _, complete: _ } => false
+  match workspace_bound_verdict(parts: [PartMeasured { label: "snapshot", elapsed: ms(n: 40) }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound: ms(n: 10000)) {
+    BoundUndecided { measured: m, bound: _, missing: missing } => nanosecond_count(n: m) == 40000000 && missing == ["commit: cas not grounded"]
+    BoundHolds { total: _, bound: _ } => false
+    BoundExceeded { at_least: _, bound: _, complete: _ } => false
   }
 }
 
 test fn measured_parts_over_the_bound_exceed_it_whatever_is_missing() -> Bool {
-  match workspace_bound_verdict(parts: [PartMeasured { label: "upload", ms: 70000 }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound_ms: 60000) {
-    BoundExceeded { at_least_ms: m, bound_ms: b, complete: c } => m == 70000 && b == 60000 && !c
-    BoundHolds { total_ms: _, bound_ms: _ } => false
-    BoundUndecided { measured_ms: _, bound_ms: _, missing: _ } => false
+  match workspace_bound_verdict(parts: [PartMeasured { label: "upload", elapsed: ms(n: 70000) }, PartUnmeasured { label: "commit", reason: "cas not grounded" }], bound: ms(n: 60000)) {
+    BoundExceeded { at_least: m, bound: b, complete: c } => nanosecond_count(n: m) == 70000000000 && nanosecond_count(n: b) == 60000000000 && !c
+    BoundHolds { total: _, bound: _ } => false
+    BoundUndecided { measured: _, bound: _, missing: _ } => false
   }
 }
 
 test fn the_quota_verdict_compares_bytes_to_the_quota() -> Bool {
-  let under = match workspace_quota_verdict(bytes: 1600000000, quota_bytes: 10000000000) { QuotaHolds { bytes: _, quota_bytes: _ } => true  QuotaExceeded { bytes: _, quota_bytes: _ } => false }
-  let over = match workspace_quota_verdict(bytes: 10000000001, quota_bytes: 10000000000) { QuotaExceeded { bytes: _, quota_bytes: _ } => true  QuotaHolds { bytes: _, quota_bytes: _ } => false }
+  let under = match workspace_quota_verdict(size: byte_size(count: 1600000000), quota: byte_size(count: 10000000000)) { QuotaHolds { size: _, quota: _ } => true  QuotaExceeded { size: _, quota: _ } => false }
+  let over = match workspace_quota_verdict(size: byte_size(count: 10000000001), quota: byte_size(count: 10000000000)) { QuotaExceeded { size: _, quota: _ } => true  QuotaHolds { size: _, quota: _ } => false }
   under && over
 }
 
@@ -256,7 +260,7 @@ test fn a_body_that_is_not_a_head_entry_does_not_decode() -> Bool {
 // names the run); only rootEntry.summ is read.
 test fn the_kopia_manifest_summary_reads_files_and_bytes() -> Bool {
   let manifest = "{\"id\":\"d2eb\",\"rootEntry\":{\"name\":\"src\",\"type\":\"d\",\"obj\":\"kafe\",\"summ\":{\"size\":3,\"files\":1,\"symlinks\":0,\"dirs\":1,\"numFailed\":0}}}"
-  let read = match kopia_snapshot_summary_of(manifest: manifest) { Present { value: s } => s.files == 1 && s.bytes == 3  Absent => false }
+  let read = match kopia_snapshot_summary_of(manifest: manifest) { Present { value: s } => s.files == 1 && measure_count(m: s.bytes) == 3  Absent => false }
   let unread = match kopia_snapshot_summary_of(manifest: "{\"id\":\"d2eb\"}") { Absent => true  Present { value: _ } => false }
   read && unread
 }
