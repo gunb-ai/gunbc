@@ -2,7 +2,7 @@ module gunbc.managed_host_boot_image_fetch
 
 import std.types { List, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_mirror_rows, ubuntu_install_media_mirror_url }
+import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, OldReleasesUbuntuCom, ReleasesUbuntuCom, noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_mirror_rows, ubuntu_install_media_mirror_url }
 import gunbc.boot_medium { BootMedium, BootImageExport, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch {
   BootImageAdmitted,
@@ -59,7 +59,8 @@ fn stock_installer_fetch_url() -> NonEmptyStr {
   join(
     flat_map(ubuntu_install_media_mirror_rows, m => match m.host {
       CdimageUbuntuCom => [ubuntu_install_media_mirror_url(artifact: noble_numbat_2404_3_live_server_arm64, mirror: m) as String]
-      _ => []
+      ReleasesUbuntuCom => []
+      OldReleasesUbuntuCom => []
     }),
     "",
   ) as NonEmptyStr
