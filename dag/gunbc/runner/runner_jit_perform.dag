@@ -138,7 +138,7 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "attempt_dispatch"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_and_refuses_todays_workflow"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
 ] {
   match plan_jit_mint(
     binding: binding,
