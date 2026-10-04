@@ -5104,6 +5104,13 @@ fn parse_production_prepared_measured(
   )
 }
 
+// THE ENTRY PRODUCTION IS READ OFF THE PREPARED GRAMMAR, never re-derived per parse: its lookup is
+// the analysis's productions_by_name index and its prepared tree (choice plans, FIRST unions) is the
+// analysis's prepared_exprs row, exactly as every nested nonterminal already reads it
+// (parse_nonterminal_memoized). Routing the entry through parse_expr re-ran prepare_grammar_expr --
+// choice-plan compilation plus the authored-choice overlap residue, which the parse then discarded --
+// and an O(P) non-short-circuiting fold over every production, on EVERY parse, re-deriving a
+// property of the grammar that prepare_grammar already computed once.
 fn parse_production_prepared_measured_seeded(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -5114,18 +5121,18 @@ fn parse_production_prepared_measured_seeded(
   materialization: Materialization
 ) -> ParseProductionMeasured {
   let root = validated.root
-  match grammar_lookup_production(root: root, name: production_name) {
+  let table = parse_table_for_stream_analyzed(
+    validated: validated,
+    analysis: analysis,
+    layout: layout,
+    all_tokens: tokens,
+    materialization: materialization
+  )
+  match grammar_lookup_production_indexed(table: table, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_seeded(seed: seed)
-      let table = parse_table_for_stream_analyzed(
-        validated: validated,
-        analysis: analysis,
-        layout: layout,
-        all_tokens: tokens,
-        materialization: materialization
-      )
-      let parsed = parse_expr(
-        expr: production.expression,
+      let parsed = parse_expr_with_first(
+        expr: parse_table_prepared_expr(table: table, production: production),
         tokens: tokens,
         all_tokens: tokens,
         root: root,

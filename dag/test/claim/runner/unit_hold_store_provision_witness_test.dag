@@ -5,7 +5,7 @@ import gunbc.fleet_converge_plan { host_wide_grant_apply_lines }
 import gunbc.executor_privileged_operation { EnsureOwnedDirectory, executor_privileged_operation_converge_command }
 import gunbc.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 
 // The full-host apply script is the route that executes: host_wide_grant_apply_lines renders every

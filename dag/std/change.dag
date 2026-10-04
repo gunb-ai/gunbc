@@ -546,19 +546,22 @@ fn keyed_diff_hunks_equal<K, V>(
     KeyedDiffAddedHunk { hunk_key: lk, to: lv } => match right {
       KeyedDiffAddedHunk { hunk_key: rk, to: rv } =>
         key_eq(lk, rk) && value_eq(lv, rv)
-      _ => false
+      KeyedDiffRemovedHunk { hunk_key: _, from: _ } => false
+      KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } => false
     }
     KeyedDiffRemovedHunk { hunk_key: lk, from: lv } => match right {
+      KeyedDiffAddedHunk { hunk_key: _, to: _ } => false
       KeyedDiffRemovedHunk { hunk_key: rk, from: rv } =>
         key_eq(lk, rk) && value_eq(lv, rv)
-      _ => false
+      KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } => false
     }
     KeyedDiffModifiedHunk { hunk_key: lk, from: lf, to: lt } => match right {
+      KeyedDiffAddedHunk { hunk_key: _, to: _ } => false
+      KeyedDiffRemovedHunk { hunk_key: _, from: _ } => false
       KeyedDiffModifiedHunk { hunk_key: rk, from: rf, to: rt } =>
         key_eq(lk, rk)
           && value_eq(lf, rf)
           && value_eq(lt, rt)
-      _ => false
     }
   }
 }

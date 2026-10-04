@@ -36,7 +36,7 @@ import gunbc.runner_width_transition {
   TransitionPopulationAgrees,
   TransitionPopulationDisagrees,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
 import gunbc.host_operation_exec {
   SystemctlMaskNow,
   CgroupReadEvents,

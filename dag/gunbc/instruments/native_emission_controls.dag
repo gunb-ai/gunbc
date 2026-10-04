@@ -2,6 +2,8 @@ module gunbc.instruments.native_emission_controls
 
 import std.types { Bool, Int, List, Set, String }
 import v2.std.algebra { filter }
+import std.resource_contract { Observation, Read }
+import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 
@@ -211,6 +213,41 @@ fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a resource capability's output renders through the signature renderer
+// (v1.compiler.emit_rust emit_capability_method). Its anonymous output product used to fall through
+// to the env-less render_node_type, so a zero-parameter closed alias such as std.integer UInt8 =
+// Compose<UInt, MachineWidth<8>> rendered as `UInt8<UInt, MachineWidth<>>` against a Rust alias
+// declared with no parameters (E0107 on std.resources Entropy read_bytes). ControlOctetSource has
+// the same output shape. A trait signature is a compile-time fact, so this rule's observation is the
+// build of this program itself: under the old renderer it does not compile and every row is lost.
+// The cases decide octets through the same alias's constructor so the carrier is used, not only
+// declared.
+resource ControlOctetSource {
+  kind: Observation
+  mode: Read
+  acquire {}
+  release {}
+
+  capability read_octets {
+    input { count: Int }
+    output { octets: List<UInt8> }
+  }
+}
+
+fn control_octet_in_range(value: Int) -> Bool {
+  match uint8_of_int(value: value) {
+    UInt8Ready { value: _ } => true
+    UInt8OutOfRange { observed: _ } => false
+  }
+}
+
+fn capability_alias_output_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "capability_alias_output_octet_in_range", held: control_octet_in_range(value: 255) },
+    NativeEmissionCase { identity: "capability_alias_output_red_octet_out_of_range", held: !control_octet_in_range(value: 256) }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -236,11 +273,13 @@ data native_emission_expected_identities: List<String> = [
   "list_index_red_in_range_is_not_absent",
   "list_index_past_the_end_is_absent",
   "list_index_negative_is_absent",
-  "list_index_into_empty_is_absent"
+  "list_index_into_empty_is_absent",
+  "capability_alias_output_octet_in_range",
+  "capability_alias_output_red_octet_out_of_range"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), list_index_cases())
+  concat(concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), list_index_cases()), capability_alias_output_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
