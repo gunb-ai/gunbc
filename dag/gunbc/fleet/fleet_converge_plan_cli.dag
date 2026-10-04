@@ -65,7 +65,7 @@ import gunbc.runner_slot_provision {
   RunnerSlotsUnobserved,
   observe_runner_slot_members_wet,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner {
   actions_runner_registration_file_name,
   actions_runner_registration_decode,
