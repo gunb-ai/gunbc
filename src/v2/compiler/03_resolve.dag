@@ -71,7 +71,10 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_singleton,
   bind_outcome,
-  rejected_with_pending
+  rejected_with_pending,
+  ExternalContractUnknown,
+  Rejected,
+  outcome_with_diagnostics
 }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
 import v2.std.qualified_name {
@@ -199,7 +202,7 @@ import v2.std.node_query {
   pattern_wildcard_name,
   find_core_child,
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction {
   MapIntroductionEntryNodes,
@@ -213,6 +216,7 @@ import v2.std.map_introduction {
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
 }
+import std.types { List }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked

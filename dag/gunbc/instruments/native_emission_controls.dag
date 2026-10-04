@@ -148,10 +148,11 @@ fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
   ]
 }
 
-// RULE: an empty-map turbofish renders in the enclosing fn's generic scope (v1.compiler.emit_rust
-// rust_empty_map_kv_type_str through render_rust_arrow_position). std.list duplicated_by_key builds
-// `DuplicatedScan { firsts: empty_map(), .. }` whose field is `Map<String, T>`; the T rendered by its
-// erased inference as a compile_error!, so std.list did not compile. The cases call the real kernel:
+// RULE: an empty-map turbofish whose type argument arrives erased defers to the target's inference
+// (v1.compiler.emit_rust rust_empty_map_init_expr, type_node_carries_erased_type_argument), as an
+// unbound formal already does. std.list duplicated_by_key builds `DuplicatedScan { firsts:
+// empty_map(), .. }` whose field is `Map<String, T>`; infer leaves that T erased, it rendered as a
+// compile_error!, and std.list did not compile. The cases call the real kernel:
 // each repeated key's FIRST element once, in the order the keys were found to repeat, and nothing
 // for a list without repeats.
 fn generic_empty_map_turbofish_cases() -> List<NativeEmissionCase> {
@@ -164,6 +165,37 @@ fn generic_empty_map_turbofish_cases() -> List<NativeEmissionCase> {
       identity: "generic_empty_map_red_no_repeat_reports_nothing",
       held: duplicated_by_key(xs: ["a", "b", "c"], key: x => x) == []
     }
+  ]
+}
+
+// RULE: an effectful fold step is realized as a loop in the enclosing async frame
+// (v1.compiler.emit_rust emit_rust_effectful_fold_loop). Iterator::fold takes its step as a
+// synchronous closure, so a step that reaches an effectful callee put that callee's `.await?` inside
+// it: E0728, the shape of gunbc.auth.approval_decision_store pending_escalations. The step here
+// reads Filesystem for every element and accumulates a record, as that fold does. Every path sits
+// under a root no host provisions, so each read is a typed refusal and the counts are decided
+// everywhere; the red rows are the record's two fields and the empty list.
+type ControlReadTally {
+  refused: Int
+  seen: Int
+}
+
+fn control_tally_absent_reads(paths: List<String>) -> ControlReadTally {
+  fold(paths, init: ControlReadTally { refused: 0, seen: 0 }, f: (acc, p) =>
+    let read = Filesystem.Read(path: p)
+    ControlReadTally { refused: if read.success { acc.refused } else { acc.refused + 1 }, seen: acc.seen + 1 }
+  )
+}
+
+fn control_absent_paths() -> List<String> {
+  ["/gunbc-native-emission-controls-absent/a", "/gunbc-native-emission-controls-absent/b", "/gunbc-native-emission-controls-absent/c"]
+}
+
+fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "effectful_fold_step_counts_every_refused_read", held: control_tally_absent_reads(paths: control_absent_paths()).refused == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_seen_counts_elements", held: control_tally_absent_reads(paths: control_absent_paths()).seen == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_empty_keeps_init", held: control_tally_absent_reads(paths: []).seen == 0 }
   ]
 }
 
@@ -183,13 +215,16 @@ data native_emission_expected_identities: List<String> = [
   "filter_guard_receipt_blank_tail_accepts",
   "filter_guard_receipt_red_nonblank_tail_refuses",
   "filter_guard_receipt_red_empty_tag_short_circuits",
+  "claim_driver_filesystem_absent_path_read_is_refused",
+  "effectful_fold_step_counts_every_refused_read",
+  "effectful_fold_step_red_seen_counts_elements",
+  "effectful_fold_step_red_empty_keeps_init",
   "generic_empty_map_duplicated_by_key_reports_each_repeat_once",
-  "generic_empty_map_red_no_repeat_reports_nothing",
-  "claim_driver_filesystem_absent_path_read_is_refused"
+  "generic_empty_map_red_no_repeat_reports_nothing"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), generic_empty_map_turbofish_cases())
+  concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), generic_empty_map_turbofish_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
