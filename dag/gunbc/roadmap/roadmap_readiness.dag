@@ -1,0 +1,234 @@
+module gunbc.roadmap.roadmap_readiness
+
+import std.types { String, Int, Bool, List }
+import gunbc.roadmap_model { RoadmapNode, NotDispatchable, Dispatchable }
+import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
+import gunbc.roadmap_execution_contract {
+  NonAgentWorkMode,
+  contract_closure,
+  ContractDeclaresNoValidation,
+  ContractClosesNothing,
+  ContractCloses,
+  ContractNotAgentWork,
+  non_agent_work_mode_label,
+}
+import gunbc.roadmap.roadmap_lineage {
+  LineageWalk,
+  LineageRooted,
+  LineageNoParent,
+  LineageUndeclared,
+  LineageCyclic,
+  lineage_refusal_detail,
+}
+
+// READINESS IS ONE PREDICATE (operator ruling, 2026-09-30). A node is ReadyToDispatch exactly when every
+// dispatch fact it could carry is present and satisfied; otherwise it is NotReady and the value
+// names every missing or unsatisfied fact, in one fixed order. The dispatcher's launch admission
+// refuses with this value (gunbc.roadmap_launch_admission LaunchNotReady), the page renders it
+// ("not ready: missing centering, contract") and hides NotReady leaves by it, and the derived
+// closing-contract minting (gunbc.roadmap_authority) mints only for a node whose ONLY gap is its
+// contract. Three surfaces, one value: none of them re-derives a fact this module decides.
+//
+// The inputs a pure node cannot supply are the caller's: the lineage walk over the caller's node
+// universe (gunbc.roadmap.roadmap_lineage lineage_walk) and the node's unmet prerequisites over the
+// caller's dependency graph. merged is the PR roster the in-review reading consumes.
+type ReadinessGap
+  = GapSuperseded { by: String }
+  | GapAccepted
+  | GapInReview
+  | GapParent
+  | GapRoot { detail: String }
+  | GapCentering
+  | GapDispatch
+  | GapContract { detail: String }
+  | GapNotAgentWork { mode: NonAgentWorkMode }
+  | GapDependencies { blockers: List<String> }
+
+type NodeReadiness
+  = ReadyToDispatch
+  | NotReady { missing: List<ReadinessGap> }
+
+fn readiness_state_gaps(node: RoadmapNode, merged: List<Int>) -> List<ReadinessGap> {
+  let by = item_superseded_by(item: node.line)
+  if by != "" {
+    [GapSuperseded { by: by }]
+  } else if signoff_accepts(s: node.signoff) {
+    [GapAccepted]
+  } else if item_is_done(item: node.line, merged: merged) {
+    [GapInReview]
+  } else {
+    []
+  }
+}
+
+fn readiness_lineage_gaps(node: RoadmapNode, lineage: LineageWalk) -> List<ReadinessGap> {
+  match node.parent {
+    Absent => [GapParent]
+    Present { value: _ } =>
+      match lineage {
+        LineageRooted { ids: _ } => []
+        LineageNoParent { walked: _, at: _ } => [GapRoot { detail: lineage_refusal_detail(w: lineage) }]
+        LineageUndeclared { walked: _, node_id: _ } => [GapRoot { detail: lineage_refusal_detail(w: lineage) }]
+        LineageCyclic { node_id: _ } => [GapRoot { detail: lineage_refusal_detail(w: lineage) }]
+      }
+  }
+}
+
+fn readiness_centering_gaps(node: RoadmapNode) -> List<ReadinessGap> {
+  match node.centering {
+    Absent => [GapCentering]
+    Present { value: _ } => []
+  }
+}
+
+fn readiness_dispatch_gaps(node: RoadmapNode) -> List<ReadinessGap> {
+  match node.dispatch {
+    NotDispatchable => [GapDispatch]
+    Dispatchable { repo: _, acceptance: _ } => []
+  }
+}
+
+fn readiness_contract_gaps(node: RoadmapNode) -> List<ReadinessGap> {
+  match contract_closure(contract: node.execution) {
+    ContractDeclaresNoValidation => [GapContract { detail: "no execution contract names the validation that closes it" }]
+    ContractClosesNothing => [GapContract { detail: "the execution contract declares no validation operation, so it closes nothing" }]
+    ContractNotAgentWork { mode } => [GapNotAgentWork { mode: mode }]
+    ContractCloses { validations: _ } => []
+  }
+}
+
+fn readiness_dependency_gaps(unmet_parents: List<String>) -> List<ReadinessGap> {
+  if count(unmet_parents) == 0 { [] } else { [GapDependencies { blockers: unmet_parents }] }
+}
+
+fn node_readiness_gaps(node: RoadmapNode, lineage: LineageWalk, unmet_parents: List<String>, merged: List<Int>) -> List<ReadinessGap> {
+  concat(readiness_state_gaps(node: node, merged: merged),
+    concat(readiness_lineage_gaps(node: node, lineage: lineage),
+      concat(readiness_centering_gaps(node: node),
+        concat(readiness_dispatch_gaps(node: node),
+          concat(readiness_contract_gaps(node: node),
+            readiness_dependency_gaps(unmet_parents: unmet_parents))))))
+}
+
+fn node_readiness(node: RoadmapNode, lineage: LineageWalk, unmet_parents: List<String>, merged: List<Int>) -> NodeReadiness {
+  let gaps = node_readiness_gaps(node: node, lineage: lineage, unmet_parents: unmet_parents, merged: merged)
+  if count(gaps) == 0 { ReadyToDispatch } else { NotReady { missing: gaps } }
+}
+
+fn readiness_is_dispatchable(r: NodeReadiness) -> Bool {
+  match r {
+    ReadyToDispatch => true
+    NotReady { missing: _ } => false
+  }
+}
+
+fn readiness_gap_is_contract(g: ReadinessGap) -> Bool {
+  match g {
+    GapContract { detail: _ } => true
+    GapSuperseded { by: _ } => false
+    GapAccepted => false
+    GapInReview => false
+    GapParent => false
+    GapRoot { detail: _ } => false
+    GapCentering => false
+    GapDispatch => false
+    GapNotAgentWork { mode: _ } => false
+    GapDependencies { blockers: _ } => false
+  }
+}
+
+// THE MINTING RULE: a derived "write the closing check" task exists exactly for a node whose only
+// gap is its contract. A node missing anything else -- a container with no centering, an unsized
+// row, an unrooted one -- mints nothing, so a stubbed project can never grow a closing-contract task.
+fn readiness_only_contract_missing(r: NodeReadiness) -> Bool {
+  match r {
+    ReadyToDispatch => false
+    NotReady { missing } => count(missing) == 1 && all(missing, g => readiness_gap_is_contract(g: g))
+  }
+}
+
+// THE MINTING RULE'S NODE-LOCAL NECESSARY CONDITION. Every gap readiness_only_contract_missing
+// can count is either node-local (state, centering, dispatch, contract) or read from the caller's
+// graph (lineage, dependencies), and a node whose only gap is its contract has, in particular, only
+// its contract among the node-local ones. So a caller asking the minting question over a population
+// may skip the lineage walk and the dependency read for a node this rules out; it does not decide
+// minting, node_readiness still does, for every node it admits.
+fn readiness_node_local_gaps(node: RoadmapNode, merged: List<Int>) -> List<ReadinessGap> {
+  concat(readiness_state_gaps(node: node, merged: merged),
+    concat(readiness_centering_gaps(node: node),
+      concat(readiness_dispatch_gaps(node: node), readiness_contract_gaps(node: node))))
+}
+
+fn readiness_may_be_only_contract_missing(node: RoadmapNode, merged: List<Int>) -> Bool {
+  let gaps = readiness_node_local_gaps(node: node, merged: merged)
+  count(gaps) == 1 && all(gaps, g => readiness_gap_is_contract(g: g))
+}
+
+fn readiness_gap_label(g: ReadinessGap) -> String {
+  match g {
+    GapSuperseded { by: _ } => "superseded"
+    GapAccepted => "accepted"
+    GapInReview => "in review"
+    GapParent => "parent"
+    GapRoot { detail: _ } => "root"
+    GapCentering => "centering"
+    GapDispatch => "dispatch binding"
+    GapContract { detail: _ } => "contract"
+    GapNotAgentWork { mode } => join(["not agent work (", non_agent_work_mode_label(mode: mode), ")"], "")
+    GapDependencies { blockers: _ } => "dependencies"
+  }
+}
+
+fn readiness_gap_reason(g: ReadinessGap) -> String {
+  match g {
+    GapSuperseded { by } => join(["superseded by ", by], "")
+    GapAccepted => "accepted: an acceptance closes this node"
+    GapInReview => "its implementation evidence is in review; acceptance, not a relaunch, is next"
+    GapParent => "no parent: the row declares no place in the decomposition"
+    GapRoot { detail } => detail
+    GapCentering => "no centering plan: the row supplies no plan for a worker"
+    GapDispatch => "no dispatch binding: a launch needs the repository the work happens in and the acceptance evidence it must return"
+    GapContract { detail } => detail
+    GapNotAgentWork { mode } => join([non_agent_work_mode_label(mode: mode), ": this work is not for an agent"], "")
+    GapDependencies { blockers } => join(["prerequisites not closed: ", join(blockers, ", ")], "")
+  }
+}
+
+fn readiness_missing_labels(r: NodeReadiness) -> List<String> {
+  match r {
+    ReadyToDispatch => []
+    NotReady { missing } => missing |> map(g => readiness_gap_label(g: g))
+  }
+}
+
+// The page's spelling of one gap: its label, plus the blockers for an open dependency, so a row
+// blocked on its prerequisites still names them.
+fn readiness_gap_display(g: ReadinessGap) -> String {
+  match g {
+    GapDependencies { blockers } => join(["dependencies (", join(blockers, ", "), ")"], "")
+    GapSuperseded { by: _ } => readiness_gap_label(g: g)
+    GapAccepted => readiness_gap_label(g: g)
+    GapInReview => readiness_gap_label(g: g)
+    GapParent => readiness_gap_label(g: g)
+    GapRoot { detail: _ } => readiness_gap_label(g: g)
+    GapCentering => readiness_gap_label(g: g)
+    GapDispatch => readiness_gap_label(g: g)
+    GapContract { detail: _ } => readiness_gap_label(g: g)
+    GapNotAgentWork { mode: _ } => readiness_gap_label(g: g)
+  }
+}
+
+// The page's one sentence for the value: "ready" or "not ready: missing centering, contract".
+fn readiness_text(r: NodeReadiness) -> String {
+  match r {
+    ReadyToDispatch => "ready"
+    NotReady { missing } => concat("not ready: missing ", join(missing |> map(g => readiness_gap_display(g: g)), ", "))
+  }
+}
+
+fn readiness_reason_text(r: NodeReadiness) -> String {
+  match r {
+    ReadyToDispatch => "every dispatch fact is present"
+    NotReady { missing } => join(missing |> map(g => readiness_gap_reason(g: g)), "; ")
+  }
+}

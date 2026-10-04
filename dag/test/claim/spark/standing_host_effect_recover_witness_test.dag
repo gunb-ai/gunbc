@@ -1,0 +1,57 @@
+module test.claim.spark.standing_host_effect_recover_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import std.measure { second }
+import product.placement_supply { HostIdentity }
+import product.capacity.event_chain { EventId }
+import gunbc.spark.pair_serving_authority_log { HostEffectRecord }
+import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, ClaimantAbandoned, ClaimantTerminated, parse_claimant_standing }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowOnMain, StandingGrantRowNotOnMain }
+import gunbc.spark.standing_host_effect_recover { recover_authority_causes, recover_claim_selection, RecoverClaimSelected, RecoverNoClaim, RecoverAmbiguous, recover_receipt }
+
+// ── THE STANDING RECOVERY, AT ITS INTERFACES (side-chat review of #13102) ─────────────────────────────
+
+fn w_rec(id: String, host: String, released: Bool) -> HostEffectRecord {
+  HostEffectRecord {
+    id: (id as NonEmptyStr) as EventId, host: host as HostIdentity, purpose: "a runtime image distribution" as NonEmptyStr,
+    executor: "srv1" as NonEmptyStr, recorded_at: 1791020503, term: second(count: 7200),
+    residue: HostEffectResidueSpec { process_pattern: "gunbc-vllm-image" as NonEmptyStr, container: none },
+    released: released,
+  }
+}
+
+// (1) AUTHORITY: only the operator-merged row authorizes; a row not on main refuses, whatever its scope.
+test fn w_a_grant_row_not_on_main_authorizes_no_recovery() -> Bool {
+  length(recover_authority_causes(host: "srv7" as HostIdentity, row: StandingGrantRowNotOnMain { cause: "the row differs from origin/main's" })) == 1
+    && length(recover_authority_causes(host: "srv7" as HostIdentity, row: StandingGrantRowOnMain)) == 0
+}
+
+// (2) ROSTER: a Group B host is outside the grant, on main or not.
+test fn w_a_host_outside_the_grant_roster_is_not_covered() -> Bool {
+  length(recover_authority_causes(host: "srv9" as HostIdentity, row: StandingGrantRowOnMain)) == 1
+    && length(recover_authority_causes(host: "srv5" as HostIdentity, row: StandingGrantRowOnMain)) == 0
+}
+
+// (3) EXACTLY ONE unreleased claim on the host is derived; none or several refuse, and several are listed.
+// Released claims and other hosts' claims never count.
+test fn w_exactly_one_unreleased_claim_is_selected_and_several_are_listed() -> Bool {
+  (match recover_claim_selection(host: "srv7" as HostIdentity, effects: [w_rec(id: "a", host: "srv7", released: true), w_rec(id: "b", host: "srv6", released: false)]) { RecoverNoClaim => true  _ => false })
+    && (match recover_claim_selection(host: "srv7" as HostIdentity, effects: [w_rec(id: "a", host: "srv7", released: true), w_rec(id: "d66e55c35176c445", host: "srv7", released: false)]) { RecoverClaimSelected { record: r } => (r.id as String) == "d66e55c35176c445"  _ => false })
+    && (match recover_claim_selection(host: "srv7" as HostIdentity, effects: [w_rec(id: "x", host: "srv7", released: false), w_rec(id: "y", host: "srv7", released: false)]) { RecoverAmbiguous { claims: cs } => length(cs) == 2 && any(cs, c => string_contains(s: c, pattern: "x")) && any(cs, c => string_contains(s: c, pattern: "y"))  _ => false })
+}
+
+// (4) and (5): the receipt binds the exact claim and carries the typed disposition; "quiet" is no
+// disposition at all, so it never parses into one.
+test fn w_the_receipt_binds_the_claim_and_the_disposition_is_typed() -> Bool {
+  string_contains(s: recover_receipt(r: w_rec(id: "d66e55c35176c445", host: "srv7", released: false), run_id: "37" as NonEmptyStr, standing: ClaimantAbandoned) as String, pattern: "claim d66e55c35176c445")
+    && string_contains(s: recover_receipt(r: w_rec(id: "d66e55c35176c445", host: "srv7", released: false), run_id: "37" as NonEmptyStr, standing: ClaimantAbandoned) as String, pattern: "claimant declared abandoned")
+    && (match parse_claimant_standing(wire: "quiet") { Present { value: _ } => false  Absent => true })
+    && (match parse_claimant_standing(wire: "terminated") { Present { value: ClaimantTerminated } => true  _ => false })
+}
+
+// COVERAGE IS SUBSET: one granted host is covered, a granted host plus an ungranted one is not.
+test fn w_one_granted_host_is_covered_and_an_ungranted_one_is_not() -> Bool {
+  length(recover_authority_causes(host: "srv7" as HostIdentity, row: StandingGrantRowOnMain)) == 0
+    && length(recover_authority_causes(host: "srv12" as HostIdentity, row: StandingGrantRowOnMain)) == 1
+}

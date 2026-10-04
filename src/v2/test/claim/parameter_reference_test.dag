@@ -38,12 +38,12 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import std.types { List }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.qualified_name {
@@ -100,7 +100,7 @@ fn pr_assemble(src: String) -> Outcome<ResolvedTree> {
 // resolved program, so the program is resolved once by a nullary producer the floor serves warm
 // (v2.workflow.floor_pure_producer_share), and each row reads only the portable values it inspects:
 // the parameter-reference paths, and the grounded and declared types at two paths.
-data pr_program_source: String = "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"
+data pr_program_source: String = "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn h(x: Int) -> Int {\n  let z = 1\n  z\n}\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"
 
 // Every parameter-reference path in the resolved program, in walk order; a refused program answers
 // Absent, which no row reads as "no parameter references".
@@ -143,10 +143,25 @@ test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool {
   })
 }
 
-// (2) A `let` NAMED LIKE A PARAMETER STILL BINDS LEXICALLY. h's body `x` is the let binder, so no
-// p.h.x is minted: had the ParameterFrame answered it, p.h.x would appear.
-test fn pr_let_shadowing_a_parameter_binds_lexically_holds() -> Bool {
-  pr_paths_hold(pred: fn(paths) { !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.h.x")) })
+// (2) A `let` NAMED LIKE A PARAMETER REFUSES, AT THE BINDER, BY REASON. A value binder may not hide an
+// enclosing binder (v2.compiler.resolve admit_value_binders, the value-shadowing ruling), so the question
+// this row first asked -- which frame answers a let that shadows a parameter -- has no accepted program to
+// ask it of. Its own source keeps that refusal out of the shared program every other row reads; h there
+// binds `z`, and its body reference is the lexical one (L1). Asserted by reason, so a program refused for
+// an unrelated cause cannot satisfy it.
+data pr_let_shadowing_source: String = "module p\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n"
+
+// The front end runs once, in a nullary producer the floor serves WARM (v2.workflow.floor_pure_producer_share),
+// and the row reads the decided reason: one front end is more than one claim's budget.
+fn pr_let_shadowing_reason() -> Symbol {
+  match pr_assemble(src: pr_let_shadowing_source) {
+    Accepted { value: _, diagnostics: _ } => ^pr_accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool {
+  pr_let_shadowing_reason() == ^resolve_reason_binder_hides_visible_value
 }
 
 // (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below k's body, so its frame is
@@ -195,14 +210,14 @@ fn pr_site_is_minted(site: NodeOccurrenceIdentity) -> Bool {
   }
 }
 
-// (L1) h's body `x` IS A LEXICAL REFERENCE ANSWERED BY THE `let`, recorded with the let binder's minted
+// (L1) h's body `z` IS A LEXICAL REFERENCE ANSWERED BY THE `let`, recorded with the let binder's minted
 // site and no declared type. Before the lexical carrier it was a bare atom and nothing recorded which
 // binder answered it, so this row reads Absent.
 test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool {
   match pr_program_lexical_reads() {
     Absent => false
     Present { value: reads } =>
-      match pr_lexical_read_of(reads: reads, label: ^x) {
+      match pr_lexical_read_of(reads: reads, label: ^z) {
         Present { value: r } =>
           match r.binding {
             Present { value: b } => pr_site_is_minted(site: b.binder_site) && (b.declared == Absent)
@@ -459,4 +474,27 @@ test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
       (g.f_grounded == g.f_declared) && (g.g_grounded == g.g_declared) && (g.f_grounded != g.g_grounded)
     Absent => false
   }
+}
+
+// (C) AN ORDINARY NAMED CALL WITH A POSITIONAL DEFICIT STILL REFUSES. The where-predicate frontier
+// (v2.compiler.infer infer_where_predicate_set_edge) leaves only predicate calls unjudged; this is the
+// discriminating control that the frontier did not widen to every named call. Asserted by reason, so a
+// program refused for an unrelated cause cannot satisfy it.
+data pr_named_call_deficit_source: String = "module p\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn u() -> Int {\n  g()\n}\n"
+
+// Same shape as row (2): one front end and one infer in a nullary WARM producer, read as the decided reason.
+// A refusal at resolve answers ^pr_resolve_refused, never the infer reason, so it cannot satisfy the row.
+fn pr_named_call_deficit_reason() -> Symbol {
+  match pr_assemble(src: pr_named_call_deficit_source) {
+    Rejected { diagnostics: _ } => ^pr_resolve_refused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => ^pr_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+  pr_named_call_deficit_reason() == ^application_positional_deficit
 }

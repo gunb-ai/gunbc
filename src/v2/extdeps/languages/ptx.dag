@@ -21,7 +21,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.cardinality { PositiveUpperBoundedNat }
 import v2.std.node { Symbol }
 
@@ -117,8 +117,8 @@ type ThreadCoord {
 }
 
 type PtxCost {
-  instruction_cost: v2.std.nat.Nat
-  occupancy_cost: v2.std.nat.Nat
+  instruction_cost: std.nat.Nat
+  occupancy_cost: std.nat.Nat
 }
 fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }

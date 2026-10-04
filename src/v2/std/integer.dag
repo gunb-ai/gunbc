@@ -5,7 +5,6 @@ import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, Ord
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.optional {
@@ -15,12 +14,12 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
-import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
+import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.machine {
   Byte,
   MachineWidth,
@@ -31,7 +30,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
+import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
@@ -1009,22 +1008,25 @@ fn int_sub(a: Int, b: Int) -> Int {
 
 fn int_eq(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
+    Less => false
     Equal => true
-    _ => false
+    Greater => false
   }
 }
 
 fn int_ne(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
+    Less => true
     Equal => false
-    _ => true
+    Greater => true
   }
 }
 
 fn int_lt(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
     Less => true
-    _ => false
+    Equal => false
+    Greater => false
   }
 }
 
@@ -1038,8 +1040,9 @@ fn int_le(a: Int, b: Int) -> Bool {
 
 fn int_gt(a: Int, b: Int) -> Bool {
   match int_compare(a: a, b: b) {
+    Less => false
+    Equal => false
     Greater => true
-    _ => false
   }
 }
 
@@ -1331,9 +1334,16 @@ fn integer_decimal_digit_from_tag_atom(id: Symbol) -> Optional<DecimalDigit> {
 
 fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit> {
   match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      integer_decimal_digit_from_tag_atom(id: id)
-    _ => optional_absent()
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: id } => integer_decimal_digit_from_tag_atom(id: id)
+        Conj => optional_absent()
+        Disj => optional_absent()
+        Arrow => optional_absent()
+        Cardinality => optional_absent()
+        Instantiation => optional_absent()
+      }
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 

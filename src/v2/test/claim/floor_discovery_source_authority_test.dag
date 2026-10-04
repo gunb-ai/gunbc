@@ -9,8 +9,8 @@ import v2.workflow.floor_discovery_source_authority {
   floor_discovery_finalize_source_outcomes
 }
 import v2.std.algebra { length }
-import v2.std.collection { List, fold_list }
-import std.types { Bool, String }
+import v2.std.collection { fold_list }
+import std.types { Bool, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

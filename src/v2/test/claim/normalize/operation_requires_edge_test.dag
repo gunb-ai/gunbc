@@ -18,7 +18,6 @@ import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tok
 import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label }
 import v2.std.integer { Int }
@@ -190,8 +189,8 @@ test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
 // decides over resolved members and the index; the members here are supplied as the declaration
 // references resolve produces for `N` and `m.N` -- one path under two labels -- and the index is the
 // census index of a module that declares N. The real route through normalize and resolve stays
-// exercised by a_requirement_naming_a_declared_resource_resolves_holds (a member resolving to a marked
-// resource path) and a_requirement_naming_a_record_refuses_located_RED, so supplying the members here
+// exercised by a_requirement_naming_a_declared_resource_resolves_at_resolve_holds (a member resolving to a marked
+// resource path) and a_requirement_naming_a_non_resource_refuses_at_resolve_RED, so supplying the members here
 // removes no execution of it.
 data resource_only_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\n"
 

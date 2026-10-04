@@ -21,7 +21,6 @@ import v2.test.claim.namespace_xl0.reference_conservation {
 }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 
@@ -107,9 +106,9 @@ test fn explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds(
 // each, and both claims red at it. The other operator shapes (a third chain operand, a prefix `!`
 // at body grain) do not reach this reader and stay admitted under the same edit, so these two are
 // the fixtures that stand over the arm.
-data operator_call_argument_source: String = "module v2.test.rc_operator_arg\n\nimport v2.std.logic { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_arg(p: Bool, rc_q: Bool) -> Bool { rc_callee(p && rc_q) }\n"
+data operator_call_argument_source: String = "module v2.test.rc_operator_arg\n\nimport std.types { Bool }\n\nfn rc_callee(probe: Bool) -> Bool { probe }\n\nfn rc_arg(p: Bool, rc_q: Bool) -> Bool { rc_callee(p && rc_q) }\n"
 
-data operator_if_arm_source: String = "module v2.test.rc_operator_branch\n\nimport v2.std.logic { Bool }\n\nfn rc_branch(p: Bool, rc_q: Bool) -> Bool { if p { p && rc_q } else { false } }\n"
+data operator_if_arm_source: String = "module v2.test.rc_operator_branch\n\nimport std.types { Bool }\n\nfn rc_branch(p: Bool, rc_q: Bool) -> Bool { if p { p && rc_q } else { false } }\n"
 
 test fn an_operator_expression_call_argument_is_admitted_holds() -> Bool {
   match conserved_normalize(subject: operator_call_argument_subject(), explained: no_explained_drops()) {
@@ -152,11 +151,11 @@ test fn removing_a_declared_explanation_reds_its_fixture_holds() -> Bool {
 
 // Membership is read off the file's own import declarations; these two sources differ only in
 // whether they import the body-lowering root, and each carries the statement let-binder drop.
-data scope_member_dropping_source: String = "module v2.test.rc_scope_member\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport v2.std.logic { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+data scope_member_dropping_source: String = "module v2.test.rc_scope_member\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
 
-data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\n\nimport v2.std.logic { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
+data scope_outsider_dropping_source: String = "module v2.test.rc_scope_outsider\n\nimport std.types { Bool }\n\nfn rc_let() -> Int {\n  let rc_bound = 1\n  rc_bound\n}\n"
 
-data scope_member_clean_source: String = "module v2.test.rc_scope_member_clean\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport v2.std.logic { Bool }\n\nfn rc_bare(c: Bool) -> Bool { c }\n"
+data scope_member_clean_source: String = "module v2.test.rc_scope_member_clean\n\nimport v2.compiler.body_lowering_fold { body_lower_operand_ref_optional }\nimport std.types { Bool }\n\nfn rc_bare(c: Bool) -> Bool { c }\n"
 
 test fn a_change_outside_body_lowering_is_a_typed_no_change_observation_holds() -> Bool {
   match changed_scope_observation_of_subjects(subjects: Cons { head: scope_outsider_dropping_subject(), tail: Empty }) {
@@ -218,7 +217,7 @@ fn scope_member_clean_subject() -> ReferenceConservationSubject {
 // keeps the operator, the call and the projected field, so every authored atom is accounted for.
 // Before the projection was lowered substrate the operand lowered to `p + rc_g(p)` and `rc_field`
 // was a dropped reference; a lowering that drops it again reds this.
-data call_projection_operand_source: String = "module v2.test.rc_call_projection\n\nimport v2.std.logic { Bool }\n\nfn rc_g(probe: Bool) -> Bool { probe }\n\nfn rc_proj(p: Bool) -> Bool { p + rc_g(p).rc_field }\n"
+data call_projection_operand_source: String = "module v2.test.rc_call_projection\n\nimport std.types { Bool }\n\nfn rc_g(probe: Bool) -> Bool { probe }\n\nfn rc_proj(p: Bool) -> Bool { p + rc_g(p).rc_field }\n"
 
 fn call_projection_operand_subject() -> ReferenceConservationSubject {
   conservation_subject_of_text(path: "rc_call_projection", text: call_projection_operand_source)

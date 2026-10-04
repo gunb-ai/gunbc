@@ -1,6 +1,6 @@
 module v2.std.live_read
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Diagnostic }
 
 // G2 call-reachability live-read classification

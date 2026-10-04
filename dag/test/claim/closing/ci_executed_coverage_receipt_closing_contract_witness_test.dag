@@ -1,0 +1,242 @@
+module test.claim.closing.ci_executed_coverage_receipt_closing_contract_witness_test
+
+import gunbc.merge_admission {
+  CoveredGateConclusion,
+  CheckCoverage,
+  CheckCoverageAbsent, CheckCoverageRunning, CheckCoverageStopped,
+  CheckCoverageComplete,
+  CheckCoverageAdmissionVerdict,
+  CheckCoverageAdmitted,
+  CheckCoverageDeniedAbsent, CheckCoverageDeniedRunning,
+  CheckCoverageDeniedStopped, CheckCoverageDeniedStale,
+  CheckCoverageDeniedHeadMismatch, CheckCoverageDeniedRosterMismatch,
+  CheckCoverageDeniedEmptyRequiredPopulation,
+  CheckCoverageDeniedDuplicateRequiredGate,
+  CheckCoverageDeniedExecutionCardinality,
+  CheckCoverageDeniedGateFailed,
+  classify_check_coverage_admission,
+  check_coverage_admits,
+}
+import extdeps.github.checks { Success, Failure }
+import std.types { CommitSha, Bool }
+import std.content_hash { ContentHash, content_hash_of_value }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RUNNABLE VERDICT FOR ROADMAP NODE ci-executed-coverage-receipt, one test fn per clause of
+// its red_control bar, each firing on a PLANTED input — a fixture constructed here, never a count
+// read from the live tree, because the point of a closing contract is that it discriminates. The
+// subject is gunbc.merge_admission's check-coverage classifier, the repository's admission
+// authority over a required check's executed population: a run reports the gates it executed
+// against an exact head and roster, and admission is decided from that report alone.
+//
+// CLAUSE 1 — a run whose executed population is zero refuses rather than reporting either pass or
+// fail: planted as a run that calls itself Complete against the exact subject but executed nothing
+// (empty conclusions over a nonempty required population), which must land in the cardinality
+// refusal carrying observed_count 0 — neither CheckCoverageAdmitted nor a gate-failure verdict —
+// and as a required population that is itself empty, which must land in
+// CheckCoverageDeniedEmptyRequiredPopulation.
+//
+// CLAUSE 2 — a failure ahead of the corpus is a different outcome from a corpus disagreement:
+// planted as a Stopped run whose completed slice contains a failed gate and whose corpus never
+// executed, which must stay in the stopped arm carrying the unexecuted population and its cause,
+// and as a Complete run whose corpus gate genuinely disagreed, which must land in the gate-failure
+// arm naming that gate. The two fixtures differ only in whether the corpus executed, and the
+// classifier must put them in different arms — the ahead-of-corpus failure must not borrow the
+// corpus's verdict.
+//
+// CLAUSE 3 — a check that cannot say what it executed does not count as having executed: planted
+// as Absent coverage (no statement of what executed at all) and as Running coverage (executing, so
+// nothing executed yet), both of which must refuse rather than read as green.
+//
+// The positive control beside them plants the one fixture every refusing classifier would also
+// refuse: a run that executed the whole population against the exact subject and found no
+// disagreement, which must admit.
+
+data required_head: CommitSha = "1111111111111111111111111111111111111111"
+data required_roster: ContentHash = content_hash_of_value(value: "ci-executed-coverage-required-roster")
+data gate_witnesses: ContentHash = content_hash_of_value(value: "ci-executed-coverage-gate-witnesses")
+data gate_corpus: ContentHash = content_hash_of_value(value: "ci-executed-coverage-gate-corpus")
+data required_gates: List<ContentHash> = [gate_witnesses, gate_corpus]
+
+fn passed(gate: ContentHash) -> CoveredGateConclusion {
+  CoveredGateConclusion { gate: gate, conclusion: Success }
+}
+
+fn failed(gate: ContentHash) -> CoveredGateConclusion {
+  CoveredGateConclusion { gate: gate, conclusion: Failure }
+}
+
+fn verdict_for(coverage: CheckCoverage, gates: List<ContentHash>) -> CheckCoverageAdmissionVerdict {
+  classify_check_coverage_admission(
+    coverage: coverage,
+    required_head: required_head,
+    required_roster: required_roster,
+    required_gates: gates,
+  )
+}
+
+test fn a_run_whose_executed_population_is_zero_refuses_rather_than_reporting_pass_or_fail() -> Bool {
+  match verdict_for(
+    coverage: CheckCoverageComplete {
+      head: required_head,
+      roster: required_roster,
+      conclusions: [],
+    },
+    gates: required_gates,
+  ) {
+    CheckCoverageDeniedExecutionCardinality { gate: g, observed_count: count } =>
+      count == 0 && g == gate_witnesses
+    CheckCoverageAdmitted => false
+    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+    && match verdict_for(
+      coverage: CheckCoverageComplete {
+        head: required_head,
+        roster: required_roster,
+        conclusions: [],
+      },
+      gates: [],
+    ) {
+      CheckCoverageDeniedEmptyRequiredPopulation => true
+      CheckCoverageAdmitted => false
+      CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+      CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+      CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+      CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+      CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+      CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+      CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+      CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+      CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+    }
+}
+
+test fn a_failure_ahead_of_the_corpus_is_a_different_outcome_from_a_corpus_disagreement() -> Bool {
+  let stopped = verdict_for(
+    coverage: CheckCoverageStopped {
+      head: required_head,
+      roster: required_roster,
+      completed: [failed(gate: gate_witnesses)],
+      unexecuted: [gate_corpus],
+      cause: "the build ahead of the corpus failed and stopped the run",
+    },
+    gates: required_gates,
+  )
+  let disagreed = verdict_for(
+    coverage: CheckCoverageComplete {
+      head: required_head,
+      roster: required_roster,
+      conclusions: [passed(gate: gate_witnesses), failed(gate: gate_corpus)],
+    },
+    gates: required_gates,
+  )
+  match stopped {
+    CheckCoverageDeniedStopped { completed, unexecuted, cause } =>
+      length(unexecuted) == 1
+        && unexecuted.first() == gate_corpus
+        && length(completed) == 1
+        && completed.first().gate == gate_witnesses
+        && cause == "the build ahead of the corpus failed and stopped the run"
+    CheckCoverageAdmitted => false
+    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+    && match disagreed {
+      CheckCoverageDeniedGateFailed { gate: g } => g == gate_corpus
+      CheckCoverageAdmitted => false
+      CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+      CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+      CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+      CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+      CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+      CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+      CheckCoverageDeniedEmptyRequiredPopulation => false
+      CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+      CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    }
+    && !check_coverage_admits(
+      coverage: CheckCoverageStopped {
+        head: required_head,
+        roster: required_roster,
+        completed: [failed(gate: gate_witnesses)],
+        unexecuted: [gate_corpus],
+        cause: "the build ahead of the corpus failed and stopped the run",
+      },
+      required_head: required_head,
+      required_roster: required_roster,
+      required_gates: required_gates,
+    )
+}
+
+test fn a_check_that_cannot_say_what_it_executed_does_not_count_as_having_executed() -> Bool {
+  match verdict_for(
+    coverage: CheckCoverageAbsent {
+      required_head: required_head,
+      required_roster: required_roster,
+    },
+    gates: required_gates,
+  ) {
+    CheckCoverageDeniedAbsent { required_head: h, required_roster: r } =>
+      h == required_head && r == required_roster
+    CheckCoverageAdmitted => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+    && !check_coverage_admits(
+      coverage: CheckCoverageRunning {
+        head: required_head,
+        roster: required_roster,
+        run: "run-still-executing",
+      },
+      required_head: required_head,
+      required_roster: required_roster,
+      required_gates: required_gates,
+    )
+}
+
+test fn a_run_that_executed_its_whole_population_and_found_no_disagreement_admits() -> Bool {
+  match verdict_for(
+    coverage: CheckCoverageComplete {
+      head: required_head,
+      roster: required_roster,
+      conclusions: [passed(gate: gate_witnesses), passed(gate: gate_corpus)],
+    },
+    gates: required_gates,
+  ) {
+    CheckCoverageAdmitted => true
+    CheckCoverageDeniedAbsent { required_head: _, required_roster: _ } => false
+    CheckCoverageDeniedRunning { head: _, roster: _, run: _ } => false
+    CheckCoverageDeniedStopped { head: _, roster: _, completed: _, unexecuted: _, cause: _ } => false
+    CheckCoverageDeniedStale { observed_head: _, required_head: _, observed_roster: _, required_roster: _ } => false
+    CheckCoverageDeniedHeadMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedRosterMismatch { observed: _, required: _ } => false
+    CheckCoverageDeniedEmptyRequiredPopulation => false
+    CheckCoverageDeniedDuplicateRequiredGate { gate: _ } => false
+    CheckCoverageDeniedExecutionCardinality { gate: _, observed_count: _ } => false
+    CheckCoverageDeniedGateFailed { gate: _, conclusion: _ } => false
+  }
+}

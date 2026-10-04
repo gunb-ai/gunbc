@@ -3,6 +3,13 @@ module gunbc.harness.harness_guidance
 import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.harness.harness_tool { HarnessTool, RunCommandTool, harness_tool_wire_name }
+import gunbc.roadmap.roadmap_submission {
+  submission_artifact_name, submission_schema, submission_text, submission_readiness_key,
+  WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
+}
+import gunbc.harness.harness_prompt_context {
+  PromptInput, AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_render,
+}
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -32,7 +39,7 @@ type HarnessWriteForm = HeredocWrite | InPlaceEdit
 
 type HarnessCapability = ReadTheTree | ChangeTheTree | CommitTheChange | PublishTheBranch | BuildOrTestOutsideTheProcess
 
-type HarnessCompletionTerm = FilesOnDiskDiffer | AcceptanceCheckPasses
+type HarnessCompletionTerm = FilesOnDiskDiffer | AcceptanceCheckPasses | SubmissionDeclared { artifact: String }
 
 // One premise is one clause. The test for whether it is atomic: its projection needs no conjunction.
 type HarnessPremise
@@ -49,6 +56,9 @@ type HarnessPremise
   | WorktreeAt { path: String }
   | TestProcessIs { command: String, receipt_path: String }
   | CompileProcessIs { command: String, receipt_path: String }
+  | IterationSelectsByPattern { grain: String }
+  | RunRebuildsOnTreeChange
+  | AcceptanceIsTheContractValidation
 
 // A premise the harness cannot point at is not a premise. The ref names the declaration the fact is
 // read from, so the roster below is auditable the same way any other citation in this corpus is.
@@ -63,8 +73,9 @@ type HarnessConclusion
   | VerifyWithTheTool
   | ReadingAloneCompletesNothing
   | ActBeforeTheRoundsRun { rounds: Int }
+  | RoundsEndInAlignmentCheck
   | ReRunForDroppedOutput { rounds: Int }
-  | TestWithTheProcess { command: String }
+  | IterateNarrowThenAccept { iterate: String }
 
 fn harness_role_text(role: HarnessAgentRole) -> String {
   match role {
@@ -100,14 +111,41 @@ fn harness_capability_text(capability: HarnessCapability) -> String {
     ChangeTheTree => "change the tree"
     CommitTheChange => "commit"
     PublishTheBranch => "publish the branch"
-    BuildOrTestOutsideTheProcess => "build or test any other way: no cargo, no gunbc compile, no claim_batch by hand -- the process below builds this tree once, shared with the verifier, under the host's build cap"
+    BuildOrTestOutsideTheProcess => "build or test any other way: no cargo, no gunbc compile, no claim_batch by hand -- the process below builds the compiler for this tree and reuses that build until the tree changes, under the host's build cap; the verifier does not share it, it runs its own compiler on your committed head"
   }
+}
+
+// THE SKELETON IS THE EMITTER'S OWN SERIALIZATION, so the text the worker copies is byte-for-byte
+// what submission_decode_document accepts -- the schema member with its exact value, the exact key
+// names, and the readiness vocabulary all projected, never re-spelled. Production receipt
+// (2026-09-21, attempts of shell-dag-cron-entry-line-builder and shell-dag-ci-fmt-gate-line):
+// workers wrote a plausible artifact with no schema member and a "known_limitations" key; every one
+// read SubmissionUndecodable, the belt swept preservation-only checkpoints, and no candidate ever
+// advanced. The placeholder values are instructions, not data -- only readiness carries a
+// vocabulary.
+fn submission_declaration_skeleton() -> String {
+  submission_text(submission: WorkerSubmission {
+    readiness: SubmissionReady,
+    explanation: "what you changed and how you verified it",
+    limitations: "what remains unverified or out of scope",
+  })
 }
 
 fn harness_completion_term_text(term: HarnessCompletionTerm) -> String {
   match term {
     FilesOnDiskDiffer => "the files on disk differ"
     AcceptanceCheckPasses => "the acceptance check passes"
+    SubmissionDeclared { artifact } =>
+      join([
+        "you have written ", artifact,
+        " at the worktree root declaring how the task ends. Its exact shape -- copy it verbatim and fill the two free-text values: ",
+        submission_declaration_skeleton(),
+        " . readiness is one of ",
+        submission_readiness_key(r: SubmissionReady), " | ",
+        submission_readiness_key(r: SubmissionBlocked), " | ",
+        submission_readiness_key(r: SubmissionNeedsContext),
+        ", and the schema member is required and exact: an artifact without it does not decode, an undecodable artifact is not a declaration, and the tree is then preserved as a checkpoint that never advances. Writing it is how you end the task -- the harness captures the tree as it stands then and binds your declaration to that capture. Ending without it is a yield, not a submission: your work is preserved as a checkpoint and never advances to authoritative verification",
+      ], "")
   }
 }
 
@@ -134,6 +172,12 @@ fn harness_premise_text(p: HarnessPremise) -> String {
       join(["The attempt worktree is ", path, ". Every file you read or change is under it; paths outside it, including the tree that holds the gunbc binary, are not part of this task."], "")
     CompileProcessIs { command, receipt_path } =>
       join(["To typecheck a change before testing it, run `", command, "`, naming an entry whose import closure includes the module you changed. It compiles the snapshot with the compiler built from this same tree and exits 0 only at zero blocking diagnostics; advisories are not the bar. Its outcome is written to ", receipt_path, ", and the compiler's own diagnostics are in the log that outcome names."], "")
+    IterationSelectsByPattern { grain } =>
+      join(["The test process runs only the witness modules its pattern selects, one claims run per module; `", grain, "` selects one module."], "")
+    RunRebuildsOnTreeChange =>
+      "Each run after you change any file builds the compiler again for the new tree; runs with no change in between reuse the build."
+    AcceptanceIsTheContractValidation =>
+      "The check that decides this task is the node's contract validation named in your brief, and the verifier runs it on your committed head; it is not the pattern you iterate with."
     TestProcessIs { command, receipt_path } =>
       join(["The canonical test process is one command: `", command, "`. Replace <package> with the directory under dag/test/claim that mirrors the modules you changed (the pattern is a bazel target pattern: //pkg/... for a subtree, //pkg:all for one package, //pkg:name for one module). It snapshots this worktree, builds it once, and runs the selected witness modules hermetically; it exits 0 only when every selected module ran green, and writes one row per module to ", receipt_path, "."], "")
   }
@@ -145,7 +189,15 @@ fn harness_premise_text(p: HarnessPremise) -> String {
 // nothing to infer.
 // THE TEST PROCESS IS NAMED, NOT DESCRIBED, for the same reason the worktree is: a worker told "run
 // the acceptance check" reached for cargo and its own gunbc compile, once per worker, into its own
-// target directory. The exact command is spelled by the process's own module (gunbc.compute.test_run
+// target directory. ITERATION AND ACCEPTANCE ARE TWO FACTS (operator ruling, 2026-09-30): the
+// pattern a worker iterates with is its choice and selects modules; the acceptance check is the
+// node's contract validation. The former conclusion fused them ("the acceptance command is X and
+// nothing else"), so workers iterated with the widest pattern and paid a compiler build per edit.
+// The scoped-iteration conclusion is derived from the three premises that make it true -- the
+// pattern selects modules, a changed tree rebuilds, and acceptance is the contract validation --
+// so deleting any of them removes the imperative. This is still guidance (mitigation, DESIGN §4b
+// rung 1); its climb is the harness refusing a whole-tree pattern and deriving the narrow pattern
+// from the diff's import closure. The exact command is spelled by the process's own module (gunbc.compute.test_run
 // test_process_command) so the prompt and the CLI cannot drift apart, and the withheld capability
 // makes any other route a stated violation rather than an inference.
 fn harness_worker_guidance_at(worktree: String, test_command: String, test_receipt_path: String, compile_command: String, compile_receipt_path: String) -> List<HarnessGroundedPremise> {
@@ -156,6 +208,12 @@ fn harness_worker_guidance_at(worktree: String, test_command: String, test_recei
              module_path: "gunbc.compute.test_run", decl_name: "compile_entry_cli"),
     grounded(premise: TestProcessIs { command: test_command, receipt_path: test_receipt_path },
              module_path: "gunbc.compute.test_run", decl_name: "test_pattern_cli"),
+    grounded(premise: IterationSelectsByPattern { grain: "//pkg:name" },
+             module_path: "gunbc.compute.test_selection", decl_name: "select_witness_files"),
+    grounded(premise: RunRebuildsOnTreeChange,
+             module_path: "gunbc.compute.work_request", decl_name: "work_identity"),
+    grounded(premise: AcceptanceIsTheContractValidation,
+             module_path: "gunbc.roadmap_execution_contract", decl_name: "validation_operation_command"),
     grounded(premise: CapabilityWithheld { capability: BuildOrTestOutsideTheProcess },
              module_path: "gunbc.compute.host_capacity", decl_name: "compute_reserve"),
   ])
@@ -173,13 +231,18 @@ fn harness_conclusion_text(c: HarnessConclusion) -> String {
         "So if ", to_string(value: n),
         " rounds will not cover both more investigation and the change, make the change now.",
       ], "")
+    RoundsEndInAlignmentCheck =>
+      "When this execution epoch reaches its round boundary, the harness returns control for an independent alignment checkpoint. This is not task completion or task failure. The workflow may resume the same lineage with guidance."
     ReRunForDroppedOutput { rounds: n } =>
       join([
         "So re-run a command if you need output from one of those ",
         to_string(value: n), " rounds.",
       ], "")
-    TestWithTheProcess { command } =>
-      join(["So the acceptance command is `", command, "` and nothing else; read its receipt, fix what it names, run it again."], "")
+    IterateNarrowThenAccept { iterate } =>
+      join([
+        "So iterate with `", iterate,
+        "` using the narrowest pattern that covers the witness modules for the declarations you changed and for the modules that import them (find those with grep -rln 'import <your.module>' dag src/v2). Run one pattern at a time, never //dag/test/claim/..., and batch your edits before each run because every run after an edit rebuilds. Read each receipt and fix what it names. Run the acceptance check named in your brief last, once, when the narrow runs are green.",
+      ], "")
   }
 }
 
@@ -198,6 +261,9 @@ fn premise_asserts_write_form(p: HarnessPremise) -> Bool {
     WorktreeAt { path: _ } => false
     TestProcessIs { command: _, receipt_path: _ } => false
     CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    RunRebuildsOnTreeChange => false
+    AcceptanceIsTheContractValidation => false
   }
 }
 
@@ -210,12 +276,15 @@ fn premise_requires_difference(p: HarnessPremise) -> Bool {
     ToolCanWriteBy { form: _ } => false
     CapabilityHeld { capability: _ } => false
     CapabilityWithheld { capability: _ } => false
-    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => true  AcceptanceCheckPasses => false }
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => true  AcceptanceCheckPasses => false  SubmissionDeclared { artifact: _ } => false }
     RoundsRemaining { rounds: _ } => false
     EarlierRoundsDropped { rounds: _ } => false
     WorktreeAt { path: _ } => false
     TestProcessIs { command: _, receipt_path: _ } => false
     CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    RunRebuildsOnTreeChange => false
+    AcceptanceIsTheContractValidation => false
   }
 }
 
@@ -228,12 +297,15 @@ fn premise_requires_acceptance(p: HarnessPremise) -> Bool {
     ToolCanWriteBy { form: _ } => false
     CapabilityHeld { capability: _ } => false
     CapabilityWithheld { capability: _ } => false
-    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => false  AcceptanceCheckPasses => true }
+    CompletionRequires { term: t } => match t { FilesOnDiskDiffer => false  AcceptanceCheckPasses => true  SubmissionDeclared { artifact: _ } => false }
     RoundsRemaining { rounds: _ } => false
     EarlierRoundsDropped { rounds: _ } => false
     WorktreeAt { path: _ } => false
     TestProcessIs { command: _, receipt_path: _ } => false
     CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    RunRebuildsOnTreeChange => false
+    AcceptanceIsTheContractValidation => false
   }
 }
 
@@ -252,6 +324,9 @@ fn premise_rounds_remaining(p: HarnessPremise) -> Int? {
     WorktreeAt { path: _ } => none
     TestProcessIs { command: _, receipt_path: _ } => none
     CompileProcessIs { command: _, receipt_path: _ } => none
+    IterationSelectsByPattern { grain: _ } => none
+    RunRebuildsOnTreeChange => none
+    AcceptanceIsTheContractValidation => none
   }
 }
 
@@ -270,11 +345,77 @@ fn premise_test_process_command(p: HarnessPremise) -> String? {
     WorktreeAt { path: _ } => none
     TestProcessIs { command, receipt_path: _ } => Present { value: command }
     CompileProcessIs { command: _, receipt_path: _ } => none
+    IterationSelectsByPattern { grain: _ } => none
+    RunRebuildsOnTreeChange => none
+    AcceptanceIsTheContractValidation => none
   }
 }
 
 fn first_test_process(rows: List<HarnessGroundedPremise>) -> String? {
   fold(rows, init: none, f: (acc, r) => match acc { Present { value: v } => Present { value: v }  Absent => premise_test_process_command(p: r.premise) })
+}
+
+fn premise_selects_by_pattern(p: HarnessPremise) -> Bool {
+  match p {
+    IterationSelectsByPattern { grain: _ } => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    RunRebuildsOnTreeChange => false
+    AcceptanceIsTheContractValidation => false
+  }
+}
+
+fn premise_rebuilds_on_change(p: HarnessPremise) -> Bool {
+  match p {
+    RunRebuildsOnTreeChange => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    AcceptanceIsTheContractValidation => false
+  }
+}
+
+fn premise_acceptance_is_contract(p: HarnessPremise) -> Bool {
+  match p {
+    AcceptanceIsTheContractValidation => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    RunRebuildsOnTreeChange => false
+  }
 }
 
 fn premise_rounds_dropped(p: HarnessPremise) -> Int? {
@@ -292,6 +433,9 @@ fn premise_rounds_dropped(p: HarnessPremise) -> Int? {
     WorktreeAt { path: _ } => none
     TestProcessIs { command: _, receipt_path: _ } => none
     CompileProcessIs { command: _, receipt_path: _ } => none
+    IterationSelectsByPattern { grain: _ } => none
+    RunRebuildsOnTreeChange => none
+    AcceptanceIsTheContractValidation => none
   }
 }
 
@@ -308,32 +452,86 @@ fn first_rounds(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Int
 
 // THE INFERENCE. Each conclusion names the premises that entail it, so removing a premise removes
 // the imperative rather than leaving a sentence telling the model to do something unsupported.
-fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusion> {
-  let writes = any_premise(rows: rows, f: premise_asserts_write_form)
-  let differs = any_premise(rows: rows, f: premise_requires_difference)
-  let accepts = any_premise(rows: rows, f: premise_requires_acceptance)
+// THE CONCLUSION'S EXACT GROUNDS (review 5358022153): a conclusion derived from two premise kinds
+// does not depend on the whole population, and recording every premise as grounds would make a
+// moved test-process premise invalidate the write-form conclusion it never fed. The node carries
+// the population it was actually derived from; the conclusion's text is a projection of the node,
+// never a second spelling.
+type HarnessConclusionNode {
+  conclusion: HarnessConclusion
+  grounds: List<DeclarationRef>
+}
+
+fn harness_conclusion_key(c: HarnessConclusion) -> String {
+  match c {
+    ChangeTheTreeWithTheTool => "change-the-tree-with-the-tool"
+    VerifyWithTheTool => "verify-with-the-tool"
+    ReadingAloneCompletesNothing => "reading-alone-completes-nothing"
+    ActBeforeTheRoundsRun { rounds: _ } => "act-before-the-rounds-run"
+    RoundsEndInAlignmentCheck => "rounds-end-in-alignment-check"
+    ReRunForDroppedOutput { rounds: _ } => "rerun-for-dropped-output"
+    IterateNarrowThenAccept { iterate: _ } => "iterate-narrow-then-accept"
+  }
+}
+
+fn harness_grounds_of(matching: List<HarnessGroundedPremise>) -> List<DeclarationRef> {
+  map(matching, r => r.grounds)
+}
+
+fn harness_conclusion_nodes(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusionNode> {
+  let write_rows = filter(rows, r => premise_asserts_write_form(p: r.premise))
+  let differ_rows = filter(rows, r => premise_requires_difference(p: r.premise))
+  let accept_rows = filter(rows, r => premise_requires_acceptance(p: r.premise))
+  let rounds_rows = filter(rows, r => match premise_rounds_remaining(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let dropped_rows = filter(rows, r => match premise_rounds_dropped(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let test_rows = filter(rows, r => match premise_test_process_command(p: r.premise) {
+    Present { value: _ } => true
+    Absent => false
+  })
+  let pattern_rows = filter(rows, r => premise_selects_by_pattern(p: r.premise))
+  let rebuild_rows = filter(rows, r => premise_rebuilds_on_change(p: r.premise))
+  let acceptance_is_rows = filter(rows, r => premise_acceptance_is_contract(p: r.premise))
+  let scoped = count(pattern_rows) > 0 && count(rebuild_rows) > 0 && count(acceptance_is_rows) > 0
+  let writes = count(write_rows) > 0
+  let differs = count(differ_rows) > 0
+  let accepts = count(accept_rows) > 0
   concat(
     concat(
-      if writes && differs { [ChangeTheTreeWithTheTool, ReadingAloneCompletesNothing] } else { [] },
-      if accepts { [VerifyWithTheTool] } else { [] },
+      if writes && differs {
+        [
+          HarnessConclusionNode { conclusion: ChangeTheTreeWithTheTool, grounds: harness_grounds_of(matching: concat(write_rows, differ_rows)) },
+          HarnessConclusionNode { conclusion: ReadingAloneCompletesNothing, grounds: harness_grounds_of(matching: concat(write_rows, differ_rows)) },
+        ]
+      } else { [] },
+      if accepts { [HarnessConclusionNode { conclusion: VerifyWithTheTool, grounds: harness_grounds_of(matching: accept_rows) }] } else { [] },
     ),
     concat(
       concat(
         match first_rounds(rows: rows, f: premise_rounds_remaining) {
-          Present { value: n } => [ActBeforeTheRoundsRun { rounds: n }]
+          Present { value: n } => [HarnessConclusionNode { conclusion: ActBeforeTheRoundsRun { rounds: n }, grounds: harness_grounds_of(matching: rounds_rows) }]
           Absent => []
         },
         match first_rounds(rows: rows, f: premise_rounds_dropped) {
-          Present { value: n } => [ReRunForDroppedOutput { rounds: n }]
+          Present { value: n } => [HarnessConclusionNode { conclusion: ReRunForDroppedOutput { rounds: n }, grounds: harness_grounds_of(matching: dropped_rows) }]
           Absent => []
         },
       ),
       match first_test_process(rows: rows) {
-        Present { value: c } => if accepts { [TestWithTheProcess { command: c }] } else { [] }
+        Present { value: c } => if accepts && scoped { [HarnessConclusionNode { conclusion: IterateNarrowThenAccept { iterate: c }, grounds: harness_grounds_of(matching: concat(concat(test_rows, accept_rows), concat(pattern_rows, concat(rebuild_rows, acceptance_is_rows)))) }] } else { [] }
         Absent => []
       },
     ),
   )
+}
+
+fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclusion> {
+  map(harness_conclusion_nodes(rows: rows), n => n.conclusion)
 }
 
 fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
@@ -344,6 +542,36 @@ fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
     ),
     " ",
   )
+}
+
+// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise
+// renders as a segment whose source names the declaration it is grounded on at the caller's source
+// revision; every conclusion renders as a segment whose source names the conclusion and its
+// grounds, so a retracted premise moves the conclusion's input digest with it. The prose above is
+// the render projection of exactly this population -- the parity witness
+// (test.claim.harness_guidance_test) pins that they cannot fork -- and the digests are what let a
+// later PromptPlan say precisely which guidance a worker was told.
+fn harness_guidance_segments(rows: List<HarnessGroundedPremise>, source_revision: String) -> List<PromptSegment> {
+  concat(
+    map(rows, r => prompt_segment_render(
+      purpose: "grounded premise",
+      source: AuthorityInput { declaration: r.grounds, revision: source_revision, required: true },
+      content: harness_premise_text(p: r.premise),
+    )),
+    map(harness_conclusion_nodes(rows: rows), n => prompt_segment_render(
+      purpose: "derived conclusion",
+      source: DerivedConclusionInput {
+        conclusion_key: harness_conclusion_key(c: n.conclusion),
+        grounds: n.grounds,
+        required: true,
+      },
+      content: harness_conclusion_text(c: n.conclusion),
+    )),
+  )
+}
+
+fn harness_guidance_prose_from_segments(segments: List<PromptSegment>) -> String {
+  join(map(segments, s => s.content), " ")
 }
 
 fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> HarnessGroundedPremise {
@@ -377,6 +605,8 @@ fn harness_worker_guidance() -> List<HarnessGroundedPremise> {
              module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_workflow_progress_for_attempt_ref"),
     grounded(premise: CompletionRequires { term: AcceptanceCheckPasses },
              module_path: "gunbc.roadmap_execution_contract", decl_name: "ValidationOperation"),
+    grounded(premise: CompletionRequires { term: SubmissionDeclared { artifact: submission_artifact_name as String } },
+             module_path: "gunbc.roadmap.roadmap_submission", decl_name: "submission_schema"),
     grounded(premise: CapabilityWithheld { capability: CommitTheChange },
              module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_publication_receipt_source"),
     grounded(premise: CapabilityWithheld { capability: PublishTheBranch },

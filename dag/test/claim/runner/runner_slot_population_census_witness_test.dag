@@ -1,8 +1,7 @@
 module test.claim.runner.runner_slot_population_census_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.host_axis_caps {
   CapRaiseBlockedIncompleteEvidence,
   CapRaiseAdmitted,

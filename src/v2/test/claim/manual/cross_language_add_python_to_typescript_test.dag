@@ -18,7 +18,6 @@ import v2.extdeps.languages.python {
 }
 import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
 
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.diagnostic {
   Accepted,

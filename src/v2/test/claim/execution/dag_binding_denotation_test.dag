@@ -17,7 +17,7 @@ import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.integer { Int, integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool, bool_node }
+import v2.std.logic { bool_node }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.optional { Absent, Present }
 

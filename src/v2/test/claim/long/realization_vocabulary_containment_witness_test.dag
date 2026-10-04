@@ -7,7 +7,6 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_live_leak_edges_from_facts,
   realization_vocab_roster_sound
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 

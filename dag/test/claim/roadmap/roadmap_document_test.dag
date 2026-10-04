@@ -24,6 +24,8 @@ fn audit_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -37,6 +39,8 @@ fn status_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 fn roadmap_document_child_node() -> RoadmapNode {
@@ -49,6 +53,8 @@ fn roadmap_document_child_node() -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 

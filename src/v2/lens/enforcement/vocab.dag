@@ -12,7 +12,7 @@ type ScopeRoster {
   roots: List<String>
 }
 
-type EnforcementMode = Advisory | AuditOnly | Blocking
+type EnforcementMode = AuditOnly | Blocking
 
 type ConsumerKind
   = EnrolledInFloorRoster | MergeAdmission | PrePushHook | PeriodicActuator
@@ -48,7 +48,6 @@ type ReceiptRef = HasReceiptRef { ref: String } | NoReceiptRef
 
 fn mode_rank(m: EnforcementMode) -> Int {
   match m {
-    Advisory => 1
     AuditOnly => 2
     Blocking => 3
   }

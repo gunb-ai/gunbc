@@ -1,5 +1,6 @@
 module v2.compiler.symbol_index_fill
 
+import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item }
@@ -18,7 +19,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Conj,
@@ -60,6 +60,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -160,6 +161,10 @@ fn symbol_index_mark_namespace_body_if(index: SymbolIndex, qualified_path: Quali
   }
 }
 
+// A SERVICE'S REALIZATION IS NOT A DECLARATION (XL-2 PR3a; v2.compiler.service_realization). Its root
+// is unspellable and its entries mirror the operation paths they realize, so indexing them would bind a
+// second path no source can name and that could only shadow or collide with the operation's own. The
+// subtree indexes nothing.
 fn symbol_index_fill_containment_edge(
   index: SymbolIndex,
   path: QualifiedName,
@@ -183,6 +188,8 @@ fn symbol_index_fill_containment_edge(
           path: path,
           node: edge.target
         )
+      } else if sym == realization_root_label() {
+        index
       } else {
         symbol_index_fill_declared_child(index: index, path: path, segment: sym, edge: edge)
       }

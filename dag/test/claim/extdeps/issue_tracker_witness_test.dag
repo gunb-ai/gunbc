@@ -1,0 +1,757 @@
+module test.claim.extdeps.issue_tracker_witness
+
+import extdeps.google.issue_tracker {
+  IssueActionAssign, IssueActionCreate, IssueActionMarkDuplicate, IssueActionStartWork,
+  Component, browse_component_tree,
+  IssueActionEnabled, IssueActionDisabled,
+  IssueButtonContainedPrimary, IssueButtonText,
+  issue_action_availability_wire,
+  issue_action_wire,
+  issue_button_idiom_wire,
+  Component,
+  ComponentRef,
+  Issue,
+  IssueComment,
+  IssuePriorityP1,
+  IssuePriorityP2,
+  IssuePriorityP3,
+  IssuePriorityP4,
+  IssuePriorityP0,
+  IssueRef,
+  IssueSeverityS1,
+  IssueSeverityS2,
+  IssueSeverityS3,
+  IssueSeverityS4,
+  IssueSeverityS0,
+  IssueStatusAccepted,
+  IssueStatusAssigned,
+  IssueStatusDuplicate,
+  IssueStatusFixed,
+  IssueStatusNew,
+  IssueStatusQueryOpen,
+  IssueStatusQueryStanding,
+  IssueStatusVerified,
+  IssueSubscription,
+  IssueSubscriptionCc,
+  IssueSubscriptionStar,
+  IssueSubscriptionUpvote,
+  Query,
+  QueryAssignee,
+  QueryStatus,
+  QueryText,
+  User,
+  cc_subscribers,
+  issue_priority_wire,
+  issue_ref_list_includes,
+  issue_severity_wire,
+  issue_status_is_open,
+  issue_status_wire,
+  issue_tracker_interface_version,
+  query_run,
+  stock_sidebar_roster,
+  view_assigned_to_me,
+  view_ccd_to_me,
+  view_collaborating,
+  view_reported_by_me,
+  view_starred_by_me,
+  view_to_be_verified,
+  view_upvoted_by_me,
+  IssueResultsColumn,
+  IssueResultsColumnKind,
+  IssueColumnPriority,
+  IssueColumnTitle,
+  IssueColumnAssignee,
+  IssueColumnStatus,
+  IssueColumnLastModified,
+  issue_results_columns,
+  issue_results_column_kind_wire,
+  issue_results_row_tracks,
+  issue_assignee_unassigned_display,
+  issue_results_assignee_display,
+  issue_assignee_input_is_email,
+}
+import std.types { list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any, filter }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE IS A DESIGNED SESSION SNAPSHOT, not a captured one: nine issues over three users'
+// worth of relations (two users, a three-node component tree, a blocking edge pair, one
+// duplicated issue), constructed so every stock view's expected subset is EXACT — each view claim
+// below pins the real sidebar roster's semantics by deriving the subset from the modeled
+// derivations and comparing identity lists. The subscription facts are the designed per-user
+// state; the issue resources' cc/stars/upvotes display fields are authored to agree with them and
+// claim w_cc_facts_mirror_issue_cc_field pins that agreement.
+
+data fixture_owner: User = User { email: "briansrls@gunb.ai" }
+
+data fixture_teammate: User = User { email: "teammate@gunb.ai" }
+
+data fixture_component_platforms_bmc: Component = Component {
+  id: 1001,
+  path: ["Platforms", "BMC"],
+}
+
+data fixture_component_platforms_bmc_thermal: Component = Component {
+  id: 1002,
+  path: ["Platforms", "BMC", "Thermal"],
+}
+
+data fixture_component_infrastructure_power: Component = Component {
+  id: 1003,
+  path: ["Infrastructure", "Power"],
+}
+
+data fixture_issue_101: Issue = Issue {
+  id: 101,
+  title: "srv2 BMC watchdog reset under load",
+  status: IssueStatusNew,
+  priority: IssuePriorityP1,
+  severity: IssueSeverityS1,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_owner,
+  cc: [],
+  stars: 1,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [IssueRef { id: 102 }],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-01T09:15:00Z",
+      author: fixture_owner,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-01T09:15:00Z",
+  modified: "2026-09-02T11:00:00Z",
+}
+
+data fixture_issue_102: Issue = Issue {
+  id: 102,
+  title: "Model the issue tracker interface in extdeps",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_owner },
+  reporter: fixture_teammate,
+  cc: [fixture_teammate],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [IssueRef { id: 101 }],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-03T14:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-03T14:00:00Z",
+  modified: "2026-09-04T10:30:00Z",
+}
+
+data fixture_issue_103: Issue = Issue {
+  id: 103,
+  title: "Verify fan tach telemetry on srv2",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS3,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 1,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-05T08:45:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-05T08:45:00Z",
+  modified: "2026-09-06T09:00:00Z",
+}
+
+data fixture_issue_104: Issue = Issue {
+  id: 104,
+  title: "Renew colo capacity lease",
+  status: IssueStatusNew,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 1,
+  component: ComponentRef { id: 1003 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-06T13:20:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-06T13:20:00Z",
+  modified: "2026-09-07T16:40:00Z",
+}
+
+data fixture_issue_105: Issue = Issue {
+  id: 105,
+  title: "Roadmap frontend issue table",
+  status: IssueStatusAccepted,
+  priority: IssuePriorityP1,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_owner },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-08T10:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-08T10:00:00Z",
+  modified: "2026-09-10T12:00:00Z",
+}
+
+data fixture_issue_106: Issue = Issue {
+  id: 106,
+  title: "Dashboard renders stale observed-at",
+  status: IssueStatusAssigned,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS4,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [fixture_owner],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [
+    IssueComment {
+      author: fixture_teammate,
+      body: "the page body hides how old the region render is",
+      created: "2026-09-11T09:30:00Z",
+    },
+  ],
+  history: [
+    {
+      at: "2026-09-11T09:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-11T09:00:00Z",
+  modified: "2026-09-11T09:30:00Z",
+}
+
+data fixture_issue_107: Issue = Issue {
+  id: 107,
+  title: "NBD proxy endpoint flake",
+  status: IssueStatusNew,
+  priority: IssuePriorityP3,
+  severity: IssueSeverityS3,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [],
+  comments: [
+    IssueComment {
+      author: fixture_owner,
+      body: "reproduced twice under parallel installs",
+      created: "2026-09-12T15:10:00Z",
+    },
+  ],
+  history: [
+    {
+      at: "2026-09-12T15:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+  ],
+  created: "2026-09-12T15:00:00Z",
+  modified: "2026-09-12T15:10:00Z",
+}
+
+data fixture_issue_108: Issue = Issue {
+  id: 108,
+  title: "Bootloader PXE config for srv2 fleet",
+  status: IssueStatusFixed,
+  priority: IssuePriorityP2,
+  severity: IssueSeverityS2,
+  assignee: Present { value: fixture_teammate },
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1001 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-13T10:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+    {
+      at: "2026-09-15T17:00:00Z",
+      author: fixture_teammate,
+      summary: "Status set to Fixed",
+    },
+  ],
+  created: "2026-09-13T10:00:00Z",
+  modified: "2026-09-15T17:00:00Z",
+}
+
+data fixture_issue_109: Issue = Issue {
+  id: 109,
+  title: "Fan tach telemetry duplicate",
+  status: IssueStatusDuplicate,
+  priority: IssuePriorityP4,
+  severity: IssueSeverityS4,
+  assignee: Absent,
+  reporter: fixture_teammate,
+  cc: [],
+  stars: 0,
+  upvotes: 0,
+  component: ComponentRef { id: 1002 },
+  blocking: [],
+  blocked_by: [],
+  comments: [],
+  history: [
+    {
+      at: "2026-09-14T11:00:00Z",
+      author: fixture_teammate,
+      summary: "Issue created",
+    },
+    {
+      at: "2026-09-16T09:00:00Z",
+      author: fixture_teammate,
+      summary: "Closed as duplicate of 103",
+    },
+  ],
+  created: "2026-09-14T11:00:00Z",
+  modified: "2026-09-16T09:00:00Z",
+}
+
+data fixture_issues: List<Issue> = [
+  fixture_issue_101,
+  fixture_issue_102,
+  fixture_issue_103,
+  fixture_issue_104,
+  fixture_issue_105,
+  fixture_issue_106,
+  fixture_issue_107,
+  fixture_issue_108,
+  fixture_issue_109,
+]
+
+// THE PER-USER SUBSCRIPTION FACTS the views derive from: the owner stars 103, upvotes 104, and is
+// cc'd on 106; the teammate stars 101 and is cc'd on 102. NOTHING about this state lives on the
+// issues themselves beyond the display fields the resource carries.
+data fixture_subscriptions: List<IssueSubscription> = [
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 103 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 104 }, kind: IssueSubscriptionUpvote },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 106 }, kind: IssueSubscriptionCc },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 102 }, kind: IssueSubscriptionCc },
+]
+
+fn issue_ids(issues: List<Issue>) -> List<Int> {
+  issues |> map(i => i.id)
+}
+
+fn w_roster_literal() -> List<String> {
+  [
+    "Assigned to me",
+    "Starred by me",
+    "Upvoted by me",
+    "CC'd to me",
+    "Collaborating",
+    "Reported by me",
+    "To be verified",
+    "Hotlists",
+    "Saved searches",
+    "Bookmark groups",
+    "Browse components",
+  ]
+}
+
+test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
+  let roster: List<String> = stock_sidebar_roster |> map(s => s as String)
+  roster == w_roster_literal()
+}
+
+// The interface version records the latest cited session PLUS the owner-directed vocabulary
+// additions (the version comment on the row says why); the 2026-09-24 bump carries the action
+// vocabulary, the 2026-09-25 bump the capture-verified assignee display rule. The pin keeps the
+// row from drifting back.
+test fn w_interface_version_cites_capture_date() -> Bool {
+  (issue_tracker_interface_version as String) == "2026-09-27"
+}
+
+test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
+  (issue_status_wire(status: IssueStatusNew) == "New")
+    && (issue_status_wire(status: IssueStatusAssigned) == "Assigned")
+    && (issue_status_wire(status: IssueStatusAccepted) == "Accepted")
+    && (issue_status_wire(status: IssueStatusFixed) == "Fixed")
+    && (issue_status_wire(status: IssueStatusVerified) == "Verified")
+    && (issue_status_wire(status: IssueStatusDuplicate) == "Duplicate")
+}
+
+test fn w_priority_and_severity_wire_labels_are_ui_spellings() -> Bool {
+  (issue_priority_wire(priority: IssuePriorityP0) == "P0")
+    && (issue_priority_wire(priority: IssuePriorityP1) == "P1")
+    && (issue_priority_wire(priority: IssuePriorityP2) == "P2")
+    && (issue_priority_wire(priority: IssuePriorityP3) == "P3")
+    && (issue_priority_wire(priority: IssuePriorityP4) == "P4")
+    && (issue_severity_wire(severity: IssueSeverityS0) == "S0")
+    && (issue_severity_wire(severity: IssueSeverityS1) == "S1")
+    && (issue_severity_wire(severity: IssueSeverityS2) == "S2")
+    && (issue_severity_wire(severity: IssueSeverityS3) == "S3")
+    && (issue_severity_wire(severity: IssueSeverityS4) == "S4")
+}
+
+test fn w_open_status_class_is_the_new_assigned_accepted_arms() -> Bool {
+  issue_status_is_open(status: IssueStatusNew)
+    && issue_status_is_open(status: IssueStatusAssigned)
+    && issue_status_is_open(status: IssueStatusAccepted)
+    && !issue_status_is_open(status: IssueStatusFixed)
+    && !issue_status_is_open(status: IssueStatusVerified)
+    && !issue_status_is_open(status: IssueStatusDuplicate)
+}
+
+test fn w_assigned_to_me_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_assigned_to_me(issues: fixture_issues, user: fixture_owner)) == [102, 105]
+}
+
+test fn w_starred_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [103]
+}
+
+test fn w_upvoted_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_upvoted_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [104]
+}
+
+test fn w_ccd_to_me_derives_the_exact_subset() -> Bool {
+  issue_ids(
+    issues: view_ccd_to_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+  ) == [106]
+}
+
+test fn w_collaborating_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_collaborating(issues: fixture_issues, user: fixture_owner)) == [107]
+}
+
+test fn w_reported_by_me_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_reported_by_me(issues: fixture_issues, user: fixture_owner)) == [101]
+}
+
+test fn w_to_be_verified_derives_the_exact_subset() -> Bool {
+  issue_ids(issues: view_to_be_verified(issues: fixture_issues)) == [108]
+}
+
+test fn w_views_take_the_user_as_a_parameter_not_a_hardcode() -> Bool {
+  (issue_ids(
+    issues: view_starred_by_me(issues: fixture_issues, user: fixture_teammate, subs: fixture_subscriptions)
+  ) == [101])
+    && (issue_ids(
+      issues: view_ccd_to_me(issues: fixture_issues, user: fixture_teammate, subs: fixture_subscriptions)
+    ) == [102])
+    && (issue_ids(issues: view_reported_by_me(issues: fixture_issues, user: fixture_teammate)) == [
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+    ])
+}
+
+type CcMirrorAcc {
+  ok: Bool
+}
+
+test fn w_cc_facts_mirror_issue_cc_field() -> Bool {
+  let acc = fold(fixture_issues, init: CcMirrorAcc { ok: true }, f: fn(a, i) {
+    CcMirrorAcc {
+      ok: a.ok && (cc_subscribers(subs: fixture_subscriptions, issue_id: i.id) == i.cc),
+    }
+  })
+  acc.ok
+}
+
+// THE OWNER'S REAL QUERY, AS THE FIXTURE-LEVEL CONTROL: `assignee:briansrls@gunb.ai status:open`
+// must match exactly the open issues assigned to that user and nothing else — issue 101 is
+// reported by the owner but not assigned to her; 108 is assigned to the teammate and fixed; 109
+// is a duplicate. Each is a different way the naive reading of the query goes wrong.
+test fn w_owner_assignee_open_query_matches_exactly_the_open_assigned_subset() -> Bool {
+  let q = Query {
+    terms: [
+      QueryAssignee { email: "briansrls@gunb.ai" },
+      QueryStatus { status: IssueStatusQueryOpen },
+    ],
+  }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [102, 105]
+}
+
+test fn w_query_standing_status_term_matches_that_status_alone() -> Bool {
+  let q = Query { terms: [QueryStatus { status: IssueStatusQueryStanding { status: IssueStatusFixed } }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [108]
+}
+
+test fn w_query_text_term_matches_title() -> Bool {
+  let q = Query { terms: [QueryText { text: "watchdog" }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [101]
+}
+
+test fn w_query_text_term_matches_comment_bodies() -> Bool {
+  let q = Query { terms: [QueryText { text: "parallel" }] }
+  issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [107]
+}
+
+test fn w_query_text_term_with_no_match_derives_nothing() -> Bool {
+  let q = Query { terms: [QueryText { text: "zzz-no-such-text-zzz" }] }
+  list_length(items: query_run(issues: fixture_issues, query: q)) == 0
+}
+
+// SUBSCRIPTION FACTS DRIVE THE DERIVATION, NOT THE ISSUE: adding the owner's star on 101 moves
+// 101 INTO Starred by me while the issue resource is untouched, and withdrawing the star on 103
+// moves 103 OUT. The views read the per-user facts; the issue does not carry its own membership.
+data fixture_subscriptions_owner_also_stars_101: List<IssueSubscription> = concat(
+  fixture_subscriptions,
+  [IssueSubscription { user: fixture_owner, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar }],
+)
+
+data fixture_subscriptions_owner_star_withdrawn: List<IssueSubscription> = [
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 104 }, kind: IssueSubscriptionUpvote },
+  IssueSubscription { user: fixture_owner, issue: IssueRef { id: 106 }, kind: IssueSubscriptionCc },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 101 }, kind: IssueSubscriptionStar },
+  IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 102 }, kind: IssueSubscriptionCc },
+]
+
+test fn w_star_subscription_change_moves_issue_between_views() -> Bool {
+  (issue_ids(
+    issues: view_starred_by_me(
+      issues: fixture_issues,
+      user: fixture_owner,
+      subs: fixture_subscriptions_owner_also_stars_101,
+    )
+  ) == [101, 103])
+    && (issue_ids(
+      issues: view_starred_by_me(
+        issues: fixture_issues,
+        user: fixture_owner,
+        subs: fixture_subscriptions_owner_star_withdrawn,
+      )
+    ) == [])
+    && (issue_ids(
+      issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+    ) == [103])
+}
+
+// RED CONTROL: an issue outside a view's derivation can never be satisfied into it. Issue 101 is
+// not starred by the owner — not in the view — and issue 109 is a duplicate with no relation to
+// the viewer at all, so it appears in NO stock view.
+test fn w_red_unstarred_issue_never_appears_in_starred_by_me() -> Bool {
+  !any(
+    issue_ids(
+      issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
+    ),
+    id => id == 101,
+  )
+}
+
+test fn w_red_duplicate_issue_appears_in_no_stock_view() -> Bool {
+  let all_view_memberships: List<List<Issue>> = [
+    view_assigned_to_me(issues: fixture_issues, user: fixture_owner),
+    view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_upvoted_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_ccd_to_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
+    view_collaborating(issues: fixture_issues, user: fixture_owner),
+    view_reported_by_me(issues: fixture_issues, user: fixture_owner),
+    view_to_be_verified(issues: fixture_issues),
+  ]
+  let every_membership_id = fold(all_view_memberships, init: [], f: fn(acc, view) {
+    concat(acc, issue_ids(issues: view))
+  })
+  !any(every_membership_id, id => id == 109)
+}
+
+test fn w_blocking_edges_are_symmetric_in_the_fixture() -> Bool {
+  issue_ref_list_includes(refs: fixture_issue_101.blocked_by, id: 102)
+    && issue_ref_list_includes(refs: fixture_issue_102.blocking, id: 101)
+    && !issue_ref_list_includes(refs: fixture_issue_103.blocked_by, id: 101)
+    && !issue_ref_list_includes(refs: fixture_issue_101.blocking, id: 102)
+}
+
+// THE ACTION VOCABULARY (owner directive 2026-09-24): the issue's actions and the product's
+// button idioms, carried with the same citation discipline as the rest of the interface. The
+// Assign wire label is the UI spelling our dispatch surface wears (dispatch = assignment is a
+// workflow mapping, not an interface fact); Create Issue is the capture-verified shell label;
+// the contained-primary / text idioms and the disabled (never hidden) unavailability idiom are
+// the product's button language. The interface version row records the addition.
+test fn w_issue_action_wire_labels() -> Bool {
+  issue_action_wire(kind: IssueActionAssign) == "Assign"
+    && issue_action_wire(kind: IssueActionCreate) == "Create Issue"
+    && issue_action_wire(kind: IssueActionMarkDuplicate) == "Mark as duplicate"
+}
+
+test fn w_issue_button_idiom_wires() -> Bool {
+  issue_button_idiom_wire(idiom: IssueButtonContainedPrimary) == "contained-primary"
+    && issue_button_idiom_wire(idiom: IssueButtonText) == "text"
+}
+
+test fn w_issue_action_availability_wires() -> Bool {
+  issue_action_availability_wire(a: IssueActionEnabled) == "enabled"
+    && issue_action_availability_wire(a: IssueActionDisabled) == "disabled"
+}
+
+// THE FLEET COMPONENT TREE (owner ruling 2026-09-24): srv1..srv12 as component paths, the spark
+// group A/B arms as sub-components — group A on srv5..srv8, group B on srv9..srv12 per the fleet
+// observation's cages. The browse-components view derives its walk from the paths: parents before
+// children, each component exactly once, sub-components at their depth.
+test fn w_issue_action_start_work_wire() -> Bool {
+  issue_action_wire(kind: IssueActionStartWork) == "Start Work"
+}
+
+// THE ASSIGNEE DISPLAY RULE (owner ruling 2026-09-25, "copy the UI semantics of assigned/etc from
+// buganizer"): the results row's ASSIGNEE cell renders the identity as PLAIN TEXT — no chip, no
+// button, no link — and an unassigned issue renders the capture-verified "--" placeholder
+// (34 of the 50 saved rows in /home/briansrls/chromium-565764076/ "test - Chromium.html"; the
+// populated cells did not load in the artifact, so the pin states the placeholder and the
+// plain-text rule, not the populated spelling). RED CONTROL: an empty string is not the
+// placeholder, and the placeholder is not an email.
+test fn w_assignee_results_display_is_plain_text_with_verified_placeholder() -> Bool {
+  issue_results_assignee_display(assignee: Present { value: fixture_owner }) == "briansrls@gunb.ai"
+    && issue_results_assignee_display(assignee: Absent) == "--"
+    && (issue_assignee_unassigned_display as String) == "--"
+}
+
+// THE RESULTS-TABLE ROSTER (owner ruling 2026-09-24, the derivation law): the column set, the
+// header spellings, the row anatomy, and the grid template are DECLARED in this model and every
+// surface derives from them. This pin states the served roster IS the capture's amended by the
+// 2026-09-25 ruling ("the title is the link — drop the ID column") and the D VIEWS retirement
+// (same date: a view counter, not dependencies): the capture's anatomy P · TYPE · TITLE ·
+// ASSIGNEE · STATUS · D VIEWS · ID · LAST MODIFIED (transcribed VERBATIM from
+// /home/briansrls/chromium-565764076/ "test - Chromium.html", 50 live rows, verified 2026-09-24 —
+// docs/plans/buganizer-visual-contract.md §Issue-row anatomy) minus the two retired columns; the
+// TITLE cell carries the detail link now.
+test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool {
+  let wires = map(issue_results_columns, c =>
+    join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
+  count(issue_results_columns) == 5
+    && (match wires.first() { Present { value: w } => w == "priority:P", Absent => false })
+    && (match wires.skip(n: 1).first() { Present { value: w } => w == "title:TITLE", Absent => false })
+    && (match wires.skip(n: 2).first() { Present { value: w } => w == "assignee:ASSIGNEE", Absent => false })
+    && (match wires.skip(n: 3).first() { Present { value: w } => w == "status:STATUS", Absent => false })
+    && (match wires.skip(n: 4).first() { Present { value: w } => w == "last-modified:LAST MODIFIED", Absent => false })
+}
+
+// One track per served column, with no TYPE or project-only count slot. Fixed short
+// tracks keep geometry stable across filtering; TITLE retains the dominant share.
+test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
+  issue_results_row_tracks() == "4ch minmax(0, 2fr) 9ch minmax(0, 1fr) 12ch"
+    && count(issue_results_columns) == 5
+}
+
+// THE FILTER-STABILITY LAW, the owner complaint's structural answer ("the size of columns is not
+// stable when i click thru all -> active -> ready -> upcoming"): the template is ONE FIXED
+// STRING regardless of which band population renders — the function takes no population at all,
+// so no filtered row set can re-measure a track. RED DIRECTION: reintroducing a max-content
+// track (or taking a population) moves this pin.
+test fn w_issue_results_tracks_take_no_population_and_never_re_measures() -> Bool {
+  let all = issue_results_row_tracks()
+  let active_only = issue_results_row_tracks()
+  let ready_only = issue_results_row_tracks()
+  all == active_only
+    && all == ready_only
+    && !string_contains(s: all, pattern: "max-content")
+    && count(split(s: all, delimiter: "minmax(0, 2fr)")) == 2
+    && count(split(s: all, delimiter: "minmax(0, 1fr)")) == 2
+}
+
+// TITLE IS THE PRIMARY COLUMN: the dominant flexible share is TITLE's and TITLE's alone — the
+// 2fr weight sits on the title track, the 1fr on status, in roster order.
+test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool {
+  let title_track = match (filter(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "title")).first() {
+    Present { value: c } => c.track as String
+    Absent => ""
+  }
+  let status_track = match (filter(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "status")).first() {
+    Present { value: c } => c.track as String
+    Absent => ""
+  }
+  title_track == "minmax(0, 2fr)" && status_track == "minmax(0, 1fr)"
+}
+
+
+// THE AVATAR RESOLUTION CHAIN, in its ruled order — internal profile → directory → cached →
+// initials — with UNREAD degraded (initials, honestly reported) and ABSENT the all-miss floor. The
+// never-blocks law: EVERY standing renders initials or an image, so assignment, comments and
+// rendering never wait on a probe.
+test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool {
+  let from_internal = avatar_resolve(probe_internal: AvatarProbeHit, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeMiss)
+  let from_directory = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeHit, probe_cache: AvatarProbeHit)
+  let from_cache = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeHit)
+  let unread_beats_later_hits = avatar_resolve(probe_internal: AvatarProbeUnread, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeHit)
+  let all_miss = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeMiss)
+  (match from_internal { AvatarResolution { standing: AvatarResolved, source: AvatarFromInternalProfile } => true  _ => false })
+    && (match from_directory { AvatarResolution { standing: AvatarResolved, source: AvatarFromGoogleDirectory } => true  _ => false })
+    && (match from_cache { AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior } => true  _ => false })
+    && (match unread_beats_later_hits { AvatarResolution { standing: AvatarResolved, source: AvatarFromCachedPrior } => true  _ => false })
+    && (match all_miss { AvatarResolution { standing: AvatarAbsent, source: AvatarFromInitials } => true  _ => false })
+    && avatar_initial_fallback(a: AvatarAbsent)
+    && avatar_initial_fallback(a: AvatarUnread)
+    && !avatar_initial_fallback(a: AvatarResolved)
+    && avatar_initials_of(display_name: "Brian Searls") == "BS"
+    && avatar_initials_of(display_name: "Fabric") == "F"
+    && avatar_initials_of(display_name: "ops") == "o"
+}
+
+// THE SELECTOR'S SHAPE VALIDATION, what remains at the interface after the ruling reshaped the
+// principal model: an email spelling (one @, a non-empty local part, a dotted domain, no
+// whitespace) is a well-formed selector; empty and malformed strings are not. (What a selector
+// RESOLVES to is the identity authority's question — gunbc.principal_projection + the A9 directory
+// — never this module's.)
+test fn w_assignee_selector_shape_validation() -> Bool {
+  issue_assignee_input_is_email(s: "briansrls@gunb.ai")
+    && issue_assignee_input_is_email(s: "  briansrls@gunb.ai  ")
+    && !issue_assignee_input_is_email(s: "")
+    && !issue_assignee_input_is_email(s: "not-an-email")
+    && !issue_assignee_input_is_email(s: "a@b")
+    && !issue_assignee_input_is_email(s: "@gunb.ai")
+    && !issue_assignee_input_is_email(s: "two@at@gunb.ai")
+    && !issue_assignee_input_is_email(s: "has space@gunb.ai")
+}

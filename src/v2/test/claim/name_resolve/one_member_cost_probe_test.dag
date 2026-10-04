@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   ResolutionSubject,
   resolve_with_admission
 }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree }
@@ -24,7 +24,6 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
@@ -71,7 +70,7 @@ fn probe_one_member_qn() -> QualifiedName {
 
 fn probe_roots_for_export(export_sym: Symbol) -> Outcome<FreeMonoid<NormalizedTree>> {
   bind_outcome(
-    o: admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), 
+    o: admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), 
       test_markers: test_marker_channel_empty(),
       root: probe_one_member_root_export(export_sym: export_sym),
       diagnostics: None

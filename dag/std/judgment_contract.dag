@@ -69,14 +69,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract
 // artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT
 // (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door
-// — it is unrepresentable in the request. FIRST NAMED CONSUMER TARGET:
-// extdeps.realization.resolved_graph's disk-hit refusal
-// (resolved_graph_cache_faithful_probe_support_dissolve_trigger) — the modeled disk probe is
-// intentionally not entered on v1 because the cache format still exposes only the whole payload
-// digest and payload byte count, not per-output digests or byte sizes for
-// resolved_graph/source_indices; the transport refuses faithfully before provider_serve and
-// dissolves when the artifact FORMAT_VERSION persists those faithful parts so the probe can be
-// constructed through the interpreter instead of by fabrication.
+// — it is unrepresentable in the request. The first consumer target named here was the v1
+// resolved-graph disk-hit refusal; that disk tier was deleted on 2026-10-03 (it wrote nothing and
+// served no hit), so no production consumer of this contract exists in the seed today.
 
 // Declared-input order is part of the key: declared_inputs_digest folds in list order, so the
 // REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field

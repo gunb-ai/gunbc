@@ -5,6 +5,9 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding
 }
 import std.disposition { SingleAuthority }
+import v2.lens.enforcement.contract { EnrollmentDiscoveryReceipt, LensContract }
+import v2.lens.enforcement.standing_intent { StandingIntent }
+import v2.std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -204,6 +207,4 @@ test fn consumer_requirement_discriminates() -> Bool {
 test fn enforcement_mode_order_discriminates() -> Bool {
   return !enforcement_mode_satisfies(actual: AuditOnly, required: v2.lens.enforcement.vocab.Blocking)
     && enforcement_mode_satisfies(actual: v2.lens.enforcement.vocab.Blocking, required: AuditOnly)
-    && !enforcement_mode_satisfies(actual: Advisory, required: AuditOnly)
-    && enforcement_mode_satisfies(actual: AuditOnly, required: Advisory)
 }

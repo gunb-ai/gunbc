@@ -795,7 +795,7 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
         RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,
@@ -1098,7 +1098,22 @@ impl Verdict {
         if let Some(message) = self.message {
             eprintln!("{message}");
         }
-        std::process::exit(self.status);
+        // THE PROCESS ENDS WITHOUT RUNNING EXIT-TIME DESTRUCTORS. `std::process::exit` calls libc
+        // `exit`, which runs this thread's thread-local destructors -- the interpreter's corpus-wide
+        // memos and caches -- before the process can end. Measured on the mtcollins1 SOL notice
+        // watcher (run 37102391062): 11.7 s between this line and the process ending under
+        // `exit`, 1.5 s under `_exit` (the remainder is the kernel reclaiming the address space).
+        // Nothing reads that memory after the verdict, and no thread-local or atexit hook on these
+        // paths holds a file, child, lock or lease, so the only work skipped is freeing memory the
+        // kernel reclaims anyway. Both standard streams are flushed first, because `_exit` does not.
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            let _ = std::io::stderr().flush();
+        }
+        // SAFETY: `_exit` takes any int and does not return; no Rust invariant depends on code
+        // after this point running.
+        unsafe { libc::_exit(self.status) }
     }
 }
 
@@ -1319,6 +1334,16 @@ fn run_verb(
     if verdict.status != 0 {
         verdict.message = Some(failures.join("\n"));
     }
+    // THE VERDICT IS DECIDED, SO NOTHING IS FREED. `Verdict::apply` ends the process and the OS
+    // reclaims the loaded corpus whole; dropping it here first walked its Rc/Value graph (~6.6 GB
+    // RSS) AFTER the answer was known. Measured on the mtcollins1 SOL notice watcher, whose step
+    // trap bounds it by its exit (10 s allowance; run 37102391062 went red on it): 27 s from the
+    // decided verdict to process end before this change, 12.9 s with only this forget, ~1.5 s
+    // with the `_exit` in `Verdict::apply` as well. Nothing either value owns does work in Drop:
+    // every effect is performed synchronously during evaluation, and InterpContext holds only
+    // in-memory caches.
+    std::mem::forget(ctx);
+    std::mem::forget(graph);
     verdict
 }
 

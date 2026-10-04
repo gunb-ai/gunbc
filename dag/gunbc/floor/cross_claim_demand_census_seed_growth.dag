@@ -17,17 +17,17 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // population its own repair roster is enrolled from, so candidates were discovered when a per-claim
 // budget refusal landed on an unrelated lane's pull request. This artifact names the next candidate
 // instead.
+// (CROSS_CLAIM_DEMAND was a thread_local! store: macro-declared,
+//  gunbc.rust_item_scan MacroScope cannot name them at item grain, so they carry no citation here; a changed line inside the block refuses unattributed instead.)
 data cross_claim_demand_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimDemandRow", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimDemandKey", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimDemandCell", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimDemandCensus", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_DEMAND", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_DEMAND_RETENTION_FLOOR_NS", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_DEMAND_KEY_CAP", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_DEMAND_MODULE_SAMPLE_CAP", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_demand_args_hash", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_demand_absorb_one", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "absorb_claim_recompute_demand", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_demand_rows", field: WholeDeclaration },

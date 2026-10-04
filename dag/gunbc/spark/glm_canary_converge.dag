@@ -6,6 +6,7 @@ import std.measure { TokenCount, token_count, token_count_value, byte_size_count
 import extdeps.vllm.engine_args {
   VllmMemoryRequest, VllmPrefixCachingRequest, PrefixCachingOmitted,
   vllm_memory_request_argv, vllm_prefix_caching_argv,
+  KvFp8,
 }
 import extdeps.vllm.runtime_defaults {
   defaults_source_revision, vllm_runtime_defaults_for,
@@ -22,7 +23,7 @@ import gunbc.spark.serving_deployment_selection {
   DeploymentCandidate, deployment_candidate, TopologyShape, topology_shape,
   ServingDecisionParameters, serving_decision_parameters,
   ServingExecutionProfile, execution_profile_of,
-  ExecutorProfile, ExecutorMpProfile, KvLayoutPolicy, KvFp8Layout,
+  ExecutorProfile, ExecutorMpProfile,
   SpeculativePolicy, SpeculationOff, SpeculationOn,
   RuntimeRevision, runtime_revision, artifact_glm_53_flash_2bit,
 }
@@ -447,7 +448,7 @@ fn glm_canary_parameters(arm: GlmCanaryArm) -> ServingDecisionParameters? {
           max_num_batched_tokens: glm_canary_batched_token_count(p: arm.max_num_batched_tokens),
           max_num_seqs: glm_canary_seq_bound(b: arm.max_num_seqs),
           executor: ExecutorMpProfile,
-          kv_layout: KvFp8Layout,
+          kv_cache_dtype: KvFp8,
           speculative: glm_canary_speculative_policy(p: arm.speculation),
           runtime: runtime_revision(
             image: runtime_artifact_wire(a: rrow.artifact),

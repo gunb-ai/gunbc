@@ -1009,7 +1009,7 @@ fn witness_cost_seed_timed_out_event(
 // that, and it defeats it silently, because no citation is checked. A move keeps the name.
 data gunbc_ci_fast_lane_witness_eval_budget: Second = second(count: 5)
 
-fn gunbc_ci_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
+fn gunbc_ci_fast_lane_eval_budget_ms() -> std.nat.Nat {
   second_count(s: gunbc_ci_fast_lane_witness_eval_budget) * 1000
 }
 

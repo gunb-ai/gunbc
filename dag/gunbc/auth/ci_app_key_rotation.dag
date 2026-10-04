@@ -3,7 +3,17 @@ module gunbc.auth.ci_app_key_rotation
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileRead,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  filesystem_established_absence_detail,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import extdeps.cloud.gcp.secret_ref {
   SecretRef, secret_ref_version_resource,
@@ -145,6 +155,8 @@ type AppKeyVersionRefusal
   | AppKeyVersionSelectorIsAlias
   | AppKeyVersionSelectorNotANumber { supplied: String }
   | AppKeyMintObservationAbsent { cause: NonEmptyStr }
+  | AppKeyMintObservationMissing { cause: NonEmptyStr }
+  | AppKeyMintObservationUnreadable { cause: NonEmptyStr }
   | AppKeyVersionUnreadable { http_status: String }
   | AppKeyResolvedVersionUndecodable { cause: SmResolvedVersionIdentityRefusal }
   | AppKeyResolvedVersionDiffers { requested: String, resolved: String }
@@ -306,6 +318,10 @@ fn app_key_refusal_text(cause: AppKeyVersionRefusal) -> String {
       join(["AppKeyVersionSelectorNotANumber: '", s, "' is not a Secret Manager version number"], "")
     AppKeyMintObservationAbsent { cause: c } =>
       concat("AppKeyMintObservationAbsent: ", c as String)
+    AppKeyMintObservationMissing { cause: c } =>
+      concat("AppKeyMintObservationMissing: ", concat(c as String, ": the mint step was to write an observation record at the supplied path but no record is there; re-run the mint step and check it reported success"))
+    AppKeyMintObservationUnreadable { cause: c } =>
+      concat("AppKeyMintObservationUnreadable: ", concat(c as String, ": the observation record's content could not be obtained from the supplied path, which is a different failure from there being no record; inspect the record path and its permissions"))
     AppKeyVersionUnreadable { http_status: s } =>
       join([
         "AppKeyVersionUnreadable: Secret Manager answered HTTP ", s,
@@ -381,17 +397,41 @@ fn env_or_empty(name: NonEmptyStr) -> String {
   }
 }
 
-fn observe_app_key_mint_record() -> AppKeyMintObservation? {
+// The record read is a typed outcome, never a silently defaulted value (DESIGN §5). The facts a
+// supplied record path can produce are kept apart: the record is absent (the directory listing
+// establishes that nothing is there -- the mint step wrote no record), the record's content could
+// not be obtained (a refused read establishes nothing about existence by itself), and the record
+// decoded. The presence claim is only ever licensed by #12982's observation authority, never
+// inferred from a failed read -- DP-M5's defect is mirrored here if a refused read is allowed to
+// speak about what exists.
+type AppKeyMintRecordRead
+  = AppKeyMintRecordDecoded { observation: AppKeyMintObservation }
+  | AppKeyMintRecordMissing { cause: NonEmptyStr }
+  | AppKeyMintRecordUnread { cause: NonEmptyStr }
+
+fn app_key_mint_record_from_observation(observation: FilesystemFileObservation) -> AppKeyMintRecordRead {
+  match observation {
+    FilesystemFileRead { path: _, content: content } =>
+      AppKeyMintRecordDecoded { observation: decode_app_key_mint_record(record: content) }
+    FilesystemFileAbsent(absence) =>
+      AppKeyMintRecordMissing {
+        cause: concat("the record path was supplied but ", filesystem_established_absence_detail(absence: absence)) as NonEmptyStr,
+      }
+    FilesystemFileIndeterminate { cause: c } =>
+      AppKeyMintRecordUnread { cause: c as NonEmptyStr }
+    FilesystemFileObservationsDisagree { path: _, cause: c } =>
+      AppKeyMintRecordUnread { cause: c as NonEmptyStr }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      AppKeyMintRecordUnread { cause: concat("the record path was refused before any filesystem call ran: ", c) as NonEmptyStr }
+  }
+}
+
+fn observe_app_key_mint_record() -> AppKeyMintRecordRead? {
   let path = env_or_empty(name: app_key_verify_record_env_name)
   if path == "" {
     none
   } else {
-    let read = Filesystem.Read(path: path)
-    if !read.success {
-      none
-    } else {
-      Present { value: decode_app_key_mint_record(record: read.content) }
-    }
+    Present { value: app_key_mint_record_from_observation(observation: filesystem_file_observation_of_path(path: path)) }
   }
 }
 
@@ -405,9 +445,14 @@ fn ci_app_key_version_verify_wet() -> ProcessExit {
       match observe_app_key_mint_record() {
         Absent =>
           AppKeyVersionRefused {
-            cause: AppKeyMintObservationAbsent { cause: "the mint step's observation record is absent or unreadable" as NonEmptyStr },
+            cause: AppKeyMintObservationAbsent { cause: concat("the mint step recorded no observation record for this run: ", concat(app_key_verify_record_env_name as String, " is unset")) as NonEmptyStr },
           }
-        Present { value: obs } => verify_app_key_version(secret: ci_app_key_contract.subject, version: n, observation: obs)
+        Present { value: AppKeyMintRecordMissing { cause: c } } =>
+          AppKeyVersionRefused { cause: AppKeyMintObservationMissing { cause: c } }
+        Present { value: AppKeyMintRecordUnread { cause: c } } =>
+          AppKeyVersionRefused { cause: AppKeyMintObservationUnreadable { cause: c } }
+        Present { value: AppKeyMintRecordDecoded { observation: obs } } =>
+          verify_app_key_version(secret: ci_app_key_contract.subject, version: n, observation: obs)
       }
   }
   let wrote = Filesystem.Write(

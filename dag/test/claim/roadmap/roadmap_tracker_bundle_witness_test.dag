@@ -1,0 +1,62 @@
+module test.claim.roadmap_tracker_bundle_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.google.issue_tracker {
+  issue_type_vocabulary, issue_type_wire, issue_results_columns, issue_results_sort_key_wire,
+  issue_results_column_kind_wire, issue_results_sort_numeric, IssueSortPriority, IssueSortTitle,
+}
+import gunbc.auth.session { AuthenticatedSession, AuthMethodGoogleOidc, SessionClientTrackerWeb, CsrfToken, SessionProfile }
+import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal, principal_ref_label }
+import gunbc.roadmap.roadmap_event_log { EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label }
+import gunbc.roadmap_inline_assignment { inline_assignment_choices, inline_assignment_context_body }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn tracker_session_fixture() -> AuthenticatedSession {
+  AuthenticatedSession {
+    session_id: "tracker-fixture" as NonEmptyStr,
+    principal: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "viewer" },
+    authenticated_at: "2026-09-27T00:00:00Z",
+    expires_at: "2026-09-28T00:00:00Z",
+    auth_method: AuthMethodGoogleOidc,
+    client: SessionClientTrackerWeb,
+    csrf: CsrfToken { token: "tracker-fixture-csrf" as NonEmptyStr },
+    profile: SessionProfile { picture: none, name: none, email: none },
+  }
+}
+
+test fn types_are_descriptive_and_not_table_structure() -> Bool {
+  join(map(issue_type_vocabulary, t => issue_type_wire(kind: t)), ",") == "Bug,Task,Feature,Epic,Chore"
+    && !any(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "type")
+    && !any(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "actions")
+}
+
+test fn every_served_column_has_a_modeled_sort_key() -> Bool {
+  all(issue_results_columns, c => issue_results_sort_key_wire(key: c.sort_key) == issue_results_column_kind_wire(kind: c.kind))
+    && issue_results_sort_numeric(key: IssueSortPriority)
+    && !issue_results_sort_numeric(key: IssueSortTitle)
+}
+
+test fn inline_choices_pin_fabric_then_self_and_deduplicate_recents() -> Bool {
+  let session = tracker_session_fixture()
+  let other = EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "other" } }
+  let choices = inline_assignment_choices(session: session, recents: [
+    other, other, EventPrincipalAuthenticated { ref: session.principal },
+    EventPrincipalAuthenticated { ref: fabric_workflow_principal },
+    LegacyEmailPrincipal { email: "unknown@example.test", authentication_unestablished: true },
+  ])
+  count(choices) == 4
+    && (match choices.first() { Present { value: p } => event_principal_label(p: p) == principal_ref_label(p: fabric_workflow_principal), Absent => false })
+    && (match choices.skip(n: 1).first() { Present { value: p } => event_principal_label(p: p) == principal_ref_label(p: session.principal), Absent => false })
+    && (match choices.skip(n: 2).first() { Present { value: p } => event_principal_label(p: p) == event_principal_label(p: other), Absent => false })
+}
+
+test fn assignment_context_carries_session_proof_and_revision_without_email_identity_inference() -> Bool {
+  let body = inline_assignment_context_body(session: tracker_session_fixture(), events: [], recents: [LegacyEmailPrincipal { email: "unknown@example.test", authentication_unestablished: true }], profiles: [])
+  string_contains(s: body, pattern: "tracker-fixture-csrf")
+    && string_contains(s: body, pattern: "expected_revision")
+    && string_contains(s: body, pattern: "fabric@gunb.ai")
+    && string_contains(s: body, pattern: "Me")
+    && string_contains(s: body, pattern: "unverified identity")
+    && string_contains(s: body, pattern: "\"disabled\": true")
+}

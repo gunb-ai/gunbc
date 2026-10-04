@@ -35,7 +35,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.algebra { any, length, fold_list }
-import v2.std.logic { Bool }
 import std.types { String, Int, List }
 import extdeps.filesystem.filesystem_io { Filesystem }
 

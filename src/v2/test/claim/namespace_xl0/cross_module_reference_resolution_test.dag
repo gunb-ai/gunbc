@@ -1,6 +1,9 @@
 module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.std.node_query { field_projection_optional }
+import v2.std.node { Node }
 import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
@@ -29,7 +32,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.qualified_name {
@@ -86,37 +88,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.namespace_xl0.field_type_tree_presence). That is a declaration-grafting loss with
 // its own trigger and is measured, not repaired, here: the row at the end of this file asserts the
 // refusal so it reds -- and gets re-stated -- when grafting lands.
-data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport v2.std.logic { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
+data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport std.types { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
 
-data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
+data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport std.types { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
 
-data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
-data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
+data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
 
-data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
 
-data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
 
-data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
 
-data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
+data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport std.types { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
 
-data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
+data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport std.types { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
 
-data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consumer_a\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n\nfn xl0r_import_uses_a() -> Bool { xl0r_same_leaf }\n"
+data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consumer_a\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n\nfn xl0r_import_uses_a() -> Bool { xl0r_same_leaf }\n"
 
-data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
+data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
 
 data xl0r_relay_source: String = "module v2.test.xl0r_relay\n\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n"
 
-data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
+data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
 
-data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
+data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport std.types { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
 
-data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
+data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport std.types { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
 
-data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport std.types { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
 // A TYPE NAMED BY A SELECTIVE IMPORT, IN PARAMETER POSITION. The provider's type is bodyless, the
 // shape v2.std.node declares Symbol with. The seven-test canary's `Symbol` wall (gunbc#12198) was
@@ -127,9 +129,9 @@ data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_con
 // and the same spelling with no import refuses unbound rather than being found by corpus search.
 data xl0r_type_provider_source: String = "module v2.test.xl0r_type_provider\n\ntype Xl0rOpaque\n"
 
-data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
+data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
 
-data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
+data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport std.types { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
 
 fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -502,11 +504,46 @@ test fn a_cross_module_reference_to_a_data_declaration_resolves_to_its_declaring
 // `fn get(r: Rec) -> Bool { r.v }`, which needs BOTH the declaration graft (so Rec.v is in the
 // containment tree) AND the unique-on-chain projection, and is owned by those lanes, not enrolled
 // here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
-test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
-  match xl0r_resolved_field_access_consumer() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+// THE PROPERTY IS UNCHANGED AND THE STAGE MOVED. `r.v` on `r: Bool` must never be accepted, and it is
+// not; what changed is WHERE it is refused and by what reason. v2.compiler.resolve now commits the
+// field-projection SHAPE for a bound head (resolve_bound_head_projection) instead of answering
+// resolve_reason_unbound_symbol, because deciding whether `v` exists needs a TYPE and resolve has none
+// -- v2.std.node_query field_projection_node's own header assigns that check to the stage over this
+// node. v2.compiler.infer then refuses it: `Bool`'s established type is not a record declaration, so the
+// receiver declares no fields.
+//
+// THE OLD REASON WAS THE COLLAPSE, NOT THE PROPERTY. Answering "unbound symbol" here reported a bound
+// head needing projection and a genuinely unbound name identically, which v2.compiler.resolve's own
+// header records as a defect. So this claim now asserts through infer, which is what "never accepts"
+// was always about: the assertion still forbids ACCEPTANCE, and it is strictly harder to satisfy than
+// before, because a program that resolved and then inferred clean would now fail it.
+// THE REASON INFER DECIDES, read once per fixture in a nullary producer the floor serves WARM
+// (v2.workflow.floor_pure_producer_share): resolve is already a warm producer, and infer over it is past one
+// claim's new-witness budget. A refusal at resolve answers ^xl0r_resolve_refused and an acceptance
+// ^xl0r_infer_accepted, so neither can be read as the infer refusal the rows pin.
+fn xl0r_infer_reason(o: Outcome<ResolvedTree>) -> Symbol {
+  match o {
+    Rejected { diagnostics: _ } => ^xl0r_resolve_refused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => ^xl0r_infer_accepted
+        Rejected { diagnostics: d } => xl0r_last_reason(d: d)
+      }
   }
+}
+
+fn xl0r_field_access_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_field_access_consumer())
+}
+
+fn xl0r_method_call_infer_reason() -> Symbol {
+  xl0r_infer_reason(o: xl0r_resolved_method_call_consumer())
+}
+
+// PINNED TO THE CONTRACT, NOT TO "SOME REFUSAL": the receiver's established type (Bool) is not a record
+// declaration, so infer refuses the projection as declaring no fields. A refusal for any other cause reds it.
+test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
+  xl0r_field_access_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
 // THE CALL FORM OF THE LOCAL-RECEIVER ROW, ENROLLED ON gunbc#11683 (review 68231 asked for it by
@@ -519,11 +556,13 @@ test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
 // `lens.gate(...)`) receive under v2 resolve; no required lane compiles those modules through v2
 // resolve (the native route over the corpus is a declared rung drop), so this row is the executed
 // evidence. Retired by the local-receiver projection, the same trigger as the value row.
-test fn a_local_receiver_method_call_refuses_unbound_today_holds() -> Bool {
-  match xl0r_resolved_method_call_consumer() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
-  }
+// THE SAME MOVE FOR THE METHOD-CALL FORM, and the rename is the honest part: this row said "refuses
+// unbound TODAY", naming a stage and a reason it never meant to pin. `r.v(x: p)` closes its spine into
+// a callee at the first call suffix, so the callee `r.v` is now the projection resolve commits, and
+// infer refuses it for the same reason as the bare form -- `Bool` declares no fields. What the row is
+// FOR is that a method call on a local receiver is not silently admitted, and that is what it now says.
+test fn a_local_receiver_method_call_never_accepts_holds() -> Bool {
+  xl0r_method_call_infer_reason() == ^infer_reason_projection_receiver_declares_no_fields
 }
 
 // THE COLLISION THE ABSOLUTE ARM ADMITTED, NOW REFUSED (review 67651 on gunbc#11582). A parameter
@@ -537,10 +576,35 @@ test fn a_local_receiver_method_call_refuses_unbound_today_holds() -> Bool {
 // answer, so the verdict is a located refusal with the section-13 reason. What this row does NOT
 // claim: the projection through the binder (`v2.test...` read relative to the parameter, which is
 // meaningless here and meaningful for `r.v`). That is the local-receiver row's trigger.
-test fn a_binder_shadowing_a_root_segment_refuses_ambiguous_holds() -> Bool {
+// THE GUARD DISSOLVED AND THE EVIDENCE DID NOT RETIRE (DESIGN section 4b(4)). `fn f(v2: Bool) -> Bool
+// { v2.test.xl0r_provider.xl0r_provided_fn }` binds `v2` while the absolute path also answers. The
+// interim rule refused that Ambiguous because v2.compiler.resolve could not project a bound head and
+// therefore must not let the absolute read silently win -- its own header said so in those words.
+//
+// SECTION 13'S RULE IS THAT THE CHAIN WINS: the first segment resolves on the ancestor chain and the
+// rest projects. The projection now exists, so the binder answers and this row asserts THAT rather
+// than the refusal that stood in for it. What the old claim forbade is still forbidden -- the absolute
+// read does not win over a binder the source spelled -- and is now answered correctly instead of
+// refused, which is the climb the interim arm was waiting for.
+//
+// IT IS STILL DISCRIMINATING: an implementation that consulted the absolute candidates first would
+// resolve this to the provider's declaring path, and the projection assertion below would fail.
+test fn a_binder_shadowing_a_root_segment_projects_from_the_binder_holds() -> Bool {
   match xl0r_resolved_shadowing_consumer() {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_ambiguous_symbol
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      xl0r_carries_a_field_projection(root: resolved.root)
+  }
+}
+
+// EVERY PROJECTION NODE IN THE TREE, through the shared reader rather than a shape test of its own.
+fn xl0r_carries_a_field_projection(root: Node) -> Bool {
+  match field_projection_optional(n: root) {
+    Present { value: _ } => true
+    Absent =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || xl0r_carries_a_field_projection(root: e.target)
+      })
   }
 }
 

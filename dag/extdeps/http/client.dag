@@ -2,7 +2,6 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -75,10 +74,20 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // carries the transport outcome (6 could not resolve, 7 could not connect, 28 timed out, 35 TLS
 // handshake failed -- curl(1) EXIT CODES), and a consumer classifies it rather than reading the
 // stderr text.
+// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
+// at module grain because an operation's rationale cannot live inside the service body: it is
+// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
+// them), one content-type line differs, and the body still rides --data @{file} so a client
+// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
 // PostStdinWithin's; a socket that is absent or not traversable is exit 7, could not connect.
+// PostFormFromFile IS THE FORM SPELLING of the same bounded POST as PostJsonFromFile, declared
+// at module grain because an operation's rationale cannot live inside the service body: it is
+// for endpoints that read application/x-www-form-urlencoded (the OAuth token endpoint among
+// them), one content-type line differs, and the body still rides --data @{file} so a client
+// secret in the form body is never an argv word (gunbc.credential_argv_exposure).
 service http.Client {
   operation Get {
     requires Network
@@ -244,7 +253,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
@@ -255,6 +264,31 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "curl POST JSON from file failed"
+    }
+  }
+
+  operation PostFormFromFile {
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/x-www-form-urlencoded",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl form POST from file failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live token endpoint; the code exchange refuses rather than fabricate a response"
     }
   }
 

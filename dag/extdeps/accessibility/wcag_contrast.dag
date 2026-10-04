@@ -38,6 +38,9 @@ fn imin(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
+// The iteration stops at its fixed point: once a step returns the y it was given (y >= 1, so y_safe
+// is y), every remaining step returns it again, so the answer is the one the full fuel would reach.
+// A sequence that never settles (an integer two-cycle) still runs to the fuel bound as before.
 fn fifth_root_iterate(y: Int, target: Int, fuel: Int) -> Int {
   if fuel <= 0 {
     y
@@ -45,7 +48,11 @@ fn fifth_root_iterate(y: Int, target: Int, fuel: Int) -> Int {
     let y_safe = imax(a: y, b: 1)
     let y4 = y_safe * y_safe * y_safe * y_safe
     let next = (4 * y_safe + target / y4) / 5
-    fifth_root_iterate(y: next, target: target, fuel: fuel - 1)
+    if next == y && y >= 1 {
+      y
+    } else {
+      fifth_root_iterate(y: next, target: target, fuel: fuel - 1)
+    }
   }
 }
 

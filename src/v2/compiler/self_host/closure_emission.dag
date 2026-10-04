@@ -68,7 +68,6 @@ import v2.std.diagnostic {
 }
 import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
@@ -348,7 +347,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index)
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index(), unavailable_providers: [])
     }
   )
 }

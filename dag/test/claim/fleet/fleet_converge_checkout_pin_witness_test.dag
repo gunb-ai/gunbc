@@ -16,15 +16,15 @@ import gunbc.fleet_converge_workflow { fleet_converge_checkout_ref }
 // claim SUPPLIES an Expression or a one-step workflow. The real path is not re-walked here -- every
 // generated workflow's expected_*_yml calls the admission and refuses emission, and the generated lane
 // executes that on every run (DESIGN s3, a witness discriminates at one interface).
-fn github(path: List<String>) -> Expression { ContextAccess { context: Github, path: path } }
+fn github_context(path: List<String>) -> Expression { ContextAccess { context: Github, path: path } }
 fn dispatch_input(name: String) -> Expression { ContextAccess { context: Inputs, path: [name] } }
 fn either(l: Expression, r: Expression) -> Expression { LogicalOr { left: l, right: r } }
-fn mode_is(m: String) -> Expression { Equals { left: github(path: ["event", "inputs", "mode"]), right: StringLiteral { value: m } } }
+fn mode_is(m: String) -> Expression { Equals { left: github_context(path: ["event", "inputs", "mode"]), right: StringLiteral { value: m } } }
 
 // The fleet-converge tree with a chosen tail: github.sha now, github.ref before this change.
 fn fleet_shape(tail: Expression) -> Expression {
-  either(l: either(l: LogicalAnd { left: either(l: either(l: mode_is(m: "mtcollins1_boot"), r: mode_is(m: "gcp_iam_converge")), r: mode_is(m: "namecheap_observe")), right: github(path: ["sha"]) },
-           r: github(path: ["event", "inputs", "expected_revision"])),
+  either(l: either(l: LogicalAnd { left: either(l: either(l: mode_is(m: "mtcollins1_boot"), r: mode_is(m: "gcp_iam_converge")), r: mode_is(m: "namecheap_observe")), right: github_context(path: ["sha"]) },
+           r: github_context(path: ["event", "inputs", "expected_revision"])),
      r: tail)
 }
 
@@ -32,31 +32,31 @@ fn fleet_shape(tail: Expression) -> Expression {
 // github.ref, so a consumer job that queued behind a merge checked out a later main than the build
 // job and release-bins refused it (ConsumerSourceTreeMismatch, runs 36764203649 and 36766990321).
 test fn red_the_pre_fix_branch_fallback_is_refused() -> Bool {
-  !checkout_ref_admitted(ref_expression: fleet_shape(tail: github(path: ["ref"])))
-    && !checkout_ref_admitted(ref_expression: github(path: ["ref"]))
+  !checkout_ref_admitted(ref_expression: fleet_shape(tail: github_context(path: ["ref"])))
+    && !checkout_ref_admitted(ref_expression: github_context(path: ["ref"]))
     && !checkout_ref_admitted(ref_expression: StringLiteral { value: "main" })
 }
 
 // RED: A BRANCH-VALUED OPERAND IN FRONT OF A SHA TAIL. `||` takes the first non-empty operand, so the
 // sha tail is never reached when the branch operand is set.
 test fn red_a_branch_term_before_the_sha_tail_is_refused() -> Bool {
-  !checkout_ref_admitted(ref_expression: either(l: github(path: ["head_ref"]), r: github(path: ["sha"])))
-    && !checkout_ref_admitted(ref_expression: either(l: github(path: ["event", "pull_request", "head", "ref"]), r: github(path: ["sha"])))
-    && !checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "branch"), r: github(path: ["sha"])))
+  !checkout_ref_admitted(ref_expression: either(l: github_context(path: ["head_ref"]), r: github_context(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: either(l: github_context(path: ["event", "pull_request", "head", "ref"]), r: github_context(path: ["sha"])))
+    && !checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "branch"), r: github_context(path: ["sha"])))
 }
 
 // RED: A CONDITION WITH NO FALLBACK. `cond && github.sha` alone yields `false` when cond is false.
 test fn red_a_condition_with_no_fallback_is_refused() -> Bool {
-  !checkout_ref_admitted(ref_expression: LogicalAnd { left: mode_is(m: "x"), right: github(path: ["sha"]) })
+  !checkout_ref_admitted(ref_expression: LogicalAnd { left: mode_is(m: "x"), right: github_context(path: ["sha"]) })
 }
 
 // POSITIVE: every commit-valued form the generated workflows declare.
 test fn commit_valued_checkout_refs_are_admitted() -> Bool {
-  checkout_ref_admitted(ref_expression: github(path: ["sha"]))
-    && checkout_ref_admitted(ref_expression: github(path: ["event", "pull_request", "head", "sha"]))
+  checkout_ref_admitted(ref_expression: github_context(path: ["sha"]))
+    && checkout_ref_admitted(ref_expression: github_context(path: ["event", "pull_request", "head", "sha"]))
     && checkout_ref_admitted(ref_expression: dispatch_input(name: "head_sha"))
-    && checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "expected_healed_sha"), r: github(path: ["sha"])))
-    && checkout_ref_admitted(ref_expression: fleet_shape(tail: github(path: ["sha"])))
+    && checkout_ref_admitted(ref_expression: either(l: dispatch_input(name: "expected_healed_sha"), r: github_context(path: ["sha"])))
+    && checkout_ref_admitted(ref_expression: fleet_shape(tail: github_context(path: ["sha"])))
 }
 
 // THE RENDERING: the fleet-converge ref renders to the bytes the regenerated fleet-converge.yml
@@ -92,8 +92,8 @@ fn admitted(a: WorkflowCheckoutRefsAdmission) -> Bool {
 // declared but inadmissible one refuses even though its text matches.
 test fn a_checkout_ref_must_render_a_declared_admitted_expression() -> Bool {
   !admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.sha }}"), declared: []))
-    && admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.sha }}"), declared: [github(path: ["sha"])]))
-    && !admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.ref }}"), declared: [github(path: ["ref"])]))
+    && admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.sha }}"), declared: [github_context(path: ["sha"])]))
+    && !admitted(a: admit_workflow_checkout_refs(workflow: one_step_workflow(uses_checkout: true, ref_text: "${{ github.ref }}"), declared: [github_context(path: ["ref"])]))
 }
 
 // THE ADMISSION READS actions/checkout ONLY: another action's `ref` input is not a checkout.

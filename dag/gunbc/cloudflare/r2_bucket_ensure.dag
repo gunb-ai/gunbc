@@ -19,6 +19,11 @@ import extdeps.cloudflare.r2 {
 }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
+import extdeps.cloudflare.r2_lifecycle
+import extdeps.cloudflare.r2_lifecycle {
+  R2LifecycleRule, R2LifecycleRead, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
+  r2_lifecycle_read, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire,
+}
 import extdeps.cloudflare.r2_buckets {
   R2BucketResponse,
   R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
@@ -29,6 +34,7 @@ import gunbc.cloudflare.r2_origin {
   BucketPurpose,
   bucket_purpose_key,
   bucket_purpose_origin_standing,
+  bucket_purpose_lifecycle_rules,
   gunbc_fleet_r2_bucket_allocations,
   R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
   FleetCloudflareAccountStanding, CloudflareAccountAllocated, CloudflareAccountUnallocated,
@@ -169,7 +175,7 @@ type R2EnsureSigningLocus
 fn r2_ensure_signing_locus(credential: OriginCredentialStanding) -> R2EnsureSigningLocus {
   match credential {
     OriginCredentialPinned { access_key_id: _, token_value: locus } => R2EnsureSigningPinned { locus: locus }
-    OriginCredentialUnminted { mint_entry: entry } =>
+    OriginCredentialUnminted { mint_entry: entry, secret_id: _ } =>
       R2EnsureSigningRefused {
         cause: join([
           "THE BUCKET-ADMIN TOKEN IS NOT MINTED, NOTHING CALLED: run ", entry.module_path, " ", entry.decl_name,
@@ -292,6 +298,102 @@ fn apply_r2_bucket_create(
   }
 }
 
+// ── THE PURPOSE'S LIFECYCLE RULES ─────────────────────────────────────────────────────────────────
+//
+// A PURPOSE THAT DECLARES RELEASE BY AGE HAS ITS RULE SET CONVERGED, and only such a purpose: a
+// purpose declaring none (the durable and boot origins) is not read here, so this converge adds no
+// call -- and no new way to refuse -- to buckets that never expire anything. Same std.upsert_decision
+// shape as the bucket: an independent read, a classification, the one Apply (PUT the complete
+// declared set, which replaces the bucket's rules), and a readback that must classify Converged.
+// A rule set this model cannot describe REFUSES rather than being replaced unread.
+type R2LifecyclePlan {
+  rules: List<R2LifecycleRule>
+}
+
+fn classify_r2_lifecycle(desired: List<R2LifecycleRule>, read: R2LifecycleRead) -> UpsertClassification<R2LifecyclePlan> {
+  match read {
+    R2LifecycleReadRefused { cause: cause } =>
+      UpsertClassification { verdict: UnknownRefused, decision: Refuse { reason: concat("THE LIFECYCLE READ WAS REFUSED, NOTHING PUT: ", cause as String) as NonEmptyStr } }
+    R2LifecycleRulesUnmodeled { cause: cause } =>
+      UpsertClassification { verdict: Conflict, decision: Refuse { reason: concat("THE BUCKET HOLDS LIFECYCLE RULES THIS MODEL DOES NOT DESCRIBE, NOTHING PUT: ", cause as String) as NonEmptyStr } }
+    R2LifecycleRulesRead { rules: observed } =>
+      if r2_lifecycle_rules_canonical(rules: observed) == r2_lifecycle_rules_canonical(rules: desired) {
+        UpsertClassification { verdict: Converged, decision: Noop }
+      } else if observed.length() == 0 {
+        UpsertClassification { verdict: Absent, decision: Apply { plan: R2LifecyclePlan { rules: desired } } }
+      } else {
+        UpsertClassification { verdict: Drifted, decision: Apply { plan: R2LifecyclePlan { rules: desired } } }
+      }
+  }
+}
+
+fn read_r2_lifecycle(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2LifecycleRead uses net: Network {
+  let got = cloudflare.R2BucketLifecycle.GetRaw(
+    auth_token: admin,
+    account_id: account_id as String,
+    bucket_name: bucket_name as String,
+  )
+  r2_lifecycle_read(outcome: got.outcome, body: got.body)
+}
+
+fn ensure_r2_purpose_lifecycle(
+  purpose: BucketPurpose,
+  admin: Secret,
+  account_id: CloudflareAccountId,
+  bucket_name: NonEmptyStr,
+) -> R2PurposeEnsureOutcome uses net: Network {
+  let desired = bucket_purpose_lifecycle_rules(purpose: purpose)
+  let classified = classify_r2_lifecycle(desired: desired, read: read_r2_lifecycle(admin: admin, account_id: account_id, bucket_name: bucket_name))
+  let label = concat(bucket_purpose_key(purpose: purpose), "/lifecycle")
+  match classified.decision {
+    Noop => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: "rules converged"), held: true }
+    Refuse { reason: reason } => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: reason as String), held: false }
+    Apply { plan: plan } => {
+      let put = cloudflare.R2BucketLifecycle.Put(
+        auth_token: admin,
+        account_id: account_id as String,
+        bucket_name: bucket_name as String,
+        rules: r2_lifecycle_rules_wire(rules: plan.rules),
+      )
+      let readback = classify_r2_lifecycle(desired: desired, read: read_r2_lifecycle(admin: admin, account_id: account_id, bucket_name: bucket_name))
+      let put_status = match put.outcome {
+        RestOk => "put ok"
+        RestStatusRefused { status: status, body: _ } => join(["put refused with status ", to_string(status)], "")
+        RestTransportRefused { cause: _ } => "put got no response"
+        RestBodyUndecodable { status: status, cause: _ } => join(["put status ", to_string(status), " body undecodable"], "")
+      }
+      match readback.decision {
+        Noop => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: concat(put_status, "; readback converged")), held: true }
+        Apply { plan: _ } => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: concat(put_status, "; READBACK STILL DIFFERS")), held: false }
+        Refuse { reason: reason } => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: join([put_status, "; READBACK REFUSED: ", reason as String], "")), held: false }
+      }
+    }
+  }
+}
+
+fn lifecycle_line(label: String, classified: UpsertClassification<R2LifecyclePlan>, detail: String) -> String {
+  join([label, observation_verdict_label(verdict: classified.verdict), upsert_decision_label(decision: classified.decision), detail], "\t")
+}
+
+// A converged bucket then has its lifecycle converged when its purpose declares one; the purpose
+// holds only when both hold.
+fn ensure_r2_purpose(
+  purpose: BucketPurpose,
+  admin: Secret,
+  account_id: CloudflareAccountId,
+) -> List<R2PurposeEnsureOutcome> uses net: Network {
+  let bucket = ensure_r2_purpose_bucket(purpose: purpose, admin: admin, account_id: account_id)
+  if bucket_purpose_lifecycle_rules(purpose: purpose).length() == 0 || !bucket.held {
+    [bucket]
+  } else {
+    match bucket_purpose_origin_standing(purpose: purpose) {
+      R2OriginUnallocated { purpose: _ } => [bucket]
+      R2OriginAllocated { bucket: b } =>
+        [bucket, ensure_r2_purpose_lifecycle(purpose: purpose, admin: admin, account_id: account_id, bucket_name: b.bucket_name)]
+    }
+  }
+}
+
 // THE REPORTED LOCATION RIDES ON THE CONVERGED LINE, because it is the observation
 // product.supplier.cloudflare_r2 cloudflare_r2_bucket_location_observations transcribes to read the
 // route's region, and the Get that produces it is already paid here. The token is printed as the
@@ -365,9 +467,9 @@ fn ensure() -> ProcessExit uses net: Network {
   match r2_ensure_credentials() {
     R2EnsureCredentialsRefused { cause: cause } => exit_failure(reason: cause as String)
     R2EnsureCredentialsReady { account_id: account_id, admin: admin } => {
-      let outcomes = map(
+      let outcomes = flat_map(
         gunbc_fleet_r2_bucket_allocations,
-        row => ensure_r2_purpose_bucket(purpose: row.purpose, admin: admin, account_id: account_id),
+        row => ensure_r2_purpose(purpose: row.purpose, admin: admin, account_id: account_id),
       )
       let text = join(map(outcomes, o => o.line), "\n")
       let written = Filesystem.Write(path: r2_bucket_ensure_receipt_path, content: text)

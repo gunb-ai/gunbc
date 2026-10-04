@@ -1,5 +1,6 @@
 module test.claim.exact_witness_admission_witness
 
+import std.types { List }
 import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
   explicit_witness_admission_is_known_red,
@@ -55,9 +56,7 @@ import std.witness_admission {
   ExpectWitnessHolds
 }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { unbound_dissolution }

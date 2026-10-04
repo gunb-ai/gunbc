@@ -109,7 +109,6 @@ data value_drop_binding_adaptation_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_witness_verdict_diagnostic", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "eval_census_string_fn", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "project_witness_cost_receipt", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "emit_realize_advisory_for_rows", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.live_read_carrier_home_roster_drift_gate_tests", decl_name: "dag_carrier_home_modules", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.effect_reach_host_sink_markers_drift_gate_tests", decl_name: "dag_host_sink_callee_symbols", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.heartbeat_tests", decl_name: "run_seed_heartbeat_line", field: WholeDeclaration },

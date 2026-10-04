@@ -23,11 +23,9 @@ import gunbc.fabric_m0_origin_readback {
   origin_reading_digest,
 }
 import gunbc.fabric_m0_job_ending { JobEnding, process_exit_of_job_ending, publication_exit_reason }
+import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
 import gunbc.cloudflare.r2_origin_object {
   OriginPut,
-  WriteCredentialCustody,
-  WriteCredentialShredded,
-  WriteCredentialResidueRemains,
   OriginPutOutcome,
   OriginObjectStored,
   OriginObjectAlreadyPresent,

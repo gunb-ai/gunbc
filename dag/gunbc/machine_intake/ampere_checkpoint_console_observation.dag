@@ -1,0 +1,262 @@
+module gunbc.machine_intake_ampere_checkpoint_console_observation
+
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import v2.std.optional { Present }
+import extdeps.tools.sha256sum { Sha256FileDigest }
+import gunbc.machine_intake_pre_os_bringup_verdict { firmware_checkpoint_line_prefix }
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_fw_version_marker, ampere_dram_console_line }
+
+// THE "CP: xxxxxxxx" CHECKPOINT TOKENS THE AMPERE FIRMWARE PRINTED ON THE SERIAL CONSOLE, as an
+// observation receipt of this repository (docs/plans/power-on-sequence-model.md, ruling R2).
+//
+// A TOKEN IS OPAQUE, AND THAT IS THE RULING, NOT A SHORTCUT. No public source states the layout of a
+// checkpoint word, so this module never decodes one and never attributes one to a firmware stage:
+// a token is its eight printed hex digits, and the only facts it yields are ORDER (which token a
+// span printed last) and EQUALITY against another capture of our own. Stage and sub-step attribution
+// is the gunbc-private refinement slice's, which consumes this observation; nothing here imports it.
+//
+// SPANS, NOT CYCLES. Each "DRAM FW version" banner opens a console span; tokens printed before the
+// first banner form a span of their own that no banner opened. A span is console evidence that the
+// DRAM firmware printed within some boot cycle -- it does not make a cycle exist, and binding spans
+// to cycles is the power-on account's (gunbc.machine_intake_mtcollins1_power_on_account), which also
+// admits cycles that never reached a banner.
+//
+// A "CP:" LINE WHOSE WORD IS NOT EIGHT HEX DIGITS IS KEPT AS MALFORMED, never dropped (DESIGN
+// section 5): a firmware that changes the word's width shows up in the receipt, not as a shorter
+// sequence.
+
+// Eight hex digits, as every capture this corpus holds prints them; checkpoint_token_of indexes them.
+data ampere_checkpoint_token_digits: Int = 8
+
+data ampere_checkpoint_hex_digits: String = "0123456789abcdefABCDEF"
+
+type AmpereCheckpointToken {
+  digits: NonEmptyStr
+}
+
+type AmpereCheckpointSpan {
+  index: Int
+  opened_by_banner: Bool
+  tokens: List<AmpereCheckpointToken>
+  malformed: List<String>
+}
+
+type AmpereCheckpointConsoleObservation {
+  spans: List<AmpereCheckpointSpan>
+}
+
+fn is_hex_digit(c: String) -> Bool {
+  c.length() == 1 && string_contains(s: ampere_checkpoint_hex_digits, pattern: c)
+}
+
+fn checkpoint_token_of(text: String) -> AmpereCheckpointToken? {
+  let t = trim(text)
+  if t.length() != ampere_checkpoint_token_digits { none }
+  else if any(map([0, 1, 2, 3, 4, 5, 6, 7], i => char_at(s: t, pos: i)), c => !is_hex_digit(c: c)) { none }
+  else { Present { value: AmpereCheckpointToken { digits: t as NonEmptyStr } } }
+}
+
+type AmpereCheckpointLine
+  = CheckpointSpanOpens
+  | CheckpointTokenLine { token: AmpereCheckpointToken }
+  | CheckpointMalformedLine { line: String }
+  | CheckpointUnrelatedLine
+
+fn ampere_checkpoint_line_of(raw: String) -> AmpereCheckpointLine {
+  let line = trim(ampere_dram_console_line(raw: raw))
+  if string_contains(s: line, pattern: ampere_dram_fw_version_marker) { CheckpointSpanOpens }
+  else if !starts_with(s: line, prefix: firmware_checkpoint_line_prefix as String) { CheckpointUnrelatedLine }
+  else {
+    match checkpoint_token_of(text: substring(s: line, start: (firmware_checkpoint_line_prefix as String).length(), end: line.length())) {
+      Present { value: t } => CheckpointTokenLine { token: t }
+      Absent => CheckpointMalformedLine { line: line }
+    }
+  }
+}
+
+type AmpereCheckpointFold {
+  closed: List<AmpereCheckpointSpan>
+  current: AmpereCheckpointSpan
+}
+
+fn empty_span(index: Int, opened_by_banner: Bool) -> AmpereCheckpointSpan {
+  let ts: List<AmpereCheckpointToken> = []
+  let ms: List<String> = []
+  AmpereCheckpointSpan { index: index, opened_by_banner: opened_by_banner, tokens: ts, malformed: ms }
+}
+
+fn span_printed_nothing(s: AmpereCheckpointSpan) -> Bool {
+  count(s.tokens) == 0 && count(s.malformed) == 0
+}
+
+// A banner closes the current span and opens the next. The pre-banner span is kept only when it
+// printed something, so a capture that starts at a banner has no empty leading span; a span a banner
+// opened is kept even when it printed no token yet, because the banner itself is console evidence.
+fn checkpoint_fold_step(acc: AmpereCheckpointFold, raw: String) -> AmpereCheckpointFold {
+  match ampere_checkpoint_line_of(raw: raw) {
+    CheckpointSpanOpens => {
+      let keep = acc.current.opened_by_banner || !span_printed_nothing(s: acc.current)
+      let closed = if keep { concat(acc.closed, [acc.current]) } else { acc.closed }
+      AmpereCheckpointFold { closed: closed, current: empty_span(index: count(closed), opened_by_banner: true) }
+    }
+    CheckpointTokenLine { token: t } =>
+      AmpereCheckpointFold { closed: acc.closed, current: AmpereCheckpointSpan { index: acc.current.index, opened_by_banner: acc.current.opened_by_banner, tokens: concat(acc.current.tokens, [t]), malformed: acc.current.malformed } }
+    CheckpointMalformedLine { line: l } =>
+      AmpereCheckpointFold { closed: acc.closed, current: AmpereCheckpointSpan { index: acc.current.index, opened_by_banner: acc.current.opened_by_banner, tokens: acc.current.tokens, malformed: concat(acc.current.malformed, [l]) } }
+    CheckpointUnrelatedLine => acc
+  }
+}
+
+fn ampere_checkpoint_console_observation(lines: List<String>) -> AmpereCheckpointConsoleObservation {
+  let none_closed: List<AmpereCheckpointSpan> = []
+  let done = fold(lines, init: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, f: (acc, l) => checkpoint_fold_step(acc: acc, raw: l))
+  let keep = done.current.opened_by_banner || !span_printed_nothing(s: done.current)
+  AmpereCheckpointConsoleObservation { spans: if keep { concat(done.closed, [done.current]) } else { done.closed } }
+}
+
+// THE CONSOLE'S LINES, GROUPED BY THE SPAN THEY FALL IN, by this module's own fold: an owning reader
+// run over one span's lines reports what THAT span printed, so a statement printed in two spans is two
+// statements, each in its own span (the power-on account binds spans to cycles).
+type AmpereConsoleSpanLines {
+  span: Int
+  lines: List<String>
+}
+
+type SpanLinesFold {
+  spans: AmpereCheckpointFold
+  groups: List<AmpereConsoleSpanLines>
+}
+
+fn span_lines_step(acc: SpanLinesFold, raw: String) -> SpanLinesFold {
+  let spans = checkpoint_fold_step(acc: acc.spans, raw: raw)
+  let k = spans.current.index
+  let none_lines: List<String> = []
+  let groups = match acc.groups.last() {
+    Present { value: g } => if g.span == k { concat(acc.groups.take(n: count(acc.groups) - 1), [AmpereConsoleSpanLines { span: k, lines: concat(g.lines, [raw]) }]) } else { concat(acc.groups, [AmpereConsoleSpanLines { span: k, lines: concat(none_lines, [raw]) }]) }
+    Absent => [AmpereConsoleSpanLines { span: k, lines: concat(none_lines, [raw]) }]
+  }
+  SpanLinesFold { spans: spans, groups: groups }
+}
+
+fn ampere_console_span_lines(lines: List<String>) -> List<AmpereConsoleSpanLines> {
+  let none_closed: List<AmpereCheckpointSpan> = []
+  let none_groups: List<AmpereConsoleSpanLines> = []
+  fold(lines, init: SpanLinesFold { spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, groups: none_groups }, f: (acc, l) => span_lines_step(acc: acc, raw: l)).groups
+}
+
+fn ampere_checkpoint_last_token(s: AmpereCheckpointSpan) -> AmpereCheckpointToken? {
+  s.tokens.last()
+}
+
+fn ampere_checkpoint_banner_spans(o: AmpereCheckpointConsoleObservation) -> Int {
+  count(filter(o.spans, s => s.opened_by_banner))
+}
+
+// ── AGAINST A REFERENCE CAPTURE (R2: an opaque relation, nothing more) ───────────────────────────
+// The reference is another capture of our own, named by its digest and by the firmware and
+// configuration it was taken under: a continuation observed under a different firmware set or
+// population says only that THAT capture continued. The subject span's last token is looked up in
+// the reference's spans, first occurrence first; the number of occurrences is carried so the choice
+// is visible. The reference scope is the caller's row, never inferred here.
+type AmpereCheckpointReference {
+  path: NonEmptyStr
+  digest: Sha256FileDigest
+  firmware_scope: NonEmptyStr
+  configuration_scope: NonEmptyStr
+  observation: AmpereCheckpointConsoleObservation
+}
+
+type AmpereCheckpointContinuation
+  = ReferenceContinues { next: AmpereCheckpointToken, remaining: Int, occurrences: Int }
+  | ReferenceEndsThere
+  | NotInReference
+  | ReferenceUnread { detail: String }
+
+type AmpereCheckpointRelation {
+  span: Int
+  capture: Sha256FileDigest
+  last: AmpereCheckpointToken
+  reference_path: NonEmptyStr
+  reference_digest: Sha256FileDigest
+  reference_firmware: NonEmptyStr
+  reference_configuration: NonEmptyStr
+  continuation: AmpereCheckpointContinuation
+}
+
+type TokenSearch {
+  at: Int
+  found: Int?
+}
+
+fn first_index(tokens: List<AmpereCheckpointToken>, t: AmpereCheckpointToken) -> Int? {
+  fold(tokens, init: TokenSearch { at: 0, found: none }, f: (acc, x) => TokenSearch {
+    at: acc.at + 1,
+    found: match acc.found { Present { value: i } => Present { value: i } Absent => if (x.digits as String) == (t.digits as String) { Present { value: acc.at } } else { none } },
+  }).found
+}
+
+fn continuation_in(tokens: List<AmpereCheckpointToken>, last: AmpereCheckpointToken) -> AmpereCheckpointContinuation {
+  match first_index(tokens: tokens, t: last) {
+    Absent => NotInReference
+    Present { value: i } => {
+      let after = tokens.skip(n: i + 1)
+      let occurrences = count(filter(tokens, x => (x.digits as String) == (last.digits as String)))
+      match after.first() {
+        Absent => ReferenceEndsThere
+        Present { value: next } => ReferenceContinues { next: next, remaining: count(after), occurrences: occurrences }
+      }
+    }
+  }
+}
+
+// None when the span printed no token: an opaque relation needs a token to relate.
+fn ampere_checkpoint_relation(span: AmpereCheckpointSpan, capture: Sha256FileDigest, reference: AmpereCheckpointReference) -> AmpereCheckpointRelation? {
+  match ampere_checkpoint_last_token(s: span) {
+    Absent => none
+    Present { value: last } => Present { value: AmpereCheckpointRelation {
+      span: span.index, capture: capture, last: last,
+      reference_path: reference.path, reference_digest: reference.digest,
+      reference_firmware: reference.firmware_scope, reference_configuration: reference.configuration_scope,
+      continuation: continuation_in(tokens: flat_map(reference.observation.spans, s => s.tokens), last: last),
+    } }
+  }
+}
+
+// The same relation when the reference could not be read: carried as such, never as "not in it".
+fn ampere_checkpoint_relation_unread(span: AmpereCheckpointSpan, capture: Sha256FileDigest, path: NonEmptyStr, digest: Sha256FileDigest, firmware_scope: NonEmptyStr, configuration_scope: NonEmptyStr, detail: String) -> AmpereCheckpointRelation? {
+  match ampere_checkpoint_last_token(s: span) {
+    Absent => none
+    Present { value: last } => Present { value: AmpereCheckpointRelation {
+      span: span.index, capture: capture, last: last,
+      reference_path: path, reference_digest: digest, reference_firmware: firmware_scope, reference_configuration: configuration_scope,
+      continuation: ReferenceUnread { detail: detail },
+    } }
+  }
+}
+
+fn digest_text(d: Sha256FileDigest) -> String {
+  match d { Sha256FileDigest { digest: x } => concat("sha256 ", x.hex as String) Sha256FileDigestUnavailable { path: _, reason: r } => concat("digest unavailable: ", r) }
+}
+
+fn ampere_checkpoint_span_text(s: AmpereCheckpointSpan) -> String {
+  concat("span ", to_string(s.index), if s.opened_by_banner { " (banner)" } else { " (before any banner)" }, ": ", to_string(count(s.tokens)), " token(s), last ",
+    match ampere_checkpoint_last_token(s: s) { Absent => "none" Present { value: t } => t.digits as String },
+    if count(s.malformed) == 0 { "" } else { concat("; MALFORMED: ", join(s.malformed, " | ")) })
+}
+
+fn ampere_checkpoint_console_text(o: AmpereCheckpointConsoleObservation) -> String {
+  if count(o.spans) == 0 { "no CP: token and no DRAM firmware banner printed" } else { join(map(o.spans, s => ampere_checkpoint_span_text(s: s)), "\n") }
+}
+
+fn ampere_checkpoint_relation_text(r: AmpereCheckpointRelation) -> String {
+  concat("span ", to_string(r.span), " of the capture (", digest_text(d: r.capture), ") ended after token ", r.last.digits as String, "; reference ", r.reference_path as String,
+    " (", digest_text(d: r.reference_digest), "; firmware: ", r.reference_firmware as String, "; configuration: ", r.reference_configuration as String, ") ",
+    match r.continuation {
+      ReferenceContinues { next: n, remaining: k, occurrences: o } => concat("printed it (", to_string(o), " time(s)) followed by ", n.digits as String, " and ", to_string(k - 1), " further token(s)")
+      ReferenceEndsThere => "also ended at it"
+      NotInReference => "never printed it"
+      ReferenceUnread { detail: d } => concat("is UNREAD: ", d)
+    })
+}

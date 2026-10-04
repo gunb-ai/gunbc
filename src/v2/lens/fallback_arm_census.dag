@@ -1,5 +1,6 @@
 module v2.lens.fallback_arm_census
 
+import std.types { List }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
   WallAfterGrounding
@@ -7,8 +8,7 @@ import v2.lens.common.construction_justification {
 import std.disposition { RealizationDispatch }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.algebra { fold_list, list_tail, length, TailFound, TailAbsent }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.logic { Bool }
+import v2.std.collection { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.node {

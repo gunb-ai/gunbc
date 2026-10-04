@@ -1,4 +1,5 @@
 module std.primitives
+import std.types { List }
 
 type Certainty = Proven | Amortized | Expected | Conservative
 
@@ -217,6 +218,17 @@ data scan_string_end_contract: PrimitiveContract = {
   name: "scan_string_end",
   work: "k",
   output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+// THE VALIDATED JSON UNESCAPE rides the same native contract shape as the scan it follows: one
+// pass over the body, escape set refused by the same RFC 8259 section 7 production the grammar
+// states.
+data json_unescape_checked_contract: PrimitiveContract = {
+  name: "json_unescape_checked",
+  work: "k",
+  output_size: "n",
   certainty: Proven,
   carrier_cost: CarrierInsensitive
 }
@@ -587,6 +599,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "to_int",
     "scan_while",
     "scan_string_end",
+    "json_unescape_checked",
     "scan_to_eol",
     "skip_horizontal_ws",
     "parse_int",
@@ -754,6 +767,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     skip_horizontal_ws_contract,
     scan_to_eol_contract,
     scan_string_end_contract,
+    json_unescape_checked_contract,
     map_contract,
     filter_contract,
     filter_map_contract,

@@ -1,0 +1,181 @@
+module test.claim.roadmap.roadmap_centering_witness_test
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, ManualAcceptance, Dispatchable }
+import gunbc.roadmap_status { Unsigned, TicketLine }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_canary {
+  roadmap_launch_canary_parent_identity, roadmap_launch_canary_execution_contract,
+  roadmap_launch_canary_parent_node_id, roadmap_launch_canary_ticket, roadmap_launch_canary_parent_lineage,
+}
+import gunbc.roadmap.roadmap_centering { dispatch_centering_preamble, node_centering_plan_text }
+import gunbc.roadmap.roadmap_readiness { readiness_gap_label }
+import gunbc.roadmap_launch_admission {
+  Operator, LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchNotReady,
+  launch_admission, LaunchGraphStanding, launch_graph_of_document,
+}
+import gunbc.roadmap_dispatch_actuator {
+  DispatchBriefFields, dispatch_brief_with_centering,
+}
+import test.claim.roadmap_launch_canary_witness { canary_node, canary_doc }
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The centering dispatch requirement (operator ruling 2026-09-19), with the plan now a field of the
+// row (operator ruling 2026-09-30), each clause on a PLANTED input: (1) a node whose row supplies no
+// centering refuses launch NotReady naming centering -- the readiness value, not a roster lookup;
+// (2) the plan on the row is the plan the dispatched brief carries, beside the shared preamble
+// EXACTLY ONCE; (3) an uncentered node's brief says so loudly; (4) the preamble no longer restates
+// how to test (the system prompt derives it) and so cannot carry that paragraph's stale citation;
+// (5) the ten shell-to-dag rows of the live authority each carry a plan that renders into their
+// brief. Fixtures are constructed here; nothing reads a live host.
+
+fn uncentered_node() -> RoadmapNode {
+  RoadmapNode {
+    identity: roadmap_launch_canary_parent_identity,
+    node: "centering-fixture-uncentered" as NonEmptyStr as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: roadmap_launch_canary_ticket() },
+    carriers: [],
+    dispatch: Dispatchable { repo: "gunbc", acceptance: ManualAcceptance },
+    execution: roadmap_launch_canary_execution_contract(),
+    owner: "",
+    signoff: Unsigned,
+    parent: roadmap_launch_canary_parent_lineage(),
+    centering: none,
+  }
+}
+
+fn centered_node() -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_parent_identity,
+    id: roadmap_launch_canary_parent_node_id(),
+    execution: roadmap_launch_canary_execution_contract(),
+    signoff: Unsigned,
+  )
+}
+
+fn graph_of(n: RoadmapNode) -> LaunchGraphStanding {
+  launch_graph_of_document(doc: canary_doc(nodes: [n], edges: []))
+}
+
+test fn a_node_without_centering_refuses_dispatch_naming_centering() -> Bool {
+  match launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph_of(n: uncentered_node()),
+    merged: [],
+    node_id: "centering-fixture-uncentered",
+    reserved: 0,
+  ) {
+    LaunchRefused { refusal } =>
+      (match refusal {
+        LaunchNotReady { missing } => (missing |> map(g => readiness_gap_label(g: g))) == ["centering"]
+        _ => false
+      })
+    LaunchAdmitted { identity: _ } => false
+  }
+}
+
+test fn a_node_with_centering_admits() -> Bool {
+  match launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph_of(n: centered_node()),
+    merged: [],
+    node_id: roadmap_launch_canary_parent_node_id() as String,
+    reserved: 0,
+  ) {
+    LaunchAdmitted { identity: _ } => true
+    LaunchRefused { refusal: _ } => false
+  }
+}
+
+fn fixture_fields() -> DispatchBriefFields {
+  DispatchBriefFields {
+    node_id: "fixture-node",
+    displaced_cost: "dc",
+    current_state: "cs",
+    first_slice: "fs",
+    red_control: "rc",
+    out_of_scope: "oos",
+    handback: "hb",
+    paths: "p",
+    commands_to_run: "c",
+    expected_artifact: "ea",
+  }
+}
+
+// count(split(s, x)) == 2 exactly when x occurs exactly once in s.
+fn occurs_exactly_once(s: String, x: String) -> Bool {
+  count(split(s: s, delimiter: x)) == 2
+}
+
+fn brief_for(n: RoadmapNode) -> String {
+  dispatch_brief_with_centering(node: n, fields: fixture_fields())
+}
+
+// ANTI-BYPASS (owner review, 2026-09-19): the plan whose presence admits the node is the same
+// string the worker receives -- the admission reads the row's centering and the brief renders it.
+test fn the_plan_that_admits_is_the_plan_the_brief_carries() -> Bool {
+  match centered_node().centering {
+    Absent => false
+    Present { value: plan } =>
+      node_centering_plan_text(node: centered_node()) == plan as String
+        && string_contains(s: brief_for(n: centered_node()), pattern: plan as String)
+  }
+}
+
+test fn the_brief_carries_the_shared_preamble_exactly_once_and_the_nodes_plan() -> Bool {
+  let brief = brief_for(n: centered_node())
+  occurs_exactly_once(s: brief, x: dispatch_centering_preamble)
+    && (match centered_node().centering {
+      Absent => false
+      Present { value: plan } => string_contains(s: brief, pattern: plan as String)
+    })
+}
+
+test fn the_brief_marks_an_uncentered_node_loudly() -> Bool {
+  string_contains(s: brief_for(n: uncentered_node()), pattern: "NO CENTERING PLAN IS DECLARED FOR THIS NODE")
+}
+
+// The preamble is one authority for orientation and NOT a second one for testing: the test route is
+// derived in the system prompt (gunbc.harness.harness_guidance IterateNarrowThenAccept). RED on the
+// former text, which spelled the route and cited a DESIGN.md section that does not exist.
+test fn the_preamble_does_not_restate_how_to_test() -> Bool {
+  !string_contains(s: dispatch_centering_preamble, pattern: "Operational essentials")
+    && !string_contains(s: dispatch_centering_preamble, pattern: "test_process_command")
+    && string_contains(s: dispatch_centering_preamble, pattern: "IterateNarrowThenAccept")
+}
+
+// THE SHELL->DAG MIGRATION BATCH 1 ROWS (operator ruling 2026-09-20), read from the live authority:
+// each of the ten rows carries its plan on the row, and the plan renders into that node's brief.
+data shell_dag_migration_node_ids: List<String> = [
+  "shell-dag-cron-entry-line-builder",
+  "shell-dag-floor-peak-calibration-rows",
+  "shell-dag-ci-fmt-gate-line",
+  "shell-dag-ci-deploy-invoke-prelude",
+  "shell-dag-ci-heal-regen-invoke",
+  "shell-dag-compile-pool-slice-install",
+  "shell-dag-slot-population-census-read",
+  "shell-dag-codex-app-server-trip-script",
+  "shell-dag-live-deploy-install-owned",
+  "shell-dag-live-deploy-restart-tailscale",
+]
+
+fn declared_row_centered_and_rendered(id: String) -> Bool {
+  match declared_roadmap_nodes() |> filter(n => (n.node as String) == id) |> first {
+    Absent => false
+    Present { value: n } => match n.centering {
+      Absent => false
+      Present { value: plan } => string_contains(s: brief_for(n: n), pattern: plan as String)
+    }
+  }
+}
+
+test fn the_ten_shell_dag_migration_nodes_are_centered_and_render() -> Bool {
+  count(shell_dag_migration_node_ids) == 10
+    && all(shell_dag_migration_node_ids, id => declared_row_centered_and_rendered(id: id))
+}

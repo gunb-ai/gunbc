@@ -1,7 +1,6 @@
 module v2.compiler.self_host.native_routing_frontier
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.types { List }
 import v2.std.text { String }
 import v2.std.algebra { length, any, contains }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -43,8 +42,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // partition the roster, and the agreement entries are discovered under the corpus scan regardless,
 // so a denied family loses NATIVE execution and keeps its coverage — a refusal that narrows, never
 // a silent widen and never a dropped witness. The evidence a row carries is authored from observed
-// runs (parity_receipts_local is the operator-sourced example, the sibling shape
-// realize_advisory_soundness names); its freshness is therefore an authoring fact, and DISSOLVE-ON
+// runs (parity_receipts_local is the operator-sourced example); its freshness is therefore an authoring fact, and DISSOLVE-ON
 // stays: when falsifier-derived observations land, the carried lists become projections of that
 // feed and the admission predicate above keeps its exact shape — the wall is already in place, only
 // the evidence source moves. One authority decides both sides of the floor: the per-PR native batch

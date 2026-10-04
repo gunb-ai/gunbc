@@ -1,0 +1,1025 @@
+module gunbc.roadmap_session_placement
+
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.measure { Kibibyte, kibibyte, kibibyte_count, millicore }
+import std.durable_compare_and_set { CasGeneration }
+import product.capacity.lease { LeaseGrant }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.durable_cas_file_store { CasSlotKeys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused, cas_slot_keys }
+import gunbc.compute.attempt_lifecycle {
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptRecovered,
+  AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
+  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_state_wire,
+  compute_pre_launch_ceiling_seconds,
+  UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
+  unit_lifecycle_wire,
+  RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryStateNotRecoverable,
+  recovery_trigger, recovery_trigger_wire,
+}
+import gunbc.compute.host_capacity {
+  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
+  ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
+  ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
+  ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
+  compute_memory_ceiling,
+}
+import gunbc.compute.work_class_grant {
+  WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
+}
+import gunbc.compute.unit_bounds { UnitProcessBounds }
+import gunbc.roadmap_belt { roadmap_belt_default_capacity }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+import gunbc.roadmap_dispatch_actuator {
+  dispatch_attempt_unit_name,
+  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable, attempt_unit_observation,
+}
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemFileObservation,
+  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
+}
+import extdeps.languages.json.emit { JsonValue, json_string, json_int, json_array, json_object, json_kv, serialize_json }
+import extdeps.languages.json.parse {
+  JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_nat, json_field_int, json_field_string_list,
+}
+
+// G5 OF THE DOGFOOD ROUTE: THE AGENT SESSION HOLDS A PLACEMENT GRANT AND RUNS INSIDE ITS BOUNDS.
+//
+// Before this module the model TURN held a fabric seat (gunbc.harness.harness_seat) while the agent
+// SESSION that issues those turns held nothing: the worker ran as a transient unit whose MemoryMax
+// was the instance's ceiling read straight off the deployment. This module is the session's side of
+// the one capacity authority (DESIGN 3b fabric/compute row): it reserves the session's memory through
+// gunbc.compute.host_capacity -- the same ledger, linearization and quiescence-required release law
+// compute_provide uses -- from the host's AGENT SESSION pool, a partition separate from the build pool
+// so a session never holds the capacity its own builds need (bold-bee-114 ruling 2026-10-03). The
+// amount is gunbc.compute.work_class_grant's answer for WorkClassAgentSession, and the unit's
+// MemoryMax is that amount through gunbc.compute.unit_bounds.
+//
+// THE LIFECYCLE IS gunbc.compute.attempt_lifecycle's, NOT A SECOND ONE (side-chat ruling on #13074,
+// NO-LAND at b4d4a42). A ledger encumbrance is durable and quiescence-required -- a term that runs out
+// frees nothing -- so every point at which the spawning process can die must leave a state some
+// LATER process can resolve. The compute provider's attempt slot already is that machine: a CAS slot
+// keyed by the reservation reference, Reserved -> Launching -> Terminal, a temporal trigger while no
+// unit can exist and an observational one once it can. The session conforms to it with one ordering
+// difference that closes the window the ruling named: the slot is OPENED BEFORE THE RESERVATION, so
+// there is no instant at which the ledger holds this reference and no slot names it. A crash after
+// opening and before reserving leaves a slot whose release finds nothing to return; a crash anywhere
+// after reserving leaves a slot recovery can terminate and release. (gunbc.compute.work_provider_local
+// reserves first and opens second, so it still has that window; it is outside this change.)
+//
+// WHAT RECOVERY READS AND WHEN. session_placement_settle_pass enumerates every slot in the session
+// store (gunbc.durable_cas_file_store cas_slot_keys) -- not the workflow ledger, not the placement
+// files -- so a slot whose files were never written is still found. The belt runs it once per tick
+// BEFORE any new acquisition, which covers controller death and host reboot as well as returned
+// failures, because it starts from the store rather than from anything the dead process meant to do.
+//
+// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
+// start unleased at the instance ceiling. They join WorkClassAgentSession once a session grant row
+// (measured session peaks) sizes the class below the ceiling -- at the ceiling, fourteen reviewer
+// lanes per head cannot fit a pool sized to the belt's worker count. Vendor providers (claude, codex,
+// cursor) run in tmux, whose panes escape any unit's cgroup, so they hold no placement until they
+// move into a unit; their attempts read SessionPlacementAbsent, which is the truth.
+
+// THE ROLE SEGMENT OF THE RECORD NAME. Only the worker holds a placement in this change (see the
+// frontier above); a role coproduct lands with the second role rather than as a one-arm type.
+data session_worker_role: String = "worker"
+
+data session_placement_schema: String = "gunbc.session-placement/v1"
+
+// HOW LONG A SESSION RESERVATION DECLARES IT WILL HOLD. A declaration and not a deadline: the pool's
+// release law is quiescence-required, so an elapsed term frees nothing and the seat returns only by
+// the release the settlement pass performs. Four hours is the longest worker the belt has run on
+// srv2 with margin.
+//
+// IT IS A Nat OF SECONDS BECAUSE THAT IS THE POOL'S OWN DURATION CARRIER: product.capacity.pool_events
+// SeatRequest.term_seconds and product.capacity.lease LeasePolicy.maximum_duration_seconds are Nat
+// seconds, and gunbc.compute.host_capacity host_capacity_reserve takes the term in that form. A
+// branded std.types Seconds here would be a second representation cast back to Nat at the call --
+// moving the duration onto a typed carrier is a change to the capacity authority's signature, not
+// to this consumer (review 74593).
+//
+// feature:capacity-duration-carrier -- tracked debt, not a settled shape (review 74749).
+// dissolve-on: product.capacity.pool_events SeatRequest.term_seconds, product.capacity.lease
+// LeasePolicy.maximum_duration_seconds and gunbc.compute.host_capacity host_capacity_reserve's
+// term_seconds take a std.measure duration carrier instead of a Nat of seconds. SUFFICIENT FOR
+// retyping this row (and compute_reservation_term_seconds, its compute twin) in the same change; until
+// then this row stays in the carrier its only consumer accepts. The lease's two instants are already
+// carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
+data session_placement_term_seconds: Nat = 14400
+
+// THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
+// ceilings are stated beside it rather than pretended to come from it (DESIGN 3b: a divergence with
+// its reason). They are policy budgets for the dogfood capped unit (operator ruling 2026-10-03: a
+// capped systemd unit plus a lease is sufficient): eight cores and 4096 tasks bound a runaway
+// session without throttling the single `gunbc run` a harness worker is. Falsifiable: a worker unit
+// ending in Result=resources, or a throughput regression attributed to CPUQuota, re-derives them.
+data session_process_bounds: UnitProcessBounds = UnitProcessBounds { cpu_quota: millicore(count: 8000), tasks_max: 4096 }
+
+// THE SESSION POOL'S SLOTS ARE THE BELT'S WORKER COUNT, derived rather than chosen: the belt already
+// admits at most max_concurrent workers, so a pool of that many ceilings refuses only for memory the
+// machine lacks, never for a count launch admission did not impose.
+fn session_placement_pool() -> HostCapacityPool? {
+  match checked_int_to_nat(n: roadmap_belt_default_capacity.max_concurrent) {
+    Absent => none
+    Present { value: slots } => Present { value: AgentSessionPool { slots: slots } }
+  }
+}
+
+// ── THE BINDING: WHICH ATTEMPT, WHICH UNIT, WHICH HOLD ─────────────────────────────────────────
+//
+// The slot's key and the ledger's reference are the attempt's UNIT NAME, which the dispatch actuator
+// derives from the node and the content-hash attempt key -- so one attempt names one hold and two
+// attempts never share one. The slot's identity field carries the node and attempt it binds, so a
+// record read back is checked against the attempt that is asking rather than trusted because of
+// where it was found (ruling, finding 3).
+fn session_attempt_identity(node_id: String, attempt_key: String) -> String {
+  join([node_id, ":", attempt_key], "")
+}
+
+fn session_unit(node_id: String, attempt_key: String) -> NonEmptyStr {
+  dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+}
+
+// THE BINDING CHECK, ONE FOLD FOR EVERY READER. A slot is this attempt's only if its reference, its
+// unit and its identity all name the same attempt; a mismatch is FOREIGN, and a foreign slot is never
+// released by anyone reading it under this attempt's name.
+fn session_slot_binding_mismatch(record: AttemptRecord, node_id: String, attempt_key: String) -> String {
+  let expected = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  if record.reference != expected {
+    join(["the slot's reference is ", record.reference, " and this attempt's unit is ", expected], "")
+  } else if record.unit != expected {
+    join(["the slot's unit is ", record.unit, " and this attempt's unit is ", expected], "")
+  } else if record.identity != session_attempt_identity(node_id: node_id, attempt_key: attempt_key) {
+    join(["the slot binds ", record.identity, " and this attempt is ", session_attempt_identity(node_id: node_id, attempt_key: attempt_key)], "")
+  } else {
+    ""
+  }
+}
+
+// THE IDENTITY PARSED BACK, for the settlement pass, which starts from a slot and must find the
+// attempt it binds. The attempt key is a hex digest and carries no ':', so the LAST ':' splits.
+type SessionAttemptName {
+  node_id: String
+  attempt_key: String
+}
+
+fn session_attempt_name_of(identity: String) -> SessionAttemptName? {
+  let parts: List<String> = identity.split(delimiter: ":")
+  if count(parts) < 2 { none } else {
+    let key = match first(skip(parts, count(parts) - 1)) { Absent => ""  Present { value: p } => p }
+    let node = join(parts |> take(count(parts) - 1), ":")
+    if key == "" || node == "" { none } else { Present { value: SessionAttemptName { node_id: node, attempt_key: key } } }
+  }
+}
+
+// ── THE STORES ─────────────────────────────────────────────────────────────────────────────────
+//
+// WHERE A SESSION'S DURABLE FACTS LIVE, resolved once from the instance and then passed as a value,
+// so the settlement pass and its witnesses run the same fold over any store (the compute recovery
+// door's own row names an instance-derived root as what kept its control unwritable).
+type SessionPlacementStores {
+  slots_root: NonEmptyStr
+  records_dir: String
+  store: FabricStorageBinding
+  partition: PartitionId
+}
+
+type SessionStoresResolution
+  = SessionStoresResolved { stores: SessionPlacementStores }
+  | SessionStoresUnresolved { detail: String }
+
+fn session_placement_records_dir(instance: HostDashboardInstance) -> String {
+  dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+}
+
+fn session_placement_slots_root(instance: HostDashboardInstance) -> NonEmptyStr {
+  join([session_placement_records_dir(instance: instance), "/session-attempts"], "") as NonEmptyStr
+}
+
+fn session_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
+  match session_placement_pool() {
+    Absent => SessionStoresUnresolved { detail: join(["the belt's max_concurrent ", to_string(value: roadmap_belt_default_capacity.max_concurrent), " is not a natural number, so the session pool has no size"], "") }
+    Present { value: pool } =>
+      match host_capacity_subject(instance: instance, pool: pool, request: kibibyte(count: 0)) {
+        ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no session ledger"], "") }
+        ComputeSubjectResolved { subject } =>
+          SessionStoresResolved { stores: SessionPlacementStores {
+            slots_root: session_placement_slots_root(instance: instance),
+            records_dir: session_placement_records_dir(instance: instance),
+            store: compute_capacity_store(subject: subject),
+            partition: subject.partition,
+          } }
+      }
+  }
+}
+
+// ── ACQUISITION: SLOT FIRST, THEN THE LEDGER ───────────────────────────────────────────────────
+type SessionPlacementGrant {
+  node_id: String
+  attempt_key: String
+  unit: NonEmptyStr
+  lease: LeaseGrant
+  partition: PartitionId
+  amount: Kibibyte
+  class_grant: WorkClassGrant
+  store: FabricStorageBinding
+  slot: AttemptRecord
+  slot_generation: CasGeneration
+}
+
+type SessionPlacementAcquisition
+  = SessionPlacementGranted { grant: SessionPlacementGrant }
+  | SessionPlacementRefused { detail: String }
+
+// THE DECLARED WINDOW IS THE CEILING'S OWN ROW, the same as the compute provider's: what it covers is
+// the worktree add, the attempt state and the unit's argv -- the steps between acquisition and
+// session_placement_begin_launch.
+fn session_attempt_record(node_id: String, attempt_key: String, granted: Kibibyte, now: EpochSecs) -> AttemptRecord {
+  AttemptRecord {
+    identity: session_attempt_identity(node_id: node_id, attempt_key: attempt_key),
+    reference: session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    unit: session_unit(node_id: node_id, attempt_key: attempt_key) as String,
+    granted: granted,
+    opened_at: now,
+    launch_deadline: now + compute_pre_launch_ceiling_seconds,
+    state: AttemptReserved,
+  }
+}
+
+fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPlacementStores, node_id: String, attempt_key: String) -> SessionPlacementAcquisition {
+  match session_placement_pool() {
+    Absent => SessionPlacementRefused { detail: "the session pool has no size" }
+    Present { value: pool } => {
+      let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+      match now_epoch_seconds() {
+        Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
+        Present { value: now } => {
+          let record = session_attempt_record(node_id: node_id, attempt_key: attempt_key, granted: work_class_grant_amount(g: class_grant), now: now)
+          match attempt_open(root: stores.slots_root, record: record) {
+            AttemptLostRace { expected: e, observed: o } =>
+              SessionPlacementRefused { detail: join(["a session slot already exists for ", record.unit, " (expected ", e, ", found ", o, "); one attempt holds at most one placement"], "") }
+            AttemptTransitionRefused { detail: d } =>
+              SessionPlacementRefused { detail: join(["the session slot could not be opened, so nothing was reserved: ", d], "") }
+            AttemptAdvanced { state: _, generation: g } =>
+              match host_capacity_reserve(instance: instance, pool: pool, reference: record.unit as NonEmptyStr, term_seconds: session_placement_term_seconds, request: record.granted) {
+                ComputeReserved { grant: lease, partition: p, amount: a, store: s } =>
+                  SessionPlacementGranted { grant: SessionPlacementGrant {
+                    node_id: node_id, attempt_key: attempt_key, unit: record.unit as NonEmptyStr,
+                    lease: lease, partition: p, amount: a, class_grant: class_grant, store: s, slot: record, slot_generation: g,
+                  } }
+                ComputeCapacityFull { wire: w } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeCapacityFull { wire: w }))
+                ComputeHostBelowFloor { requested: rq, available: av } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeHostBelowFloor { requested: rq, available: av }))
+                ComputeReservationRefused { detail: d } => session_refused_after_open(stores: stores, record: record, generation: g, refusal: compute_reservation_wire(r: ComputeReservationRefused { detail: d }))
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A REFUSED RESERVATION CLOSES THE SLOT IT OPENED, and if the close itself fails the slot is left
+// Reserved -- which settlement terminates after the deadline, releasing nothing because nothing was
+// reserved. Both outcomes are carried in the refusal.
+fn session_refused_after_open(stores: SessionPlacementStores, record: AttemptRecord, generation: CasGeneration, refusal: String) -> SessionPlacementAcquisition {
+  SessionPlacementRefused {
+    detail: join([
+      refusal, "; session slot ",
+      attempt_transition_wire(t: attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join(["reservation refused: ", refusal], ""))),
+    ], ""),
+  }
+}
+
+// THE LAUNCH GATE: Reserved -> Launching, called immediately before the unit is started and never
+// after. Losing it means settlement terminated this attempt for overrunning its declared window, and
+// the unit must not start; the caller abandons what it holds.
+type SessionLaunchGate
+  = SessionLaunchAdmitted { grant: SessionPlacementGrant }
+  | SessionLaunchRefused { detail: String }
+
+fn session_placement_begin_launch(stores: SessionPlacementStores, grant: SessionPlacementGrant) -> SessionLaunchGate {
+  match attempt_begin_launch(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation) {
+    AttemptAdvanced { state: s, generation: g } =>
+      SessionLaunchAdmitted { grant: SessionPlacementGrant {
+        node_id: grant.node_id, attempt_key: grant.attempt_key, unit: grant.unit, lease: grant.lease, partition: grant.partition,
+        amount: grant.amount, class_grant: grant.class_grant, store: grant.store,
+        slot: AttemptRecord { identity: grant.slot.identity, reference: grant.slot.reference, unit: grant.slot.unit, granted: grant.slot.granted, opened_at: grant.slot.opened_at, launch_deadline: grant.slot.launch_deadline, state: s },
+        slot_generation: g,
+      } }
+    AttemptLostRace { expected: e, observed: o } => SessionLaunchRefused { detail: join(["the session slot moved before launch (expected ", e, ", found ", o, "); settlement ended this attempt, so its unit is not started"], "") }
+    AttemptTransitionRefused { detail: d } => SessionLaunchRefused { detail: join(["the session slot would not take the launch generation: ", d], "") }
+  }
+}
+
+// A SPAWN THAT DID NOT HAPPEN RETURNS ITS SEAT ONLY THROUGH A SLOT TRANSITION THAT COMMITTED
+// (side-chat ruling on #13074 at c6d50f1). The caller may hold a STALE generation: the launch gate
+// advances the slot Reserved -> Launching inside the container step, so a unit-start failure arrives
+// here with the pre-launch generation. So:
+//   - termination from the supplied generation commits -> release;
+//   - it loses -> re-read the slot, and
+//       Terminal  -> settlement already closed it; an idempotent release is allowed,
+//       Reserved  -> terminate at the generation read, release only if that commits,
+//       Launching -> observe the unit: ENDED terminates at the generation read and releases;
+//                    ACTIVE or UNREADABLE keeps the charge (the launcher failing is not authoritative
+//                    unit absence -- the transient unit is retained precisely so its state can be
+//                    read), and the settlement pass releases it once the unit is observed ended,
+//       unreadable, absent or mis-bound slot -> keep the charge.
+// compute_release_on is NEVER reached merely because an attempted close lost.
+type SessionAbandonment {
+  freed: ComputeRelease?
+  detail: String
+}
+
+fn session_abandon_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, closed: String) -> SessionAbandonment {
+  let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.lease.reference, reason: reason)
+  let write = session_placement_release_write(
+    records_dir: stores.records_dir, node_id: grant.node_id, attempt_key: grant.attempt_key,
+    grant_binding: Present { value: SessionGrantBinding { grant_identity: grant.lease.fence.grant as String, fence_generation: grant.lease.fence.generation } },
+    reason: reason, freed: freed)
+  SessionAbandonment {
+    freed: Present { value: freed },
+    detail: join(["session slot ", closed, "; session placement ", session_release_outcome_wire(r: freed), ": ", session_release_detail(r: freed), session_write_note(w: write)], ""),
+  }
+}
+
+fn session_abandon_kept(why: String) -> SessionAbandonment {
+  SessionAbandonment { freed: none, detail: join(["session placement KEPT: ", why], "") }
+}
+
+fn session_abandon_terminate_then_release(stores: SessionPlacementStores, grant: SessionPlacementGrant, record: AttemptRecord, generation: CasGeneration, reason: NonEmptyStr, why: String) -> SessionAbandonment {
+  match attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join([reason as String, "; ", why], "")) {
+    AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ") after re-reading: ", why], ""))
+    AttemptLostRace { expected: e, observed: o } => session_abandon_kept(why: join(["the slot moved again (expected ", e, ", found ", o, "); the settlement pass decides it from the store"], ""))
+    AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation: ", d], ""))
+  }
+}
+
+fn session_placement_abandon_at(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle) -> SessionAbandonment {
+  match attempt_terminate(root: stores.slots_root, record: grant.slot, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
+    AttemptAdvanced { state: s, generation: _ } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["closed (", attempt_state_wire(s: s), ")"], ""))
+    AttemptTransitionRefused { detail: d } => session_abandon_kept(why: join(["the slot would not take the terminal generation (", d, "); the settlement pass decides it from the store"], ""))
+    AttemptLostRace { expected: _, observed: _ } =>
+      match attempt_slot_read(root: stores.slots_root, reference: grant.unit) {
+        AttemptSlotUnreadable { detail } => session_abandon_kept(why: join(["the slot close lost and the slot is now unreadable: ", detail], ""))
+        AttemptSlotAbsent => session_abandon_kept(why: "the slot close lost and no slot is held under this unit")
+        AttemptSlotHeld { record: rec, generation: g } => {
+          let mismatch = session_slot_binding_mismatch(record: rec, node_id: grant.node_id, attempt_key: grant.attempt_key)
+          if mismatch != "" {
+            session_abandon_kept(why: join(["the slot re-read is not this attempt's (", mismatch, ")"], ""))
+          } else {
+            match rec.state {
+              AttemptTerminal { verdict: _, detail: d } => session_abandon_release(stores: stores, grant: grant, reason: reason, closed: join(["already closed (", d, ")"], ""))
+              AttemptReserved => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: "the slot is still Reserved")
+              AttemptLaunching => {
+                let lifecycle = lifecycle_of(grant.unit)
+                match lifecycle {
+                  UnitTerminatedSuccess { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitTerminatedFailure { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitTerminatedCauseUnknown { detail: _ } => session_abandon_terminate_then_release(stores: stores, grant: grant, record: rec, generation: g, reason: reason, why: join(["the unit is ", unit_lifecycle_wire(u: lifecycle)], ""))
+                  UnitStillRunning { detail: _ } => session_abandon_kept(why: join(["the slot is Launching and the unit is ", unit_lifecycle_wire(u: lifecycle), "; the settlement pass releases it once the unit is observed ended"], ""))
+                  UnitLifecycleUnknown { detail: _ } => session_abandon_kept(why: join(["the slot is Launching and the unit is ", unit_lifecycle_wire(u: lifecycle), "; the settlement pass releases it once the unit is observed ended"], ""))
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn session_placement_abandon(stores: SessionPlacementStores, grant: SessionPlacementGrant, reason: NonEmptyStr) -> String {
+  (session_placement_abandon_at(stores: stores, grant: grant, reason: reason, lifecycle_of: session_observe_unit_lifecycle)).detail
+}
+
+// ── THE DURABLE PLACEMENT RECORD ───────────────────────────────────────────────────────────────
+//
+// The slot is the lifecycle authority; this record is the placement's DESCRIPTION -- the lease
+// identity and fence, the partition, the class grant and the unit properties actually passed to
+// systemd-run -- written after the reservation and before the launch gate. It names its schema, its
+// node, its attempt, its host and its unit, and the reader refuses it unless every one of them is
+// the asking attempt's (ruling, finding 3).
+fn session_placement_record_basename(node_id: String, attempt_key: String) -> String {
+  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".json"], "")
+}
+
+fn session_placement_release_basename(node_id: String, attempt_key: String) -> String {
+  join(["session-placement-", node_id, "-a", attempt_key, "-", session_worker_role, ".release.json"], "")
+}
+
+fn session_placement_note_basename(unit: String) -> String {
+  join(["session-placement-note-", unit, ".txt"], "")
+}
+
+type SessionPlacementRecord {
+  schema: String
+  node_id: String
+  attempt_key: String
+  host: String
+  unit: String
+  reference: String
+  grant_identity: String
+  fence_generation: Nat
+  granted_at: EpochSecs
+  expires_at: EpochSecs
+  partition: String
+  amount: Kibibyte
+  class_grant: String
+  unit_properties: List<String>
+}
+
+fn session_placement_record_of(host: String, grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementRecord {
+  SessionPlacementRecord {
+    schema: session_placement_schema,
+    node_id: grant.node_id,
+    attempt_key: grant.attempt_key,
+    host: host,
+    unit: grant.unit as String,
+    reference: grant.lease.reference as String,
+    grant_identity: grant.lease.fence.grant as String,
+    fence_generation: grant.lease.fence.generation,
+    granted_at: grant.lease.granted_at,
+    expires_at: grant.lease.expires_at,
+    partition: grant.partition as String,
+    amount: grant.amount,
+    class_grant: work_class_grant_wire(g: grant.class_grant),
+    unit_properties: unit_properties,
+  }
+}
+
+fn session_placement_record_json(r: SessionPlacementRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: r.schema)),
+    json_kv(key: "node_id", value: json_string(s: r.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
+    json_kv(key: "host", value: json_string(s: r.host)),
+    json_kv(key: "unit", value: json_string(s: r.unit)),
+    json_kv(key: "reference", value: json_string(s: r.reference)),
+    json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
+    json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
+    json_kv(key: "granted_at", value: json_int(n: r.granted_at)),
+    json_kv(key: "expires_at", value: json_int(n: r.expires_at)),
+    json_kv(key: "partition", value: json_string(s: r.partition)),
+    json_kv(key: "amount_kib", value: json_int(n: kibibyte_count(k: r.amount))),
+    json_kv(key: "class_grant", value: json_string(s: r.class_grant)),
+    json_kv(key: "unit_properties", value: json_array(elements: map(r.unit_properties, p => json_string(s: p)))),
+  ])
+}
+
+type SessionPlacementWrite
+  = SessionPlacementWritten { path: String }
+  | SessionPlacementWriteFailed { path: String, error: String }
+
+fn session_write_note(w: SessionPlacementWrite) -> String {
+  match w {
+    SessionPlacementWritten { path: _ } => ""
+    SessionPlacementWriteFailed { path, error } => join([" (record not written at ", path, ": ", error, ")"], "")
+  }
+}
+
+fn session_placement_record_write(stores: SessionPlacementStores, host: String, grant: SessionPlacementGrant, unit_properties: List<String>) -> SessionPlacementWrite {
+  let path = join([stores.records_dir, "/", session_placement_record_basename(node_id: grant.node_id, attempt_key: grant.attempt_key)], "")
+  let w = Filesystem.Write(path: path, content: serialize_json(v: session_placement_record_json(r: session_placement_record_of(host: host, grant: grant, unit_properties: unit_properties))))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// ── THE RELEASE RECORD, BOUND TO THE GRANT AND FENCE IT RETURNED ───────────────────────────────
+//
+// A reference is reusable text; a grant identity and its fence name ONE hold. The release carries
+// the hold it returned when the releaser knows it, and says it does not (the `grant` member is
+// absent) when settlement released from a slot whose placement record was never written -- in which
+// case the reader requires that there IS no placement record to disagree with.
+type SessionGrantBinding {
+  grant_identity: String
+  fence_generation: Nat
+}
+
+fn session_release_outcome_wire(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: _, reference: _, reason: _ } => "released"
+    ComputeNothingToRelease { detail: _ } => "nothing-to-release"
+    ComputeReleaseRefused { detail: _ } => "refused"
+  }
+}
+
+fn session_release_detail(r: ComputeRelease) -> String {
+  match r {
+    ComputeReleased { partition: p, reference: rf, reason: rs } => join(["released ", rf as String, " on ", p as String, " (", rs as String, ")"], "")
+    ComputeNothingToRelease { detail: d } => d
+    ComputeReleaseRefused { detail: d } => d
+  }
+}
+
+fn session_placement_release_write(records_dir: String, node_id: String, attempt_key: String, grant_binding: SessionGrantBinding?, reason: NonEmptyStr, freed: ComputeRelease) -> SessionPlacementWrite {
+  let path = join([records_dir, "/", session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)], "")
+  let w = Filesystem.Write(path: path, content: serialize_json(v: json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: session_placement_schema)),
+    json_kv(key: "node_id", value: json_string(s: node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+    json_kv(key: "reference", value: json_string(s: session_unit(node_id: node_id, attempt_key: attempt_key) as String)),
+    json_kv(key: "outcome", value: json_string(s: session_release_outcome_wire(r: freed))),
+    json_kv(key: "reason", value: json_string(s: reason as String)),
+    json_kv(key: "detail", value: json_string(s: session_release_detail(r: freed))),
+  ], match grant_binding {
+    Absent => []
+    Present { value: b } => [json_kv(key: "grant", value: json_object(members: [
+      json_kv(key: "grant_identity", value: json_string(s: b.grant_identity)),
+      json_kv(key: "fence_generation", value: json_int(n: b.fence_generation)),
+    ]))]
+  }))))
+  if w.success { SessionPlacementWritten { path: path } } else { SessionPlacementWriteFailed { path: path, error: w.error } }
+}
+
+// ── READING THE FILES BACK ─────────────────────────────────────────────────────────────────────
+type SessionFieldsAcc {
+  record: SessionPlacementRecord?
+  cause: String
+}
+
+fn session_field_cause<T>(key: String, r: JsonFieldRead<T>) -> String {
+  match r {
+    FieldAbsent => join([key, " is missing"], "")
+    FieldMalformed { cause } => cause
+    FieldRead { value: _ } => ""
+  }
+}
+
+fn session_string_or(r: JsonFieldRead<String>) -> String {
+  match r { FieldRead { value } => value  FieldAbsent => ""  FieldMalformed { cause: _ } => "" }
+}
+
+fn session_int_or(r: JsonFieldRead<Int>) -> Int {
+  match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
+}
+
+// AN INSTANT ON THE WIRE IS RE-ADMITTED, NOT CAST (the same rule as gunbc.compute.attempt_lifecycle
+// attempt_member_epoch): a negative number is not an epoch second.
+fn session_epoch_cause(key: String, r: JsonFieldRead<Int>) -> String {
+  match r {
+    FieldRead { value } => if value < 0 { join([key, " is ", to_string(value: value), ", which is not an epoch second"], "") } else { "" }
+    FieldAbsent => join([key, " is missing"], "")
+    FieldMalformed { cause } => cause
+  }
+}
+
+fn session_nat_or(r: JsonFieldRead<Nat>) -> Nat {
+  match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
+}
+
+// EVERY FIELD IS REQUIRED. The first missing or malformed one is the refusal; the zero and empty
+// fallbacks above are reached only when that cause is non-empty, so no record is ever built from
+// them.
+fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
+  let schema = json_field_string(obj: doc, key: "schema")
+  let node_id = json_field_string(obj: doc, key: "node_id")
+  let attempt_key = json_field_string(obj: doc, key: "attempt_key")
+  let host = json_field_string(obj: doc, key: "host")
+  let unit = json_field_string(obj: doc, key: "unit")
+  let reference = json_field_string(obj: doc, key: "reference")
+  let grant_identity = json_field_string(obj: doc, key: "grant_identity")
+  let fence_generation = json_field_nat(obj: doc, key: "fence_generation")
+  let granted_at = json_field_int(obj: doc, key: "granted_at")
+  let expires_at = json_field_int(obj: doc, key: "expires_at")
+  let partition = json_field_string(obj: doc, key: "partition")
+  let amount_kib = json_field_nat(obj: doc, key: "amount_kib")
+  let class_grant = json_field_string(obj: doc, key: "class_grant")
+  let unit_properties = json_field_string_list(obj: doc, key: "unit_properties")
+  let causes = filter([
+    session_field_cause(key: "schema", r: schema),
+    session_field_cause(key: "node_id", r: node_id),
+    session_field_cause(key: "attempt_key", r: attempt_key),
+    session_field_cause(key: "host", r: host),
+    session_field_cause(key: "unit", r: unit),
+    session_field_cause(key: "reference", r: reference),
+    session_field_cause(key: "grant_identity", r: grant_identity),
+    session_field_cause(key: "fence_generation", r: fence_generation),
+    session_epoch_cause(key: "granted_at", r: granted_at),
+    session_epoch_cause(key: "expires_at", r: expires_at),
+    session_field_cause(key: "partition", r: partition),
+    session_field_cause(key: "amount_kib", r: amount_kib),
+    session_field_cause(key: "class_grant", r: class_grant),
+    session_field_cause(key: "unit_properties", r: unit_properties),
+  ], c => c != "")
+  match causes.first() {
+    Present { value: c } => SessionFieldsAcc { record: none, cause: c }
+    Absent =>
+      SessionFieldsAcc {
+        record: Present { value: SessionPlacementRecord {
+          schema: session_string_or(r: schema),
+          node_id: session_string_or(r: node_id),
+          attempt_key: session_string_or(r: attempt_key),
+          host: session_string_or(r: host),
+          unit: session_string_or(r: unit),
+          reference: session_string_or(r: reference),
+          grant_identity: session_string_or(r: grant_identity),
+          fence_generation: session_nat_or(r: fence_generation),
+          granted_at: session_int_or(r: granted_at),
+          expires_at: session_int_or(r: expires_at),
+          partition: session_string_or(r: partition),
+          amount: kibibyte(count: session_nat_or(r: amount_kib)),
+          class_grant: session_string_or(r: class_grant),
+          unit_properties: match unit_properties { FieldRead { value } => value  FieldAbsent => []  FieldMalformed { cause: _ } => [] },
+        } },
+        cause: "",
+      }
+  }
+}
+
+// THE PLACEMENT RECORD'S BINDING, checked against the asking attempt.
+fn session_record_binding_mismatch(r: SessionPlacementRecord, node_id: String, attempt_key: String, host: String) -> String {
+  let expected = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  if r.schema != session_placement_schema {
+    join(["the placement record's schema is ", r.schema, ", not ", session_placement_schema], "")
+  } else if r.node_id != node_id || r.attempt_key != attempt_key {
+    join(["the placement record belongs to ", r.node_id, ":", r.attempt_key, ", not ", node_id, ":", attempt_key], "")
+  } else if r.unit != expected || r.reference != expected {
+    join(["the placement record names unit ", r.unit, " and reference ", r.reference, "; this attempt's unit is ", expected], "")
+  } else if r.host != host {
+    join(["the placement record was written on host ", r.host, ", not ", host], "")
+  } else {
+    ""
+  }
+}
+
+fn session_file_observation_cause(o: FilesystemFileObservation) -> String {
+  match o {
+    FilesystemFileAbsent(_) => "absent"
+    FilesystemFileRead { path: _, content: _ } => ""
+    FilesystemFileIndeterminate { cause } => cause
+    FilesystemFileObservationsDisagree { path: _, cause } => cause
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => cause
+  }
+}
+
+type SessionGrantReading
+  = SessionGrantRecorded { record: SessionPlacementRecord }
+  | SessionGrantNotRecorded { path: String }
+  | SessionGrantUnreadable { path: String, detail: String }
+  | SessionGrantForeign { path: String, detail: String }
+
+fn session_grant_reading_of(path: String, obs: FilesystemFileObservation, node_id: String, attempt_key: String, host: String) -> SessionGrantReading {
+  match obs {
+    FilesystemFileAbsent(_) => SessionGrantNotRecorded { path: path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionGrantUnreadable { path: path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let decoded = session_placement_record_decode(doc: doc)
+          match decoded.record {
+            Absent => SessionGrantUnreadable { path: path, detail: decoded.cause }
+            Present { value: r } => {
+              let mismatch = session_record_binding_mismatch(r: r, node_id: node_id, attempt_key: attempt_key, host: host)
+              if mismatch == "" { SessionGrantRecorded { record: r } } else { SessionGrantForeign { path: path, detail: mismatch } }
+            }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionGrantUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+  }
+}
+
+type SessionReleaseObservation
+  = SessionReleaseNotRecorded { path: String }
+  | SessionReleased { reason: String, detail: String }
+  | SessionReleaseNothingHeld { reason: String, detail: String }
+  | SessionReleaseRefused { reason: String, detail: String }
+  | SessionReleaseUnreadable { path: String, detail: String }
+
+fn session_release_grant_mismatch(doc: JsonValue, grant: SessionGrantReading) -> String {
+  match json_field(obj: doc, key: "grant") {
+    FieldMalformed { cause } => cause
+    FieldAbsent =>
+      match grant {
+        SessionGrantRecorded { record } => join(["the release names no grant, and this attempt's placement holds grant ", record.grant_identity], "")
+        SessionGrantNotRecorded { path: _ } => ""
+        SessionGrantUnreadable { path: _, detail: _ } => ""
+        SessionGrantForeign { path: _, detail: d } => d
+      }
+    FieldRead { value: g } => {
+      let identity = session_string_or(r: json_field_string(obj: g, key: "grant_identity"))
+      match grant {
+        SessionGrantRecorded { record } =>
+          match json_field_nat(obj: g, key: "fence_generation") {
+            FieldRead { value: f } =>
+              if identity != record.grant_identity || f != record.fence_generation {
+                join(["the release returned grant ", identity, " at fence ", to_string(value: f), ", and this attempt's placement holds ", record.grant_identity, " at fence ", to_string(value: record.fence_generation)], "")
+              } else { "" }
+            FieldAbsent => "the release's grant carries no fence generation"
+            FieldMalformed { cause } => cause
+          }
+        SessionGrantNotRecorded { path: _ } => ""
+        SessionGrantUnreadable { path: _, detail: _ } => ""
+        SessionGrantForeign { path: _, detail: d } => d
+      }
+    }
+  }
+}
+
+fn session_release_observation_of(path: String, obs: FilesystemFileObservation, node_id: String, attempt_key: String, grant: SessionGrantReading) -> SessionReleaseObservation {
+  match obs {
+    FilesystemFileAbsent(_) => SessionReleaseNotRecorded { path: path }
+    FilesystemFileRead { path: _, content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } => SessionReleaseUnreadable { path: path, detail: json_document_gap_text(gap: gap) }
+        JsonDocumentParsed { value: doc } => {
+          let nd = json_field_string(obj: doc, key: "node_id")
+          let ak = json_field_string(obj: doc, key: "attempt_key")
+          let rf = json_field_string(obj: doc, key: "reference")
+          let outcome = json_field_string(obj: doc, key: "outcome")
+          let reason = json_field_string(obj: doc, key: "reason")
+          let detail = json_field_string(obj: doc, key: "detail")
+          let causes = filter([
+            session_field_cause(key: "node_id", r: nd), session_field_cause(key: "attempt_key", r: ak),
+            session_field_cause(key: "reference", r: rf), session_field_cause(key: "outcome", r: outcome),
+            session_field_cause(key: "reason", r: reason), session_field_cause(key: "detail", r: detail),
+          ], c => c != "")
+          match causes.first() {
+            Present { value: c } => SessionReleaseUnreadable { path: path, detail: c }
+            Absent => {
+              let mismatch = if session_string_or(r: nd) != node_id || session_string_or(r: ak) != attempt_key {
+                join(["the release belongs to ", session_string_or(r: nd), ":", session_string_or(r: ak), ", not ", node_id, ":", attempt_key], "")
+              } else if session_string_or(r: rf) != (session_unit(node_id: node_id, attempt_key: attempt_key) as String) {
+                join(["the release names reference ", session_string_or(r: rf), ", not this attempt's unit"], "")
+              } else {
+                session_release_grant_mismatch(doc: doc, grant: grant)
+              }
+              if mismatch != "" {
+                SessionReleaseUnreadable { path: path, detail: mismatch }
+              } else if session_string_or(r: outcome) == "released" {
+                SessionReleased { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "nothing-to-release" {
+                SessionReleaseNothingHeld { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else if session_string_or(r: outcome) == "refused" {
+                SessionReleaseRefused { reason: session_string_or(r: reason), detail: session_string_or(r: detail) }
+              } else {
+                SessionReleaseUnreadable { path: path, detail: join(["release outcome is not in the closed vocabulary: ", session_string_or(r: outcome)], "") }
+              }
+            }
+          }
+        }
+      }
+    FilesystemFileIndeterminate { cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => SessionReleaseUnreadable { path: path, detail: session_file_observation_cause(o: obs) }
+  }
+}
+
+fn session_release_settled(r: SessionReleaseObservation) -> Bool {
+  match r {
+    SessionReleased { reason: _, detail: _ } => true
+    SessionReleaseNothingHeld { reason: _, detail: _ } => true
+    SessionReleaseNotRecorded { path: _ } => false
+    SessionReleaseRefused { reason: _, detail: _ } => false
+    SessionReleaseUnreadable { path: _, detail: _ } => false
+  }
+}
+
+// ── THE READER THE DOGFOOD RECEIPT FOLD CALLS ──────────────────────────────────────────────────
+//
+// CLOSED, AND NO ARM IS A DEFAULT. It takes the asking attempt's node and key and derives the unit,
+// so it reads THIS attempt's slot by key and checks every file it reads against the attempt it is
+// asking about: a slot, record or release belonging to another attempt reads FOREIGN, never Observed.
+type SessionPlacementObservation
+  = SessionPlacementObserved { slot: AttemptRecord, grant: SessionGrantReading, returned: SessionReleaseObservation }
+  | SessionPlacementAbsent { unit: String }
+  | SessionPlacementUnreadable { unit: String, detail: String }
+  | SessionPlacementForeign { unit: String, detail: String }
+
+// THE PURE FOLD over what the caller read, so witnesses supply planted readings and the reader below
+// supplies real ones.
+fn session_placement_observation_of(
+  node_id: String, attempt_key: String, host: String,
+  slot: AttemptSlotReading,
+  record_path: String, record: FilesystemFileObservation,
+  release_path: String, released: FilesystemFileObservation,
+) -> SessionPlacementObservation {
+  let unit = session_unit(node_id: node_id, attempt_key: attempt_key) as String
+  match slot {
+    AttemptSlotAbsent => SessionPlacementAbsent { unit: unit }
+    AttemptSlotUnreadable { detail } => SessionPlacementUnreadable { unit: unit, detail: detail }
+    AttemptSlotHeld { record: rec, generation: _ } => {
+      let mismatch = session_slot_binding_mismatch(record: rec, node_id: node_id, attempt_key: attempt_key)
+      if mismatch != "" {
+        SessionPlacementForeign { unit: unit, detail: mismatch }
+      } else {
+        let grant = session_grant_reading_of(path: record_path, obs: record, node_id: node_id, attempt_key: attempt_key, host: host)
+        match grant {
+          SessionGrantForeign { path: _, detail } => SessionPlacementForeign { unit: unit, detail: detail }
+          SessionGrantRecorded { record: _ } => SessionPlacementObserved { slot: rec, grant: grant, returned: session_release_observation_of(path: release_path, obs: released, node_id: node_id, attempt_key: attempt_key, grant: grant) }
+          SessionGrantNotRecorded { path: _ } => SessionPlacementObserved { slot: rec, grant: grant, returned: session_release_observation_of(path: release_path, obs: released, node_id: node_id, attempt_key: attempt_key, grant: grant) }
+          SessionGrantUnreadable { path: _, detail: _ } => SessionPlacementObserved { slot: rec, grant: grant, returned: session_release_observation_of(path: release_path, obs: released, node_id: node_id, attempt_key: attempt_key, grant: grant) }
+        }
+      }
+    }
+  }
+}
+
+fn session_placement_file(dir: String, name: String) -> FilesystemFileObservation {
+  let path = join([dir, "/", name], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn session_placement_observe_at(stores: SessionPlacementStores, host: String, node_id: String, attempt_key: String) -> SessionPlacementObservation {
+  let record_name = session_placement_record_basename(node_id: node_id, attempt_key: attempt_key)
+  let release_name = session_placement_release_basename(node_id: node_id, attempt_key: attempt_key)
+  session_placement_observation_of(
+    node_id: node_id, attempt_key: attempt_key, host: host,
+    slot: attempt_slot_read(root: stores.slots_root, reference: session_unit(node_id: node_id, attempt_key: attempt_key)),
+    record_path: join([stores.records_dir, "/", record_name], ""), record: session_placement_file(dir: stores.records_dir, name: record_name),
+    release_path: join([stores.records_dir, "/", release_name], ""), released: session_placement_file(dir: stores.records_dir, name: release_name),
+  )
+}
+
+// THE STAGE READER: the worker session's slot (its lifecycle), its grant (identity, fence, unit
+// properties applied) and its release, for THIS node's THIS attempt.
+fn session_placement_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> SessionPlacementObservation {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => SessionPlacementUnreadable { unit: session_unit(node_id: node_id, attempt_key: attempt_key) as String, detail: detail }
+    SessionStoresResolved { stores } => session_placement_observe_at(stores: stores, host: instance.host_identity as String, node_id: node_id, attempt_key: attempt_key)
+  }
+}
+
+// ── SETTLEMENT: THE INDEPENDENT PASS ───────────────────────────────────────────────────────────
+//
+// THE UNIT'S LIFECYCLE IN THE AUTHORITY'S FIVE ARMS, from the worker's own observation (the read the
+// belt already makes for liveness). A unit the manager does not have is ended with cause unknown --
+// the one arm safe to free on without a verdict; an exited unit is ended with its status; an
+// unreadable manager is UNKNOWN and frees nothing.
+fn session_unit_lifecycle(o: AttemptUnitObservation) -> UnitLifecycle {
+  match o {
+    AttemptUnitAbsent => UnitTerminatedCauseUnknown { detail: "the user manager has no such unit" }
+    AttemptUnitActive => UnitStillRunning { detail: "the unit is active" }
+    AttemptUnitFinished { exit_status } =>
+      if exit_status == "0" { UnitTerminatedSuccess { detail: "ExecMainStatus=0" } } else { UnitTerminatedFailure { detail: join(["ExecMainStatus=", exit_status], "") } }
+    AttemptUnitUnreadable { reason } => UnitLifecycleUnknown { detail: reason }
+  }
+}
+
+fn session_observe_unit_lifecycle(unit: NonEmptyStr) -> UnitLifecycle {
+  session_unit_lifecycle(o: attempt_unit_observation(unit: unit))
+}
+
+// THE DECISION, PURE OVER ONE SLOT. Every arm that does not release says why, and every arm that
+// releases names the generation it will close.
+type SessionSettleDecision
+  = SettleTerminateAndRelease { record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, reason: String }
+  | SettleReleaseOnly { record: AttemptRecord, attempt: SessionAttemptName, reason: String }
+  | SettleKeep { why: String, explain: Bool }
+  | SettleDone { why: String }
+
+fn session_settle_decide(key: NonEmptyStr, slot: AttemptSlotReading, lifecycle: UnitLifecycle, now: EpochSecs, release_settled: Bool) -> SessionSettleDecision {
+  match slot {
+    AttemptSlotAbsent => SettleDone { why: join(["no slot is held for ", key as String], "") }
+    AttemptSlotUnreadable { detail } => SettleKeep { why: join(["the session slot for ", key as String, " is unreadable, and an unreadable slot is not an absent one, so its seat is kept: ", detail], ""), explain: true }
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match session_attempt_name_of(identity: rec.identity) {
+        Absent => SettleKeep { why: join(["the session slot ", key as String, " binds identity ", rec.identity, ", which names no node and attempt, so its seat is kept"], ""), explain: true }
+        Present { value: name } => {
+          let mismatch = if (key as String) != rec.reference { join(["the slot keyed ", key as String, " names reference ", rec.reference], "") } else { session_slot_binding_mismatch(record: rec, node_id: name.node_id, attempt_key: name.attempt_key) }
+          if mismatch != "" {
+            SettleKeep { why: join(["the session slot ", key as String, " is not bound consistently (", mismatch, "), so it is never released under this name"], ""), explain: true }
+          } else {
+            match rec.state {
+              AttemptTerminal { verdict: _, detail: d } =>
+                if release_settled { SettleDone { why: "closed and released" } } else { SettleReleaseOnly { record: rec, attempt: name, reason: join(["the slot is closed (", d, ") and no settled release is recorded"], "") } }
+              AttemptReserved => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+              AttemptLaunching => session_settle_by_trigger(record: rec, generation: g, attempt: name, trigger: recovery_trigger(record: rec, lifecycle: lifecycle, now: now))
+            }
+          }
+        }
+      }
+  }
+}
+
+fn session_settle_by_trigger(record: AttemptRecord, generation: CasGeneration, attempt: SessionAttemptName, trigger: RecoveryTrigger) -> SessionSettleDecision {
+  match trigger {
+    RecoveryMayTerminate { reason } => SettleTerminateAndRelease { record: record, generation: generation, attempt: attempt, reason: reason }
+    RecoveryTooEarly { deadline: d, now: n } => SettleKeep { why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }), explain: false }
+    RecoveryUnitNotEnded { lifecycle: u } => SettleKeep { why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }), explain: false }
+    RecoveryStateNotRecoverable { state: s } => SettleDone { why: recovery_trigger_wire(t: RecoveryStateNotRecoverable { state: s }) }
+  }
+}
+
+type SessionSettlement
+  = SessionSettlementReleaseAttempted { unit: String, freed: ComputeRelease, detail: String }
+  | SessionSettlementKept { unit: String, why: String }
+  | SessionSettlementDone { unit: String, why: String }
+  | SessionSettlementRefused { unit: String, detail: String }
+
+type SessionSettlePass
+  = SessionSettlePassRan { settlements: List<SessionSettlement> }
+  | SessionSettlePassRefused { detail: String }
+
+fn session_settlement_wire(s: SessionSettlement) -> String {
+  match s {
+    SessionSettlementReleaseAttempted { unit, freed, detail } => join([unit, ": ", session_release_outcome_wire(r: freed), " (", detail, ")"], "")
+    SessionSettlementKept { unit, why } => join([unit, ": kept (", why, ")"], "")
+    SessionSettlementDone { unit, why } => join([unit, ": done (", why, ")"], "")
+    SessionSettlementRefused { unit, detail } => join([unit, ": REFUSED (", detail, ")"], "")
+  }
+}
+
+fn session_settle_pass_wire(p: SessionSettlePass) -> String {
+  match p {
+    SessionSettlePassRan { settlements } => join(map(settlements, s => session_settlement_wire(s: s)), "; ")
+    SessionSettlePassRefused { detail } => join(["session settlement refused: ", detail], "")
+  }
+}
+
+// THE KEPT-BUT-UNRESOLVABLE CASES LEAVE A DURABLE EXPLANATION. A slot that cannot be read, or that is
+// bound inconsistently, keeps its seat -- the safe direction -- and an operator learns why from a note
+// beside the records, rewritten each pass, instead of from an unexplained shortfall in the pool.
+fn session_settle_note(stores: SessionPlacementStores, unit: String, why: String) -> String {
+  let path = join([stores.records_dir, "/", session_placement_note_basename(unit: unit)], "")
+  let w = Filesystem.Write(path: path, content: why)
+  if w.success { why } else { join([why, " (note not written at ", path, ": ", w.error, ")"], "") }
+}
+
+fn session_release_settled_for_slot(stores: SessionPlacementStores, host: String, slot: AttemptSlotReading) -> Bool {
+  match slot {
+    AttemptSlotHeld { record: rec, generation: _ } =>
+      match session_attempt_name_of(identity: rec.identity) {
+        Absent => false
+        Present { value: n } =>
+          match session_placement_observe_at(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key) {
+            SessionPlacementObserved { slot: _, grant: _, returned } => session_release_settled(r: returned)
+            SessionPlacementAbsent { unit: _ } => false
+            SessionPlacementUnreadable { unit: _, detail: _ } => false
+            SessionPlacementForeign { unit: _, detail: _ } => false
+          }
+      }
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+  }
+}
+
+fn session_settle_one(stores: SessionPlacementStores, host: String, key: NonEmptyStr, lifecycle: UnitLifecycle, now: EpochSecs) -> SessionSettlement {
+  let slot = attempt_slot_read(root: stores.slots_root, reference: key)
+  match session_settle_decide(key: key, slot: slot, lifecycle: lifecycle, now: now, release_settled: session_release_settled_for_slot(stores: stores, host: host, slot: slot)) {
+    SettleDone { why } => SessionSettlementDone { unit: key as String, why: why }
+    SettleKeep { why, explain } =>
+      SessionSettlementKept { unit: key as String, why: if explain { session_settle_note(stores: stores, unit: key as String, why: why) } else { why } }
+    SettleReleaseOnly { record: _, attempt, reason } =>
+      session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
+    SettleTerminateAndRelease { record, generation, attempt, reason } =>
+      match attempt_terminate(root: stores.slots_root, record: record, expected: generation, verdict: AttemptRecovered, detail: join([reason, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
+        AttemptLostRace { expected: e, observed: o } =>
+          SessionSettlementRefused { unit: key as String, detail: join(["the slot moved while settlement was deciding (expected ", e, ", found ", o, "); the observation is stale, so nothing is released"], "") }
+        AttemptTransitionRefused { detail: d } => SessionSettlementRefused { unit: key as String, detail: join(["the slot would not take the terminal generation: ", d], "") }
+        AttemptAdvanced { state: _, generation: _ } => session_settle_release(stores: stores, host: host, unit: key, attempt: attempt, reason: reason)
+      }
+  }
+}
+
+// THE RELEASE SETTLEMENT PERFORMS, bound to the grant the placement record names when there is one.
+// A slot whose placement record was never written releases by its reference with no grant binding;
+// the ledger answers NothingToRelease if the reservation never landed.
+fn session_settle_release(stores: SessionPlacementStores, host: String, unit: NonEmptyStr, attempt: SessionAttemptName, reason: String) -> SessionSettlement {
+  let binding = match session_placement_observe_at(stores: stores, host: host, node_id: attempt.node_id, attempt_key: attempt.attempt_key) {
+    SessionPlacementObserved { slot: _, grant, returned: _ } =>
+      match grant {
+        SessionGrantRecorded { record } => Present { value: SessionGrantBinding { grant_identity: record.grant_identity, fence_generation: record.fence_generation } }
+        SessionGrantNotRecorded { path: _ } => none
+        SessionGrantUnreadable { path: _, detail: _ } => none
+        SessionGrantForeign { path: _, detail: _ } => none
+      }
+    SessionPlacementAbsent { unit: _ } => none
+    SessionPlacementUnreadable { unit: _, detail: _ } => none
+    SessionPlacementForeign { unit: _, detail: _ } => none
+  }
+  let why = join(["settled: ", reason], "") as NonEmptyStr
+  let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
+  let write = session_placement_release_write(records_dir: stores.records_dir, node_id: attempt.node_id, attempt_key: attempt.attempt_key, grant_binding: binding, reason: why, freed: freed)
+  SessionSettlementReleaseAttempted { unit: unit as String, freed: freed, detail: join([reason, session_write_note(w: write)], "") }
+}
+
+// THE PASS TAKES THE UNIT OBSERVATIONS AS A FUNCTION OF THE UNIT NAME so a witness can plant them;
+// production passes session_observe_unit_lifecycle, the worker's own read.
+fn session_placement_settle_pass_at(stores: SessionPlacementStores, host: String, lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle, now: EpochSecs) -> SessionSettlePass {
+  match cas_slot_keys(root: stores.slots_root) {
+    CasSlotKeysListed { keys } => SessionSettlePassRan { settlements: map(keys, k => session_settle_one(stores: stores, host: host, key: k, lifecycle: lifecycle_of(k), now: now)) }
+    CasSlotKeysListingRefused { root: r, detail: d } => SessionSettlePassRefused { detail: join(["the session slot store at ", r as String, " could not be listed: ", d], "") }
+    CasSlotKeysSubjectRefused { root: r, cause: c } => SessionSettlePassRefused { detail: join(["the session slot store path ", r as String, " is not admissible: ", c], "") }
+  }
+}
+
+fn session_placement_settle_pass(instance: HostDashboardInstance, stores: SessionPlacementStores) -> SessionSettlePass {
+  match now_epoch_seconds() {
+    Absent => SessionSettlePassRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger compares against a deadline" }
+    Present { value: now } => session_placement_settle_pass_at(stores: stores, host: instance.host_identity as String, lifecycle_of: session_observe_unit_lifecycle, now: now)
+  }
+}

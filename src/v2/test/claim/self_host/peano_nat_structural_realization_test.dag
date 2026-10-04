@@ -8,7 +8,7 @@ import std.literal_elaboration {
   KernelIntLiteral, KernelStringLiteral, KernelBoolLiteral,
   LiteralHomomorphismFound, LiteralHomomorphismAbsent, LiteralHomomorphismAmbiguous,
   DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
-  PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
+  PeanoUnfold, UnicodeScalarSequenceUnfold,
   literal_homomorphism_for, elaborate_literal_at
 }
 import std.operator_realization {
@@ -20,86 +20,113 @@ import std.operator_realization {
   operator_realization_for
 }
 import std.syntax { BinOp, Lt, Le, Gt, Ge, Eq, Div, Mod, Sub, And, Add }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows, structural_connective_rows }
-import v2.std.nat {
-  Nat, Zero, Succ,
-  NatDifference, NatSubtrahendExceedsMinuend,
-  NatQuotientRemainder, NatDivisionByZero,
-  nat_compare, nat_sub, nat_div_rem, nat_div_rem_by_succ
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows }
+import std.nat { Nat, Zero, Succ, nat_compare }
+import test.fixture.structural_peano_nat {
+  StructuralNat, StructuralZero, StructuralSucc,
+  StructuralNatDifference, StructuralNatSubtrahendExceedsMinuend,
+  StructuralNatQuotientRemainder, StructuralNatDivisionByZero,
+  structural_nat_compare, structural_nat_sub, structural_nat_div_rem, structural_nat_div_rem_by_succ
 }
 import v2.std.integer { integer_nat_to_decimal_string, integer_int_to_decimal_string, decimal_digit_nat, D0, D7 }
 
 // FALSIFIERS FOR THE STRUCTURAL PEANO NAT REALIZATION (XL-0N, adhoc-aec65f93-b00), the
-// interpreter-executed half. The emitted-bytes half -- that a kernel literal at a v2.std.nat.Nat
+// interpreter-executed half. The emitted-bytes half -- that a kernel literal at a test.fixture.structural_peano_nat.StructuralNat
 // boundary renders as its Zero/Succ image, that `<` on Nat renders as a call to nat_compare tested
 // against std.algebra Ordering, that infix arithmetic on Nat refuses in the emitted bytes -- lives
 // in test.claim.self_host_peano_literal_operator_realization_witness_test, because it must run the
 // production emitter through compile_dag_rust_emit_check.
 //
-// Two subjects here. (1) The declared structural operations on v2.std.nat.Nat behave on NONTRIVIAL
+// Two subjects here. (1) The declared structural operations on test.fixture.structural_peano_nat.StructuralNat behave on NONTRIVIAL
 // Succ values -- not merely on Zero and one -- which is what a reader of `nat_compare` as a two-arm
 // match would otherwise take on faith. (2) The generic authorities decide by the ROW and by exact
-// identity: the same literal into the native std.nat.Nat is Direct, into the Peano v2.std.nat.Nat
+// identity: the same literal into the native std.nat.Nat is Direct, into the Peano test.fixture.structural_peano_nat.StructuralNat
 // is ViaHomomorphism, and with the row REMOVED it is Direct again -- which is exactly the state in
 // which the emitted bytes carried a bare digit against Rc<Nat> (the E0308 identities of XL-0's
 // census). That last row is the executable form of "removing the elaboration row brings the
 // E0308 identities back": the decision the emitter consumes flips, so the bytes flip.
 
-fn three() -> Nat { Succ { prev: Succ { prev: Succ { prev: Zero } } } }
-fn five() -> Nat { Succ { prev: Succ { prev: three() } } }
-fn seven() -> Nat { Succ { prev: Succ { prev: five() } } }
+fn three() -> StructuralNat { StructuralSucc { prev: StructuralSucc { prev: StructuralSucc { prev: StructuralZero } } } }
+fn five() -> StructuralNat { StructuralSucc { prev: StructuralSucc { prev: three() } } }
+fn seven() -> StructuralNat { StructuralSucc { prev: StructuralSucc { prev: five() } } }
 
 test fn nat_compare_orders_nontrivial_succ_values() -> Bool {
-  nat_compare(a: three(), b: five()) == Less
-    && nat_compare(a: five(), b: three()) == Greater
-    && nat_compare(a: five(), b: five()) == Equal
-    && nat_compare(a: Zero, b: three()) == Less
-    && nat_compare(a: three(), b: Zero) == Greater
+  structural_nat_compare(a: three(), b: five()) == Less
+    && structural_nat_compare(a: five(), b: three()) == Greater
+    && structural_nat_compare(a: five(), b: five()) == Equal
+    && structural_nat_compare(a: StructuralZero, b: three()) == Less
+    && structural_nat_compare(a: three(), b: StructuralZero) == Greater
 }
 
 test fn nat_sub_answers_underflow_as_its_own_arm() -> Bool {
-  let difference_holds = match nat_sub(a: seven(), b: five()) {
-    NatDifference { value: d } => nat_compare(a: d, b: Succ { prev: Succ { prev: Zero } }) == Equal
-    NatSubtrahendExceedsMinuend => false
+  let difference_holds = match structural_nat_sub(a: seven(), b: five()) {
+    StructuralNatDifference { value: d } => structural_nat_compare(a: d, b: StructuralSucc { prev: StructuralSucc { prev: StructuralZero } }) == Equal
+    StructuralNatSubtrahendExceedsMinuend => false
   }
-  let underflow_holds = match nat_sub(a: three(), b: five()) {
-    NatDifference { value: _ } => false
-    NatSubtrahendExceedsMinuend => true
+  let underflow_holds = match structural_nat_sub(a: three(), b: five()) {
+    StructuralNatDifference { value: _ } => false
+    StructuralNatSubtrahendExceedsMinuend => true
   }
   difference_holds && underflow_holds
 }
 
 test fn nat_div_rem_divides_nontrivial_values() -> Bool {
-  match nat_div_rem(a: seven(), b: Succ { prev: Succ { prev: Zero } }) {
-    NatQuotientRemainder { quotient: q, remainder: r } =>
-      nat_compare(a: q, b: three()) == Equal && nat_compare(a: r, b: Succ { prev: Zero }) == Equal
-    NatDivisionByZero => false
+  match structural_nat_div_rem(a: seven(), b: StructuralSucc { prev: StructuralSucc { prev: StructuralZero } }) {
+    StructuralNatQuotientRemainder { quotient: q, remainder: r } =>
+      structural_nat_compare(a: q, b: three()) == Equal && structural_nat_compare(a: r, b: StructuralSucc { prev: StructuralZero }) == Equal
+    StructuralNatDivisionByZero => false
   }
 }
 
 test fn nat_div_rem_by_zero_is_typed() -> Bool {
-  match nat_div_rem(a: seven(), b: Zero) {
-    NatQuotientRemainder { quotient: _, remainder: _ } => false
-    NatDivisionByZero => true
+  match structural_nat_div_rem(a: seven(), b: StructuralZero) {
+    StructuralNatQuotientRemainder { quotient: _, remainder: _ } => false
+    StructuralNatDivisionByZero => true
   }
 }
 
 test fn nat_div_rem_by_succ_has_no_zero_arm_and_divides() -> Bool {
-  let q = nat_div_rem_by_succ(a: seven(), divisor_prev: Succ { prev: Succ { prev: Zero } })
-  nat_compare(a: q.quotient, b: Succ { prev: Succ { prev: Zero } }) == Equal
-    && nat_compare(a: q.remainder, b: Succ { prev: Zero }) == Equal
+  let q = structural_nat_div_rem_by_succ(a: seven(), divisor_prev: StructuralSucc { prev: StructuralSucc { prev: StructuralZero } })
+  structural_nat_compare(a: q.quotient, b: StructuralSucc { prev: StructuralSucc { prev: StructuralZero } }) == Equal
+    && structural_nat_compare(a: q.remainder, b: StructuralSucc { prev: StructuralZero }) == Equal
 }
+
+// THE SAME CONSTRUCTORS ON std.nat Nat ARE KERNEL INTEGERS. v2.std.integer's decimal conversion is
+// over std.nat Nat, the one declaration of the naturals, which is declared inductively and realized
+// as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows): a Zero/Succ
+// numeral and the literal it denotes are one value here, which the fixture type above -- same
+// shape, no grounding row -- is the control for.
+fn std_seven() -> Nat { Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Succ { prev: Zero } } } } } } } }
 
 test fn nat_to_decimal_converts_nontrivial_values() -> Bool {
   integer_nat_to_decimal_string(value: Zero) == "0"
-    && integer_nat_to_decimal_string(value: seven()) == "7"
-    && integer_nat_to_decimal_string(value: Succ { prev: Succ { prev: Succ { prev: seven() } } }) == "10"
+    && integer_nat_to_decimal_string(value: std_seven()) == "7"
+    && integer_nat_to_decimal_string(value: Succ { prev: Succ { prev: Succ { prev: std_seven() } } }) == "10"
     && integer_nat_to_decimal_string(value: 23) == "23"
 }
 
 test fn decimal_digit_nat_supplies_the_peano_value() -> Bool {
   nat_compare(a: decimal_digit_nat(d: D0), b: Zero) == Equal
-    && nat_compare(a: decimal_digit_nat(d: D7), b: seven()) == Equal
+    && nat_compare(a: decimal_digit_nat(d: D7), b: std_seven()) == Equal
+}
+
+// A std.nat numeral IS the integer it denotes, and a constructor match over one reads it as one.
+test fn std_nat_constructors_are_the_kernel_integers_they_denote() -> Bool {
+  let predecessor_of_seven = match std_seven() {
+    Zero => Zero
+    Succ { prev: p } => p
+  }
+  std_seven() == 7 && Zero == 0 && predecessor_of_seven == 6 && Succ { prev: predecessor_of_seven } == 7
+}
+
+// THE CONTROL: the fixture type has the same shape and no grounding row, so its numeral is NOT a
+// kernel integer -- matching it still selects by constructor, and its predecessor is a constructor
+// value the structural comparison orders.
+test fn structural_peano_constructors_stay_constructors() -> Bool {
+  match seven() {
+    StructuralZero => false
+    StructuralSucc { prev: p } => structural_nat_compare(a: p, b: StructuralSucc { prev: five() }) == Equal
+  }
 }
 
 test fn int_to_decimal_is_the_machine_integer_formatter() -> Bool {
@@ -114,12 +141,11 @@ test fn int_to_decimal_is_the_machine_integer_formatter() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 test fn peano_row_is_found_by_exact_destination() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none) {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat"), element: none) {
     LiteralHomomorphismFound { row: r } =>
       match r.producer {
         PeanoUnfold { zero: z, succ: s, prev_field: p } =>
-          (z.decl_name as String) == "Zero" && (s.decl_name as String) == "Succ" && (p as String) == "prev"
-        BooleanUnfold { true_variant: _, false_variant: _ } => false
+          (z.decl_name as String) == "StructuralZero" && (s.decl_name as String) == "StructuralSucc" && (p as String) == "prev"
         UnicodeScalarSequenceUnfold => false
       }
     LiteralHomomorphismAbsent => false
@@ -137,9 +163,9 @@ test fn same_spelling_native_declaration_is_direct() -> Bool {
 }
 
 test fn peano_destination_elaborates_via_the_homomorphism() -> Bool {
-  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => false
-    ViaHomomorphism { homomorphism: h } => (h.destination.decl_name as String) == "Nat"
+    ViaHomomorphism { homomorphism: h } => (h.destination.decl_name as String) == "StructuralNat"
     LiteralElaborationRefused { cause: _ } => false
   }
 }
@@ -147,37 +173,27 @@ test fn peano_destination_elaborates_via_the_homomorphism() -> Bool {
 // THE ROW-REMOVAL FALSIFIER. With no rows the same boundary is Direct -- the literal stays a bare
 // kernel digit, which against an Rc<Nat> parameter is precisely the E0308 shape the census held.
 test fn removing_the_row_returns_the_literal_to_direct() -> Bool {
-  match elaborate_literal_at(rows: [], source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: [], source_kind: KernelIntLiteral, destination: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false
   }
 }
 
-// THE BOOL ROW (kernel true/false -> v2.std.logic.Bool, the structural coproduct): found by exact
-// destination, Direct with the row removed, and Direct at the prelude std.types.Bool, which realizes
-// natively and has no row. No Bool VARIANT is matched by name in this interpreter-run module -- the
-// interpreter realizes Bool natively and has no runtime form for `True` patterns -- so the image
-// (Bool::True / Bool::False in the emitted bytes) is asserted only on the emitted path, in
+// THE BOOL ROW IS GONE, AND ITS ABSENCE IS ASSERTED. The Bool de-fork (gunbc.defork_type_name_census
+// ResolvedByDeletingV2) retired v2.std.logic's structural `Bool = True | False`, and with it the
+// BooleanUnfold producer and its row: std.types Bool is the only Bool and realizes natively. Two
+// rows are RETIRED as dissolution, not regression -- bool_row_is_found_by_exact_destination (it
+// asserted the structural row existed) and removing_the_bool_row_returns_the_literal_to_direct (its
+// destination no longer exists). What stays: the RED below, which turns if any Bool literal row is
+// reintroduced, and the positive control after it, which keeps a kernel true/false Direct at the one
+// Bool. The emitted bytes (the host `true`/`false` keyword, never `Bool::True`) are asserted in
 // test.claim.self_host_peano_literal_operator_realization_witness_test.
-test fn bool_row_is_found_by_exact_destination() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), element: none) {
-    LiteralHomomorphismFound { row: r } =>
-      match r.producer {
-        BooleanUnfold { true_variant: t, false_variant: f } => (t.decl_name as String) == "True" && (f.decl_name as String) == "False"
-        PeanoUnfold { zero: _, succ: _, prev_field: _ } => false
-        UnicodeScalarSequenceUnfold => false
-      }
-    LiteralHomomorphismAbsent => false
+test fn no_bool_literal_row_exists() -> Bool {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "std.types", decl_name: "Bool"), element: none) {
+    LiteralHomomorphismFound { row: _ } => false
+    LiteralHomomorphismAbsent => true
     LiteralHomomorphismAmbiguous { row_count: _ } => false
-  }
-}
-
-test fn removing_the_bool_row_returns_the_literal_to_direct() -> Bool {
-  match elaborate_literal_at(rows: [], source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), element: none, destination_realizes_natively: false) {
-    DirectLiteral => true
-    ViaHomomorphism { homomorphism: _ } => false
-    LiteralElaborationRefused { cause: _ } => false
   }
 }
 
@@ -191,7 +207,7 @@ test fn prelude_bool_destination_is_direct() -> Bool {
 
 // A kernel STRING literal into the Peano Nat has no row: the source kind is part of the key.
 test fn source_kind_is_part_of_the_key() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none) {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat"), element: none) {
     LiteralHomomorphismFound { row: _ } => false
     LiteralHomomorphismAbsent => true
     LiteralHomomorphismAmbiguous { row_count: _ } => false
@@ -201,7 +217,7 @@ test fn source_kind_is_part_of_the_key() -> Bool {
 // Two rows for one key refuse rather than picking one.
 test fn duplicated_row_refuses() -> Bool {
   let doubled = concat(literal_homomorphism_rows, literal_homomorphism_rows)
-  match elaborate_literal_at(rows: doubled, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: doubled, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => false
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => true
@@ -209,10 +225,10 @@ test fn duplicated_row_refuses() -> Bool {
 }
 
 test fn ordering_on_the_peano_operand_calls_the_declared_comparison() -> Bool {
-  let nat = decl_ref(module_path: "v2.std.nat", decl_name: "Nat")
-  match operator_realization_for(op: Lt, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let nat = decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat")
+  match operator_realization_for(op: Lt, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows) {
     StructuralComparison { declaration: _, binding: b, test: t } =>
-      (b.compare.decl_name as String) == "nat_compare"
+      (b.compare.decl_name as String) == "structural_nat_compare"
         && (b.ordering.module_path as String) == "std.algebra"
         && match t { OrderingIs { variant: v } => (v as String) == "Less"  OrderingIsNot { variant: _ } => false }
     _ => false
@@ -220,8 +236,8 @@ test fn ordering_on_the_peano_operand_calls_the_declared_comparison() -> Bool {
 }
 
 test fn non_strict_ordering_negates_the_opposite_variant() -> Bool {
-  let nat = decl_ref(module_path: "v2.std.nat", decl_name: "Nat")
-  match operator_realization_for(op: Le, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let nat = decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat")
+  match operator_realization_for(op: Le, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows) {
     StructuralComparison { declaration: _, binding: _, test: t } =>
       match t { OrderingIs { variant: _ } => false  OrderingIsNot { variant: v } => (v as String) == "Greater" }
     _ => false
@@ -229,8 +245,8 @@ test fn non_strict_ordering_negates_the_opposite_variant() -> Bool {
 }
 
 test fn equality_on_the_peano_operand_is_structural() -> Bool {
-  match operator_realization_for(op: Eq, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
-    StructuralEquality { declaration: d } => (d.decl_name as String) == "Nat"
+  match operator_realization_for(op: Eq, operand: StructuralOperand { declaration: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat") }, ordering_rows: structural_ordering_rows) {
+    StructuralEquality { declaration: d } => (d.decl_name as String) == "StructuralNat"
     _ => false
   }
 }
@@ -238,8 +254,8 @@ test fn equality_on_the_peano_operand_is_structural() -> Bool {
 // FORCING HOST ARITHMETIC ONTO A PEANO OPERAND REDS: the decision refuses, typed, naming the
 // declaration and the operator. The emitted-bytes form of this row is in the emit-check witness.
 fn host_arithmetic_on_peano_refuses(op: BinOp) -> Bool {
-  match operator_realization_for(op: op, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
-    OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: _ } } => (d.decl_name as String) == "Nat"
+  match operator_realization_for(op: op, operand: StructuralOperand { declaration: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat") }, ordering_rows: structural_ordering_rows) {
+    OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: _ } } => (d.decl_name as String) == "StructuralNat"
     _ => false
   }
 }
@@ -250,18 +266,18 @@ test fn host_arithmetic_on_the_peano_operand_refuses() -> Bool {
 
 // A structural declaration with NO ordering row refuses `<` rather than emitting the host token.
 test fn ordering_without_a_declared_comparison_refuses() -> Bool {
-  match operator_realization_for(op: Gt, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.text", decl_name: "String") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  match operator_realization_for(op: Gt, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.text", decl_name: "String") }, ordering_rows: structural_ordering_rows) {
     OperatorRealizationRefused { cause: _ } => true
     _ => false
   }
 }
 
 test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
-  let native_holds = match operator_realization_for(op: Div, operand: HostNumericOperand, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let native_holds = match operator_realization_for(op: Div, operand: HostNumericOperand, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }
-  let by_construction_holds = match operator_realization_for(op: Ge, operand: HostRealizedOperand { reason: KernelMintedType }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let by_construction_holds = match operator_realization_for(op: Ge, operand: HostRealizedOperand { reason: KernelMintedType }, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }
@@ -273,13 +289,13 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
 // operand as the host `<` with no signature, and the lane's own emitted-path rows went red on a
 // token rustc refuses later. This row pins that the unknown arm is a refusal, not a widen.
 test fn operand_without_a_readable_declaration_refuses() -> Bool {
-  let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, provenance: CorpusDeclared { decl_file: "probe.dag" } }
-  let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let facts = OperandShapeFacts { authored_name: "StructuralNat", connective: "NoConnective", child_count: 0, resolved: false, provenance: CorpusDeclared { decl_file: "probe.dag" } }
+  let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
     OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } =>
-      match o { Lt => f.authored_name == "Nat"  _ => false }
+      match o { Lt => f.authored_name == "StructuralNat"  _ => false }
     _ => false
   }
-  let arithmetic_refuses = match operator_realization_for(op: Div, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  let arithmetic_refuses = match operator_realization_for(op: Div, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
     OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: _ } } =>
       match o { Div => true  _ => false }
     _ => false
@@ -294,7 +310,7 @@ test fn operand_without_a_readable_declaration_refuses() -> Bool {
 // match arm over the generic ListHeadResult<T>), which this lane's own refusal arm reddened before
 // the arm was narrowed to named operands.
 test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
-  match operator_realization_for(op: Add, operand: HostRealizedOperand { reason: UnnamedSynthesizedType }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  match operator_realization_for(op: Add, operand: HostRealizedOperand { reason: UnnamedSynthesizedType }, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }
@@ -305,14 +321,7 @@ test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
 // not the widen above -- ordering on the same operand refuses (the row before this one).
 test fn equality_without_a_readable_declaration_is_host_by_construction() -> Bool {
   let facts = OperandShapeFacts { authored_name: "", connective: "NoConnective", child_count: 0, resolved: true, provenance: DeclarationIdentityAbsent }
-  match operator_realization_for(op: Eq, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
-    HostOperator => true
-    _ => false
-  }
-}
-
-test fn logical_connective_on_a_structural_operand_stays_host() -> Bool {
-  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.logic", decl_name: "Bool") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  match operator_realization_for(op: Eq, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }
@@ -321,16 +330,22 @@ test fn logical_connective_on_a_structural_operand_stays_host() -> Bool {
 // A connective over a structural operand that declares no connective realization REFUSES (the
 // review-57746 red): a Peano-shaped operand under `&&` must not receive the host token.
 test fn w_connective_over_an_undeclared_structural_operand_refuses() -> Bool {
-  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "test.fixture.structural_peano_nat", decl_name: "StructuralNat") }, ordering_rows: structural_ordering_rows) {
     OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: _, operator: _ } } => true
     _ => false
   }
 }
 
-// The positive control on the same arm: the declared connective carrier (v2.std.logic Bool, the
-// corpus's ordinary Bool) still realizes on the host through its row.
-test fn w_connective_over_the_declared_bool_carrier_stays_host() -> Bool {
-  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.logic", decl_name: "Bool") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+// The positive control on the same arm, re-pointed at the one Bool: a std.types Bool operand
+// realizes natively, so the emitter classifies it HostNumericOperand (v1.compiler.emit_rust
+// binop_operator_realization, declaration_realizes_natively_on_rust) and `&&` stays the host
+// token. RETIRED beside it, as dissolution: logical_connective_on_a_structural_operand_stays_host
+// and w_connective_over_the_declared_bool_carrier_stays_host, which asserted host connectives for
+// v2.std.logic's structural Bool through a declared-connective row -- the carrier and the row family
+// were both removed by the Bool de-fork, so a structural operand under a connective now refuses
+// with no admission list (the RED above).
+test fn w_connective_over_a_native_bool_operand_stays_host() -> Bool {
+  match operator_realization_for(op: And, operand: HostNumericOperand, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }

@@ -1,6 +1,10 @@
 module gunbc.roadmap_closing_contract_authoring
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import extdeps.gunbc
+import extdeps.git.inspect
+import extdeps.shell
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_authority { declared_roadmap_nodes }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -17,8 +21,11 @@ import gunbc.roadmap_execution_contract {
   ContractDeclaresNoValidation,
   ContractNotAgentWork,
   NonAgentWorkMode,
+  ExecutionContract,
+  PublicWorktreeLayout,
   non_agent_work_mode_label,
   contract_closure,
+  claim_source_root_args,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationOracleRef,
@@ -46,20 +53,51 @@ import gunbc.roadmap_validation_oracle {
 // contract does not close itself with another ClosingContractAuthoringValidation (a
 // closing-contract task whose target is closed by another closing-contract task closes nothing, and
 // the recursion is reachable because the derivation mints one for every unbound startable node);
-// and every validation the contract names RESOLVES -- its oracle entry is readable and declares
+// every validation the contract names RESOLVES -- its oracle entry is readable and declares
 // exactly the function named, through gunbc.roadmap_validation_oracle's existing observation rather
-// than a second resolver.\n\nWHAT IT DOES NOT DECIDE, stated because a green here must not be read
-// as more than it is. The note's wish list also asked that a PLANTED FAILURE show the authored
-// validation can reject. That is not decidable by inspecting the model: it requires mutating the
-// target's subject and running the validation against the mutation, which is an experiment rather
-// than a predicate, and no arm below pretends to it. It remains the handback duty the derived
-// ticket's own red_control states, carried by review. NEXT-RUNG TRIGGER: a modeled mutation harness
-// that can plant a failure in a named subject and observe the declared validation reject it, at
-// which point that clause becomes an arm here and this paragraph retires. The wish list's remaining
-// clause -- that the contract name the same target identity -- is not checked because it is
-// STRUCTURALLY UNWRITABLE otherwise: a contract is a field ON the target node, so there is no
-// representation in which it names a different one, and a check for it would be the
-// permanently-green decoration DESIGN section 4b forbids.
+// than a second resolver; and every GunbcClaimValidation the contract names EXECUTES GREEN --
+// closing_contract_execution_verdict spawns the pinned witness as a child claim-run and adjudicates
+// the child's exit, so a witness that cannot resolve, cannot compile, or whose arm returns false
+// refuses here with the child's own diagnostic rather than passing on a textual reading of its
+// source.\n\nWHY THE EXECUTION ARM EXISTS, and what it replaces. Until 2026-09-20 this predicate was
+// TEXTUAL ONLY: it read the witness source, pinned a digest and checked the named function was
+// declared, and this note deferred execution to review. That deferral is falsified in production:
+// attempt ci-gate-contention-independent-verdict-closing-contract-a54b739dd2acf738f passed
+// closing_contract_authored while its witness could not resolve a single one of the 21 names it
+// imported, and the goal auditor -- not this oracle -- caught it. A textual check of a witness is a
+// necessary-but-insufficient condition: the source must declare the function AND the function must
+// run and pass. The textual half stays, because its three incomplete-oracle arms (missing,
+// ambiguous, unpinned-dependency) locate distinct remedies the child's bare resolve refusal does
+// not.\n\nWHAT THE EXECUTION ARM ADJUDICATES, three outcomes with three remedies. Exit zero is a
+// pass. A nonzero exit whose stderr opens with the claim runner's resolve-refusal prefix
+// (closing_contract_resolve_refusal_stderr_prefix, measured against the runner's own output) is
+// ClosingContractWitnessResolveRefused -- the witness never compiled, and the child's located
+// 'name X not found in module Y' diagnostics travel in the detail. Any other nonzero exit is
+// ClosingContractWitnessRefused -- the witness resolved and an arm returned false, or the runner
+// itself faulted; the child's stderr travels unchanged rather than being reclassified, because the
+// FAIL <fn> line and a compiler diagnostic have the same remedy shape (the witness's author reads
+// it) and a finer split would be a classification this module cannot ground.\n\nWHAT IT STILL DOES
+// NOT DECIDE. A PLANTED FAILURE of the SUBJECT showing the authored validation can reject the work
+// itself is not decidable by this predicate: it requires mutating the target's subject and running
+// the validation against the mutation, which is an experiment rather than a predicate, and no arm
+// below pretends to it. It remains the handback duty the derived ticket's own red_control states,
+// carried by review. NEXT-RUNG TRIGGER: a modeled mutation harness that can plant a failure in a
+// named subject and observe the declared validation reject it. The remaining clause -- that the
+// contract name the same target identity -- is not checked because it is STRUCTURALLY UNWRITABLE
+// otherwise: a contract is a field ON the target node, so there is no representation in which it
+// names a different one, and a check for it would be the permanently-green decoration DESIGN
+// section 4b forbids.\n\nTHE EXECUTION ARM'S OWN BOUNDARY. Only GunbcClaimValidation oracles are
+// executed: they name an entry file and a function, which is a runnable claim. A CargoTest or
+// CargoFmt validation names no witness function this module can spawn, so those validations are
+// covered by the textual half alone -- the same boundary gunbc.roadmap_validation_oracle already
+// declares as OracleNotPinnable, kept rather than re-decided here. The child runs against the git
+// toplevel of the checkout this predicate itself runs in (belt verify's detached attempt worktree,
+// or the operator's own checkout by hand), with the contract's own claim_source_root_args, so the
+// executed witness is the same tree the pin observed. WET STANDING: the execution arm spawns a
+// subprocess, so closing_contract_authored is claim-runnable only where the interpreter admits real
+// host effects -- belt verify and `gunbc run --claim-run` by hand, never the hermetic discovery
+// batch; the behavioral discrimination witnesses for this arm are enrolled as a wet row in
+// gunbc.ci_layer_roots beside the other exit-status witnesses.
 
 type ClosingContractAuthoringVerdict
   = ClosingContractAuthored { target: RoadmapNodeId }
@@ -211,14 +249,294 @@ fn closing_contract_oracle_detail(observation: OracleObservation) -> String {
   }
 }
 
-fn closing_contract_authored(target: String) -> Bool {
-  match closing_contract_authoring_verdict(target: target) {
-    ClosingContractAuthored { target: _ } => true
-    ClosingContractTargetNotDeclared { target: _ } => false
-    ClosingContractTargetUnspecified { target: _ } => false
-    ClosingContractTargetNotAgentWork { target: _, mode: _ } => false
-    ClosingContractTargetClosesNothing { target: _ } => false
-    ClosingContractTargetClosesItself { target: _ } => false
-    ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
+// --- witness execution -------------------------------------------------------
+//
+// The behavioral half of the predicate (the note at the module head owns the WHY). One child
+// claim-run per GunbcClaimValidation, adjudicated by exit status: a green here is the witness's
+// own PASS line, never a reading of its bytes.
+
+type ClosingContractWitnessRun
+  = ClosingContractWitnessPassed { entry: FilePath, function: NonEmptyStr }
+  | ClosingContractWitnessResolveRefused {
+      entry: FilePath,
+      function: NonEmptyStr,
+      exit_code: Int,
+      detail: String,
+    }
+  | ClosingContractWitnessRefused {
+      entry: FilePath,
+      function: NonEmptyStr,
+      exit_code: Int,
+      detail: String,
+    }
+
+type ClosingContractRunner
+  = ClosingContractRunnerResolved { binary: FilePath }
+  | ClosingContractRunnerUnavailable { detail: String }
+
+data closing_contract_witness_bin_rel: String = "target/release/gunbc"
+
+data closing_contract_witness_bin_name: NonEmptyStr = "gunbc"
+
+// The child must be runnable in both of this predicate's contexts. Belt verify supplies the
+// runner explicitly (--arg runner= is projected from the dispatch host's GunbcClaimRunnerCapability
+// realization, the same executable the belt spawned this very predicate with), because an attempt
+// worktree carries no target/ tree. By hand there is no such argument, so the default resolves
+// the checkout's own release binary first and a PATH-visible gunbc second; a host with neither
+// refuses with the paths it probed rather than verifying against nothing.
+fn closing_contract_default_runner(root: String) -> ClosingContractRunner {
+  let local = join([root, "/", closing_contract_witness_bin_rel], "")
+  if shell.Test.IsExecutable(path: local, expect: OutcomeIsData).executable {
+    ClosingContractRunnerResolved { binary: local as FilePath }
+  } else if shell.PosixCommandV.Check(command: closing_contract_witness_bin_name, expect: OutcomeIsData).exists {
+    ClosingContractRunnerResolved {
+      binary: closing_contract_witness_bin_name as String as FilePath,
+    }
+  } else {
+    ClosingContractRunnerUnavailable {
+      detail: join([
+        "no witness runner: ",
+        local,
+        " is not executable and `command -v ",
+        closing_contract_witness_bin_name as String,
+        "` found nothing; pass --arg runner=<path to a gunbc binary>",
+      ], ""),
+    }
+  }
+}
+
+fn closing_contract_runner(runner: String, root: String) -> ClosingContractRunner {
+  if runner == "" {
+    closing_contract_default_runner(root: root)
+  } else if shell.Test.IsExecutable(path: runner, expect: OutcomeIsData).executable {
+    ClosingContractRunnerResolved { binary: runner as FilePath }
+  } else {
+    ClosingContractRunnerUnavailable {
+      detail: join(["the supplied witness runner ", runner, " is not an executable file"], ""),
+    }
+  }
+}
+
+// Measured against the claim runner's own stderr (2026-09-20): an entry whose closure does not
+// resolve exits 1 with stderr opening `error: resolve failed for <entry>` followed by one located
+// 'name X not found in module Y' line per unresolved import; a resolved witness whose arm returns
+// false exits 1 with stderr `FAIL <fn>`. The prefix is the ONLY text this module classifies on --
+// it separates 'never compiled' from 'ran and answered', which have different remedies -- and
+// everything else travels as opaque detail rather than being re-read.
+data closing_contract_resolve_refusal_stderr_prefix: String = "error: resolve failed for"
+
+fn closing_contract_witness_argv(
+  oracle: ValidationOracleRef,
+  source_root_args: List<String>,
+) -> List<String> {
+  concat(
+    concat(["run"], source_root_args),
+    [
+      "--entry", oracle.entry as String,
+      "--function", oracle.function as String,
+      "--claim-run",
+    ],
+  )
+}
+
+fn closing_contract_execute_oracle(
+  oracle: ValidationOracleRef,
+  runner_binary: FilePath,
+  source_root_args: List<String>,
+  workdir: String,
+) -> ClosingContractWitnessRun {
+  let result = gunbc.WitnessBin.Run(
+    workdir: workdir as FilePath,
+    bin_path: runner_binary,
+    args: closing_contract_witness_argv(oracle: oracle, source_root_args: source_root_args),
+    expect: OutcomeIsData,
+  )
+  if result.success {
+    ClosingContractWitnessPassed { entry: oracle.entry, function: oracle.function }
+  } else if starts_with(s: result.stderr, prefix: closing_contract_resolve_refusal_stderr_prefix) {
+    ClosingContractWitnessResolveRefused {
+      entry: oracle.entry,
+      function: oracle.function,
+      exit_code: result.exit_code,
+      detail: result.stderr,
+    }
+  } else {
+    ClosingContractWitnessRefused {
+      entry: oracle.entry,
+      function: oracle.function,
+      exit_code: result.exit_code,
+      detail: result.stderr,
+    }
+  }
+}
+
+fn closing_contract_source_root_args(contract: WorkItemExecutionContract) -> List<String> {
+  match contract {
+    ExecutionContract { validations: _, extra_capabilities: _, path_scope: _, source_roots: layout } =>
+      claim_source_root_args(layout: layout)
+    ExecutionContractUnspecified => claim_source_root_args(layout: PublicWorktreeLayout)
+    NotAgentWork { mode: _ } => claim_source_root_args(layout: PublicWorktreeLayout)
+  }
+}
+
+// Only GunbcClaimValidation oracles spawn a child; a ClosingContractAuthoringValidation in this
+// list is unreachable (closing_contract_verdict_for_observed refuses it as ClosesItself before
+// execution) and cargo validations name no witness function, per the boundary the module note
+// declares.
+fn closing_contract_execute_validations(
+  validations: List<ValidationOperation>,
+  runner_binary: FilePath,
+  source_root_args: List<String>,
+  workdir: String,
+) -> List<ClosingContractWitnessRun> {
+  validations
+    |> flat_map(v => match v {
+      GunbcClaimValidation { entry, function } =>
+        [
+          closing_contract_execute_oracle(
+            oracle: ValidationOracleRef { entry: entry, function: function },
+            runner_binary: runner_binary,
+            source_root_args: source_root_args,
+            workdir: workdir,
+          ),
+        ]
+      CargoTestValidation { filter: _ } => []
+      CargoFmtValidation => []
+      ClosingContractAuthoringValidation { target: _ } => []
+    })
+}
+
+fn closing_contract_witness_run_passed(run: ClosingContractWitnessRun) -> Bool {
+  match run {
+    ClosingContractWitnessPassed { entry: _, function: _ } => true
+    ClosingContractWitnessResolveRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+    ClosingContractWitnessRefused { entry: _, function: _, exit_code: _, detail: _ } => false
+  }
+}
+
+fn closing_contract_first_witness_not_passing(
+  runs: List<ClosingContractWitnessRun>,
+) -> ClosingContractWitnessRun? {
+  runs
+    |> filter(r => !closing_contract_witness_run_passed(run: r))
+    |> first
+}
+
+type ClosingContractExecutionVerdict
+  = ClosingContractExecutionAuthored { target: RoadmapNodeId }
+  | ClosingContractExecutionTextuallyRefused { verdict: ClosingContractAuthoringVerdict }
+  | ClosingContractExecutionRunnerUnavailable { target: RoadmapNodeId, detail: String }
+  | ClosingContractExecutionWitnessRefused {
+      target: RoadmapNodeId,
+      blocking: ClosingContractWitnessRun,
+    }
+
+fn closing_contract_execution_verdict(
+  target: String,
+  runner: String,
+) -> ClosingContractExecutionVerdict {
+  let textual = closing_contract_authoring_verdict(target: target)
+  match textual {
+    ClosingContractAuthored { target: t } =>
+      match closing_contract_target_node(target: target) {
+        Absent =>
+          ClosingContractExecutionTextuallyRefused {
+            verdict: ClosingContractTargetNotDeclared { target: target },
+          }
+        Present { value: node } =>
+          match closing_contract_runner(runner: runner, root: git.Inspect.Toplevel().path) {
+            ClosingContractRunnerUnavailable { detail } =>
+              ClosingContractExecutionRunnerUnavailable { target: t, detail: detail }
+            ClosingContractRunnerResolved { binary } =>
+              match closing_contract_first_witness_not_passing(
+                runs: closing_contract_execute_validations(
+                  validations: contract_validations(contract: node.execution),
+                  runner_binary: binary,
+                  source_root_args: closing_contract_source_root_args(contract: node.execution),
+                  workdir: git.Inspect.Toplevel().path,
+                ),
+              ) {
+                Absent => ClosingContractExecutionAuthored { target: t }
+                Present { value: blocking } =>
+                  ClosingContractExecutionWitnessRefused { target: t, blocking: blocking }
+              }
+          }
+      }
+    ClosingContractTargetNotDeclared { target: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+    ClosingContractTargetUnspecified { target: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+    ClosingContractTargetNotAgentWork { target: _, mode: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+    ClosingContractTargetClosesNothing { target: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+    ClosingContractTargetClosesItself { target: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+    ClosingContractTargetOracleIncomplete { target: _, blocking: _ } =>
+      ClosingContractExecutionTextuallyRefused { verdict: textual }
+  }
+}
+
+fn closing_contract_witness_run_detail(run: ClosingContractWitnessRun) -> String {
+  match run {
+    ClosingContractWitnessPassed { entry, function } =>
+      join([entry as String, " ", function as String, " executed and passed"], "")
+    ClosingContractWitnessResolveRefused { entry, function, exit_code, detail } =>
+      join([
+        entry as String,
+        " ",
+        function as String,
+        " does not resolve (exit ",
+        to_string(exit_code),
+        "): ",
+        detail,
+      ], "")
+    ClosingContractWitnessRefused { entry, function, exit_code, detail } =>
+      join([
+        entry as String,
+        " ",
+        function as String,
+        " resolved but did not pass (exit ",
+        to_string(exit_code),
+        "): ",
+        detail,
+      ], "")
+  }
+}
+
+fn closing_contract_execution_verdict_detail(
+  verdict: ClosingContractExecutionVerdict,
+) -> String {
+  match verdict {
+    ClosingContractExecutionAuthored { target } =>
+      join([
+        target as String,
+        ": a closing contract is authored, every validation it names resolves, and every gunbc claim witness it binds executed and passed",
+      ], "")
+    ClosingContractExecutionTextuallyRefused { verdict } =>
+      closing_contract_authoring_verdict_detail(verdict: verdict)
+    ClosingContractExecutionRunnerUnavailable { target, detail } =>
+      join([target as String, ": the bound witness could not be executed: ", detail], "")
+    ClosingContractExecutionWitnessRefused { target, blocking } =>
+      join([
+        target as String,
+        ": a declared validation's witness did not execute green: ",
+        closing_contract_witness_run_detail(run: blocking),
+      ], "")
+  }
+}
+
+fn closing_contract_execution_detail_for(target: String, runner: String = "") -> String {
+  closing_contract_execution_verdict_detail(
+    verdict: closing_contract_execution_verdict(target: target, runner: runner),
+  )
+}
+
+fn closing_contract_authored(target: String, runner: String = "") -> Bool {
+  match closing_contract_execution_verdict(target: target, runner: runner) {
+    ClosingContractExecutionAuthored { target: _ } => true
+    ClosingContractExecutionTextuallyRefused { verdict: _ } => false
+    ClosingContractExecutionRunnerUnavailable { target: _, detail: _ } => false
+    ClosingContractExecutionWitnessRefused { target: _, blocking: _ } => false
   }
 }

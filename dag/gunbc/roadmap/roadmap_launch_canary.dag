@@ -2,7 +2,7 @@ module gunbc.roadmap_launch_canary
 
 import std.types { String, NonEmptyStr, FilePath }
 import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest, NodeParent, AdmittedRoot }
 import gunbc.roadmap_status { TicketFields }
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
@@ -89,3 +89,16 @@ fn roadmap_launch_canary_criteria_digest() -> Fnv1a64Structural {
 fn roadmap_launch_canary_criteria_digest_hex() -> String {
   roadmap_launch_canary_criteria_digest().digest as String
 }
+
+// THE CANARY'S DISPATCH FACTS. The canary nodes must satisfy every readiness fact a real node
+// satisfies, or the admission's admit-path witnesses stop exercising the full predicate and the
+// suite goes green without an inhabitance claim (DESIGN §3 standing rule: deleting the integration
+// must make a control fail). They are the roots of their own synthetic graph, and each carries a
+// centering plan; the plans lived in the deleted gunbc.roadmap.roadmap_centering roster.
+fn roadmap_launch_canary_parent_lineage() -> NodeParent? {
+  Present { value: AdmittedRoot }
+}
+
+data roadmap_launch_canary_parent_centering_plan: String = "Synthetic canary of the launch admission (gunbc.roadmap_launch_canary): centering supplied so the admission's own admit-path witnesses traverse the centering gate exactly as a real node does. There is no work to do on this node; it exists so the page, the POST route and the belt tick can be witnessed end to end on a graph that touches no host."
+
+data roadmap_launch_canary_child_centering_plan: String = "Synthetic canary follow-up (gunbc.roadmap_launch_canary): centered for the same reason as its parent — the dependency-gate witnesses admit this node once the parent is accepted, and that path must traverse the centering gate. No work to do."

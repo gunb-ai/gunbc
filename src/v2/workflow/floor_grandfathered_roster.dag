@@ -1,14 +1,12 @@
 module v2.workflow.floor_grandfathered_roster
 
 import v2.std.algebra { Cons, Empty, list_flat_map, length, contains, filter }
-import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
@@ -126,6 +124,38 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessDeleted {
+    identity: "v2.test.v2_native_route.an_unattributed_head_advisory_is_refused" as NonEmptyStr,
+    deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (gunbc.witness_v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.emit.trait_derive_seed_emit_binding_test.bool_supplemental_impl_present" as NonEmptyStr,
+    deleted_in: "the Bool de-fork: std.types Bool realizes only as the host `bool` (v1.compiler.emit_rust rust_declaration_realizes_as_native_alias over its gunbc.rust_source_type_bindings row), so no enum Bool is emitted and the From<Bool> for bool bridge this asserted has nothing to convert from; the bridge (extdeps.languages.rust.emit rust_supplemental_impls_bool_coproduct), its target predicate and scaffold row are deleted with it" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_peano_literal_operator_realization_witness_test.w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak; that declaration is deleted, so the leak has nothing to leak from and the red is unwritable (DESIGN 4b(4) dissolution). Not re-subjected to a user-declared structural Bool, which is the separately tracked local_bool_coproduct_probe class; the host control w_kernel_bool_at_native_bool_boundary_stays_the_keyword stays enrolled" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_a_named_calls_bool_formal_is_counted_not_judged_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12506 typed a call's callee reference by its declaration, so the counted-not-judged state this pin held no longer exists (it went red on main, as its comment said it would); its successor asserting the refusal is v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.bool_row_is_found_by_exact_destination" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so the row this asserted no longer exists by ruling; its RED successor is v2.test.claim.self_host.peano_nat_structural_realization_test.no_bool_literal_row_exists" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.removing_the_bool_row_returns_the_literal_to_direct" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its destination declaration (v2.std.logic Bool) no longer exists; the Direct answer at the one Bool stays asserted by v2.test.claim.self_host.peano_nat_structural_realization_test.prelude_bool_destination_is_direct" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.logical_connective_on_a_structural_operand_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so a structural operand under a connective now refuses with no admission list; the RED is v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_an_undeclared_structural_operand_refuses" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_the_declared_bool_carrier_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its carrier no longer exists; the positive control is re-pointed at the native Bool operand as v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_a_native_bool_operand_stays_host" as NonEmptyStr
+  },
   WitnessDeleted {
     identity: "v2.test.execution.bind_round_trip.bind_grammar_inverse_holds" as NonEmptyStr,
     deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/bind_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
@@ -320,6 +350,30 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree" as NonEmptyStr,
     deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- DESIGN section 3, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_exact_bound_is_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_exceedance_is_unsound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_sound_bound_carries_margin" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_unknown_bound_is_not_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_green_when_all_sound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_reds_on_one_unsound" as NonEmptyStr,
+    deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
@@ -447,7 +501,7 @@ fn floor_grandfathered_chunk_030() -> List<String> {
 }
 
 fn floor_grandfathered_chunk_031() -> List<String> {
-  Cons { head: "test.claim.self_host_structural_text_witness_test.w_nonliteral_kernel_string_at_text_boundary_is_presently_accepted_declared_drop", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_annotated_let_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_argument_boundary_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_data_initializer_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_record_field_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_return_boundary_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_capture_acceptance_roster_is_populated", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_census_has_no_blocking_use", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_corpus_bindings_are_unambiguous", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_every_bare_row_carries_a_verdict", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_migrated_bindings_have_exact_rows", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_migrated_names_are_absent_from_the_bare_table", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_missing_source_identity_refuses", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_next_rung_representations_have_no_realization_yet", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_nominality_standing_changes_independently_of_value_semantics", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_no_realization_spells_the_bare_string_token", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_sibling_declarations_of_one_spelling_receive_no_binding", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_binding_realizes_on_rust", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_decision_is_coherent", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_declaration_resolves_to_std_string", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_reference_preserves_the_provider_declaration", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_ruling_names_a_realizable_representation", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_spelling_is_qualified_in_both_positions", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_verdict_is_migrated_not_debt", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_two_rows_for_one_declaration_refuse_as_ambiguous", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.self_host_structural_text_witness_test.w_nonliteral_kernel_string_at_text_return_boundary_refuses", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_annotated_let_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_argument_boundary_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_data_initializer_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_record_field_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_structural_text_witness_test.w_string_literal_at_text_return_boundary_emits_scalar_sequence", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_capture_acceptance_roster_is_populated", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_census_has_no_blocking_use", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_corpus_bindings_are_unambiguous", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_every_bare_row_carries_a_verdict", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_migrated_bindings_have_exact_rows", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_migrated_names_are_absent_from_the_bare_table", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_missing_source_identity_refuses", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_next_rung_representations_have_no_realization_yet", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_nominality_standing_changes_independently_of_value_semantics", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_no_realization_spells_the_bare_string_token", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_sibling_declarations_of_one_spelling_receive_no_binding", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_binding_realizes_on_rust", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_decision_is_coherent", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_declaration_resolves_to_std_string", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_reference_preserves_the_provider_declaration", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_ruling_names_a_realizable_representation", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_spelling_is_qualified_in_both_positions", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_symbol_verdict_is_migrated_not_debt", tail: Cons { head: "test.claim.self_host_symbol_identity_binding_witness.w_two_rows_for_one_declaration_refuse_as_ambiguous", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_grandfathered_chunk_032() -> List<String> {

@@ -1,7 +1,6 @@
 module gunbc.machine_intake_mtcollins1_kvm_still
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -469,7 +468,8 @@ fn kvm_acquisition_keys(cause: KvmAcquisitionCause) -> List<String> {
   match cause {
     KvmNotConnected => kvm_layout_acquisition_failed.keys.take(n: 4)
     KvmConnectionChangedDuringAcquisition => kvm_layout_acquisition_failed.keys.take(n: 4)
-    _ => kvm_layout_acquisition_failed.keys
+    KvmCanvasUnreadable { detail: _ } => kvm_layout_acquisition_failed.keys
+    KvmAcquisitionOther { cause: _, detail: _ } => kvm_layout_acquisition_failed.keys
   }
 }
 
@@ -547,7 +547,22 @@ fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmO
         KvmJournalEstablished { at: a, host: h, session: se, attempt: t, gen: _ } => kvm_established_against(subject: subject, at: a, host: h, session: se, attempt: t)
         KvmJournalRefused { at: a, refusal: r } => KvmObserverRefused { at: a, refusal: r }
         KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
-        _ => acc
+        KvmJournalConnectionRequested { at: a } => acc
+                KvmJournalConnectionRefused { at: a } => acc
+                KvmJournalConnectionOpen { at: a, gen: _ } => acc
+                KvmJournalConnectionLost { at: a, gen: _ } => acc
+                KvmJournalConnectionError { at: a, gen: _, detail: _ } => acc
+                KvmJournalStill { at: a, seq: _, reason: _, file: _, gen: _ } => acc
+                KvmJournalAcquisitionFailed { at: a, seq: _, reason: _, cause: _, gen: _ } => acc
+                KvmJournalStopRequested { at: a, by: _ } => acc
+                KvmJournalSessionRelease { at: a, result: _ } => acc
+                KvmJournalBrowserClose { at: a, result: _ } => acc
+                KvmJournalStopped { at: a, session: _, browser: _ } => acc
+                KvmJournalTriggerScanFailed { at: a, detail: _ } => acc
+                KvmJournalNavigated { at: a, seq: _, phase: _, url: _ } => acc
+                KvmJournalPageConsole { at: a, phase: _, level: _, detail: _ } => acc
+                KvmJournalPageError { at: a, phase: _, detail: _ } => acc
+                KvmJournalUnparsed { line: _ } => acc
       }
     KvmObserverEstablished { at: ea, host: _, session: _, attempt: _ } =>
       match e {
@@ -556,9 +571,28 @@ fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmO
         KvmJournalStopRequested { at: a, by: _ } => KvmObserverStopped { at: a }
         KvmJournalStopped { at: a, session: _, browser: _ } => KvmObserverStopped { at: a }
         KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
-        _ => acc
+        KvmJournalEstablished { at: a, host: _, session: _, attempt: _, gen: _ } => acc
+                KvmJournalConnectionRequested { at: a } => acc
+                KvmJournalConnectionRefused { at: a } => acc
+                KvmJournalConnectionOpen { at: a, gen: _ } => acc
+                KvmJournalStill { at: a, seq: _, reason: _, file: _, gen: _ } => acc
+                KvmJournalAcquisitionFailed { at: a, seq: _, reason: _, cause: _, gen: _ } => acc
+                KvmJournalRefused { at: a, refusal: _ } => acc
+                KvmJournalSessionRelease { at: a, result: _ } => acc
+                KvmJournalBrowserClose { at: a, result: _ } => acc
+                KvmJournalTriggerScanFailed { at: a, detail: _ } => acc
+                KvmJournalNavigated { at: a, seq: _, phase: _, url: _ } => acc
+                KvmJournalPageConsole { at: a, phase: _, level: _, detail: _ } => acc
+                KvmJournalPageError { at: a, phase: _, detail: _ } => acc
+                KvmJournalUnparsed { line: _ } => acc
       }
-    _ => acc
+    KvmObserverLost { at: _, established_at: _ } => acc
+        KvmObserverMismatch { at: _, detail: _ } => acc
+        KvmObserverStopped { at: _ } => acc
+        KvmObserverProcessNotRunning { process: _ } => acc
+        KvmObserverJournalUnread { cause: _ } => acc
+        KvmObserverRefused { at: _, refusal: _ } => acc
+        KvmObserverFailed { at: _, detail: _ } => acc
   }
 }
 
@@ -600,7 +634,22 @@ fn kvm_gap_mark(e: KvmJournalEvent) -> List<KvmInstant> {
     KvmJournalEstablished { at: a, host: _, session: _, attempt: _, gen: _ } => [a]
     KvmJournalStill { at: a, seq: _, reason: _, file: _, gen: _ } => [a]
     KvmJournalStopRequested { at: a, by: _ } => [a]
-    _ => []
+    KvmJournalConnectionRequested { at: a } => []
+    KvmJournalConnectionRefused { at: a } => []
+    KvmJournalConnectionOpen { at: a, gen: _ } => []
+    KvmJournalConnectionLost { at: a, gen: _ } => []
+    KvmJournalConnectionError { at: a, gen: _, detail: _ } => []
+    KvmJournalAcquisitionFailed { at: a, seq: _, reason: _, cause: _, gen: _ } => []
+    KvmJournalRefused { at: a, refusal: _ } => []
+    KvmJournalFailed { at: a, detail: _ } => []
+    KvmJournalSessionRelease { at: a, result: _ } => []
+    KvmJournalBrowserClose { at: a, result: _ } => []
+    KvmJournalStopped { at: a, session: _, browser: _ } => []
+    KvmJournalTriggerScanFailed { at: a, detail: _ } => []
+    KvmJournalNavigated { at: a, seq: _, phase: _, url: _ } => []
+    KvmJournalPageConsole { at: a, phase: _, level: _, detail: _ } => []
+    KvmJournalPageError { at: a, phase: _, detail: _ } => []
+    KvmJournalUnparsed { line: _ } => []
   }
 }
 
@@ -674,7 +723,8 @@ fn kvm_journal_read_at(dir: String) -> KvmJournalRead {
 fn kvm_journal_events_of(read: KvmJournalRead) -> List<KvmJournalEvent> {
   match read {
     KvmJournalText { text: t } => kvm_journal_events(text: t)
-    _ => []
+    KvmJournalAbsent => []
+        KvmJournalUnread { cause: _ } => []
   }
 }
 
@@ -698,7 +748,16 @@ type KvmObserverStart
 fn kvm_live_standing(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
   match journal {
     KvmJournalUnread { cause: c } => KvmObserverJournalUnread { cause: c }
-    _ =>
+    KvmJournalText { text: _ } =>
+      match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
+        KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
+          match process {
+            OwnedRunning { pid: _, start_time: _ } => KvmObserverEstablished { at: a, host: h, session: s, attempt: t }
+            other => KvmObserverProcessNotRunning { process: other }
+          }
+        other => other
+      }
+    KvmJournalAbsent =>
       match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
         KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
           match process {

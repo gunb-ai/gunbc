@@ -13,7 +13,6 @@ import v2.lens.complexity_accumulator_copy.roster_gate {
   GateSuspectObserved,
   file_gate_disposition
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

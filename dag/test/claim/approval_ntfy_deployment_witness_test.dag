@@ -10,9 +10,10 @@ import gunbc.auth.approval_ntfy_deployment {
   approval_ntfy_human_burden, approval_ntfy_listen_address,
   approval_ntfy_endpoint, approval_ntfy_server_install_intervention, approval_ntfy_state_root,
   approval_ntfy_subscriber_grant_intervention, approval_ntfy_phone_subscription_intervention,
-  approval_ntfy_base_url, approval_ntfy_base_url_from,
 }
-import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
+import gunbc.auth.approval_ntfy_publish { approval_ntfy_base_url, approval_ntfy_base_url_from }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import std.types { String }

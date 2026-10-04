@@ -1,0 +1,54 @@
+module gunbc.site.robot_mark
+
+import std.types { String }
+import std.markup { Fragment, Element, Attribute, attr }
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch }
+
+// THE FABRIC WORKFLOW'S MARK: the gunb "robot variant" -- squircle body, square eyes, flat mouth,
+// one antenna. SOURCE: gunb-ai/frontend legacy/moodboard.html, <symbol id="stoic-robot">; the
+// geometry below is that symbol's, unchanged (body under its translate/scale transform, eyes and
+// mouth cut out by evenodd, the antenna a separate solid path). Filled with currentColor so the
+// chip that hosts it decides its color. The authoring surface is the frontend repo: a change to
+// the mark lands there first and is copied here, never redrawn.
+
+// THE BADGE'S TWO PAINTS. The background is the owner's badge ruling (2026-09-30: "Badge background
+// color #f4f1ec"), a warm stone; the mark itself is the frontend's ink (#0F0F0F, the moodboard's
+// ink export of #stoic-robot). Named swatches so the stylesheet paints from them rather than
+// restating hex.
+data robot_mark_badge_background: Swatch = Swatch { name: "robot-badge-stone", color: Srgb8 { r: 244, g: 241, b: 236 } }
+
+data robot_mark_ink: Swatch = Swatch { name: "robot-mark-ink", color: Srgb8 { r: 15, g: 15, b: 15 } }
+
+data robot_mark_view_box: String = "0 0 120 120"
+
+data robot_mark_body_path: String = "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
+
+data robot_mark_body_transform: String = "translate(-12 -12) scale(1.2)"
+
+data robot_mark_antenna_path: String = "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
+
+fn robot_mark_svg(class_name: String, label: String) -> Fragment {
+  Element {
+    tag: "svg",
+    attributes: [
+      attr(name: "class", value: class_name),
+      attr(name: "viewBox", value: robot_mark_view_box),
+      attr(name: "role", value: "img"),
+      attr(name: "aria-label", value: label),
+    ],
+    children: [
+      Element { tag: "g", attributes: [ attr(name: "transform", value: robot_mark_body_transform) ], children: [
+        Element { tag: "path", attributes: [
+          attr(name: "fill-rule", value: "evenodd"),
+          attr(name: "fill", value: "currentColor"),
+          attr(name: "d", value: robot_mark_body_path),
+        ], children: [] },
+      ] },
+      Element { tag: "path", attributes: [
+        attr(name: "fill", value: "currentColor"),
+        attr(name: "d", value: robot_mark_antenna_path),
+      ], children: [] },
+    ],
+  }
+}

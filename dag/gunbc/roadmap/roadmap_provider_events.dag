@@ -15,7 +15,10 @@ import extdeps.languages.json.grammar {
   json_text_skip_ws,
   json_text_starts_with_at,
 }
-import extdeps.languages.json.parse { json_text_parseable }
+import extdeps.languages.json.parse {
+  json_text_parseable, parse_json_document, JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, json_field_int, JsonFieldRead, FieldRead, FieldAbsent, FieldMalformed,
+}
 
 type CodexItemActivity
   = CodexRunningCommand
@@ -27,11 +30,15 @@ type CodexItemActivity
   | CodexReporting
   | CodexUnclassifiedItem
 
-// THE GUNBC HARNESS INTERLEAVES ONE EVENT OF ITS OWN in the Codex-shaped stream: round.usage, the
-// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput).
-// The phase fold leaves the provider state unchanged on it; before this arm the whole stream was
-// refused at that line as an unknown event type, so a live harness attempt rendered as
-// "Agent evidence refused" with no strip (first belt-dispatched attempt, 2026-09-04).
+// THE GUNBC HARNESS INTERLEAVES EVENTS OF ITS OWN in the Codex-shaped stream: round.usage, the
+// per-round token and clock accounting the dashboard's round strip reads (gunbc.harness.harness_throughput);
+// turn.alignment_checkpoint_due, the epoch-boundary announcement a chain-carrying turn ends on;
+// and turn.wire_log_unwritable, the non-terminal notice that a round's durable wire-log write
+// refused (gunbc.harness.harness_turn). The phase fold leaves the provider state unchanged on the
+// non-terminal pair; turn.placement_waiting, the worker announcing that it is waiting in line for a
+// serving seat before any provider call (gunbc.harness.harness_cli harness_bind_seat_waiting). Before these arms the whole stream was refused at such a line as an unknown
+// event type, so a live harness attempt rendered as "Agent evidence refused" with no strip
+// (first belt-dispatched attempt, 2026-09-04).
 type CodexProviderEventKind
   = CodexThreadStarted
   | CodexTurnStarted
@@ -42,6 +49,9 @@ type CodexProviderEventKind
   | CodexError
   | HarnessRoundUsage
   | HarnessBudgetExhausted
+  | HarnessAlignmentCheckpointDue
+  | HarnessWireLogUnwritable
+  | HarnessPlacementWaiting
 
 type CodexProviderEvent {
   line_number: Int
@@ -69,7 +79,9 @@ type CodexParseFold {
 }
 
 // BUDGET SPENT IS TERMINAL AND IS NOT FAILED. The harness ends a turn when its step budget is spent
-// (gunbc.harness.harness_turn turn.budget_exhausted); the work those rounds produced is in the
+// (gunbc.harness.harness_turn turn.budget_exhausted) or when a chain-carrying epoch announces its
+// alignment checkpoint (turn.alignment_checkpoint_due -- adjudication is the workflow's, and it is
+// not a pronouncement on the work); the work those rounds produced is in the
 // worktree and the belt commits and verifies it exactly as it does a completed turn. Folding it into
 // ProviderFailed put "Agent failed" beside "Verification passed" on one row (attempt 7f08b76ceb8f4424,
 // 2026-09-04), a pair the reader cannot reconcile because it is false: nothing failed. The verdict is
@@ -77,6 +89,7 @@ type CodexParseFold {
 type ProviderExecutionState
   = ProviderNotStarted
   | ProviderStarting { activity: String }
+  | ProviderAwaitingSeat { detail: String }
   | ProviderRunning { activity: String }
   | ProviderCompleted { activity: String }
   | ProviderFailed { activity: String, detail: String }
@@ -129,7 +142,7 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
   "]),\"truncated\":((.item.text | length) > ",
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
-  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
+  ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"turn.budget_exhausted\" then {\"type\":$type,\"steps_taken\":(.steps_taken | num)} elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} elif $type == \"round.usage\" then ({\"type\":$type,\"step\":(.step | num),\"input_tokens\":(.input_tokens | num),\"output_tokens\":(.output_tokens | num),\"epoch_ms\":(.epoch_ms | num)} + (if (.files_changed | type) == \"number\" then {\"files_changed\":.files_changed} else {} end) + (if (.tool_calls | type) == \"number\" then {\"tool_calls\":.tool_calls} else {} end)) else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
 fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
@@ -155,7 +168,9 @@ fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
 data codex_projection_filter_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). codex_provider_event_projection_filter is a jq PROGRAM assembled by join — a foreign language built as a string, the same class the tmux pipe payload was in before it moved onto the bash backend (gunbc.dispatch_pipe_pane_emit). It is marked rather than fixed because the two available routes are not equivalent: minting a jq grammar to read backward would buy a modeled emitter for a filter that exists ONLY to bound a line before the substrate reads it, which is the purity trap DESIGN 6 names — the displaced cost is zero once the read itself is bounded. DISSOLVES ON: the observation reading the attempt JSONL directly under a substrate-side line bound instead of shelling to a projector — the witness-realization lane's typed file read (docs/plans/witness-realization-plan.md), at which point BOTH the filter string and the ProviderEventProjectionCapability jq dependency delete together. Until then the interpolated values are the two bounds above (both Int data rows), never caller input, and the classifier downstream is anchored and total, so a projector drift refuses rather than reclassifying."
 
 // Codex --json is the provider protocol authority: one JSON object per line with thread.started,
-// turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types. The raw stream is
+// turn.started, item.*, turn.completed, turn.budget_exhausted, turn.failed, and error event types,
+// plus the harness's own round.usage, turn.alignment_checkpoint_due and turn.wire_log_unwritable
+// (gunbc.harness.harness_turn). The raw stream is
 // structurally reduced by codex_provider_event_projection_filter before this bounded total envelope
 // classifier runs. The shared RFC 8259 grammar proves each projected line parseable, then the
 // classifier requires the emitted top-level `type` member to be the first object member before
@@ -369,6 +384,24 @@ fn codex_event_from_complete_line(
       raw: raw,
       kind: HarnessRoundUsage,
     } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.alignment_checkpoint_due") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessAlignmentCheckpointDue,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.placement_waiting") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessPlacementWaiting,
+    } }
+  } else if codex_line_has_top_level_type(raw: raw, event_type: "turn.wire_log_unwritable") {
+    Present { value: CodexProviderEvent {
+      line_number: line_number,
+      raw: raw,
+      kind: HarnessWireLogUnwritable,
+    } }
   } else if codex_line_has_top_level_type(raw: raw, event_type: "error") {
     Present { value: CodexProviderEvent {
       line_number: line_number,
@@ -525,6 +558,32 @@ fn parse_codex_jsonl(text: String) -> CodexEventParse {
   )
 }
 
+// THE WAIT'S REASON, READ FROM ITS OWN LINE. The line is the harness's own construction, so a
+// line that does not decode is shown as itself rather than guessed at.
+fn harness_placement_waiting_detail(raw: String) -> String {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => join(["undecodable wait announcement: ", raw], "")
+    JsonDocumentParsed { value: v } => {
+      let reason = match json_field_string(obj: v, key: "reason") {
+        FieldRead { value: r } => r
+        FieldAbsent => "no reason recorded"
+        FieldMalformed { cause: c } => join(["reason unreadable: ", c], "")
+      }
+      let wait = match json_field_int(obj: v, key: "wait") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      let cap = match json_field_int(obj: v, key: "wait_cap") {
+        FieldRead { value: n } => to_string(n)
+        FieldAbsent => "?"
+        FieldMalformed { cause: _ } => "?"
+      }
+      join(["placement pending, wait ", wait, " of ", cap, ", asking again each interval: ", reason], "")
+    }
+  }
+}
+
 fn provider_execution_fold_event(
   state: ProviderExecutionState,
   event: CodexProviderEvent,
@@ -539,6 +598,13 @@ fn provider_execution_fold_event(
         CodexThreadStarted => ProviderStarting { activity: "thread started" }
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
         HarnessRoundUsage => state
+        HarnessWireLogUnwritable => state
+        HarnessPlacementWaiting => ProviderAwaitingSeat { detail: harness_placement_waiting_detail(raw: event.raw) }
+        HarnessAlignmentCheckpointDue =>
+          ProviderBudgetSpent {
+            activity: "Alignment checkpoint due · adjudication decides resume",
+            detail: event.raw,
+          }
         CodexItemStarted { activity } =>
           ProviderRunning {
             activity: join(
@@ -597,6 +663,8 @@ fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
           ProviderNotStarted => "event stream refused"
           ProviderStarting { activity } =>
             join(["last observed · ", activity], "")
+          ProviderAwaitingSeat { detail: _ } =>
+            "last observed · waiting for a serving seat"
           ProviderRunning { activity } =>
             join(["last observed · ", activity], "")
           ProviderCompleted { activity } =>
@@ -619,6 +687,7 @@ fn provider_execution_state_label(state: ProviderExecutionState) -> String {
   match state {
     ProviderNotStarted => "not_started"
     ProviderStarting { activity: _ } => "starting"
+    ProviderAwaitingSeat { detail: _ } => "awaiting_seat"
     ProviderRunning { activity: _ } => "running"
     ProviderCompleted { activity: _ } => "completed"
     ProviderFailed { activity: _, detail: _ } => "failed"
@@ -631,6 +700,7 @@ fn provider_execution_activity(state: ProviderExecutionState) -> String {
   match state {
     ProviderNotStarted => "Agent waiting"
     ProviderStarting { activity: _ } => "Agent working"
+    ProviderAwaitingSeat { detail: _ } => "Agent waiting for a serving seat"
     ProviderRunning { activity } => activity
     ProviderCompleted { activity: _ } => "Agent complete"
     ProviderFailed { activity: _, detail: _ } => "Agent failed"
@@ -644,6 +714,7 @@ fn provider_execution_detail(state: ProviderExecutionState) -> String {
     ProviderFailed { activity: _, detail } => detail
     ProviderBudgetSpent { activity: _, detail } => detail
     ProviderEventsRefused { activity: _, detail } => detail
+    ProviderAwaitingSeat { detail } => detail
     _ => ""
   }
 }

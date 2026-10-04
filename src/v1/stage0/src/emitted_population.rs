@@ -73,7 +73,6 @@
 // src/std_keyed_row.rs
 // src/std_literal_elaboration.rs
 // src/std_machine_constraints.rs
-// src/std_magnitude.rs
 // src/std_measure.rs
 // src/std_nat.rs
 // src/std_node.rs

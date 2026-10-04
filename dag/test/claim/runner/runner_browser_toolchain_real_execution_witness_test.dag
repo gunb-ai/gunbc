@@ -2,7 +2,6 @@ module test.claim.runner.runner_browser_toolchain_real_execution
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, List, list_length }
-import std.string_type { String }
 import std.algebra { trim, list_append }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
