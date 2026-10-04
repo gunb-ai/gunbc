@@ -75,6 +75,8 @@ type ArgvCommand sole_constructor {
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
 fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
   admit_callers: [
+    decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
