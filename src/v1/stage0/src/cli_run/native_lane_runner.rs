@@ -3800,7 +3800,7 @@ mod cli_emit_probe_tests {
         let main = crate::v1_compiler_emit_rust::emit_native_cli_driver_main_rs(
             "crate_x".to_string(),
             "pipeline_x".to_string(),
-            std::rc::Rc::new(Vec::new()),
+            std::rc::Rc::new(im::Vector::new()),
         );
         let source = main.content.as_str();
         let write = "print!(\"{text}\");";
