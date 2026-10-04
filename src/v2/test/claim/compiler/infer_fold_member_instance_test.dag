@@ -61,26 +61,34 @@ fn fmi_reason(o: Outcome<Bool>) -> Symbol {
   }
 }
 
-// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer the derived cross-claim share
-// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) admits where two or more declared
-// claims read it; the claims read the decided,
-// portable value. The record fold's one assembly serves three claims, including the supplied-tree control (3).
-type FmiRecordFoldReading {
-  no_projection_refusal: Bool
-  base_is_lexical_reference: Bool
-  authored_member_formal_reason: Symbol
+// THE RECORD FOLD IS ASSEMBLED ONCE, by a NULLARY producer all three claims read WHOLE, so the
+// derived cross-claim share (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills it
+// once; each claim computes its OWN verdict over it, including the supplied-tree control (3). The
+// three verdicts were once one record whose claims each read a different field: a bundle the share
+// declines (BundleOfDisjointProjections), since sharing it netted each claim's own verdict out of
+// its budget. An assembly that refuses answers each verdict as the record did.
+fn fmi_record_fold_assembled() -> Outcome<ResolvedTree> {
+  fmi_assemble(src: fmi_record_fold)
 }
 
-fn fmi_record_fold_reading() -> FmiRecordFoldReading {
-  match fmi_assemble(src: fmi_record_fold) {
-    Rejected { diagnostics: d } =>
-      FmiRecordFoldReading { no_projection_refusal: false, base_is_lexical_reference: false, authored_member_formal_reason: diagnostics_fatal_reason(d: d) }
-    Accepted { value: tree, diagnostics: _ } =>
-      FmiRecordFoldReading {
-        no_projection_refusal: fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree)),
-        base_is_lexical_reference: fmi_base_is_lexical_reference(tree: tree),
-        authored_member_formal_reason: fmi_reason(o: fmi_infer_with_member_formal_authored(tree: tree))
-      }
+fn fmi_record_fold_no_projection_refusal(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+fn fmi_record_fold_base_is_lexical_reference(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => fmi_base_is_lexical_reference(tree: tree)
+  }
+}
+
+fn fmi_record_fold_authored_member_formal_reason(o: Outcome<ResolvedTree>) -> Symbol {
+  match o {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_with_member_formal_authored(tree: tree))
   }
 }
 
@@ -89,7 +97,7 @@ fn fmi_sum_fold_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_sum_fold))
 fn fmi_body_not_carrier_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_body_not_carrier_fold)) }
 
 test fn fmi_fold_member_projects_a_declared_field() -> Bool {
-  fmi_record_fold_reading().no_projection_refusal
+  fmi_record_fold_no_projection_refusal(o: fmi_record_fold_assembled())
 }
 
 fn fmi_no_projection_refusal(o: Outcome<Bool>) -> Bool {
@@ -110,7 +118,7 @@ fn fmi_has_reason(o: Outcome<Bool>, reason: Symbol) -> Bool {
 // recorded and infer can type it. RED ON THE BASE: the base was the bare canonical atom `e`, which nothing
 // typed, so the projection landed in the non-refusing ReceiverTypeUnderived arm.
 test fn fmi_lambda_binder_projection_base_is_a_lexical_reference() -> Bool {
-  fmi_record_fold_reading().base_is_lexical_reference
+  fmi_record_fold_base_is_lexical_reference(o: fmi_record_fold_assembled())
 }
 
 fn fmi_base_is_lexical_reference(tree: ResolvedTree) -> Bool {
@@ -133,7 +141,7 @@ test fn fmi_fold_member_undeclared_field_refuses() -> Bool {
 
 // (3) A STEP FORMAL INCOMPATIBLE WITH THE DOMAIN ELEMENT REFUSES.
 test fn fmi_fold_member_incompatible_formal_refuses() -> Bool {
-  fmi_record_fold_reading().authored_member_formal_reason == ^application_argument_does_not_inhabit
+  fmi_record_fold_authored_member_formal_reason(o: fmi_record_fold_assembled()) == ^application_argument_does_not_inhabit
 }
 
 // (3) IS SUPPLIED AT THE RESOLVE -> INFER BOUNDARY, because its red is not authorable in source: a typed

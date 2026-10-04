@@ -213,18 +213,58 @@ fn fps_type_of(facts: Optional<InferredFacts>) -> Optional<Node> {
 // THE FIXTURE PRODUCERS, one per fixture program, nullary so the derived cross-claim share
 // (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills one once wherever two or
 // more declared claims read it; one read by a single claim is that claim's own cost.
-fn fps_no_projection_reading() -> FpsReading { fps_reading_of(o: fps_no_projection_source()) }
+// ONE VERDICT PER CLAIM where only that claim reads it, computed over the shared fixture source. A
+// reading's field that one claim alone reads is that claim's own stage, not a value another claim
+// demands: shared inside the reading it is a bundle slice the derived share declines
+// (BundleOfDisjointProjections), so such a claim computes its own stage over the source producer,
+// which every claim over that fixture still reads whole.
+fn fps_resolves_of(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+fn fps_carries_projection_of(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } => fps_carries_projection(root: resolved.root)
+  }
+}
+
+fn fps_infers_of(o: Outcome<ResolvedTree>) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn fps_projection_grounded_of(o: Outcome<ResolvedTree>) -> Optional<Bool> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: tree, diagnostics: _ } => fps_grounding_of(facts: fps_projection_facts_in(inferred: tree))
+      }
+  }
+}
+
 fn fps_valid_field_reading() -> FpsReading { fps_reading_of(o: fps_valid_field_source()) }
 fn fps_absent_field_reading() -> FpsReading { fps_reading_of(o: fps_absent_field_source()) }
 
 // THE FIXTURE'S POSITIVE CONTROL: the receiver alone reaches resolve and infer, so a red below is
 // about the projection and not about the parameter, the record declaration or the assembly.
 test fn fps_the_receiver_without_a_projection_resolves_holds() -> Bool {
-  fps_no_projection_reading().resolves
+  fps_resolves_of(o: fps_no_projection_source())
 }
 
 test fn fps_the_receiver_without_a_projection_infers_holds() -> Bool {
-  fps_no_projection_reading().infers
+  fps_infers_of(o: fps_no_projection_source())
 }
 
 test fn fps_a_valid_field_projection_resolves_holds() -> Bool {
@@ -232,7 +272,7 @@ test fn fps_a_valid_field_projection_resolves_holds() -> Bool {
 }
 
 test fn fps_a_valid_field_projection_infers_holds() -> Bool {
-  fps_valid_field_reading().infers
+  fps_infers_of(o: fps_valid_field_source())
 }
 
 // AN ABSENT FIELD MUST NOT BE ADMITTED. Asserted as a refusal at whatever stage currently refuses it,
@@ -535,10 +575,9 @@ fn fps_match_binder_source(field: String) -> Outcome<ResolvedTree> {
 
 // RESOLVE REACHES THE MATCH BINDER'S PROJECTION: the head is bound on the chain and the whole path names
 // no declaration, so resolve commits the projection shape exactly as it does for a parameter receiver.
-fn fps_match_binder_reading() -> FpsReading { fps_reading_of(o: fps_match_binder_source(field: "tree")) }
 
 test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
-  fps_match_binder_reading().resolves
+  fps_resolves_of(o: fps_match_binder_source(field: "tree"))
 }
 
 // A MATCH-ARM BINDER AS A RECEIVER IS NOT YET TYPED, AND THIS ROW PINS EXACTLY HOW. It is the population of
@@ -562,7 +601,7 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
 // projection_grounded is Present only on exactly that route (resolved, inferred, the projection node found
 // in the inferred tree, its facts present), so Absent -- any refusal, a missing node, missing facts -- reds it.
 test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
-  match fps_match_binder_reading().projection_grounded {
+  match fps_projection_grounded_of(o: fps_match_binder_source(field: "tree")) {
     Absent => false
     Present { value: derived } => !derived
   }
@@ -571,7 +610,7 @@ test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
 // THE PROJECTION NODE IS THERE, IN THE RESOLVED TREE, so the row above is about a receiver whose projection
 // resolve really built, read independently of infer.
 test fn fps_a_match_binder_projection_is_in_the_resolved_tree_holds() -> Bool {
-  fps_match_binder_reading().resolved_carries_projection
+  fps_carries_projection_of(o: fps_match_binder_source(field: "tree"))
 }
 
 
