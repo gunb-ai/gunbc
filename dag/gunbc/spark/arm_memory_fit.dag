@@ -73,7 +73,7 @@ import extdeps.vllm.weight_offload { VllmWeightOffloadSplitLaw }
 //
 // THE PROOF IS COMPOSITIONAL, PER RANK, PER PHASE, OVER INTERVALS, and its subject is SEALED:
 // a consumer cannot assemble a subject by hand and hand it to the verdict fold. The mints are the
-// only constructors, and they enforce three things construction must guarantee, so no validation
+// only constructors, and they enforce four things construction must guarantee, so no validation
 // downstream can be skipped by building the wrong shape (review blockers one and three):
 //
 //   1. THE INTENT/PROFILE JOIN. The executable profile the engine will run is DERIVED from the
@@ -94,6 +94,13 @@ import extdeps.vllm.weight_offload { VllmWeightOffloadSplitLaw }
 //      until a CheckpointRankResidencyBound measurement mints them, and the aggregate impossibility
 //      argument ("at least one rank cannot hold its mandatory share") is carried separately so the
 //      proof never fabricates WHICH rank.
+//
+//   4. TIERS. Supply and demand are per memory tier, and a tier is a catalog memory component
+//      (extdeps.systems.types SystemMemoryComponent). The mint joins the subject's tiers against
+//      the host's components by identity, and the rank roster against (rank, tier). A one-pool host
+//      (a DGX Spark) is the one-tier case, and its verdicts are the ones this module gave before
+//      tiers existed. A superchip with GPU-local and coherent-link memory carries two complete
+//      records per rank, and a term placed in the other tier is NotPlaced, never a zero.
 //
 // PHASES KEEP TRANSIENTS IN THEIR PHASE, and the engine's decided envelope is a second supply
 // wall on the engine-admitted phases. AN UNMODELED POOL IS UNESTABLISHED, NOT REFUSED: "we have
@@ -671,23 +678,13 @@ fn arm_memory_fit_subject(
   host_memory: List<SystemMemoryComponent>,
   tiers: List<ArmTierSupply>,
 ) -> ArmMemorySubjectMint {
-  match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
-    Present { value: c } => ArmMemorySubjectRefused { cause: c }
-    Absent => arm_memory_fit_subject_over_tiers(
-      checkpoint: checkpoint, runtime: runtime, topology: topology, intent: intent,
-      requested_profile: requested_profile, tiers: tiers)
+  let tier_ok = match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
+    Present { value: _ } => false
+    Absent => true
   }
-}
-
-fn arm_memory_fit_subject_over_tiers(
-  checkpoint: ServingCheckpoint,
-  runtime: ServingRuntime,
-  topology: ServingTopology,
-  intent: ServingCapacityIntent,
-  requested_profile: ServingLaunchProfile,
-  tiers: List<ArmTierSupply>,
-) -> ArmMemorySubjectMint {
-  if !profile_joins_intent(intent: intent, p: requested_profile) {
+  if !tier_ok {
+    ArmMemorySubjectRefused { cause: tier_set_refusal_cause(host_memory: host_memory, tiers: tiers) }
+  } else if !profile_joins_intent(intent: intent, p: requested_profile) {
     ArmMemorySubjectRefused {
       cause: join([
         "the executable profile does not derive from the capacity intent: the engine would run max_model_len ", to_string(token_count_value(t: requested_profile.max_model_len)),
