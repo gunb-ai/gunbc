@@ -1,0 +1,14 @@
+{
+  "source_revision": "e413906c2a71e3268ddf4b93d0327f3d1becf2d4",
+  "binary_sha256": "179882133a4c03958a1bed8a8b444ea06e48c63a6c42263ff83694508825b415",
+  "closure_modules": 842,
+  "closure_manifest_sha256": "6befe7f9b00c41861cdccb76e1a7c25868bde8a876ccbd083b52c31ea905a73d",
+  "memory_max": "6G",
+  "memory_swap_max": 0,
+  "focused_controls_passed": 7,
+  "authority_operation": "deny-bootstrap-20260928-1",
+  "authority_expires_at": "2026-09-28T23:00:00Z",
+  "cloud_status": "HTTP 400: Deny Admin is not grantable on a project; no grant applied",
+  "full_landing_suite": "not run",
+  "temporary_credentials_removed": true
+}
