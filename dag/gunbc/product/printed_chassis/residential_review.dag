@@ -1,0 +1,54 @@
+module product.printed_chassis.residential_review
+import std.types {List,Int}
+import std.measure {micrometer_count}
+import std.euclidean_geometry {Axis3Z}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Printed,Purchased,Cassette,LayOnXY,block,round,part}
+import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,rear_plate_z,board_w,board_d}
+import product.printed_chassis.rack_assembly {hardware}
+import product.printed_chassis.cooler_configuration {noctua_envelope,residential_cooler}
+import product.printed_chassis.stack_geometry {stack_pitch_for_cooler}
+import product.printed_chassis.rear_cooling {RearFanBank,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_opening,select_rear_fans,rear_fan_candidates,rear_mount,rear_cooling_json}
+import product.printed_chassis.fan_mount {FanMountAdmitted,FanMountBoreReachesMountingHoles,FanMountBoreNotEnclosedByPlate,FanMountPlateSmallerThanPattern,fan_mount_bore,fan_mount_mounting_holes}
+import product.printed_chassis.coupon {OpThroughHole}
+import product.printed_chassis.cassette_review {part_json}
+import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
+import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_array,json_string,json_int}
+import gunbc.cli_wire {CliWireResponse,CliWirePrintable}
+import std.process {ExitSuccess,exit_failure}
+
+// A review of the current tall profile, not a claim that its new attachment or guard exists.
+// The 40 mm fan-depth block is the selector's conservative reservation. The hub is a visual
+// symbol only; rotor detail and blade clearance are deliberately not fabrication geometry.
+fn fan_review_parts(bank:RearFanBank) -> List<AssemblyPart> {
+ let edge=bank.plate_edge_um
+ let frame=micrometer_count(m:bank.fan.pattern.frame_edge)
+ let y=20000+edge/2
+ match rear_mount(bank:bank) {
+ FanMountAdmitted {geometry:g}=>[
+  part(id:"M140",name:"140 mm rear mount plate — attachment pending",kind:Printed,scope:Cassette,adds:[block(w:edge,h:edge,d:4000,x:0,y:0,z:0)],cuts:map(concat([fan_mount_bore(g:g)],fan_mount_mounting_holes(g:g)),op=>match op {OpThroughHole {diameter:d,center_x:x,center_y:h}=>round(diameter:micrometer_count(m:d),length:12000,axis:Axis3Z,x:micrometer_count(m:x)-edge/2,y:micrometer_count(m:h)-edge/2,z:0)}),x:0,y:y,z:rear_plate_z,ex:0,ey:0,ez: -70000,plane:LayOnXY,notes:"Derived from selected ARCTIC hole pattern; 4 mm plate. Attachment to cassette and rear guard are not designed yet. Review only."),
+  part(id:"F140",name:"140 mm exhaust fan — reserved envelope",kind:Purchased,scope:Cassette,adds:[block(w:frame,h:frame,d:bank.fan.depth_um,x:0,y:0,z:0)],cuts:[round(diameter:frame-8000,length:bank.fan.depth_um+2000,axis:Axis3Z,x:0,y:0,z:0)],x:0,y:y,z:rear_plate_z-bank.fan.depth_um/2-2000,ex:0,ey:0,ez: -120000,plane:LayOnXY,notes:"140 mm square frame with a conservative 40 mm depth reservation; actual P14 body is 27 mm. Airflow and header-current qualification pending."),
+  part(id:"ROTOR",name:"Fan hub — visual symbol",kind:Purchased,scope:Cassette,adds:[round(diameter:frame/3,length:6000,axis:Axis3Z,x:0,y:0,z:0)],cuts:[],x:0,y:y,z:rear_plate_z-12000,ex:0,ey:0,ez: -120000,plane:LayOnXY,notes:"Illustrative hub only; not a measured rotor or printable component."),
+ ]
+ FanMountBoreReachesMountingHoles {bore_radius:_,hole_center_distance:_}=>[]
+ FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_}=>[]
+ FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_}=>[]
+ }
+}
+fn main() -> CliWireResponse {
+ let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:30000)
+ let selection=select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:tray_w,pitch_um:pitch,left_um:20000,right_um:20000,bottom_um:20000,top_um:20000,depth_um:60000),bed_um:170000)
+ match selection {
+ RearCoolingInvalidInput=>CliWirePrintable {bytes:"Invalid rear opening",exit:exit_failure(reason:"Invalid rear opening")}
+ RearCoolingNoFit=>CliWirePrintable {bytes:"No rear fan fits",exit:exit_failure(reason:"No rear fan fits")}
+ RearFanGeometry {bank:b}=>{
+  if b.count!=1 || micrometer_count(m:b.fan.pattern.frame_edge)!=140000 {return CliWirePrintable {bytes:"Residential review requires current single 140 mm selection",exit:exit_failure(reason:"Review configuration changed")}}
+  let tray=filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4")
+  let board=filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO")
+  let parts=concat(tray,concat(board,concat([noctua_envelope(contact_plane_um:30000)],fan_review_parts(bank:b))))
+  match realize_review_parts(parts:parts) {
+   ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD refused",exit:exit_failure(reason:"Review CAD refused")}
+   ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"program",value:json_string(s:review_program_source(p:p))),json_kv(key:"parts",value:json_array(elements:map(parts,p=>part_json(p:p)))),json_kv(key:"pitch_um",value:json_int(n:pitch)),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"cooling",value:rear_cooling_json(reading:selection))])),exit:ExitSuccess}
+  }
+ }
+ }
+}
