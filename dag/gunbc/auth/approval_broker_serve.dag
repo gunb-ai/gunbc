@@ -6,7 +6,7 @@ import gunbc.site.document { site_document_over, site_styles, ApprovalShell }
 import extdeps.tailscale.identity { tailnet_identity_login }
 import extdeps.tailscale.serve { ServeStatusUnreadable }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
-import gunbc.auth.request_authentication {
+import gunbc.auth.request_authentication { IngressUnattested,
   RequestAuthenticationEvidence, AuthAbsent,
   request_access_path_of, tailnet_transport_observation,
   RequestAccessPath,
@@ -613,6 +613,7 @@ fn approval_broker_request_security(tailscale_identity: String) -> RequestSecuri
     access_path: request_access_path_of(
       listen_host: approval_broker_listen_host,
       tailscale_header: tailscale_identity,
+      ingress: IngressUnattested,
       serve_status: ServeStatusUnreadable,
       serve_route: none,
       acl_policy: operator_tailscale_acl_policy,

@@ -2,7 +2,7 @@ module test.claim.roadmap_serve_witness
 import gunbc.site.document { site_styles }
 import std.access { Permit, Deny }
 import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap_serve {
   RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
@@ -204,7 +204,7 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<Request
     method: method,
     path: path,
     body: "",
-    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent },
   }
 }
 
@@ -423,8 +423,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 
 // THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
 // this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it behind a serve-status readback — and this seam
-// performs no readback — so the consent record names no login. Without this the plumbing could
+// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
+// nothing can — so the consent record names no login. Without this the plumbing could
 // be silently laundering the header back into an identity and every unit-level witness would
 // still pass. The positive half (a modeled proxy path carries the observation) is
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
@@ -525,6 +525,7 @@ fn serve_over_plan_declaring(
     path: path,
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     release_revision: deploy_witness_release_revision,
   )
 }
@@ -998,11 +999,11 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
   let anonymous = serve_issue_assignment_context_over(
     instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
     request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
-      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } })
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } })
   let unknown = serve_issue_assignment_context_over(
     instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
     request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
-      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } })
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: GoogleOidcSession { session: witness_auth_session() } } })
   anonymous.status == 401
     && string_contains(s: anonymous.body, pattern: "Sign in")
     && !string_contains(s: anonymous.body, pattern: "csrf")
@@ -1084,6 +1085,7 @@ fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) ->
     path: "/issue/demo-node/assignment",
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     request_headers: headers,
     release_revision: deploy_witness_release_revision,
   )
@@ -1116,8 +1118,8 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
 
 
 test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
-  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
-  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } }
+  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } }
+  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: GoogleOidcSession { session: witness_auth_session() } } }
   selects(method: GET, path: "/preferences/issues", want: IssueViewPreferencesReadHandler)
     && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
@@ -1129,7 +1131,7 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
 }
 
 test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
-  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } }
   selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
     && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }

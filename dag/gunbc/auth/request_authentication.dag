@@ -1,6 +1,6 @@
 module gunbc.auth.request_authentication
 
-import std.types { NonEmptyStr, String, Bool, List, Timestamp }
+import std.types { NonEmptyStr, String, Bool, List, Timestamp, Int }
 import std.access {
   AccessRequest, AccessContext, AccessEvidence, AccessDecision, Permit, Deny,
   AccessRefusal, AccessRefusalCause, AccessRefusalLocation,
@@ -14,6 +14,7 @@ import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
 import extdeps.tailscale.serve {
   TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable, TailscaleServeRouteKey,
+  tailscale_serve_unix_proxy_peer,
 }
 import extdeps.tailscale.acl { TailscaleAclPolicy }
 import std.content_hash { ContentHash, content_hash_of_value }
@@ -42,9 +43,96 @@ type TailnetRouteReadback
   = TailnetRouteReadbackObserved { acl_revision: ContentHash, serve_route: TailscaleServeRouteKey }
   | TailnetRouteReadbackUnobserved { reason: String }
 
+// WHY A TAILNET HEADER WAS NOT VOUCHED FOR, one arm per cause, so a host that cannot read its
+// own serve status is told apart from a route that is not installed. The command arms carry what
+// the command reported: a permission refusal arrives as TailnetReadbackCommandFailed with the
+// exit status and the text the client printed.
+type TailnetServeReadbackGap
+  = TailnetReadbackNotDemanded
+  | TailnetReadbackClockUnreadable
+  | TailnetReadbackNotSpawned { cause: String }
+  | TailnetReadbackCommandFailed { exit_code: Int, stderr: String }
+
+type TailnetRouteGap
+  = TailnetIngressUnattested
+  | TailnetIngressNotTheProxy { peer_user: String }
+  | TailnetRouteBackendNotASocket
+  | TailnetRouteUndeclared
+  | TailnetReadbackUntaken { gap: TailnetServeReadbackGap }
+  | TailnetReadbackStale
+  | TailnetStatusUnreadable
+  | TailnetRouteNotProxied
+  | TailnetRouteProxiesElsewhere { targets: List<String> }
+
+// HOW THIS CONNECTION REACHED THE BACKEND, as the serving host attests it. Serve status is a fact
+// about the node's configuration; it says nothing about one connection. A TCP listener attests no
+// peer, so a local process dialing it with a self-written Tailscale-User-Login header is the same
+// request as a proxied one. A unix-socket listener hands the handler the kernel-attested account
+// of the peer (`gunbc serve --unix-socket`, peer_user), and tailscaled is the peer of every
+// connection Serve proxies (extdeps.tailscale.serve tailscale_serve_unix_proxy_peer).
+type RequestIngress
+  = IngressUnattested
+  | IngressAttestedPeer { peer_user: String }
+
+// What the access-path fold consumes: the declared route observed proxying this backend, or the
+// cause it was not.
+type TailnetRouteStanding
+  = TailnetRouteObserved { serve_route: TailscaleServeRouteKey }
+  | TailnetRouteUnobserved { gap: TailnetRouteGap }
+
+fn tailnet_serve_readback_gap_sentence(gap: TailnetServeReadbackGap) -> String {
+  match gap {
+    TailnetReadbackNotDemanded => "no serve-status reading was taken for this request"
+    TailnetReadbackClockUnreadable => "the clock reading refused, so the serve-status reading could not be dated"
+    TailnetReadbackNotSpawned { cause: why } => concat("tailscale serve status could not be run on this host: ", why)
+    TailnetReadbackCommandFailed { exit_code: code, stderr: text } =>
+      join(["tailscale serve status exited ", to_string(code), " for the serving principal: ", text], "")
+  }
+}
+
+fn tailnet_route_gap_sentence(gap: TailnetRouteGap) -> String {
+  match gap {
+    TailnetIngressUnattested => "this connection arrived on a listener that attests no peer, so it cannot be told apart from a local request carrying the same header"
+    TailnetIngressNotTheProxy { peer_user: who } => concat("this connection's attested peer is not the tailscale proxy: ", who)
+    TailnetRouteBackendNotASocket => "this instance's declared tailscale serve route proxies to a TCP port, which any local process can also reach"
+    TailnetRouteUndeclared => "this instance has no declared tailscale serve route"
+    TailnetReadbackUntaken { gap: g } => tailnet_serve_readback_gap_sentence(gap: g)
+    TailnetReadbackStale => "the serve-status reading is stale or undated at decision time"
+    TailnetStatusUnreadable => "tailscale serve status printed a document that could not be read"
+    TailnetRouteNotProxied => "tailscale serve status shows no proxy at this instance's declared route"
+    TailnetRouteProxiesElsewhere { targets: ts } =>
+      concat("tailscale serve status shows the declared route proxying another backend: ", join(ts, ", "))
+  }
+}
+
+// The stable label of each cause, for a wire that reports it.
+fn tailnet_route_gap_label(gap: TailnetRouteGap) -> NonEmptyStr {
+  match gap {
+    TailnetIngressUnattested => "ingress-unattested"
+    TailnetIngressNotTheProxy { peer_user: _ } => "ingress-not-the-proxy"
+    TailnetRouteBackendNotASocket => "route-backend-not-a-socket"
+    TailnetRouteUndeclared => "route-undeclared"
+    TailnetReadbackUntaken { gap: g } =>
+      match g {
+        TailnetReadbackNotDemanded => "readback-not-demanded"
+        TailnetReadbackClockUnreadable => "readback-clock-unreadable"
+        TailnetReadbackNotSpawned { cause: _ } => "readback-not-spawned"
+        TailnetReadbackCommandFailed { exit_code: _, stderr: _ } => "readback-command-failed"
+      }
+    TailnetReadbackStale => "readback-stale"
+    TailnetStatusUnreadable => "status-unreadable"
+    TailnetRouteNotProxied => "route-not-proxied"
+    TailnetRouteProxiesElsewhere { targets: _ } => "route-proxies-elsewhere"
+  }
+}
+
+// AccessPathTailnetUnobserved is a loopback request that carried a tailnet header no reading
+// vouched for. It grants what AccessPathLocalDev grants -- no observation, no principal -- and
+// differs only in naming the cause, which the path refusal reports.
 type RequestAccessPath
   = AccessPathDirectHttps
   | AccessPathTailnetProxy { transport_observation: TailnetIdentity, route_readback: TailnetRouteReadback }
+  | AccessPathTailnetUnobserved { gap: TailnetRouteGap }
   | AccessPathLocalDev
 
 // THE REQUEST-SECURITY LAW (owner directive 2026-09-25, lane A3). This module owns the two facts
@@ -134,18 +222,20 @@ fn tailnet_acl_revision(acl_policy: TailscaleAclPolicy) -> ContentHash {
   content_hash_of_value(value: serialize_json(v: tailscale_acl_policy_json(policy: acl_policy)))
 }
 
-// THE ACCESS-PATH FOLD. The header ALONE mints no tailnet path: the tailnet arm is reachable
-// only on a loopback bind (the proxy is the sole route to the socket) AND a serve-status
-// readback showing this backend proxied on the device, and it carries the ACL revision and the
-// serve-route key it was computed under. A header without that readback is unattributed --
-// any co-located process can write it (extdeps.tailscale.identity's deployment-property note)
-// -- so the fold drops it: AccessPathLocalDev, no observation, NO principal, no authority. A
-// non-loopback bind is direct reachability regardless of any header: AccessPathDirectHttps.
-fn request_access_path_of(
+// THE ACCESS-PATH FOLD. The tailnet arm needs THREE things and the header is none of them: a
+// loopback bind, a connection whose attested peer is the tailscale proxy, and a route standing
+// that observed this backend proxied at its declared route. It then carries the ACL revision and
+// the serve-route key it was computed under. A header without all three is unattributed -- any
+// co-located process can write it (extdeps.tailscale.identity's deployment-property note) -- so
+// the fold drops it: AccessPathTailnetUnobserved naming the cause, no observation, NO principal,
+// no authority. The ingress is judged first, because a healthy route says nothing about who
+// dialed this connection. No header at all is AccessPathLocalDev. A non-loopback bind is direct
+// reachability regardless of any header: AccessPathDirectHttps.
+fn request_access_path_of_standing(
   listen_host: NonEmptyStr,
   tailscale_header: String,
-  serve_status: TailscaleServeStatusProjection,
-  serve_route: TailscaleServeRouteKey?,
+  ingress: RequestIngress,
+  standing: TailnetRouteStanding,
   acl_policy: TailscaleAclPolicy,
 ) -> RequestAccessPath {
   match parse_ipv4_address(text: listen_host as String) {
@@ -153,17 +243,18 @@ fn request_access_path_of(
     Ipv4Parsed { address: a } =>
       if !ip_address_is_loopback(addr: IpV4 { v4: a }) {
         AccessPathDirectHttps
+      } else if tailscale_header == "" {
+        AccessPathLocalDev
       } else {
-        match serve_status {
-          ServeStatusUnreadable => AccessPathLocalDev
-          ServeStatusProxies { targets } =>
-            if count(targets) == 0 {
-              AccessPathLocalDev
-            } else if tailscale_header == "" {
-              AccessPathLocalDev
+        match ingress {
+          IngressUnattested => AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+          IngressAttestedPeer { peer_user: who } =>
+            if who != (tailscale_serve_unix_proxy_peer as String) {
+              AccessPathTailnetUnobserved { gap: TailnetIngressNotTheProxy { peer_user: who } }
             } else {
-              match serve_route {
-                Present { value: route } =>
+              match standing {
+                TailnetRouteUnobserved { gap: g } => AccessPathTailnetUnobserved { gap: g }
+                TailnetRouteObserved { serve_route: route } =>
                   AccessPathTailnetProxy {
                     transport_observation: tailnet_identity_of(header_value: tailscale_header),
                     route_readback: tailnet_route_readback_observed(
@@ -171,12 +262,51 @@ fn request_access_path_of(
                       serve_route: route,
                     ),
                   }
-                Absent => AccessPathLocalDev
               }
             }
         }
       }
   }
+}
+
+fn request_ingress_is_the_proxy(ingress: RequestIngress) -> Bool {
+  match ingress {
+    IngressUnattested => false
+    IngressAttestedPeer { peer_user: who } => who == (tailscale_serve_unix_proxy_peer as String)
+  }
+}
+
+// The standing a caller's own status projection and route key amount to.
+fn tailnet_route_standing_of_projection(serve_status: TailscaleServeStatusProjection, serve_route: TailscaleServeRouteKey?) -> TailnetRouteStanding {
+  match serve_status {
+    ServeStatusUnreadable => TailnetRouteUnobserved { gap: TailnetStatusUnreadable }
+    ServeStatusProxies { targets } =>
+      if count(targets) == 0 {
+        TailnetRouteUnobserved { gap: TailnetRouteNotProxied }
+      } else {
+        match serve_route {
+          Present { value: route } => TailnetRouteObserved { serve_route: route }
+          Absent => TailnetRouteUnobserved { gap: TailnetRouteUndeclared }
+        }
+      }
+  }
+}
+
+fn request_access_path_of(
+  listen_host: NonEmptyStr,
+  tailscale_header: String,
+  ingress: RequestIngress,
+  serve_status: TailscaleServeStatusProjection,
+  serve_route: TailscaleServeRouteKey?,
+  acl_policy: TailscaleAclPolicy,
+) -> RequestAccessPath {
+  request_access_path_of_standing(
+    listen_host: listen_host,
+    tailscale_header: tailscale_header,
+    ingress: ingress,
+    standing: tailnet_route_standing_of_projection(serve_status: serve_status, serve_route: serve_route),
+    acl_policy: acl_policy,
+  )
 }
 
 // THE OBSERVED READBACK ARM, projected here because extdeps.http.server owns the carrier: the
@@ -417,6 +547,13 @@ fn deployment_path_decision(
           security: security,
           cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
         )
+      AccessPathTailnetUnobserved { gap: g } =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: concat("this deployment requires the tailnet access path for writes: ", tailnet_route_gap_sentence(gap: g)) },
+        )
       AccessPathLocalDev =>
         write_refused(
           route_path: route_path,
@@ -549,6 +686,7 @@ fn tailnet_transport_observation(security: RequestSecurityContext<RequestAccessP
   match security.access_path {
     AccessPathTailnetProxy { transport_observation: obs, route_readback: _ } => obs
     AccessPathDirectHttps => TailnetIdentityAbsent
+    AccessPathTailnetUnobserved { gap: _ } => TailnetIdentityAbsent
     AccessPathLocalDev => TailnetIdentityAbsent
   }
 }

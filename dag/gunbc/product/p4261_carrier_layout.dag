@@ -1,0 +1,338 @@
+module product.p4261_carrier_layout
+
+import v2.std.algebra { filter }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Volt, Ampere, volt, ampere, volt_count, ampere_count }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow,
+  ComponentVoltageRating,
+  VoltageRatingKind,
+  DrainSourceMaximum,
+  FuseInterruptRating,
+  CapacitorRatedVoltage,
+}
+import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+
+// GH200-3 (2026-10-04). THE P4261 CARRIER AS PHOTOGRAPHED, AND WHAT CAN BE DEDUCED FROM IT. No NVIDIA
+// document names this board, so everything here is the operator's observation of one unit, kept in
+// the product layer (DESIGN §3: observations are receipts downstream, never upstream facts). What
+// IS upstream -- a part's datasheet ratings once its marking is matched -- lives in
+// extdeps.electronic_component and is consumed here.
+//
+// Three photographs: the full component side; the label close-up; the left-edge close-up around the
+// connector silkscreened J20. Every marking is transcribed as read, and three standings are kept
+// apart because they license different conclusions:
+//
+//   IdentifiedByDatasheetMarking  the marking matches a datasheet's marking table, so the part's
+//                                 ratings are cited facts
+//   RatingPrintedOnBody           the part prints its own rating; no datasheet, but no decoding either
+//   MarkingUnresolved             the marking is read and NOT decoded; it contributes nothing, and the
+//                                 discriminator says what would decode it
+//
+// Which circuit a part sits on is a fourth fact, and from a photograph it is ADJACENCY, not traced
+// copper. Adjacency places a part in a region of the board; it does not say what voltage appears
+// across the part's rated terminals, which is the only relation under which a rating bounds a rail.
+
+type ComponentIdentification
+  = IdentifiedByDatasheetMarking { row: ElectronicComponentRow, marking_read: NonEmptyStr }
+  | RatingPrintedOnBody { voltage: ComponentVoltageRating?, current: Ampere?, marking_read: NonEmptyStr }
+  | ResistanceCodeRead { milliohms: Nat, marking_read: NonEmptyStr }
+  | MarkingUnresolved { marking_read: NonEmptyStr, discriminator: NonEmptyStr }
+
+type PowerPath = MainInputPath | AuxiliaryInputPath
+
+// WHAT RELATES A PART'S RATING TO A RAIL. RatingAcrossInputRail is the one relation that licenses a
+// bound: the evidence must say that the rated terminals see the input rail (a fuse in series with the
+// input, a bulk capacitor across it, a hot-swap FET's drain-source in its path) in the condition the
+// rating applies to -- a traced net, a schematic, or the vendor's reference design for the board.
+// OnPathByAdjacency places the part near a path and bounds nothing: an input-stage part and a
+// downstream converted rail can share one region of the board.
+type PathMembership
+  = RatingAcrossInputRail { evidence: NonEmptyStr }
+  | OnPathByAdjacency { basis: NonEmptyStr }
+
+type ObservedComponent {
+  designators: List<NonEmptyStr>
+  quantity: Nat
+  role: NonEmptyStr
+  identification: ComponentIdentification
+  path: PowerPath
+  membership: PathMembership
+}
+
+type ConnectorCensus
+  = CensusComplete { count: Nat, family: NonEmptyStr }
+  | CensusPartial { counted_at_least: Nat, obligation: NonEmptyStr }
+
+type CarrierLayoutObservation {
+  labels: List<NonEmptyStr>
+  module_receptacles: List<NonEmptyStr>
+  main_input_connectors: NonEmptyStr
+  auxiliary_connector: NonEmptyStr
+  auxiliary_connector_positions: Nat
+  edge_high_speed_connectors: ConnectorCensus
+  management_io_observed: List<NonEmptyStr>
+  power_components: List<ObservedComponent>
+  unresolved_parts: List<NonEmptyStr>
+}
+
+// ── THE K1 UNIT ──────────────────────────────────────────────────────────────────────────────
+
+data k1_adjacency_main: PathMembership = OnPathByAdjacency {
+  basis: "left-edge close-up: the two MOSFETs, the fuse body at F300/F302 and the Coilcraft inductor sit together in the power stage below the top-edge input blocks, above J20; adjacency, not a traced net",
+}
+
+data k1_adjacency_aux: PathMembership = OnPathByAdjacency {
+  basis: "left-edge close-up: fuse F1, the R010 shunt, the R150 resistors and the polymer capacitors cluster beside connector J20; adjacency, not a traced net",
+}
+
+data polymer_cap_discriminator: NonEmptyStr = "read the rated voltage from the maker's datasheet for the series printed as 'ZU' (or measure the can's diameter and height to find it). 'J' is NOT decoded as 6.3 V: that EIA letter convention belongs to tantalum and some polymer-chip lines, and assuming it here would invent a rating" as NonEmptyStr
+
+data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+  labels: [
+    "sticker: Model: P4261, 694-24261-0000-100 K1, Made In USA. The listing photographs show TWO serials on this label, S/N 1582023110038 in one close-up and S/N 1582023110033 in another, so the listing photographed more than one unit (or one was misread); the received unit's serial is unread",
+    "silkscreen: 'Rework' above '180-14261-DAAF-A01' -- a printed marking; whether rework was performed is unknown",
+  ],
+  module_receptacles: ["J3", "J4"],
+  main_input_connectors: "two large grey pluggable terminal blocks on the top edge; position count, rating and pin assignment unread",
+  auxiliary_connector: "J20, a black shrouded two-row power-style receptacle on the left edge; rating and pin assignment unread",
+  auxiliary_connector_positions: 16,
+  edge_high_speed_connectors: CensusPartial {
+    counted_at_least: 10,
+    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). Leading candidate: vertical 74-contact MCIO, from a close-up whose shell, open top and paired latch windows match Amphenol's published MCIO receptacles (a visual match, no part number read), and ASRock's documented GH200 carrier ARLINGTON-MB uses six MCIO PCIe 5.0 x8 connectors. A 74-contact MCIO is not thereby a PCIe x8 port on P4261: what this board routes through each one is a separate fact. A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
+  },
+  management_io_observed: [
+    "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
+  ],
+  power_components: [
+    ObservedComponent {
+      designators: [],
+      quantity: 2,
+      role: "N-channel MOSFET pair in the main input stage",
+      identification: IdentifiedByDatasheetMarking { row: ipb017n10n5lf, marking_read: "017N10LF, lot line HAL225" },
+      path: MainInputPath,
+      membership: k1_adjacency_main,
+    },
+    ObservedComponent {
+      designators: ["F300", "F302"],
+      quantity: 1,
+      role: "fuse body spanning the F300/F302 pads",
+      identification: RatingPrintedOnBody {
+        voltage: Present { value: ComponentVoltageRating { kind: FuseInterruptRating, maximum: volt(count: 75) } },
+        current: Present { value: ampere(count: 100) },
+        marking_read: "75V 100A (leading maker glyph not legible)",
+      },
+      path: MainInputPath,
+      membership: k1_adjacency_main,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "power inductor in the main input stage",
+      identification: MarkingUnresolved { marking_read: "A850 / Coilcraft / D", discriminator: "look up Coilcraft's part for code A850 and read its current and inductance" },
+      path: MainInputPath,
+      membership: k1_adjacency_main,
+    },
+    ObservedComponent {
+      designators: ["D2"],
+      quantity: 2,
+      role: "diodes in SMA/SMB-class packages, one in the main stage and D2 beside J20",
+      identification: MarkingUnresolved { marking_read: "5P0X / ZCNSU (as read)", discriminator: "a sharper photograph of the marking, matched to a diode maker's marking table" },
+      path: AuxiliaryInputPath,
+      membership: k1_adjacency_aux,
+    },
+    ObservedComponent {
+      designators: ["F1"],
+      quantity: 1,
+      role: "fuse beside J20",
+      identification: RatingPrintedOnBody { voltage: Absent, current: Present { value: ampere(count: 12) }, marking_read: "12A (leading maker glyph not legible)" },
+      path: AuxiliaryInputPath,
+      membership: k1_adjacency_aux,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 1,
+      role: "current-sense resistor beside F1",
+      identification: ResistanceCodeRead { milliohms: 10, marking_read: "R010" },
+      path: AuxiliaryInputPath,
+      membership: k1_adjacency_aux,
+    },
+    ObservedComponent {
+      designators: [],
+      quantity: 2,
+      role: "resistors marked R150, one above the upper capacitor and one below F1",
+      identification: ResistanceCodeRead { milliohms: 150, marking_read: "R150" },
+      path: AuxiliaryInputPath,
+      membership: k1_adjacency_aux,
+    },
+    ObservedComponent {
+      designators: ["C10_P5", "C12_P5"],
+      quantity: 3,
+      role: "SMD polymer/aluminium capacitors, 150 uF by their first line; the third sits below J20 by U522",
+      identification: MarkingUnresolved { marking_read: "150 / J ZU / 29AH on all three (C10_P5 is photographed upside down)", discriminator: polymer_cap_discriminator },
+      path: AuxiliaryInputPath,
+      membership: k1_adjacency_aux,
+    },
+  ],
+  unresolved_parts: [
+    "U4, the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage (inductors 1R0, 2R2, 4R7 and three '330' polymer capacitors), so it takes several rails. Consistent with an FPGA, a management SoC or a PCIe switch; a community guess of an Intel Cyclone 10 GX FPGA is labelled inference by its own author. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad",
+    "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed",
+    "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
+    "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
+    "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
+    "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
+  ],
+}
+
+// ── WHAT THE PARTS BOUND ─────────────────────────────────────────────────────────────────────
+//
+// A BOUND IS DERIVED ONLY FROM PARTS WHOSE RATING IS ESTABLISHED ACROSS THE INPUT RAIL: the lowest such
+// rating bounds the rail from above, because the rail would exceed that part's rating. Every other
+// rated part -- placed by adjacency, or on a rail whose relation to the input is unknown -- is an
+// observation that is carried and named, never folded into the bound. (GH200-5, 2026-10-04: the first
+// revision took the minimum over adjacency-placed parts and reported the fuse's 75 V as an input
+// ceiling; review showed that a lower-rated part on a downstream rail sharing the region would have
+// lowered it, so adjacency no longer participates.) A bound never says what the rail IS.
+type InputVoltageBound
+  = BoundByRatedParts { maximum: Volt, limiting: NonEmptyStr, relation: NonEmptyStr }
+  | NoEstablishedBound { observed_ratings: List<NonEmptyStr> }
+
+fn component_rating(c: ObservedComponent) -> ComponentVoltageRating? {
+  match c.identification {
+    IdentifiedByDatasheetMarking { row: r, marking_read: _ } => Present { value: r.voltage_rating }
+    RatingPrintedOnBody { voltage: v, current: _, marking_read: _ } => v
+    ResistanceCodeRead { milliohms: _, marking_read: _ } => Absent
+    MarkingUnresolved { marking_read: _, discriminator: _ } => Absent
+  }
+}
+
+fn path_key(p: PowerPath) -> Nat {
+  match p {
+    MainInputPath => 0
+    AuxiliaryInputPath => 1
+  }
+}
+
+fn path_eq(a: PowerPath, b: PowerPath) -> Bool {
+  path_key(p: a) == path_key(p: b)
+}
+
+type RatedComponent {
+  component: ObservedComponent
+  rating: ComponentVoltageRating
+}
+
+fn rating_kind_text(k: VoltageRatingKind) -> String {
+  match k {
+    DrainSourceMaximum => "drain-source maximum"
+    FuseInterruptRating => "fuse voltage rating"
+    CapacitorRatedVoltage => "capacitor rated voltage"
+  }
+}
+
+fn rated_text(r: RatedComponent) -> NonEmptyStr {
+  join([
+    r.component.role as String, ": ", to_string(volt_count(v: r.rating.maximum)), " V ", rating_kind_text(k: r.rating.kind),
+    match r.component.membership {
+      RatingAcrossInputRail { evidence: _ } => ""
+      OnPathByAdjacency { basis: _ } => ", placed by adjacency only",
+    },
+  ], "") as NonEmptyStr
+}
+
+fn rated_on_path(layout: CarrierLayoutObservation, path: PowerPath) -> List<RatedComponent> {
+  flat_map(filter(layout.power_components, c => path_eq(a: c.path, b: path)), c =>
+    match component_rating(c: c) {
+      Present { value: r } => [RatedComponent { component: c, rating: r }]
+      Absent => []
+    }
+  )
+}
+
+fn across_input_rail(r: RatedComponent) -> Bool {
+  match r.component.membership {
+    RatingAcrossInputRail { evidence: _ } => true
+    OnPathByAdjacency { basis: _ } => false
+  }
+}
+
+fn path_bound(layout: CarrierLayoutObservation, path: PowerPath) -> InputVoltageBound {
+  let rated = rated_on_path(layout: layout, path: path)
+  let bounding = filter(rated, r => across_input_rail(r: r))
+  match bounding.first() {
+    Absent => NoEstablishedBound { observed_ratings: map(rated, r => rated_text(r: r)) }
+    Present { value: first } => {
+      let lowest = fold(bounding, init: first, f: (acc, x) => if volt_count(v: x.rating.maximum) < volt_count(v: acc.rating.maximum) { x } else { acc })
+      BoundByRatedParts {
+        maximum: lowest.rating.maximum,
+        limiting: lowest.component.role,
+        relation: match lowest.component.membership {
+          RatingAcrossInputRail { evidence: e } => e
+          OnPathByAdjacency { basis: b } => b
+        },
+      }
+    }
+  }
+}
+
+// THE BUS-CLASS QUESTION IS AN INVESTIGATION HYPOTHESIS, NOT A DERIVATION. No rule over part ratings
+// decides a bus class: a 100 V FET is a common choice for a 48-54 V hot-swap stage and is not thereby
+// absent from lower-voltage designs, so the first revision's ">= 80 V drain-source means 48-54 V" rule
+// manufactured a class from a threshold (GH200-5, review). What remains is the hypothesis, its sources
+// stated beside it, and the reading that would decide it.
+type InvestigationHypothesis {
+  claim: NonEmptyStr
+  sources: List<NonEmptyStr>
+  decided_by: NonEmptyStr
+}
+
+data p4261_main_bus_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the P4261 main input is a 48-54 V-class bus",
+  sources: [
+    "the main-stage MOSFETs are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
+    "the module part number 699-2G530-0215 reads as SKU215, which an uncited earlier NVIDIA guide revision tied to a 54 V module rail (extdeps.systems.nvidia_gh200 gh200_rail_variants): a lead about the module, not the carrier's input",
+  ],
+  decided_by: "the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
+}
+
+fn bound_text(b: InputVoltageBound) -> String {
+  match b {
+    BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
+      join(["at most ", to_string(volt_count(v: m)), " V, limited by the ", l as String, " (", r as String, ")"], "")
+    NoEstablishedBound { observed_ratings: rs } =>
+      match rs.first() {
+        Absent => "no rated part read on this path, and no input bound"
+        Present { value: _ } => join(["no input bound established: no part's rating is shown to apply across the input rail; ratings observed (", join(map(rs, r => r as String), "; "), ") bound nothing"], "")
+      }
+  }
+}
+
+fn hypothesis_text(h: InvestigationHypothesis) -> String {
+  join(["hypothesis, not a derivation: ", h.claim as String, " (", join(map(h.sources, x => x as String), "; "), "); decided by ", h.decided_by as String], "")
+}
+
+// THE READING the bench plan consumes: what the photographs establish about the carrier's power
+// input, and what they leave open.
+fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
+  join([
+    "main input: ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", hypothesis_text(h: p4261_main_bus_hypothesis),
+    ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions): ",
+    bound_text(b: path_bound(layout: layout, path: AuxiliaryInputPath)),
+    ". The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
+  ], "")
+}
+
+fn management_io_text(layout: CarrierLayoutObservation) -> String {
+  match layout.management_io_observed.first() {
+    Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
+    Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
+  }
+}
+
+fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
+  match layout.edge_high_speed_connectors {
+    CensusComplete { count: n, family: f } => join([to_string(n), " ", f as String, " connectors"], "")
+    CensusPartial { counted_at_least: n, obligation: o } => join(["at least ", to_string(n), " cabled high-speed connectors (", o as String, ")"], "")
+  }
+}

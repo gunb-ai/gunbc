@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.memory.types { DramModuleCatalogRow }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.installed_bom_reconcile { DimmSlotLocator }
 
 // Coordinates are part of the proposal, not derivations from a part number.
