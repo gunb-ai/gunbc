@@ -3,14 +3,14 @@ module gunbc.roadmap_inline_assignment_client
 import extdeps.languages.typescript.program {
   ts_quoted_field, TsStmt, ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_index, ts_call,
   ts_arrow, ts_block, ts_const, ts_let, ts_return, ts_expr_stmt, ts_if,
-  ts_new, ts_cond, ts_prefix, ts_object, ts_field, ts_quoted_field, ts_array, ts_binop, ts_for_of,
+  ts_new, ts_cond, ts_prefix, ts_object, ts_field, ts_array, ts_binop, ts_for_of,
 }
 
 // Both surfaces show a transient sign-in notice without opening an anonymous editor.
 // Signed-in selection uses the same session-bound context and protected POST; Fabric
 // retains its explicit commit, and recorded-but-refused launch feedback stays visible.
 fn inline_assignment_bind_statements() -> List<TsStmt> {
-  [
+[
 ts_let(name: "assignmentNoticeTimer", value: ts_ident(name: "null")),
 ts_const(name: "assignmentSignInNotice", value: ts_arrow(params: [], body: ts_block(stmts: [
 ts_let(name: "notice", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"), args: [ts_lit_str(value: ".issue-assignment-notice")])),
@@ -29,7 +29,7 @@ ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "notice"), pr
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "notice"), property: "textContent"), op: "=", right: ts_lit_str(value: "")))
 ])), ts_lit_num(text: "2200")])))
 ]))),
-ts_const(name: "assignmentButtons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-inline-assign")])])),
+ts_let(name: "assignmentButtons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-inline-assign")])])),
 ts_const(name: "assignmentForms", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-assign-form")])])),
 ts_const(name: "assignmentBindInteraction", value: ts_arrow(params: ["form"], body: ts_block(stmts: [
 ts_const(name: "submit", value: ts_call(callee: ts_member(object: ts_ident(name: "form"), property: "querySelector"), args: [ts_lit_str(value: "[type=\"submit\"]")])),
@@ -161,7 +161,9 @@ ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "submit"), pr
 ]))]))
 ]))),
 ts_const(name: "assignmentSetSession", value: ts_arrow(params: ["session"], body: ts_block(stmts: [
-ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentButtons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
+ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "assignmentButtons"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-inline-assign")])]))),
+ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "assignmentButtons"), property: "filter"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_prefix(op: "!", expr: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "assignmentBound")) })]))]), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "assignmentBound"), op: "=", right: ts_lit_str(value: "true"))),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "setAttribute"), args: [ts_lit_str(value: "title"), ts_lit_str(value: "Choose an assignee")])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
@@ -243,6 +245,9 @@ ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "assignmentButtons")
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"), args: [ts_ident(name: "assignmentSetSession")]), property: "catch"), args: [ts_arrow(params: [], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "assignmentSetSession"), args: [ts_object(fields: [ts_field(key: "authenticated", value: ts_ident(name: "false"))])]))
 ]))]))
-]), else_stmt: none)
-  ]
+]), else_stmt: none),
+ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"), args: [ts_lit_str(value: "issue-results"), ts_arrow(params: [], body: ts_block(stmts: [
+ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"), args: [ts_arrow(params: ["session"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_call(callee: ts_ident(name: "assignmentSetSession"), args: [ts_ident(name: "session")]) })]))]))
+]))]))
+]
 }

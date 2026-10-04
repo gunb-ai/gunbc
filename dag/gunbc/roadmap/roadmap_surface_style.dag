@@ -73,15 +73,9 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: FlexWrap, value: "wrap")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-sort-settings" }, decls: [
-      decl(prop: Display, value: "flex"), decl(prop: Flex, value: "1 1 100%"), decl(prop: AlignItems, value: "center"), decl(prop: FlexWrap, value: "wrap"), decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: Display, value: "flex"), decl(prop: AlignItems, value: "center"), decl(prop: FlexWrap, value: "wrap"), decl(prop: Gap, value: scale_var(t: space_6)),
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-sort-terms, .issue-sort-term" }, decls: [
-      decl(prop: Display, value: "inline-flex"), decl(prop: AlignItems, value: "center"), decl(prop: FlexWrap, value: "wrap"), decl(prop: Gap, value: scale_var(t: space_4)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-sort-term" }, decls: [
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")), decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".issue-sort-caption, .issue-view-save-status" }, decls: concat([
+    StaticRule { selector: RawSelector { text: ".issue-view-save-status" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole),
     ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: RawSelector { text: ".issue-search" }, decls: concat([

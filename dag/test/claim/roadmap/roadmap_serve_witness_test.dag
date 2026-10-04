@@ -5,7 +5,7 @@ import gunbc.auth.request_authentication { human_write_admission, tracker_write_
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
 
 import gunbc.roadmap_serve {
-  RoadmapServeHandler,
+  RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
@@ -1126,4 +1126,10 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
       Deny { refusal: _ } => true
       Permit => false
     }
+}
+
+test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
+  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
+    && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }

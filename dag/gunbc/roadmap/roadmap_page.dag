@@ -1,4 +1,6 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_issue_query { IssueQueryRow, issue_query_row_wire, issue_query_separator }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.site.status { status_badge, status_tone }
@@ -1622,13 +1624,7 @@ fn issue_controls_markup() -> Fragment {
         issue_band_chip(label: "Done", band: "done"),
         issue_band_chip(label: "Superseded", band: "superseded"),
       ]),
-      el_attrs("div", [attr(name: "class", value: "issue-sort-settings"), attr(name: "data-view-default", value: serialize_json(v: issue_view_preferences_json(prefs: default_issue_view_preferences()))), attr(name: "role", value: "group"), attr(name: "aria-label", value: "Multi-column sort")], [
-        el_class("span", "issue-sort-caption", [txt("Sort by")]),
-        el_attrs("span", [attr(name: "class", value: "issue-sort-terms"), attr(name: "data-sort-terms", value: "")], []),
-        site_compact_choice(id: "issue-add-sort", label: "Add column", accessible_label: "Add sort column", options: map(workspace_issue_columns(), col => el_attrs("button", [
-          attr(name: "type", value: "button"), attr(name: "class", value: "site-choice-option"), attr(name: "role", value: "option"), attr(name: "aria-selected", value: "false"),
-          attr(name: "data-choice-value", value: issue_results_sort_key_wire(key: col.sort_key)), attr(name: "data-add-sort", value: issue_results_sort_key_wire(key: col.sort_key)),
-        ], [txt(if col.kind == IssueColumnPriority { "Priority" } else { workspace_column_label(col: col) })]))),
+      el_attrs("div", [attr(name: "class", value: "issue-sort-settings"), attr(name: "data-view-default", value: serialize_json(v: issue_view_preferences_json(prefs: default_issue_view_preferences()))), attr(name: "role", value: "group"), attr(name: "aria-label", value: "View preferences")], [
         el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-reset", value: "")], [txt("Reset view")]),
         el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-retry", value: ""), attr(name: "hidden", value: "")], [txt("Save this view")]),
         el_attrs("span", [attr(name: "class", value: "issue-view-save-status"), attr(name: "data-view-save-status", value: ""), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt("Loading preferences…")]),
@@ -1797,7 +1793,7 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => workspace_priority_order_key(priority: issue_priority_of(node_id: r.view.node_id, index: membership_index_of_table).priority, status_rank: issue_status_sort_rank(view: r.view))), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => workspace_priority_order_key(priority: issue_priority_of(node_id: r.view.node_id, index: membership_index_of_table).priority, status_rank: issue_status_sort_rank(view: r.view))).take(n: 50), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
   ])
 }
 
@@ -2814,15 +2810,9 @@ el_class("main", "project-suite", [
 // chain) stays in this module as the /sandbox exhibit's real grouping path; nothing on this page
 // calls it.
 fn workspace_markup(ws: DailyWorkspaceView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
-  let hidden_summary = if ws.hidden_not_ready == 0 { [] } else { [
-    el_attrs("span", [
-      attr(name: "class", value: "issue-hidden-summary"),
-      attr(name: "title", value: hidden_not_ready_summary(ws: ws))
-    ], [txt(join([to_string(ws.hidden_not_ready), " not ready hidden"], ""))])
-  ] }
   el_class("section", "roadmap-frontier", [
     el_class("div", "view-table", [
-      el_class("div", "workspace-toolbar", concat([issue_controls_markup()], hidden_summary)),
+      el_class("div", "workspace-toolbar", [issue_controls_markup()]),
       el_class("div", "issue-table-scroll", [issue_table_markup(rows: ws.table, observation: ws.observation, edges: edges, memberships: memberships)])
     ])
   ])
@@ -2927,7 +2917,7 @@ fn daily_workspace_view_of_for_accepted(
   launch: LaunchHostStanding,
   stale_nodes: List<String>,
  profiles: List<PrincipalProfile>,
-  memberships: List<RoadmapMembership> = roadmap_memberships()) -> DailyWorkspaceView {
+  memberships: List<RoadmapMembership> = roadmap_memberships(), include_all: Bool = false) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
@@ -2946,7 +2936,7 @@ fn daily_workspace_view_of_for_accepted(
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   let shown_index = membership_index(memberships: memberships)
-  let shown = rows |> filter(r => row_is_shown_in(row: r, index: shown_index))
+  let shown = if include_all { rows } else { rows |> filter(r => row_is_shown_in(row: r, index: shown_index)) }
   daily_workspace_view_in(
     rows: shown,
     edges: edges,
@@ -3000,7 +2990,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     launch: launch,
     stale_nodes: stale_nodes,
     profiles: profiles,
-      memberships: memberships)
+      memberships: memberships, include_all: true)
   site_document(title: "gunbc — daily workspace", heading: "workspace", styles: stylesheet, content: [
     el_attrs("main", [attr(name: "class", value: "daily-workspace"), attr(name: "data-observation-banners", value: "off")], concat(main_prefix, [workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)])),
     dispatch_client_script()
@@ -3340,5 +3330,33 @@ fn issue_assign_selector(p: EventPrincipal, profiles: List<PrincipalProfile>) ->
       }
     }
     LegacyEmailPrincipal { email, authentication_unestablished: _ } => if string_contains(s: email as String, pattern: "@") { email as String } else { "" }
+  }
+}
+
+// Complete query corpus, produced during observation rather than by a request-time host probe.
+fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, standings: RoadmapStandings, launch: LaunchHostStanding, stale_nodes: List<String>, profiles: List<PrincipalProfile>) -> String? {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: _ } => none
+    RoadmapAuthorityProjected { doc, accepted, withheld } => {
+      let members = roadmap_memberships()
+      let index = membership_index(memberships: members)
+      let deps = issue_dependency_index(edges: doc_all_edges(doc: doc))
+      let ws = daily_workspace_view_of_for_accepted(doc: doc, merged: authored_merged_prs(), accepted_ids: accepted, withheld: withheld, attempts: attempts, attempts_refused: attempts_refused, standings: standings, launch: launch, stale_nodes: stale_nodes, profiles: profiles, memberships: members, include_all: true)
+      let encoded: List<String> = fold(ws.table, init: [] as List<String>, f: (acc, row) => {
+        let view = row.view
+        match try_serialize_html_source(node: issue_line_li(row: row, observation: ws.observation, memberships: index, dependencies: deps)) {
+          EmitRejected { reason: _ } => acc
+          EmitOk { html } => concat(acc, [issue_query_row_wire(row: IssueQueryRow { node_id: view.node_id,
+            project:
+            match project_root_for_node_in(node_id: view.node_id, index: index) { Present { value } => value Absent => "" },
+            band: row_filter_band_key(view: view), search: issue_search_value(view: view), title: view.headline,
+            assignee:
+            match issue_assignee_holder(view: view, attempts: []) { Absent => "" Present { value: holder } => workspace_assignee_label(holder: holder, profiles: view.profiles) },
+            priority: roadmap_priority_rank(priority: issue_priority_of(node_id: view.node_id, index: index).priority),
+            status: issue_status_sort_rank(view: view), html: html })])
+        }
+      })
+      if count(encoded) == count(ws.table) { Present { value: join(encoded, issue_query_separator) } } else { none }
+    }
   }
 }

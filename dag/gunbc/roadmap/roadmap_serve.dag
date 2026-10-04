@@ -1,4 +1,6 @@
 module gunbc.roadmap_serve
+import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
 import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
 import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
@@ -315,6 +317,7 @@ type RoadmapServeHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
+  | IssueQueryHandler
   | IssueViewPreferencesReadHandler
   | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
@@ -402,6 +405,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
+    ServedRouteSpec { method: POST, raw: "/issues/query", handler: IssueQueryHandler },
     ServedRouteSpec { method: GET, raw: "/preferences/issues", handler: IssueViewPreferencesReadHandler },
     ServedRouteSpec { method: POST, raw: "/preferences/issues", handler: IssueViewPreferencesSaveHandler },
     ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
@@ -1357,6 +1361,7 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueQueryHandler => serve_issue_query(instance: instance, request: request)
     IssueViewPreferencesReadHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: false)
     IssueViewPreferencesSaveHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: true)
     AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
@@ -2127,5 +2132,28 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
     AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
     SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+  }
+}
+
+// Read-only query: validated view terms select from the complete, digest-checked observation.
+// Filtering and stable multi-column ordering happen before the fixed-size page is selected.
+fn serve_issue_query(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+    Absent => issue_view_response(status: 400, body: "Invalid issue query.")
+    Present { value: prefs } => match parse_int(s: issue_form_field(body: request.body, name: "offset")) {
+      Absent => issue_view_response(status: 400, body: "Invalid issue offset.")
+      Present { value: offset } => if offset < 0 || offset > 100000 { issue_view_response(status: 400, body: "Invalid issue offset.") } else {
+        let stored = served_observation_surface_response_for_instance(instance: instance, kind: IssueQueryRows)
+        if stored.status != 200 { stored } else {
+          let identity = served_observation_body_digest(body: stored.body)
+          let expected = issue_form_field(body: request.body, name: "snapshot")
+          if offset > 0 && expected != identity { issue_view_response(status: 409, body: "Issues changed; refresh the results before loading more.") }
+          else { match issue_query_rows_of(body: stored.body) {
+            Absent => issue_view_response(status: 503, body: "Issue query observation unreadable.")
+            Present { value: rows } => issue_view_response(status: 200, body: issue_query_response_body(rows: rows, prefs: prefs, offset: offset, snapshot: identity))
+          } }
+        }
+      }
+    }
   }
 }
