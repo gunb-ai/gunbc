@@ -1,0 +1,23 @@
+module gunbc.workspace_commissioning_dispatch_operations
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, RunGunbcEntryAs, executor_privileged_operation_sudoers_line }
+import gunbc.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
+import gunbc.fleet_generation_execution { fleet_generation_writer }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
+
+fn workspace_dispatch_operation(release_dir: NonEmptyStr, function: NonEmptyStr) -> ExecutorPrivilegedOperation {
+  RunGunbcEntryAs { run_as: microvm_controller_owner, workspace_root: release_dir,
+    binary: microvm_controller_gunbc_binary(release_dir: release_dir as String) as NonEmptyStr,
+    source_roots: [concat(release_dir as String, "/dag") as NonEmptyStr, concat(release_dir as String, "/src/v2") as NonEmptyStr],
+    entry: concat(release_dir as String, "/dag/gunbc/workspace_commissioning_dispatch.dag") as NonEmptyStr, function: function }
+}
+
+data workspace_dispatch_grant_path: String = "/etc/sudoers.d/gunbc-workspace-commissioning"
+data workspace_dispatch_functions: List<NonEmptyStr> = ["workspace_dispatch_plan_cli", "workspace_dispatch_stage_cli", "workspace_dispatch_complete_cli"]
+
+fn workspace_dispatch_grant_content(release_dir: NonEmptyStr) -> String {
+  join(flat_map([fleet_generation_writer(), fleet_posix_operator_user.name], grantee =>
+    map(workspace_dispatch_functions, function => executor_privileged_operation_sudoers_line(grantee: grantee,
+      op: workspace_dispatch_operation(release_dir: release_dir, function: function)) as String)), "\n")
+}
