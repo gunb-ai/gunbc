@@ -1,6 +1,6 @@
 module test.claim.workspace_reconcile_once_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Timestamp, Int }
+import std.types { Bool, String, NonEmptyStr, Timestamp, Int, List }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
 import product.placement_supply { HostIdentity }
 import gunbc.principal_projection { principal_ref_eq }
@@ -13,7 +13,7 @@ import gunbc.workspace_offer_producer {
   WorkspaceHostOfferAdmitted, WorkspaceHostOfferUnmet, workspace_host_offer_decode, workspace_host_offer_text,
   WorkspaceHostOfferDecoded, WorkspaceHostOfferUndecodable, workspace_offer_from_admission, WorkspaceOfferProduced, WorkspaceOfferUnmet,
 }
-import gunbc.workspace_reconcile_once { workspace_candidate_hosts, workspace_host_offer_reading, WorkspaceHostOffersRead, WorkspaceHostOffersRefused }
+import gunbc.workspace_reconcile_once { workspace_candidate_hosts, workspace_host_offer_reading, WorkspaceHostOffersRead, WorkspaceHostOffersRefused, workspace_join_host_readings, WorkspaceHostJoined, WorkspaceHostJoinRefused, WorkspaceHostOfferReading }
 import gunbc.workspace_demo_preparation_policy { workspace_demo_terms }
 
 // The supplied boundary is the coordinator's join: the host's wire line and the request it was
@@ -122,4 +122,28 @@ test fn operator_request_producer_applies_the_shared_request_policy() -> Bool {
   operator_admits(expires_at: "2026-10-04T12:30:00Z", key: "first-request")
     && !operator_admits(expires_at: "2026-10-04T13:00:01Z", key: "first-request")
     && !operator_admits(expires_at: "2026-10-04T12:30:00Z", key: "bad key")
+}
+
+fn joins(readings: List<WorkspaceHostOfferReading>) -> Bool {
+  match workspace_join_host_readings(readings: readings) {
+    WorkspaceHostJoined { admissions: a } => a.count() == 1
+    WorkspaceHostJoinRefused { reason: _ } => false
+  }
+}
+
+fn unmet_reading() -> WorkspaceHostOfferReading {
+  workspace_host_offer_reading(host: "srv3", output: workspace_host_offer_text(read: WorkspaceHostOfferUnmet { host: "srv3", reason: "slot has no commissioning record" }))
+}
+
+// A REFUSED CANDIDATE REFUSES THE WHOLE JOIN: no selection runs over a partial fleet. A candidate
+// that answered with a valid unmet reading was observed, and may be excluded.
+test fn a_refused_candidate_host_refuses_the_whole_join() -> Bool {
+  let admitted = workspace_host_offer_reading(host: "srv1", output: offer_line())
+  joins(readings: [admitted])
+    && !joins(readings: [admitted, WorkspaceHostOffersRefused { host: "srv3", reason: "cross-host offer transport is not realized; only the coordinator's own host is observed" }])
+}
+
+test fn a_validly_unmet_candidate_host_is_excluded_and_the_join_proceeds() -> Bool {
+  let admitted = workspace_host_offer_reading(host: "srv1", output: offer_line())
+  joins(readings: [admitted, unmet_reading()]) && !joins(readings: [unmet_reading()])
 }

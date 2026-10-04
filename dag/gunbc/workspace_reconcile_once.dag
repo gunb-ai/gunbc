@@ -76,6 +76,28 @@ fn workspace_reading_refusals(readings: List<WorkspaceHostOfferReading>) -> List
   })
 }
 
+// THE JOIN REFUSES THE WHOLE FLEET IF ANY CANDIDATE REFUSED. A host that could not be observed is
+// not evidence that it has no supply, so selecting over the rest would run on a partial field and
+// silently discard the refusal. A host that answered with a valid, decoded unmet reason has been
+// observed, and is excluded on that reading.
+type WorkspaceHostJoin
+  = WorkspaceHostJoined { admissions: List<WorkspaceHostOfferAdmission> }
+  | WorkspaceHostJoinRefused { reason: String }
+
+fn workspace_join_host_readings(readings: List<WorkspaceHostOfferReading>) -> WorkspaceHostJoin {
+  let refused = flat_map(readings, r => match r {
+    WorkspaceHostOffersRefused { host: h, reason: why } => [concat(h as String, concat(": ", why as String))]
+    WorkspaceHostOffersRead { host: _, admissions: _, unmet: _ } => []
+  })
+  let admissions = flat_map(readings, r => match r {
+    WorkspaceHostOffersRead { host: _, admissions: a, unmet: _ } => a
+    WorkspaceHostOffersRefused { host: _, reason: _ } => []
+  })
+  if refused.count() > 0 { WorkspaceHostJoinRefused { reason: concat("candidate host could not be observed; no partial-fleet selection: ", join(refused, "; ")) } }
+  else if admissions.count() == 0 { WorkspaceHostJoinRefused { reason: concat("no candidate host admitted a workspace offer: ", join(workspace_reading_refusals(readings: readings), "; ")) } }
+  else { WorkspaceHostJoined { admissions: admissions } }
+}
+
 // THE ONE PREPARE ENTRY. Fan out, join, take every policy field from the one demo authority, and
 // hand the result to the existing convergence, which persists the selected plan. A request that
 // already has a durable plan is returned unchanged by that convergence (no reselection), and an
@@ -85,17 +107,14 @@ fn workspace_reconcile_prepare(store: FabricStorageBinding, allocation: Workspac
   let request = allocation.request
   let request_text = serialize_json(v: workspace_request_json(request: request))
   let readings = map(workspace_candidate_hosts(), host => workspace_observe_candidate(host: host, local_host: local_host, release_dir: release_dir, request_text: request_text))
-  let admissions = flat_map(readings, r => match r {
-    WorkspaceHostOffersRead { host: _, admissions: a, unmet: _ } => a
-    WorkspaceHostOffersRefused { host: _, reason: _ } => []
-  })
-  if admissions.count() == 0 {
-    WorkspaceConvergenceUnobserved { reason: concat("no candidate host admitted a workspace offer: ", join(workspace_reading_refusals(readings: readings), "; ")) }
-  } else {
+  match workspace_join_host_readings(readings: readings) {
+    WorkspaceHostJoinRefused { reason: why } => WorkspaceConvergenceUnobserved { reason: why }
+    WorkspaceHostJoined { admissions: admissions } => {
     let evidence = workspace_demo_evidence(admissions: admissions, request: request)
     workspace_prepare_convergence_from_observations(store: store, root: fabric_control_plane_store_root(), request: request,
       attempt: workspace_demo_attempt(demand: workspace_demand(request: request, submitted_at: allocation.recorded_at, buy: workspace_demo_buy())),
       evidence: evidence, policy: workspace_demo_policy(request: request, submitted_at: allocation.recorded_at, evidence: evidence),
       submitted_at: allocation.recorded_at)
+    }
   }
 }
