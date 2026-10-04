@@ -1226,3 +1226,35 @@ Older Concept 02 notes above are retained as history and are superseded for powe
 Concept 03 source: `7f77b6884f23af034fd1632e5918c3a21e988e5a` in the Sites repository.
 Browser checks passed: shared PSU isolation, no PSU on the cassette-only view, fan-count controls,
 height feedback, airflow visibility, rack withdrawal, requirements and mobile layout.
+
+### Rear exhaust and first fan-mount print — 4 October 2026
+
+The operator requested moving fans to the rear to keep hands at the front handle away from them,
+and authorized modeling/printing a first part. Rear cassette-mounted exhaust is the new layout;
+front-to-rear airflow remains. Rear I/O/cable access and a finger guard remain unresolved. Both
+beds were reported clear; printer-01 is selected with the previously confirmed PLA in AMS slot 1.
+
+The first real part reuses `fan_mount.arctic_p8_fan_mount`: 92 × 92 × 4 mm plate, 76 mm aperture,
+71.5 mm hole pitch and 4.4 mm mounting holes. This is a useful fan mounting plate for unpowered
+assembly fit, not another motherboard spacing gauge and not a complete cassette. Cassette
+attachment and guarding have not been fabricated. Hole-pattern evidence remains convention-unverified.
+`fan_mount_print.main` carries the existing admitted geometry through the existing CadQuery emitter
+and exercised STL export settings; there are no independently authored CAD coordinates.
+
+Generation and verification artifacts are in `/home/briansrls/print-prep-2026-10-04/rear-fan-mount`.
+CadQuery 2.8.0 checks passed for one valid solid, dimensions, all five hole axes/radii, analytic volume,
+STEP round-trip and a closed manifold STL. STL SHA-256:
+`2b0c7df7e8cf79dc772a33ee6f62a6ccf9e5568ef07e0309545313480e35b4f8`.
+Orca 2.4.2 sliced through `slice_run.run` at 0.20 mm, 20 layers, PLA/0.4 mm nozzle, 220 °C nozzle,
+65 °C textured bed and 2 mm outer brim. Estimate 28m41s, 11.40 g. ZIP/G-code checksum, one plate,
+identity scaling and 180 mm bed bounds passed; bounds including brim are 42.071684–137.928316 mm
+on both axes. The retained bed-temperature warning matches the previously exercised 65 °C setting.
+The slice_info first-layer-time metadata is malformed; G-code estimates 6m4s and that metadata is
+not an admission input. Project SHA-256:
+`71da943ff2ed73a6b47c54759ba288e82af7d084c269bf9a413d4d901cf5199c`.
+
+Concept 04 is published with rear fans and downloadable generated STL/STEP, source
+`c2a49273da70f20a23e2e044fe552dceb74b773f`. Browser interaction checks passed.
+The operator-token/ntfy route is being used because PR #13149 remains unmerged. The request binds
+printer-01, credential version 1, exact project digest and attempt `rear-fan-mount-20261004-01`.
+A start result must be observed separately; preparation is not evidence of printing.

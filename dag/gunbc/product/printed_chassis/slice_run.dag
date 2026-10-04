@@ -12,11 +12,11 @@ import extdeps.languages.json.emit { JsonKeyValue, JsonObject, json_object, json
 
 // Selected slicing settings, not a claim of live printer telemetry. The 2 mm brim
 // keeps the 170.94 mm gauge inside the 180 mm envelope without scaling the gauge.
-fn gauge_settings_members() -> List<JsonKeyValue> {
+fn fit_prototype_settings_members() -> List<JsonKeyValue> {
   [
     json_kv(key: "type", value: json_string(s: "process")),
     json_kv(key: "from", value: json_string(s: "user")),
-    json_kv(key: "name", value: json_string(s: "Altra gauge 0.20 mm PLA")),
+    json_kv(key: "name", value: json_string(s: "Unpowered fit prototype 0.20 mm PLA")),
     json_kv(key: "curr_bed_type", value: json_string(s: "Textured PEI Plate")),
     json_kv(key: "brim_type", value: json_string(s: "outer_only")),
     json_kv(key: "brim_width", value: json_string(s: "2")),
@@ -31,14 +31,14 @@ fn run(appimage: String, model: String, output: String, machine: String, filamen
   let settings = concat(output, ".settings.json")
   let original = Filesystem.Read(path: process)
   if !original.success { return exit_failure(reason: "Cannot read base process profile") }
-  let overrides = gauge_settings_members()
+  let overrides = fit_prototype_settings_members()
   let content = match parse_json_document(s: original.content) {
     JsonDocumentParsed { value: JsonObject { members: members } } =>
       serialize_json(v: json_object(members: concat(filter(members, m => !any(overrides, o => o.key == m.key)), overrides)))
     _ => ""
   }
   if content == "" || !Filesystem.Write(path: settings, content: content).success {
-    return exit_failure(reason: "Cannot parse or write gauge process profile")
+    return exit_failure(reason: "Cannot parse or write fit-prototype process profile")
   }
   match with_verified_orca(appimage: appimage as FilePath, use: executable => {
     let probe = run_shell_command_capture(command: orca_version_probe_command(executable: executable), transport: LocalExec)

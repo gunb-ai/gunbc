@@ -48,7 +48,7 @@ fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String
         action: "gunbc.printer.project-file.start" as AuthorizedAction,
       }],
       subject: subject,
-      purpose: join(["Print one Altra mounting gauge on ", printer as String, ". Project SHA-256 ", digest,
+      purpose: join(["Print one prepared part on ", printer as String, ". Project SHA-256 ", digest,
         "; credential version ", version, "; batch ", attempt,
         ". AMS slot 1. Bed reported clear. Uses the operator's one-hour token; no IAM or credential changes. One start only."], "") as NonEmptyStr,
       attempt: attempt as AttemptIdentity,
