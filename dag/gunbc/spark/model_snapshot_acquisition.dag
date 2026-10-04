@@ -133,6 +133,10 @@ fn snapshot_install_path(placement: SnapshotPlacement, repo: HubRepoId, revision
 
 // THE DOWNLOAD COMMAND, DERIVED PER PLACEMENT. `hf download --local-dir` is upstream's own supported
 // form and keeps its metadata beside the tree so a later run is incremental rather than a re-fetch.
+// THE HUB-CACHE ARM NAMES NO PATH, BY DESIGN: where the CLI writes is its environment's cache root
+// (extdeps.huggingface.hub hub_cache_root_for), and the executor that runs it owns that environment
+// (gunbc.spark.model_snapshot_materialize containerized_hub_cli sets HF_HUB_CACHE to its mount and refuses
+// any wrap whose resolved root is not the placement). A flag here would be a second spelling of that fact.
 fn snapshot_download_argv_for(placement: SnapshotPlacement, repo: HubRepoId, revision: NonEmptyStr) -> List<String> {
   let base = [hub_cli_program as String, "download", repo.path as String, "--revision", revision as String]
   match placement {
