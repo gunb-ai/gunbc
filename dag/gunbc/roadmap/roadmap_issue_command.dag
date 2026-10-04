@@ -6,7 +6,7 @@ import extdeps.entropy { Urandom }
 import std.encoding { base64_decode, Standard }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_log { EventPrincipal, RoadmapEventId, RoadmapEvent, Claimed, CommentCreated }
-import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, roadmap_event_append }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, RoadmapEventAppend, CarrierClosed, roadmap_event_append }
 
 // Authorization precedes this boundary. The operation is a submission identity, independent of
 // comment text or the observation clock. Native forms receive it before submission, just as JS does.
@@ -41,7 +41,7 @@ fn issue_command_event(command: IssueCommand, recorded_at: String) -> RoadmapEve
   }
 }
 
-fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> RoadmapEventAppend {
+fn issue_command_apply(layout: RoadmapEventCarrierLayout, command: IssueCommand, recorded_at: String) -> CarrierClosed<RoadmapEventAppend> {
   let operation = match command { AssignIssue { subject, assignee: _, return_to: _ } => subject.operation CreateComment { subject, body: _ } => subject.operation }
   roadmap_event_append(layout: layout, event: issue_command_event(command: command, recorded_at: recorded_at), operation: operation as String)
 }

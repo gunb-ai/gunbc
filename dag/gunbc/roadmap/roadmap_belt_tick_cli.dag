@@ -36,8 +36,9 @@ import gunbc.roadmap_dogfood_route {
 }
 import gunbc.roadmap.roadmap_result_returned {
   ResultReturnPass, ResultReturnPassRan, ResultReturnPassWithheld, ResultReturnPassRefused,
-  result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
+  ResultReturnPassRun, result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
 }
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
 import gunbc.roadmap.roadmap_review_function { review_report_json }
@@ -156,15 +157,36 @@ fn belt_start_record_exit(start: DogfoodStartRecord) -> ProcessExit {
 // result must not freeze the page. The start record runs only after a persisted observation
 // (belt_observation_then_start_exit). So the standing the dashboard serves already reads an event
 // this tick appended, and a slow or failing recorder cannot stop the page being written.
-fn belt_tick_tail_after_result_return(instance: HostDashboardInstance, observed_at: String, returned: ResultReturnPass) -> ProcessExit {
-  belt_tick_result_tail_exit(
-    returned: returned,
-    tail: match returned {
-      ResultReturnPassRan { outcomes: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-      ResultReturnPassWithheld { reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-      ResultReturnPassRefused { step: _, reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
-    },
+fn belt_tick_tail_after_result_return(instance: HostDashboardInstance, observed_at: String, returned: ResultReturnPassRun) -> ProcessExit {
+  belt_tick_exit_with_snapshot_closes(
+    exit: belt_tick_result_tail_exit(
+      returned: returned.pass,
+      tail: match returned.pass {
+        ResultReturnPassRan { outcomes: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+        ResultReturnPassWithheld { reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+        ResultReturnPassRefused { step: _, reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+      },
+    ),
+    closes: returned.closes,
   )
+}
+
+// AN EVENT-LOG SNAPSHOT THE RESULT RETURN LEFT BEHIND STOPS THE LINE AT THE TICK'S EXIT, pure. The
+// pass's own outcomes are untouched: what was appended stays appended and is reported as it was.
+// The tick is the recurring caller, so a worktree it cannot remove would otherwise accumulate one
+// per tick with nothing saying so; its exit names each one. A tick that already failed keeps its
+// reason and code and gains the leak after it; neither cause replaces the other.
+fn belt_tick_exit_with_snapshot_closes(exit: ProcessExit, closes: List<CarrierSnapshotClose>) -> ProcessExit {
+  let unclosed = carrier_snapshot_close_failures(closes: closes)
+  if count(unclosed) == 0 {
+    exit
+  } else {
+    let leak = join([to_string(value: count(unclosed)), " roadmap event snapshot(s) were left behind by the result return: ", join(unclosed, "; ")], "")
+    match exit {
+      ExitSuccess => exit_failure(reason: leak)
+      ExitFailure { code, reason } => ExitFailure { code: code, reason: join([reason, "\n", leak], "") }
+    }
+  }
 }
 
 fn belt_observation_then_start_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
