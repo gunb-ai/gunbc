@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -41,13 +40,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // accepted. `binder` is exhaustive through named arms only and binds `r` in one of them, so a binder
 // still binds. `body` puts an undeclared name in the `_` arm's body: it must still refuse unbound at
 // that name's atom, and as the ONLY refusal chain -- on main the first chain was the spurious `_`.
-data wc_arm_source: String = "module v2.test.wc_arm\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => c\n} }\n"
+data wc_arm_source: String = "module v2.test.wc_arm\n\nimport std.types { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => c\n} }\n"
 
-data wc_field_source: String = "module v2.test.wc_field\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: _ } => c\n  WcC => c\n} }\n"
+data wc_field_source: String = "module v2.test.wc_field\n\nimport std.types { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: _ } => c\n  WcC => c\n} }\n"
 
-data wc_binder_source: String = "module v2.test.wc_binder\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: r } => r\n  WcC => c\n} }\n"
+data wc_binder_source: String = "module v2.test.wc_binder\n\nimport std.types { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  WcB { r: r } => r\n  WcC => c\n} }\n"
 
-data wc_body_source: String = "module v2.test.wc_body\n\nimport v2.std.logic { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => wc_undeclared_body\n} }\n"
+data wc_body_source: String = "module v2.test.wc_body\n\nimport std.types { Bool }\n\ntype WcS = WcA | WcB { r: Bool } | WcC\n\nfn wc_probe(c: Bool, s: WcS) -> Bool { match s {\n  WcA => c\n  _ => wc_undeclared_body\n} }\n"
 
 fn wc_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

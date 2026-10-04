@@ -26,7 +26,6 @@ import v2.workflow.floor_pure_producer_share {
 import std.computation_identity { ComputationIdentity, NormalizedIdentical, IdentityUnknown, MissingConcept }
 import std.types { List }
 import v2.std.algebra { list_map }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

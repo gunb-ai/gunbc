@@ -1,7 +1,6 @@
 module v2.test.tokenize.byte_range_octet_unit
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { ModeledLexRules, Token, TokenStream }

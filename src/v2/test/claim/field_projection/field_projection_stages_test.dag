@@ -14,7 +14,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Some,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
 import v2.std.qualified_name {
   parameter_reference_path_optional,

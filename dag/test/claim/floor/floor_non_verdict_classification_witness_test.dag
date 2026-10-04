@@ -9,7 +9,6 @@ import gunbc.floor_non_verdict_classification {
   stale_enrolment_count,
   unmeasured_count
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SubstrateInputsOnly is truthful: this reads the classification carrier and, through it, the
