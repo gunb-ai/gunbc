@@ -394,6 +394,14 @@ jobs:
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
+      - name: Upload the floor's per-claim cost receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-claim-cost
+          path: required_floor_claim_cost.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
     env:
       MALLOC_ARENA_MAX: "2"
       GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
