@@ -25,12 +25,29 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialRetired, observed_bmc_credential_rotation, derive_bmc_secure,
 }
 import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
-import gunbc.machine_intake_boot_outcome { HostBootObservation, HostReachedUefi, mtcollins1_post_firmware_set_boot_2026_10_03 }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
+  ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback, span_console_readings,
+}
+import extdeps.crypto.hash { sha256_digest }
+import extdeps.tools.sha256sum { Sha256FileDigest }
+import extdeps.bootloader.grub { grub_console_report }
+import gunbc.machine_intake_pre_os_bringup_verdict { firmware_console_report }
+import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_observation }
+import gunbc.machine_intake_ampere_checkpoint_console_observation { ampere_checkpoint_console_observation }
+import gunbc.machine_intake_mtcollins1_console_milestone_observation { mtcollins1_console_milestones }
+import gunbc.machine_intake_ampere_socket_console_observation { ampere_socket_console_observation }
+import gunbc.machine_intake_linux_boot_console_observation { linux_boot_console_observation }
+import gunbc.machine_intake_kernel_module_decompression_observation { kernel_module_decompression_observation }
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart }
+import extdeps.bmc.ipmi_sel { SystemRestart }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SelSnapshotReading, SelSnapshotRead, SelSnapshotNotTaken }
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
+import gunbc.machine_intake_ampere_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
@@ -51,7 +68,7 @@ import gunbc.fleet.mtcollins_firmware_converge {
   RemoteMediaReceipt, RemoteMediaReadback, RemoteMediaImagesEnumerated, RemoteMediaNotConfigured, RemoteMediaNotRestored, KvmRight, mtcollins1_required_managed_rights, VersionReadback, UncitedReadback, hpm_check_readback,
   HostPoweredOff, HostPoweredOn, BmcAnswering, BmcNotAnswering,
   FirmwareCredentialReprovisionDue, FirmwareBootReadbackDue,
-  BmcCredentialReestablishment, ManagedRightNotRestored, ManagedRightMissingFromReceipt, BootProgressLostAfterFirmwareSet,
+  BmcCredentialReestablishment, ManagedRightNotRestored, ManagedRightMissingFromReceipt, BootProgressLostAfterFirmwareSet, BootReachedUefiThenRestartedRepeatedly,
   CredentialNotReestablished, CredentialEpochNotAdvancedPastFlash,
   CredentialForAnotherSubject, CredentialForAnotherEndpoint, CredentialProbePrecedesFlash,
   RightsReceiptForAnotherEndpointOrAccount, RightsReceiptPrecedesFlash,
@@ -205,7 +222,7 @@ fn world_of(subject: MachineIntakeSubject, w: WorldShape) -> MtCollinsFirmwareWo
 
 // THE SUBJECT IS mtcollins1's RECORDED INTAKE SUBJECT. If it ever stops deriving, every claim must FAIL,
 // so the fallback is a refusal no claim accepts (observed -1 matches no CpuInventoryIncomplete claim).
-fn run_full(w: WorldShape, baseline: FirmwareBaseline, records: List<FlashStepRecord>, boot: HostBootObservation?) -> FirmwareConvergenceVerdict {
+fn run_full(w: WorldShape, baseline: FirmwareBaseline, records: List<FlashStepRecord>, boot: FirmwareSetBootReadback?) -> FirmwareConvergenceVerdict {
   match mtcollins1_intake_subject() {
     Present { value: s } => converge_firmware(baseline: baseline, world: world_of(subject: s, w: w), records: records, boot: boot)
     Absent => FirmwareConvergenceRefused { cause: CpuInventoryIncomplete { observed: -1, expected: -1 } }
@@ -216,7 +233,7 @@ fn run(w: WorldShape, records: List<FlashStepRecord>) -> FirmwareConvergenceVerd
   run_full(w: w, baseline: baseline_ampere_ticket_7426_delivery, records: records, boot: Absent)
 }
 
-fn run_booted(w: WorldShape, records: List<FlashStepRecord>, boot: HostBootObservation?) -> FirmwareConvergenceVerdict {
+fn run_booted(w: WorldShape, records: List<FlashStepRecord>, boot: FirmwareSetBootReadback?) -> FirmwareConvergenceVerdict {
   run_full(w: w, baseline: baseline_ampere_ticket_7426_delivery, records: records, boot: boot)
 }
 
@@ -903,20 +920,75 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
   }
 }
 
+// ── THE POST-SET READBACK IS DERIVED FROM A POWER-ON ACCOUNT, never authored (ruling R1) ─────────
+// The accounts below run the real console readers over console text: the 2026-10-03 loop from its
+// committed capture excerpt, and the UEFI cases from the lines the firmware summary and the AMI setup
+// prompt print (gunbc.machine_intake_mtcollins1_console_milestone_observation).
+// branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
+// (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
+// excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
+data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
+
+// Real "System Restart" rows of the step-1 loop (sel-after.txt), as the SEL reader types them.
+// After a confirmed power-on with no power-up record, the first such row is ambiguous (it may be the
+// power-on's own boot) and opens no cycle; each later one is a distinct reset (rows 33, 37, 3b).
+data loop_restarts: List<SelWindowEvent> = [
+  SelWindowEvent { record_id: 51, bmc_clock_rendering: "10/02/2026 07:32:01 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 55, bmc_clock_rendering: "10/02/2026 07:32:27 PM UTC", kind: BootRestart { offset: SystemRestart } },
+  SelWindowEvent { record_id: 59, bmc_clock_rendering: "10/02/2026 07:32:52 PM UTC", kind: BootRestart { offset: SystemRestart } },
+]
+
+fn account_over(lines: List<String>, restarts: List<SelWindowEvent>) -> PowerOnAccount {
+  let digest = Sha256FileDigest { digest: sha256_digest(hex: "6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1") }
+  mtcollins1_power_on_account(e: PowerOnEvidence {
+    configuration: AttemptConfigurationReceipt {
+      subject: "mtcollins1", attempt: "witness", expected: ExpectedSockets { sockets: [0, 1], source: "witness" },
+      requested: StimulusRequestNotRecorded { reason: "witness" }, applied: StimulusApplicationNotRecorded { reason: "witness" },
+      cpus: PopulationNotRecorded { reason: "witness" }, dimms: PopulationNotRecorded { reason: "witness" }, firmware: FirmwareReadbacksNotRecorded { reason: "witness" },
+    },
+    handoff: HandoffPoweredOn, smpro: [],
+    console: ConsoleRead {
+      capture: digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
+      dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: [],
+      milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
+      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(lines: lines),
+    },
+    sel: SelEventsRead { events: restarts }, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
+  })
+}
+
+data uefi_cycle: List<String> = ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "UEFI RC version: 2.10", "    Number of active sockets    : 1", "Press <DEL> or <ESC> to Entering the Setup."]
+
+data dram_only_cycle: List<String> = ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "CP: 00001a0a"]
+
+fn readback_over(lines: List<String>, restarts: List<SelWindowEvent>) -> FirmwareSetBootReadback? {
+  Present { value: firmware_set_boot_readback(a: account_over(lines: lines, restarts: restarts)) }
+}
+
 // The set converges on UEFI, and the converged verdict NAMES the SCP readback as grounded through the
 // uncited SMpro decode -- it is never promoted to an unqualified observation.
 test fn whole_set_reaching_uefi_converges_naming_the_uncited_scp_decode() -> Bool {
-  match run_booted(w: shape(power_off: true), records: whole_set(), boot: Present { value: HostReachedUefi }) {
+  match run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: uefi_cycle, restarts: [])) {
     FirmwareBaselineConverged { uncited_readbacks: u } =>
       list_length(u) == 1 && any(u, x => (x.target == ScpFirmware))
     _ => false
   }
 }
 
-// RED, the 2026-10-03 observation: opaque checkpoint 0x1a0a (6666), then ~22 s of silence.
-test fn post_ddr_progress_lost_after_the_set_refuses() -> Bool {
-  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: Present { value: mtcollins1_post_firmware_set_boot_2026_10_03 })) {
-    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: k, soc_silent: q, initiator: _ } => k == 6666 && second_count(s: q) == 22  _ => false }
+// RED, the 2026-10-03 loop, derived from its capture: the set did not reach UEFI and the host restarted
+// repeatedly, so convergence refuses with the account's own ending.
+test fn the_2026_10_03_loop_after_the_set_refuses_with_the_derived_ending() -> Bool {
+  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: host_capture_lines(capture: HostCaptureLiveStream { text: step1_last_two_cycles }), restarts: loop_restarts.take(n: 2)))) {
+    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { ending: e, last_relation: _ } => (match e { RestartedRepeatedly { cycles: n, last_cycle_ended_after: _, cadence: _, console_errors: k, sel_restarts: _, watchdog: _, reset_cause: _ } => n == 2 && k == 0 _ => false }) _ => false }
+    Absent => false
+  }
+}
+
+// RED: reaching UEFI is a milestone, not an ending. UEFI in cycle 1 and then a loop that never got as far
+// again is not a converged boot.
+test fn uefi_then_a_restart_loop_refuses() -> Bool {
+  match refusal_of(verdict: run_booted(w: shape(power_off: true), records: whole_set(), boot: readback_over(lines: concat(uefi_cycle, concat(dram_only_cycle, dram_only_cycle)), restarts: loop_restarts))) {
+    Present { value: c } => match c { BootReachedUefiThenRestartedRepeatedly { cycle: k, ending: _ } => k == 1 _ => false }
     Absent => false
   }
 }

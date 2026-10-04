@@ -20,7 +20,8 @@ import v2.compiler.resolve {
   resolved_tree_outcome,
   resolve_walk_prefix_pending,
   resolve_walk_with_namespace_policy,
-  try_edge_declared_binding
+  try_edge_declared_binding,
+  ResolveWalkAccepted
 }
 import v2.std.resolution_policy {
   ImportScoped,

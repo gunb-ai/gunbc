@@ -71,7 +71,10 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_singleton,
   bind_outcome,
-  rejected_with_pending
+  rejected_with_pending,
+  ExternalContractUnknown,
+  Rejected,
+  outcome_with_diagnostics
 }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
 import v2.std.qualified_name {
@@ -164,6 +167,7 @@ import v2.std.node {
   LoopRealizedDeclaration,
   loop_edge_role,
   MatchArmPatternEdge,
+  MatchArmScopeExitEdge,
   ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
@@ -198,7 +202,7 @@ import v2.std.node_query {
   pattern_wildcard_name,
   find_core_child,
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction {
   MapIntroductionEntryNodes,
@@ -212,6 +216,7 @@ import v2.std.map_introduction {
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
 }
+import std.types { List }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -3191,11 +3196,59 @@ fn resolve_match_arm_admitted(ctx: ResolveContext, arm: Node, pat: Node) -> Reso
       e: e,
       r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
         resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+      } else if bind_carries_arm_scope_exit(n: e.target) {
+        resolve_arm_scope_exit_bind(arm_ctx: arm_ctx, outer_ctx: ctx, n: e.target)
       } else {
         resolve_node_walk(ctx: arm_ctx, n: e.target)
       }
     )
   }))
+}
+
+// A MATCH ARM'S BINDERS END AT ITS LET'S BODY (v2.std.node MatchArmScopeExitEdge). The arm's body is
+// a Bind lowered from `let x = match s { .. }` heading a spine
+// (v2.compiler.body_lowering_fold body_lower_let_match_binding_arm_continued): its VALUE resolves in
+// the arm's scope and sees the pattern's binders, and its BINDER and BODY -- the rest of the spine --
+// resolve in the scope enclosing the match, exactly the scopes the source wrote. Both admissions are
+// judged against those authored scopes: the pattern by resolve_match_arm_walk against the enclosing
+// scope as for every arm, and the let's binder here against that same enclosing scope. The marker
+// edge itself is a declaration about scope, not a value, and is carried unwalked.
+fn bind_carries_arm_scope_exit(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Bind } =>
+      fold(n.children, init: false, f: fn(acc, e) { acc || edge_is_core(e: e, marker: MatchArmScopeExitEdge) })
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn resolve_arm_scope_exit_bind(arm_ctx: ResolveContext, outer_ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  if positional_child_count(children: n.children) == 3 {
+    match gate_value_binders(names: bind_binder_name_list(n: n), outer: outer_ctx.scope, at: n) {
+      BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
+      BinderGateAdmitted =>
+        child_walk_node(n: n, w: fold(
+          named_edges(children: n.children),
+          init: resolve_bind_positional_edges(
+            ctx: arm_ctx,
+            edges: positional_edges(children: n.children),
+            scope_outer: arm_ctx.scope,
+            scope_inner: lexical_frame(fb: bind_frame_binders(n: n), outer: outer_ctx.scope)
+          ),
+          f: fn(acc, e) {
+            if edge_is_core(e: e, marker: MatchArmScopeExitEdge) {
+              child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+            } else if edge_is_type_annotation(e: e) {
+              child_walk_step(w: acc, e: e, r: resolve_type_role_target(ctx: outer_ctx, target: e.target))
+            } else {
+              child_walk_step(w: acc, e: e, r: resolve_node_walk(ctx: arm_ctx, n: e.target))
+            }
+          }
+        ))
+    }
+  } else {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
+  }
 }
 
 // children[0] is the scrutinee (outer scope); every later child is an arm. The ordinal advances on
@@ -3997,11 +4050,16 @@ fn resolve_bind_edges(
   )
 }
 
+// A Bind carrying MatchArmScopeExitEdge is admitted only as a match arm's body
+// (resolve_match_arm_admitted); reached anywhere else its scope claim has no arm to exit, so it is a
+// malformed tree rather than an ordinary let.
 fn resolve_bind_node(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
-  if positional_child_count(children: n.children) == 3 {
+  if bind_carries_arm_scope_exit(n: n) {
+    resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
+  } else if positional_child_count(children: n.children) == 3 {
     match gate_value_binders(names: bind_binder_name_list(n: n), outer: ctx.scope, at: n) {
       BinderGateRefused { diagnostic: d } => resolve_walk_refused_one(chain: diagnostics_singleton(d: d))
       BinderGateAdmitted =>

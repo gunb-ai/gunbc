@@ -9,12 +9,12 @@ import gunbc.cloudflare.r2_staged_transfer {
   S3TransferAnswer,
   R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
   classify_r2_put,
-  R2FetchVerdict, R2FetchStagedAt, R2FetchAbsent, R2FetchRefused,
+  R2FetchVerdict, R2FetchStagedAt, R2FetchAbsent, R2FetchRefused, R2FetchUnanswered,
   classify_r2_fetch,
   R2TransferTarget,
   WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
   r2_put_staged_file,
-  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   r2_fetch_into_staging,
 }
 import extdeps.cloudflare.r2 {
@@ -255,6 +255,7 @@ fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, std
     R2FetchStagedAt { staged_path: p, tag: _ } => OriginFetchStagedAt { staged_path: p }
     R2FetchAbsent => OriginFetchAbsent
     R2FetchRefused { cause: c } => OriginFetchRefused { cause: c }
+    R2FetchUnanswered { cause: c } => OriginFetchRefused { cause: c }
   }
 }
 
@@ -272,9 +273,11 @@ fn fetch_origin_object(
         target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
         token_source: token_source,
       ) {
-        R2FetchObjectAbsent => OriginObjectAbsent { key: key }
-        R2FetchUnavailable { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-        R2FetchStaged { staged_path: p, tag: _ } =>
+        R2FetchObjectAbsent { staging: _ } => OriginObjectAbsent { key: key }
+        R2FetchStoreRefused { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchTransportUnanswered { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchLocalFailure { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchStaged { staged_path: p, staging_dir: _, tag: _ } =>
           match read_origin_staged_file(staged_path: p) {
             OriginReadingTaken { reading: reading } => OriginObjectStaged { key: key, reading: reading }
             OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetchUnavailable { key: key, cause: cause }

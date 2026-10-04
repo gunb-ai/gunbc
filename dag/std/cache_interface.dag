@@ -1,6 +1,6 @@
 module std.cache_interface
 
-import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand }
+import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand, List }
 import v2.std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
@@ -13,6 +13,7 @@ import std.pareto {
   LowerIsBetter,
   axis_comparison_int,
   dominance_of_comparisons,
+  Dominates
 }
 import std.realization_schedule {
   CostAccount,

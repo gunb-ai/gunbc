@@ -26,7 +26,7 @@ import v2.std.grammar_choice_ambiguity {
   GrammarChoiceAmbiguityRow,
   NonEmptyGrammarChoiceAmbiguityRows
 }
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
+import v2.std.optional { Optional, Present, optional_absent, optional_present, Absent }
 
 // ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
 type ParseDiagnosticEvidence
@@ -170,21 +170,3 @@ fn list_tail_or_empty_rows(xs: FreeMonoid<GrammarChoiceAmbiguityRow>) -> FreeMon
   }
 }
 
-fn list_head_value_or_self_parse_stage(
-  head: ParseStageDiagnostic,
-  tail: FreeMonoid<ParseStageDiagnostic>
-) -> ParseStageDiagnostic {
-  match list_head(xs: tail) {
-    HeadFound { value: item } => item
-    HeadAbsent => head
-  }
-}
-
-fn list_tail_or_empty_parse_stage(
-  tail: FreeMonoid<ParseStageDiagnostic>
-) -> FreeMonoid<ParseStageDiagnostic> {
-  match list_tail(xs: tail) {
-    TailAbsent => Empty
-    TailFound { tail: rest } => rest
-  }
-}

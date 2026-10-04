@@ -43,9 +43,11 @@ import gunbc.auth.authorization_pattern_selection {
 import gunbc.machine_intake_bmc_secure {
   BmcSecureStanding, BmcSecureRefusalCause, BmcSecured, BmcSecureRefused, ManagedCredentialReference,
 }
-import gunbc.machine_intake_boot_outcome {
-  HostBootObservation, HostReachedUefi, PostDdrProgressLost, HostBootUnobservable, ResetInitiator,
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  FirmwareSetBootReadback, BootReachedUefiAfterSet, BootProgressLostAfterSet, BootReadbackUnobservable,
+  HostEnding, RestartedRepeatedly, ReachedCensus, StoppedWithStatedFailure, StoppedWithoutRestart, HostEndingNotEstablished,
 }
+import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointRelation }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   SelSnapshotReading, SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken,
 }
@@ -54,7 +56,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
 }
 import std.nat { Nat }
 import std.measure { Second, second_count, byte_size_count }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
@@ -363,8 +365,9 @@ type MtCollinsFirmwareWorld {
 }
 
 // WHAT THE HOST DID WHEN IT FIRST BOOTED AFTER THE SET is the only observation that says the set worked,
-// and it is gunbc.machine_intake_boot_outcome's fact, not this module's. Reaching UEFI grounds the set;
-// PostDdrProgressLost refuses.
+// and it is the power-on account's fact (gunbc.machine_intake_mtcollins1_power_on_account
+// firmware_set_boot_readback), not this module's. A UEFI milestone grounds the set unless the session
+// then restarted repeatedly; lost progress refuses (boot_verdict).
 
 // The witnessed AC power cycle. It is an operator-attested record: the substrate cannot see a power
 // cord, which is why selecting HumanOnlyStep was the honest answer. ac_off is what the
@@ -443,7 +446,8 @@ type FirmwareConvergenceRefusal
   | AcPowerCycleTooShort { target: FirmwareTarget, observed: Second, minimum: Second }
   | ReadbackMismatch { target: FirmwareTarget, reason: String }
   | AcCycleNotAHumanStep { target: FirmwareTarget }
-  | BootProgressLostAfterFirmwareSet { last_checkpoint: Int, soc_silent: Second, initiator: ResetInitiator }
+  | BootProgressLostAfterFirmwareSet { ending: HostEnding, last_relation: AmpereCheckpointRelation? }
+  | BootReachedUefiThenRestartedRepeatedly { cycle: Int, ending: HostEnding }
   | CpuSiliconSupportUnstated { socket: Nat, bios_family: NonEmptyStr }
   | NoRollbackImageRetained { target: FirmwareTarget, reason: NonEmptyStr }
   | RollbackImageNotTheInstalledVersion { target: FirmwareTarget }
@@ -1076,7 +1080,11 @@ fn uncited_readbacks(records: List<FlashStepRecord>) -> List<UncitedReadback> {
     })
 }
 
-fn boot_verdict(records: List<FlashStepRecord>, boot: HostBootObservation?) -> FirmwareConvergenceVerdict {
+// THE POST-SET READBACK IS A PROJECTION OF THE WHOLE POWER-ON ACCOUNT (gunbc.machine_intake_mtcollins1_power_on_account
+// firmware_set_boot_readback; ruling R1 on #13041 and #13071), never an authored observation. A UEFI
+// milestone in any cycle grounds the set unless the session then restarted repeatedly: reaching UEFI
+// and looping afterwards is not a converged boot, so both facts are read together.
+fn boot_verdict(records: List<FlashStepRecord>, boot: FirmwareSetBootReadback?) -> FirmwareConvergenceVerdict {
   match records.first() {
     Absent => FirmwareBaselineConverged { uncited_readbacks: [] }
     Present { value: _ } =>
@@ -1084,9 +1092,15 @@ fn boot_verdict(records: List<FlashStepRecord>, boot: HostBootObservation?) -> F
         Absent => FirmwareBootReadbackDue
         Present { value: o } =>
           match o {
-            HostReachedUefi => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
-            PostDdrProgressLost { last_checkpoint: c, soc_silent: q, chassis_power_on_while_silent: _, next_cycle_logged_s5_and_system_restart: _, watchdog: _, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, soc_silent: q, initiator: i })
-            HostBootUnobservable { reason: r } => refused(cause: BootOutcomeUnobservable { reason: r })
+            BootReachedUefiAfterSet { cycle: c, milestone: _, ending: e, degradations: _, account: _ } => match e {
+              RestartedRepeatedly { cycles: _, last_cycle_ended_after: _, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } => refused(cause: BootReachedUefiThenRestartedRepeatedly { cycle: c, ending: e })
+              ReachedCensus => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithStatedFailure { subject: _, error: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              HostEndingNotEstablished => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+            }
+            BootProgressLostAfterSet { ending: e, last_relation: r, account: _ } => refused(cause: BootProgressLostAfterFirmwareSet { ending: e, last_relation: r })
+            BootReadbackUnobservable { account: _ } => refused(cause: BootOutcomeUnobservable { reason: "the power-on account establishes neither a UEFI milestone nor a lost-progress ending" })
           }
       }
   }
@@ -1096,7 +1110,7 @@ fn converge_firmware(
   baseline: FirmwareBaseline,
   world: MtCollinsFirmwareWorld,
   records: List<FlashStepRecord>,
-  boot: HostBootObservation?,
+  boot: FirmwareSetBootReadback?,
 ) -> FirmwareConvergenceVerdict {
   match baseline_admission_refusal(b: baseline) {
     Present { value: cause } => refused(cause: BaselineNotAdmitted { cause: cause })

@@ -248,6 +248,13 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
 // stand in for liveness; binding it to the older population-only witness would prove only that Git
 // returned paths, not that the paths belonged to the workflow subject.
 
+fn dogfood_route_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/gunbc/roadmap/roadmap_dogfood_route.dag" as FilePath,
+    function: "dogfood_route_acceptance_holds" as NonEmptyStr,
+  )
+}
+
 fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag" as FilePath,
@@ -319,6 +326,13 @@ fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionCont
 // — per-family enum split is follow-up). Structural properties that survive roster growth are
 // asserted here; R0 discriminating controls remain in
 // v1_interpreter_primitive_surface_witness_test.
+
+fn service_evidence_capture_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/gunbc/roadmap/roadmap_service_evidence.dag" as FilePath,
+    function: "service_evidence_capture_acceptance_holds" as NonEmptyStr,
+  )
+}
 
 fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -2242,6 +2256,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "The machine that lands and verifies work (harness, workers, CI/floor, daily workspace) is what turns every other project's tasks into landed, verified changes without operator hand-integration."),
     ),
     roadmap_node(
+      identity: "rn_3E5NJVBW4DA73A581DTT7APKC7",
+      id: "factory-dogfood-route",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_dogfood_route.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "One request travels the whole factory and comes back as an independently reviewed, published candidate",
+        boundary: "The dogfood route as one acceptance case: request, immutable subject, shared computation, placement grant, isolated execution, durable result, metering, independent review, candidate published, cleanup, result returned (production order: the belt reviews a head before publishing it) -- each established by its own typed record from the durable records the real srv2 route wrote for ONE attempt (gunbc.roadmap_dogfood_route DogfoodRouteReceipt). The start receipt is the first complete attempt, selected in refname order, by the first successful recorder to observe one (scanning durable attempt history), recorded once, create-only; attempts operated by hand before the route existed do not qualify.",
+        displaced_cost: "Without one executable case the factory is a set of stages that each pass alone while no request has crossed them all, and the operator's confidence -- the gate for the first external customer -- has nothing to rest on.",
+        first_slice: "The receipt and its acceptance function, red with six stages owed, each to the change that writes its own record: G1 cutover (immutable subject, shared computation), G3 metering, G4 (request, result returned), and G5 isolated execution, owed to a record binding the granted unit's observed start and exit to its grant and fence. G5 placement grant and cleanup are produced: read from the session placement reader, carried through the complete arm and the start receipt, and cleanup must return the placed grant and fence.",
+        red_control: "A reading set with a stage missing or read twice is malformed, not judged; one owed or refused stage withholds the receipt and names it; an unreadable attempt population does not pass.",
+        out_of_scope: "MicroVM isolation (a capped systemd unit plus a lease is the dogfood bar, operator ruling 2026-10-03); billing and pricing; a reviewer on a different model (same model, separate context window, operator ruling 2026-10-03).",
+        handback: "The dogfood start receipt: the first attempt on srv2 whose DogfoodRouteReceipt is complete, read by the acceptance function."
+      ), on: "2026-10-03", note: "Operator ruling 2026-10-03: the dogfood clock is what matters most for the first-external target.")),
+      execution: bound(contract: dogfood_route_execution_contract()),
+      parent: in_project(project: "factory", contribution: "The factory is proven by one request crossing every stage on the real route, not by each stage passing alone."),
+    ),
+    roadmap_node(
       identity: "rn_VQ8RGFT438E36PHK9WXJ5TCJMC",
       id: "v2-compiler-live",
       owner: "self-host",
@@ -2341,7 +2372,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           boundary: "The target is the test label //v2/test/parse/expression_bodied_fn_decl_parse:all, taken through ingest, lowering, resolve and infer on the native route. The population is derived from the label, not counted: there is no list of seven to keep in sync. Every refusal is removed at its root.",
           displaced_cost: "Until the target's members type end to end, no v2 frontend claim has a real subject behind it.",
           first_slice: "Attribution before repair: for each failing member, record the stage, the fatal cause, the full cause chain, the earliest point where the derivation stops being justified, any shared root and any existing owner, then group the failures by root (DESIGN §6b). The repair plan is the N7 ledger (N7-0 to N7-5, with owners): N7-1 fold element typing and N7-4 the evaluation gate sit with the #12506 owner; N7-3, the match-variable typing regression, is queued after N7-1.",
-          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_file_refusal), keeps this red.",
+          red_control: "Any member of the target refusing before type inference, or refusing by blaming an import target (native_import_target_attribution), keeps this red.",
           out_of_scope: "Whole-corpus refusals; emission. The type_env cycle-time investigation is a regression investigation, not this node's wall.",
           handback: "Every member of the target typed, with the run receipt for the label."
         ), on: "2026-10-02", note: "Rewritten to the N7 ledger: the target is the test label, and the walls this row used to list are retired (kept as history in the ledger).")),
@@ -3126,15 +3157,18 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_SERVICE0EVIDENCE0CAPTURE0A",
       id: "service-evidence-capture",
       owner: "fleet",
-      carriers: carrier(path: "dag/std/observation.dag"),
-      line: ticket(t: level_fields(
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_service_evidence.dag"),
+      line: ticket(t: fields(
           headline: "Capture service evidence from the first qualifying run: usage, cache, placement, failures, recovery, intervention",
-          boundary: "From the first qualifying end-to-end run onward, every run emits joined receipts: workload class and resource request; wait, execution and completion time; cache hits, misses, shared misses and corrupt-hit refusals; placement and seat utilization; artifact bytes and egress; failure attribution and recovery action; operator intervention time; hardware health events; billable usage and credits; workspace recovery point and recovery time. Follows the process observability conformance domain (std.observation).",
-          approach: "DRAFT (operator 2026-10-03). Route acceptance and the dogfood start receipt are owned by factory-dogfood-route (gunbc#13077, gunbc.roadmap_dogfood_route DogfoodRouteReceipt); this node owns the joined service-evidence fields captured from that route's runs, so the two rows answer different questions and neither restates the other.",
-          red_control: "A run on the qualifying route that emits no receipt is not counted toward the dogfood window.",
+          boundary: "From the first qualifying end-to-end run onward, every run's durable records admit a joined receipt on read: workload class and resource request; wait, execution and completion time; cache hits, misses, shared misses and corrupt-hit refusals; placement and seat utilization; artifact bytes and egress; failure attribution and recovery action; operator intervention time; hardware health events; billable usage and credits; workspace recovery point and recovery time. Follows the process observability conformance domain (std.observation). Route acceptance and the dogfood start receipt are owned by factory-dogfood-route (gunbc#13077); this node owns the joined service-evidence fields captured from that route's runs, as one per-attempt receipt computed on read by gunbc.roadmap_service_evidence service_evidence_observe_for_attempt, which consumes the readers that own each fact and measures nothing itself.",
           displaced_cost: "Evidence added late loses the observation period it should have covered, and the dogfood window cannot be backdated.",
-          handback: "DRAFT: per member, the executed drill or witness named by its instrument."
+          first_slice: "The receipt contract: the attempt bound by its per-attempt LAUNCH RECORD, whose identity names the node and the dashboard instance and whose attempt_key member names the attempt (a legacy record without that member is unbound and refused); one typed input per joined reader gathered once per attempt; and all 21 fields derived from those inputs into one closed product as Observed | Owed | Refused. G5 (gunbc.roadmap_session_placement, landed) is bound: placement, workload class and the granted resource amount are observed from its grant record re-checked against the binding; wait time and seat utilization, which that record does not establish, are owed to this node. Every other field is owed to its reader's change (G3 metering #13073, G1 shared computation #13097, G4 result returned #13075) or to the node that owns its missing producer. Each later slice replaces one reader's not-on-main arm with its typed observation and derives its fields from named members of that record.",
+          red_control: "An attempt whose launch record names another node, another dashboard instance or (in its attempt_key member) another attempt, whose launch record carries no attempt_key, or that has no launch record, is not joined; a placement observation that is foreign, unreadable or names another attempt never yields an observed field; an ordered field view that differs from the node's list by identity or order (a duplicate plus an omission at the same count included) is red; a run on the qualifying route whose records admit no receipt is not counted toward the dogfood window.",
+          out_of_scope: "Building the producers the receipt names as owed to OTHER nodes (hardware health to fleet-health-0-live-receipt, credits to failure-billing-outcomes, workspace recovery point and time to fabric-storage) -- each is its owning node's work; egress, recovery action and operator intervention time have no other owner and are this node's own later slices; storing the joined receipt (the dogfood start receipt pins it once); pricing.",
+          handback: "The module, its witnesses with one discriminating red per refusal, and per slice the reader bound and the fields it moved from owed to observed."
         )),
+      dispatch: dispatchable(),
+      execution: bound(contract: service_evidence_capture_execution_contract()),
       parent: in_project(project: "vm-service", contribution: "The operator's go/no-go on external customers is their own confidence from dogfooding; that confidence must rest on receipts captured from the first qualifying run, not reconstructed later."),
     ),
     roadmap_node(

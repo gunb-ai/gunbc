@@ -14,7 +14,6 @@ import v2.std.service_realization_labels {
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }

@@ -1,7 +1,6 @@
 module v2.test.tokenize.string_literal_raw_newline
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.compilers.lexing { ModeledLexRules, TokenStream }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex_rules }
