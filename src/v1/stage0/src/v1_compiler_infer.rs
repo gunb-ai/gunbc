@@ -2599,7 +2599,9 @@ pub fn variant_literal_expected_application(
     scope: Rc<InferScope>,
 ) -> Option<Rc<Node>> {
     {
-        if ((owner.params.clone().len() as i64) == 0) {
+        if (((owner.params.clone().len() as i64) == 0)
+            || (owner.connective.clone() != Connective::Disj))
+        {
             return std::option::Option::None;
         }
         match expected.clone() {
@@ -10097,13 +10099,6 @@ pub struct UnresolvedMethodFrontierRow {
 
 pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> {
     Rc::new(vec![Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "extdeps.dns.domain_name".to_string(),
-    method: "list_push".to_string(),
-    occurrences: 1,
-    receiver_shape: "Primitive(ok)".to_string(),
-    cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE".to_string()),
-}), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "v1.compiler.trace".to_string(),
     method: "map".to_string(),
     occurrences: 1,
