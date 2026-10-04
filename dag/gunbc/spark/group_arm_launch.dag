@@ -867,6 +867,7 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
 fn group_arm_engine_capacity_lines(ctx: SparkMaterializeContext) -> String {
   join([
     observe_leg(ctx: ctx, what: "engine cache_config_info (this incarnation)", argv: ["sh", "-c", join(["curl -fsS --max-time 20 http://127.0.0.1:", to_string(spark_pair_serve_port), "/metrics | grep -E '^vllm:cache_config_info|^vllm:num_requests_running|^vllm:kv_cache_usage_perc'"], "")]),
+    observe_leg(ctx: ctx, what: "engine KV allocation plan, this incarnation's LAST startup record (head log)", argv: ["sh", "-c", join(["grep -a 'KV_ALLOCATION_PLAN_JSON ' ", glm53_staircase_head_log_path as String, " | tail -1"], "")]),
     observe_leg(ctx: ctx, what: "engine startup capacity lines (head log)", argv: ["sh", "-c", join(["grep -E 'GPU KV cache size|Maximum concurrency|cudagraph|Capturing CUDA graph|Graph capturing finished|init engine|Available KV cache memory|Model loading took|max_num_seqs' ", glm53_staircase_head_log_path as String, " | tail -40"], "")]),
   ], "")
 }
