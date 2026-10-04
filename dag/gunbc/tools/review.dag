@@ -3,7 +3,7 @@ module gunbc.tools.review
 import extdeps.git
 import std.types { GitRef, FilePath, Seconds }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import extdeps.cron.schedule_model { CronSchedule }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 
