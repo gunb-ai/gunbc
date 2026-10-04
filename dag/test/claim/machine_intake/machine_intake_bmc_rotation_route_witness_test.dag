@@ -1,6 +1,6 @@
 module test.claim.machine_intake_bmc_rotation_route_witness_test
 
-import std.types { Bool, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.decl_ref { decl_field_ref }
 import std.scoped_authorization { AttemptIdentity }
 import std.content_hash { content_hash_of_value }
@@ -35,7 +35,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
   RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
   RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
-  ManagedAdministratorReadback, ManagedReadbackAbsent, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel,
+  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel,
   route_qualification_authority, rotation_apply_authority,
   rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
   rotation_route_request_identity, rotation_route_is_grounded,
@@ -537,6 +537,8 @@ fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
       if ch != 2 { "wrong-channel" } else {
         match c {
           ManagedReadbackAbsent => "readback-absent"
+          ManagedReadbackFromAnotherController { readback: _, route: _ } => "another-controller"
+          ManagedReadbackFromAnotherBuild { readback: _, route: _ } => "another-build"
           ManagedReadbackFromAnotherRun { readback: _, approved: _ } => "another-run"
           ManagedAccountIsTheClosedAccount { user: _ } => "managed-is-closed"
           ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
@@ -546,12 +548,27 @@ fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
   }
 }
 
+// The one way this witness obtains a readback: the fixture mint, admitted to this function only.
+fn readback_at(endpoint: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, attempt: NonEmptyStr, managed_user: Int, access: List<IpmiUserChannelAccess>) -> ManagedAdministratorReadback? {
+  Present { value: managed_administrator_readback_fixture(endpoint: endpoint, firmware: firmware, attempt: attempt as AttemptIdentity, managed_user: managed_user, access: access) }
+}
+
 test fn a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable() -> Bool {
   let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
   let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
   lockout_verdict(readback: none) == "readback-absent"
-    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2 } }) == "admitted"
-    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-0" as AttemptIdentity, managed_user: 3, access: admin_on_2 } }) == "another-run"
-    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)] } }) == "managed-is-closed"
-    && lockout_verdict(readback: Present { value: ManagedAdministratorReadback { attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1 } }) == "not-administrator-on-channel"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "admitted"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-0" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-run"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)])) == "managed-is-closed"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_1)) == "not-administrator-on-channel"
+}
+
+// A READBACK FROM CONTROLLER A CANNOT UNLOCK A CLOSE ON CONTROLLER B, nor one from another build of the
+// same controller: the same readback that admits the close on its own controller and build refuses on
+// the route's controller B and on build 0.33.
+test fn a_readback_from_another_controller_or_build_does_not_unlock_a_close() -> Bool {
+  let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  lockout_verdict(readback: readback_at(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-controller"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "another-build"
+    && lockout_verdict(readback: readback_at(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as NonEmptyStr, managed_user: 3, access: admin_on_2)) == "admitted"
 }

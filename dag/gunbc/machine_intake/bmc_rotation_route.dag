@@ -575,16 +575,44 @@ type RotationApplyAdmission
 // on a channel (anything other than ADMINISTRATOR) could remove the last administrator-capable account
 // from that channel. It is admissible only beside a typed precondition: the MANAGED account -- a
 // different user from the one being closed -- read back at ADMINISTRATOR on that same channel with
-// Get User Access, IN THE SAME RUN, which is the attempt the approval names. The readback's producer is
-// the BmcSecure observation (cut O1b); here it is an admission input, and its absence refuses.
-type ManagedAdministratorReadback {
+// Get User Access, IN THE SAME RUN, which is the attempt the approval names, ON THE SAME CONTROLLER AND
+// BUILD as the route.
+//
+// THE READBACK IS SEALED, so the precondition is not a caller-supplied Boolean in a record. Its only
+// production mint is the Get User Access read performed in the run against the controller, which does
+// not exist in this cut (managed_administrator_readback_live_frontier): until it lands, no production
+// caller can satisfy the precondition, and every privilege-lowering write refuses. The one other mint
+// is admitted only to this module's witness, which needs readbacks to exercise every refusal arm.
+type ManagedAdministratorReadback sole_constructor {
+  endpoint: BmcControllerEndpoint
+  firmware: BmcFirmwareReleaseIdentity
   attempt: AttemptIdentity
   managed_user: IpmiUserId
   access: List<IpmiUserChannelAccess>
 }
 
+fn managed_administrator_readback_fixture(
+  endpoint: BmcControllerEndpoint,
+  firmware: BmcFirmwareReleaseIdentity,
+  attempt: AttemptIdentity,
+  managed_user: IpmiUserId,
+  access: List<IpmiUserChannelAccess>,
+) -> ManagedAdministratorReadback
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_rotation_route_witness_test", decl_name: "readback_at"),
+  ]
+{
+  ManagedAdministratorReadback { endpoint: endpoint, firmware: firmware, attempt: attempt, managed_user: managed_user, access: access }
+}
+
+data managed_administrator_readback_live_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live Get User Access read of the managed account, performed in the same run against the controller, mints ManagedAdministratorReadback in this module bound to that controller's endpoint, its observed firmware build and the run's attempt, with the response bytes committed as content-addressed evidence; until then no production caller can satisfy the administrator-retention precondition and every privilege-lowering channel-access write refuses. NOT satisfied by the witness fixture mint, by a readback read in another run, or by a readback of another controller or build" as NonEmptyStr,
+)
+
 type AdministratorRetentionRefusal
   = ManagedReadbackAbsent
+  | ManagedReadbackFromAnotherController { readback: BmcControllerEndpoint, route: BmcControllerEndpoint }
+  | ManagedReadbackFromAnotherBuild { readback: BmcFirmwareReleaseIdentity, route: BmcFirmwareReleaseIdentity }
   | ManagedReadbackFromAnotherRun { readback: AttemptIdentity, approved: AttemptIdentity }
   | ManagedAccountIsTheClosedAccount { user: IpmiUserId }
   | ManagedAccountNotAdministratorOnChannel { managed_user: IpmiUserId }
@@ -600,7 +628,7 @@ fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
   }
 }
 
-fn administrator_retention_refusal(request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
+fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
   match request {
     IpmiSetUserPassword { user: _ } => none
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
@@ -611,7 +639,11 @@ fn administrator_retention_refusal(request: BmcAccountWriteRequest, readback: Ma
         match readback {
           Absent => Present { value: ManagedReadbackAbsent }
           Present { value: r } =>
-            if (r.attempt as String) != (approved_attempt as String) {
+            if (r.endpoint.host as String) != (standing.endpoint.host as String) {
+              Present { value: ManagedReadbackFromAnotherController { readback: r.endpoint, route: standing.endpoint } }
+            } else if !bmc_firmware_release_identity_eq(a: r.firmware, b: standing.firmware) {
+              Present { value: ManagedReadbackFromAnotherBuild { readback: r.firmware, route: standing.firmware } }
+            } else if (r.attempt as String) != (approved_attempt as String) {
               Present { value: ManagedReadbackFromAnotherRun { readback: r.attempt, approved: approved_attempt } }
             } else if (r.managed_user as Int) == (x.user as Int) {
               Present { value: ManagedAccountIsTheClosedAccount { user: x.user } }
@@ -671,7 +703,7 @@ fn admit_rotation_apply(
                 } else if cl.request_revision != rotation_route_request_identity(standing: standing, request: request) {
                   RotationApplyApprovalForAnotherRequest { approved: cl.request_revision, requested: rotation_route_request_identity(standing: standing, request: request) }
                 } else {
-                  match administrator_retention_refusal(request: request, readback: managed_readback, approved_attempt: cl.attempt) {
+                  match administrator_retention_refusal(standing: standing, request: request, readback: managed_readback, approved_attempt: cl.attempt) {
                     Present { value: c } => RotationApplyWouldLeaveNoAdministrator { channel: request_channel(request: request), cause: c }
                     Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
                   }
