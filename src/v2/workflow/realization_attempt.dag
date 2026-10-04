@@ -13,12 +13,11 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 
@@ -70,15 +69,10 @@ type EntryRealizationAttempt {
   standing: RealizationAttemptStanding
 }
 
+// The exact cause is the chain's FATAL element (its last), never its head: an advisory prepended
+// to the refusal (the grammar overlap residue heads every module's chain) only rode along.
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
-  let residue = ^parse_grammar_choice_overlap_residue
-  if !(ds.head.reason == residue) {
-    ds.head.reason
-  } else {
-    fold_list(xs: ds.tail, empty: ds.head.reason, cons: fn(acc, d) {
-      if (acc == residue) && !(d.reason == residue) { d.reason } else { acc }
-    })
-  }
+  diagnostics_fatal_reason(d: ds)
 }
 
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
@@ -93,23 +87,26 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
   }
 }
 
-fn first_located_file(ds: NonEmptyDiagnostics) -> String {
-  let head_file = match ds.head.at {
+// The file is the FATAL element's when its locus names one; otherwise the first file any element
+// of the WHOLE chain names, head included, so a cause located only by port does not lose the file
+// an advisory ahead of it recorded.
+fn diagnostic_textual_file(d: Diagnostic) -> String {
+  match d.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-    _ => ""
+    NodeLocus { anchor: _ } => ""
+    SourcePortLocus { anchor: _, file: _, extent: _ } => ""
+    InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
-  if head_file != "" {
-    head_file
+}
+
+fn first_located_file(ds: NonEmptyDiagnostics) -> String {
+  let fatal_file = diagnostic_textual_file(d: diagnostics_fatal(d: ds))
+  if fatal_file != "" {
+    fatal_file
   } else {
-    fold_list(xs: ds.tail, empty: "", cons: fn(acc, d) {
-      if acc != "" {
-        acc
-      } else {
-        match d.at {
-          Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-          _ => ""
-        }
-      }
+    fold_list(xs: ds.tail, empty: diagnostic_textual_file(d: ds.head), cons: fn(acc, d) {
+      if acc != "" { acc } else { diagnostic_textual_file(d: d) }
     })
   }
 }

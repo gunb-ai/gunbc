@@ -4,7 +4,6 @@ import std.content_hash { content_hash_atom }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr, List }
 import v2.std.algebra { any, fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
 import v2.std.optional {
   Absent,

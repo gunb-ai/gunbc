@@ -8,7 +8,6 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, ReferenceOccurrence,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source;
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
