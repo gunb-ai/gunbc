@@ -1387,13 +1387,13 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
-  fold(tp_names, init: env, f: (e, tp_name) =>
-    let tp_binding = TypeBinding {
-      name: tp_name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
-      provenance: SubValueUnknown, alias_rhs: none
-    }
+// ONE INSERT FOR EVERY SCOPED TYPE-PARAMETER BINDING. A declaration's type parameters are bound
+// only around that declaration (v1.compiler.infer_resolve declaration_type_param_names); the two
+// callers differ only in the binding's shape -- a TypeVariable for item resolution, a nominal leaf for
+// the module's topological resolution of declaration bodies -- so the scoping is written once.
+fn env_with_type_parameter_bindings(env: TypeEnv, tp_bindings: List<TypeBinding>) -> TypeEnv {
+  fold(tp_bindings, init: env, f: (e, tp_binding) =>
+    let tp_name = tp_binding.name
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
     let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding, source_indices: e.source_indices)
     TypeEnv { module_path: e.module_path,
@@ -1413,6 +1413,16 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       unit_variant_index_observed: e.unit_variant_index_observed
     }
   )
+}
+
+fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
+  env_with_type_parameter_bindings(env: env, tp_bindings: tp_names |> map(tp_name =>
+    TypeBinding {
+      name: tp_name,
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      provenance: SubValueUnknown, alias_rhs: none
+    }
+  ))
 }
 
 // A census-backed declaration has no materialized module TypeEnv, but its exact owner and the

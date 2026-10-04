@@ -124,7 +124,7 @@ import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
   text_representation_by_identity, text_crossing_by_identity, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
-  TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
+  TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache, env_with_type_parameter_bindings,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -169,7 +169,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, declaration_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -10012,9 +10012,7 @@ fn record_field_type_is_unresolved_param(field: Node, param_names: List<String>,
           Present { value: inf } => is_type_variable(inferred: inf)
           Absent =>
             let fname = authored_name_at(source_indices: env.source_indices, node: ft)
-            let in_params = param_names |> any(pn => pn == fname)
-            let conv = is_type_variable_name(name: fname)
-            in_params || conv
+            param_names |> any(pn => pn == fname)
         }
       } else { false }
     Absent => false
@@ -13451,9 +13449,6 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   map(items, item => infer_item(item: item, scope: scope))
 }
 
-fn is_type_variable_name(name: String) -> Bool {
-  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
-}
 
 type ArgGenericFoldState { results: List<ArgInferResult>, subst: Map<String, Node> }
 
@@ -13869,55 +13864,6 @@ fn merge_kernel_variant_locals_low_priority(
   )
 }
 
-fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
-  if module_path == "std.types" {
-    let filtered = fold(map_keys(parent_env.bindings), init: empty_map(), f: (acc, ident) =>
-      let name = intern_str(table: parent_env.intern_table, id: ident)
-      if is_type_variable_name(name: name) { acc }
-      else {
-        match map_get(parent_env.bindings, ident) {
-          Present { value: binding } => map_insert(acc, ident, binding)
-          Absent => acc
-        }
-      }
-    )
-    let filtered_str = fold(map_keys(parent_env.str_bindings), init: empty_map(), f: (acc, name) =>
-      if is_type_variable_name(name: name) { acc }
-      else {
-        match map_get(parent_env.str_bindings, name) {
-          Present { value: binding } => map_insert(acc, name, binding)
-          Absent => acc
-        }
-      }
-    )
-    let filtered_ancestry = fold(map_keys(parent_env.ancestry_str_bindings), init: empty_map(), f: (acc, name) =>
-      if is_type_variable_name(name: name) { acc }
-      else {
-        match map_get(parent_env.ancestry_str_bindings, name) {
-          Present { value: binding } => map_insert(acc, name, binding)
-          Absent => acc
-        }
-      }
-    )
-    let rebuilt_index = build_unit_variant_index(str_bindings: filtered_str, parents: parent_env.parents, source_indices: parent_env.source_indices)
-    TypeEnv { module_path: module_path,
-      bindings: filtered,
-      str_bindings: filtered_str,
-      ancestry_str_bindings: filtered_ancestry,
-      parents: parent_env.parents,
-      recursive_types: parent_env.recursive_types,
-      recursive_type_set: parent_env.recursive_type_set,
-      inductive_fields: parent_env.inductive_fields,
-      source_indices: parent_env.source_indices,
-      intern_table: parent_env.intern_table,
-      source_visible_names: parent_env.source_visible_names, authored_import_names: parent_env.authored_import_names,
-      symbol_index: parent_env.symbol_index,
-      unit_variant_index: rebuilt_index,
-      unit_variant_index_observed: true
-    }
-  } else { parent_env }
-}
-
 // Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a
 // dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the
 // flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the
@@ -13931,7 +13877,7 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
 // errors).
 
 fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
-  let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
+  let filtered = parent_env
   let rebuilt_index = build_unit_variant_index(str_bindings: filtered.str_bindings, parents: [], source_indices: filtered.source_indices)
   TypeEnv { module_path: module_path,
     bindings: filtered.bindings,
@@ -14976,7 +14922,7 @@ fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>
       Present { value: typed_parent } =>
         let export_surface = interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)
         let selected = if imp.is_all {
-          export_surface.str_bindings |> map_keys |> filter(name => is_type_variable_name(name: name) == false)
+          export_surface.str_bindings |> map_keys
         } else {
           imp.specific_names
         }
@@ -15144,17 +15090,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     }
   )
 
-  let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
-    if item.params |> count > 0 && is_type_decl && item.body == none {
-      let result = fold(item.params, init: acc, f: (pacc, p) =>
-        map_insert(pacc, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)).id, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
-      )
-      result
-    } else { acc }
-  )
   let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, ident) => map_insert(acc, ident, true))
-  let all_local_bindings = map_merge(local_bindings, param_bindings)
+  let all_local_bindings = local_bindings
 
   let kernel_cache = type_env_cache_from_bindings(
     bindings: kernel_bindings,
@@ -16766,6 +16703,18 @@ fn alias_rhs_reference(pre: Node, env: TypeEnv) -> Node? {
   }
 }
 
+// A DECLARATION BODY IS RESOLVED WITH ITS OWN TYPE PARAMETERS IN SCOPE, AND ONLY ITS OWN. They used to
+// be bound for the whole module (each generic declaration's params inserted beside the module's
+// declarations), which let any sibling -- or an importer -- resolve a bare `T` against another
+// declaration's parameter. The binding keeps the nominal-leaf shape the body has always resolved
+// against, so instantiation and rendering downstream read the same tree; only its scope changed.
+fn declaration_body_env(decl: Node, env: TypeEnv) -> TypeEnv {
+  env_with_type_parameter_bindings(
+    env: env,
+    tp_bindings: declaration_type_param_names(item: decl, source_indices: env.source_indices) |> map(n => nominal_type_binding(name: n))
+  )
+}
+
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
   let remaining = map(
     filter(env.bindings |> map_values, b => map_contains_key(local_names, intern(table: env.intern_table, s: b.name).id)),
@@ -16802,7 +16751,7 @@ fn topo_resolve_types(
       match map_get(env.bindings, ident) {
         Present { value: binding } =>
           let pre = binding.resolved
-          let result = resolve_node(n: pre, env: env, module_name: module_name)
+          let result = resolve_node(n: pre, env: declaration_body_env(decl: pre, env: env), module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
             identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
           let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
@@ -16821,7 +16770,7 @@ fn topo_resolve_types(
     match map_get(env.bindings, ident) {
       Present { value: binding } =>
         let pre = binding.resolved
-        let result = resolve_node(n: pre, env: env, module_name: module_name)
+        let result = resolve_node(n: pre, env: declaration_body_env(decl: pre, env: env), module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
           identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
         let updated_binding = TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown, alias_rhs: alias_rhs_reference(pre: pre, env: env) }
