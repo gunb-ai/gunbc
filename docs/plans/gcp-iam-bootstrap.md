@@ -94,23 +94,10 @@ approval workflow or a pasted-token path to secret consumers.
 
 ## Validation
 
-Build the branch's own release binary under the same 6 GiB/no-swap scope. The
-closure helper copies sources byte for byte and records their hashes:
-
-```bash
-python3 tools/tests/dag_validation_closure.py --output target/iam-bootstrap-controls \
-  test.claim.auth.gcp_iam_bootstrap_witness_test \
-  gunbc.bmc_onboarding gunbc.host_converge gunbc.host_effect \
-  gunbc.os_install_deduction gunbc.network_identity_subsumption \
-  gunbc.srv3_os_install_diagnostic
-systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet \
-  ./target/release/gunbc run --source-root target/iam-bootstrap-controls \
-  --entry target/iam-bootstrap-controls/test.claim.auth.gcp_iam_bootstrap_witness_test.dag \
-  --claim-run
-```
-
-The additional modules resolve existing admitted-caller references. This focused
-closure is not the full repository landing suite. Qualification must also record
+The witness `test.claim.auth.gcp_iam_bootstrap_witness_test` is discovered and
+executed by the required floor lane (`claim_executor --required-ci --required-lane
+witnesses`) on every pull request and merge group that touches its closure; no
+hand-assembled source root is needed. Qualification must also record
 the binary hash, source revision, pure plan, missing-credential refusal, cloud
 stage receipts, and a real approval-workflow run when available.
 

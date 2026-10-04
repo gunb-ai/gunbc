@@ -467,14 +467,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "cross-worker-typecheck-share-design",
-    primary_work: DeclarationRef { module_path: "v2.workflow.module_resolution_plan", decl_name: "module_resolution_store_value_note", field: WholeDeclaration },
-    additional_works: [
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "dag-scm-design",
     primary_work: DeclarationRef { module_path: "gunbc.roster_registry", decl_name: "GroupMembership", field: WholeDeclaration },
     additional_works: [
@@ -1090,7 +1082,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "srv4-bmc-onboarding-gap",
     primary_work: DeclarationRef { module_path: "gunbc.host_standup", decl_name: "host_standup_spine", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "product.placement_supply", decl_name: "HostIdentity", field: WholeDeclaration },
+      DeclarationRef { module_path: "product.host_identity", decl_name: "HostIdentity", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_standup_spine describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },

@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { TokenCount, ConcurrentRequestHundredths }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.python { PythonProgramText, python_run_program_argv }
 import extdeps.nvidia.cuda_driver {
@@ -164,7 +164,7 @@ fn rank_leg(
 ) -> RankLegOutcome
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
-    RemoteUnreachable { cause: why } =>
+    RemoteUnreachable { cause: why, reach: _ } =>
       RankLegFailed { refusal: rank_observation_refusal(subject: subject, step: step, cause: why as NonEmptyStr), stderr: "" }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {

@@ -1,7 +1,7 @@
 module gunbc.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.managed_directory { ManagedDirectory, attempt_state_directory_at }
 import gunbc.provider_account {
   codex_account_state_root,
