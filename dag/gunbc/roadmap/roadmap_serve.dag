@@ -38,7 +38,8 @@ import gunbc.auth.request_authentication {
   GoogleOidcSession,
   FabricServiceEvidence,
   SessionStandingInvalid,
-  request_access_path_of,
+  request_access_path_of_standing,
+  TailnetReadbackNotDemanded,
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
@@ -1607,16 +1608,14 @@ fn roadmap_serve_access_path(
   readback: TailnetServeReadback,
   decided_at: String,
 ) -> RequestAccessPath {
-  let standing = tailnet_route_standing(
-    readback: readback,
-    declared: roadmap_serve_declared_serve_endpoint(instance: instance),
-    decided_at: decided_at,
-  )
-  request_access_path_of(
+  request_access_path_of_standing(
     listen_host: instance.listen_host,
     tailscale_header: tailscale_identity,
-    serve_status: standing.serve_status,
-    serve_route: standing.serve_route,
+    standing: tailnet_route_standing(
+      readback: readback,
+      declared: roadmap_serve_declared_serve_endpoint(instance: instance),
+      decided_at: decided_at,
+    ),
     acl_policy: operator_tailscale_acl_policy,
   )
 }
@@ -1655,10 +1654,8 @@ fn roadmap_serve_selection_requires_tailnet_path(sel: RouteSelection<RoadmapServ
 }
 
 fn roadmap_serve_tailnet_readback(sel: RouteSelection<RoadmapServeHandler>, tailscale_identity: String) -> TailnetServeReadback {
-  if !roadmap_serve_selection_requires_tailnet_path(sel: sel) {
-    TailnetServeReadbackUntaken { reason: "the selected route does not require the tailnet path" }
-  } else if tailscale_identity == "" {
-    TailnetServeReadbackUntaken { reason: "the request carries no tailnet identity header" }
+  if !roadmap_serve_selection_requires_tailnet_path(sel: sel) || tailscale_identity == "" {
+    TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
   } else {
     tailnet_serve_readback_take()
   }
@@ -1669,7 +1666,7 @@ fn roadmap_serve_tailnet_readback(sel: RouteSelection<RoadmapServeHandler>, tail
 // fresh against.
 fn roadmap_serve_decided_at(readback: TailnetServeReadback) -> String {
   match readback {
-    TailnetServeReadbackUntaken { reason: _ } => ""
+    TailnetServeReadbackUntaken { gap: _ } => ""
     TailnetServeReadbackTaken { status_json: _, observed_at: _ } =>
       match clock_now_probed_at() {
         Present { value: now } => now as String

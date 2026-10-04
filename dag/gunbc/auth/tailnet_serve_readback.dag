@@ -7,41 +7,37 @@ import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.gnu_coreutils { timeout_command }
 import extdeps.tailscale.serve {
-  TailscaleServeEndpoint, TailscaleServeRouteKey, TailscaleServeStatusProjection,
+  TailscaleServeEndpoint,
   ServeStatusProxies, ServeStatusUnreadable,
   tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets,
   tailscale_serve_route_key, tailscale_serve_proxy_url,
 }
 import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.request_authentication {
+  TailnetServeReadbackGap, TailnetReadbackClockUnreadable, TailnetReadbackNotSpawned, TailnetReadbackCommandFailed,
+  TailnetRouteStanding, TailnetRouteObserved, TailnetRouteUnobserved,
+  TailnetRouteUndeclared, TailnetReadbackUntaken, TailnetReadbackStale, TailnetStatusUnreadable,
+  TailnetRouteNotProxied, TailnetRouteProxiesElsewhere,
+}
+import std.algebra { trim }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
 // THE SERVE-ROUTE READBACK the access-path fold (gunbc.auth.request_authentication
-// request_access_path_of) requires before it will mint AccessPathTailnetProxy. It is the text
-// `tailscale serve status --json` printed on this host and the instant the read began, or the
-// reason no reading exists. The request's Tailscale-User-Login header is not an input here: the
-// header says who the proxy claims is calling, this says whether the proxy is the declared route
-// to this backend at all.
+// request_access_path_of_standing) requires before it will mint AccessPathTailnetProxy. It is the
+// text `tailscale serve status --json` printed on this host and the instant the read began, or
+// the typed cause no reading exists. The request's Tailscale-User-Login header is not an input
+// here: the header says who the proxy claims is calling, this says whether the proxy is the
+// declared route to this backend at all.
 type TailnetServeReadback
   = TailnetServeReadbackTaken { status_json: String, observed_at: Timestamp }
-  | TailnetServeReadbackUntaken { reason: NonEmptyStr }
-
-// What the fold consumes: the status projection at the declared route, and the route key only
-// when that projection shows the declared backend proxied there.
-type TailnetRouteStanding {
-  serve_status: TailscaleServeStatusProjection
-  serve_route: TailscaleServeRouteKey?
-}
+  | TailnetServeReadbackUntaken { gap: TailnetServeReadbackGap }
 
 // A reading older than this at decision time is not evidence about the route the request used.
 // The bound covers the read's own timeout plus the clock reads either side of it.
 data tailnet_serve_readback_freshness_bound: Second = second(count: 15)
 data tailnet_serve_readback_timeout: Second = second(count: 10)
 data tailnet_serve_readback_kill_after: Second = second(count: 2)
-
-fn tailnet_route_unobserved() -> TailnetRouteStanding {
-  TailnetRouteStanding { serve_status: ServeStatusUnreadable, serve_route: none }
-}
 
 fn tailnet_serve_readback_is_fresh(observed_at: Timestamp, decided_at: Timestamp) -> Bool {
   if !utc_instant_is_canonical(t: observed_at) || !utc_instant_is_canonical(t: decided_at) {
@@ -52,29 +48,28 @@ fn tailnet_serve_readback_is_fresh(observed_at: Timestamp, decided_at: Timestamp
   }
 }
 
-// THE STANDING FOLD. Every arm that cannot show the declared backend proxied at the declared
-// route answers with no route, and the access-path fold then drops the header: no declared
-// endpoint for this instance, no reading, a reading that is stale or whose clock is unreadable,
-// an unreadable status document, and a readable one whose handler at this listener and mount
-// proxies somewhere else.
+// THE STANDING FOLD. Only a fresh, readable reading showing the declared backend at the declared
+// listener and mount is an observed route; every other arm names its own cause.
 fn tailnet_route_standing(readback: TailnetServeReadback, declared: TailscaleServeEndpoint?, decided_at: Timestamp) -> TailnetRouteStanding {
   match declared {
-    Absent => tailnet_route_unobserved()
+    Absent => TailnetRouteUnobserved { gap: TailnetRouteUndeclared }
     Present { value: endpoint } =>
       match readback {
-        TailnetServeReadbackUntaken { reason: _ } => tailnet_route_unobserved()
+        TailnetServeReadbackUntaken { gap: g } => TailnetRouteUnobserved { gap: TailnetReadbackUntaken { gap: g } }
         TailnetServeReadbackTaken { status_json: text, observed_at: observed } =>
           if !tailnet_serve_readback_is_fresh(observed_at: observed, decided_at: decided_at) {
-            tailnet_route_unobserved()
+            TailnetRouteUnobserved { gap: TailnetReadbackStale }
           } else {
             let key = tailscale_serve_route_key(endpoint: endpoint)
             match tailscale_serve_status_route_proxy_targets(status_json: text, key: key) {
-              ServeStatusUnreadable => tailnet_route_unobserved()
+              ServeStatusUnreadable => TailnetRouteUnobserved { gap: TailnetStatusUnreadable }
               ServeStatusProxies { targets } =>
-                if any(targets, t => t == tailscale_serve_proxy_url(endpoint: endpoint)) {
-                  TailnetRouteStanding { serve_status: ServeStatusProxies { targets: targets }, serve_route: Present { value: key } }
+                if count(targets) == 0 {
+                  TailnetRouteUnobserved { gap: TailnetRouteNotProxied }
+                } else if any(targets, t => t == tailscale_serve_proxy_url(endpoint: endpoint)) {
+                  TailnetRouteObserved { serve_route: key }
                 } else {
-                  TailnetRouteStanding { serve_status: ServeStatusProxies { targets: targets }, serve_route: none }
+                  TailnetRouteUnobserved { gap: TailnetRouteProxiesElsewhere { targets: targets } }
                 }
             }
           }
@@ -85,24 +80,25 @@ fn tailnet_route_standing(readback: TailnetServeReadback, declared: TailscaleSer
 fn tailnet_serve_readback_of_run(run: ProcessRunOutcome, observed_at: Timestamp) -> TailnetServeReadback {
   match run {
     ProcessNotSpawned { program: _, cause: why } =>
-      TailnetServeReadbackUntaken { reason: concat("tailscale serve status was not spawned: ", why as String) as NonEmptyStr }
+      TailnetServeReadbackUntaken { gap: TailnetReadbackNotSpawned { cause: why as String } }
     ProcessRan { observation: o } =>
       if o.exit_code == 0 {
         TailnetServeReadbackTaken { status_json: o.stdout, observed_at: observed_at }
       } else {
-        TailnetServeReadbackUntaken { reason: concat("tailscale serve status exited ", to_string(o.exit_code)) as NonEmptyStr }
+        TailnetServeReadbackUntaken { gap: TailnetReadbackCommandFailed { exit_code: o.exit_code, stderr: trim(o.stderr) } }
       }
   }
 }
 
 // THE EFFECTFUL READ: the clock, then the bounded status command as the serving principal. It is
-// not elevated -- a host where the serving principal cannot read the serve config yields an
-// untaken reading and the tailnet-required writes refuse there.
+// not elevated -- a host where the serving principal cannot read the serve config yields
+// TailnetReadbackCommandFailed with what the client printed, and the tailnet-required writes
+// refuse there naming it.
 fn tailnet_serve_readback_take() -> TailnetServeReadback
   uses net: Network
 {
   match clock_now_probed_at() {
-    Absent => TailnetServeReadbackUntaken { reason: "the clock reading refused, so the serve readback cannot be dated" }
+    Absent => TailnetServeReadbackUntaken { gap: TailnetReadbackClockUnreadable }
     Present { value: started } =>
       tailnet_serve_readback_of_run(
         run: run_shell_command_observe_outcome(

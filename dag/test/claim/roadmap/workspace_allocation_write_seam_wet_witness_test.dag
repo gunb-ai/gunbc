@@ -8,6 +8,7 @@ import test.claim.workspace_allocation_http_witness_test {
 }
 import gunbc.auth.session { SessionMinted, SessionRefused }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadbackUntaken }
+import gunbc.auth.request_authentication { TailnetReadbackNotDemanded }
 import extdeps.ietf.http_semantics { POST }
 import extdeps.http.server { ServeHttpRequest }
 import gunbc.fabric_storage_client { FabricStorageLocalFiles }
@@ -21,8 +22,8 @@ import gunbc.principal_projection { principal_ref_eq }
 // THE WRITE LANDS. A valid session, its CSRF token, an enrolled owner and a fresh reading showing
 // the declared route, through the serve seam's access path and the mounted create route, into a
 // real file store: the owner's ledger then holds one wanted allocation whose image, key reference
-// and expiry are the server's terms. Before it, the same request without the reading is refused
-// and the ledger stays empty; after it, the release route retires that allocation.
+// and expiry are the server's terms. Before it, the same request without the reading is answered
+// unavailable and the ledger stays empty; after it, the release route retires that allocation.
 test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
   let directory = shell.Mktemp.Dir()
   let root = fabric_storage_file_root(root: directory.path)
@@ -32,7 +33,7 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
       SessionRefused { cause: _ } => false
       SessionMinted { session } => {
         let good_path = seam_security(session: session, header: seam_tailnet_login, readback: seam_matching_readback(observed_at: seam_observed_at), decided_at: seam_decided_at)
-        let no_path = seam_security(session: session, header: seam_tailnet_login, readback: TailnetServeReadbackUntaken { reason: "untaken" }, decided_at: seam_decided_at)
+        let no_path = seam_security(session: session, header: seam_tailnet_login, readback: TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }, decided_at: seam_decided_at)
         let refused = seam_create(security: no_path, owner: session, store: store, body: seam_create_body(csrf: "csrf-1"))
         let empty_after_refusal = match workspace_read_owner(store: store, owner: session.principal) {
           WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 0
@@ -57,7 +58,7 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
           WorkspaceStoreUnreadable { reason: _ } => false
           WorkspaceStoreReadOk { snapshot } => count(snapshot.allocations) == 1 && all(snapshot.allocations, a => a.desired == WorkspaceRetired)
         }
-        refused.status == 403 && empty_after_refusal && created.status == 200 && landed && released.status == 200 && retired
+        refused.status == 503 && empty_after_refusal && created.status == 200 && landed && released.status == 200 && retired
       }
     }
     other => false

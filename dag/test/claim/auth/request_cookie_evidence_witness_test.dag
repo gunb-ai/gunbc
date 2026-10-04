@@ -5,7 +5,7 @@ import gunbc.host_layout { srv1_host_layout }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.roadmap_serve { roadmap_serve_request_security }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackUntaken }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
+import gunbc.auth.request_authentication { TailnetReadbackNotDemanded, RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
 import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent, SessionCookieUnknown, SessionCookieUnread }
 
 // ABSENCE STAYS ABSENCE AT THE COOKIE SEAM (review 74789). A request with no Cookie header field
@@ -19,7 +19,7 @@ fn fixture_instance() -> HostDashboardInstance {
 }
 
 fn no_readback() -> TailnetServeReadback {
-  TailnetServeReadbackUntaken { reason: "this claim is about the cookie" }
+  TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
 }
 
 fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {

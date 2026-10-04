@@ -40,7 +40,7 @@ import gunbc.auth.request_authentication {
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
-  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
+  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev, AccessPathTailnetUnobserved, TailnetStatusUnreadable, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -153,7 +153,7 @@ test fn a_proxied_loopback_request_models_the_tailnet_path_with_versioned_readba
 }
 
 // THE FORGED-HEADER CONTROL: the same header with NO readback is dropped — the path is
-// AccessPathLocalDev, the transport observation is absent, and with no session supplied the
+// AccessPathTailnetUnobserved naming the unreadable status, the transport observation is absent, and with no session supplied the
 // context names no principal anywhere. A Tailscale-User-Login header alone, self-asserted by any
 // co-located process, establishes nothing.
 test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool {
@@ -165,7 +165,7 @@ test fn a_forged_header_without_the_readback_establishes_no_principal() -> Bool 
     acl_policy: operator_tailscale_acl_policy,
   )
   let security = RequestSecurityContext { access_path: path, authentication: AuthAbsent }
-  path == AccessPathLocalDev
+  path == AccessPathTailnetUnobserved { gap: TailnetStatusUnreadable }
     && tailnet_transport_observation(security: security) == TailnetIdentityAbsent
     && match security.authentication {
       AuthAbsent => true
