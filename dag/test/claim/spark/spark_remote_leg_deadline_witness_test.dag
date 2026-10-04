@@ -3,6 +3,7 @@ module test.claim.spark.spark_remote_leg_deadline_witness_test
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { second, second_count }
 import extdeps.ssh.client_options { serialize_ssh_client_options }
+import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshLegDeadline,
@@ -13,7 +14,7 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.spark.model_snapshot_materialize {
   SparkRemoteRun, RemoteRan, RemoteUnreachable,
   LegNotAttempted, LegBeginUnobserved,
-  spark_remote_run_of_session, spark_remote_leg_began_word, spark_argv_run_of_unreachable,
+  spark_remote_run_of_session, spark_argv_run_of_unreachable,
 }
 
 // THE DEADLINE THE SPARK LEGS CARRY, asserted as exact argv. Fleet-converge run 37156689444 sat ~1h
@@ -82,7 +83,7 @@ test fn w_begin_unobserved_text_says_may_have_run_and_dark_or_down_undecided() -
 // A session lost AFTER the began-line ran to an unknown point: it stays a ran result with ssh's 255,
 // never an unreached one a caller could retry as if nothing happened.
 test fn w_session_lost_after_begin_stays_ran() -> Bool {
-  match spark_remote_run_of_session(endpoint: "h", exit_code: 255, stdout: join([spark_remote_leg_began_word, "partial"], "\n"), stderr: "Timeout, server h not responding.") {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 255, stdout: join([remote_leg_began_word, "partial"], "\n"), stderr: "Timeout, server h not responding.") {
     RemoteRan { exit_code: c, stdout: o, stderr: _ } => c == 255 && o == "partial"
     RemoteUnreachable { cause: _, reach: _ } => false
   }
@@ -90,7 +91,7 @@ test fn w_session_lost_after_begin_stays_ran() -> Bool {
 
 // The began-line is stripped, so every consumer reads exactly the command's stdout.
 test fn w_began_line_never_reaches_a_consumer() -> Bool {
-  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([spark_remote_leg_began_word, "active"], "\n"), stderr: "") {
+  match spark_remote_run_of_session(endpoint: "h", exit_code: 0, stdout: join([remote_leg_began_word, "active"], "\n"), stderr: "") {
     RemoteRan { exit_code: c, stdout: o, stderr: _ } => c == 0 && o == "active"
     RemoteUnreachable { cause: _, reach: _ } => false
   }
