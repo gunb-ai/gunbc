@@ -1,7 +1,6 @@
 module v2.test.workflow.body_lowering_retention_census
 
 import v2.std.algebra { Empty, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.body_lowering_retention_census {
   RetainedProduction,

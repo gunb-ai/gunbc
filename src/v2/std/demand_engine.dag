@@ -16,7 +16,6 @@ import std.algebra { Cons, Empty }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyRelation }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.materialization_ladder { DemandNature, FreshEffect, IdempotentEffect, PureComputation, WorldRead }
 import std.judgment_contract { DemandIdentity, demand_identity_canonical }

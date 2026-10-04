@@ -4,7 +4,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.lens.cost { SumCost, cost_lens, unit_cost }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,

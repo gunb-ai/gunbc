@@ -14,7 +14,6 @@ pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRo
 pub use crate::gunbc_stage0_partition_package_graph::{
     partition_package_dependency_names_over, stage0_partition_row_is_module_bearing_package,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

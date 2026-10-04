@@ -5,7 +5,6 @@ import v2.compiler.infer { infer }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { ComputationNode, Node, Symbol, Transform, node_subtree_nodes }
 import v2.std.node_query { field_projection_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_to_dotted_string }
