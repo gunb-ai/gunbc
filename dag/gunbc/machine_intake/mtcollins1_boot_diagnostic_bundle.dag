@@ -66,8 +66,8 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   Carrier, SolConsole, KvmScreen, SmproRegisters, SmproErrorRegisters, SystemEventLog, SensorTable, ChassisPower, RedfishInventory, VirtualMedia, HostCaptureMarkers,
   CarrierCoverage, CarrierStanding, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken,
   PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
-  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
-  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded,
+  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, PopulationNotRecorded,
   ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, ProcessorSocketUnreadable, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryBelowRecordedPopulation, MemoryNotNominal, SelHardwareEvent,
   mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes, SpanConsoleReading, span_console_readings,
 }
@@ -1033,6 +1033,7 @@ type MtCollins1BootDiagnosticBundle {
   console: ConsoleReading
   run: MtCollins1BootRunRecord
   screen: KvmObserverRecord
+  configuration: AttemptConfigurationReceipt
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -1313,7 +1314,7 @@ fn sel_channel(channel: NonEmptyStr, s: SelSnapshotReading) -> BmcChannelRead {
   } }
 }
 
-fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
+fn members_channel<T>(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
   BmcChannelRead { channel: channel, standing: match m {
     MembersRead { members: _ } => BmcChannelAnswered
     MembersUnread { cause: c } => BmcChannelFailed { cause: c }
@@ -1542,31 +1543,9 @@ fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<Carr
   ]
 }
 
-// THE ATTEMPT CONFIGURATION RECEIPT THIS RUN CAN FREEZE TODAY. The fleet-converge boot takes no
-// stimulus, population, expected-topology or pre-actuation firmware receipt yet, so those fields are
-// NotRecorded with that reason and every question needing them is open; the historical census and
-// orientation rows are deliberately NOT used (they map topology, never current occupancy, and are no
-// expectation of THIS attempt), so no topology degradation is minted from them. DECLARED FRONTIER: the receipt's live inputs land
-// with the boot workflow's stimulus-receipt input (docs/plans/power-on-sequence-model.md section 10);
-// until then the account says what it cannot judge rather than judging it.
-data mtcollins1_receipt_input_frontier: NonEmptyStr = "the fleet-converge boot takes no stimulus, population or pre-actuation firmware receipt yet"
-
-fn mtcollins1_attempt_configuration_receipt(attempt: AttemptIdentityReading) -> AttemptConfigurationReceipt {
-  AttemptConfigurationReceipt {
-    subject: "mtcollins1",
-    attempt: attempt_identity_text(a: attempt) as NonEmptyStr,
-    expected: ExpectedTopologyNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    requested: StimulusRequestNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    applied: StimulusApplicationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    cpus: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    dimms: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    firmware: FirmwareReadbacksNotRecorded { reason: mtcollins1_receipt_input_frontier },
-  }
-}
-
 fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEvidence {
   let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
-  let receipt = mtcollins1_attempt_configuration_receipt(attempt: bundle.attempt)
+  let receipt = bundle.configuration
   PowerOnEvidence {
     configuration: receipt,
     handoff: handoff_standing(h: bundle.run.handoff_media),

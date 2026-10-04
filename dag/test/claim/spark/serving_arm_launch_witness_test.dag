@@ -10,7 +10,7 @@ import extdeps.docker.cli { DockerCreateSpec, DockerEnvAssignment, DockerDeviceM
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.spark.collective_transport_plan { CollectiveTransportPlan, SocketOverInterface }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
   ServingLaunchProfile, ServingCheckpoint, glm_native_concurrent_profile,

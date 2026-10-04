@@ -5,7 +5,6 @@ use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::FmArmAnalysis::*;
 use self::FmLoweringRefusal::*;
-use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::NativeClaimEffectDemand::*;
 use self::WitnessCtorPathVerdict::*;
@@ -56,7 +55,6 @@ pub use crate::gunbc_rust_emitted_edge::{
     semantic_source_reference_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
-pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
@@ -67,8 +65,7 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
 pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    structural_ordering_rows,
+    kernel_grounding_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
@@ -77,22 +74,17 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
+pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_literal_elaboration::kernel_grounding_for;
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
-use crate::std_literal_elaboration::KernelMintOwnership::{
-    DeclarationDoesNotOwnTheMint, DeclarationOwnsTheMint, KernelMintOwnershipAmbiguous,
-};
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership};
-pub use crate::std_literal_elaboration::{
-    KernelGroundingLookup, KernelMintOwnership, LiteralSourceKind,
-};
+pub use crate::std_literal_elaboration::{KernelGroundingLookup, LiteralSourceKind};
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -135,17 +127,14 @@ use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
 use crate::std_target_representation::VariantParentIdentity::{
-    VariantParentBeforeInference, VariantParentIdentified, VariantParentUnrecovered,
-};
-use crate::std_target_representation::VariantParentKey::{
-    VariantParentDeclaration, VariantParentKernelType,
+    VariantParentBeforeInference, VariantParentUnrecovered,
 };
 use crate::std_target_representation::VariantValueRealization::{
     VariantParentIdentityUnavailable, VariantRealizesAsTargetValue, VariantRealizesStructurally,
     VariantTargetValueAmbiguous, VariantTargetValueUnbound,
 };
 pub use crate::std_target_representation::{
-    ExactBindingResolution, VariantParentIdentity, VariantParentKey, VariantValueRealization,
+    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
@@ -889,20 +878,11 @@ pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
 }
 
 pub fn is_host_optional_carrier_alias(name: String) -> bool {
-    (name.clone() == kernel_optional_mint_name())
+    (name.clone() == "Optional".to_string())
 }
 
 pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
-    {
-        let mut __found = false;
-        for d in rust_host_option_carrier_declarations().iter().cloned() {
-            if (d.decl_name.clone() == name.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
+    (name.clone() == "Diagnostics".to_string())
 }
 
 pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
@@ -938,10 +918,8 @@ pub fn is_host_diagnostics_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    is_host_diagnostics_carrier_alias(crate::v1_std_core::authored_name_at(
-        source_indices.clone(),
-        n.clone(),
-    ))
+    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+        == "Diagnostics".to_string())
 }
 
 pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
@@ -4069,7 +4047,22 @@ pub fn type_node_has_closure_unbound_generic_atom(
                     }
                     __found
                 }
-                std::option::Option::None => false,
+                std::option::Option::None => {
+                    let mut __found = false;
+                    for p in n.params.clone().iter().cloned() {
+                        if !type_var_in_fn_generic_scope(
+                            crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                source_indices.clone(),
+                            ),
+                            generic_param_names.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
             }
         }
     })
@@ -18703,9 +18696,39 @@ crate::v1_compiler_trait_bound_witness::v1_call_forwarding_bound_wrapper_param_n
                     }
                     __result
                 });
+                let arrow_forwarded = Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in callee_value_params.iter().cloned() {
+                        __result.extend(
+                            (*match v1_rt::map_get(&arg_by_name, cp.name.clone()) {
+                                std::option::Option::None => Rc::new(vec![]),
+                                Some(arg_node) => v1_positional_bound_forwarded_names(
+                                    v1_arrow_arg_type_names(
+                                        crate::v1_std_core::param_node_type_expr(cp.clone()),
+                                        si.clone(),
+                                    ),
+                                    v1_arrow_arg_type_names(
+                                        crate::v1_compiler_infer_types::resolved_type(
+                                            arg_node.clone(),
+                                        ),
+                                        si.clone(),
+                                    ),
+                                    callee_bound_param_names.clone(),
+                                    wrapper_generic_param_names.clone(),
+                                ),
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                });
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                    Rc::new(vec![]),
-                    forwarded.clone(),
+                    crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                        Rc::new(vec![]),
+                        forwarded.clone(),
+                    ),
+                    arrow_forwarded.clone(),
                 )
             }
         }
@@ -18757,6 +18780,329 @@ pub fn v1_call_forwarding_clone_bound_param_names(
     })
 }
 
+pub fn v1_callee_clone_bound_param_names(
+    callee_name: String,
+    callee_item: Rc<Node>,
+    callee_body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let callee_params = callee_item.params.clone();
+        let callee_generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in function_type_params(callee_params.clone()).iter().cloned() {
+                __result.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+            v1_fn_body_derived_clone_param_names(
+                callee_params.clone(),
+                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                callee_body.clone(),
+                emit_info.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+            ),
+            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                v1_call_forwarding_clone_bound_param_names(
+                    callee_generic_param_names.clone(),
+                    callee_body.clone(),
+                    fn_decl_items.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                ),
+                v1_fn_result_fn_value_clone_forwarded_param_names(
+                    callee_generic_param_names.clone(),
+                    crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
+                    callee_body.clone(),
+                    fn_decl_items.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
+                ),
+            ),
+        )
+    }
+}
+
+pub fn v1_record_decl_slot_arg_name(
+    mut __tco_loop_decl_params: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_type_args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_slot_name: String,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    loop {
+        #[allow(unused_mut)]
+        let mut decl_params = __tco_loop_decl_params;
+        #[allow(unused_mut)]
+        let mut type_args = __tco_loop_type_args;
+        #[allow(unused_mut)]
+        let mut slot_name = __tco_loop_slot_name;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
+        match decl_params.clone().first().cloned() {
+            std::option::Option::None => {
+                break "".to_string();
+            }
+            Some(decl_param) => match type_args.clone().first().cloned() {
+                std::option::Option::None => {
+                    break "".to_string();
+                }
+                Some(type_arg) => {
+                    if (crate::v1_std_core::generic_param_name_at(
+                        decl_param.clone(),
+                        source_indices.clone(),
+                    ) == slot_name.clone())
+                    {
+                        break crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            type_arg.clone(),
+                        );
+                    } else {
+                        {
+                            let __tco_0 = Rc::new(
+                                decl_params
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                type_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_2 = slot_name;
+                            let __tco_3 = source_indices;
+                            __tco_loop_decl_params = __tco_0;
+                            __tco_loop_type_args = __tco_1;
+                            __tco_loop_slot_name = __tco_2;
+                            __tco_loop_source_indices = __tco_3;
+                            continue;
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub fn v1_arrow_arg_type_names(
+    arrow: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in arrow.params.clone().iter().cloned() {
+            __result.push(if ((p.children.clone().len() as i64) > 0) {
+                crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                )
+            } else {
+                crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone())
+            });
+        }
+        __result
+    })
+}
+
+pub fn v1_positional_bound_forwarded_names(
+    callee_names: Rc<Vec<String>>,
+    wrapper_names: Rc<Vec<String>>,
+    callee_bound_param_names: Rc<Vec<String>>,
+    wrapper_generic_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match callee_names.clone().first().cloned() {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(callee_name) => match wrapper_names.clone().first().cloned() {
+                std::option::Option::None => Rc::new(vec![]),
+                Some(wrapper_name) => {
+                    let here = if ({
+                        let mut __found = false;
+                        for g in callee_bound_param_names.iter().cloned() {
+                            if (g.clone() == callee_name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } && {
+                        let mut __found = false;
+                        for g in wrapper_generic_param_names.iter().cloned() {
+                            if (g.clone() == wrapper_name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
+                        Rc::new(vec![wrapper_name.clone()])
+                    } else {
+                        Rc::new(vec![])
+                    };
+                    v1_rt::concat(
+                        here.clone(),
+                        v1_positional_bound_forwarded_names(
+                            Rc::new(
+                                callee_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                wrapper_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            callee_bound_param_names.clone(),
+                            wrapper_generic_param_names.clone(),
+                        ),
+                    )
+                }
+            },
+        }
+    })
+}
+
+pub fn v1_fn_result_record_lits(body: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*body.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new(vec![body.clone()]),
+            ExprData::ExprIf => v1_rt::concat(
+                v1_fn_result_record_lits(crate::v1_std_core::if_then_branch(body.clone())),
+                match crate::v1_std_core::if_else_branch(body.clone()) {
+                    Some(e) => v1_fn_result_record_lits(e.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                },
+            ),
+            ExprData::ExprMatch => Rc::new({
+                let mut __result = Vec::new();
+                for arm_node in crate::v1_std_core::match_arm_nodes(body.clone())
+                    .iter()
+                    .cloned()
+                {
+                    __result.extend(
+                        (*v1_fn_result_record_lits(crate::v1_std_core::arm_body(arm_node.clone())))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+            ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
+                Some(b) => v1_fn_result_record_lits(b.clone()),
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            ExprData::ExprBlock => match body.children.clone().last().cloned() {
+                Some(last_expr) => v1_fn_result_record_lits(last_expr.clone()),
+                std::option::Option::None => Rc::new(vec![]),
+            },
+            ExprData::ExprReturn => Rc::new({
+                let mut __result = Vec::new();
+                for child in body.children.clone().iter().cloned() {
+                    __result.extend((*v1_fn_result_record_lits(child.clone())).iter().cloned());
+                }
+                __result
+            }),
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
+pub fn v1_fn_result_fn_value_clone_forwarded_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    ret: Rc<Node>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        if ((generic_param_names.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let ret_head = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(si.clone(), ret.clone()),
+        );
+        match v1_rt::map_get(&emit_info.type_decl_items.clone(), ret_head.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(decl) => {
+                let forwarded = Rc::new({
+                    let mut __result = Vec::new();
+                    for record in Rc::new({
+                        let mut __result = Vec::new();
+                        for record in v1_fn_result_record_lits(body.clone()).iter().cloned() {
+                            if (crate::v1_std_core::qualified_last_segment(
+                                crate::v1_std_core::authored_name_at(si.clone(), record.clone()),
+                            ) == ret_head.clone())
+                            {
+                                __result.push(record);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.extend((*Rc::new({ let mut __result = Vec::new(); for fi in record.children.clone().iter().cloned() { __result.extend((*{
+                let value = crate::v1_std_core::field_init_node_value(fi.clone());
+let callee_name = match (*value.expr_data.clone()).clone() {
+    ExprData::ExprVar { binding_kind: bk, .. } => match bk.clone().as_deref().cloned() {
+    Some(VarBindingKind::FunctionValueBinding) => crate::v1_std_core::authored_name_at(si.clone(), value.clone()),
+    _ => "".to_string(),
+},
+    _ => "".to_string(),
+};
+if ((callee_name.clone() == "".to_string()) || { let mut __found = false; for v in visited.iter().cloned() { if (v.clone() == callee_name.clone()) { __found = true; break; } } __found }) {
+                    Rc::new(vec![])
+                } else {
+                    match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(callee_item) => match callee_item.body.clone() {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(callee_body) => match crate::v1_std_core::find_child_named(decl.clone(), crate::v1_std_core::field_init_node_name_at(fi.clone(), si.clone()), si.clone()) {
+    std::option::Option::None => Rc::new(vec![]),
+    Some(decl_field) => v1_positional_bound_forwarded_names(Rc::new({ let mut __result = Vec::new(); for cp in function_value_params(callee_item.params.clone()).iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(si.clone(), crate::v1_std_core::param_node_type_expr(cp.clone()))); } __result }), Rc::new({ let mut __result = Vec::new(); for slot in v1_arrow_arg_type_names(crate::v1_compiler_infer_types::child_type_node(decl_field.clone()), si.clone()).iter().cloned() { __result.push(v1_record_decl_slot_arg_name(decl.params.clone(), ret.children.clone(), slot.clone(), si.clone())); } __result }), v1_callee_clone_bound_param_names(callee_name.clone(), callee_item.clone(), callee_body.clone(), fn_decl_items.clone(), emit_info.clone(), shared_types.clone(), si.clone(), visited.clone()), generic_param_names.clone()),
+},
+},
+}
+                }
+}).iter().cloned()); } __result })).iter().cloned());
+                    }
+                    __result
+                });
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    Rc::new(vec![]),
+                    forwarded.clone(),
+                )
+            }
+        }
+    }
+}
+
 pub fn v1_call_site_clone_forwarded_param_names(
     call: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -18798,26 +19144,16 @@ pub fn v1_call_site_clone_forwarded_param_names(
                         }
                         __result
                     });
-                    let callee_clone_param_names =
-                        crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                            v1_fn_body_derived_clone_param_names(
-                                callee_params.clone(),
-                                crate::v1_compiler_infer_types::resolved_type(callee_item.clone()),
-                                callee_body.clone(),
-                                emit_info.clone(),
-                                shared_types.clone(),
-                                si.clone(),
-                            ),
-                            v1_call_forwarding_clone_bound_param_names(
-                                callee_generic_param_names.clone(),
-                                callee_body.clone(),
-                                fn_decl_items.clone(),
-                                emit_info.clone(),
-                                shared_types.clone(),
-                                si.clone(),
-                                v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()])),
-                            ),
-                        );
+                    let callee_clone_param_names = v1_callee_clone_bound_param_names(
+                        callee_name.clone(),
+                        callee_item.clone(),
+                        callee_body.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        shared_types.clone(),
+                        si.clone(),
+                        visited.clone(),
+                    );
                     v1_call_forwarding_forwarded_param_names(
                         call.clone(),
                         function_value_params(callee_params.clone()),
@@ -19169,10 +19505,23 @@ pub fn emit_fn_def(
             si.clone(),
             Rc::new(vec![name.clone()]),
         );
+        let result_fn_value_clone_param_names = v1_fn_result_fn_value_clone_forwarded_param_names(
+            generic_param_names.clone(),
+            inferred.clone(),
+            body.clone(),
+            emit_info.fn_decl_items.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            si.clone(),
+            Rc::new(vec![name.clone()]),
+        );
         let derived_clone_param_names_with_rc_match =
             crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                self_derived_clone_param_names.clone(),
-                call_forwarding_clone_param_names.clone(),
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    self_derived_clone_param_names.clone(),
+                    call_forwarding_clone_param_names.clone(),
+                ),
+                result_fn_value_clone_param_names.clone(),
             );
         let module_path = scope.type_env.clone().module_path.clone();
         let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0) && crate::v1_compiler_trait_derive_emit::trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone())) {
@@ -20937,7 +21286,6 @@ pub fn emit_pattern(
             std::option::Option::None => emit_variant_pattern(
                 n.clone(),
                 parent_enum.clone(),
-                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 shared_types.clone(),
@@ -21017,8 +21365,7 @@ pub fn is_optional_variant_name(name: String) -> bool {
 }
 
 pub fn is_optional_like_parent_name(name: String) -> bool {
-    ((name.clone() == kernel_optional_mint_name())
-        || is_host_diagnostics_carrier_alias(name.clone()))
+    ((name.clone() == "Optional".to_string()) || (name.clone() == "Diagnostics".to_string()))
 }
 
 pub fn is_some_like_variant_name(name: String) -> bool {
@@ -21187,90 +21534,9 @@ pub fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> S
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum HostOptionArmReading {
-    HostOptionArmIsHostOption,
-    HostOptionArmIsNot,
-    HostOptionArmSpelledWithoutIdentity,
-    HostOptionArmBindingAmbiguous,
-}
-
-pub fn host_option_arm_reading(
-    identity: Rc<VariantParentIdentity>,
-    bare_name: String,
-    inferred_parent: Option<String>,
-    resolved_parent: Option<String>,
-) -> HostOptionArmReading {
-    {
-        let inferred_is_kernel_optional =
-            (inferred_parent.clone().as_deref() == Some(kernel_optional_mint_name()).as_deref());
-        match (*identity.clone()).clone() {
-            VariantParentIdentity::VariantParentIdentified { key: key, .. } => match (*key.clone())
-                .clone()
-            {
-                VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-                        kernel_mint_declaration_rows(),
-                        kernel_optional_mint_name(),
-                        d.clone(),
-                    ))
-                    .clone()
-                    {
-                        KernelMintOwnership::KernelMintOwnershipAmbiguous {
-                            row_count: _, ..
-                        } => HostOptionArmReading::HostOptionArmBindingAmbiguous,
-                        KernelMintOwnership::DeclarationOwnsTheMint => {
-                            HostOptionArmReading::HostOptionArmIsHostOption
-                        }
-                        KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
-                            if crate::std_decl_ref::declaration_ref_in_list(
-                                d.clone(),
-                                rust_host_option_carrier_declarations(),
-                            ) {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            } else {
-                                HostOptionArmReading::HostOptionArmIsNot
-                            }
-                        }
-                    }
-                }
-                VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
-                    HostOptionArmReading::HostOptionArmIsNot
-                }
-            },
-            _ => {
-                if !is_optional_variant_name(bare_name.clone()) {
-                    HostOptionArmReading::HostOptionArmIsNot
-                } else {
-                    if inferred_is_kernel_optional.clone() {
-                        HostOptionArmReading::HostOptionArmSpelledWithoutIdentity
-                    } else {
-                        match resolved_parent.clone() {
-                            std::option::Option::None => {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            }
-                            Some(parent) => {
-                                if is_optional_like_parent_name(parent.clone()) {
-                                    HostOptionArmReading::HostOptionArmIsHostOption
-                                } else {
-                                    HostOptionArmReading::HostOptionArmIsNot
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21286,7 +21552,6 @@ pub fn emit_variant_pattern(
         emit_resolved_variant_pattern(
             name.clone(),
             parent_enum.clone(),
-            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             shared_types.clone(),
@@ -21300,7 +21565,6 @@ pub fn emit_variant_pattern(
 pub fn emit_resolved_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21316,24 +21580,9 @@ pub fn emit_resolved_variant_pattern(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let host_option = host_option_arm_reading(
-            parent_identity.clone(),
-            bare_name.clone(),
-            parent_enum.clone(),
-            resolved_parent.clone(),
-        );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
-        let spelled_without_identity =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
-        if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
-        }
-        let optional_variant =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
+            && (is_optional_parent(resolved_parent.clone())
+                || (resolved_parent.clone() == std::option::Option::None)));
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -21944,7 +22193,6 @@ pub fn emit_pattern_rc_aware(
             std::option::Option::None => emit_variant_pattern_rc_aware(
                 n.clone(),
                 parent_enum.clone(),
-                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 rc_analysis.clone(),
@@ -21961,7 +22209,6 @@ pub fn emit_pattern_rc_aware(
 pub fn emit_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -21978,7 +22225,6 @@ pub fn emit_variant_pattern_rc_aware(
         emit_resolved_variant_pattern_rc_aware(
             name.clone(),
             parent_enum.clone(),
-            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             rc_analysis.clone(),
@@ -21993,7 +22239,6 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn emit_resolved_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -22010,24 +22255,9 @@ pub fn emit_resolved_variant_pattern_rc_aware(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let host_option = host_option_arm_reading(
-            parent_identity.clone(),
-            bare_name.clone(),
-            parent_enum.clone(),
-            resolved_parent.clone(),
-        );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
-        let spelled_without_identity =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
-        if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
-        }
-        let optional_variant =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
+            && (is_optional_parent(resolved_parent.clone())
+                || (resolved_parent.clone() == std::option::Option::None)));
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -41320,11 +41550,3 @@ pub struct AliasDeclArityAbsent;
 pub struct AliasDeclArityZeroParam;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasDeclArityHasParams;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmIsHostOption;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmIsNot;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmSpelledWithoutIdentity;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmBindingAmbiguous;

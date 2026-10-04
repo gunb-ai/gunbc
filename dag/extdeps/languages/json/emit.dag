@@ -4,12 +4,23 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
 import extdeps.numeric.base16 { int_to_upper_hex }
 import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc8259"
   }
+}
+
+// Reading: RFC 8259 owns the JSON value grammar; type JsonValue's six variants (null, bool, number-as-lexeme, string, array, object) transcribe exactly those forms with no repo extensions, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.languages.json.emit", decl_name: "JsonValue", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type JsonKeyValue {

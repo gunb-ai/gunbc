@@ -3,7 +3,7 @@ module gunbc.spark.training_ready
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.measure { ByteSize, byte_size_count, kibibyte, kibibyte_to_byte_size }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.cell_role {
   SparkCellRole,
   SparkServingCell,

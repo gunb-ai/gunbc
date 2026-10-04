@@ -2,6 +2,7 @@ module v2.std.compilers.target_model
 
 import std.types { List }
 
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution {
@@ -1232,8 +1233,8 @@ fn lex_rule_fixed_spelling(rule: LexRule, token_class: Symbol) -> Optional<Strin
 
 fn lex_pattern_fixed_spelling(pattern: LexPattern) -> Optional<String> {
   match pattern {
-    LiteralPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
-    KeywordPattern { text: text } => optional_present(value: chars_to_string(chars: text, start: 0, end: length(xs: text)))
+    LiteralPattern { text: text } => optional_present(value: unicode_scalar_fold(xs: text))
+    KeywordPattern { text: text } => optional_present(value: unicode_scalar_fold(xs: text))
     EmptyPattern => optional_absent()
     CharPattern { char: _ } => optional_absent()
     CharClassPattern { class: _ } => optional_absent()
@@ -1489,8 +1490,8 @@ fn target_layout_token_spelled_flat_diagnostic(token_class: Symbol) -> Diagnosti
 }
 
 fn apply_emit_spelling_quote(prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape>, spelling: String) -> String {
-  let escaped = apply_emit_spelling_escapes(spelling: chars(s: spelling), escapes: escapes)
-  concat(prefix, concat(open, concat(chars_to_string(chars: escaped, start: 0, end: length(xs: escaped)), close)))
+  let escaped = apply_emit_spelling_escapes(spelling: unicode_scalar_unfold(s: spelling), escapes: escapes)
+  concat(prefix, concat(open, concat(unicode_scalar_fold(xs: escaped), close)))
 }
 
 fn apply_emit_spelling_transform(
@@ -4941,7 +4942,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
             kind: TypeNode {
               connective: Atom {
                 identity: symbol_intern_lexeme(
-                  lexeme: chars_to_string(chars: list_snoc_item(xs: Empty, item: codepoint), start: 0, end: 1)
+                  lexeme: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: codepoint))
                 )
               }
             },

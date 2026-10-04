@@ -743,7 +743,7 @@ fn v41_probe_config_id_argv(image_reference: NonEmptyStr) -> List<String> {
 // already keeps them apart; this preserves that rather than folding both into "the probe failed".
 fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOutcome? {
   match run {
-    RemoteUnreachable { cause: why } => Present { value: V41ProbeRefused { step: step, cause: why } }
+    RemoteUnreachable { cause: why, reach: _ } => Present { value: V41ProbeRefused { step: step, cause: why } }
     RemoteRan { exit_code: code, stdout: _, stderr: err } =>
       if code != 0 {
         Present { value: V41ProbeRefused { step: step, cause: join(["exit=", to_string(code), " stderr=", trim(s: err)], "") } }
@@ -755,7 +755,7 @@ fn v41_privileged_outcome(step: NonEmptyStr, run: SparkRemoteRun) -> V41ProbeOut
 
 fn v41_privileged_stdout(run: SparkRemoteRun) -> String {
   match run {
-    RemoteUnreachable { cause: _ } => ""
+    RemoteUnreachable { cause: _, reach: _ } => ""
     RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
   }
 }
@@ -775,7 +775,7 @@ fn v41_probe_image_in_place(ctx: SparkMaterializeContext, reference: NonEmptyStr
 {
   let inspect_run = spark_remote_run(ctx: ctx, argv: v41_probe_config_id_argv(image_reference: reference))
   match inspect_run {
-    RemoteUnreachable { cause: why } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
+    RemoteUnreachable { cause: why, reach: _ } => V41ProbeRefused { step: "image-config-id" as NonEmptyStr, cause: why }
     RemoteRan { exit_code: code, stdout: inspect_stdout, stderr: err } =>
       if code != 0 {
         if docker_image_inspect_names_no_such_image(stderr: err) {
