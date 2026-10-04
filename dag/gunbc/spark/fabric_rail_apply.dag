@@ -2,7 +2,7 @@ module gunbc.spark.fabric_rail_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.network.ipv4 { render_ipv4_address }

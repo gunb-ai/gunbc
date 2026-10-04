@@ -1,0 +1,44 @@
+module gunbc.workspace_tool_observer
+
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused }
+import std.types { String, NonEmptyStr, Timestamp }
+import std.algebra { trim }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.posix.test_utility { test_executable_command }
+import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec, process_outcome_admitted }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import gunbc.runner_microvm_host_ready { FirecrackerHostStanding, observe_firecracker_host_standing_at_binary_wet, firecracker_host_ready_in_this_process }
+import gunbc.runner_microvm_slot_unit { microvm_controller_vmm_binary, microvm_controller_jailer_binary }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+
+type WorkspaceToolsObserved sole_constructor { host: NonEmptyStr, observed_at: Timestamp, release_dir: NonEmptyStr, standing: FirecrackerHostStanding }
+type WorkspaceToolsRead = WorkspaceToolsReady { observation: WorkspaceToolsObserved } | WorkspaceToolsUnobserved { reason: NonEmptyStr }
+
+// This executes on the selected controller host and uses the same installed release paths as the
+// runtime. Its output cannot be manufactured from a caller's readiness boolean.
+fn workspace_observe_tools(release_dir: NonEmptyStr, login: NonEmptyStr) -> WorkspaceToolsRead {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: raw_host } => if trim(s: raw_host) == "" { WorkspaceToolsUnobserved { reason: "controller host name is empty" } }
+    else {
+      let standing = observe_firecracker_host_standing_at_binary_wet(binary: microvm_controller_vmm_binary(release_dir: release_dir as String), login: login)
+      if !firecracker_host_ready_in_this_process(standing: standing) { WorkspaceToolsUnobserved { reason: "installed controller Firecracker or current KVM access is unavailable" } }
+      else if !process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: microvm_controller_jailer_binary(release_dir: release_dir as String)), transport: LocalExec)) {
+        WorkspaceToolsUnobserved { reason: "installed controller jailer is not executable" }
+      } else { match clock_now_probed_at() {
+        Absent => WorkspaceToolsUnobserved { reason: "controller tool observation clock is unavailable" }
+        Present { value: observed_time } => WorkspaceToolsReady { observation: WorkspaceToolsObserved { host: trim(s: raw_host) as NonEmptyStr, observed_at: observed_time as String, release_dir: release_dir, standing: standing } }
+      } }
+    }
+    ProcessOutputAbsent => WorkspaceToolsUnobserved { reason: "controller host identity is unreadable" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceToolsUnobserved { reason: "controller host identity is unreadable" }
+  }
+}
+
+fn workspace_tools_refusal(observation: WorkspaceToolsObserved, slot: RunnerSlotIdentity, now: Timestamp) -> NonEmptyStr? {
+  if (observation.host as String) != (slot.host as String) { Present { value: "tool observation belongs to another host" } }
+  else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: observation.observed_at)
+    || utc_instant_seconds_after(later: now, earlier: observation.observed_at) < 0
+    || utc_instant_seconds_after(later: now, earlier: observation.observed_at) > 60 { Present { value: "controller tool observation is stale or unclocked" } }
+  else { none }
+}
