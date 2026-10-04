@@ -8,11 +8,8 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire
 }
-import gunbc.fleet_converge_plan_cli { fleet_converge_apply_bound_wet, fleet_converge_workspace_commissioning_plan_wet }
 import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_content }
-import test.claim.workspace_dispatch_witness { protected_bundle_roundtrips_as_one_value_control, torn_or_substituted_bundle_is_refused_control }
-import test.claim.workspace_executor_install_witness { installed_and_observed_controller_units_are_identical_control, workspace_install_includes_executor_without_starting_it_control, workspace_install_does_not_restore_competing_ci_reservation_control, reviewed_plan_binding_controls_control }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command }
 import gunbc.fleet_generation_execution { fleet_generation_writer }
 
@@ -38,15 +35,6 @@ test fn installed_grants_name_only_exact_argument_free_entries() -> Bool {
     && !string_contains(s: grant, pattern: "*")
     && !string_contains(s: grant, pattern: "--arg")
 }
-
-test fn commissioning_input_and_installer_boundaries_hold_together() -> Bool {
-  protected_bundle_roundtrips_as_one_value_control() && torn_or_substituted_bundle_is_refused_control()
-    && installed_and_observed_controller_units_are_identical_control()
-    && workspace_install_includes_executor_without_starting_it_control()
-    && workspace_install_does_not_restore_competing_ci_reservation_control()
-    && reviewed_plan_binding_controls_control()
-}
-
 
 test fn dispatch_uses_fleet_lock_owner_without_reopening_artifacts() -> Bool {
   let owner = workspace_dispatch_captured_command(effective_user: fleet_generation_writer(), shell: "exit 0", bundle: "0123456789abcdef", payload: "captured input")
