@@ -121,6 +121,19 @@ fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
   }
 }
 
+// EVERY CPU PROCESSOR THE HOST CARRIES, NOT THE FIRST ONE. A ComputeHost lists one CpuProcessor per
+// populated socket, so a two-socket host and a one-socket host of the same part differ here and
+// nowhere else; compute_host_primary_cpu answers which part, this answers how many threads.
+fn compute_host_cpu_threads(host: ComputeHost) -> Int {
+  fold(host.processors, init: 0, f: (acc, kind) =>
+    match kind {
+      CpuProcessor { cpu: c } => acc + hardware_thread_count_value(t: cpu_facts_threads(cpu: c))
+      GpuProcessor { gpu: _ } => acc
+      AcceleratorProcessor { accelerator: _ } => acc
+    }
+  )
+}
+
 fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
   byte_size(
     host.memory
