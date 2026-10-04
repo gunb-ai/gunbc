@@ -26,7 +26,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
   firmware_console_report, FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, mtcollins1_smpro_socket_records, outcome_socket }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, SmproPassObservation, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, smpro_socket_records, outcome_socket }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro,
   SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
@@ -177,9 +177,11 @@ type PowerOnHandoff
   = HandoffPoweredOn
   | HandoffNotConfirmed { reason: NonEmptyStr }
 
+// One SMpro pass as read: the observation keeps the subject (host, controller, site) its outcomes
+// were read for (gunbc.machine_intake_ampere_smpro_observation SmproPassObservation).
 type SmproPassEvidence {
   label: NonEmptyStr
-  outcomes: List<SmproProbeOutcome>
+  observation: SmproPassObservation
 }
 
 // WHAT ONE CONSOLE SPAN STATED, by the owning readers run over that span's lines alone (the bundle runs
@@ -434,8 +436,8 @@ fn register_word(outcomes: List<SmproProbeOutcome>, socket: Int, register: NonEm
 }
 
 fn socket_progress(pass: SmproPassEvidence, socket: Int) -> SocketProgressAccount {
-  let cur = register_word(outcomes: pass.outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
-  let rep = register_word(outcomes: pass.outcomes, socket: socket, register: smpro_bootstage_reg.name)
+  let cur = register_word(outcomes: pass.observation.outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
+  let rep = register_word(outcomes: pass.observation.outcomes, socket: socket, register: smpro_bootstage_reg.name)
   SocketProgressAccount { pass: pass.label, socket: socket, reading: match cur {
     Absent => ProgressNotRead { reason: "CUR_BOOTSTAGE was not read in this pass" }
     Present { value: c } => match rep {
@@ -525,11 +527,11 @@ type SocketRecordsAccount {
 // THE SOCKETS A PASS PROBED, from its own outcomes: the probe plan's targets, never an expectation.
 fn pass_sockets(p: SmproPassEvidence) -> List<Int> {
   let none_yet: List<Int> = []
-  fold(map(p.outcomes, o => outcome_socket(o: o)), init: none_yet, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+  fold(map(p.observation.outcomes, o => outcome_socket(o: o)), init: none_yet, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
 }
 
 fn socket_records(e: PowerOnEvidence) -> List<SocketRecordsAccount> {
-  flat_map(e.smpro, p => map(pass_sockets(p: p), k => SocketRecordsAccount { pass: p.label, records: mtcollins1_smpro_socket_records(outcomes: p.outcomes, socket: k) }))
+  flat_map(e.smpro, p => map(pass_sockets(p: p), k => SocketRecordsAccount { pass: p.label, records: smpro_socket_records(outcomes: p.observation.outcomes, socket: k) }))
 }
 
 fn record_set_stated(pass: NonEmptyStr, socket: Int, processor: SmproProcessor, rs: SmproRecordSet) -> List<LocatedError> {

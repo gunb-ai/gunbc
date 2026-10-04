@@ -2,7 +2,7 @@ module extdeps.uri
 
 import std.algebra { trim }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.unicode.types {
   unicode_scalar_max_code_point,
   unicode_surrogate_first_code_point,
