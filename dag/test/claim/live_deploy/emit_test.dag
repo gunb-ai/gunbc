@@ -408,6 +408,7 @@ test fn witness_apply_pipeline_carries_the_preamble_after_its_frame() -> Bool {
     approval_broker: real.approval_broker,
     names: real.names,
     instance_id: real.instance_id,
+    role_singletons: real.role_singletons,
   }
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: a } =>
