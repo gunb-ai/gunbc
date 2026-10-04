@@ -90,8 +90,14 @@ import std.measure {
 // this partition admits. Its `.dag` entry declares one fold, `native_claim_report() ->
 // NativeClaimReport`, which computes every case, renders one row per case identity and decides the
 // terminal;
-// the rendered main performs only the two operations no fold can -- writing stdout and setting the
-// status -- and reads no argv and no file. It exists because a claim that must EXECUTE natively has
+// the rendered main performs only the operations no fold can -- writing stdout and setting the
+// status -- and reads no argv. Its DECLARED RESOURCE SET is {Filesystem}: a report that reaches no
+// effect gets a synchronous main that binds nothing, and a report whose only demand is the
+// Filesystem service gets that service bound to the existing extdeps.filesystem.filesystem_io
+// handler, the binding NativeCliDriver's main already performs, with a transport error reported as
+// no observation. Any other demand is refused at emission in place of a main
+// (v1.compiler.emit_rust native_claim_report_effect_demand), so a claim cannot reach an effect this
+// driver has not declared. It exists because a claim that must EXECUTE natively has
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
 // evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
 // is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two

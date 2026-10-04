@@ -6,6 +6,7 @@ use self::ClosedAliasPeelVerdict::*;
 use self::FmArmAnalysis::*;
 use self::FmLoweringRefusal::*;
 use self::IterOwnedReceiverCloneDisposition::*;
+use self::NativeClaimEffectDemand::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo::CargoFeature;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
@@ -7080,6 +7081,7 @@ pub fn emit_rust_selected(
             typed.modules.clone(),
             has_services.clone(),
             crate_name.clone(),
+            ctx.registry.clone(),
         );
         let cli_dispatch_file = if has_pipeline.clone() {
             Rc::new(vec![emit_gunbc_cli_dispatch_generated(crate_name.clone())])
@@ -40247,6 +40249,7 @@ pub fn emit_main_rs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
@@ -40282,6 +40285,10 @@ pub fn emit_main_rs(
                     return emit_native_claim_driver_main_rs(
                         crate_name.clone(),
                         pipeline_module.clone(),
+                        native_claim_report_effect_demand(
+                            registry.clone(),
+                            pipeline_module.clone(),
+                        ),
                     );
                 }
                 if compiler_pipeline_entry_is_native_serve(modules.clone()) {
@@ -40368,18 +40375,129 @@ pub fn emit_host_source_root_read_rs(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {\n".to_string(), "    let filesystem = ".to_string()), crate_name.clone()), "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());\n".to_string()), "    let runtime = match tokio::runtime::Builder::new_current_thread().build() { Ok(runtime) => runtime, Err(cause) => { eprintln!(\"REFUSED: native filesystem executor: {}\", cause); std::process::exit(2); } };\n".to_string()), "    let observed = runtime.block_on(".to_string()), crate_name.clone()), "::gunbc_source_root_read::source_root_read(Rc::new(source_roots.iter().cloned().collect()), &filesystem));\n".to_string()), "    match observed {\n".to_string()), "        Ok(files) => match &*files {\n".to_string()), "            ".to_string()), crate_name.clone()), "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRead { files } =>\n".to_string()), "                ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::source_root_ingest_from_files(files.clone()).iter().cloned().collect(),\n".to_string()), "            ".to_string()), crate_name.clone()), "::gunbc_source_root_read::SourceRootFiles::SourceRootFilesRefused { path, kind, cause } => {\n".to_string()), "                eprintln!(\"REFUSED: could not read source root at {} [{}]: {}\", path, kind, cause); std::process::exit(2);\n".to_string()), "            }\n".to_string()), "        },\n".to_string()), "        Err(cause) => { eprintln!(\"REFUSED: native filesystem transport: {}\", cause); std::process::exit(2); }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeClaimEffectDemand {
+    NativeClaimPure,
+    NativeClaimFilesystem,
+    NativeClaimUndeclaredEffect { detail: String },
+}
+impl NativeClaimEffectDemand {
+    pub fn detail(&self) -> String {
+        match self {
+            NativeClaimEffectDemand::NativeClaimPure => panic!("no detail on unit variant"),
+            NativeClaimEffectDemand::NativeClaimFilesystem => panic!("no detail on unit variant"),
+            NativeClaimEffectDemand::NativeClaimUndeclaredEffect { detail: __val, .. } => {
+                __val.clone()
+            }
+        }
+    }
+}
+
+pub fn native_claim_report_effect_demand(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pipeline_module: String,
+) -> Rc<NativeClaimEffectDemand> {
+    match crate::v1_compiler_emit::lookup_item_by_identity(
+        registry.clone(),
+        Rc::new(DeclaredCallableIdentity {
+            owner_module_path: pipeline_module.clone(),
+            decl_name: "native_claim_report".to_string(),
+        }),
+    ) {
+        Some(info) => {
+            if !crate::v1_compiler_infer_items::item_is_effectful_callee(info.clone()) {
+                Rc::new(NativeClaimEffectDemand::NativeClaimPure)
+            } else {
+                if ((((crate::v1_compiler_infer_items::item_resource_names(info.clone()).len()
+                    as i64)
+                    == 0)
+                    && ((info.service_names.clone().len() as i64) == 1))
+                    && {
+                        let mut __all = true;
+                        for sn in info.service_names.clone().iter().cloned() {
+                            if !(crate::v1_compiler_emit_core_support::service_var_name(sn.clone())
+                                == "filesystem".to_string())
+                            {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
+                {
+                    Rc::new(NativeClaimEffectDemand::NativeClaimFilesystem)
+                } else {
+                    Rc::new(NativeClaimEffectDemand::NativeClaimUndeclaredEffect {
+                        detail: v1_rt::concat(
+                            "services [".to_string(),
+                            v1_rt::concat(
+                                info.service_names.clone().join(&", ".to_string()),
+                                v1_rt::concat(
+                                    "] resources [".to_string(),
+                                    v1_rt::concat(
+                                        crate::v1_compiler_infer_items::item_resource_names(
+                                            info.clone(),
+                                        )
+                                        .join(&", ".to_string()),
+                                        "]".to_string(),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    })
+                }
+            }
+        }
+        std::option::Option::None => {
+            Rc::new(NativeClaimEffectDemand::NativeClaimUndeclaredEffect {
+                detail: "native_claim_report has no registry row".to_string(),
+            })
+        }
+    }
+}
+
 pub fn emit_native_claim_driver_main_rs(
     crate_name: String,
     pipeline_module: String,
+    demand: Rc<NativeClaimEffectDemand>,
 ) -> Rc<TextFile> {
     {
         let pipeline_mod =
             crate::gunbc_rust_emitted_edge::module_to_filename(pipeline_module.clone());
-        Rc::new(TextFile {
+        match (*demand.clone()).clone() {
+    NativeClaimEffectDemand::NativeClaimPure => emit_native_claim_driver_pure_main_rs(crate_name.clone(), pipeline_mod.clone()),
+    NativeClaimEffectDemand::NativeClaimFilesystem => emit_native_claim_driver_filesystem_main_rs(crate_name.clone(), pipeline_mod.clone()),
+    NativeClaimEffectDemand::NativeClaimUndeclaredEffect { detail: detail, .. } => Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let report = native_claim_report();".to_string()), "\n".to_string()), "    print!(\"{}\", report.stdout);".to_string()), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
-})
+    content: v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\ncompile_error!(\"REFUSED: a NativeClaimDriver report may demand only the Filesystem service; ".to_string(), v1_rt::concat(crate::v1_compiler_emit_core_support::escape_string_literal_body(detail.clone()), "\");\n".to_string())),
+}),
+}
     }
+}
+
+pub fn native_claim_terminal_exit_lines() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    print!(\"{}\", report.stdout);".to_string(), "\n".to_string()), "    match &*report.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string())
+}
+
+pub fn emit_native_claim_driver_filesystem_main_rs(
+    crate_name: String,
+    pipeline_mod: String,
+) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "#[tokio::main(flavor = \"current_thread\")]".to_string()), "\n".to_string()), "async fn main() {".to_string()), "\n".to_string()), "    let filesystem = ".to_string()), crate_name.clone()), "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());".to_string()), "\n".to_string()), "    let report = match native_claim_report(&filesystem).await {".to_string()), "\n".to_string()), "        Ok(report) => report,".to_string()), "\n".to_string()), "        Err(cause) => { eprintln!(\"NO OBSERVATION: native filesystem transport: {}\", cause); std::process::exit(2); }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
+})
+}
+
+pub fn emit_native_claim_driver_pure_main_rs(
+    crate_name: String,
+    pipeline_mod: String,
+) -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::native_claim_report;".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let report = native_claim_report();".to_string()), "\n".to_string()), native_claim_terminal_exit_lines()), "}".to_string()), "\n".to_string()),
+})
 }
 
 pub fn emit_native_serve_driver_main_rs(
