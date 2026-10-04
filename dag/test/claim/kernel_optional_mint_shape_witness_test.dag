@@ -69,15 +69,15 @@ test fn a_third_arm_is_refused() -> Bool {
 
 // THE CONSUMER. An arm reached through the `T?` sugar carries the bound declaration's identity,
 // and the emitter lowers it to the host option BECAUSE of that identity
-// (v1.compiler.emit_rust host_option_arm_reading). The pattern's parent is spelled Optional by
-// inference in the same breath, and the emitter refuses that spelling when no identity came with
-// it -- so if inference stops stamping the identity, this source emits a refusal instead of
-// Some/None and both assertions fail.
+// (v1.compiler.emit_rust host_option_arm_reading). Inference names the pattern's parent as the
+// kernel optional in the same branch that stamps the identity, and the emitter refuses that name
+// when no identity came with it -- so if inference stops stamping the identity, this source emits
+// a refusal instead of Some/None and both assertions fail.
 test fn a_sugared_optional_match_lowers_to_the_host_option_by_identity() -> Bool {
   compile_dag_rust_emit_check(
     "module probe_kernel_optional_arm\n\nimport std.types \{ Int \}\n\nfn probe_arm(o: Int?) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n",
     "src/probe_kernel_optional_arm.rs",
     ["Some(v)", "None"],
-    ["compile_error", "names the kernel optional as its parent by spelling"]
+    ["compile_error", "no declaration identity came with that reading"]
   )
 }

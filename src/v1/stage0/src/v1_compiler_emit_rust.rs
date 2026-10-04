@@ -55,6 +55,7 @@ pub use crate::gunbc_rust_emitted_edge::{
     semantic_source_reference_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
+pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
@@ -75,8 +76,8 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
-pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
@@ -21139,41 +21140,55 @@ pub enum HostOptionArmReading {
 pub fn host_option_arm_reading(
     identity: Rc<VariantParentIdentity>,
     bare_name: String,
+    inferred_parent: Option<String>,
     resolved_parent: Option<String>,
 ) -> HostOptionArmReading {
-    match (*identity.clone()).clone() {
-        VariantParentIdentity::VariantParentIdentified { key: key, .. } => {
-            match (*key.clone()).clone() {
-                VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    if crate::std_literal_elaboration::kernel_mint_is_bound_to(
-                        kernel_mint_declaration_rows(),
-                        kernel_optional_mint_name(),
-                        d.clone(),
-                    ) {
-                        HostOptionArmReading::HostOptionArmIsHostOption
-                    } else {
-                        HostOptionArmReading::HostOptionArmIsNot
-                    }
-                }
-                VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
-                    HostOptionArmReading::HostOptionArmIsNot
-                }
-            }
-        }
-        _ => {
-            if !is_optional_variant_name(bare_name.clone()) {
-                HostOptionArmReading::HostOptionArmIsNot
-            } else {
-                match resolved_parent.clone() {
-                    std::option::Option::None => HostOptionArmReading::HostOptionArmIsHostOption,
-                    Some(parent) => {
-                        if (parent.clone() == kernel_optional_mint_name()) {
-                            HostOptionArmReading::HostOptionArmSpelledWithoutIdentity
+    {
+        let inferred_is_kernel_optional =
+            (inferred_parent.clone().as_deref() == Some(kernel_optional_mint_name()).as_deref());
+        match (*identity.clone()).clone() {
+            VariantParentIdentity::VariantParentIdentified { key: key, .. } => {
+                match (*key.clone()).clone() {
+                    VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
+                        if crate::std_literal_elaboration::kernel_mint_is_bound_to(
+                            kernel_mint_declaration_rows(),
+                            kernel_optional_mint_name(),
+                            d.clone(),
+                        ) {
+                            HostOptionArmReading::HostOptionArmIsHostOption
                         } else {
-                            if is_optional_like_parent_name(parent.clone()) {
+                            if crate::std_decl_ref::declaration_ref_in_list(
+                                d.clone(),
+                                rust_host_option_carrier_declarations(),
+                            ) {
                                 HostOptionArmReading::HostOptionArmIsHostOption
                             } else {
                                 HostOptionArmReading::HostOptionArmIsNot
+                            }
+                        }
+                    }
+                    VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
+                        HostOptionArmReading::HostOptionArmIsNot
+                    }
+                }
+            }
+            _ => {
+                if !is_optional_variant_name(bare_name.clone()) {
+                    HostOptionArmReading::HostOptionArmIsNot
+                } else {
+                    if inferred_is_kernel_optional.clone() {
+                        HostOptionArmReading::HostOptionArmSpelledWithoutIdentity
+                    } else {
+                        match resolved_parent.clone() {
+                            std::option::Option::None => {
+                                HostOptionArmReading::HostOptionArmIsHostOption
+                            }
+                            Some(parent) => {
+                                if is_optional_like_parent_name(parent.clone()) {
+                                    HostOptionArmReading::HostOptionArmIsHostOption
+                                } else {
+                                    HostOptionArmReading::HostOptionArmIsNot
+                                }
                             }
                         }
                     }
@@ -21235,12 +21250,13 @@ pub fn emit_resolved_variant_pattern(
         let host_option = host_option_arm_reading(
             parent_identity.clone(),
             bare_name.clone(),
+            parent_enum.clone(),
             resolved_parent.clone(),
         );
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling".to_string()));
+            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
         }
         let optional_variant =
             (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
@@ -21923,12 +21939,13 @@ pub fn emit_resolved_variant_pattern_rc_aware(
         let host_option = host_option_arm_reading(
             parent_identity.clone(),
             bare_name.clone(),
+            parent_enum.clone(),
             resolved_parent.clone(),
         );
         let spelled_without_identity =
             (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
         if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling".to_string()));
+            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
         }
         let optional_variant =
             (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
