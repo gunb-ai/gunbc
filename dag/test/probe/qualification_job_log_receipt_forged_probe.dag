@@ -1,0 +1,27 @@
+module test.probe.qualification_job_log_receipt_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside
+// gunbc.runner.runner_qualification_dispatch would otherwise hold a job-log receipt for rows it never
+// read from a run: (a) writing the sealed receipt from invented readings, and (b) calling the one
+// function that mints it from outside the collect stage. The witness
+// test.claim.qualification_job_log_receipt_forged_probe_witness hands this source to the compiler and
+// requires each refusal at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.content_hash { content_hash_atom }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
+import gunbc.runner.runner_qualification_dispatch {
+  CollectedQualificationRun, QualificationJobLogReceipt, QualificationLogReadings,
+  JobLogInstrumentStanding, AttemptJobLog, job_log_standing,
+}
+
+// (a) AN OUTSIDE-AUTHORED RECEIPT. Refuses at QualificationJobLogReceipt.
+fn forged_receipt(c: CollectedQualificationRun, h: HostUnitSlot, rd: QualificationLogReadings) -> QualificationJobLogReceipt {
+  QualificationJobLogReceipt { collected: c, slot: h, log_code_points: 1, log_digest: content_hash_atom(value: "invented"), readings: rd }
+}
+
+// (b) THE MINTER CALLED FROM OUTSIDE THE COLLECT STAGE, over a log this caller supplies. Refuses at
+// job_log_standing.
+fn sneaked_receipt(c: CollectedQualificationRun, h: HostUnitSlot, l: AttemptJobLog) -> JobLogInstrumentStanding {
+  job_log_standing(collected: c, slot: h, log: l)
+}
