@@ -2104,6 +2104,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_early_exit_refuses_absence_on_real_bytes" },
       entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
       function: "w_early_exit_refuses_absence_on_real_bytes",
@@ -2221,6 +2227,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.shell_spawn_refused_real_execution_witness", function: "nonzero_exit_is_not_a_spawn_refusal" },
       entry: "dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag",
       function: "nonzero_exit_is_not_a_spawn_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.process_lifecycle_wet_witness", function: "start_refused_missing_binary_witness" },
+      entry: "dag/test/claim/process_lifecycle_wet_witness_test.dag",
+      function: "start_refused_missing_binary_witness",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.process_lifecycle_wet_witness", function: "readiness_timeout_witness" },
+      entry: "dag/test/claim/process_lifecycle_wet_witness_test.dag",
+      function: "readiness_timeout_witness",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.process_lifecycle_wet_witness", function: "kill_confirmed_by_reap_witness" },
+      entry: "dag/test/claim/process_lifecycle_wet_witness_test.dag",
+      function: "kill_confirmed_by_reap_witness",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.process_lifecycle_wet_witness", function: "readiness_stalled_listener_witness" },
+      entry: "dag/test/claim/process_lifecycle_wet_witness_test.dag",
+      function: "readiness_stalled_listener_witness",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

@@ -80,3 +80,12 @@ test fn a_direct_store_file_create_is_an_admission_refusal() -> Bool {
 test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
   admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot") == 1
 }
+
+// THE OPENED STORE IS UNFORGEABLE. Root, store identity and the verified catalog travel together in a
+// LocalStoreCapability minted only after the marker verifies, so neither a hand-built store for an
+// uninitialized root nor one store's identity paired with another root can be spelled.
+data forged_capability_source: String = "module probe_store_forged_capability\nimport extdeps.realization.materialization_store_local { LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreCapability {\n  LocalStoreCapability { root: c.root, store: c.store, budgets: c.budgets }\n}\n"
+
+test fn a_forged_store_capability_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_capability_source, subject: "LocalStoreCapability") == 1
+}
