@@ -1,6 +1,6 @@
 module gunbc.workspace_allocation
 
-import std.types { NonEmptyStr, String, Int, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Int, Bool, Timestamp, List }
 import std.nat { Nat }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -91,9 +91,11 @@ fn workspace_lease_bound_seconds() -> Nat { second_count(s: minute_to_second(m: 
 fn workspace_profile_wire(profile: WorkspaceProfile) -> NonEmptyStr {
   match profile { SmallWorkspace => "2cpu-4gib" LargeWorkspace => "4cpu-8gib" }
 }
+// THE OFFERED PROFILES, in the order a client presents them. Parsing and every rendered choice
+// read this one list, so a profile added here is offered and admitted together.
+fn workspace_profiles() -> List<WorkspaceProfile> { [SmallWorkspace, LargeWorkspace] }
 fn workspace_profile_parse(value: String) -> WorkspaceProfile? {
-  if value == "2cpu-4gib" { Present { value: SmallWorkspace } }
-  else if value == "4cpu-8gib" { Present { value: LargeWorkspace } } else { none }
+  first(filter(workspace_profiles(), p => workspace_profile_wire(profile: p) as String == value))
 }
 
 fn workspace_memory_policy() -> MicroVmMemoryGrantPolicy {
