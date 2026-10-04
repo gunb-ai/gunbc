@@ -17,7 +17,7 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_plan_host_identity,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
   CandidateRelease,
@@ -70,7 +70,7 @@ import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decis
 import gunbc.live_deploy.role_singleton_convergence {
   assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
-  RoleSingletonNoop, RoleSingletonInstall, AdoptUnmarkedHolder, RoleSingletonRefused,
+  RoleSingletonNoop, RoleSingletonInstall, AdoptUnmarkedHolder, RoleSingletonRefused, RoleSingletonConvergence,
 }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
@@ -414,7 +414,7 @@ fn live_deploy_apply_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match assess_and_admit(spec: spec, desired: prod_role_actuated_realization(), own: transport) {
+  match assess_and_admit(spec: spec, own: transport) {
     RoleSingletonNotAdmitted { cause } =>
       NotConverged {
         reason: join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], ""),
@@ -1046,10 +1046,14 @@ fn live_deploy_write_transaction_receipt(spec: DeploymentSpec, receipt: LiveDepl
 // apply wrote, so the retirement of AdoptUnmarkedHolder (its FrontierRow) has an exact-host receipt to
 // point at; Installed names the first install; Noop is everything else that was admitted.
 fn role_singleton_disposition_of(admission: RoleSingletonAdmission) -> LiveDeployRoleSingletonDisposition {
-  match admitted_decision(admission: admission) {
+  role_singleton_disposition_of_decision(decision: admitted_decision(admission: admission))
+}
+
+fn role_singleton_disposition_of_decision(decision: RoleSingletonConvergence) -> LiveDeployRoleSingletonDisposition {
+  match decision {
     RoleSingletonNoop => RoleSingletonsNoop
     RoleSingletonInstall { holder } => RoleSingletonsInstalled { deployment: holder.instance.deployment.name as String, host: holder.instance.host_identity as String }
-    AdoptUnmarkedHolder { holder, host, retirement: _ } => RoleSingletonsAdopted { deployment: holder.instance.deployment.name as String, host: host as String }
+    AdoptUnmarkedHolder { holder, host, standing: _, retirement: _ } => RoleSingletonsAdopted { deployment: holder.instance.deployment.name as String, host: host as String }
     RoleSingletonRefused { cause } => RoleSingletonsRefusedBeforeApply { detail: role_singleton_refusal_detail(cause: cause) }
   }
 }
@@ -1098,7 +1102,7 @@ fn live_deploy_transaction_decided(
           exit: live_deploy_reconciliation_exit(r: preflight),
         )
       } else {
-        match assess_and_admit(spec: spec, desired: prod_role_actuated_realization(), own: access.transport) {
+        match assess_and_admit(spec: spec, own: access.transport) {
           RoleSingletonNotAdmitted { cause } => {
             let why = join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], "")
             live_deploy_write_transaction_receipt(

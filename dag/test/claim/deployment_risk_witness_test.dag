@@ -66,7 +66,9 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket,
 }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
-import gunbc.live_deploy.apply { role_singleton_disposition_of }
+import gunbc.live_deploy.apply { role_singleton_disposition_of_decision }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable }
 import gunbc.live_deploy.apply_receipt { RoleSingletonsAdopted }
 import gunbc.live_deploy.role_singleton_convergence {
   adopt_unmarked_holder_frontier,
@@ -94,11 +96,12 @@ import gunbc.live_deploy.role_singleton_convergence {
   HostRoleSingletonReading,
   HostRoleSingletonsRead,
   HostRoleSingletonsUnobservable,
-  RoleSingletonAdmissionResult,
-  RoleSingletonAdmitted,
-  RoleSingletonNotAdmitted,
-  admit_role_singletons,
-  admitted_spec,
+  RoleSingletonAdmissionStanding,
+  RoleSingletonAdmissible,
+  RoleSingletonInadmissible,
+  classify_role_singleton_admission,
+  legacy_unmarked_holders,
+  LegacyUnmarkedHolderStanding,
   role_singleton_convergence,
   role_singleton_observation_of,
 }
@@ -335,7 +338,7 @@ fn srv1_holds() -> List<HostRoleSingletonReading> {
 
 fn decide(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>) -> RoleSingletonConvergence {
   let rows = desired_deployment_roster()
-  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows)
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows, legacy: legacy_unmarked_holders)
 }
 
 fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
@@ -355,7 +358,7 @@ fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
     }
     RoleSingletonNoop => false
     RoleSingletonInstall { holder: _ } => false
-    AdoptUnmarkedHolder { holder: _, host: _, retirement: _ } => false
+    AdoptUnmarkedHolder { holder: _, host: _, standing: _, retirement: _ } => false
   }
 }
 
@@ -486,27 +489,82 @@ test fn an_unmarked_holder_on_its_own_target_is_adopted_and_the_plan_writes_the_
   let real = prod_role_actuated_realization()
   let decision = decide(desired: real, readings: adopt_world())
   let adopted = match decision {
-    AdoptUnmarkedHolder { holder, host, retirement } =>
+    AdoptUnmarkedHolder { holder, host, standing: _, retirement } =>
       holder.instance.deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
         && (retirement.reason as String) == (adopt_unmarked_holder_frontier.reason as String)
     _ => false
   }
   let live_id = srv1_live_dashboard_instance().instance_id as String
-  let holder_admitted = all(spec_of(realization: real, id: live_id), s => match admit_role_singletons(spec: s, desired: real, decision: decision) {
-    RoleSingletonAdmitted { admission } =>
-      spec_marker_ensure_is_exact(spec: admitted_spec(admission: admission))
-        && match role_singleton_disposition_of(admission: admission) {
+  let holder_admitted = all(spec_of(realization: real, id: live_id), s => match classify_role_singleton_admission(spec: s, desired: real, decision: decision) {
+    RoleSingletonAdmissible { decision: d } =>
+      spec_marker_ensure_is_exact(spec: s)
+        && match role_singleton_disposition_of_decision(decision: d) {
           RoleSingletonsAdopted { deployment, host } => deployment == (srv1_daily_workspace_deployment.name as String) && host == "srv1"
           _ => false
         }
-    RoleSingletonNotAdmitted { cause: _ } => false
+    RoleSingletonInadmissible { cause: _ } => false
   })
-  let others_refused = all(roster_specs_under(realization: real) |> filter(s => !((s.instance_id as String) == live_id)), s => admission_refused_as_stale(r: admit_role_singletons(spec: s, desired: real, decision: decision)))
+  let others_refused = all(roster_specs_under(realization: real) |> filter(s => !((s.instance_id as String) == live_id)), s => admission_refused_as_stale(r: classify_role_singleton_admission(spec: s, desired: real, decision: decision)))
   let wrong_target = deployment_spec_for(realization: real, instance: srv1_live_dashboard_instance(), target: deployment_srv2_target(), names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()))
   let after = match decide(desired: real, readings: srv1_holds()) { RoleSingletonNoop => true  _ => false }
   adopted && count(spec_of(realization: real, id: live_id)) == 1 && holder_admitted && others_refused
-    && admission_refused_as_stale(r: admit_role_singletons(spec: wrong_target, desired: real, decision: decision))
+    && admission_refused_as_stale(r: classify_role_singleton_admission(spec: wrong_target, desired: real, decision: decision))
     && after
+}
+
+// ADOPTION IS BOUND TO THE ONE LEGACY ROW, NOT TO THE SHAPE. The same unmarked shape for any other holder
+// -- the role moved to srv2-deploy, or a future holder -- refuses as partial even when it matches
+// exactly; and in the world after the row's retirement (no legacy rows), a marker deleted from the
+// once-adopted srv1 realization refuses rather than being re-adopted.
+fn decide_with_legacy(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>, legacy: List<LegacyUnmarkedHolderStanding>) -> RoleSingletonConvergence {
+  let rows = desired_deployment_roster()
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows, legacy: legacy)
+}
+
+test fn only_the_legacy_row_is_adoptable_and_a_retired_world_refuses_a_deleted_marker() -> Bool {
+  let moved_unmarked = [read_on(host: "srv1", sightings: []), read_on(host: "srv2", sightings: units_without_marker(host: "srv2", d: srv2_deploy_deployment))]
+  let srv1_unmarked = adopt_world()
+  let legacy_still_adopted = match decide_with_legacy(desired: prod_role_actuated_realization(), readings: srv1_unmarked, legacy: legacy_unmarked_holders) {
+    AdoptUnmarkedHolder { holder: _, host, standing: _, retirement: _ } => (host as String) == "srv1"
+    _ => false
+  }
+  count(legacy_unmarked_holders) == 1
+    && legacy_still_adopted
+    && refused_with(c: decide_with_legacy(desired: fx_moved(), readings: moved_unmarked, legacy: legacy_unmarked_holders), label: "partial")
+    && refused_with(c: decide_with_legacy(desired: prod_role_actuated_realization(), readings: srv1_unmarked, legacy: []), label: "partial")
+}
+
+// THE TOKEN AND THE STANDING CANNOT BE FORGED. An outside module minting an admission from a
+// fabricated RoleSingletonNoop is refused at compile time by the mint's admit_callers seal, and an
+// outside module stating a LegacyUnmarkedHolderStanding is refused by its sole_constructor -- each a
+// located diagnostic. The canonical assessor takes no desired realization, so a noncanonical
+// ProdRoleSelection has no parameter to enter through.
+data forged_admission_source: String = "module probe_forged_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn forge() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\n"
+
+data forged_standing_source: String = "module probe_forged_legacy_standing\nimport gunbc.live_deploy.role_singleton_convergence { LegacyUnmarkedHolderStanding }\nimport gunbc.deployment_risk { srv2_deploy_deployment }\nfn forge() -> LegacyUnmarkedHolderStanding { LegacyUnmarkedHolderStanding { deployment: srv2_deploy_deployment, host: \"srv2\", marker_path: \"/x\", evidence: \"forged\" } }\n"
+
+data noncanonical_desired_source: String = "module probe_noncanonical_desired\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization_in }\nimport gunbc.deployment_risk { ProdRoleHeldBy, srv2_deploy_deployment }\nimport gunbc.host_effect { LocalShell }\nfn forge() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), desired: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }), own: LocalShell) }\n"
+
+data canonical_assessor_source: String = "module probe_canonical_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization_in }\nimport gunbc.deployment_risk { ProdRoleHeldBy, srv2_deploy_deployment }\nimport gunbc.host_effect { LocalShell }\nfn forge() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
+
+fn blocking_rows(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows } => fold(rows |> filter(r => r.blocking), init: 0, f: (acc, r) => acc + r.count)
+    CensusNotRunnable { cause: _ } => 0
+  }
+}
+
+fn blocking_of(source: String, class: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: class) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+test fn no_outside_module_can_mint_an_admission_or_state_a_legacy_standing() -> Bool {
+  blocking_of(source: forged_admission_source, class: "ConstructorCallAdmissionRefused") >= 1
+    && blocking_of(source: forged_standing_source, class: "SoleConstructorViolation") >= 1
+    && blocking_rows(source: noncanonical_desired_source) > blocking_rows(source: canonical_assessor_source)
 }
 
 test fn an_unmarked_holder_on_the_wrong_host_is_refused_not_adopted() -> Bool {
@@ -518,10 +576,10 @@ fn spec_of(realization: ProdRoleRealization, id: String) -> List<DeploymentSpec>
   roster_specs_under(realization: realization) |> filter(s => (s.instance_id as String) == id)
 }
 
-fn admission_refused_as_stale(r: RoleSingletonAdmissionResult) -> Bool {
+fn admission_refused_as_stale(r: RoleSingletonAdmissionStanding) -> Bool {
   match r {
-    RoleSingletonNotAdmitted { cause } => match cause { RoleSingletonStaleSpec { instance_id: _, detail: _ } => true  _ => false }
-    RoleSingletonAdmitted { admission: _ } => false
+    RoleSingletonInadmissible { cause } => match cause { RoleSingletonStaleSpec { instance_id: _, detail: _ } => true  _ => false }
+    RoleSingletonAdmissible { decision: _ } => false
   }
 }
 
@@ -532,12 +590,12 @@ test fn a_stale_spec_is_refused_before_member_planning() -> Bool {
   let stale_srv1 = spec_of(realization: prod_role_actuated_realization(), id: live_id)
   let moved_install = decide(desired: fx_moved(), readings: empty_world())
   let unheld_noop = decide(desired: fx_unheld(), readings: empty_world())
-  all(stale_srv1, s => admission_refused_as_stale(r: admit_role_singletons(spec: s, desired: fx_moved(), decision: moved_install)))
-    && all(stale_srv1, s => admission_refused_as_stale(r: admit_role_singletons(spec: s, desired: fx_unheld(), decision: unheld_noop)))
-    && all(spec_of(realization: fx_moved(), id: lab_id), s => admission_refused_as_stale(r: admit_role_singletons(spec: s, desired: fx_moved(), decision: moved_install)))
-    && all(spec_of(realization: fx_moved(), id: srv2_id), s => match admit_role_singletons(spec: s, desired: fx_moved(), decision: moved_install) {
-      RoleSingletonAdmitted { admission } => (admitted_spec(admission: admission).instance_id as String) == srv2_id
-      RoleSingletonNotAdmitted { cause: _ } => false
+  all(stale_srv1, s => admission_refused_as_stale(r: classify_role_singleton_admission(spec: s, desired: fx_moved(), decision: moved_install)))
+    && all(stale_srv1, s => admission_refused_as_stale(r: classify_role_singleton_admission(spec: s, desired: fx_unheld(), decision: unheld_noop)))
+    && all(spec_of(realization: fx_moved(), id: lab_id), s => admission_refused_as_stale(r: classify_role_singleton_admission(spec: s, desired: fx_moved(), decision: moved_install)))
+    && all(spec_of(realization: fx_moved(), id: srv2_id), s => match classify_role_singleton_admission(spec: s, desired: fx_moved(), decision: moved_install) {
+      RoleSingletonAdmissible { decision: _ } => (s.instance_id as String) == srv2_id
+      RoleSingletonInadmissible { cause: _ } => false
     })
     && count(stale_srv1) == 1
 }
@@ -585,7 +643,7 @@ test fn the_real_selection_places_every_singleton_on_its_holder_and_converges_as
   let is_noop = match noop { RoleSingletonNoop => true  _ => false }
   count(live) == 1
     && all(live, s => spec_store_directory_count(spec: s) > 0 && spec_store_artifact_count(spec: s) == 2 && deployment_owns_the_host_approval_broker(spec: s)
-      && match admit_role_singletons(spec: s, desired: real, decision: noop) { RoleSingletonAdmitted { admission: _ } => true  RoleSingletonNotAdmitted { cause: _ } => false })
+      && match classify_role_singleton_admission(spec: s, desired: real, decision: noop) { RoleSingletonAdmissible { decision: _ } => true  RoleSingletonInadmissible { cause: _ } => false })
     && all(others, s => spec_holds_no_singleton(spec: s))
     && any(job_labels, l => l == (srv1_live_dashboard_instance().host_identity as String))
     && is_noop
