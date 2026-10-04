@@ -89,34 +89,45 @@ fn deployment_risk_class(selection: ProdRoleSelection, deployment: DeploymentId)
 // GitHub App. The Codex account and home, admitted ref, R2/GCP/workload identity and OIDC client
 // join as fields in the split PRs that move each one (deployment-risk plan, deliverable 3), and
 // each of those PRs adds the TestRisk side or leaves its refusal standing.
+//
+// ONE SLOT PER CLASS, BY CONSTRUCTION (review 75332). The table is keyed by class rather than a list
+// of class-tagged rows, so a second ProdRisk set has no place to be written and no resolver arm has
+// to catch it after the fact (DESIGN 5: unwritable, not validated). An empty slot is the only
+// refusal the resolver can return.
 type DeploymentExternalBindingSet {
-  class: DeploymentRiskClass
   approval_ntfy_topic: NtfyTopic
   publication_app: DeclaredGitHubApp
+}
+
+type DeploymentExternalBindingTable {
+  prod: DeploymentExternalBindingSet?
+  test: DeploymentExternalBindingSet?
 }
 
 // The ProdRisk set is today's single global binding, now named as the prod class's. NO TestRisk
 // set exists: no test-side topic or app has been provisioned, and minting one is an outward-facing
 // effect the operator approves first. So every TestRisk deployment refuses here, which is the
 // correct state until a test resource exists -- not a gap to paper over.
-data deployment_external_binding_sets: List<DeploymentExternalBindingSet> = [
-  DeploymentExternalBindingSet {
-    class: ProdRisk,
+data deployment_external_binding_table: DeploymentExternalBindingTable = DeploymentExternalBindingTable {
+  prod: Present { value: DeploymentExternalBindingSet {
     approval_ntfy_topic: approval_ntfy_topic,
     publication_app: gunbai_bot_declared,
-  },
-]
+  } },
+  test: Absent,
+}
 
 type DeploymentBindingResolution
-  = DeploymentBindingsResolved { deployment: DeploymentId, bindings: DeploymentExternalBindingSet }
+  = DeploymentBindingsResolved { deployment: DeploymentId, class: DeploymentRiskClass, bindings: DeploymentExternalBindingSet }
   | DeploymentBindingSetAbsent { deployment: DeploymentId, class: DeploymentRiskClass }
-  | DeploymentBindingSetAmbiguous { deployment: DeploymentId, class: DeploymentRiskClass, count: Int }
 
-fn binding_sets_for_class(
-  sets: List<DeploymentExternalBindingSet>,
+fn binding_set_for_class(
+  table: DeploymentExternalBindingTable,
   class: DeploymentRiskClass,
-) -> List<DeploymentExternalBindingSet> {
-  filter(sets, s => s.class == class)
+) -> DeploymentExternalBindingSet? {
+  match class {
+    ProdRisk => table.prod
+    TestRisk => table.test
+  }
 }
 
 // ── The interface, and the bet ──────────────────────────────────────────────────────────────────
@@ -128,23 +139,17 @@ fn binding_sets_for_class(
 // the bet's magnitude gains a grounded carrier -- an order of magnitude over std.measure Duration --
 // rather than a bare Int named for its unit. Until then the obligations a conforming deployment
 // carries are: it names its DeploymentId and never another deployment's roots; it never authors a
-// class; every external attachment comes from its resolved set, never a literal; an absent or
-// ambiguous set stops the line; and its convergence is safe to re-run, converging under today's
+// class; every external attachment comes from its resolved set, never a literal; an absent set
+// stops the line; and its convergence is safe to re-run, converging under today's
 // operator policy to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).
 fn resolve_deployment_bindings(
   selection: ProdRoleSelection,
-  sets: List<DeploymentExternalBindingSet>,
+  table: DeploymentExternalBindingTable,
   deployment: DeploymentId,
 ) -> DeploymentBindingResolution {
   let class = deployment_risk_class(selection: selection, deployment: deployment)
-  let exact = binding_sets_for_class(sets: sets, class: class)
-  match exact.first() {
+  match binding_set_for_class(table: table, class: class) {
     Absent => DeploymentBindingSetAbsent { deployment: deployment, class: class }
-    Present { value: only } =>
-      if count(exact) == 1 {
-        DeploymentBindingsResolved { deployment: deployment, bindings: only }
-      } else {
-        DeploymentBindingSetAmbiguous { deployment: deployment, class: class, count: count(exact) }
-      }
+    Present { value: b } => DeploymentBindingsResolved { deployment: deployment, class: class, bindings: b }
   }
 }
