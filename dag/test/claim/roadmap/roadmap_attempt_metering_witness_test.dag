@@ -193,14 +193,17 @@ test fn a_launch_with_tokens_and_no_seat_makes_the_seat_total_incomplete() -> Bo
 }
 
 // A ROW THE ROSTER NAMES CANNOT BE DROPPED, A ROW IT DOES NOT NAME CANNOT BE ADDED, AND NO LAUNCH
-// APPEARS TWICE.
-test fn the_record_must_match_the_launch_roster_exactly() -> Bool {
-  let only_worker = record_of(roles: [usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat())])
-  let extra = record_of(roles: concat(complete_usage(), [usage(role: MeteredAuditor { head: "h1" as NonEmptyStr }, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))
-  let doubled = record_of(roles: concat(complete_usage(), [usage(role: MeteredWorker, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))
-  observe(record: only_worker) == "refused"
-    && observe(record: extra) == "refused"
-    && observe(record: doubled) == "refused"
+// APPEARS TWICE -- one claim per case, since each pays its own encode and decode.
+test fn a_record_missing_a_rostered_launch_refuses() -> Bool {
+  observe(record: record_of(roles: [usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: worker_seat())])) == "refused"
+}
+
+test fn a_record_with_an_unrostered_launch_refuses() -> Bool {
+  observe(record: record_of(roles: concat(complete_usage(), [usage(role: MeteredAuditor { head: "h1" as NonEmptyStr }, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))) == "refused"
+}
+
+test fn a_record_with_a_launch_twice_refuses() -> Bool {
+  observe(record: record_of(roles: concat(complete_usage(), [usage(role: MeteredWorker, tokens: TokensStreamAbsent, seat: SeatPointerAbsent)]))) == "refused"
 }
 
 test fn an_empty_record_is_never_an_observed_zero() -> Bool {
@@ -270,19 +273,27 @@ test fn one_seat_attributed_to_two_launches_refuses() -> Bool {
 
 // FINAL ONLY WHEN NOTHING CAN CHANGE: a seat still held, or a launch not yet terminal, is Provisional
 // -- a distinct arm, never Observed -- and a record that claims Final over such a row refuses.
-test fn a_record_that_can_still_change_is_provisional_never_observed() -> Bool {
-  let held = record_of(roles: [
+fn held_record() -> AttemptMeteringRecord {
+  record_of(roles: [
     usage(role: MeteredWorker, tokens: role_tokens_from_events(body: worker_stream()), seat: SeatStillHeld { pointer: pointer_for(role: MeteredWorker, stamp: "1000"), granted_at: 1000 }),
     usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
   ])
-  let running = record_of(roles: [
+}
+
+test fn a_record_with_a_held_seat_is_provisional() -> Bool {
+  observe(record: held_record()) == "provisional"
+}
+
+test fn a_record_with_a_running_launch_is_provisional() -> Bool {
+  observe(record: record_of(roles: [
     usage(role: MeteredWorker, tokens: role_tokens_from_events(body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":1,\"output_tokens\":2,\"epoch_ms\":1}"), seat: worker_seat()),
     usage(role: reviewer_role(), tokens: role_tokens_from_events(body: reviewer_stream()), seat: reviewer_seat()),
-  ])
-  let forged = AttemptMeteringRecord { node_id: held.node_id, attempt_key: held.attempt_key, metered_at: held.metered_at, standing: MeteringStandingFinal, roles: held.roles, compute: held.compute }
-  observe(record: held) == "provisional"
-    && observe(record: running) == "provisional"
-    && observe(record: forged) == "refused"
+  ])) == "provisional"
+}
+
+test fn a_record_claiming_final_over_a_held_seat_refuses() -> Bool {
+  let held = held_record()
+  observe(record: AttemptMeteringRecord { node_id: held.node_id, attempt_key: held.attempt_key, metered_at: held.metered_at, standing: MeteringStandingFinal, roles: held.roles, compute: held.compute }) == "refused"
 }
 
 // A LAUNCH ADMITTED AFTER A RECORD WENT FINAL MAKES THAT RECORD INADMISSIBLE: the old record cannot
