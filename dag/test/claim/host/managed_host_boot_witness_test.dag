@@ -6,7 +6,7 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootEfi, IpmiBootOnce, ipmi_boot_selection_label }
-import gunbc.fleet_intent_network { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
 import gunbc.managed_host { ManagedHostEndpointMismatch, managed_host_fixture, managed_hosts }
 import gunbc.host_reset_boot_selection { reset_boot_selection }
 import gunbc.boot_medium {

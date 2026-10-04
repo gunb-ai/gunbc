@@ -67,7 +67,7 @@ import gunbc.runner_slot_allocation {
   host_fabric_slot_count,
   host_memory_admitted_width,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
 import gunbc.runner_slot_retirement {
   SlotRetirementEvidence,
@@ -83,7 +83,7 @@ import gunbc.runner_slot_retirement {
   CgroupUnobserved,
 }
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
-import gunbc.fleet_intent_network { operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv4 }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {

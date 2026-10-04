@@ -6,7 +6,7 @@ import std.content_hash { sha256_hex_digest }
 import extdeps.tools.gnu_coreutils { cat_command }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.exec.command { argv_words }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }

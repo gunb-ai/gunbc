@@ -65,7 +65,11 @@ import v2.std.node {
   core_edge_label,
   Found,
   Instantiation,
-  arrow_body_target_lookup
+  arrow_body_target_lookup,
+  Ambiguous,
+  Arrow,
+  Cardinality,
+  Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

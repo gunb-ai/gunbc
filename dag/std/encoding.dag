@@ -47,19 +47,26 @@ fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
     Binary => match b {
       Binary => Binary
       Unknown => Binary
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Latin1 => ASCII
+      Text => ASCII
     }
     UTF8 => match b {
       Unknown => UTF8
       Text => UTF8
       UTF8 => UTF8
-      _ => ASCII
+      ASCII => ASCII
+      Latin1 => ASCII
+      Binary => ASCII
     }
     Latin1 => match b {
       Unknown => Latin1
       Text => Latin1
       Latin1 => Latin1
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Binary => ASCII
     }
     Text => match b {
       Unknown => Text
@@ -80,7 +87,9 @@ fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
       Binary => Binary
       ASCII => Binary
       Unknown => Unknown
-      _ => Unknown
+      UTF8 => Unknown
+      Latin1 => Unknown
+      Text => Unknown
     }
     UTF8 => match b {
       ASCII => UTF8

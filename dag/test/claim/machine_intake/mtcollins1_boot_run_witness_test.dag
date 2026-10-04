@@ -51,7 +51,7 @@ import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_mus
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }

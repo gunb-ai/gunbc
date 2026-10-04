@@ -9,7 +9,7 @@ import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueE
 import std.measure { token_count, token_count_value, tokens_per_second_count, millisecond, millisecond_count }
 import product.capacity.lease { lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_rank_observe {
   container_incarnation_id, ObservedRankIncarnation,
 }
