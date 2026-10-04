@@ -372,20 +372,6 @@ pub fn kernel_mint_declaration_for(
     }
 }
 
-pub fn kernel_mint_is_bound_to(
-    rows: Rc<Vec<Rc<KernelMintDeclaration>>>,
-    minted_name: String,
-    declaration: Rc<DeclarationRef>,
-) -> bool {
-    match (*kernel_mint_declaration_for(rows.clone(), minted_name.clone())).clone() {
-        KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
-            crate::std_decl_ref::declaration_ref_eq(d.clone(), declaration.clone())
-        }
-        KernelMintDeclarationLookup::KernelMintDeclarationAbsent => false,
-        KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: _, .. } => false,
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KernelIntLiteral;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
