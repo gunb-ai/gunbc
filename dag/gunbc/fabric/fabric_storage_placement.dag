@@ -18,7 +18,7 @@ import gunbc.managed_directory {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
 import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
+import extdeps.access.posix { PosixUser, FileMode, PermissionBits, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
 import std.algebra { trim }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
@@ -80,12 +80,48 @@ fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 }
 
 // THE STORE'S OWNERSHIP MARKER, by the instance ownership-marker rule
-// (gunbc.roadmap_dashboard_instance dashboard_ownership_marker_in) applied to the store root. The
-// store root, auth state and door directories are Ensured and no retract removes them, so a unit file
-// alone cannot say whether a host holds a store; the marker can, and the role-singleton observation
-// reads it (gunbc.live_deploy.role_singleton_convergence).
+// (gunbc.roadmap_dashboard_instance dashboard_ownership_marker_in) applied to the store's CONTROL
+// directory, not to the store root. The store root, auth state and door directories are Ensured and no
+// retract removes them, so a unit file alone cannot say whether a host holds a store; the marker can,
+// and the role-singleton observation reads it (gunbc.live_deploy.role_singleton_convergence) as the
+// deploy job principal. The store root's mode is derived from its one dependent, the service, and
+// grants nobody else traversal, so a marker there is unreadable to that observer and every assessment
+// would refuse as unobservable; widening the store root to admit the observer would hand it the store.
 fn fabric_storage_ownership_marker_path(instance: HostDashboardInstance) -> NonEmptyStr {
-  dashboard_ownership_marker_in(root: dashboard_instance_fabric_storage_root(instance: instance), instance_id: instance.instance_id) as String as NonEmptyStr
+  dashboard_ownership_marker_in(root: fabric_storage_control_directory_path(instance: instance) as String as FilePath, instance_id: instance.instance_id) as String as NonEmptyStr
+}
+
+fn fabric_storage_control_directory_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_child(root: instance.instance_root, child: "fabric-storage-control") as String as NonEmptyStr
+}
+
+// WHO READS THE MARKER: the principal the role-singleton observation runs as, the deploy job principal
+// (gunbc.fleet_posix_accounts srv1_ci_deploy_runner_principal job_user). It already traverses the
+// instance root to reach the door (fabric_storage_door_dependents), so the control directory is the
+// only new grant, and it is read and traverse, never write.
+data fabric_storage_marker_observer: PosixUser = fleet_posix_ci_runner_user
+
+// THE CONTROL DIRECTORY holds only the marker. The service writes it; the observer is its group and
+// reads it. Its mode is derived from those two dependents (gunbc.managed_directory
+// managed_directory_permissions), so the observer's access is a declared dependency, not a number.
+fn fabric_storage_control_directory(instance: HostDashboardInstance) -> ManagedDirectory {
+  let service = srv1_dashboard_service_principal()
+  ManagedDirectory {
+    member: "fabric-storage-control",
+    path: fabric_storage_control_directory_path(instance: instance) as String as FilePath,
+    owner: service,
+    group_principal: fabric_storage_marker_observer,
+    dependents: [
+      DirectoryDependent { who: service, needs: [Read, Write, Execute] },
+      DirectoryDependent { who: fabric_storage_marker_observer, needs: [Read, Execute] },
+    ],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+fn fabric_storage_store_root_directory(instance: HostDashboardInstance) -> ManagedDirectory {
+  fabric_storage_directory(member: "fabric-storage-root", path: fabric_storage_store_root(instance: instance), writes: false)
 }
 
 // THE MARKER'S CONTENT names whose store it is: the deployment and the host.
@@ -309,13 +345,14 @@ fn fabric_storage_store_directories_for(instance: HostDashboardInstance) -> List
   let root = fabric_storage_store_root(instance: instance)
   let areas = fabric_storage_file_root(root: root)
   [
-    managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-root", path: root, writes: false)),
+    managed_directory_admit(d: fabric_storage_store_root_directory(instance: instance)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-objects", path: areas.objects, writes: true)),
     managed_directory_admit(d: fabric_storage_directory(member: "fabric-storage-heads", path: areas.heads, writes: true)),
     managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-root", path: fabric_storage_state_root(store_root: root))),
     managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-objects", path: fabric_storage_state_file_root(store_root: root).objects)),
     managed_directory_admit(d: fabric_storage_state_directory(member: "fabric-state-heads", path: fabric_storage_state_file_root(store_root: root).heads)),
     managed_directory_admit(d: fabric_storage_door_directory(instance: instance)),
+    managed_directory_admit(d: fabric_storage_control_directory(instance: instance)),
   ]
 }
 

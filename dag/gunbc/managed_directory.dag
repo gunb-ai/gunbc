@@ -217,6 +217,18 @@ fn managed_directory_permissions(d: ManagedDirectory) -> FilePermissions {
   }
 }
 
+// WHETHER A DIRECTORY'S DERIVED MODE LETS A PRINCIPAL LIST AND TRAVERSE IT, by the class that principal
+// falls in. The fabric store's marker witness asks it of the store's control directory and of its store root with the real observer.
+fn managed_directory_admits_reader(d: ManagedDirectory, who: PosixUser) -> Bool {
+  let mode = managed_directory_permissions(d: d).mode
+  let bits = match dependent_class_of(owner: d.owner, group_gid: d.group_principal.gid, who: who) {
+    OwnerClass => mode.owner
+    GroupClass => mode.group
+    OtherClass => mode.other
+  }
+  bits.read && bits.execute
+}
+
 // ── THE ENTRIES' MODE, DERIVED FROM THE SAME DEPENDENTS ──────────────────────────────────────────
 //
 // An entry is owned by the dependent that CREATED it, not by the directory's owner, and its group is

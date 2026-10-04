@@ -29,7 +29,7 @@ import extdeps.access.posix { file_mode_octal }
 import extdeps.shell
 import std.algebra { trim }
 import std.types { FilePath }
-import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
 import gunbc.live_deploy.member_observe {
   ObservationArm,
   OnTheHostItself,
@@ -72,7 +72,8 @@ import gunbc.live_deploy.member_observe {
 // ── What can be seen ────────────────────────────────────────────────────────────────────────────
 // THE MEMBERS a realization is made of. The broker unit is host-global and names no deployment; the
 // fabric store unit and the store's ownership marker each name exactly one roster deployment. The
-// marker is read because the store root, auth state and door directories are Ensured and no retract
+// marker (in the store's control directory, read by the deploy job principal) is read because the
+// store root, auth state and door directories are Ensured and no retract
 // removes them: an old store with no unit is still a store.
 type RoleSingletonMember
   = BrokerUnitMember
@@ -114,6 +115,7 @@ type RoleSingletonRefusal
   | RoleSingletonUnmarked { deployment: DeploymentId, host: NonEmptyStr, marker: FabricStorageOwnershipMarkerSpec }
   | RoleSingletonMarkerMismatched { deployment: DeploymentId, host: NonEmptyStr, field: NonEmptyStr, expected: String, observed: String }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
+  | RoleSingletonDeploymentUnrostered { instance_id: String, detail: String }
 
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
 type RoleSingletonConvergence
@@ -310,7 +312,7 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
 
 // ── The admission: the decision bound to the spec that acts ─────────────────────────────────────
 // THE APPLY CONSUMES THIS TOKEN, NEVER THE CALLER'S SPEC. sole_constructor, and its one mint
-// (mint_role_singleton_admission) is sealed to the observing assessor assess_and_admit. The spec inside is the one the assessment was made against, and it is admitted only when
+// (mint_role_singleton_admission) is sealed to assess_and_admit_rostered, reached only from assess_and_admit over a bound roster row. The spec inside is the one the assessment was made against, and it is admitted only when
 // its own holding agrees with the desired realization: a spec built before the role moved, a holding
 // spec under NoProdRole, or a non-holder spec while the holder's first install is pending all refuse
 // before any member is planned.
@@ -383,7 +385,7 @@ fn classify_role_singleton_admission(spec: DeploymentSpec, desired: ProdRoleReal
 // THE ONLY MINT, sealed to the observing assessor: no caller can hand it a fabricated decision or a
 // noncanonical desired realization, because no other caller may reach it.
 fn mint_role_singleton_admission(spec: DeploymentSpec, decision: RoleSingletonConvergence) -> RoleSingletonAdmission admit_callers: [
-  decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit"),
+  decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit_rostered"),
 ] {
   RoleSingletonAdmission { spec: spec, decision: decision }
 }
@@ -411,11 +413,13 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
     RoleSingletonPartial { deployment, host, missing } =>
       join(["role singletons refused: ", deployment.name as String, " on ", host as String, " is partial (missing ", to_string(count(missing)), " member(s)); an interrupted install or a store without its broker is not adopted"], "")
     RoleSingletonUnmarked { deployment, host, marker } =>
-      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, " write ", marker.path as String, " with mode ", file_mode_octal(mode: marker.mode), ", owner ", marker.owner as String, ", group ", marker.group as String, " and exactly this content: ", marker.content as String], "")
+      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, ", in the store's control directory (created first with the mode, owner and group gunbc.fabric_storage_placement fabric_storage_control_directory derives), write ", marker.path as String, " with mode ", file_mode_octal(mode: marker.mode), ", owner ", marker.owner as String, ", group ", marker.group as String, " and exactly this content: ", marker.content as String], "")
     RoleSingletonMarkerMismatched { deployment, host, field, expected, observed } =>
       join(["role singletons refused: the store ownership marker for ", deployment.name as String, " on ", host as String, " does not match its row: ", field as String, " is '", observed, "', expected '", expected, "'; a marker that differs in any field is not the marker"], "")
     RoleSingletonStaleSpec { instance_id, detail } =>
       join(["role singletons refused: spec ", instance_id as String, " is not admitted: ", detail], "")
+    RoleSingletonDeploymentUnrostered { instance_id, detail } =>
+      join(["role singletons refused: deployment ", instance_id, " does not bind to its desired_deployment_roster row: ", detail], "")
   }
 }
 
@@ -489,10 +493,24 @@ type MarkerSighting
 
 fn marker_sighting(host: NonEmptyStr, r: DesiredDeployment, arm: ObservationArm) -> MarkerSighting {
   let spec = fabric_storage_ownership_marker_spec(instance: r.instance)
-  match entry_presence(arm: arm, path: spec.path as String) {
+  marker_sighting_of(
+    host: host,
+    r: r,
+    presence: entry_presence(arm: arm, path: spec.path as String),
+    read_back: path => read_marker(arm: arm, path: path),
+  )
+}
+
+// THE THREE OUTCOMES, decided from what the observer's own legs returned: the marker exactly as its row
+// (a sighting), no marker (a successful listing of the control directory without it), or a marker the
+// observer cannot read (a listing or readback that failed -- permission denied included), which makes
+// the host unobservable and is never read as absent.
+fn marker_sighting_of(host: NonEmptyStr, r: DesiredDeployment, presence: EntryPresence, read_back: fn(NonEmptyStr) -> MarkerRead) -> MarkerSighting {
+  let spec = fabric_storage_ownership_marker_spec(instance: r.instance)
+  match presence {
     EntryPresenceIndeterminate { cause } => MarkerSightingUnobservable { cause: cause }
     EntryAbsent => MarkerSightingAbsent
-    EntryPresent => match read_marker(arm: arm, path: spec.path) {
+    EntryPresent => match read_back(spec.path) {
       MarkerReadRefused { cause } => MarkerSightingUnobservable { cause: cause }
       MarkerReadBack { reading } => match fabric_storage_marker_verdict(spec: spec, reading: reading) {
         FabricStorageMarkerExact => MarkerSightingOf { sighting: SightedDeploymentMember { host: host, deployment: r.instance.deployment, member: StoreMarkerMember } }
@@ -549,9 +567,25 @@ fn observe_role_singletons_with(source: RoleSingletonReadingSource, rows: List<D
 // THE CANONICAL ASSESSOR, AND THE ONLY ROUTE TO A TOKEN. It reads the desired realization itself
 // (gunbc.live_deploy.desired prod_role_actuated_realization -- the real selection, never a caller's),
 // observes every roster host through the ssh probe, decides, classifies the spec, and only then mints.
-fn assess_and_admit(spec: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonAdmissionResult admit_callers: [
+fn assess_and_admit(deployment: DesiredDeployment, own: HostEffectTransport) -> RoleSingletonAdmissionResult admit_callers: [
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
   decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
+  match bind_desired_selected_identity(desired: deployment) {
+    DesiredSelectedIdentityUnknownInstance { instance_id } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id, detail: "no roster row carries this instance id" } }
+    DesiredSelectedIdentityRosterRefused { refusal: _ } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the desired roster itself refused" } }
+    DesiredSelectedIdentityMismatch { carried: _, rostered: _ } =>
+      RoleSingletonNotAdmitted { cause: RoleSingletonDeploymentUnrostered { instance_id: instance_id_text(id: deployment.instance.instance_id), detail: "the carried selected identity is not the rostered one" } }
+    DesiredSelectedIdentityBound { row } => assess_and_admit_rostered(spec: selected_deployment_spec(row: row), own: own)
+  }
+}
+
+// THE SPEC IS BUILT, NEVER SUPPLIED: the only caller is assess_and_admit above, which derives it from
+// the bound roster row, so an altered DeploymentSpec has no route to the observation or the mint.
+fn assess_and_admit_rostered(spec: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonAdmissionResult admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.role_singleton_convergence", decl_name: "assess_and_admit"),
 ] {
   let rows = desired_deployment_roster()
   let desired = prod_role_actuated_realization()

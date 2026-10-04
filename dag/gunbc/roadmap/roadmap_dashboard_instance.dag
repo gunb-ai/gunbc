@@ -379,7 +379,7 @@ fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> 
 
 // THE OWNERSHIP MARKER'S ONE NAMING RULE: an empty file under a root, named for the instance that
 // owns the root. The instance root carries it (above), and so does the prod-role holder's fabric
-// store root (gunbc.fabric_storage_placement fabric_storage_ownership_marker_path), so an old store
+// store control directory (gunbc.fabric_storage_placement fabric_storage_ownership_marker_path), so an old store
 // with no unit is still observably someone's state rather than reading as nothing.
 fn dashboard_ownership_marker_in(root: FilePath, instance_id: NonEmptyStr) -> FilePath {
   dashboard_instance_child(
