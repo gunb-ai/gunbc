@@ -24,8 +24,20 @@ import gunbc.machine_intake_phase {
   ArrivalPhase,
   AccessDiscover,
   IdentityBindProvisional,
+  PriorLifeBoundary,
+  BmcSecure,
+  BootDeliveryEstablish,
+  DiagnosticBootAttest,
+  InventoryConform,
+  MemoryFastQualify,
+  MemoryAuthoritativeQualify,
+  SubsystemQualify,
+  AcceptanceSoak,
+  ArrivalCleanup,
   IntakePhase,
   Arrival,
+  Provisioning,
+  Placement,
   arrival_phases_all,
   intake_phase_rank,
 }
@@ -439,7 +451,16 @@ fn arrival_step_of_phase(phase: ArrivalPhase) -> ConvergenceStep<IntakePhase>? {
   match phase {
     AccessDiscover => Present { value: ConvergenceStep { identity: access_discover_step_ref, order_member: Arrival { phase: AccessDiscover }, preconditions: [] } }
     IdentityBindProvisional => Present { value: ConvergenceStep { identity: identity_bind_provisional_step_ref, order_member: Arrival { phase: IdentityBindProvisional }, preconditions: [SameSubject { step: access_discover_step_ref }] } }
-    _ => none
+    PriorLifeBoundary => none
+    BmcSecure => none
+    BootDeliveryEstablish => none
+    DiagnosticBootAttest => none
+    InventoryConform => none
+    MemoryFastQualify => none
+    MemoryAuthoritativeQualify => none
+    SubsystemQualify => none
+    AcceptanceSoak => none
+    ArrivalCleanup => none
   }
 }
 
@@ -473,7 +494,8 @@ fn arrival_prefix_steps(phases: List<IntakePhase>) -> ArrivalPrefixSteps {
               Present { value: s } => ArrivalPrefixStepped { steps: concat(ss, [s]) }
               Absent => ArrivalPrefixPhaseUnstepped { phase: p }
             }
-          _ => ArrivalPrefixPhaseUnstepped { phase: p }
+          Provisioning { phase: _ } => ArrivalPrefixPhaseUnstepped { phase: p }
+          Placement { phase: _ } => ArrivalPrefixPhaseUnstepped { phase: p }
         }
     })
 }

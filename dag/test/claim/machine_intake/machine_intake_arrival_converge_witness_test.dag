@@ -273,8 +273,10 @@ test fn w_a_step_whose_phase_rank_disagrees_with_the_authority_refuses() -> Bool
   }
 }
 
+// A real declaration that is not a step of the plan, so the precondition names nothing the plan
+// carries.
 test fn w_an_unknown_precondition_refuses() -> Bool {
-  let unknown = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary")
+  let unknown = decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "converge_arrival_prefix")
   match plan_refusal(admission: admit_convergence_plan(census: host_convergence_census_standing, order: arrival_order_authority(), steps: [access_step_bound_to(phase: Arrival { phase: AccessDiscover }), identity_step_with(preconditions: [SameSubject { step: access_discover_step_ref }, SameSubject { step: unknown }])])) {
     Present { value: c } => match c {
       PreconditionUnknown { step: s, precondition: p } => declaration_ref_eq(a: s, b: identity_bind_provisional_step_ref) && match p { SameSubject { step: ps } => declaration_ref_eq(a: ps, b: unknown) }
