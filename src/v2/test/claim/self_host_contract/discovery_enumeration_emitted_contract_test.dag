@@ -1,0 +1,64 @@
+module v2.test.claim.self_host_contract.discovery_enumeration_emitted_contract
+
+import std.logic { Bool }
+import v2.compiler.discovery_enumeration {
+  OwnedDataDeclInitializer, OwnedBoolWitnessClaimInit, OwnedNodeCorpusInit, OwnedOtherInit,
+  ResolvedDeclRef,
+  unified_claim_arm_bool_witness_claim_module, unified_claim_arm_node_corpus_module
+}
+
+// THE discovery_enumeration ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the
+// authority: v2.compiler.discovery_enumeration names v2.std.verification as the module of both
+// unified claim arms, and OwnedDataDeclInitializer's three arms carry their fields through
+// construction and elimination.
+type DecArm = DecBoolWitness | DecNodeCorpus | DecOther
+
+fn dec_classify(init: OwnedDataDeclInitializer) -> DecArm {
+  match init {
+    OwnedBoolWitnessClaimInit { witness_entry: _, witness_function: _ } => DecBoolWitness
+    OwnedNodeCorpusInit => DecNodeCorpus
+    OwnedOtherInit { resolved: _ } => DecOther
+  }
+}
+
+fn dec_bool_witness() -> OwnedDataDeclInitializer {
+  OwnedBoolWitnessClaimInit { witness_entry: "entry.dag", witness_function: "witness_fn" }
+}
+
+fn dec_other() -> OwnedDataDeclInitializer {
+  OwnedOtherInit { resolved: ResolvedDeclRef { module: "v2.example", name: ^sym } }
+}
+
+fn dec_bool_fields_round_trip() -> Bool {
+  match dec_bool_witness() {
+    OwnedBoolWitnessClaimInit { witness_entry: e, witness_function: f } => e == "entry.dag" && f == "witness_fn"
+    OwnedNodeCorpusInit => false
+    OwnedOtherInit { resolved: _ } => false
+  }
+}
+
+fn dec_other_fields_round_trip() -> Bool {
+  match dec_other() {
+    OwnedOtherInit { resolved: r } => r.module == "v2.example" && r.name == ^sym
+    OwnedNodeCorpusInit => false
+    OwnedBoolWitnessClaimInit { witness_entry: _, witness_function: _ } => false
+  }
+}
+
+// The planted fault expects the node-corpus arm to name a module it does not, so the injected
+// reading does not hold exactly when the module names v2.std.verification.
+fn discovery_enumeration_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let corpus_expected = if inject_fault { "v2.std.fault" } else { "v2.std.verification" }
+  unified_claim_arm_bool_witness_claim_module == "v2.std.verification"
+    && unified_claim_arm_node_corpus_module == corpus_expected
+    && dec_classify(init: OwnedNodeCorpusInit) == DecNodeCorpus
+    && dec_classify(init: dec_bool_witness()) == DecBoolWitness
+    && dec_classify(init: dec_other()) == DecOther
+    && dec_bool_fields_round_trip()
+    && dec_other_fields_round_trip()
+}
+
+test fn discovery_enumeration_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  discovery_enumeration_emitted_contract_holds(inject_fault: false)
+    && !discovery_enumeration_emitted_contract_holds(inject_fault: true)
+}
