@@ -8,7 +8,7 @@ import product.capacity.event_chain { EventId }
 import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_of_host, fabric_group_wire }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
-import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
 import gunbc.spark.pair_serving_authority_log { HostEffectRecord, placement_read, PlacementReadAt, PlacementUnread, live_claim_on, LiveClaimFound, LiveClaimAbsent, LiveClaimUnread }
 import gunbc.spark.host_effect_quiescence { ClaimantStanding, RecoveryAuthorized, claimant_standing_wire }
 import gunbc.spark.host_commitment { HostEffectHandle, settle_host_effect_over, HostEffectSettled, HostEffectStillHeld }
@@ -162,7 +162,7 @@ fn standing_host_effect_recover_ci_wet() -> ProcessExit {
                           match prepare_fleet_ssh_agent_context(attempt_raw: "host-effect-standing-recover") {
                             FleetSshContextRefused { cause: c } => exit_failure(reason: c)
                             FleetSshContextReady { context: context, receipt: _ } =>
-                              standing_host_effect_recover_over(host: host, standing: standing, run_id: run_id as NonEmptyStr, row: fresh_grant_row_standing(), run: fn(argv) { fleet_argv_run(context: context, host: host, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at)
+                              standing_host_effect_recover_over(host: host, standing: standing, run_id: run_id as NonEmptyStr, row: fresh_grant_row_standing(executed: executed_grant_row()), run: fn(argv) { fleet_argv_run(context: context, host: host, argv: argv) }, store: store, executor: executor as NonEmptyStr, at: at)
                           }
                       }
                   }
