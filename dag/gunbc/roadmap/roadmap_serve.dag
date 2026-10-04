@@ -9,14 +9,14 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path }
-import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
+import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get, workspace_route_create, workspace_route_release, workspace_write_standing }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
-import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
@@ -274,6 +274,8 @@ type RoadmapServeHandler
   | AllocationListHandler
   | AllocationGetHandler
   | AllocationClientHandler
+  | AllocationCreateHandler
+  | AllocationReleaseHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
   | DispatchJsonHandler
@@ -353,8 +355,10 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
-    ServedRouteSpec { method: GET, raw: "/allocations.json", handler: AllocationListHandler },
-    ServedRouteSpec { method: GET, raw: "/allocations/\{allocation_id\}", handler: AllocationGetHandler },
+    ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
+    ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
+    ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -1301,6 +1305,8 @@ fn roadmap_serve_invoke_over(
     AllocationListHandler => workspace_route_list(request: request)
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
+    AllocationCreateHandler => workspace_route_create(request: request)
+    AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
@@ -2049,13 +2055,13 @@ fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, Request
 // stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
 // allocation_page_with_stylesheet).
 fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
-  let signed_in = match request.security.authentication {
-    GoogleOidcSession { session: _ } => true
-    AuthAbsent => false
-    SessionStandingInvalid { standing: _ } => false
-    FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+  let viewer = match request.security.authentication {
+    GoogleOidcSession { session } => AllocationViewerSignedIn { csrf: session.csrf.token as String }
+    AuthAbsent => AllocationViewerSignedOut
+    SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
   }
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, write_standing: workspace_write_standing(), roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
   }
