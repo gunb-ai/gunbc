@@ -103,7 +103,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
@@ -240,7 +240,7 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
   python_facts_ellipsis
 ]
 
-data py_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn python_inhabitant_atom(id: Symbol) -> Node {
   Node {

@@ -38,7 +38,6 @@ import v2.std.optional {
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 
 // The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
