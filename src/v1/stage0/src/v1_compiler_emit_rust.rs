@@ -215,10 +215,11 @@ pub use crate::v1_compiler_infer_emit_info::{
     collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences,
     emit_info_with_expected_type, emit_info_with_fn_return, emit_info_with_fn_type_context,
     empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
-    lookup_emit_type_decl, lookup_emit_type_summary, variant_belongs_to_enum, variant_summary_key,
+    lookup_emit_type_decl, lookup_emit_type_summary, type_decl_identity, variant_belongs_to_enum,
+    variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, TypeRepr, TypeSummary, TypeSurfaceOccurrence,
+    EmitGraphInfo, TypeDeclIndex, TypeRepr, TypeSummary, TypeSurfaceOccurrence,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -272,13 +273,15 @@ pub use crate::v1_compiler_trait_bound_witness::{
 };
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
-    trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
-    v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
-    v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
-    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
-    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_ambiguous_declared_head_refusal,
+    v1_clone_bounded_type_params, v1_clone_impl_required_type_params, v1_emit_enum_derives,
+    v1_emit_enum_supplemental_impls, v1_emit_struct_from_capability_table,
+    v1_emit_type_params_with_bounds, v1_emit_type_params_with_clone_bounds,
+    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
+    v1_item_clone_undecided_head, v1_item_field_type_exprs,
     v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_head_names_in_type_expr,
-    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head,
+    v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -4204,22 +4207,19 @@ pub fn rust_nominal_ord_type_ref_eligible(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
-    {
-        let type_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), elem_node.clone());
-        (((((elem_node.children.clone().len() as i64) == 0)
-            && ((elem_node.params.clone().len() as i64) == 0))
-            && (elem_node.connective.clone() == Connective::NoConnective))
-            && match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
-                emit_info.clone(),
-                type_name.clone(),
-            ) {
-                Some(decl) => {
-                    rust_nominal_ord_type_decl_ord_eligible(decl.clone(), source_indices.clone())
-                }
-                std::option::Option::None => false,
-            })
-    }
+    (((((elem_node.children.clone().len() as i64) == 0)
+        && ((elem_node.params.clone().len() as i64) == 0))
+        && (elem_node.connective.clone() == Connective::NoConnective))
+        && match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
+            emit_info.clone(),
+            elem_node.clone(),
+            source_indices.clone(),
+        ) {
+            Some(decl) => {
+                rust_nominal_ord_type_decl_ord_eligible(decl.clone(), source_indices.clone())
+            }
+            std::option::Option::None => false,
+        })
 }
 
 pub fn rust_nominal_ord_type_eligible(
@@ -6521,15 +6521,19 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
             let mut __result = Vec::new();
-            for type_name in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
+            for type_name in Rc::new(v1_rt::map_keys(&type_decl_items.by_identity.clone()))
+                .iter()
+                .cloned()
+            {
                 __result.extend(
-                    (*match v1_rt::map_get(&type_decl_items, type_name.clone()) {
+                    (*match v1_rt::map_get(&type_decl_items.by_identity.clone(), type_name.clone())
+                    {
                         Some(item) => {
                             crate::v1_compiler_trait_derive_emit::v1_item_field_type_exprs(
                                 item.clone(),
@@ -15538,7 +15542,10 @@ pub fn emit_typed_item(
                                     item.clone(),
                                     v1_rt::set_contains(
                                         &emit_info.map_key_required_type_names.clone(),
-                                        item_text.clone(),
+                                        crate::v1_compiler_infer_emit_info::type_decl_identity(
+                                            env.module_path.clone(),
+                                            item_text.clone(),
+                                        ),
                                     ),
                                     env.source_indices.clone(),
                                 )
@@ -15727,16 +15734,7 @@ pub fn emit_typed_item(
                                                 item.clone(),
                                                 env.source_indices.clone(),
                                             ) {
-                                                emit_parametric_phantom_opaque_struct(
-                                                    item.clone(),
-                                                    v1_rt::set_contains(
-                                                        &emit_info
-                                                            .map_key_required_type_names
-                                                            .clone(),
-                                                        item_text.clone(),
-                                                    ),
-                                                    env.source_indices.clone(),
-                                                )
+                                                emit_parametric_phantom_opaque_struct(item.clone(), v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), crate::v1_compiler_infer_emit_info::type_decl_identity(env.module_path.clone(), item_text.clone())), env.source_indices.clone())
                                             } else {
                                                 "".to_string()
                                             }
@@ -16126,7 +16124,7 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
 
 pub fn emit_item_header_clone_param_names(
     item: Rc<Node>,
-    item_name: String,
+    item_identity: String,
     has_fn_fields: bool,
     generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -16134,7 +16132,7 @@ pub fn emit_item_header_clone_param_names(
 ) -> Rc<Vec<String>> {
     if has_fn_fields.clone() {
         crate::v1_compiler_trait_derive_emit::v1_item_wf_propagated_clone_bounded_param_names(
-            item_name.clone(),
+            item_identity.clone(),
             item.clone(),
             generic_param_names.clone(),
             emit_info.clone_bounded_type_params.clone(),
@@ -16143,7 +16141,7 @@ pub fn emit_item_header_clone_param_names(
         )
     } else {
         crate::v1_compiler_trait_derive_emit::v1_item_clone_bounded_param_names(
-            item_name.clone(),
+            item_identity.clone(),
             generic_param_names.clone(),
             emit_info.clone_bounded_type_params.clone(),
         )
@@ -16172,19 +16170,40 @@ pub fn emit_item_clone_bound_refusal(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((item.params.clone().len() as i64) == 0) {
-        "".to_string()
-    } else {
-        {
-            let head = crate::v1_compiler_trait_derive_emit::v1_item_clone_undecided_head(
-                item.clone(),
+    {
+        let ambiguous_head =
+            crate::v1_compiler_trait_derive_emit::v1_type_exprs_ambiguous_declared_head(
+                crate::v1_compiler_trait_derive_emit::v1_item_field_type_exprs(
+                    item.clone(),
+                    source_indices.clone(),
+                ),
                 emit_info.type_decl_items.clone(),
                 source_indices.clone(),
             );
-            if (head.clone() == "".to_string()) {
+        if (ambiguous_head.clone() != "".to_string()) {
+            crate::v1_compiler_trait_derive_emit::v1_ambiguous_declared_head_refusal(
+                v1_rt::concat(
+                    v1_rt::concat("item '".to_string(), item_name.clone()),
+                    "'".to_string(),
+                ),
+                ambiguous_head.clone(),
+            )
+        } else {
+            if ((item.params.clone().len() as i64) == 0) {
                 "".to_string()
             } else {
-                crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+                {
+                    let head = crate::v1_compiler_trait_derive_emit::v1_item_clone_undecided_head(
+                        item.clone(),
+                        emit_info.type_decl_items.clone(),
+                        source_indices.clone(),
+                    );
+                    if (head.clone() == "".to_string()) {
+                        "".to_string()
+                    } else {
+                        crate::v1_compiler_trait_derive_emit::v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("trait_derive_emit: generic item '".to_string(), item_name.clone()), "' has a field applying type '".to_string()), head.clone()), "', whose declared parameter list is not readable in this closure — the Clone bound it may require on '".to_string()), item_name.clone()), "' cannot be decided (see trait_derive_emit_item_clone_bound_wf_propagation_note)".to_string()))
+                    }
+                }
             }
         }
     }
@@ -16209,7 +16228,10 @@ pub fn emit_type_def_from_connective(
                 let has_fn_fields = type_has_fn_fields(item_text.clone(), emit_info.clone());
                 let header_clone_param_names = emit_item_header_clone_param_names(
                     item.clone(),
-                    item_text.clone(),
+                    crate::v1_compiler_infer_emit_info::type_decl_identity(
+                        env.module_path.clone(),
+                        item_text.clone(),
+                    ),
                     has_fn_fields.clone(),
                     Rc::new({
                         let mut __result = Vec::new();
@@ -16418,7 +16440,10 @@ pub fn emit_type_def_from_connective(
                             });
                             let header_clone_param_names = emit_item_header_clone_param_names(
                                 item.clone(),
-                                item_text.clone(),
+                                crate::v1_compiler_infer_emit_info::type_decl_identity(
+                                    env.module_path.clone(),
+                                    item_text.clone(),
+                                ),
                                 false,
                                 generic_param_names.clone(),
                                 emit_info.clone(),
@@ -16596,10 +16621,15 @@ pub fn item_seals_construction(item: Rc<Node>) -> bool {
     }
 }
 
-pub fn type_name_seals_construction(type_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+pub fn type_reference_seals_construction(
+    type_expr: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
         emit_info.clone(),
-        type_name.clone(),
+        type_expr.clone(),
+        source_indices.clone(),
     ) {
         Some(decl) => item_seals_construction(decl.clone()),
         std::option::Option::None => false,
@@ -16715,7 +16745,13 @@ pub fn emit_struct_from_children(
             children.clone(),
             shared_types.clone(),
             has_fn_fields.clone(),
-            v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+            v1_rt::set_contains(
+                &emit_info.map_key_required_type_names.clone(),
+                crate::v1_compiler_infer_emit_info::type_decl_identity(
+                    env.module_path.clone(),
+                    name.clone(),
+                ),
+            ),
             generic_param_names.clone(),
             env.source_indices.clone(),
             header_clone_param_names.clone(),
@@ -17298,6 +17334,7 @@ pub fn emit_rust_field_definition(
 }
 
 pub fn enum_derives(
+    module_path: String,
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     has_fn_fields: bool,
@@ -17309,7 +17346,13 @@ pub fn enum_derives(
     crate::v1_compiler_trait_derive_emit::v1_emit_enum_derives(
         children.clone(),
         has_fn_fields.clone(),
-        v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
+        v1_rt::set_contains(
+            &emit_info.map_key_required_type_names.clone(),
+            crate::v1_compiler_infer_emit_info::type_decl_identity(
+                module_path.clone(),
+                name.clone(),
+            ),
+        ),
         deserialize_forbidden.clone(),
         generic_param_names.clone(),
         source_indices.clone(),
@@ -17337,6 +17380,7 @@ pub fn emit_enum_from_children(
             env.source_indices.clone(),
         );
         let derives = enum_derives(
+            env.module_path.clone(),
             name.clone(),
             children.clone(),
             has_fn_fields.clone(),
@@ -19016,6 +19060,36 @@ pub fn emit_fn_def(
             }
             __result
         });
+        let ambiguous_signature_head = if ((generic_param_names.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            crate::v1_compiler_trait_derive_emit::v1_type_exprs_ambiguous_declared_head(
+                v1_rt::concat(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in value_params.iter().cloned() {
+                            __result.push(crate::v1_std_core::param_node_type_expr(p.clone()));
+                        }
+                        __result
+                    }),
+                    Rc::new(vec![inferred.clone()]),
+                ),
+                emit_info.type_decl_items.clone(),
+                si.clone(),
+            )
+        };
+        if (ambiguous_signature_head.clone() != "".to_string()) {
+            return v1_rt::concat(
+                crate::v1_compiler_trait_derive_emit::v1_ambiguous_declared_head_refusal(
+                    v1_rt::concat(
+                        v1_rt::concat("generic fn '".to_string(), name.clone()),
+                        "'".to_string(),
+                    ),
+                    ambiguous_signature_head.clone(),
+                ),
+                "\n".to_string(),
+            );
+        }
         let body_emit_info = crate::v1_compiler_infer_emit_info::emit_info_with_fn_return(
             crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
                 emit_info.clone(),
@@ -23160,7 +23234,8 @@ pub fn type_expr_reaches_sealed_carrier(
             } else {
                 match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
                     emit_info.clone(),
-                    name.clone(),
+                    n.clone(),
+                    source_indices.clone(),
                 ) {
                     Some(decl) => {
                         if item_seals_construction(decl.clone()) {
@@ -23449,12 +23524,10 @@ pub fn emit_typed_field_access(
                                     shared_types.clone(),
                                     emit_info.clone(),
                                 );
-                                if type_name_seals_construction(
-                                    crate::v1_std_core::authored_name_at(
-                                        scope.type_env.clone().source_indices.clone(),
-                                        crate::v1_compiler_infer_types::resolved_type(base.clone()),
-                                    ),
+                                if type_reference_seals_construction(
+                                    crate::v1_compiler_infer_types::resolved_type(base.clone()),
                                     emit_info.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
                                 ) {
                                     v1_rt::concat(
                                         v1_rt::concat(
