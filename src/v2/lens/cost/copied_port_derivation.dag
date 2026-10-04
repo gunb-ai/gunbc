@@ -34,7 +34,7 @@ import v2.std.node {
   StructuralLabel,
   Symbol,
   TypeNode,
-  arrow_body_target_lookup,,
+  arrow_body_target_lookup,
   ComputationNode
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
