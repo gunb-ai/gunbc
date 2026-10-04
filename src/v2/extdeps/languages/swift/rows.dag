@@ -727,9 +727,9 @@ fn swl_pattern(p: SwiftPattern) -> Node {
 fn swl_stmt_has_block(s: SwiftStmt) -> Bool {
   match s {
     SwiftExpressionStmt { expr: _ } => false
+    SwiftDeclarationStmt { decl: d } => swl_decl_has_body(d: d)
     SwiftReturnStmt { value: _ } => false
     SwiftThrowStmt { value: _ } => false
-    SwiftDeclarationStmt { decl: d } => swl_decl_has_body(d: d)
     SwiftIfStmt { conditions: _, statements: _, else_clause: _ } => true
     SwiftGuardStmt { conditions: _, else_statements: _ } => true
     SwiftForInStmt { pattern: _, sequence: _, statements: _ } => true
@@ -827,22 +827,21 @@ fn swl_decl_has_body(d: SwiftDecl) -> Bool {
   match d {
     SwiftImportDecl { attributes: _, module_name: _ } => false
     SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
-    SwiftEnumCaseDecl { elements: _ } => false
-    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_has_body(d: x)
     SwiftComputedPropertyDecl { attributes: _, modifiers: _, name: _, property_type: _, getter: _ } => true
     SwiftFunctionDecl { attributes: _, modifiers: _, name: _, parameters: _, is_async: _, throws: _, result: _, body: _ } => true
     SwiftInitializerDecl { modifiers: _, parameters: _, throws: _, body: _ } => true
     SwiftStructDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
     SwiftClassDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
     SwiftEnumDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => true
+    SwiftEnumCaseDecl { elements: _ } => false
     SwiftExtensionDecl { extended: _, inherits: _, members: _ } => true
+    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_has_body(d: x)
   }
 }
 
 fn swl_decl_is_import(d: SwiftDecl) -> Bool {
   match d {
     SwiftImportDecl { attributes: _, module_name: _ } => true
-    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_is_import(d: x)
     SwiftVariableDecl { attributes: _, modifiers: _, keyword: _, pattern: _, annotation: _, initializer: _ } => false
     SwiftComputedPropertyDecl { attributes: _, modifiers: _, name: _, property_type: _, getter: _ } => false
     SwiftFunctionDecl { attributes: _, modifiers: _, name: _, parameters: _, is_async: _, throws: _, result: _, body: _ } => false
@@ -852,6 +851,7 @@ fn swl_decl_is_import(d: SwiftDecl) -> Bool {
     SwiftEnumDecl { attributes: _, modifiers: _, name: _, inherits: _, members: _ } => false
     SwiftEnumCaseDecl { elements: _ } => false
     SwiftExtensionDecl { extended: _, inherits: _, members: _ } => false
+    SwiftCommentedDecl { comments: _, decl: x } => swl_decl_is_import(d: x)
   }
 }
 

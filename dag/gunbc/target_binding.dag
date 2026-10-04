@@ -51,6 +51,7 @@ type TargetProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | DependencyDemandCensusProducer
+  | GenericIdentityCensusProducer
   | NativeClaimProgramProducer { entry: String }
   | NativeServeProgramProducer { entry: String }
 

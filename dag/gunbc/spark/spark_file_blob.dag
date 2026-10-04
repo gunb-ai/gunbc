@@ -64,7 +64,7 @@ type SparkFileDigestReading
 
 fn spark_read_file_digest(ctx: SparkMaterializeContext, path: NonEmptyStr) -> SparkFileDigestReading {
   match spark_remote_run(ctx: ctx, argv: sha256sum_argv(path: path as String)) {
-    RemoteUnreachable { cause: c } => SparkFileDigestUnread { cause: join(["the digest leg did not run: ", c], "") as NonEmptyStr }
+    RemoteUnreachable { cause: c, reach: _ } => SparkFileDigestUnread { cause: join(["the digest leg did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { SparkFileDigestUnread { cause: join(["sha256sum exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
         match sha256sum_line_digest(line: out) {
@@ -96,7 +96,7 @@ fn spark_file_blob_observe(ctx: SparkMaterializeContext, subject: AcquisitionSub
     Absent => AcquisitionProbeFailed { reason: join(["the subject ", subject.identity as String, " is not keyed by a sha256, so a single file cannot be checked against it"], "") as NonEmptyStr }
     Present { value: _ } =>
       match spark_remote_run(ctx: ctx, argv: ["test", "-e", subject.install_path as String]) {
-        RemoteUnreachable { cause: c } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
+        RemoteUnreachable { cause: c, reach: _ } => AcquisitionProbeFailed { reason: c as NonEmptyStr }
         RemoteRan { exit_code: present, stdout: _, stderr: err } =>
           if present == 1 { AcquisitionAbsent } else if present != 0 {
             AcquisitionProbeFailed { reason: join(["the presence test exited ", to_string(present), ": ", trim(s: err)], "") as NonEmptyStr }
@@ -113,7 +113,7 @@ fn spark_file_blob_observe(ctx: SparkMaterializeContext, subject: AcquisitionSub
 
 fn spark_file_blob_ensure_parent(ctx: SparkMaterializeContext, policy: SparkFileBlobPolicy, subject: AcquisitionSubject) -> Bool {
   match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", subject.parent_directory as String, policy.staging_directory as String]) {
-    RemoteUnreachable { cause: _ } => false
+    RemoteUnreachable { cause: _, reach: _ } => false
     RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
   }
 }
@@ -163,7 +163,7 @@ fn spark_file_blob_adopt_or_start(ctx: SparkMaterializeContext, policy: SparkFil
     Absent => AttemptRejected { detail: join(["the subject ", subject.identity as String, " names no staging path, and this handler publishes only staged bytes"], "") as NonEmptyStr }
     Present { value: staged } =>
       match spark_remote_run(ctx: ctx, argv: ["test", "-f", staged as String]) {
-        RemoteUnreachable { cause: _ } => AttemptUnreachable
+        RemoteUnreachable { cause: _, reach: _ } => AttemptUnreachable
         RemoteRan { exit_code: e, stdout: _, stderr: _ } =>
           if e != 0 { spark_file_blob_start(ctx: ctx, policy: policy, subject: subject, origin: origin) } else {
             match spark_read_file_digest(ctx: ctx, path: staged) {
@@ -240,7 +240,7 @@ fn spark_file_blob_publish(ctx: SparkMaterializeContext, subject: AcquisitionSub
       } else {
         AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
       }
-    RemoteUnreachable { cause: _ } =>
+    RemoteUnreachable { cause: _, reach: _ } =>
       AttemptTerminal { outcome: AcquisitionRefused { cause: PublishFailed { identity: subject.identity, source: origin.identity, install_path: subject.install_path } } }
   }
 }
