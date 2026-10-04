@@ -1,6 +1,53 @@
 module gunbc.runner_microvm_slot_controller
 
 import std.decl_ref { decl_ref }
+import gunbc.fabric_executor_class { fleet_cell_sanction }
+import gunbc.runner_microvm_ci_admission {
+  microvm_ci_admission, MicrovmCiLaunchAdmitted, MicrovmCiRecoveryRequired, MicrovmCiAdmissionRefused,
+}
+
+import gunbc.workspace_allocation_lease { workspace_record_expiry }
+
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+
+import extdeps.filesystem.filesystem_io { filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
+import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, workspace_launch_directive_matches, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
+import gunbc.runner_microvm_slot_unit { workspace_launch_credential_id }
+
+
+
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceDesired, WorkspaceRetired, WorkspaceAcquiring }
+import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
+import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
+import gunbc.runner_attempt_launch { LaunchWithdrawn }
+import gunbc.workspace_microvm { workspace_retirement_identity }
+import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.workspace_allocation { WorkspaceReservation }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
+import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
+import gunbc.workspace_microvm { bind_workspace_launch, workspace_fleet_operator_public_key, WorkspaceLaunchBound, WorkspaceLaunchRefused }
+import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }
+import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
+import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+import gunbc.runner_microvm_cell_readiness { cell_incarnation_admission, CellIncarnationAdmission, CellBoundAttempt, CellRecoveryRequired, CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn }
+import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.runner_microvm_lifecycle { ControllerLost }
+import gunbc.runner_microvm_lifecycle_realize { run_teardown }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
+
+
+import gunbc.fabric_storage_client { FabricStorageBinding }
+
+import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+import gunbc.workspace_microvm { WorkspaceLaunchBinding, workspace_attempt_identity, workspace_launch_plan }
+import gunbc.workspace_microvm_access { WorkspaceConnectionReading, WorkspaceConnectionUnavailable, workspace_observe_connection }
+import gunbc.workspace_allocation_wait { workspace_await_allocation }
+import gunbc.workspace_allocation_metrics { workspace_capture_runtime_metrics }
+import gunbc.workspace_gateway_store { workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
+
 import std.durable_compare_and_set { cas_unreadable_slot_detail }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
@@ -84,7 +131,7 @@ import gunbc.runner_microvm_network {
 }
 import gunbc.runner_microvm_lifecycle { AttemptIdentity, guest_bring_up_text }
 import gunbc.runner_microvm_lifecycle_realize {
-  ControllerOutcome, run_controller, observe_attempt_ground, teardown_cleanup_text,
+  ControllerOutcome, AttemptLaunch, TeardownRun, run_controller, run_controller_with_wait, observe_attempt_ground, teardown_cleanup_text,
   ControllerRefusedAdmission, ControllerRefusedBinding, ControllerQuarantinedUnattributedResidue,
   ControllerStartNotRecorded, ControllerRecovered, ControllerRanAttempt,
 }
@@ -124,6 +171,7 @@ type SlotControllerRefusal
   | ReservationNotObserved { observation: RequiredBuildCellObservation }
   | CellNotBound { cause: String }
   | ShapeRefused { detail: String }
+  | WorkloadAdmissionRefused { detail: String }
   | NetworkReceiptUnreadable { path: String, detail: String }
   | NetworkReceiptMalformed { path: String, cause: NonEmptyStr }
   | SanitationSubjectNotAdmitted { refusal: SanitationSubjectRefusal }
@@ -132,6 +180,7 @@ type SlotControllerRefusal
 type SlotControllerOutcome
   = SlotControllerRefused { refusal: SlotControllerRefusal }
   | SlotControllerRan { outcome: ControllerOutcome }
+  | SlotControllerSettledWithoutLaunch { reason: String }
 
 // ── stage 1: the slot, from the unit's own instance ─────────────────────────────────────────────
 
@@ -374,21 +423,11 @@ fn slot_controller_on_host(slot: RunnerSlotIdentity, spec: RunnerHostSpec, relea
 {
   let bins = locus_binaries(release_dir: release_dir)
   let image = guest_image_sources(spec: spec)
-  if !path_is_executable(path: bins.firecracker) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
-  } else if !path_is_executable(path: bins.jailer) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
-  } else if !path_exists(path: image.kernel) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
-  } else if !path_exists(path: image.rootfs) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
-  } else {
     match observe_reservation(slot: slot) {
       RequiredBuildCellObserved { snapshot: snapshot } =>
         slot_controller_on_reservation(slot: slot, snapshot: snapshot, bins: bins, image: image, invocation_id: invocation_id)
       not_observed => SlotControllerRefused { refusal: ReservationNotObserved { observation: not_observed } }
     }
-  }
 }
 
 fn slot_controller_on_reservation(
@@ -400,6 +439,36 @@ fn slot_controller_on_reservation(
 ) -> SlotControllerOutcome
   uses net: Network, fs: Filesystem
 {
+  match microvm_ci_admission(executor: runner_slot_instance_name(slot: slot) as NonEmptyStr,
+    sanction: fleet_cell_sanction(slot: slot),
+    readiness: cell_incarnation_admission(store: read_cell_readiness_store(), cell: snapshot.cell,
+      allocation_generation: snapshot.generation)) {
+    MicrovmCiAdmissionRefused { reason } => SlotControllerRefused { refusal: WorkloadAdmissionRefused { detail: reason } }
+    MicrovmCiRecoveryRequired { bound } => match resolve_network_subject(slot: slot) {
+      NetworkSubjectRefused { refusal } => SlotControllerRefused { refusal: refusal }
+      NetworkSubjectResolved { subject } => SlotControllerRan { outcome: ControllerRecovered {
+        teardown: run_teardown(bound: bound, subject: subject, trigger: ControllerLost),
+      } }
+    }
+    MicrovmCiLaunchAdmitted => slot_controller_launch_admitted(slot: slot, snapshot: snapshot,
+      bins: bins, image: image, invocation_id: invocation_id)
+  }
+}
+
+// Both the broker and direct controller must admit the current purpose before any JIT mint.
+fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredBuildCellSnapshot,
+  bins: LocusBinaries, image: GuestImageSources, invocation_id: NonEmptyStr) -> SlotControllerOutcome
+  uses net: Network, fs: Filesystem
+{
+  if !path_is_executable(path: bins.firecracker) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
+  } else if !path_is_executable(path: bins.jailer) {
+    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
+  } else if !path_exists(path: image.kernel) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
+  } else if !path_exists(path: image.rootfs) {
+    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
+  } else {
   let binding = bind_microvm_to_cell(snapshot: snapshot)
   match binding {
     VmUnboundCellNotOwned { cause: c } => SlotControllerRefused { refusal: CellNotBound { cause: c } }
@@ -420,6 +489,7 @@ fn slot_controller_on_reservation(
               }
           }
       }
+  }
   }
 }
 
@@ -467,9 +537,9 @@ fn attempt_identity_for(
     attempt: attempt,
     allocation_generation: snapshot.generation,
     invocation_id: invocation_id,
-    jit_registration_id: to_string(registration) as NonEmptyStr,
+    workload: GitHubRunnerWorkload { registration_id: to_string(registration) as NonEmptyStr },
     credential_device_path: join([attempt_jail_chroot_root(attempt: attempt, firecracker_binary: bins.firecracker), jail_jit_path as String], ""),
-    guest_image: gunbc_runner_guest_image,
+
   }
 }
 
@@ -531,6 +601,7 @@ fn refusal_text(r: SlotControllerRefusal) -> String {
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
     ReservationNotObserved { observation: o } => join(["ReservationNotObserved ", reservation_observation_text(o: o)], "")
     CellNotBound { cause: c } => join(["CellNotBound ", c], "")
+    WorkloadAdmissionRefused { detail: d } => join(["WorkloadAdmissionRefused ", d], "")
     ShapeRefused { detail: d } => join(["ShapeRefused ", d], "")
     NetworkReceiptUnreadable { path: p, detail: d } => join(["NetworkReceiptUnreadable ", p, ": ", d], "")
     NetworkReceiptMalformed { path: p, cause: c } => join(["NetworkReceiptMalformed ", p, ": ", c as String], "")
@@ -556,6 +627,7 @@ fn outcome_text(o: SlotControllerOutcome) -> String {
   match o {
     SlotControllerRefused { refusal: r } => join(["refused: ", refusal_text(r: r)], "")
     SlotControllerRan { outcome: c } => join(["ran: ", controller_outcome_label(c: c)], "")
+    SlotControllerSettledWithoutLaunch { reason } => concat("settled without launch: ", reason)
   }
 }
 
@@ -593,7 +665,7 @@ fn microvm_slot_controller_main() -> ProcessExit
               controller_exit(
                 instance: instance,
                 invocation_id: invocation as NonEmptyStr,
-                outcome: slot_controller(instance: instance, release_dir: release_dir, invocation_id: invocation as NonEmptyStr),
+                outcome: slot_controller_dispatch(instance: instance, release_dir: release_dir, invocation_id: invocation as NonEmptyStr),
               )
           }
       }
@@ -617,7 +689,276 @@ fn controller_exit(instance: String, invocation_id: NonEmptyStr, outcome: SlotCo
   } else {
     match outcome {
       SlotControllerRan { outcome: _ } => ExitSuccess
+      SlotControllerSettledWithoutLaunch { reason: _ } => ExitSuccess
       SlotControllerRefused { refusal: _ } => exit_failure(reason: join(["microvm_slot_controller ", instance, ": ", text], ""))
     }
+  }
+}
+
+// Workspace convergence invokes this entry after the same host, reservation, network and
+// installed-release observations. Only the workload planner and wait callback differ from CI;
+// admission, durable in-flight recording, staging, jailer launch and teardown remain shared.
+fn run_workspace_slot(
+  binding: WorkspaceLaunchBinding,
+  subject: SlotNetworkSanitationSubject,
+  bins: LocusBinaries,
+  invocation_id: NonEmptyStr,
+  allocation_store: FabricStorageBinding,
+  gateway: WorkspaceGateway,
+) -> ControllerOutcome {
+  let identity = workspace_attempt_identity(binding: binding, invocation_id: invocation_id, firecracker_binary: bins.firecracker)
+  let plan = workspace_launch_plan(binding: binding, ground: observe_attempt_ground(attempt: binding.attempt), jailer_binary: bins.jailer, firecracker_binary: bins.firecracker)
+  run_controller_with_wait(
+    identity: identity, allocation_generation: binding.reservation.generation, plan: plan, subject: subject,
+    await_workload: (live, launch) => {
+      let terminal = workspace_await_allocation(
+        store: allocation_store, owner: binding.reservation.request.owner,
+        idempotency_key: binding.reservation.request.idempotency_key,
+        identity: live, launch: launch,
+        observe_connection: (observed, started) => workspace_observe_admitted_connection(store: allocation_store, identity: observed, launch: started, gateway: gateway),
+      )
+      let measured = workspace_capture_runtime_metrics(store: allocation_store, reservation: binding.reservation, identity: live, launch: launch)
+      if measured { terminal } else { terminal }
+    },
+  )
+}
+
+// Runtime reads the operator-context forwarding observation; it never borrows the operator's key.
+fn workspace_observe_admitted_connection(store: FabricStorageBinding, identity: AttemptIdentity, launch: AttemptLaunch, gateway: WorkspaceGateway) -> WorkspaceConnectionReading {
+  match clock_now_probed_at() {
+    Absent => WorkspaceConnectionUnavailable { reason: "gateway admission clock is unreadable" }
+    Present { value: now } => match workspace_current_gateway_connection(store: store, slot: identity.attempt.slot, now: now) {
+      WorkspaceGatewayUnavailable { reason } => WorkspaceConnectionUnavailable { reason: reason as String }
+      WorkspaceGatewayReady { known_host } => workspace_observe_connection(identity: identity, launch: launch, gateway: gateway, gateway_known_host: known_host)
+    }
+  }
+}
+
+// The existing installed unit selects a workload from its current durable reservation.
+// A missing workspace never supplies a fabricated runner credential; the original CI path
+// independently re-admits its own hold and GitHub authorities.
+fn slot_controller_dispatch(instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match environment_value(name: "CREDENTIALS_DIRECTORY") {
+    Absent => slot_controller(instance: instance, release_dir: release_dir, invocation_id: invocation_id)
+    Present { value: directory } => {
+      let path = join([directory, "/", workspace_launch_credential_id as String], "")
+      let read = Filesystem.Read(path: path)
+      match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+        FilesystemExactPathAbsent { path: _ } => slot_controller(instance: instance, release_dir: release_dir, invocation_id: invocation_id)
+        FilesystemExactPathRead { path: _, content: text } => workspace_slot_dispatch_directive(text: text, instance: instance, release_dir: release_dir, invocation_id: invocation_id)
+        FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => workspace_slot_refused(reason: "workspace invocation credential is present but unreadable")
+        FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => workspace_slot_refused(reason: "workspace invocation credential is present but unreadable")
+      }
+    }
+  }
+}
+
+fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match workspace_launch_directive_from_text(text: text) {
+    WorkspaceLaunchDirectiveRefused { reason } => workspace_slot_refused(reason: reason)
+    WorkspaceLaunchDirectiveReady { directive } => match slot_of_instance(instance: instance) {
+      Absent => SlotControllerRefused { refusal: SlotNotAFabricMember { instance: instance } }
+      Present { value: slot } => match bind_slot_host(slot: slot) {
+        MicrovmHostBindingRefused { cause: c } => SlotControllerRefused { refusal: SlotHostBindingRefused { cause: c } }
+        MicrovmHostBound { spec: _, host: _ } => {
+          let store = fabric_state_storage_binding()
+          match workspace_read_owner(store: store, owner: workspace_operator_principal()) {
+            WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
+            WorkspaceStoreReadOk { snapshot: ledger } =>
+              if workspace_launch_directive_matches(directive: directive, observed: ledger, authorized_owner: workspace_operator_principal(),
+                host: slot.host as NonEmptyStr, slot_instance: instance as NonEmptyStr, release_dir: release_dir as NonEmptyStr, fabric_root: fabric_control_plane_store_root()) {
+                workspace_slot_apply_if_needed(allocation: directive.allocation, slot: slot, store: store, release_dir: release_dir, invocation_id: invocation_id)
+              } else { workspace_slot_refused(reason: "workspace invocation contradicts its planned owner revision, allocation, host, slot or installed artifact") }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_slot_refused(reason: String) -> SlotControllerOutcome {
+  SlotControllerRefused { refusal: ShapeRefused { detail: reason } }
+}
+
+// Reconcile the deadline even after hold commit; retirement still requires observed sanitation.
+fn workspace_slot_from_ledger(allocation: WorkspaceAllocation, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match clock_now_probed_at() {
+    Absent => workspace_slot_refused(reason: "workspace desired-state clock is unreadable")
+    Present { value: now } => match workspace_record_expiry(store: store, owner: allocation.request.owner,
+      idempotency_key: allocation.request.idempotency_key, observed_at: now) {
+      WorkspaceStoreWritten { allocation: current } => workspace_slot_from_current_ledger(allocation: current, store: store, release_dir: release_dir, invocation_id: invocation_id)
+      WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace deadline reconciliation refused; hold retained")
+      WorkspaceStoreWriteRefused { reason: _ } => workspace_slot_refused(reason: "workspace deadline reconciliation refused; hold retained")
+    }
+  }
+}
+
+fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match allocation.reservation {
+    Absent => workspace_slot_refused(reason: "workspace has no committed reservation")
+    Present { value: held } => match allocation.plan {
+      Absent => workspace_slot_refused(reason: "workspace has no durable prepared reservation")
+      Present { value: prepared } => {
+        let reservation = workspace_reservation_plan_reservation(plan: prepared)
+        match observe_required_build_cell_for_identity(root: prepared.root, host: held.slot.host, slot: held.slot,
+          work: held.work, demand: held.demand, offer: held.offer, executor: fabric_cell_allocation_key(slot: held.slot)) {
+          RequiredBuildCellObserved { snapshot: live } => if live.generation != held.generation || reservation.generation != held.generation {
+            workspace_slot_refused(reason: "workspace reservation generation is stale")
+          } else { match resolve_network_subject(slot: held.slot) {
+            NetworkSubjectRefused { refusal: r } => SlotControllerRefused { refusal: r }
+            NetworkSubjectResolved { subject } => match workspace_slot_readiness_route(
+              readiness: cell_incarnation_admission(store: read_cell_readiness_store(), cell: live.cell, allocation_generation: held.generation),
+              desired: allocation.desired) {
+              WorkspaceSlotRecover { bound } => workspace_settle_controller_outcome(reservation: held, store: store, outcome: ControllerRecovered { teardown: run_teardown(bound: bound, subject: subject, trigger: ControllerLost) })
+              WorkspaceSlotRetire => workspace_retire_reserved_slot(reservation: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
+              WorkspaceSlotLaunch => workspace_slot_launch_observed(reservation: held, live: live, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
+              WorkspaceSlotWithdrawn => workspace_slot_refused(reason: "cell readiness is withdrawn; the reserved slot is not admitted for a new workspace incarnation")
+            }
+          } }
+          ReservationAbsent { slot_key: _ } => workspace_slot_recover_released(reservation: held, store: store)
+          ReservationUnreadable { slot_key: k, cause: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationUnreadable { slot_key: k, cause: c } } }
+          ReservationPayloadUndecodable { slot_key: k, detail: d } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationPayloadUndecodable { slot_key: k, detail: d } } }
+          ReservationPayloadWorkMismatch { slot_key: k } => SlotControllerRefused { refusal: ReservationNotObserved { observation: ReservationPayloadWorkMismatch { slot_key: k } } }
+          SelectedOfferCellMismatch { slot_key: k, executor: e } => SlotControllerRefused { refusal: ReservationNotObserved { observation: SelectedOfferCellMismatch { slot_key: k, executor: e } } }
+          CellSubstrateNotConverged { cell: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: CellSubstrateNotConverged { cell: c } } }
+          UnownedCell { cell: c } => SlotControllerRefused { refusal: ReservationNotObserved { observation: UnownedCell { cell: c } } }
+        }
+      }
+    }
+  }
+}
+
+// WITHDRAWN READINESS IS NOT AN ALLOCATABLE SLOT. A withdrawn cell or host may still be retired --
+// teardown and release only remove a hold -- but it never receives a new workspace incarnation;
+// a reservation on it waits for readiness to be re-established rather than launching over it.
+type WorkspaceSlotRoute
+  = WorkspaceSlotRecover { bound: CellBoundAttempt }
+  | WorkspaceSlotRetire
+  | WorkspaceSlotLaunch
+  | WorkspaceSlotWithdrawn
+
+fn workspace_slot_readiness_route(readiness: CellIncarnationAdmission, desired: WorkspaceDesired) -> WorkspaceSlotRoute {
+  match readiness {
+    CellRecoveryRequired { bound } => WorkspaceSlotRecover { bound: bound }
+    CellIncarnationAdmitted { cell: _, generation: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotLaunch
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+    CellWithdrawn { cell: _, withdrawal: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotWithdrawn
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+    HostWithdrawn { withdrawal: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotWithdrawn
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+  }
+}
+
+fn workspace_slot_launch_observed(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
+  store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  let bins = locus_binaries(release_dir: release_dir)
+  if !path_is_executable(path: bins.firecracker) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } } }
+  else if !path_is_executable(path: bins.jailer) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } } }
+  else { match workspace_installed_image(release_dir: release_dir, identity: reservation.request.image) {
+    WorkspaceImageRefused { reason } => workspace_slot_refused(reason: reason)
+    WorkspaceImageVerified { image } => match microvm_attempt(slot: reservation.slot, attempt_id: reservation.grant.attempt.key as String) {
+      MicroVmAttemptRefused { refusal } => workspace_slot_refused(reason: attempt_segment_refusal_text(r: refusal))
+      MicroVmAttemptAccepted { attempt } => match clock_unix_millis_read() {
+        ClockUnixMillisObserved { millis } => match bind_workspace_launch(reservation: reservation, snapshot: live, attempt: attempt,
+          image: image, public_key: workspace_fleet_operator_public_key(), now_unix: epoch_secs_of_millis(millis: millis)) {
+          WorkspaceLaunchRefused { reason } => workspace_slot_refused(reason: reason)
+          WorkspaceLaunchBound { binding } => match workspace_fleet_gateway(slot: reservation.slot) {
+            Absent => workspace_slot_refused(reason: "fleet tailnet gateway is unconfigured")
+            Present { value: gateway } => workspace_settle_controller_outcome(reservation: reservation, store: store,
+              outcome: run_workspace_slot(binding: binding, subject: subject, bins: bins,
+                invocation_id: invocation_id, allocation_store: store, gateway: gateway))
+          }
+        }
+        ClockUnixMillisRefused { detail: _ } => workspace_slot_refused(reason: "workspace launch clock is unreadable")
+      }
+    }
+  } }
+}
+
+// The root-owned installed controller applies only the durable plan already selected for its unit.
+// The host binding precedes this call; a job-writable interpreter never acquires the privileged hold.
+fn workspace_slot_apply_if_needed(allocation: WorkspaceAllocation, slot: RunnerSlotIdentity, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  match allocation.reservation {
+    Present { value: _ } => workspace_slot_from_ledger(allocation: allocation, store: store, release_dir: release_dir, invocation_id: invocation_id)
+    Absent => if (allocation.desired == WorkspaceRetired && allocation.phase != WorkspaceAcquiring) {
+      match clock_now_probed_at() {
+        Absent => workspace_slot_refused(reason: "workspace retirement clock is unreadable")
+        Present { value: now } => match workspace_settle_unstarted_retirement(store: store, owner: allocation.request.owner,
+          idempotency_key: allocation.request.idempotency_key, observed_at: now) {
+          WorkspaceStoreWritten { allocation: _ } => SlotControllerSettledWithoutLaunch { reason: "workspace retired before acquisition" }
+          WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace retirement has an unresolved acquisition obligation")
+          WorkspaceStoreWriteRefused { reason: _ } => workspace_slot_refused(reason: "workspace retirement has an unresolved acquisition obligation")
+        }
+      }
+    } else { match allocation.plan {
+      Absent => workspace_slot_refused(reason: "workspace has no durable reservation plan")
+      Present { value: prepared } => {
+        let proposed = workspace_reservation_plan_reservation(plan: prepared)
+        if proposed.slot.host != slot.host || proposed.slot.slot_index != slot.slot_index || prepared.root != fabric_control_plane_store_root() {
+          workspace_slot_refused(reason: "workspace plan is not bound to this host, slot and allocation authority")
+        } else { match clock_now_probed_at() {
+          Absent => workspace_slot_refused(reason: "workspace reservation clock is unreadable")
+          Present { value: now } => match workspace_apply_recorded_plan(store: store, fabric_root: fabric_control_plane_store_root(),
+            owner: allocation.request.owner, idempotency_key: allocation.request.idempotency_key, observed_at: now) {
+            WorkspaceStoreWritten { allocation: recorded } => workspace_slot_from_ledger(allocation: recorded, store: store, release_dir: release_dir, invocation_id: invocation_id)
+            WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace reservation apply refused; durable plan retained for recovery")
+            WorkspaceStoreWriteRefused { reason: _ } => workspace_slot_refused(reason: "workspace reservation apply refused; durable plan retained for recovery")
+          }
+        } }
+      }
+    } }
+  }
+}
+
+fn workspace_settle_controller_outcome(reservation: WorkspaceReservation, store: FabricStorageBinding, outcome: ControllerOutcome) -> SlotControllerOutcome {
+  match outcome {
+    ControllerRanAttempt { launch: _, trigger: _, bring_up: _, teardown: completed } =>
+      workspace_settle_teardown_result(reservation: reservation, store: store, outcome: outcome, teardown: completed)
+    ControllerRecovered { teardown: recovered } =>
+      workspace_settle_teardown_result(reservation: reservation, store: store, outcome: outcome, teardown: recovered)
+    other => SlotControllerRan { outcome: other }
+  }
+}
+
+fn workspace_settle_teardown_result(reservation: WorkspaceReservation, store: FabricStorageBinding, outcome: ControllerOutcome, teardown: TeardownRun) -> SlotControllerOutcome {
+  match clock_now_probed_at() {
+    Absent => workspace_slot_refused(reason: "teardown completed but release clock is unreadable; reservation remains held")
+    Present { value: now } => match workspace_complete_teardown(store: store, fabric_root: fabric_control_plane_store_root(),
+      reservation: reservation, teardown: teardown, observed_at: now) {
+      WorkspaceStoreWritten { allocation: observed } => if (observed.phase == WorkspaceReleased) { SlotControllerRan { outcome: outcome } }
+        else { workspace_slot_refused(reason: concat("workspace cleanup remains outstanding: ", observed.reason)) }
+      WorkspaceStoreConflict => workspace_slot_refused(reason: "workspace teardown settlement remains unconfirmed; recovery must retain owner quota")
+      WorkspaceStoreWriteRefused { reason: _ } => workspace_slot_refused(reason: "workspace teardown settlement remains unconfirmed; recovery must retain owner quota")
+    }
+  }
+}
+
+fn workspace_slot_recover_released(reservation: WorkspaceReservation, store: FabricStorageBinding) -> SlotControllerOutcome {
+  match clock_now_probed_at() {
+    Absent => workspace_slot_refused(reason: "release recovery clock is unreadable")
+    Present { value: now } => match workspace_recover_release(store: store, fabric_root: fabric_control_plane_store_root(), reservation: reservation, observed_at: now) {
+      WorkspaceStoreWritten { allocation: observed } => if (observed.phase == WorkspaceReleased) {
+        SlotControllerSettledWithoutLaunch { reason: "recovered the observed reservation release and sanitized readiness" }
+      } else { workspace_slot_refused(reason: "release recovery did not establish Released") }
+      WorkspaceStoreConflict => workspace_slot_refused(reason: "absent hold has no matching durable release and sanitation proof")
+      WorkspaceStoreWriteRefused { reason: _ } => workspace_slot_refused(reason: "absent hold has no matching durable release and sanitation proof")
+    }
+  }
+}
+
+// Withdrawal still goes through in-flight persistence and shared sanitation. The plan starts no VM.
+fn workspace_retire_reserved_slot(reservation: WorkspaceReservation, subject: SlotNetworkSanitationSubject, store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
+  let bins = locus_binaries(release_dir: release_dir)
+  match workspace_retirement_identity(reservation: reservation, invocation_id: invocation_id, firecracker_binary: bins.firecracker) {
+    Absent => workspace_slot_refused(reason: "retired reservation has no valid cleanup identity")
+    Present { value: identity } => workspace_settle_controller_outcome(reservation: reservation, store: store,
+      outcome: run_controller(identity: identity, allocation_generation: reservation.generation,
+        plan: LaunchWithdrawn { reason: "workspace retirement requested before launch" }, subject: subject))
   }
 }
