@@ -126,9 +126,9 @@ data instrument_dispatch_timeout_minutes: Int = 240
 // receipt is taken on purpose (gunbc.self_host_behavioral_equivalence_receipt), never per change.
 // The type-declaration-use census (the nominal-type plan's M0) is another: it emits and builds the
 // compiler, then resolves and infers the whole corpus, past any per-change lane and the same hour cap.
-// The native resolve census is another: `census-resolve` emits and builds the compiler closure and then
-// resolves every indexed module, which outlives the free remote runner's one-hour cap twice over, and
-// its saved whole-tree receipt is what the resolve-frontier root ranking and the census lane's step D
+// The native refusal census is another: `census-infer` emits and builds the compiler closure and then
+// resolves and infers every indexed module, which outlives the free remote runner's one-hour cap twice
+// over, and its saved whole-tree receipt is what the frontier root ranking and the census lane's step D
 // read. A dispatchable label is on-demand only; it adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
