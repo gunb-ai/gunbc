@@ -3239,8 +3239,8 @@ fn infer_judge_declared_position(
           let obligation = DeclaredTypeObligation {
             position: position,
             parameter_identity: formal.parameter_identity,
-            declared: infer_declared_type_denotation(declared: formal.declared),
-            produced: produced,
+            declared: infer_type_alias_normalized(t: infer_declared_type_denotation(declared: formal.declared), declarations: declarations),
+            produced: infer_type_alias_normalized(t: produced, declarations: declarations),
             produced_declared_carrier: refinement_declared_carrier(index: declarations, source_type: produced),
             application: application,
             type_variables: type_params
@@ -3319,14 +3319,7 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
               } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
                 InferFormalMatched { instances: instances }
               } else if !infer_type_equal_ignoring_provenance(a: f.head, b: p.head) {
-                match infer_type_alias_unfolded(t: produced, declarations: declarations) {
-                  Present { value: unfolded } => infer_match_generic_formal(formal: formal, produced: unfolded, type_params: type_params, instances: instances, declarations: declarations)
-                  Absent =>
-                    match infer_type_alias_unfolded(t: formal, declarations: declarations) {
-                      Present { value: unfolded } => infer_match_generic_formal(formal: unfolded, produced: produced, type_params: type_params, instances: instances, declarations: declarations)
-                      Absent => InferFormalShapeMismatch
-                    }
-                }
+                InferFormalShapeMismatch
               } else {
                 fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
                   match acc {
@@ -3335,11 +3328,7 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
                   }
                 })
               }
-            TypeNode { connective: _ } =>
-              match infer_type_alias_unfolded(t: produced, declarations: declarations) {
-                Present { value: unfolded } => infer_match_generic_formal(formal: formal, produced: unfolded, type_params: type_params, instances: instances, declarations: declarations)
-                Absent => InferFormalShapeMismatch
-              }
+            TypeNode { connective: _ } => InferFormalShapeMismatch
             ComputationNode { behavior: _ } => InferFormalShapeMismatch
           }
         TypeNode { connective: _ } => InferFormalMatched { instances: instances }
@@ -3348,12 +3337,12 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
   }
 }
 
-// AN ALIAS IS ITS RIGHT-HAND SIDE, NOT A DIFFERENT CONSTRUCTOR. `type List<T> = std.algebra.FreeMonoid<T>`
-// is one type under two spellings, so a formal `FreeMonoid<T>` and an argument `List<Pair>` must match: the
-// head that names an alias is unfolded one step -- its declaration read from the index the judge already
-// holds (a TypeAlias wrapper, v2.std.type_binder type_decl_view), its binders instantiated at the use's
-// arguments -- and the match retried. Resolution refuses an alias cycle (ExpectedHead), so the unfolding
-// terminates. A head that names no alias answers Absent and the mismatch stands.
+// A TRANSPARENT ALIAS IS ITS RIGHT-HAND SIDE. `type List<T> = std.algebra.FreeMonoid<T>` is one type under two
+// spellings. The head that names a transparent alias unfolds one step -- its declaration read from the index the
+// obligation's producer holds (a TypeAlias wrapper, v2.std.type_binder type_decl_view), its binders
+// instantiated at the use's arguments. A refinement or brand does not unfold (infer_alias_is_refined); a
+// generic, opaque or plain declaration is not an alias. Resolution refuses an alias cycle (ExpectedHead), so
+// the unfolding terminates.
 fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Node> {
   let ha = infer_type_head_and_args(t: t)
   match declaration_reference_path_optional(node: ha.head) {
@@ -3364,11 +3353,15 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
         Present { value: declared } =>
           match type_decl_view(target: declared) {
             TypeAlias { binders: _, aliased: aliased } =>
+              if infer_alias_is_refined(declared: declared, aliased: aliased) {
+                optional_absent()
+              } else {
               let params = type_param_names(n: declared)
               if length(xs: params) != length(xs: ha.args) {
                 optional_absent()
               } else {
                 optional_present(value: infer_type_instantiated(t: aliased, instances: zip_map(a: params, b: ha.args, f: fn(p, a) { TypeVariableInstance { binder: p, instance: a } })))
+              }
               }
             GenericTypeDecl { binders: _, member: _ } => optional_absent()
             OpaqueTypeDecl { binders: _ } => optional_absent()
@@ -3378,11 +3371,12 @@ fn infer_type_alias_unfolded(t: Node, declarations: SymbolIndex) -> Optional<Nod
   }
 }
 
-// A TYPE WITH EVERY ALIAS UNFOLDED, at its head and inside every Instantiation argument. The matched
-// formal and the argument are compared in this form first, because the declared-position judge compares
-// spellings exactly and does not unfold an alias: `FreeMonoid<Pair>` and `List<Pair>` are one type. Two
-// types equal here are the same type, so no judgment is skipped; a pair that differs here still goes to
-// the judge, which decides it (refinement carriers, optionals) and refuses with its own cause.
+// A TYPE WITH EVERY TRANSPARENT ALIAS UNFOLDED, at its head and inside every Instantiation argument: the ONE
+// alias rule, applied by the producer of every DeclaredTypeObligation (infer_judge_declared_position) to both the
+// declared and the produced type, so every declared position -- argument, return, record field, let annotation,
+// binder default -- and both the plain and the generic routes see one type per alias family (review 75435;
+// calm-boar-904, option 1). v2.std.inhabitance holds no index, so the reading is supplied by the producer,
+// exactly as produced_declared_carrier is.
 fn infer_type_alias_normalized(t: Node, declarations: SymbolIndex) -> Node {
   match infer_type_alias_unfolded(t: t, declarations: declarations) {
     Present { value: unfolded } => infer_type_alias_normalized(t: unfolded, declarations: declarations)
@@ -3416,6 +3410,22 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
       match refinement_declared_carrier(index: declarations, source_type: produced) {
         Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: carrier, type_params: type_params, instances: instances, declarations: declarations)
         Absent => InferFormalShapeMismatch
+      }
+  }
+}
+
+// A REFINEMENT IS NOT A TRANSPARENT ALIAS. `type Pos = Int where positive` -- and a nominal brand, which is
+// spelled the same way (`where brand(..)`, std.types WherePredicateMarker) -- denotes a type distinct from its
+// carrier, so it never unfolds: normalizing it would admit a raw carrier where the refined or branded type is
+// declared (silent widening). Its carrier is reached only by the judge's one-step subsumption
+// (refinement_declared_carrier), in the widening direction alone.
+fn infer_alias_is_refined(declared: Node, aliased: Node) -> Bool {
+  match refinement_declaration_of_node(decl: declared) {
+    Present { value: _ } => true
+    Absent =>
+      match refinement_declaration_of_node(decl: aliased) {
+        Present { value: _ } => true
+        Absent => false
       }
   }
 }
@@ -3481,7 +3491,7 @@ fn infer_judge_generic_formal(
         Accepted { value: _, diagnostics: d } => Accepted { value: instances, diagnostics: d }
       }
     Present { value: produced } =>
-      match infer_match_generic_formal_or_carrier(formal: formal.declared, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
+      match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized(t: formal.declared, declarations: declarations), produced: infer_type_alias_normalized(t: produced, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations) {
         InferFormalShapeMismatch =>
           outcome_rejected(
             application_argument_does_not_inhabit_diagnostic(
@@ -3498,12 +3508,6 @@ fn infer_judge_generic_formal(
             )
           )
         InferFormalMatched { instances: matched } =>
-          if infer_type_equal_ignoring_provenance(
-            a: infer_type_alias_normalized(t: infer_type_instantiated(t: formal.declared, instances: matched), declarations: declarations),
-            b: infer_type_alias_normalized(t: produced, declarations: declarations)
-          ) {
-            Accepted { value: matched, diagnostics: None }
-          } else {
           match infer_judge_declared_position(
             position: position,
             application: application,
@@ -3515,7 +3519,6 @@ fn infer_judge_generic_formal(
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: _, diagnostics: d } => Accepted { value: matched, diagnostics: d }
-          }
           }
       }
   }
