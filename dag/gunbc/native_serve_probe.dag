@@ -17,6 +17,10 @@ import gunbc.serve_liveness {
 // decides nothing about a case -- it is the same split gunbc.native_claim_program makes for its
 // programs, so the instrument cannot hold on a judgment written in hand Rust.
 //
+// THE BUDGET CASES RUN LAST because the last one ends the process: four requests that never return are
+// each refused at the deadline (with an ordinary request served between them), and the next request
+// meets the stuck-worker ceiling and is refused with the 503 before the process exits.
+//
 // THE THREE TERMINATIONS: success is held; code 1 is a case the service answered wrongly; code 2 is
 // no observation (the service never announced, the responses do not join the cases one for one,
 // the refused start did not refuse).
@@ -30,6 +34,12 @@ fn native_serve_probe_release_revision() -> String {
 }
 
 // The launch the door must refuse BEFORE it binds: a branch name where a revision belongs.
+// The per-request deadline this run launches under (--request-deadline-ms), short so the budget
+// cases cost half a second each. The default deadline is gunbc.native_serve's, not this.
+fn native_serve_probe_request_deadline_ms() -> String {
+  "500"
+}
+
 fn native_serve_probe_refused_revision() -> String {
   "main"
 }
@@ -38,6 +48,7 @@ type NativeServeExpect
   = ExpectBody { status: Int, body: String }
   | ExpectStatus { status: Int }
   | ExpectHeader { status: Int, line: String }
+  | ExpectBodyPrefix { status: Int, prefix: String }
   | ExpectLiveness
 
 type NativeServeProbeCase {
@@ -102,6 +113,36 @@ fn native_serve_probe_cases() -> List<NativeServeProbeCase> {
       identity: "liveness_is_answered_before_the_handler_and_names_the_release",
       request: "GET /livez HTTP/1.1\r\n\r\n",
       expect: ExpectLiveness,
+    },
+    NativeServeProbeCase {
+      identity: "budget_a_handler_that_never_returns_is_refused_at_the_deadline",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_a_later_request_is_still_served",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBody { status: 200, body: "hello, alice@example\n" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_second_stuck_worker_is_refused",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_third_stuck_worker_is_refused",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_fourth_stuck_worker_reaches_the_ceiling",
+      request: "GET /spin HTTP/1.1\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 500, prefix: "the request exceeded its 500 ms deadline" },
+    },
+    NativeServeProbeCase {
+      identity: "budget_past_the_stuck_worker_ceiling_the_process_refuses_and_exits",
+      request: "GET /hello HTTP/1.1\r\nTailscale-User-Login: alice@example\r\n\r\n",
+      expect: ExpectBodyPrefix { status: 503, prefix: "service unavailable: 4 requests are still running past their deadline (ceiling 4)" },
     },
   ]
 }
@@ -170,6 +211,10 @@ fn native_serve_case_failure(c: NativeServeProbeCase, response: String) -> Strin
         ExpectHeader { status: s, line: l } =>
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
           else if (w.head_lines |> filter(x => x == l) |> count) != 1 { concat(c.identity, concat(": no header line [", concat(l, "]"))) }
+          else { "" }
+        ExpectBodyPrefix { status: s, prefix: pre } =>
+          if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) }
+          else if !starts_with(s: w.body, prefix: pre) { concat(c.identity, concat(": body [", concat(w.body, "]"))) }
           else { "" }
         ExpectStatus { status: s } =>
           if w.status != s { concat(c.identity, concat(": status ", to_string(value: w.status))) } else { "" }

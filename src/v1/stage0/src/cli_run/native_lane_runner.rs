@@ -2529,8 +2529,10 @@ pub struct NativeServeProgramRun {
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
     vec![
+        "--request-deadline-ms".to_string(),
+        request_deadline_ms.to_string(),
         "--host".to_string(),
         "127.0.0.1".to_string(),
         "--port".to_string(),
@@ -2544,10 +2546,14 @@ fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
 fn native_serve_refused_launch(
     binary: &Path,
     refused_revision: &str,
+    request_deadline_ms: &str,
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(refused_revision))
+        .args(native_serve_launch_args(
+            refused_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -2603,6 +2609,7 @@ pub fn run_native_serve_program(
     entry: &str,
     release_revision: &str,
     refused_revision: &str,
+    request_deadline_ms: &str,
     requests: &[String],
 ) -> Result<NativeServeProgramRun, String> {
     use std::io::{BufRead, Read};
@@ -2613,9 +2620,12 @@ pub fn run_native_serve_program(
         prepared.binary_path.display()
     );
     let (refused_status, refused_stderr) =
-        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?;
     let mut child = Command::new(&prepared.binary_path)
-        .args(native_serve_launch_args(release_revision))
+        .args(native_serve_launch_args(
+            release_revision,
+            request_deadline_ms,
+        ))
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()

@@ -1622,7 +1622,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
-    let plan = (|| -> Result<(Vec<String>, String, String), String> {
+    let plan = (|| -> Result<(Vec<String>, String, String, String), String> {
         let requests = match &read("native_serve_probe_requests")? {
             crate::v1_interpreter::Value::List(items) => items
                 .iter()
@@ -1634,9 +1634,11 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             .ok_or("the release revision is not a String")?;
         let refused = text(&read("native_serve_probe_refused_revision")?)
             .ok_or("the refused revision is not a String")?;
-        Ok((requests, release, refused))
+        let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
+            .ok_or("the request deadline is not a String")?;
+        Ok((requests, release, refused, deadline))
     })();
-    let (requests, release, refused) = match plan {
+    let (requests, release, refused, deadline) = match plan {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
@@ -1650,6 +1652,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         entry,
         &release,
         &refused,
+        &deadline,
         &requests,
     ) {
         Ok(run) => run,
