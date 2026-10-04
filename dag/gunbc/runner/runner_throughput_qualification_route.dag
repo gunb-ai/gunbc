@@ -223,7 +223,7 @@ data mtcollins1_image_leg: RouteLegStanding = LegAuthorityImplemented {
 // authorities but no production caller on this route yet, so they are LegAuthorityImplemented and
 // each names the wiring it still owes. Registration is the one JIT mint, taken over the slot sum
 // whose host-unit arm (gunbc.runner.runner_host_unit_slot host_unit_slot_for) is this route's own
-// ephemeral_slot_unit / ephemeral_slot_argv / ephemeral_slot_labels on a gunbc.managed_host host.
+// ephemeral_slot_unit / ephemeral_slot_command / ephemeral_slot_labels on a gunbc.managed_host host.
 // Deregistration is NOT left to GitHub's ephemeral removal, which holds only when the one job ran:
 // it is an ensure over every slot exit whose success is the runner absent from the organization's
 // listing, with the host-side teardown carried by gunbc.runner.runner_teardown_receipt
