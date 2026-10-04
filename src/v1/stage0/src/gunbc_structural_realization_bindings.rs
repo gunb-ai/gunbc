@@ -2,7 +2,6 @@
 // Source module: gunbc.structural_realization_bindings
 
 use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
-pub use crate::std_coercion::{code_point_sequence_endpoint, host_text_endpoint};
 pub use crate::std_coercion::{ConversionPhase, ConversionPlan};
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
@@ -66,36 +65,39 @@ pub fn boolean_literal_homomorphism(
 
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-                Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), Rc::new(LiteralHomomorphism {
+        static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
+            Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), unicode_scalar_literal_homomorphism()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
+}
+
+pub fn unicode_scalar_literal_homomorphism() -> Rc<LiteralHomomorphism> {
+    thread_local! {
+            static CACHED: Rc<LiteralHomomorphism> = {
+                Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelStringLiteral,
         destination: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
         element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
         producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
-    })])
+    })
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
+    CACHED.with(|c: &Rc<LiteralHomomorphism>| c.clone())
 }
 
 pub fn conversion_plan_rows() -> Rc<Vec<Rc<ConversionPlan>>> {
     thread_local! {
             static CACHED: Rc<Vec<Rc<ConversionPlan>>> = {
                 Rc::new(vec![Rc::new(ConversionPlan {
-        identity: "unicode_scalar_unfold".to_string(),
         route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_unfold".to_string()),
-        source: crate::std_coercion::host_text_endpoint(),
-        target: crate::std_coercion::code_point_sequence_endpoint(),
         phase: Rc::new(ConversionPhase::UnfoldPhase {
-        producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
+        row: unicode_scalar_literal_homomorphism(),
     }),
     }), Rc::new(ConversionPlan {
-        identity: "unicode_scalar_fold".to_string(),
         route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_fold".to_string()),
-        source: crate::std_coercion::code_point_sequence_endpoint(),
-        target: crate::std_coercion::host_text_endpoint(),
         phase: Rc::new(ConversionPhase::InverseUnfoldPhase {
-        producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
+        row: unicode_scalar_literal_homomorphism(),
     }),
     })])
             };
