@@ -199,3 +199,30 @@ test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool {
     ["take(s)", "take(s.clone())"]
   )
 }
+
+// THE REFUSAL NAMES THE RIGHT ROUTE (review 75433). A refused text crossing carries
+// TextCrossingHasNoImplicitRoute with the route function that would make it lawful, chosen by the
+// produced side's reading. Each direction asserts its own route, so swapping the two arms in
+// v1.compiler.infer text_crossing_or_type_mismatch_error reds one of them; the p_ control writes the
+// same crossing as the named call and must be admitted.
+fn names_route(source: String, route: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => false
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      (rs |> filter(r => r.blocking && (r.diagnostic_class as String) == "TextCrossingHasNoImplicitRoute" && r.subject_name == route) |> count) > 0
+    }
+  }
+}
+
+test fn n_host_value_at_code_point_return_names_the_unfold() -> Bool {
+  names_route(source: "module probe_route_unfold\nimport v2.std.text { string_is_empty }\nfn f(t: String) -> v2.std.text.String { t }\n", route: "unicode_scalar_unfold")
+}
+
+test fn n_code_point_value_at_host_return_names_the_fold() -> Bool {
+  names_route(source: "module probe_route_fold\nimport v2.std.text { string_is_empty }\nfn f(t: v2.std.text.String) -> String { t }\n", route: "unicode_scalar_fold")
+}
+
+test fn p_the_named_route_call_is_admitted() -> Bool {
+  admitted(source: "module probe_route_called\nimport std.coercion { unicode_scalar_unfold }\nimport v2.std.text { string_is_empty }\nfn f(t: String) -> v2.std.text.String { unicode_scalar_unfold(s: t) }\n")
+}
