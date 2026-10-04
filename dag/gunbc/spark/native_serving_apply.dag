@@ -1914,25 +1914,11 @@ fn spark_native_readback_then_verdict(
               }
 }
 
-fn spark_native_transaction_body(
+fn spark_native_fresh_transaction(
   trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
-  steps: List<SparkNativeHostStep>, transaction_id: String,
+  steps: List<SparkNativeHostStep>, transaction_id: String, after_leftovers: String,
 ) -> SparkNativeArmTransaction
 {
-  match spark_native_leftover_stage(trust: trust, path: path, administrator: administrator, steps: steps) {
-    LeftoverStageAdopted { holder: t, dead: dead, receipt: r } =>
-      if count(dead) > 0 {
-        spark_native_after_mutation(trust: trust, path: path, administrator: administrator, steps: steps,
-          stage: NativeStageReadback, transaction_id: t,
-          so_far: join([r, "  ADOPTED transaction ", t, ": its rank(s) ", join(map(dead, h => h as String), ", "),
-            " are no longer running, which is that attempt's verdict -- it never committed. Rolling it back by its own path; NO APPLY LEG WAS ISSUED by this run.\n"], ""))
-      } else {
-        spark_native_readback_then_verdict(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: t,
-          so_far: join([r, "  ADOPTED transaction ", t, ": every rank is running under it, so its readback and verdict run now; NO APPLY LEG WAS ISSUED by this run.\n"], ""))
-      }
-    LeftoverStageRefused { receipt: r } =>
-      NativeArmRefusedBeforeActuation { stage: NativeStageLeftoverResolution, receipt: join([r, "  THE SERVING ARM WAS NOT MUTATED, and this stage removed nothing on a host whose leftovers it could not account for.\n"], "") }
-    LeftoverStageClear { receipt: after_leftovers } =>
   spark_native_stage_then(
     trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id,
     stage: NativeStagePreflight,
@@ -1955,6 +1941,36 @@ fn spark_native_transaction_body(
             })
         })
     })
+}
+
+// ADOPTION_ONLY is set by an admission that licensed nothing but the leftover stage's adoption
+// (gunbc.spark.group_arm_launch GroupArmLaunchAdmittedForAdoptionOnly): any outcome of the leftover stage
+// other than an adoption then refuses here, before preflight, so no apply leg is reachable from it.
+fn spark_native_transaction_body(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, transaction_id: String, adoption_only: Bool,
+) -> SparkNativeArmTransaction
+{
+  match spark_native_leftover_stage(trust: trust, path: path, administrator: administrator, steps: steps) {
+    LeftoverStageClear { receipt: r } =>
+      if adoption_only {
+        NativeArmRefusedBeforeActuation { stage: NativeStageLeftoverResolution, receipt: join([r, "  REFUSED: admitted for adoption only, and the leftover stage found no transaction of this arm to adopt; NO APPLY LEG IS REACHABLE from this admission\n"], "") }
+      } else {
+        spark_native_fresh_transaction(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id, after_leftovers: r)
+      }
+    LeftoverStageAdopted { holder: t, dead: dead, receipt: r } =>
+      if count(dead) > 0 {
+        spark_native_after_mutation(trust: trust, path: path, administrator: administrator, steps: steps,
+          stage: NativeStageReadback, transaction_id: t,
+          so_far: join([r, "  ADOPTED transaction ", t, ": its rank(s) ", join(map(dead, h => h as String), ", "),
+            " are no longer running, which is that attempt's verdict -- it never committed. Rolling it back by its own path; NO APPLY LEG WAS ISSUED by this run.\n"], ""))
+      } else {
+        spark_native_readback_then_verdict(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: t,
+          so_far: join([r, "  ADOPTED transaction ", t, ": every rank is running under it, so its readback and verdict run now; NO APPLY LEG WAS ISSUED by this run.\n"], ""))
+      }
+    LeftoverStageRefused { receipt: r } =>
+      NativeArmRefusedBeforeActuation { stage: NativeStageLeftoverResolution, receipt: join([r, "  THE SERVING ARM WAS NOT MUTATED, and this stage removed nothing on a host whose leftovers it could not account for.\n"], "") }
+
   }
 }
 
@@ -1996,7 +2012,7 @@ type SparkNativeApplyRun {
 
 fn spark_native_apply_transaction(
   context: FleetSshExecutionContext, trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
-  steps: List<SparkNativeHostStep>, at_word: String,
+  steps: List<SparkNativeHostStep>, at_word: String, adoption_only: Bool,
 ) -> SparkNativeApplyRun
 {
   let grants = map(steps, st => spark_native_grant_preflight_host(context: context, step: st))
@@ -2011,7 +2027,7 @@ fn spark_native_apply_transaction(
       NativeTransactionIdentityUnread { cause: c } =>
         SparkNativeApplyRun { body: join(["spark_native_serving_apply: NO HOST WAS TOUCHED. ", c, "\n"], ""), committed: false }
       NativeTransactionIdentified { id: transaction_id } => {
-        let outcome = spark_native_transaction_body(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id)
+        let outcome = spark_native_transaction_body(trust: trust, path: path, administrator: administrator, steps: steps, transaction_id: transaction_id, adoption_only: adoption_only)
         SparkNativeApplyRun {
           body: join([spark_native_transaction_headline(t: outcome), grant_lines, spark_native_transaction_receipt(t: outcome)], ""),
           committed: match outcome {
@@ -2057,7 +2073,7 @@ fn spark_native_serving_apply_wet() -> ProcessExit
                             Present { value: preflight_context } => {
                               let run = spark_native_apply_transaction(
                                 context: preflight_context, trust: trust, path: path, administrator: administrator as Secret,
-                                steps: steps, at_word: probed_at_word(reading: now) as String)
+                                steps: steps, at_word: probed_at_word(reading: now) as String, adoption_only: false)
                               let body = join([
                                 "spark native serving apply at ", probed_at_word(reading: now) as String,
                                 " from ", executor, " over ", spark_reach_path_wire(p: path), "\n",

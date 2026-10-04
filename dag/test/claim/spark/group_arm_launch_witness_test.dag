@@ -6,14 +6,14 @@ import v2.std.optional { Present, Absent }
 import std.measure { token_count, kibibyte, mebibyte, basis_point }
 import extdeps.systemd { Active }
 import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }
-import gunbc.compute.host_occupancy { HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
+import gunbc.compute.host_occupancy { HostOccupant, HostUnoccupied, HostOccupiedBy, ServingUnitActive, GpuComputeProcess }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.spark.serving_capacity_intent { scheduler_envelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused }
 import gunbc.spark.group_arm_launch {
   GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmHostOccupancy,
-  GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused,
+  GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmittedForAdoptionOnly, ArmOwnFence, ArmOwnFenceHeld, ArmOwnFenceAbsent, ArmOwnFenceUnread, GroupArmLaunchAdmissionRefused,
   ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit,
   ArmSuccessorKeyed, ArmSuccessorUnkeyed, group_arm_launch_admission, group_arm_read_units, group_arm_row_successor, group_arm_launch_plan,
   group_arm_released_launch_causes,
@@ -110,7 +110,7 @@ fn w_released(h: ContentHash) -> PairServingGroupAuthority {
 }
 
 fn w_vacant_a() -> List<GroupArmHostOccupancy> {
-  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, admission: HostUnoccupied { available: kibibyte(count: 120000000) } })
+  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnFenceAbsent, admission: HostUnoccupied { available: kibibyte(count: 120000000) } })
 }
 
 test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_admits_on_the_released_group() -> Bool {
@@ -134,7 +134,7 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_admits_on_the_relea
             incumbent: NoIncumbentDeclared, grant_row: StandingGrantRowNotOnMain { cause: "witness: the row differs from origin/main's" })
           w_refused_with(a: off_main, fragment: "the standing grant is not honored")
             && length(ls) == 4 && prof.max_num_seqs == 8 && prof.guaranteed_cold_seqs == 8
-            && (match a { GroupArmLaunchAdmitted => true  GroupArmLaunchAdmissionRefused { causes: _ } => false })
+            && (match a { GroupArmLaunchAdmitted => true  GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => false  GroupArmLaunchAdmissionRefused { causes: _ } => false })
         }
       }
     }
@@ -200,7 +200,7 @@ fn w_incumbent_on(hosts: List<HostIdentity>) -> ArmDeclaredIncumbent {
 }
 
 fn w_running(unit: NonEmptyStr) -> List<GroupArmHostOccupancy> {
-  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, admission: HostOccupiedBy {
+  map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnFenceAbsent, admission: HostOccupiedBy {
     occupant: ServingUnitActive { unit: unit, state: Active },
     others: [GpuComputeProcess { pid: 4242, process_name: "python3", used: UsedMemoryReported { used: mebibyte(count: 99000) } }],
     gpu_used: mebibyte(count: 99000) } })
@@ -209,6 +209,7 @@ fn w_running(unit: NonEmptyStr) -> List<GroupArmHostOccupancy> {
 fn w_refused_with(a: GroupArmLaunchAdmission, fragment: String) -> Bool {
   match a {
     GroupArmLaunchAdmitted => false
+    GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => false
     GroupArmLaunchAdmissionRefused { causes: c } => any(c, x => string_contains(s: x, pattern: fragment))
   }
 }
@@ -219,6 +220,7 @@ test fn w_a_declared_incumbent_read_back_active_admits() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
     match w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_running(unit: w_old_unit), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))) {
       GroupArmLaunchAdmitted => true
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => false
       GroupArmLaunchAdmissionRefused { causes: _ } => false
     }
   })
@@ -244,7 +246,7 @@ test fn w_an_undeclared_unit_beside_the_declared_one_refuses() -> Bool {
 test fn w_a_declared_incumbent_not_read_back_active_refuses() -> Bool {
   with_w_plan(f: fn(p, rk, ck) {
     w_refused_with(a: w_admit(p: v41_arm_plan(p: p), ck: ck,
-      occupancy: map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, admission: HostUnoccupied { available: kibibyte(count: 120000000) } }),
+      occupancy: map(fabric_group_hosts(g: FabricGroupA), h => GroupArmHostOccupancy { host: h, own_fence: ArmOwnFenceAbsent, admission: HostUnoccupied { available: kibibyte(count: 120000000) } }),
       incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))),
       fragment: "is not read back active")
   })
@@ -313,4 +315,40 @@ test fn w_the_dispatch_selects_only_from_closed_vocabularies() -> Bool {
 test fn w_the_observe_reads_only_the_arm_word() -> Bool {
   match arm_group_of_word(arm: "glm53-group-a") { ArmGroupNamed { group: _ } => true  ArmGroupWordRefused { cause: _ } => false }
     && match arm_group_of_word(arm: "glm53-group-b") { ArmGroupNamed { group: _ } => false  ArmGroupWordRefused { cause: _ } => true }
+}
+
+// ── A DANGLING TRANSACTION OF THIS ARM ADMITS TO ADOPTION ONLY ───────────────────────────────
+//
+// nvfp4-8 (runs 37190290418 / 37198685584): the head unit is dead on srv6 under this arm's own fence
+// while the other ranks still run. That is the one shape that admits, and it admits ONLY to adoption
+// (gunbc.spark.group_arm_launch group_arm_adopt_dangling, which issues no pre-apply, no incumbent stop and
+// no apply leg). The REDs: the same inactive unit with no fence of this arm, and the same with the fence
+// unread, refuse exactly as a fresh launch always did.
+fn w_dangling_on_srv6(fence: ArmOwnFence) -> List<GroupArmHostOccupancy> {
+  map(fabric_group_hosts(g: FabricGroupA), h =>
+    if (h as String) == "srv6" {
+      GroupArmHostOccupancy { host: h, own_fence: fence, admission: HostUnoccupied { available: kibibyte(count: 120000000) } }
+    } else {
+      GroupArmHostOccupancy { host: h, own_fence: fence, admission: HostOccupiedBy {
+        occupant: ServingUnitActive { unit: w_old_unit, state: Active },
+        others: [] as List<HostOccupant>,
+        gpu_used: mebibyte(count: 99000) } }
+    })
+}
+
+test fn w_a_dead_rank_under_this_arms_fence_admits_to_adoption_only() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    match w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_dangling_on_srv6(fence: ArmOwnFenceHeld), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))) {
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: hs } => length(hs) == 1 && all(hs, h => (h as String) == "srv6")
+      GroupArmLaunchAdmitted => false
+      GroupArmLaunchAdmissionRefused { causes: _ } => false
+    }
+  })
+}
+
+test fn w_an_inactive_incumbent_without_this_arms_fence_still_refuses() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    w_refused_with(a: w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_dangling_on_srv6(fence: ArmOwnFenceAbsent), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))), fragment: "is not read back active")
+      && w_refused_with(a: w_admit(p: v41_arm_plan(p: p), ck: ck, occupancy: w_dangling_on_srv6(fence: ArmOwnFenceUnread { cause: "witness" }), incumbent: w_incumbent_on(hosts: fabric_group_hosts(g: FabricGroupA))), fragment: "is not read back active")
+  })
 }

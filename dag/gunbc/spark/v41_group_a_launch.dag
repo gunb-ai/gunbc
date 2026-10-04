@@ -46,7 +46,7 @@ import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, Spar
 import gunbc.spark.v41_capacity_measurement { V41MeasurementLaunchShape, v41_measurement_launch_shape }
 import gunbc.spark.serving_capacity_intent { uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
-import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, GroupArmHostOccupancy, ArmSuccessorStanding, ArmSuccessorKeyed, ArmSuccessorUnkeyed, NoIncumbentDeclared, ArmPreApply, ArmPreApplyPassed, ArmPreApplyStopped, ArmPreApplyWire, group_arm_launch_plan, group_arm_unit_renders, group_arm_steps, group_arm_launch_admission, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, group_arm_memory_need, group_arm_read_occupancy, group_arm_apply_admitted }
+import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmLaunchAdmission, GroupArmLaunchAdmittedForAdoptionOnly, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, GroupArmHostOccupancy, ArmSuccessorStanding, ArmSuccessorKeyed, ArmSuccessorUnkeyed, NoIncumbentDeclared, ArmPreApply, ArmPreApplyPassed, ArmPreApplyStopped, ArmPreApplyWire, group_arm_launch_plan, group_arm_unit_renders, group_arm_steps, group_arm_launch_admission, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, group_arm_memory_need, group_arm_read_occupancy, group_arm_apply_admitted }
 import gunbc.spark.fabric_serving_assignment { fabric_serving_assignment_for_launch }
 // ── THE V4.1 FOUR-RANK LAUNCH ON GROUP A, AS ONE MORE CALL SITE OF THE ARM LAUNCHER ─────────────
 //
@@ -766,6 +766,7 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
   ], "")
   match admission {
     GroupArmLaunchAdmissionRefused { causes: _ } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: admission refused; no host was staged and no serving unit was touched\n"], ""), converged: false }
+    GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: V4.1 declares no incumbent, so a dangling-transaction admission cannot arise here and is refused\n"], ""), converged: false }
     GroupArmLaunchAdmitted => {
       let work = group_arm_apply_admitted(
         intent: v41_group_a_intent, units: v41_group_a_units, plan: v41_arm_plan(p: plan), incumbent: NoIncumbentDeclared,

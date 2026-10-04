@@ -18,7 +18,7 @@ import gunbc.spark.native_serving_realization { ArmUnitIdentity }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
-import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit, group_arm_launch_plan, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
+import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmittedForAdoptionOnly, group_arm_adopt_dangling, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit, group_arm_launch_plan, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
 
 // ── THE GLM-5.3-FLASH STAIRCASE ON GROUP A: THE ARM'S INPUTS, AND NOTHING ELSE ─────────────────
 //
@@ -324,6 +324,10 @@ fn glm53_step_session(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice, now_w
           match admission {
             GroupArmLaunchAdmissionRefused { causes: _ } =>
               SparkBuildHostWork { receipt: join([report, "NOT LAUNCHED: admission refused; the incumbent and every serving unit are untouched\n"], ""), converged: false }
+            GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => {
+              let work = group_arm_adopt_dangling(intent: inputs.intent, units: inputs.units, plan: plan, context: context, ctx: ctx, now_word: now_word)
+              SparkBuildHostWork { receipt: join([report, work.receipt], ""), converged: work.converged }
+            }
             GroupArmLaunchAdmitted => {
               let work = group_arm_apply_admitted(
                 intent: inputs.intent, units: inputs.units, plan: plan, incumbent: incumbent,

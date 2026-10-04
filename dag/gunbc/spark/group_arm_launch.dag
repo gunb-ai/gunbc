@@ -23,7 +23,7 @@ import extdeps.nvidia.system_management_interface { parse_compute_apps, ComputeA
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 import extdeps.exec.command { argv_words }
 import std.algebra { trim }
-import gunbc.spark.host_effect_quiescence { ArgvRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import extdeps.systemd { Active }
 import gunbc.fabric_event_log_host { now_epoch_seconds, HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, ReachFabricRail, spark_reach_endpoint }
@@ -35,7 +35,7 @@ import gunbc.spark.serving_promotion { no_promotion_receipts }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
-import gunbc.spark.native_serving_apply { SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
+import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }
 import gunbc.spark.pair_serving_authority_log {
   PreparationState, Prepared, AppendClaimed, Finalized, Aborted,
@@ -266,10 +266,26 @@ fn arm_successor_wire(s: ArmSuccessorStanding) -> String {
 type GroupArmHostOccupancy {
   host: HostIdentity
   admission: HostOccupancyAdmission
+  own_fence: ArmOwnFence
 }
 
+// WHETHER THIS ARM'S OWN TRANSACTION FENCE STANDS ON THE HOST (gunbc.spark.native_serving_apply
+// spark_native_fence_suffix on the arm's own unit paths) -- read, never inferred; unread is its own arm.
+type ArmOwnFence
+  = ArmOwnFenceHeld
+  | ArmOwnFenceAbsent
+  | ArmOwnFenceUnread { cause: String }
+
+// ADMITTED FOR ADOPTION ONLY is its own verdict, not a loosened Admitted: a host whose only incumbent
+// problem is that a declared unit is INACTIVE UNDER THIS ARM'S OWN unresolved transaction fence (a launch
+// killed between apply and verdict, whose rank then died -- nvfp4-8, runs 37190290418 / 37198685584) is a
+// dangling transaction, and the only thing it licenses is the transaction's leftover-stage adoption:
+// resume at readback or roll back. It cannot reach a pre-apply, an incumbent stop or an apply leg; if the
+// leftover stage then finds nothing adoptable, the run refuses. A declared incumbent that is inactive with
+// no fence of this arm still refuses exactly as before.
 type GroupArmLaunchAdmission
   = GroupArmLaunchAdmitted
+  | GroupArmLaunchAdmittedForAdoptionOnly { hosts: List<HostIdentity> }
   | GroupArmLaunchAdmissionRefused { causes: List<String> }
 
 fn content_hash_text(h: ContentHash) -> String {
@@ -374,12 +390,44 @@ fn group_arm_incumbent_host_causes(purpose: String, h: HostIdentity, declared: L
   }
 }
 
+fn group_arm_host_dangling_under_own_fence(h: HostIdentity, declared: List<NonEmptyStr>, o: GroupArmHostOccupancy) -> Bool {
+  let occupants = match o.admission {
+    HostOccupiedBy { occupant: x, others: rest, gpu_used: _ } => concat([x], rest)
+    HostUnoccupied { available: _ } => [] as List<HostOccupant>
+    HostMemoryShort { available: _, need: _ } => [] as List<HostOccupant>
+    HostOccupancyNotRead { cause: _ } => [] as List<HostOccupant>
+  }
+  let read = match o.admission {
+    HostOccupancyNotRead { cause: _ } => false
+    HostOccupiedBy { occupant: _, others: _, gpu_used: _ } => true
+    HostUnoccupied { available: _ } => true
+    HostMemoryShort { available: _, need: _ } => true
+  }
+  let held = match o.own_fence {
+    ArmOwnFenceHeld => true
+    ArmOwnFenceAbsent => false
+    ArmOwnFenceUnread { cause: _ } => false
+  }
+  read && held && length(declared) > 0
+    && any(declared, u => !active_unit_named(occupants: occupants, unit: u))
+    && length(group_arm_incumbent_host_judged(purpose: "", h: h, declared: declared, occupants: occupants)) == count(filter(declared, u => !active_unit_named(occupants: occupants, unit: u)))
+}
+
+fn group_arm_adoption_hosts(hosts: List<HostIdentity>, occupancy: List<GroupArmHostOccupancy>, incumbent: ArmDeclaredIncumbent) -> List<HostIdentity> {
+  filter(hosts, h => match first(filter(occupancy, o => (o.host as String) == (h as String))) {
+    Absent => false
+    Present { value: o } => group_arm_host_dangling_under_own_fence(h: h, declared: incumbent_units_on(i: incumbent, host: h), o: o)
+  })
+}
+
 fn group_arm_occupancy_causes(purpose: String, hosts: List<HostIdentity>, occupancy: List<GroupArmHostOccupancy>, incumbent: ArmDeclaredIncumbent) -> List<String> {
   flat_map(hosts, h => match first(filter(occupancy, o => (o.host as String) == (h as String))) {
     Absent => [join(["no occupancy reading was supplied for ", h as String, ", so ", purpose, " is not admitted"], "")]
     Present { value: o } => {
       let declared = incumbent_units_on(i: incumbent, host: h)
-      if length(declared) == 0 {
+      if group_arm_host_dangling_under_own_fence(h: h, declared: declared, o: o) {
+        [] as List<String>
+      } else if length(declared) == 0 {
         match host_occupancy_refusal(host: h as String, purpose: purpose, a: o.admission) {
           Absent => [] as List<String>
           Present { value: why } => [why]
@@ -422,7 +470,10 @@ fn group_arm_launch_admission(
         group_arm_host_causes(group: group, hosts: hosts, held: held)),
         group_arm_incumbent_roster_causes(hosts: hosts, incumbent: incumbent)),
         group_arm_occupancy_causes(purpose: purpose as String, hosts: hosts, occupancy: occupancy, incumbent: incumbent))
-      if length(causes) == 0 { GroupArmLaunchAdmitted } else { GroupArmLaunchAdmissionRefused { causes: causes } }
+      let dangling = group_arm_adoption_hosts(hosts: hosts, occupancy: occupancy, incumbent: incumbent)
+      if length(causes) > 0 { GroupArmLaunchAdmissionRefused { causes: causes } }
+      else if length(dangling) > 0 { GroupArmLaunchAdmittedForAdoptionOnly { hosts: dangling } }
+      else { GroupArmLaunchAdmitted }
     }
   }
 }
@@ -470,6 +521,7 @@ fn group_arm_dry_run_occupancy(group: FabricGroup) -> List<GroupArmHostOccupancy
   map(fabric_group_hosts(g: group), h => GroupArmHostOccupancy {
     host: h,
     admission: HostOccupancyNotRead { cause: "the dry run reaches no host; a launch reads occupancy on each host before it starts" },
+    own_fence: ArmOwnFenceUnread { cause: "the dry run reaches no host" },
   })
 }
 
@@ -494,6 +546,7 @@ fn incumbent_wire(i: ArmDeclaredIncumbent) -> String {
 fn group_arm_dry_run_report(title: String, intent: ArmIntent, units: ArmUnitIdentity, plan: GroupArmLaunchPlan, pre_apply: List<ArmPreApplyWire>, incumbent: ArmDeclaredIncumbent, admission: GroupArmLaunchAdmission) -> String {
   let verdict = match admission {
     GroupArmLaunchAdmitted => "ADMITTED"
+    GroupArmLaunchAdmittedForAdoptionOnly { hosts: hs } => join(["ADMITTED FOR ADOPTION ONLY (a dangling transaction of this arm under its own fence on ", join(map(hs, h => h as String), ", "), "): the leftover stage may resume or roll it back; no apply leg is reachable"], "")
     GroupArmLaunchAdmissionRefused { causes: c } => join(["REFUSED\n", join(map(c, x => join(["  - ", x], "")), "\n")], "")
   }
   let pre = join(map(pre_apply, w => join(["--- ", w.label as String, "\n", w.text, "\n"], "")), "")
@@ -602,7 +655,7 @@ fn group_arm_apply_admitted(
           match group_arm_stop_incumbent(ctx: ctx, incumbent: incumbent, hosts: hosts, units: units, need: group_arm_plan_memory_need(p: plan)) {
             IncumbentNotVacated { receipt: s } => SparkBuildHostWork { receipt: join([r, s, "NOT LAUNCHED: the hosts were not vacated; no arm unit was touched\n"], ""), converged: false }
             IncumbentVacated { receipt: s } => {
-              let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word)
+              let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word, adoption_only: false)
               let after = if run.committed {
                 match incumbent {
                   NoIncumbentDeclared => ""
@@ -621,6 +674,18 @@ fn group_arm_apply_admitted(
   }
 }
 
+// THE ADOPTION-ONLY PATH: no pre-apply, no incumbent stop, no incumbent restore -- the transaction alone,
+// told it may only adopt. Its outcome is the adopted transaction's (resume or rollback) or a refusal.
+fn group_arm_adopt_dangling(intent: ArmIntent, units: ArmUnitIdentity, plan: GroupArmLaunchPlan, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, now_word: String) -> SparkBuildHostWork {
+  match group_arm_steps(intent: intent, units: units, p: plan) {
+    NativeArmStepsRefused { cause: c } => SparkBuildHostWork { receipt: join(["NOT ADOPTED: the units did not render: ", c as String, "\n"], ""), converged: false }
+    NativeArmSteps { steps: steps, master_endpoint: _ } => {
+      let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word, adoption_only: true)
+      SparkBuildHostWork { receipt: run.body, converged: run.committed }
+    }
+  }
+}
+
 // THE TRANSACTION'S HEADLINE IS ITS OUTCOME'S OWN WORDING (gunbc.spark.native_serving_apply
 // spark_native_transaction_headline), and the unestablished arm is the one whose headline says so.
 fn group_arm_transaction_left_unestablished(body: String) -> Bool {
@@ -633,7 +698,20 @@ fn group_arm_read_occupancy(ctx: SparkMaterializeContext, hosts: List<HostIdenti
   map(hosts, h => GroupArmHostOccupancy {
     host: h,
     admission: admit_host_occupancy(reading: read_host_occupancy(run: group_arm_host_run(ctx: ctx, h: h), units: group_arm_read_units(units: units, incumbent: incumbent)), need: need),
+    own_fence: group_arm_read_own_fence(run: group_arm_host_run(ctx: ctx, h: h), units: units),
   })
+}
+
+fn group_arm_read_own_fence(run: fn(List<String>) -> ArgvRun, units: ArmUnitIdentity) -> ArmOwnFence {
+  let paths = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_fence_suffix], ""))
+  match run(["sh", "-c", join(["for f in ", join(paths, " "), "; do if [ -e \"$f\" ]; then echo own-fence=held; exit 0; fi; done; echo own-fence=absent"], "")]) {
+    ArgvLegDidNotRun { cause: c } => ArmOwnFenceUnread { cause: c }
+    ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { ArmOwnFenceUnread { cause: join(["exit ", to_string(code), ": ", trim(s: err)], "") } }
+      else if string_contains(s: out, pattern: "own-fence=held") { ArmOwnFenceHeld }
+      else if string_contains(s: out, pattern: "own-fence=absent") { ArmOwnFenceAbsent }
+      else { ArmOwnFenceUnread { cause: "the fence read printed neither answer" } }
+  }
 }
 
 // ── THE ENTRIES: ONE DRY PLAN AND ONE WET LAUNCH, WHATEVER THE ARM ────────────────────────────
@@ -653,6 +731,7 @@ fn group_arm_dry_plan_write(title: String, plan: ArmDryPlan, path: String) -> Pr
   } else {
     match plan.admission {
       GroupArmLaunchAdmitted => ExitSuccess
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => ExitSuccess
       GroupArmLaunchAdmissionRefused { causes: c } => exit_failure(reason: join([title, " dry plan: not admitted (report at ", path, "): ", join(c, "; ")], ""))
     }
   }
