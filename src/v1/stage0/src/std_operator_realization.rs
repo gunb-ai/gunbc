@@ -7,7 +7,6 @@ use self::OperandRealization::*;
 use self::OperatorRealization::*;
 use self::OperatorRealizationRefusal::*;
 use self::OrderingTest::*;
-use self::StructuralConnectiveLookup::*;
 use self::StructuralOrderingLookup::*;
 pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::{
@@ -19,7 +18,6 @@ pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -126,59 +124,6 @@ pub fn structural_ordering_for(
                 }
             } else {
                 Rc::new(StructuralOrderingLookup::StructuralOrderingAmbiguous {
-                    row_count: n.clone(),
-                })
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StructuralConnectiveBinding {
-    pub carrier: Rc<DeclarationRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum StructuralConnectiveLookup {
-    StructuralConnectiveFound {
-        row: Rc<StructuralConnectiveBinding>,
-    },
-    StructuralConnectiveAbsent,
-    StructuralConnectiveAmbiguous {
-        row_count: i64,
-    },
-}
-
-pub fn structural_connective_for(
-    rows: Rc<Vec<Rc<StructuralConnectiveBinding>>>,
-    carrier: Rc<DeclarationRef>,
-) -> Rc<StructuralConnectiveLookup> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if crate::std_decl_ref::declaration_ref_eq(r.carrier.clone(), carrier.clone()) {
-                    __result.push(r);
-                }
-            }
-            __result
-        });
-        let n = (matching.clone().len() as i64);
-        if (n.clone() == 0) {
-            Rc::new(StructuralConnectiveLookup::StructuralConnectiveAbsent)
-        } else {
-            if (n.clone() == 1) {
-                match matching.clone().first().cloned() {
-                    Some(row) => Rc::new(StructuralConnectiveLookup::StructuralConnectiveFound {
-                        row: row.clone(),
-                    }),
-                    std::option::Option::None => {
-                        Rc::new(StructuralConnectiveLookup::StructuralConnectiveAbsent)
-                    }
-                }
-            } else {
-                Rc::new(StructuralConnectiveLookup::StructuralConnectiveAmbiguous {
                     row_count: n.clone(),
                 })
             }
@@ -298,10 +243,6 @@ pub enum OperatorRealizationRefusal {
         declaration: Rc<DeclarationRef>,
         row_count: i64,
     },
-    StructuralConnectiveDuplicated {
-        declaration: Rc<DeclarationRef>,
-        row_count: i64,
-    },
     OperandIdentityUnavailableAt {
         operator: BinOp,
         facts: Rc<OperandShapeFacts>,
@@ -329,7 +270,6 @@ pub fn operator_realization_refusal_message(cause: Rc<OperatorRealizationRefusal
     match (*cause.clone()).clone() {
     OperatorRealizationRefusal::NoStructuralOperationDeclared { declaration: d, operator: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), binop_label(o.clone())), "` on structural operand ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation".to_string()),
     OperatorRealizationRefusal::StructuralOrderingDuplicated { declaration: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: structural ordering for ".to_string(), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)".to_string()),
-    OperatorRealizationRefusal::StructuralConnectiveDuplicated { declaration: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: structural connective for ".to_string(), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared row (gunbc.structural_realization_bindings authoring defect)".to_string()),
     OperatorRealizationRefusal::OperandIdentityUnavailableAt { operator: o, facts: f, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), binop_label(o.clone())), "` on an operand whose declaration could not be read".to_string()), " (authored `".to_string()), f.authored_name.clone()), "`, connective ".to_string()), f.connective.clone()), ", children ".to_string()), (f.child_count.clone()).to_string()), ", resolved ".to_string()), if f.resolved.clone() {
         "yes".to_string()
     } else {
@@ -342,7 +282,6 @@ pub fn operator_realization_for(
     op: BinOp,
     operand: Rc<OperandRealization>,
     ordering_rows: Rc<Vec<Rc<StructuralOrderingBinding>>>,
-    connective_rows: Rc<Vec<Rc<StructuralConnectiveBinding>>>,
 ) -> Rc<OperatorRealization> {
     match (*operand.clone()).clone() {
         OperandRealization::HostNumericOperand => Rc::new(OperatorRealization::HostOperator),
@@ -429,12 +368,8 @@ pub fn operator_realization_for(
             BinOp::Ge => {
                 structural_ordering_realization(op.clone(), d.clone(), ordering_rows.clone())
             }
-            BinOp::And => {
-                structural_connective_realization(op.clone(), d.clone(), connective_rows.clone())
-            }
-            BinOp::Or => {
-                structural_connective_realization(op.clone(), d.clone(), connective_rows.clone())
-            }
+            BinOp::And => structural_arithmetic_refusal(op.clone(), d.clone()),
+            BinOp::Or => structural_arithmetic_refusal(op.clone(), d.clone()),
             BinOp::NullCoalesce => Rc::new(OperatorRealization::HostOperator),
             BinOp::Add => structural_arithmetic_refusal(op.clone(), d.clone()),
             BinOp::Sub => structural_arithmetic_refusal(op.clone(), d.clone()),
@@ -442,29 +377,6 @@ pub fn operator_realization_for(
             BinOp::Div => structural_arithmetic_refusal(op.clone(), d.clone()),
             BinOp::Mod => structural_arithmetic_refusal(op.clone(), d.clone()),
         },
-    }
-}
-
-pub fn structural_connective_realization(
-    op: BinOp,
-    declaration: Rc<DeclarationRef>,
-    connective_rows: Rc<Vec<Rc<StructuralConnectiveBinding>>>,
-) -> Rc<OperatorRealization> {
-    match (*structural_connective_for(connective_rows.clone(), declaration.clone())).clone() {
-        StructuralConnectiveLookup::StructuralConnectiveFound { row: _, .. } => {
-            Rc::new(OperatorRealization::HostOperator)
-        }
-        StructuralConnectiveLookup::StructuralConnectiveAbsent => {
-            structural_arithmetic_refusal(op.clone(), declaration.clone())
-        }
-        StructuralConnectiveLookup::StructuralConnectiveAmbiguous { row_count: n, .. } => {
-            Rc::new(OperatorRealization::OperatorRealizationRefused {
-                cause: Rc::new(OperatorRealizationRefusal::StructuralConnectiveDuplicated {
-                    declaration: declaration.clone(),
-                    row_count: n.clone(),
-                }),
-            })
-        }
     }
 }
 
