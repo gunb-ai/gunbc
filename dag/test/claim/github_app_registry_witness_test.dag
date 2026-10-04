@@ -33,7 +33,7 @@ import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, AttemptBindingAxis, AxisDeferred,
 }
 import gunbc.runner_jit_mint {
-  JitSlotBinding, MicroVmSlotBinding, MicroVmJitSlot, HostUnitSlotBinding, HostUnitJitSlot, JitMintRefusedHostUnitSlot,
+  JitSlotBinding, MicroVmSlotBinding, MicroVmJitSlot, HostUnitSlotBinding, HostUnitJitSlot, JitMintRefusedHostUnitSlot, JitMintRefusedRunnerGroupForAnotherWorkflow,
   JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted,
   plan_jit_mint,
@@ -43,7 +43,7 @@ import extdeps.transports.rest { RestOk }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
-  observe_shakedown_runner_group_restriction, runner_group_restriction_not_yet_observed,
+  observe_shakedown_runner_group_restriction, observe_runner_group_restriction, runner_group_restriction_not_yet_observed,
   microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name,
 }
 import gunbc.runner.runner_jit_perform {
@@ -58,11 +58,12 @@ import gunbc.runner.runner_jit_perform {
 import extdeps.uri { Uri, uri_https }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.managed_host { managed_hosts, managed_host_binding, ManagedHostAccessUnobserved }
+import gunbc.managed_host { ManagedHost, managed_hosts, managed_host_binding, ManagedHostAccessUnobserved }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.actions_runner { ActionsRunnerLinuxArm64 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_labels, ephemeral_slot_argv }
+import gunbc.runner.runner_jit_deregistration { jit_registration_of }
 import gunbc.runner.runner_host_unit_slot {
   HostUnitSlotStanding, HostUnitSlotRefused, HostUnitSlotHostNotBound, host_unit_slot_for, host_unit_slot_listener_argv,
 }
@@ -1312,15 +1313,41 @@ test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool
 // ── THE HOST-UNIT ARM OF THE SAME MINT ────────────────────────────────────────────────────────
 //
 // One plan over the slot sum (gunbc.runner_jit_mint JitSlotBinding), so these claims reuse the
-// microVM claims' credential, control-plane and group fixtures unchanged: a fork of the mint per
-// binding would need fixtures of its own, and that is what these claims would stop compiling on.
-fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>) -> JitMintPlan {
+// microVM claims' credential and control-plane fixtures unchanged: a fork of the mint per binding
+// would need fixtures of its own, and that is what these claims would stop compiling on.
+data qualification_workflow: NonEmptyStr = "gunb-ai/gunbc/.github/workflows/runner-qualification.yml@refs/heads/main"
+
+// The group the slot's workflow is observed restricted to, through the same sealed observer.
+fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
+  observe_runner_group_restriction(
+    name: "runner-qualification",
+    selected_workflow: workflow,
+    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+      total_count: 1,
+      runner_groups: [OrgRunnerGroupWire {
+        id: 3,
+        name: "runner-qualification",
+        visibility: "selected",
+        allows_public_repositories: false,
+        restricted_to_workflows: true,
+        selected_workflows: [workflow as String],
+        workflow_restrictions_read_only: false,
+      }],
+    }),
+  )
+}
+
+fn host_unit_slot(h: ManagedHost) -> HostUnitSlotStanding {
+  host_unit_slot_for(host: managed_host_binding(host: h), attempt: "q-1", workflow: qualification_workflow)
+}
+
+fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermission>, group: MicrovmRunnerGroupStanding) -> JitMintPlan {
   plan_jit_mint(
     binding: HostUnitSlotBinding { standing: standing },
     authority: app_credential,
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
-    runner_group: restricted_group_1(),
+    runner_group: group,
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1328,14 +1355,14 @@ fn host_unit_planned(standing: HostUnitSlotStanding, perms: List<GitHubAppPermis
 // INHABITANCE, AND IT ASSERTS THE ROUTE: the real managed-host roster (gunbc.managed_host
 // managed_hosts, the mtcollins1 row) binds, the slot is derived from that binding, and the mint
 // registers under the route's own unit name and labels, launched by the route's own systemd-run
-// argv over the arm64 runner artifact. Removing the managed-host row, or registering under a name or
-// label set the route does not stage, turns this red.
+// argv over the arm64 runner artifact, into the group restricted to the slot's own workflow.
 test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_own_spelling() -> Bool {
   let hosts = managed_hosts()
   count(hosts) > 0 && hosts |> all(h =>
-    match host_unit_planned(standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: "q-1"), perms: runner_grant) {
+    match host_unit_planned(standing: host_unit_slot(h: h), perms: runner_grant, group: group_restricted_to(workflow: qualification_workflow)) {
       JitMintAuthorized { slot: HostUnitJitSlot { slot: u }, request: req } =>
         (req.name.value as String) == (ephemeral_slot_unit(host: h.host, attempt: "q-1") as String)
+          && req.runner_group_id.value == 3
           && runner_label_sets_equal(a: map(req.labels, l => l.value as String), b: ephemeral_slot_labels(host: h.host, attempt: "q-1"))
           && u.argv == ephemeral_slot_argv(unit: u.unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv())
           && match u.runner.arch { ActionsRunnerLinuxArm64 => true _ => false }
@@ -1343,11 +1370,40 @@ test fn witness_jit_mint_authorizes_a_managed_host_unit_slot_under_the_routes_ow
     })
 }
 
+// RED: A GROUP RESTRICTED TO ANOTHER WORKFLOW. The shakedown's group is a perfectly authorized
+// restriction -- for the shakedown. A host-unit slot that exists to run the qualification workflow
+// must not register into it, and a microVM slot (whose workflow IS the shakedown's) still does: the
+// comparison is the slot's workflow against the group's, not a property of either alone.
+test fn witness_jit_mint_refuses_a_group_restricted_to_another_workflow() -> Bool {
+  let host_refused = managed_hosts() |> all(h =>
+    match host_unit_planned(standing: host_unit_slot(h: h), perms: runner_grant, group: restricted_group_1()) {
+      JitMintRefusedRunnerGroupForAnotherWorkflow { group: _, selected: s, intended: i } =>
+        (s as String) == (microvm_shakedown_selected_workflow() as String) && (i as String) == (qualification_workflow as String)
+      _ => false
+    })
+  let microvm_into_qualification_refused = match plan_jit_mint(
+    binding: jit_binding(owned: true),
+    authority: app_credential,
+    control_plane: observed_grant(perms: runner_grant),
+    organization: gunbai_org_ref,
+    runner_group: group_restricted_to(workflow: qualification_workflow),
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ) {
+    JitMintRefusedRunnerGroupForAnotherWorkflow { group: _, selected: _, intended: _ } => true
+    _ => false
+  }
+  count(managed_hosts()) > 0 && host_refused && microvm_into_qualification_refused
+}
+
 // RED: A HOST THE MANAGED-HOST SEAM DOES NOT BIND HAS NO SLOT, and the refusal carries the seam's own
 // standing rather than a re-coined cause -- even with a fully sufficient credential.
 test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() -> Bool {
   let unbound = ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint { host: "fixture-bmc" } }
-  match host_unit_planned(standing: host_unit_slot_for(host: unbound, attempt: "q-1"), perms: runner_grant) {
+  match host_unit_planned(
+    standing: host_unit_slot_for(host: unbound, attempt: "q-1", workflow: qualification_workflow),
+    perms: runner_grant,
+    group: group_restricted_to(workflow: qualification_workflow),
+  ) {
     JitMintRefusedHostUnitSlot { refusal: HostUnitSlotHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: e } } } =>
       (e.host as String) == "fixture-bmc"
     _ => false
@@ -1358,9 +1414,26 @@ test fn witness_jit_mint_refuses_a_host_the_managed_host_seam_does_not_bind() ->
 // organization self-hosted-runners write refuses exactly as an owned microVM cell does.
 test fn witness_a_host_unit_slot_passes_through_the_same_credential_gate() -> Bool {
   managed_hosts() |> all(h =>
-    match host_unit_planned(standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: "q-1"), perms: full_workflow_grant) {
+    match host_unit_planned(standing: host_unit_slot(h: h), perms: full_workflow_grant, group: group_restricted_to(workflow: qualification_workflow)) {
       JitMintRefusedCredential { organization: org, unsatisfied: u } => (org as String) == "gunb-ai" && count(u) > 0
       _ => false
     })
 }
 
+// THE DEREGISTRATION SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH ONLY: a refused dispatch yields
+// no subject, and an authorized one yields exactly the name, App and installation it dispatched.
+test fn witness_a_deregistration_subject_exists_only_for_an_authorized_dispatch() -> Bool {
+  let refused_none = match jit_registration_of(dispatch: dispatched(owned: false, perms: runner_grant)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  refused_none && match dispatched(owned: true, perms: runner_grant) {
+    JitMintDispatchAuthorized { slot: _, app: app, installation: i, organization: _, request: req } =>
+      match jit_registration_of(dispatch: dispatched(owned: true, perms: runner_grant)) {
+        Present { value: reg } =>
+          (reg.name.value as String) == (req.name.value as String) && reg.app == app && reg.installation == i
+        Absent => false
+      }
+    _ => false
+  }
+}

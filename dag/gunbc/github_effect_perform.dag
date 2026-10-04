@@ -274,7 +274,9 @@ fn read_runner_groups_with(token: ControllerInstallationToken, organization: Non
 // Secret is shed here and nowhere else, as for the mint; the answers are classified at their own
 // grain -- the listing a read, the delete a mutation -- and the decision over them is the
 // deregistration module's, taken without I/O.
-type OrganizationRunnerListRead {
+// SEALED: a listing reaches a deregistration receipt only as an answer this module received from
+// GitHub, never as a value a caller assembled (gunbc.runner.runner_jit_deregistration).
+type OrganizationRunnerListRead sole_constructor {
   performance: RestExchangePerformance
   body: OrganizationRunnerListWire
 }

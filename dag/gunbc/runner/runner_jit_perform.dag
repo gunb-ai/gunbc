@@ -21,7 +21,7 @@ import gunbc.runner.runner_host_unit_slot { HostUnitSlotRefusal }
 import gunbc.runner_group_restriction_observation { MicrovmRunnerGroupStanding, RunnerGroupRestrictionRefusal }
 import gunbc.runner_jit_mint {
   JitSlotBinding, JitSlot, JitMintRefusedHostUnitSlot,
-  JitMintPlan, JitMintAuthorized, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
+  JitMintPlan, JitMintAuthorized, JitMintRefusedRunnerGroupForAnotherWorkflow, JitMintRefusedCellNotOwned, JitMintRefusedCredential,
   JitMintRefusedAttemptUnbound, JitMintRefusedRunnerGroupUnrestricted, plan_jit_mint,
 }
 
@@ -76,6 +76,7 @@ type JitDispatchRefusal
     }
   | DispatchRefusedAttemptUnbound { cause: String }
   | DispatchRefusedRunnerGroupUnrestricted { group: NonEmptyStr, cause: RunnerGroupRestrictionRefusal }
+  | DispatchRefusedRunnerGroupForAnotherWorkflow { group: NonEmptyStr, selected: NonEmptyStr, intended: NonEmptyStr }
   | DispatchRefusedNoInstallationCredential { cause: String }
 
 // THE FOURTH REFUSAL IS A TOTALITY ARM AND IS DELIBERATELY NOT ENROLLED AS COVERAGE.
@@ -141,6 +142,8 @@ fn dispatch_jit_mint(
       JitMintDispatchRefused { refusal: DispatchRefusedAttemptUnbound { cause: c } }
     JitMintRefusedRunnerGroupUnrestricted { group: g, cause: c } =>
       JitMintDispatchRefused { refusal: DispatchRefusedRunnerGroupUnrestricted { group: g, cause: c } }
+    JitMintRefusedRunnerGroupForAnotherWorkflow { group: g, selected: s, intended: i } =>
+      JitMintDispatchRefused { refusal: DispatchRefusedRunnerGroupForAnotherWorkflow { group: g, selected: s, intended: i } }
     JitMintRefusedCredential { organization: org, unsatisfied: u } =>
       JitMintDispatchRefused {
         refusal: DispatchRefusedCredential { organization: org, unsatisfied: u },
