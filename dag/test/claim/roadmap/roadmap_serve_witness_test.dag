@@ -10,9 +10,6 @@ import gunbc.roadmap_serve {
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
-  SandboxPageHandler, InstrumentSandboxPageHandler, InstrumentTunerPageHandler,
-  InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
-  SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
@@ -53,10 +50,7 @@ import gunbc.roadmap.roadmap_readiness { GapAccepted, GapDependencies, GapContra
 import gunbc.roadmap_execution_contract { OperatorExclusiveMode }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import gunbc.roadmap_component { instrument_tuner_asset_path }
-import gunbc.roadmap_component { instrument_motion_asset_path, instrument_motion_page_path }
-import gunbc.roadmap_component { instrument_lab_links }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
+import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse,
   ServeWireResponse, ServeRequestHeader,
@@ -128,14 +122,6 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
     && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
     && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
-    && selects(method: GET, path: "/sandbox", want: SandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument", want: InstrumentSandboxPageHandler)
-    && selects(method: GET, path: "/sandbox/instrument/tuner", want: InstrumentTunerPageHandler)
-    && selects(method: GET, path: instrument_tuner_asset_path, want: InstrumentTunerAssetHandler)
-    && selects(method: GET, path: instrument_motion_page_path, want: InstrumentMotionPageHandler)
-    && selects(method: GET, path: instrument_motion_asset_path, want: InstrumentMotionAssetHandler)
-    && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
-    && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
@@ -158,26 +144,6 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && string_contains(s: r.body, pattern: "'dispatch · disabled'")
     && string_contains(s: r.body, pattern: "posture === 'observe-only'")
     && string_contains(s: r.body, pattern: "fetch('/cleanup/' + sess.node_id")
-}
-
-// The shared header renders its links from instrument_lab_links, and the route table builds its
-// specs from the same declarations. This claim is what makes that ONE authority rather than two
-// that happen to agree: every rendered link is required to select a route, so a roster row without
-// a route reds here rather than shipping a header link to a 404. The RED direction is a row added
-// to the roster with no matching route spec.
-
-fn lab_link_selects_something(path: String) -> Bool {
-  match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
-    SelectedDynamic { handler: _, params: _ } => true
-    SelectedStatic { route: _ } => true
-    MethodNotAllowed { allowed: _ } => false
-    NoRouteMatched => false
-  }
-}
-
-test fn witness_every_lab_nav_link_resolves() -> Bool {
-  count(instrument_lab_links) == 4
-    && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
 }
 
 test fn witness_dispatch_param_bound() -> Bool {
