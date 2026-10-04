@@ -1,10 +1,8 @@
 module gunbc.live_deploy.role_singleton_convergence
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.roster_frontier { FrontierRow, frontier_row_path }
 import v2.std.collection { Present, Absent }
-import gunbc.deployment_risk { DeploymentId, srv1_daily_workspace_deployment }
+import gunbc.deployment_risk { DeploymentId }
 import std.decl_ref { decl_ref }
 import gunbc.roadmap_dashboard_instance {
   ProdRoleHolder,
@@ -17,21 +15,16 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleHolderAmbiguous,
   ProdRoleHolderUnactuatable,
   prod_role_realization_refusal_detail,
-  srv1_live_dashboard_instance,
 }
 import gunbc.host_effect { HostEffectTransport, SshShell }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentDependencyStep,
-  Dependency,
-  FabricStorageLegacyAdoptionRecord,
-  EnsuredAdoptionRecord,
   HoldsProdRoleSingletons,
   HoldsNoRoleSingleton,
   deployment_fabric_storage_unit_path,
   gunbc_approval_broker_unit_path,
 }
-import gunbc.fabric_storage_placement { fabric_storage_ownership_marker_path, fabric_storage_adoption_record_path }
+import gunbc.fabric_storage_placement { fabric_storage_ownership_marker_path, fabric_storage_ownership_marker_content }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization }
 import gunbc.live_deploy.member_observe {
   ObservationArm,
@@ -52,10 +45,12 @@ import gunbc.live_deploy.member_observe {
 // of every roster host (DESIGN 3d) and, only when that assessment admits it, mints the one token an
 // apply may act on (RoleSingletonAdmission).
 //
-// ONLY FIRST INSTALL AND ADOPTION ARE IMPLEMENTED. Noop when exactly one complete realization is
-// observed and it is the desired one on its own target (or nothing is desired and nothing is observed);
-// Install when a valid holder is desired and NOTHING is observed anywhere; AdoptUnmarkedHolder for the
-// one pre-marker shape (below). Every other transition REFUSES with a typed cause. Move and Remove are
+// ONLY FIRST INSTALL IS IMPLEMENTED. Noop when exactly one complete realization is observed and it is
+// the desired one on its own target (or nothing is desired and nothing is observed); Install when a
+// valid holder is desired and NOTHING is observed anywhere. Every other transition REFUSES with a typed
+// cause -- including a realization that predates the store ownership marker (RoleSingletonUnmarked),
+// which waits for the operator's one-time disposition named in its own refusal text (gunbc#13124:
+// manual resume, no self-repair outside an operator disposition). Move and Remove are
 // refusal causes today and become arms of RoleSingletonConvergence when their actuation lands; neither
 // renames the arms that exist.
 //
@@ -72,7 +67,6 @@ type RoleSingletonMember
   = BrokerUnitMember
   | FabricUnitMember
   | StoreMarkerMember
-  | AdoptionRecordMember
 
 // ONE SIGHTING, KEPT AT (host, deployment, member) GRAIN until multiplicity is adjudicated -- never
 // deduplicated by DeploymentId first, which is how the same deployment on two hosts, or a deployment
@@ -105,58 +99,13 @@ type RoleSingletonRefusal
   | RoleSingletonTwoOnOneHost { host: NonEmptyStr, deployments: List<DeploymentId> }
   | RoleSingletonBrokerWithoutStore { host: NonEmptyStr }
   | RoleSingletonPartial { deployment: DeploymentId, host: NonEmptyStr, missing: List<RoleSingletonMember> }
+  | RoleSingletonUnmarked { deployment: DeploymentId, host: NonEmptyStr, marker_path: NonEmptyStr, marker_content: NonEmptyStr }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
 
-// ── The one legacy realization adoption may name ────────────────────────────────────────────────
-// ADOPTION IS NOT A GENERIC REPAIR. It is bound to this explicit, temporary authority: the one
-// realization installed before the store carried an ownership marker. sole_constructor, so no module
-// but this one can state another legacy pair, and exactly one row exists. A future holder whose marker
-// is deleted, or a hand-partial install, matches no row and refuses as RoleSingletonPartial -- it is
-// never relabelled as ownership.
-type LegacyUnmarkedHolderStanding sole_constructor {
-  deployment: DeploymentId
-  host: NonEmptyStr
-  marker_path: NonEmptyStr
-  evidence: NonEmptyStr
-}
-
-data legacy_unmarked_holders: List<LegacyUnmarkedHolderStanding> = [
-  LegacyUnmarkedHolderStanding {
-    deployment: srv1_daily_workspace_deployment,
-    host: "srv1" as NonEmptyStr,
-    marker_path: fabric_storage_ownership_marker_path(instance: srv1_live_dashboard_instance()),
-    evidence: "srv1-live's approval broker and fabric storage unit were installed on srv1 before gunbc.fabric_storage_placement fabric_storage_ownership_marker_path existed (#13217), so its store root carries no marker" as NonEmptyStr,
-  },
-]
-
-fn legacy_standing_for(legacy: List<LegacyUnmarkedHolderStanding>, deployment: DeploymentId, host: NonEmptyStr, marker_path: NonEmptyStr) -> LegacyUnmarkedHolderStanding? {
-  legacy |> filter(l => l.deployment == deployment && (l.host as String) == (host as String) && (l.marker_path as String) == (marker_path as String)) |> first
-}
-
-// ── The adoption arm's retirement ───────────────────────────────────────────────────────────────
-// THE ARM CARRIES THIS ROW (AdoptUnmarkedHolder.retirement), so every adoption names the condition
-// that deletes it. Its subject is the one extant legacy realization above, not the roster.
-data adopt_unmarked_holder_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: an exact-host live_deploy apply receipt records role_singleton_disposition RoleSingletonsAdopted for the named legacy realization (gunbc.live_deploy.role_singleton_convergence legacy_unmarked_holders: srv1-daily-workspace on srv1), and an independent LATER observation (role_singleton_observation_of) sees that same realization complete, marked and RoleSingletonNoop. Then delete legacy_unmarked_holders, LegacyUnmarkedHolderStanding and the AdoptUnmarkedHolder arm. SUFFICIENT FOR: that receipt and that later observation of the same deployment and host; a marker written by hand, an observation of a different realization, or one not independent of the adopting apply is not this trigger." as NonEmptyStr
-)
-
-data adopt_unmarked_holder_frontier: FrontierRow = frontier_row_path(
-  path: "gunbc.live_deploy.role_singleton_convergence AdoptUnmarkedHolder",
-  reason: "a one-time migration of the one realization that predates the store ownership marker (legacy_unmarked_holders); any other unmarked or partial state refuses as RoleSingletonPartial",
-  dissolution: adopt_unmarked_holder_dissolution,
-)
-
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
-// AdoptUnmarkedHolder IS THE ADOPTION OF A PRE-MARKER REALIZATION. It exists for realizations installed
-// before the store carried an ownership marker: the desired holder's fabric unit and broker are observed
-// on its own target, with nothing on any other host, and only the marker is missing. Adoption writes
-// the marker, inside an operator-triggered apply only (gunbc#13124: no self-repair outside an operator
-// disposition), and is its own arm so the receipt counts it. DISSOLVES when every realization in the
-// roster carries a marker; until then any other partial state refuses as RoleSingletonPartial.
 type RoleSingletonConvergence
   = RoleSingletonNoop
   | RoleSingletonInstall { holder: ProdRoleHolder }
-  | AdoptUnmarkedHolder { holder: ProdRoleHolder, host: NonEmptyStr, standing: LegacyUnmarkedHolderStanding, retirement: FrontierRow }
   | RoleSingletonRefused { cause: RoleSingletonRefusal }
 
 // ── The observation ─────────────────────────────────────────────────────────────────────────────
@@ -172,10 +121,9 @@ type RoleSingletonObservation
 
 fn member_eq(a: RoleSingletonMember, b: RoleSingletonMember) -> Bool {
   match a {
-    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false  AdoptionRecordMember => false }
-    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false  AdoptionRecordMember => false }
-    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true  AdoptionRecordMember => false }
-    AdoptionRecordMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => false  AdoptionRecordMember => true }
+    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false }
+    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false }
+    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true }
   }
 }
 
@@ -298,7 +246,7 @@ fn desired_is_no_prod(cause: ProdRoleRealizationRefusal) -> Bool {
 // ONLY ProdRoleUnheld MEANS "NO PROD". An unrealized, ambiguous or unactuatable holder is a refusal of
 // the desired side, never read as the no-prod path -- which is how a typo in the selection would
 // otherwise turn into a removal of the real prod singletons.
-fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingletonObservation, rows: List<DesiredDeployment>, legacy: List<LegacyUnmarkedHolderStanding>) -> RoleSingletonConvergence {
+fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingletonObservation, rows: List<DesiredDeployment>) -> RoleSingletonConvergence {
   match observed {
     RoleSingletonObservationRefused { cause } => RoleSingletonRefused { cause: cause }
     RoleSingletonsObserved { realizations } => match desired {
@@ -319,11 +267,13 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
           } else {
             let missing = missing_members(r: r)
             if count(missing) == 0 { RoleSingletonNoop }
-            else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) && !any(r.members, x => member_eq(a: x, b: AdoptionRecordMember)) {
-              match legacy_standing_for(legacy: legacy, deployment: r.deployment, host: r.host, marker_path: fabric_storage_ownership_marker_path(instance: holder.instance)) {
-                Present { value: standing } => AdoptUnmarkedHolder { holder: holder, host: r.host, standing: standing, retirement: adopt_unmarked_holder_frontier }
-                Absent => RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
-              }
+            else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) {
+              RoleSingletonRefused { cause: RoleSingletonUnmarked {
+                deployment: r.deployment,
+                host: r.host,
+                marker_path: fabric_storage_ownership_marker_path(instance: holder.instance),
+                marker_content: fabric_storage_ownership_marker_content(instance: holder.instance),
+              } }
             } else {
               RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
             }
@@ -355,60 +305,24 @@ type RoleSingletonAdmissionStanding
   = RoleSingletonAdmissible { decision: RoleSingletonConvergence }
   | RoleSingletonInadmissible { cause: RoleSingletonRefusal }
 
-fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec {
+// THE TOKEN'S READERS ARE SEALED TOO, to the apply steps that consume it inside one assess-and-act
+// composition, so a token cannot be carried out of the apply it was minted for and replayed later.
+fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
   admission.spec
 }
 
-fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConvergence {
+fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConvergence admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_admitted_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "role_singleton_disposition_of"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
   admission.decision
-}
-
-// THE LEGACY ADOPTION RECORD, its own type: the marker says WHO OWNS the store; this says THAT the one
-// legacy adoption happened, naming the legacy subject and the revision that adopted it. Written only
-// by the adopting apply (admitted_spec_for_candidate appends it for AdoptUnmarkedHolder and for nothing
-// else), and read back as AdoptionRecordMember: with the record present, a missing marker is partial
-// state and refuses -- it is never adopted a second time.
-type LegacyAdoptionRecord {
-  deployment: DeploymentId
-  host: NonEmptyStr
-  marker_path: NonEmptyStr
-  adopting_revision: NonEmptyStr
-}
-
-fn legacy_adoption_record_text(r: LegacyAdoptionRecord) -> NonEmptyStr {
-  join(["deployment=", r.deployment.name as String, "\nhost=", r.host as String, "\nmarker=", r.marker_path as String, "\nadopting_revision=", r.adopting_revision as String, "\n"], "") as NonEmptyStr
-}
-
-// THE SPEC THE APPLY RUNS, from the token and the candidate it installs. For every decision but
-// AdoptUnmarkedHolder it is the admitted spec unchanged; for an adoption it is that spec with the
-// legacy adoption record appended, written after the marker so an interrupted adoption leaves a marked
-// realization (Noop next time) rather than a recorded one without its marker.
-fn admitted_spec_for_candidate(admission: RoleSingletonAdmission, revision: NonEmptyStr) -> DeploymentSpec {
-  spec_for_decision(spec: admission.spec, decision: admission.decision, revision: revision)
-}
-
-// The pure half, so a witness can read the adoption plan without minting a token.
-fn spec_for_decision(spec: DeploymentSpec, decision: RoleSingletonConvergence, revision: NonEmptyStr) -> DeploymentSpec {
-  match decision {
-    AdoptUnmarkedHolder { holder, host, standing, retirement: _ } => {
-      let record = LegacyAdoptionRecord { deployment: standing.deployment, host: host, marker_path: standing.marker_path, adopting_revision: revision }
-      DeploymentSpec {
-        target: spec.target,
-        steps: concat(spec.steps, [Dependency { step: DeploymentDependencyStep {
-          kind: FabricStorageLegacyAdoptionRecord,
-          subject: EnsuredAdoptionRecord { path: fabric_storage_adoption_record_path(instance: holder.instance), content: legacy_adoption_record_text(r: record) },
-        } }]),
-        service: spec.service,
-        approval_broker: spec.approval_broker,
-        names: spec.names,
-        instance_id: spec.instance_id,
-        role_singletons: spec.role_singletons,
-      }
-    }
-    RoleSingletonNoop => spec
-    RoleSingletonInstall { holder: _ } => spec
-    RoleSingletonRefused { cause: _ } => spec
-  }
 }
 
 fn stale(spec: DeploymentSpec, detail: String) -> RoleSingletonAdmissionStanding {
@@ -434,10 +348,6 @@ fn classify_role_singleton_admission(spec: DeploymentSpec, desired: ProdRoleReal
   match decision {
     RoleSingletonRefused { cause } => RoleSingletonInadmissible { cause: cause }
     RoleSingletonNoop => if agrees { admissible } else { stale_holding }
-    AdoptUnmarkedHolder { holder: _, host, standing: _, retirement: _ } =>
-      if !agrees { stale_holding }
-      else if desired_is_this_spec && (spec.target.ssh_host as String) == (host as String) { admissible }
-      else { stale(spec: spec, detail: "the holder's marker adoption is pending; only the observed holder spec on the observed host may act") }
     RoleSingletonInstall { holder: _ } =>
       if !agrees { stale_holding }
       else if desired_is_this_spec { admissible }
@@ -475,6 +385,8 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
       join(["role singletons refused: the approval broker is present on ", host as String, " but no store is realized there"], "")
     RoleSingletonPartial { deployment, host, missing } =>
       join(["role singletons refused: ", deployment.name as String, " on ", host as String, " is partial (missing ", to_string(count(missing)), " member(s)); an interrupted install or a store without its broker is not adopted"], "")
+    RoleSingletonUnmarked { deployment, host, marker_path, marker_content } =>
+      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, " write ", marker_path as String, " (mode 0644, owner briansrls) with exactly this content: ", marker_content as String], "")
     RoleSingletonStaleSpec { instance_id, detail } =>
       join(["role singletons refused: spec ", instance_id as String, " is not admitted: ", detail], "")
   }
@@ -514,7 +426,6 @@ fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>,
     rows |> flat_map(r => [
       MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) },
       MemberProbe { deployment: Present { value: r.instance.deployment }, member: StoreMarkerMember, presence: entry_presence(arm: arm, path: fabric_storage_ownership_marker_path(instance: r.instance) as String) },
-      MemberProbe { deployment: Present { value: r.instance.deployment }, member: AdoptionRecordMember, presence: entry_presence(arm: arm, path: fabric_storage_adoption_record_path(instance: r.instance) as String) },
     ]),
   )
   match probes |> flat_map(p => match presence_cause(p: p.presence) { Present { value: c } => [c]  Absent => [] }) |> first {
@@ -551,15 +462,17 @@ fn observe_role_singletons_with(source: RoleSingletonReadingSource, rows: List<D
 // THE CANONICAL ASSESSOR, AND THE ONLY ROUTE TO A TOKEN. It reads the desired realization itself
 // (gunbc.live_deploy.desired prod_role_actuated_realization -- the real selection, never a caller's),
 // observes every roster host through the ssh probe, decides, classifies the spec, and only then mints.
-fn assess_and_admit(spec: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonAdmissionResult {
+fn assess_and_admit(spec: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonAdmissionResult admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_via_transport"),
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_transaction_decided"),
+] {
   let rows = desired_deployment_roster()
   let desired = prod_role_actuated_realization()
   let decision = role_singleton_convergence(
     desired: desired,
     observed: observe_role_singletons_with(source: ssh_probe_reading_source(applying: spec, own: own), rows: rows),
     rows: rows,
-    legacy: legacy_unmarked_holders,
-  )
+      )
   match classify_role_singleton_admission(spec: spec, desired: desired, decision: decision) {
     RoleSingletonInadmissible { cause } => RoleSingletonNotAdmitted { cause: cause }
     RoleSingletonAdmissible { decision: d } => RoleSingletonAdmitted { admission: mint_role_singleton_admission(spec: spec, decision: d) }

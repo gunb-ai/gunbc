@@ -41,7 +41,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories_for, fabric_storage_ownership_marker_path, fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories_for, fabric_storage_ownership_marker_path, fabric_storage_ownership_marker_content, fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -121,7 +121,6 @@ type EnsuredDependencyKind =
   | CodexRuntimeReleaseDirectory
   | FabricStorageStoreDirectory
   | FabricStorageOwnershipMarker
-  | FabricStorageLegacyAdoptionRecord
   | ProviderStateRootDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
@@ -147,16 +146,14 @@ type EnsuredSubject
   = EnsuredPackage { package: NonEmptyStr }
   | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
   | EnsuredManagedHostDirectory { admission: ManagedDirectoryAdmission }
-  | EnsuredOwnershipMarker { path: NonEmptyStr, owner: NonEmptyStr }
-  | EnsuredAdoptionRecord { path: NonEmptyStr, content: NonEmptyStr }
+  | EnsuredOwnershipMarker { path: NonEmptyStr, owner: NonEmptyStr, content: NonEmptyStr }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
     EnsuredPackage { package } => package
     EnsuredHostDirectory { path, owner } => path
     EnsuredManagedHostDirectory { admission } => managed_directory_admission_path(a: admission) as String as NonEmptyStr
-    EnsuredOwnershipMarker { path, owner: _ } => path
-    EnsuredAdoptionRecord { path, content: _ } => path
+    EnsuredOwnershipMarker { path, owner: _, content: _ } => path
   }
 }
 
@@ -1137,7 +1134,7 @@ fn deployment_role_singleton_directories(holding: RoleSingletonHolding) -> List<
     }), [
       DeploymentDependencyStep {
         kind: FabricStorageOwnershipMarker,
-        subject: EnsuredOwnershipMarker { path: fabric_storage_ownership_marker_path(instance: holder.instance), owner: gunbc_service_user },
+        subject: EnsuredOwnershipMarker { path: fabric_storage_ownership_marker_path(instance: holder.instance), owner: gunbc_service_user, content: fabric_storage_ownership_marker_content(instance: holder.instance) },
       },
     ])
     HoldsNoRoleSingleton => []

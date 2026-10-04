@@ -191,6 +191,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.shell_command_text { shell_command_text_of_argv, shell_privileged_command_text_of_argv }
 import gunbc.live_deploy.operations {
+  install_file_owned_command,
   deploy_stage_dir_var,
   deploy_stage_write_command,
   deploy_stage_write_expansion_command,
@@ -208,7 +209,6 @@ import gunbc.live_deploy.operations {
   rm_empty_directory_command,
   rm_force_recursive_command,
   install_directory_owned_command,
-  install_file_owned_command,
 }
 import gunbc.live_deploy.intent { live_deploy_unit_status_tail_command }
 import v2.std.orchestration {
@@ -1424,12 +1424,9 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredManagedHostDirectory { admission } =>
       concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
         map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
-    EnsuredOwnershipMarker { path, owner } => [
-      deploy_raw(command: install_file_owned_command(mode: "0644" as NonEmptyStr, owner: owner, group: owner, source: "/dev/null", dest: path as String)),
-    ]
-    EnsuredAdoptionRecord { path, content } => [
-      deploy_raw(command: deploy_stage_write_command(stage_name: "legacy-adoption-record", content: content as String)),
-      deploy_raw(command: deploy_stage_install_command(stage_name: "legacy-adoption-record", mode: install_file_shared_mode, dest: path as String)),
+    EnsuredOwnershipMarker { path, owner: _, content } => [
+      deploy_raw(command: deploy_stage_write_command(stage_name: "store-ownership-marker", content: content as String)),
+      deploy_raw(command: deploy_stage_install_command(stage_name: "store-ownership-marker", mode: install_file_shared_mode, dest: path as String)),
     ]
   }
 }

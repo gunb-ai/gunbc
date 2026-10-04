@@ -57,9 +57,7 @@ import gunbc.live_deploy.spec {
   FabricStorageServeUnit,
   FabricStorageServeMapping,
   FabricStorageStoreDirectory,
-  FabricStorageOwnershipMarker,
   EnsuredOwnershipMarker,
-  EnsuredAdoptionRecord,
   deployment_srv1_target,
   srv1_live_deployment_names,
   deployment_spec_for,
@@ -67,16 +65,11 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_door_socket,
 }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
-import gunbc.live_deploy.apply { role_singleton_disposition_of_decision }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
-import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
-import gunbc.live_deploy.apply_receipt { RoleSingletonsAdopted }
 import gunbc.live_deploy.role_singleton_convergence {
-  adopt_unmarked_holder_frontier,
   RoleSingletonConvergence,
   RoleSingletonNoop,
   RoleSingletonInstall,
-  AdoptUnmarkedHolder,
   RoleSingletonRefused,
   RoleSingletonMoveUnimplemented,
   RoleSingletonRemovalUnimplemented,
@@ -88,14 +81,14 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonTwoOnOneHost,
   RoleSingletonBrokerWithoutStore,
   RoleSingletonPartial,
+  RoleSingletonUnmarked,
+  role_singleton_refusal_detail,
   RoleSingletonStaleSpec,
   RoleSingletonSighting,
   SightedDeploymentMember,
   SightedBroker,
   FabricUnitMember,
   StoreMarkerMember,
-  AdoptionRecordMember,
-  spec_for_decision,
   HostRoleSingletonReading,
   HostRoleSingletonsRead,
   HostRoleSingletonsUnobservable,
@@ -103,8 +96,6 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonAdmissible,
   RoleSingletonInadmissible,
   classify_role_singleton_admission,
-  legacy_unmarked_holders,
-  LegacyUnmarkedHolderStanding,
   role_singleton_convergence,
   role_singleton_observation_of,
 }
@@ -119,7 +110,7 @@ import gunbc.fabric_storage_placement {
   fabric_storage_store_directories_for,
   fabric_storage_door_socket,
   fabric_storage_ownership_marker_path,
-  fabric_storage_adoption_record_path,
+  fabric_storage_ownership_marker_content,
 }
 import gunbc.auth.approval_request_client {
   ApprovalLoopbackOriginResolved,
@@ -342,7 +333,7 @@ fn srv1_holds() -> List<HostRoleSingletonReading> {
 
 fn decide(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>) -> RoleSingletonConvergence {
   let rows = desired_deployment_roster()
-  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows, legacy: legacy_unmarked_holders)
+  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows)
 }
 
 fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
@@ -358,11 +349,11 @@ fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
       RoleSingletonTwoOnOneHost { host: _, deployments: _ } => label == "two-on-one"
       RoleSingletonBrokerWithoutStore { host: _ } => label == "broker-alone"
       RoleSingletonPartial { deployment: _, host: _, missing: _ } => label == "partial"
+      RoleSingletonUnmarked { deployment: _, host: _, marker_path: _, marker_content: _ } => label == "unmarked"
       RoleSingletonStaleSpec { instance_id: _, detail: _ } => label == "stale"
     }
     RoleSingletonNoop => false
     RoleSingletonInstall { holder: _ } => false
-    AdoptUnmarkedHolder { holder: _, host: _, standing: _, retirement: _ } => false
   }
 }
 
@@ -455,155 +446,21 @@ test fn an_old_store_with_no_unit_or_a_partial_realization_refuses() -> Bool {
     && refused_with(c: decide(desired: fx_moved(), readings: [read_on(host: "srv1", sightings: []), read_on(host: "srv2", sightings: marker_only_on(host: "srv2", d: srv2_deploy_deployment))]), label: "partial")
 }
 
-// ADOPTION, EXACTLY: the desired holder's unit and broker on its own target, nothing elsewhere, only
-// the marker missing -> AdoptUnmarkedHolder on that host, and the holder's spec carries the marker as
-// an ensured member, so the operator-triggered apply writes it. The same units on the WRONG host refuse
-// as misplaced rather than adopt.
-fn units_without_marker(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
-  [SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: FabricUnitMember }, SightedBroker { host: host as NonEmptyStr }]
-}
 
-fn spec_carries_store_marker(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, s => match s {
-    Dependency { step } => match step.kind { FabricStorageOwnershipMarker => true  _ => false }
-    ArtifactStep { step: _ } => false
-  })
-}
 
-fn adopt_world() -> List<HostRoleSingletonReading> {
-  [read_on(host: "srv1", sightings: units_without_marker(host: "srv1", d: srv1_daily_workspace_deployment)), read_on(host: "srv2", sightings: [])]
-}
 
-fn spec_marker_ensure_is_exact(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, s => match s {
-    Dependency { step } => match step.subject {
-      EnsuredOwnershipMarker { path, owner: _ } => (path as String) == (fabric_storage_ownership_marker_path(instance: srv1_live_dashboard_instance()) as String)
-      _ => false
-    }
-    ArtifactStep { step: _ } => false
-  })
-}
 
-// ADOPTION, EXACTLY, AT THE ADMISSION AND RECEIPT BOUNDARIES: (a) the exact holder spec on the observed
-// host is admitted; (b) every non-holder spec refuses as stale, so a lab or srv2 apply cannot ride the
-// adoption and re-adopt forever; (c) the holder spec pointed at the wrong target refuses; (d) the
-// admitted plan carries the exact ownership-marker ensure and the receipt disposition names Adopted;
-// (e) once the marker is observed the same holder converges as Noop. The arm carries its retirement row.
-test fn an_unmarked_holder_on_its_own_target_is_adopted_and_the_plan_writes_the_marker() -> Bool {
-  let real = prod_role_actuated_realization()
-  let decision = decide(desired: real, readings: adopt_world())
-  let adopted = match decision {
-    AdoptUnmarkedHolder { holder, host, standing: _, retirement } =>
-      holder.instance.deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
-        && (retirement.reason as String) == (adopt_unmarked_holder_frontier.reason as String)
-    _ => false
-  }
-  let live_id = srv1_live_dashboard_instance().instance_id as String
-  let holder_admitted = all(spec_of(realization: real, id: live_id), s => match classify_role_singleton_admission(spec: s, desired: real, decision: decision) {
-    RoleSingletonAdmissible { decision: d } =>
-      spec_marker_ensure_is_exact(spec: s)
-        && match role_singleton_disposition_of_decision(decision: d) {
-          RoleSingletonsAdopted { deployment, host } => deployment == (srv1_daily_workspace_deployment.name as String) && host == "srv1"
-          _ => false
-        }
-    RoleSingletonInadmissible { cause: _ } => false
-  })
-  let others_refused = all(roster_specs_under(realization: real) |> filter(s => !((s.instance_id as String) == live_id)), s => admission_refused_as_stale(r: classify_role_singleton_admission(spec: s, desired: real, decision: decision)))
-  let wrong_target = deployment_spec_for(realization: real, instance: srv1_live_dashboard_instance(), target: deployment_srv2_target(), names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()))
-  let after = match decide(desired: real, readings: srv1_holds()) { RoleSingletonNoop => true  _ => false }
-  adopted && count(spec_of(realization: real, id: live_id)) == 1 && holder_admitted && others_refused
-    && admission_refused_as_stale(r: classify_role_singleton_admission(spec: wrong_target, desired: real, decision: decision))
-    && after
-}
 
-// ADOPTION IS BOUND TO THE ONE LEGACY ROW, NOT TO THE SHAPE. The same unmarked shape for any other holder
-// -- the role moved to srv2-deploy, or a future holder -- refuses as partial even when it matches
-// exactly; and in the world after the row's retirement (no legacy rows), a marker deleted from the
-// once-adopted srv1 realization refuses rather than being re-adopted.
-fn decide_with_legacy(desired: ProdRoleRealization, readings: List<HostRoleSingletonReading>, legacy: List<LegacyUnmarkedHolderStanding>) -> RoleSingletonConvergence {
-  let rows = desired_deployment_roster()
-  role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows, legacy: legacy)
-}
 
-test fn only_the_legacy_row_is_adoptable_and_a_retired_world_refuses_a_deleted_marker() -> Bool {
-  let moved_unmarked = [read_on(host: "srv1", sightings: []), read_on(host: "srv2", sightings: units_without_marker(host: "srv2", d: srv2_deploy_deployment))]
-  let srv1_unmarked = adopt_world()
-  let legacy_still_adopted = match decide_with_legacy(desired: prod_role_actuated_realization(), readings: srv1_unmarked, legacy: legacy_unmarked_holders) {
-    AdoptUnmarkedHolder { holder: _, host, standing: _, retirement: _ } => (host as String) == "srv1"
-    _ => false
-  }
-  count(legacy_unmarked_holders) == 1
-    && legacy_still_adopted
-    && refused_with(c: decide_with_legacy(desired: fx_moved(), readings: moved_unmarked, legacy: legacy_unmarked_holders), label: "partial")
-    && refused_with(c: decide_with_legacy(desired: prod_role_actuated_realization(), readings: srv1_unmarked, legacy: []), label: "partial")
-}
 
-// THE TOKEN AND THE STANDING CANNOT BE FORGED. An outside module minting an admission from a
-// fabricated RoleSingletonNoop is refused at compile time by the mint's admit_callers seal, and an
-// outside module stating a LegacyUnmarkedHolderStanding is refused by its sole_constructor -- each a
-// located diagnostic. The canonical assessor takes no desired realization, so a noncanonical
-// ProdRoleSelection has no parameter to enter through.
-data forged_admission_source: String = "module probe_forged_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn forge() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\n"
 
-data forged_standing_source: String = "module probe_forged_legacy_standing\nimport gunbc.live_deploy.role_singleton_convergence { LegacyUnmarkedHolderStanding }\nimport gunbc.deployment_risk { srv2_deploy_deployment }\nfn forge() -> LegacyUnmarkedHolderStanding { LegacyUnmarkedHolderStanding { deployment: srv2_deploy_deployment, host: \"srv2\", marker_path: \"/x\", evidence: \"forged\" } }\n"
 
-data noncanonical_desired_source: String = "module probe_noncanonical_desired\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization_in }\nimport gunbc.deployment_risk { ProdRoleHeldBy, srv2_deploy_deployment }\nimport gunbc.host_effect { LocalShell }\nfn forge() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), desired: prod_role_actuated_realization_in(selection: ProdRoleHeldBy { deployment: srv2_deploy_deployment }), own: LocalShell) }\n"
 
-data canonical_assessor_source: String = "module probe_canonical_assessor\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization_in }\nimport gunbc.deployment_risk { ProdRoleHeldBy, srv2_deploy_deployment }\nimport gunbc.host_effect { LocalShell }\nfn forge() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
 
-fn blocking_rows(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0
-  }
-}
 
-fn blocking_of(source: String, class: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: class) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
 
-// THE LEGACY ADOPTION RECORD. Only the adoption plan writes it (Noop and Install plans do not), it
-// names the legacy subject and the adopting revision, and once it is observed a marker deleted from
-// the adopted store refuses as partial rather than being adopted again.
-fn spec_writes_adoption_record(spec: DeploymentSpec) -> Bool {
-  any(spec.steps, s => match s {
-    Dependency { step } => match step.subject {
-      EnsuredAdoptionRecord { path, content } =>
-        (path as String) == (fabric_storage_adoption_record_path(instance: srv1_live_dashboard_instance()) as String)
-          && string_contains(s: content as String, pattern: "deployment=srv1-daily-workspace")
-          && string_contains(s: content as String, pattern: "adopting_revision=feedface")
-      _ => false
-    }
-    ArtifactStep { step: _ } => false
-  })
-}
 
-test fn only_the_adoption_plan_writes_the_record_and_a_recorded_adoption_never_readopts() -> Bool {
-  let real = prod_role_actuated_realization()
-  let live = spec_of(realization: real, id: srv1_live_dashboard_instance().instance_id as String)
-  let adopt = decide(desired: real, readings: adopt_world())
-  let recorded_marker_deleted = [read_on(host: "srv1", sightings: concat(units_without_marker(host: "srv1", d: srv1_daily_workspace_deployment), [
-    SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: AdoptionRecordMember },
-  ])), read_on(host: "srv2", sightings: [])]
-  count(live) == 1
-    && all(live, s => spec_writes_adoption_record(spec: spec_for_decision(spec: s, decision: adopt, revision: "feedface" as NonEmptyStr)))
-    && all(live, s => !spec_writes_adoption_record(spec: spec_for_decision(spec: s, decision: decide(desired: real, readings: srv1_holds()), revision: "feedface" as NonEmptyStr)))
-    && all(live, s => !spec_writes_adoption_record(spec: s))
-    && refused_with(c: decide(desired: real, readings: recorded_marker_deleted), label: "partial")
-}
 
-test fn no_outside_module_can_mint_an_admission_or_state_a_legacy_standing() -> Bool {
-  blocking_of(source: forged_admission_source, class: "ConstructorCallAdmissionRefused") >= 1
-    && blocking_of(source: forged_standing_source, class: "SoleConstructorViolation") >= 1
-    && blocking_rows(source: noncanonical_desired_source) > blocking_rows(source: canonical_assessor_source)
-}
-
-test fn an_unmarked_holder_on_the_wrong_host_is_refused_not_adopted() -> Bool {
-  refused_with(c: decide(desired: prod_role_actuated_realization(), readings: [read_on(host: "srv1", sightings: []), read_on(host: "srv2", sightings: units_without_marker(host: "srv2", d: srv1_daily_workspace_deployment))]), label: "misplaced")
-}
 
 // ── The admission: the decision is bound to the spec that acts ─────────────────────────────────
 fn spec_of(realization: ProdRoleRealization, id: String) -> List<DeploymentSpec> {
@@ -710,4 +567,72 @@ test fn the_broker_unit_is_given_the_holders_base_url_and_a_non_holder_gets_a_re
     && all(srv1_moved, s => broker_env_assignment(spec: s) == bound(value: approval_broker_base_url_unbound_marker))
     && match approval_broker_serving_base_url_of(bound: Present { value: approval_broker_base_url_unbound_marker }) { ApprovalBrokerAddressRefused { detail: _ } => true  _ => false }
     && match approval_broker_serving_base_url_of(bound: none) { ApprovalBrokerAddressRefused { detail: _ } => true  _ => false }
+}
+
+// ── The unmarked legacy store waits for the operator ────────────────────────────────────────────
+// A realization that predates the store ownership marker -- today's srv1 holder, its broker and fabric
+// unit present and the marker missing -- REFUSES with RoleSingletonUnmarked, and the refusal names
+// exactly what the operator's one-time disposition writes: the marker path, its content (deployment,
+// host) and the host. It is the same content the holder spec's own marker ensure writes, so the
+// disposition and an install agree byte for byte. Nothing adopts it automatically (gunbc#13124).
+fn units_without_marker_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
+  [SightedDeploymentMember { host: host as NonEmptyStr, deployment: d, member: FabricUnitMember }, SightedBroker { host: host as NonEmptyStr }]
+}
+
+fn spec_marker_content(spec: DeploymentSpec) -> List<String> {
+  spec.steps |> flat_map(s => match s {
+    Dependency { step } => match step.subject {
+      EnsuredOwnershipMarker { path: _, owner: _, content } => [content as String]
+      _ => []
+    }
+    ArtifactStep { step: _ } => []
+  })
+}
+
+test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> Bool {
+  let real = prod_role_actuated_realization()
+  let live = srv1_live_dashboard_instance()
+  let want_path = fabric_storage_ownership_marker_path(instance: live) as String
+  let want_content = fabric_storage_ownership_marker_content(instance: live) as String
+  let decision = decide(desired: real, readings: [read_on(host: "srv1", sightings: units_without_marker_on(host: "srv1", d: srv1_daily_workspace_deployment)), read_on(host: "srv2", sightings: [])])
+  let names_it = match decision {
+    RoleSingletonRefused { cause } => match cause {
+      RoleSingletonUnmarked { deployment, host, marker_path, marker_content } =>
+        deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
+          && (marker_path as String) == want_path && (marker_content as String) == want_content
+          && string_contains(s: role_singleton_refusal_detail(cause: cause), pattern: want_path)
+          && string_contains(s: role_singleton_refusal_detail(cause: cause), pattern: want_content)
+      _ => false
+    }
+    _ => false
+  }
+  names_it
+    && string_contains(s: want_content, pattern: "deployment=srv1-daily-workspace")
+    && string_contains(s: want_content, pattern: "host=srv1")
+    && all(spec_of(realization: real, id: live.instance_id as String), s => spec_marker_content(spec: s) == [want_content])
+    && refused_with(c: decide(desired: fx_moved(), readings: [read_on(host: "srv1", sightings: []), read_on(host: "srv2", sightings: units_without_marker_on(host: "srv2", d: srv2_deploy_deployment))]), label: "unmarked")
+}
+
+// ── A token cannot be forged or replayed ────────────────────────────────────────────────────────
+// The mint is sealed to the observing assessor, the assessor to the two canonical apply compositions,
+// and the token's readers and every admitted apply step to those same compositions. So an outside
+// module can neither mint an admission from a fabricated decision, obtain one from the assessor, nor
+// carry one into an apply step later -- each refused at compile time as a located diagnostic.
+data forged_admission_source: String = "module probe_forged_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { mint_role_singleton_admission, RoleSingletonNoop, RoleSingletonAdmission }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nfn forge() -> RoleSingletonAdmission { mint_role_singleton_admission(spec: deployment_spec_srv1(), decision: RoleSingletonNoop) }\n"
+
+data obtained_admission_source: String = "module probe_obtained_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn obtain() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
+
+data replayed_admission_source: String = "module probe_replayed_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { RoleSingletonAdmission, admitted_spec }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nfn replay(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\n"
+
+fn admission_refusals_in(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "ConstructorCallAdmissionRefused") {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+test fn no_outside_module_can_mint_obtain_or_replay_an_admission() -> Bool {
+  admission_refusals_in(source: forged_admission_source) >= 1
+    && admission_refusals_in(source: obtained_admission_source) >= 1
+    && admission_refusals_in(source: replayed_admission_source) >= 1
 }

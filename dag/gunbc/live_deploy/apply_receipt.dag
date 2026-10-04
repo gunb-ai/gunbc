@@ -120,19 +120,17 @@ type LiveDeployReadinessOutcome
   | LiveDeployReadinessRefused { detail: String }
 
 // WHAT THE ROLE-SINGLETON ASSESSMENT ADMITTED THIS APPLY TO DO (gunbc.live_deploy.role_singleton_convergence),
-// carried in the receipt so an adoption -- the one apply that writes a pre-marker holder's store marker --
-// is visible and countable, and a refusal before any member was planned is told apart from a failed apply.
+// carried in the receipt so a first install is visible and countable,
+// and a refusal before any member was planned is told apart from a failed apply.
 type LiveDeployRoleSingletonDisposition
   = RoleSingletonsNoop
   | RoleSingletonsInstalled { deployment: String, host: String }
-  | RoleSingletonsAdopted { deployment: String, host: String }
   | RoleSingletonsRefusedBeforeApply { detail: String }
 
 fn live_deploy_role_singleton_disposition_text(d: LiveDeployRoleSingletonDisposition) -> String {
   match d {
     RoleSingletonsNoop => "noop"
     RoleSingletonsInstalled { deployment, host } => join(["installed:", deployment, "@", host], "")
-    RoleSingletonsAdopted { deployment, host } => join(["adopted:", deployment, "@", host], "")
     RoleSingletonsRefusedBeforeApply { detail } => join(["refused:", detail], "")
   }
 }
@@ -141,7 +139,6 @@ fn live_deploy_role_singleton_disposition_json(d: LiveDeployRoleSingletonDisposi
   match d {
     RoleSingletonsNoop => json_object(members: [json_kv(key: "disposition", value: json_string(s: "noop"))])
     RoleSingletonsInstalled { deployment, host } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "installed")), json_kv(key: "deployment", value: json_string(s: deployment)), json_kv(key: "host", value: json_string(s: host))])
-    RoleSingletonsAdopted { deployment, host } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "adopted")), json_kv(key: "deployment", value: json_string(s: deployment)), json_kv(key: "host", value: json_string(s: host))])
     RoleSingletonsRefusedBeforeApply { detail } => json_object(members: [json_kv(key: "disposition", value: json_string(s: "refused")), json_kv(key: "detail", value: json_string(s: detail))])
   }
 }
@@ -164,17 +161,16 @@ fn live_deploy_role_singleton_disposition_of_member(doc: JsonValue) -> LiveDeplo
             JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
             JsonStringMemberFound { value: detail } => DispositionDecoded { disposition: RoleSingletonsRefusedBeforeApply { detail: detail } }
           }
-        } else if kind == "installed" || kind == "adopted" {
+        } else if kind == "installed" {
           match json_required_string_member(doc: d, key: "deployment") {
             JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
             JsonStringMemberFound { value: dep } => match json_required_string_member(doc: d, key: "host") {
               JsonStringMemberRefused { reason: r } => DispositionUnreadable { reason: r }
               JsonStringMemberFound { value: host } =>
-                if kind == "installed" { DispositionDecoded { disposition: RoleSingletonsInstalled { deployment: dep, host: host } } }
-                else { DispositionDecoded { disposition: RoleSingletonsAdopted { deployment: dep, host: host } } }
+                DispositionDecoded { disposition: RoleSingletonsInstalled { deployment: dep, host: host } }
             }
           }
-        } else { DispositionUnreadable { reason: join(["live-deploy receipt role_singleton_disposition is not one of noop|installed|adopted|refused: ", kind], "") } }
+        } else { DispositionUnreadable { reason: join(["live-deploy receipt role_singleton_disposition is not one of noop|installed|refused: ", kind], "") } }
     }
   }
 }
