@@ -7,6 +7,7 @@ import std.measure { Volt, Ampere, volt, ampere, volt_count, ampere_count }
 import extdeps.electronic_component.types {
   ElectronicComponentRow,
   ComponentVoltageRating,
+  VoltageRatingKind,
   DrainSourceMaximum,
   FuseInterruptRating,
   CapacitorRatedVoltage,
@@ -30,7 +31,8 @@ import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 //                                 discriminator says what would decode it
 //
 // Which circuit a part sits on is a fourth fact, and from a photograph it is ADJACENCY, not traced
-// copper; every deduction below inherits that standing and says so.
+// copper. Adjacency places a part in a region of the board; it does not say what voltage appears
+// across the part's rated terminals, which is the only relation under which a rating bounds a rail.
 
 type ComponentIdentification
   = IdentifiedByDatasheetMarking { row: ElectronicComponentRow, marking_read: NonEmptyStr }
@@ -40,8 +42,14 @@ type ComponentIdentification
 
 type PowerPath = MainInputPath | AuxiliaryInputPath
 
+// WHAT RELATES A PART'S RATING TO A RAIL. RatingAcrossInputRail is the one relation that licenses a
+// bound: the evidence must say that the rated terminals see the input rail (a fuse in series with the
+// input, a bulk capacitor across it, a hot-swap FET's drain-source in its path) in the condition the
+// rating applies to -- a traced net, a schematic, or the vendor's reference design for the board.
+// OnPathByAdjacency places the part near a path and bounds nothing: an input-stage part and a
+// downstream converted rail can share one region of the board.
 type PathMembership
-  = OnPathTraced { evidence: NonEmptyStr }
+  = RatingAcrossInputRail { evidence: NonEmptyStr }
   | OnPathByAdjacency { basis: NonEmptyStr }
 
 type ObservedComponent {
@@ -179,13 +187,16 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
 
 // ── WHAT THE PARTS BOUND ─────────────────────────────────────────────────────────────────────
 //
-// A HARD BOUND: the lowest maximum-voltage rating among rated parts on a path bounds that path's rail
-// from above, because a rail above it exceeds a part's rating. It is hard as physics and soft as
-// placement -- it holds IF the parts are on that path, and today that is adjacency. It never says what
-// the rail IS: 12 V and 54 V both sit under a 75 V bound.
+// A BOUND IS DERIVED ONLY FROM PARTS WHOSE RATING IS ESTABLISHED ACROSS THE INPUT RAIL: the lowest such
+// rating bounds the rail from above, because the rail would exceed that part's rating. Every other
+// rated part -- placed by adjacency, or on a rail whose relation to the input is unknown -- is an
+// observation that is carried and named, never folded into the bound. (GH200-5, 2026-10-04: the first
+// revision took the minimum over adjacency-placed parts and reported the fuse's 75 V as an input
+// ceiling; review showed that a lower-rated part on a downstream rail sharing the region would have
+// lowered it, so adjacency no longer participates.) A bound never says what the rail IS.
 type InputVoltageBound
-  = BoundByRatedParts { maximum: Volt, limiting: NonEmptyStr, placement: NonEmptyStr }
-  | NoRatedPartOnPath
+  = BoundByRatedParts { maximum: Volt, limiting: NonEmptyStr, relation: NonEmptyStr }
+  | NoEstablishedBound { observed_ratings: List<NonEmptyStr> }
 
 fn component_rating(c: ObservedComponent) -> ComponentVoltageRating? {
   match c.identification {
@@ -212,88 +223,103 @@ type RatedComponent {
   rating: ComponentVoltageRating
 }
 
-fn membership_text(m: PathMembership) -> String {
-  match m {
-    OnPathTraced { evidence: e } => join(["traced: ", e as String], "")
-    OnPathByAdjacency { basis: b } => join(["by adjacency only: ", b as String], "")
+fn rating_kind_text(k: VoltageRatingKind) -> String {
+  match k {
+    DrainSourceMaximum => "drain-source maximum"
+    FuseInterruptRating => "fuse voltage rating"
+    CapacitorRatedVoltage => "capacitor rated voltage"
   }
 }
 
-fn path_bound(layout: CarrierLayoutObservation, path: PowerPath) -> InputVoltageBound {
-  let rated = flat_map(filter(layout.power_components, c => path_eq(a: c.path, b: path)), c =>
+fn rated_text(r: RatedComponent) -> NonEmptyStr {
+  join([
+    r.component.role as String, ": ", to_string(volt_count(v: r.rating.maximum)), " V ", rating_kind_text(k: r.rating.kind),
+    match r.component.membership {
+      RatingAcrossInputRail { evidence: _ } => ""
+      OnPathByAdjacency { basis: _ } => ", placed by adjacency only",
+    },
+  ], "") as NonEmptyStr
+}
+
+fn rated_on_path(layout: CarrierLayoutObservation, path: PowerPath) -> List<RatedComponent> {
+  flat_map(filter(layout.power_components, c => path_eq(a: c.path, b: path)), c =>
     match component_rating(c: c) {
       Present { value: r } => [RatedComponent { component: c, rating: r }]
       Absent => []
     }
   )
-  match rated.first() {
-    Absent => NoRatedPartOnPath
+}
+
+fn across_input_rail(r: RatedComponent) -> Bool {
+  match r.component.membership {
+    RatingAcrossInputRail { evidence: _ } => true
+    OnPathByAdjacency { basis: _ } => false
+  }
+}
+
+fn path_bound(layout: CarrierLayoutObservation, path: PowerPath) -> InputVoltageBound {
+  let rated = rated_on_path(layout: layout, path: path)
+  let bounding = filter(rated, r => across_input_rail(r: r))
+  match bounding.first() {
+    Absent => NoEstablishedBound { observed_ratings: map(rated, r => rated_text(r: r)) }
     Present { value: first } => {
-      let lowest = fold(rated, init: first, f: (acc, x) => if volt_count(v: x.rating.maximum) < volt_count(v: acc.rating.maximum) { x } else { acc })
+      let lowest = fold(bounding, init: first, f: (acc, x) => if volt_count(v: x.rating.maximum) < volt_count(v: acc.rating.maximum) { x } else { acc })
       BoundByRatedParts {
         maximum: lowest.rating.maximum,
         limiting: lowest.component.role,
-        placement: membership_text(m: lowest.component.membership) as NonEmptyStr,
+        relation: match lowest.component.membership {
+          RatingAcrossInputRail { evidence: e } => e
+          OnPathByAdjacency { basis: b } => b
+        },
       }
     }
   }
 }
 
-// A DESIGN-CONVENTION INDICATION, typed as a bet. A hot-swap MOSFET is chosen with margin over its
-// bus, and a part its vendor characterizes for linear-mode use at 56 V is a 48-54 V-class part; on a
-// 12 V bus it would be unusual, not impossible. So this indicates and never decides, and it names
-// the observation that would decide.
-type BusClassIndication
-  = IndicatesFortyEightToFiftyFourVoltClass { basis: NonEmptyStr, decided_by: NonEmptyStr }
-  | NoBusClassIndication
+// THE BUS-CLASS QUESTION IS AN INVESTIGATION HYPOTHESIS, NOT A DERIVATION. No rule over part ratings
+// decides a bus class: a 100 V FET is a common choice for a 48-54 V hot-swap stage and is not thereby
+// absent from lower-voltage designs, so the first revision's ">= 80 V drain-source means 48-54 V" rule
+// manufactured a class from a threshold (GH200-5, review). What remains is the hypothesis, its sources
+// stated beside it, and the reading that would decide it.
+type InvestigationHypothesis {
+  claim: NonEmptyStr
+  sources: List<NonEmptyStr>
+  decided_by: NonEmptyStr
+}
 
-fn main_bus_indication(layout: CarrierLayoutObservation) -> BusClassIndication {
-  let hot_swap_100v = filter(layout.power_components, c => path_eq(a: c.path, b: MainInputPath) && match c.identification {
-    IdentifiedByDatasheetMarking { row: r, marking_read: _ } =>
-      match r.voltage_rating.kind {
-        DrainSourceMaximum => volt_count(v: r.voltage_rating.maximum) >= 80
-        FuseInterruptRating => false
-        CapacitorRatedVoltage => false
-      }
-    _ => false
-  })
-  match hot_swap_100v.first() {
-    Absent => NoBusClassIndication
-    Present { value: c } =>
-      match c.identification {
-        IdentifiedByDatasheetMarking { row: r, marking_read: _ } => IndicatesFortyEightToFiftyFourVoltClass {
-          basis: join([
-            r.ordering_code as String, " (", to_string(volt_count(v: r.voltage_rating.maximum)), " V drain-source) in the main input stage; vendor: ",
-            join(map(r.vendor_application_statements, s => s as String), "; "),
-          ], "") as NonEmptyStr,
-          decided_by: "the input rating read off the original power-distribution board or harness, or the carrier's input bulk-capacitor ratings once decoded" as NonEmptyStr,
-        }
-        _ => NoBusClassIndication
-      }
-  }
+data p4261_main_bus_hypothesis: InvestigationHypothesis = InvestigationHypothesis {
+  claim: "the P4261 main input is a 48-54 V-class bus",
+  sources: [
+    "the main-stage MOSFETs are Infineon IPB017N10N5LF, a 100 V part its vendor presents for hot-swap and e-fuse use and characterizes at VDS=56V (extdeps.electronic_component.infineon_ipb017n10n5lf): consistent with a 48-54 V stage, not a determination of one",
+    "the module part number 699-2G530-0215 reads as SKU215, which an uncited earlier NVIDIA guide revision tied to a 54 V module rail (extdeps.systems.nvidia_gh200 gh200_rail_variants): a lead about the module, not the carrier's input",
+  ],
+  decided_by: "the input rating read off the original power-distribution board or harness, the carrier's schematic or vendor documentation, or a measurement of the original system's supply output",
 }
 
 fn bound_text(b: InputVoltageBound) -> String {
   match b {
-    BoundByRatedParts { maximum: m, limiting: l, placement: p } =>
-      join(["at most ", to_string(volt_count(v: m)), " V, limited by the ", l as String, " (", p as String, ")"], "")
-    NoRatedPartOnPath => "no rated part read on this path"
+    BoundByRatedParts { maximum: m, limiting: l, relation: r } =>
+      join(["at most ", to_string(volt_count(v: m)), " V, limited by the ", l as String, " (", r as String, ")"], "")
+    NoEstablishedBound { observed_ratings: rs } =>
+      match rs.first() {
+        Absent => "no rated part read on this path, and no input bound"
+        Present { value: _ } => join(["no input bound established: no part's rating is shown to apply across the input rail; ratings observed (", join(map(rs, r => r as String), "; "), ") bound nothing"], "")
+      }
   }
+}
+
+fn hypothesis_text(h: InvestigationHypothesis) -> String {
+  join(["hypothesis, not a derivation: ", h.claim as String, " (", join(map(h.sources, x => x as String), "; "), "); decided by ", h.decided_by as String], "")
 }
 
 // THE READING the bench plan consumes: what the photographs establish about the carrier's power
 // input, and what they leave open.
 fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
-  let indication = match main_bus_indication(layout: layout) {
-    IndicatesFortyEightToFiftyFourVoltClass { basis: b, decided_by: d } =>
-      join(["indication, not a determination: 48-54 V class, from ", b as String, "; decided by ", d as String], "")
-    NoBusClassIndication => "no bus-class indication from the parts read"
-  }
   join([
-    "main input ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", indication,
+    "main input: ", bound_text(b: path_bound(layout: layout, path: MainInputPath)), ". ", hypothesis_text(h: p4261_main_bus_hypothesis),
     ". Auxiliary input at ", layout.auxiliary_connector as String, " (", to_string(layout.auxiliary_connector_positions), " positions): ",
     bound_text(b: path_bound(layout: layout, path: AuxiliaryInputPath)),
-    ". Neither bound is the rail, its pin assignment, its standby rail or its sequence",
+    ". The input voltage contract is unknown: no rail, pin assignment, standby rail or sequence is established",
   ], "")
 }
 

@@ -7,7 +7,10 @@ import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size,
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.memory.types { MemoryKind, Hbm }
 import extdeps.systems.types { CoherentSuperchipCatalogRow }
-import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, gh200_rail_variants, ModuleRailVariant }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_configurations, gh200_rail_variants, ModuleRailVariant }
+import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
+import gunbc.fleet_asset_identity { gh200_dv5_a, gh200_dv5_b, p4261_k1_a }
+import gunbc.spark.serving_promotion { QualityReceipt, quality_missing, serving_promotion_policy }
 import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.types { SuperchipServerCatalogRow, SuperchipCarrierBoardRow, BoardPowerInput }
@@ -20,10 +23,10 @@ import product.p4261_carrier_layout {
   edge_connector_text,
 }
 
-// GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator is buying
-// two PG530 modules and two P4261 carriers and will qualify one pair before duplicating it -- and
-// before any Spark is sold (product.node_platform_selection consumes this module's verdict as its hard
-// constraint). A pair is not "compatible" by an authored flag: four results are DERIVED, each from the
+// GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator bought
+// two PG530 modules and one P4261 carrier and will qualify that pair before duplicating it -- and
+// before any Spark is sold (product.node_platform_selection reads this module's verdict as the
+// dev-carrier route's own standing, and its replacement_gate holds the sale). A pair is not "compatible" by an authored flag: four results are DERIVED, each from the
 // evidence that can actually establish it, in the order a bench reaches them:
 //
 //   MechanicallyMated  connector identity and geometry, mounting stack
@@ -86,7 +89,13 @@ type UnitInventoryObservation
   = InventoryUnmeasured
   | InventoryMeasured { gpu_memory: ByteSize, cpu_memory: ByteSize, evidence: NonEmptyStr }
 
+// WHICH PHYSICAL THING. asset is the operator's allocated identity (gunbc.fleet_asset_identity), bound
+// before a serial is read; serial is what the unit's own label or FRU reports once read. The part
+// number is a CATALOG identity -- two modules of one part number are two assets -- so no receipt is
+// ever matched to a unit by part number.
 type SuperchipUnitObservation {
+  asset: PhysicalAssetIdentity
+  serial: NonEmptyStr?
   board_designation: NonEmptyStr
   board_part_number: NonEmptyStr
   die_marking: NonEmptyStr
@@ -97,21 +106,18 @@ type SuperchipUnitObservation {
   source: NonEmptyStr
 }
 
-// Whether the carrier was ever SEEN running a module, and which one. A seller's "it came out of a
-// working machine" is provenance, not this: it names no module and no boot, so it is carried as
-// provenance and leaves the boot unobserved.
-type CarrierBootObservation
-  = CarrierBootUnobserved
-  | CarrierBootObserved { module_part_number: NonEmptyStr, evidence: NonEmptyStr }
-
+// A seller's "it came out of a working machine" is provenance: it names no module, no configuration
+// and no boot, so it is carried as provenance and is never boot evidence. A boot is a bench receipt
+// scoped to the assembly that booted (BenchRecord.boot).
 type CarrierUnitObservation {
+  asset: PhysicalAssetIdentity
+  serial: NonEmptyStr?
   carrier_designation: NonEmptyStr
   carrier_part_number: NonEmptyStr
   revision: NonEmptyStr
   layout: CarrierLayoutObservation
   module_face: MezzanineFaceObservation
   provenance: NonEmptyStr
-  boot: CarrierBootObservation
   source: NonEmptyStr
 }
 
@@ -121,6 +127,8 @@ type CarrierUnitObservation {
 // states "CPU Memory: 512GB physical LPDDR5X / roughly 480GB usable in the standard GH200 configuration"
 // and "DV5 development/pre-production revision; compatibility not guaranteed".
 data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
+  asset: gh200_dv5_a,
+  serial: Absent,
   board_designation: "PG530",
   board_part_number: "699-2G530-0215-DV5",
   die_marking: "GH100-888K-A1 QUAL SAMPLE",
@@ -148,6 +156,8 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
 // and no serial of its own yet, and it has no carrier: it is not an assembly until one is bought, so it
 // is recorded as held rather than paired with anything.
 data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation {
+  asset: gh200_dv5_b,
+  serial: Absent,
   board_designation: gh200_dv5_unit.board_designation,
   board_part_number: gh200_dv5_unit.board_part_number,
   die_marking: gh200_dv5_unit.die_marking,
@@ -164,7 +174,11 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
 // "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
 // consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
 // J4, one toward each short edge, each flanked by mounting holes.
+// The label photographs show two serials (p4261_k1_layout labels), so the received unit's serial is
+// unread and the carrier is identified by its allocated asset until it is.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  asset: p4261_k1_a,
+  serial: Absent,
   carrier_designation: "P4261",
   carrier_part_number: "694-24261-0000-100",
   revision: "K1",
@@ -176,7 +190,6 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
     source: "seller photographs of the carrier: receptacles J3 and J4",
   },
   provenance: "seller: 'told when I purchased this board was out of a working machine'; untested, no visible damage",
-  boot: CarrierBootUnobserved,
   source: "the operator's purchase, eBay item 168742238639 (titled 'Nvidia GH200 P4261 694-24261-000-100 K1 ...'), and its photographs; item 157373033242 is a different listing of the same title and was not bought; no NVIDIA document names P4261",
 }
 
@@ -194,25 +207,45 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
 // contradicts -- the operator supplied it, and the CPU match is the repair.) A claim outside every published
 // configuration is either a mis-titled listing or a pre-production configuration, and the remedy is the
 // same -- measure the unit -- so both land in one arm that names the discriminator.
+// THREE FINDINGS KEPT APART (GH200-5, review): a claim that agrees with the SELECTED row; a claim that
+// agrees with a DIFFERENT published configuration (a valid unit, the wrong row for it); and a claim
+// that contradicts EVERY published configuration. Absence of a claim is a fourth: insufficient
+// evidence, never agreement. A row whose board designation no document names compares on memory only.
 type UnitCatalogMatch
   = UnitGpuTierConsistentWithRow { row: CoherentSuperchipCatalogRow, as_listed: NonEmptyStr }
+  | UnitGpuTierOfOtherConfiguration { as_listed: NonEmptyStr, configuration: NonEmptyStr }
+  | UnitClaimOutsideFamily { as_listed: NonEmptyStr }
   | UnitDesignationOutsideRow { observed: NonEmptyStr, row_designation: NonEmptyStr }
-  | UnitClaimOutsideCatalog { as_listed: NonEmptyStr }
   | UnitMemoryUnclaimed
 
-fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
-  if unit.board_designation != row.board_designation {
-    UnitDesignationOutsideRow { observed: unit.board_designation, row_designation: row.board_designation }
-  } else {
-    match unit.listed_gpu_memory {
-      GpuMemoryNotClaimed => UnitMemoryUnclaimed
-      GpuMemoryClaimed { capacity: c, memory_kind: k, as_listed: l } =>
-        if byte_size_count(b: c) == byte_size_count(b: row.gpu.memory.capacity) && k == row.gpu.memory.memory_kind {
-          UnitGpuTierConsistentWithRow { row: row, as_listed: l }
-        } else {
-          UnitClaimOutsideCatalog { as_listed: l }
+fn gpu_tier_agrees(capacity: ByteSize, kind: MemoryKind, row: CoherentSuperchipCatalogRow) -> Bool {
+  byte_size_count(b: capacity) == byte_size_count(b: row.gpu.memory.capacity) && kind == row.gpu.memory.memory_kind
+}
+
+fn unit_gpu_claim_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
+  match unit.listed_gpu_memory {
+    GpuMemoryNotClaimed => UnitMemoryUnclaimed
+    GpuMemoryClaimed { capacity: c, memory_kind: k, as_listed: l } =>
+      if gpu_tier_agrees(capacity: c, kind: k, row: row) {
+        UnitGpuTierConsistentWithRow { row: row, as_listed: l }
+      } else {
+        match (filter(nvidia_gh200_configurations, r => gpu_tier_agrees(capacity: c, kind: k, row: r))).first() {
+          Present { value: other } => UnitGpuTierOfOtherConfiguration { as_listed: l, configuration: other.model }
+          Absent => UnitClaimOutsideFamily { as_listed: l }
         }
-    }
+      }
+  }
+}
+
+fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
+  match row.board_designation {
+    Present { value: d } =>
+      if unit.board_designation != d {
+        UnitDesignationOutsideRow { observed: unit.board_designation, row_designation: d }
+      } else {
+        unit_gpu_claim_match(unit: unit, row: row)
+      }
+    Absent => unit_gpu_claim_match(unit: unit, row: row)
   }
 }
 
@@ -220,11 +253,13 @@ fn listing_claim_note(m: UnitCatalogMatch) -> String {
   match m {
     UnitGpuTierConsistentWithRow { row: _, as_listed: l } =>
       join(["the listing's '", l as String, "' is consistent with the datasheet GPU tier"], "")
-    UnitClaimOutsideCatalog { as_listed: l } =>
-      join(["the listing's '", l as String, "' is outside every published GH200 configuration (96GB HBM3, 144GB HBM3e)"], "")
+    UnitGpuTierOfOtherConfiguration { as_listed: l, configuration: c } =>
+      join(["the listing's '", l as String, "' matches the published configuration ", c as String, ", not the row this assembly selected"], "")
+    UnitClaimOutsideFamily { as_listed: l } =>
+      join(["the listing's '", l as String, "' contradicts every published GH200 configuration"], "")
     UnitDesignationOutsideRow { observed: o, row_designation: r } =>
       join(["the unit's designation ", o as String, " is not the row's ", r as String], "")
-    UnitMemoryUnclaimed => "the listing claims no memory configuration"
+    UnitMemoryUnclaimed => "the listing claims no GPU memory configuration"
   }
 }
 
@@ -349,15 +384,99 @@ type StageGate {
   requirements: List<QualificationRequirement>
 }
 
+// ── WHAT A RECEIPT IS ABOUT ──────────────────────────────────────────────────────────────────
+//
+// GH200-5 (2026-10-04, review). A bench receipt describes ONE physical assembly in ONE as-built
+// configuration, and it settles a requirement only for that subject. The scope names the module and
+// carrier ASSETS (never part numbers: the operator holds two modules of one part number) and the
+// configuration the receipt was taken in. Each requirement depends on some aspects of the
+// configuration and not others -- a cooler swap reopens the thermal evidence and leaves a firmware
+// reading standing -- so each requirement names its aspects, and a receipt counts only when every
+// named aspect is recorded on the assembly and equal to the receipt's.
+//
+// This is instance qualification. Configuration COMPATIBILITY -- whether a class of module and
+// carrier combinations is supported -- is a different fact with a different producer (a vendor
+// statement, a catalog), and it never discharges an instance requirement.
+type AsBuiltConfiguration {
+  firmware: NonEmptyStr?
+  power_path: NonEmptyStr?
+  thermal_assembly: NonEmptyStr?
+}
+
+type ConfigurationAspect = FirmwareAspect | PowerPathAspect | ThermalAspect
+
+type ReceiptScope {
+  module: PhysicalAssetIdentity
+  carrier: PhysicalAssetIdentity
+  configuration: AsBuiltConfiguration
+}
+
+data configuration_unbuilt: AsBuiltConfiguration = AsBuiltConfiguration { firmware: Absent, power_path: Absent, thermal_assembly: Absent }
+
+fn aspect_label(x: ConfigurationAspect) -> String {
+  match x {
+    FirmwareAspect => "firmware"
+    PowerPathAspect => "power path"
+    ThermalAspect => "thermal assembly"
+  }
+}
+
+fn aspect_value(c: AsBuiltConfiguration, x: ConfigurationAspect) -> NonEmptyStr? {
+  match x {
+    FirmwareAspect => c.firmware
+    PowerPathAspect => c.power_path
+    ThermalAspect => c.thermal_assembly
+  }
+}
+
+// WHY A RECEIPT DOES NOT APPLY, or nothing when it does. Each mismatch is named, so an operator can see
+// that a receipt exists and why it is not this assembly's.
+fn scope_mismatches(scope: ReceiptScope, a: SuperchipAssembly, aspects: List<ConfigurationAspect>) -> List<String> {
+  let module = if physical_asset_identity_eq(a: scope.module, b: a.unit.asset) { [] } else {
+    [join(["the receipt's module is ", scope.module as String, ", this assembly's is ", a.unit.asset as String], "")]
+  }
+  let carrier = if physical_asset_identity_eq(a: scope.carrier, b: a.carrier.asset) { [] } else {
+    [join(["the receipt's carrier is ", scope.carrier as String, ", this assembly's is ", a.carrier.asset as String], "")]
+  }
+  let config = flat_map(aspects, x => match aspect_value(c: a.configuration, x: x) {
+    Absent => [join(["this assembly's ", aspect_label(x: x), " is not recorded"], "")]
+    Present { value: mine } => match aspect_value(c: scope.configuration, x: x) {
+      Absent => [join(["the receipt records no ", aspect_label(x: x)], "")]
+      Present { value: theirs } =>
+        if mine == theirs { [] } else {
+          [join(["the receipt was taken with ", aspect_label(x: x), " '", theirs as String, "', this assembly has '", mine as String, "'"], "")]
+        }
+    }
+  })
+  concat(module, concat(carrier, config))
+}
+
 // WHAT THE BENCH HAS READ, one slot per requirement no photograph or listing can settle. Every slot
 // starts NotYetRead, and that is what makes the ladder honest in both directions: an unread slot is an
 // open requirement whose obligation text is derived from the parts, and a read slot -- verified or
-// contradicted -- is what moves it. Without these slots the requirements could never be satisfied,
-// and a gate whose green is unauthorable is decoration (DESIGN §4b).
+// contradicted, for THIS assembly's scope -- is what moves it. Without these slots the requirements
+// could never be satisfied, and a gate whose green is unauthorable is decoration (DESIGN §4b).
 type BenchReading
   = NotYetRead
-  | ReadVerified { evidence: NonEmptyStr }
-  | ReadContradicted { reason: NonEmptyStr }
+  | ReadVerified { evidence: NonEmptyStr, scope: ReceiptScope }
+  | ReadContradicted { reason: NonEmptyStr, scope: ReceiptScope }
+
+// THE WORKLOAD RECEIPT SAYS WHAT PASSED. It reuses the serving fleet's own acceptance vocabulary
+// (gunbc.spark.serving_promotion): a QualityReceipt is keyed by the served subject -- checkpoint and
+// revision, runtime, topology, context ceiling, sequence ceiling, cache dtype -- and names its
+// acceptance manifest, and quality_missing judges it against the incumbent's receipt on the SAME
+// manifest under the fleet's serving_promotion_policy. So "the workload ran" cannot stand in for
+// "this subject met the incumbent's bar"; the placement across HBM and LPDDR5X is recorded beside it.
+type WorkloadAcceptance {
+  candidate: QualityReceipt
+  incumbent: QualityReceipt
+  placement: NonEmptyStr
+  scope: ReceiptScope
+}
+
+type WorkloadReading
+  = WorkloadNotRun
+  | WorkloadRun { acceptance: WorkloadAcceptance }
 
 type BenchRecord {
   connector_identity: BenchReading
@@ -368,8 +487,9 @@ type BenchRecord {
   protective_shutdown: BenchReading
   management_path: BenchReading
   boot_storage: BenchReading
+  boot: BenchReading
   module_power_limit: BenchReading
-  served_workload: BenchReading
+  served_workload: WorkloadReading
 }
 
 data bench_unread: BenchRecord = BenchRecord {
@@ -381,22 +501,71 @@ data bench_unread: BenchRecord = BenchRecord {
   protective_shutdown: NotYetRead,
   management_path: NotYetRead,
   boot_storage: NotYetRead,
+  boot: NotYetRead,
   module_power_limit: NotYetRead,
-  served_workload: NotYetRead,
+  served_workload: WorkloadNotRun,
 }
 
+// `row` is the NOMINAL configuration the assembly is expected to be: the catalog's figures, with their
+// provenance. What the unit actually is comes from its measured inventory, and a consumer ranking the
+// assembly reads that (product.node_platform_selection), never the row alone.
 type SuperchipAssembly {
   unit: SuperchipUnitObservation
   carrier: CarrierUnitObservation
   row: CoherentSuperchipCatalogRow
+  configuration: AsBuiltConfiguration
   bench: BenchRecord
 }
 
-fn bench_requirement(requirement: NonEmptyStr, reading: BenchReading, obligation: String) -> QualificationRequirement {
+fn out_of_scope(requirement: NonEmptyStr, mismatches: List<String>, obligation: String) -> QualificationRequirement {
+  undetermined(requirement: requirement, obligation: join([
+    "a receipt is recorded but is not this assembly's (", join(mismatches, "; "), "); still owed: ", obligation,
+  ], ""))
+}
+
+fn bench_requirement(requirement: NonEmptyStr, reading: BenchReading, a: SuperchipAssembly, aspects: List<ConfigurationAspect>, obligation: String) -> QualificationRequirement {
   match reading {
     NotYetRead => undetermined(requirement: requirement, obligation: obligation)
-    ReadVerified { evidence: e } => verified(requirement: requirement, evidence: e)
-    ReadContradicted { reason: r } => contradicted(requirement: requirement, reason: r)
+    ReadVerified { evidence: e, scope: sc } => {
+      let off = scope_mismatches(scope: sc, a: a, aspects: aspects)
+      if count(off) == 0 { verified(requirement: requirement, evidence: e) } else { out_of_scope(requirement: requirement, mismatches: off, obligation: obligation) }
+    }
+    ReadContradicted { reason: r, scope: sc } => {
+      let off = scope_mismatches(scope: sc, a: a, aspects: aspects)
+      if count(off) == 0 { contradicted(requirement: requirement, reason: r) } else { out_of_scope(requirement: requirement, mismatches: off, obligation: obligation) }
+    }
+  }
+}
+
+// A WORKLOAD THAT RAN IS NOT A WORKLOAD THAT PASSED: the receipt must be this assembly's, and the
+// fleet's promotion rule must find nothing missing against the incumbent. A shortfall the rule names
+// contradicts the requirement; it is not left open, because the run happened and answered.
+data all_aspects: List<ConfigurationAspect> = [FirmwareAspect, PowerPathAspect, ThermalAspect]
+
+fn workload_requirement(a: SuperchipAssembly) -> QualificationRequirement {
+  let name = "served workload" as NonEmptyStr
+  let obligation = "a QualityReceipt (gunbc.spark.serving_promotion) for the target model's served subject on this assembly, against the incumbent Spark subject's receipt on the same acceptance manifest, judged by the fleet's serving_promotion_policy, with weight and KV placement across HBM and LPDDR5X observed rather than assumed; a second assembly reached over the network is a separate memory domain, not NVLink peer memory, and two-node behavior is its own demonstration"
+  match a.bench.served_workload {
+    WorkloadNotRun => undetermined(requirement: name, obligation: obligation)
+    WorkloadRun { acceptance: w } => {
+      let off = scope_mismatches(scope: w.scope, a: a, aspects: all_aspects)
+      if count(off) > 0 { out_of_scope(requirement: name, mismatches: off, obligation: obligation) } else {
+        let short = quality_missing(
+          key: w.candidate.subject_key,
+          q: Present { value: w.candidate },
+          incumbent_key: Present { value: w.incumbent.subject_key },
+          incumbent: Present { value: w.incumbent },
+          policy: serving_promotion_policy,
+        )
+        match short.first() {
+          Absent => verified(requirement: name, evidence: join([
+            "subject ", w.candidate.subject_key.preimage as String, " accepted ", to_string(w.candidate.accepted), "/", to_string(w.candidate.attempts),
+            " on the incumbent's manifest (incumbent ", to_string(w.incumbent.accepted), "/", to_string(w.incumbent.attempts), "); placement: ", w.placement as String,
+          ], "") as NonEmptyStr)
+          Present { value: _ } => contradicted(requirement: name, reason: join(map(short, x => x as String), "; ") as NonEmptyStr)
+        }
+      }
+    }
   }
 }
 
@@ -422,7 +591,7 @@ fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {
     InterfaceMismatch { reason: r } => contradicted(requirement: name, reason: r)
     InterfaceUnobserved { obligations: os } => undetermined(requirement: name, obligation: join(map(os, o => o as String), "; "))
     InterfaceConsistentAtPhotoGrain { basis: b, next_grain: n } =>
-      bench_requirement(requirement: name, reading: a.bench.connector_identity,
+      bench_requirement(requirement: name, reading: a.bench.connector_identity, a: a, aspects: [],
         obligation: join(["consistent at photo grain (", b as String, "); next: ", n as String], ""))
   }
 }
@@ -503,27 +672,31 @@ fn thermal_obligation(a: SuperchipAssembly) -> String {
   ], "")
 }
 
-fn boot_requirement(a: SuperchipAssembly) -> QualificationRequirement {
-  let name = "observed boot of this module on this carrier" as NonEmptyStr
-  match a.carrier.boot {
-    CarrierBootObserved { module_part_number: m, evidence: e } =>
-      if m == a.unit.board_part_number {
-        verified(requirement: name, evidence: e)
-      } else {
-        undetermined(requirement: name, obligation: join(["carrier ", carrier_label(c: a.carrier), " was observed running ", m as String, ", not ", a.unit.board_part_number as String], ""))
-      }
-    CarrierBootUnobserved =>
-      undetermined(requirement: name, obligation: join([
-        "observe ", a.unit.board_part_number as String, " booting to BMC and OS on ", carrier_label(c: a.carrier),
-        ", capturing console output, firmware versions and FRU identity (provenance so far: ", a.carrier.provenance as String, ")",
-      ], ""))
-  }
+fn boot_obligation(a: SuperchipAssembly) -> String {
+  join([
+    "observe module ", a.unit.asset as String, " (", a.unit.board_part_number as String, ") booting to BMC and OS on carrier ", a.carrier.asset as String, " (", carrier_label(c: a.carrier),
+    "), capturing console output, firmware versions and FRU identity, and record the serials read (provenance so far: ", a.carrier.provenance as String, ")",
+  ], "")
 }
 
+fn gib_count(b: ByteSize) -> Nat {
+  byte_size_count(b: b) / 1073741824
+}
+
+// A MEASUREMENT THAT DIFFERS FROM THE NOMINAL ROW IS NOT A REFUSAL: a smaller unit is a legitimate,
+// smaller candidate, and it satisfies or fails the workload requirement on that basis. The requirement
+// is that the inventory be MEASURED; the catalog row can never satisfy it.
 fn inventory_requirement(a: SuperchipAssembly) -> QualificationRequirement {
   let name = "measured memory inventory" as NonEmptyStr
   match a.unit.measured_inventory {
-    InventoryMeasured { gpu_memory: _, cpu_memory: _, evidence: e } => verified(requirement: name, evidence: e)
+    InventoryMeasured { gpu_memory: g, cpu_memory: c, evidence: e } => verified(requirement: name, evidence: join([
+      "measured ", to_string(gib_count(b: g)), " GiB HBM and ", to_string(gib_count(b: c)), " GiB LPDDR5X (", e as String, "); ",
+      if byte_size_count(b: g) == byte_size_count(b: a.row.gpu.memory.capacity) && byte_size_count(b: c) == byte_size_count(b: a.row.cpu_memory.memory.capacity) {
+        "the nominal configuration's sizes"
+      } else {
+        "NOT the nominal configuration's sizes; the platform decision ranks the measured figures"
+      },
+    ], "") as NonEmptyStr)
     InventoryUnmeasured =>
       undetermined(requirement: name, obligation: join([
         "measure ", a.unit.board_part_number as String, "'s HBM and LPDDR5X on a running carrier (nvidia-smi -q, numactl -H, ipmitool fru print): ",
@@ -555,23 +728,23 @@ fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
   [
     StageGate { stage: MechanicallyMated, requirements: [
       mating_requirement(a: a),
-      bench_requirement(requirement: "mounting and support stack", reading: a.bench.mounting_stack, obligation: "the module's standoffs, backing plate and fasteners with their preload, as fitted in its original system; no powered insertion or reseating"),
+      bench_requirement(requirement: "mounting and support stack", reading: a.bench.mounting_stack, a: a, aspects: [ThermalAspect], obligation: "the module's standoffs, backing plate and fasteners with their preload, as fitted in its original system; no powered insertion or reseating"),
     ] },
     StageGate { stage: SafeToEnergize, requirements: [
-      bench_requirement(requirement: "power path", reading: a.bench.power_path, obligation: power_path_obligation(a: a)),
-      bench_requirement(requirement: "site AC supply", reading: a.bench.site_ac_supply, obligation: site_ac_obligation),
-      bench_requirement(requirement: "thermal path for every heat region", reading: a.bench.thermal_path, obligation: thermal_obligation(a: a)),
-      bench_requirement(requirement: "protective shutdown", reading: a.bench.protective_shutdown, obligation: "over-temperature shutdown, and loss-of-flow shutdown if liquid-cooled, verified before first power-on; default thermal trip settings retained; pumps and fans fed from a verified supply rather than an unidentified carrier header"),
+      bench_requirement(requirement: "power path", reading: a.bench.power_path, a: a, aspects: [PowerPathAspect], obligation: power_path_obligation(a: a)),
+      bench_requirement(requirement: "site AC supply", reading: a.bench.site_ac_supply, a: a, aspects: [PowerPathAspect], obligation: site_ac_obligation),
+      bench_requirement(requirement: "thermal path for every heat region", reading: a.bench.thermal_path, a: a, aspects: [ThermalAspect], obligation: thermal_obligation(a: a)),
+      bench_requirement(requirement: "protective shutdown", reading: a.bench.protective_shutdown, a: a, aspects: [FirmwareAspect, ThermalAspect], obligation: "over-temperature shutdown, and loss-of-flow shutdown if liquid-cooled, verified before first power-on; default thermal trip settings retained; pumps and fans fed from a verified supply rather than an unidentified carrier header"),
     ] },
     StageGate { stage: BootQualified, requirements: [
-      bench_requirement(requirement: "management and boot path", reading: a.bench.management_path, obligation: join(["whether ", carrier_label(c: a.carrier), " carries its own BMC, firmware storage, console and power-control path or needs boards from its original system: ", management_io_text(layout: a.carrier.layout), ", and carries ", edge_connector_text(layout: a.carrier.layout), ". ", reference_management_pattern(c: asrock_rack_arlington_mb), ". ", controller_card_lead], "")),
-      bench_requirement(requirement: "boot storage", reading: a.bench.boot_storage, obligation: join(["a boot device the Grace CPU can reach through ", carrier_label(c: a.carrier), " (an M.2 slot, such as the controller card's, or NVMe behind one of the carrier's PCIe connectors) holding an arm64 OS image the module firmware accepts"], "")),
-      boot_requirement(a: a),
+      bench_requirement(requirement: "management and boot path", reading: a.bench.management_path, a: a, aspects: [FirmwareAspect], obligation: join(["whether ", carrier_label(c: a.carrier), " carries its own BMC, firmware storage, console and power-control path or needs boards from its original system: ", management_io_text(layout: a.carrier.layout), ", and carries ", edge_connector_text(layout: a.carrier.layout), ". ", reference_management_pattern(c: asrock_rack_arlington_mb), ". ", controller_card_lead], "")),
+      bench_requirement(requirement: "boot storage", reading: a.bench.boot_storage, a: a, aspects: [FirmwareAspect], obligation: join(["a boot device the Grace CPU can reach through ", carrier_label(c: a.carrier), " (an M.2 slot, such as the controller card's, or NVMe behind one of the carrier's PCIe connectors) holding an arm64 OS image the module firmware accepts"], "")),
+      bench_requirement(requirement: "observed boot of this module on this carrier", reading: a.bench.boot, a: a, aspects: all_aspects, obligation: boot_obligation(a: a)),
       inventory_requirement(a: a),
     ] },
     StageGate { stage: WorkloadQualified, requirements: [
-      bench_requirement(requirement: "module-scope power limit", reading: a.bench.module_power_limit, obligation: "nvidia-smi -q -d POWER reports module-scope readings and a module limit (-sc 1) is accepted and holds under load on this qualification-sample module"),
-      bench_requirement(requirement: "served workload", reading: a.bench.served_workload, obligation: "the target model served at acceptable throughput, with its weight and KV placement across HBM and LPDDR5X observed rather than assumed; a second assembly reached over the network is a separate memory domain, not NVLink peer memory, and two-node behavior is its own demonstration"),
+      bench_requirement(requirement: "module-scope power limit", reading: a.bench.module_power_limit, a: a, aspects: all_aspects, obligation: "nvidia-smi -q -d POWER reports module-scope readings and a module limit (-sc 1) is accepted and holds under load on this qualification-sample module"),
+      workload_requirement(a: a),
     ] },
   ]
 }
@@ -588,21 +761,24 @@ fn requirement_line(r: QualificationRequirement, detail: NonEmptyStr) -> NonEmpt
 fn gate_contradictions(g: StageGate) -> List<NonEmptyStr> {
   flat_map(g.requirements, r => match r.standing {
     EvidenceContradicted { reason: x } => [requirement_line(r: r, detail: x)]
-    _ => []
+    EvidenceVerified { evidence: _ } => []
+    EvidenceUndetermined { obligation: _ } => []
   })
 }
 
 fn gate_open(g: StageGate) -> List<NonEmptyStr> {
   flat_map(g.requirements, r => match r.standing {
     EvidenceUndetermined { obligation: o } => [requirement_line(r: r, detail: o)]
-    _ => []
+    EvidenceVerified { evidence: _ } => []
+    EvidenceContradicted { reason: _ } => []
   })
 }
 
 fn gate_evidence(g: StageGate) -> List<NonEmptyStr> {
   flat_map(g.requirements, r => match r.standing {
     EvidenceVerified { evidence: e } => [requirement_line(r: r, detail: e)]
-    _ => []
+    EvidenceContradicted { reason: _ } => []
+    EvidenceUndetermined { obligation: _ } => []
   })
 }
 
@@ -649,6 +825,7 @@ data first_assembly: SuperchipAssembly = SuperchipAssembly {
   unit: gh200_dv5_unit,
   carrier: p4261_k1_carrier,
   row: nvidia_gh200_480gb_catalog,
+  configuration: configuration_unbuilt,
   bench: bench_unread,
 }
 
@@ -657,8 +834,12 @@ data planned_assemblies: List<SuperchipAssembly> = [first_assembly]
 // Modules held with no carrier. A second assembly is planned from these once a carrier is bought.
 data unpaired_modules: List<SuperchipUnitObservation> = [gh200_dv5_second_unit]
 
+fn assembly_label(a: SuperchipAssembly) -> String {
+  join([a.unit.asset as String, " (", a.unit.board_part_number as String, ") on ", a.carrier.asset as String, " (", carrier_label(c: a.carrier), ")"], "")
+}
+
 fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
-  let head = join([a.unit.board_part_number as String, " on ", carrier_label(c: a.carrier)], "")
+  let head = assembly_label(a: a)
   match assembly_qualification(a: a) {
     AssemblyWorkloadQualified { evidence: _ } => [join([head, ": workload-qualified"], "")]
     AssemblyRefusedAt { stage: s, reasons: rs } =>
@@ -676,13 +857,14 @@ fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
 // Exit 0 only when some planned assembly is workload-qualified; otherwise exit 1 with every assembly's
 // open requirements, stage by stage.
 fn unpaired_line(u: SuperchipUnitObservation) -> String {
-  join([u.board_part_number as String, ": held, no carrier yet (", u.source as String, ")"], "")
+  join([u.asset as String, " (", u.board_part_number as String, "): held, no carrier yet (", u.source as String, ")"], "")
 }
 
 fn assembly_qualification_report() -> ProcessExit {
   let qualified = filter(planned_assemblies, a => match assembly_qualification(a: a) {
     AssemblyWorkloadQualified { evidence: _ } => true
-    _ => false
+    AssemblyBlockedAt { stage: _, open_here: _, open_later: _ } => false
+    AssemblyRefusedAt { stage: _, reasons: _ } => false
   })
   if count(qualified) > 0 {
     ExitSuccess

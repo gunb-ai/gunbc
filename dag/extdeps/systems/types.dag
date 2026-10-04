@@ -90,10 +90,12 @@ type CoherentMemoryTier {
   bandwidth: Bandwidth
 }
 
+// board_designation is Absent where no cited document names the board for that configuration: an
+// unknown identifier is carried as unknown, never as an explanatory sentence a consumer could match on.
 type CoherentSuperchipCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
-  board_designation: NonEmptyStr
+  board_designation: NonEmptyStr?
   cpu_architecture: Architecture
   cpu_core_clusters: List<CpuCoreCluster>
   gpu: GpuModelCatalogRow

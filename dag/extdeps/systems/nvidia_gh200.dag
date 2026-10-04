@@ -116,7 +116,7 @@ data gh200_grace_core_clusters: List<CpuCoreCluster> = [
 data nvidia_gh200_480gb_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {
   vendor: nvidia,
   model: "NVIDIA GH200 Grace Hopper Superchip 480GB",
-  board_designation: "PG530",
+  board_designation: Present { value: "PG530" },
   cpu_architecture: Aarch64,
   cpu_core_clusters: gh200_grace_core_clusters,
   gpu: nvidia_gh200_hopper_96gb_gpu_catalog,
@@ -159,7 +159,7 @@ data nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog: GpuModelCatalogRow = GpuModelC
 data nvidia_gh200_624gb_hbm3e_catalog: CoherentSuperchipCatalogRow = CoherentSuperchipCatalogRow {
   vendor: nvidia,
   model: "NVIDIA GH200 Grace Hopper Superchip 144GB HBM3e",
-  board_designation: "not cited for the HBM3e product",
+  board_designation: Absent,
   cpu_architecture: Aarch64,
   cpu_core_clusters: gh200_grace_core_clusters,
   gpu: nvidia_gh200_hopper_144gb_hbm3e_gpu_catalog,
@@ -169,6 +169,11 @@ data nvidia_gh200_624gb_hbm3e_catalog: CoherentSuperchipCatalogRow = CoherentSup
   module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
   figure_standing: gh200_datasheet_figures_standing,
 }
+
+// THE PUBLISHED CONFIGURATIONS, as one list: a unit claim that matches none of these contradicts the
+// family, while one that matches a configuration other than the row a consumer selected is a
+// different, valid configuration -- two findings a consumer must not conflate.
+data nvidia_gh200_configurations: List<CoherentSuperchipCatalogRow> = [nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog]
 
 // ── MODULE POWER-RAIL VARIANTS: A LEAD, NOT A CITATION ─────────────────────────────────────────
 //
