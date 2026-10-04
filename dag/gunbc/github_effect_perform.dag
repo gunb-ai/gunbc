@@ -20,12 +20,14 @@ import extdeps.github.actions_jit_runner {
   JitConfigCreatedBody, jit_config_mint_outcome, jit_config_created_status, jit_runner_label_wire,
 }
 import extdeps.transports.rest {
-  RestOutcome, RestMutationExchange, classify_rest_outcome, RestExchangePerformance,
+  RestOutcome, RestMutationExchange, RestReadExchange, classify_rest_outcome, RestExchangePerformance,
   RestExchangeSucceeded, RestExchangeStatusRefused,
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, read_runner_groups }
 import extdeps.github.app
 import extdeps.github.actions_jit_runner
+import extdeps.github.actions_self_hosted_runners
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -227,11 +229,11 @@ fn jit_mint_generate_gate(dispatch: JitMintDispatch) -> JitMintGenerateGate {
   match dispatch {
     JitMintDispatchRefused { refusal: r } =>
       JitMintDecidedBeforeGenerate { performance: JitMintReceived { delivery: JitCredentialNotDispatched { refusal: r } } }
-    JitMintDispatchAuthorized { attempt: _, app: app, installation: i, organization: o, request: req } =>
-      if app != lifecycle_controller_app {
-        JitMintDecidedBeforeGenerate { performance: JitMintAppKeyNotCustodied { app: app } }
+    JitMintDispatchAuthorized { dispatch: d } =>
+      if d.app != lifecycle_controller_app {
+        JitMintDecidedBeforeGenerate { performance: JitMintAppKeyNotCustodied { app: d.app } }
       } else {
-        JitMintProceedsToGenerate { app: app, installation: i, organization: o, request: req }
+        JitMintProceedsToGenerate { app: d.app, installation: d.installation, organization: d.organization, request: d.request }
       }
   }
 }
@@ -265,4 +267,42 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch, token: ControllerIns
 // generate step will use.
 fn read_runner_groups_with(token: ControllerInstallationToken, organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
   read_runner_groups(token: token.token, organization: organization)
+}
+
+// THE DEREGISTRATION'S TWO EXCHANGES, under the same controller installation token that minted the
+// registration (gunbc.runner.runner_jit_deregistration ensure_jit_runner_deregistered). The token's
+// Secret is shed here and nowhere else, as for the mint; the answers are classified at their own
+// grain -- the listing a read, the delete a mutation -- and the decision over them is the
+// deregistration module's, taken without I/O.
+// SEALED, AND IT CARRIES ITS QUERY SUBJECT: the organization and runner name it asked about and the
+// App and installation of the token it asked with. A listing is evidence only about what it was
+// asked -- an empty answer for another name proves nothing about this one -- so the deregistration
+// receipt path compares this subject to its registration before reading the answer
+// (gunbc.runner.runner_jit_deregistration readback_subject_refusal).
+type OrganizationRunnerListRead sole_constructor {
+  organization: NonEmptyStr
+  name: NonEmptyStr
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+  performance: RestExchangePerformance
+  body: OrganizationRunnerListWire
+}
+
+fn list_runners_by_name_with(token: ControllerInstallationToken, organization: NonEmptyStr, name: NonEmptyStr) -> OrganizationRunnerListRead
+  uses net: Network
+{
+  let listed = github.ActionsSelfHostedRunners.ListOrganizationRunnersByName(installation_token: token.token, org: organization, name: name)
+  OrganizationRunnerListRead {
+    organization: organization,
+    name: name,
+    app: token.app,
+    installation: token.installation,
+    performance: classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }), body: listed.result }
+}
+
+fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_id: Int) -> RestExchangePerformance
+  uses net: Network
+{
+  let deleted = github.ActionsSelfHostedRunners.DeleteOrganizationRunner(installation_token: token.token, org: organization, runner_id: runner_id)
+  classify_rest_outcome(standing: RestMutationExchange { rest: deleted.outcome })
 }

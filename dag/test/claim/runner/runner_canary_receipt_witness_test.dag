@@ -27,7 +27,8 @@ import gunbc.runner.runner_teardown_receipt {
   RunnerResourceClass,
   RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive, RunnerWorkspace, RunnerTap, RunnerFirewallTable,
   TeardownObserverInsideEnvironment, TeardownInstrumentChanged,
-  RunnerEnvironmentInventory, RunnerResourceReading, RunnerResourcePresent,
+  RunnerEnvironmentInventory, MicroVmEnvironmentInventory, MicroVmInventory, HostUnitEnvironmentInventory,
+  HostUnitInventory, RunnerTransientUnit, RunnerResourceReading, RunnerResourcePresent,
   RunnerResourceAbsent, RunnerResourceUnreadable, RunnerEnvironmentReadback,
   RunnerEnvironmentObservation, RunnerEnvironmentObserved, RunnerEnvironmentUnobserved,
   RunnerTeardownRequest, RunnerTeardownResult, RunnerTeardownProduced, RunnerTeardownRefused,
@@ -226,17 +227,21 @@ fn fixture_process(pid: Nat) -> ProcessIdentity {
   ProcessIdentity { boot_id: "fixture-boot", pid: pid, start_time: "100" }
 }
 
-fn fixture_inventory(tap: NonEmptyStr) -> RunnerEnvironmentInventory {
-  RunnerEnvironmentInventory {
+fn fixture_microvm_inventory(tap: NonEmptyStr) -> MicroVmEnvironmentInventory {
+  MicroVmEnvironmentInventory {
     vmm: fixture_process(pid: 10), cgroup: "/attempt/cgroup", jail: "/attempt/jail",
     jail_mount: "/attempt/jail", jit_drive: "/attempt/jit", workspace: "/attempt/work",
     tap: tap, firewall_table: "attempt-table",
   }
 }
 
+fn fixture_inventory(tap: NonEmptyStr) -> RunnerEnvironmentInventory {
+  MicroVmInventory { inventory: fixture_microvm_inventory(tap: tap) }
+}
+
 fn fixture_readback(value: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
-    vmm: value, cgroup: value, jail: value, jail_mount: value,
+    vmm: value, unit: value, cgroup: value, jail: value, jail_mount: value,
     jit_drive: value, workspace: value, tap: value, firewall_table: value,
   }
 }
@@ -311,14 +316,14 @@ test fn changing_observation_instrument_refuses() -> Bool {
 
 test fn cross_boot_processes_refuse() -> Bool {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
-  let original = fixture_inventory(tap: "tap-a")
+  let original = fixture_microvm_inventory(tap: "tap-a")
   ["vmm", "destroyer", "observer"] |> all(axis => {
-    let inventory = RunnerEnvironmentInventory {
+    let inventory = MicroVmInventory { inventory: MicroVmEnvironmentInventory {
       vmm: ProcessIdentity { boot_id: if axis == "vmm" { "other-boot" } else { "fixture-boot" }, pid: 10, start_time: "100" },
       cgroup: original.cgroup, jail: original.jail, jail_mount: original.jail_mount,
       jit_drive: original.jit_drive, workspace: original.workspace,
       tap: original.tap, firewall_table: original.firewall_table,
-    }
+    } }
     let destroyer = ProcessIdentity {
       boot_id: if axis == "destroyer" { "other-boot" } else { "fixture-boot" }, pid: 20, start_time: "100",
     }
@@ -351,6 +356,7 @@ test fn an_always_absent_instrument_refuses() -> Bool {
 fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceReading) -> RunnerEnvironmentReadback {
   RunnerEnvironmentReadback {
     vmm: if resource == RunnerVmm { value } else { RunnerResourceAbsent },
+    unit: if resource == RunnerTransientUnit { value } else { RunnerResourceAbsent },
     cgroup: if resource == RunnerCgroup { value } else { RunnerResourceAbsent },
     jail: if resource == RunnerJail { value } else { RunnerResourceAbsent },
     jail_mount: if resource == RunnerJailMount { value } else { RunnerResourceAbsent },
@@ -379,6 +385,71 @@ test fn every_residue_and_unreadable_resource_refuses() -> Bool {
       }
       survived && unreadable
     })
+}
+
+// THE HOST-UNIT ARM OF THE SAME FOLD. A transient unit on a managed host owns no jail, jail mount,
+// JIT drive, tap or firewall table, so its positive control is the three resources its launch
+// allocates. The readback below reads every microVM-only class Absent BEFORE as well as after: a
+// microVM inventory would refuse that as TeardownPositiveControlMissing, and this inventory must not.
+fn fixture_host_unit_inventory(unit: NonEmptyStr) -> RunnerEnvironmentInventory {
+  HostUnitInventory { inventory: HostUnitEnvironmentInventory {
+    unit_process: fixture_process(pid: 10), unit: unit, cgroup: "/system.slice/attempt.service", workspace: "/attempt/work",
+  } }
+}
+
+fn fixture_host_unit_readback(unit: RunnerResourceReading, cgroup: RunnerResourceReading, workspace: RunnerResourceReading) -> RunnerEnvironmentReadback {
+  RunnerEnvironmentReadback {
+    vmm: RunnerResourceAbsent, unit: unit, cgroup: cgroup, jail: RunnerResourceAbsent, jail_mount: RunnerResourceAbsent,
+    jit_drive: RunnerResourceAbsent, workspace: workspace, tap: RunnerResourceAbsent, firewall_table: RunnerResourceAbsent,
+  }
+}
+
+fn fixture_host_unit_teardown(inventory: RunnerEnvironmentInventory, after: RunnerEnvironmentReadback) -> RunnerTeardownResult<NonEmptyStr> {
+  let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
+  let unit_inventory = fixture_host_unit_inventory(unit: "attempt.service")
+  produce_runner_teardown_receipt(
+    request: RunnerTeardownRequest { subject: subject, inventory: unit_inventory, destroyer: fixture_process(pid: 20), issued_at: fixture_at(ns: 20) },
+    before: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),
+      inventory: unit_inventory, at: fixture_at(ns: 10),
+      readback: fixture_host_unit_readback(unit: RunnerResourcePresent, cgroup: RunnerResourcePresent, workspace: RunnerResourcePresent)) },
+    after: RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),
+      inventory: inventory, at: fixture_at(ns: 30), readback: after) })
+}
+
+test fn a_host_unit_teardown_is_accepted_without_microvm_resources() -> Bool {
+  match fixture_host_unit_teardown(
+    inventory: fixture_host_unit_inventory(unit: "attempt.service"),
+    after: fixture_host_unit_readback(unit: RunnerResourceAbsent, cgroup: RunnerResourceAbsent, workspace: RunnerResourceAbsent),
+  ) {
+    RunnerTeardownProduced { receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn every_surviving_host_unit_resource_refuses() -> Bool {
+  [RunnerTransientUnit, RunnerCgroup, RunnerWorkspace] |> all(resource =>
+    match fixture_host_unit_teardown(
+      inventory: fixture_host_unit_inventory(unit: "attempt.service"),
+      after: fixture_host_unit_readback(
+        unit: if resource == RunnerTransientUnit { RunnerResourcePresent } else { RunnerResourceAbsent },
+        cgroup: if resource == RunnerCgroup { RunnerResourcePresent } else { RunnerResourceAbsent },
+        workspace: if resource == RunnerWorkspace { RunnerResourcePresent } else { RunnerResourceAbsent },
+      ),
+    ) {
+      RunnerTeardownRefused { cause: TeardownResourceSurvived { resource: r } } => r == resource
+      _ => false
+    }
+  )
+}
+
+test fn a_host_unit_observed_as_another_unit_or_a_microvm_refuses() -> Bool {
+  let clean = fixture_host_unit_readback(unit: RunnerResourceAbsent, cgroup: RunnerResourceAbsent, workspace: RunnerResourceAbsent)
+  [fixture_host_unit_inventory(unit: "other.service"), fixture_inventory(tap: "tap-a")] |> all(inventory =>
+    match fixture_host_unit_teardown(inventory: inventory, after: clean) {
+      RunnerTeardownRefused { cause: TeardownInventoryMismatch } => true
+      _ => false
+    }
+  )
 }
 
 test fn missing_observer_receipt_is_detectable() -> Bool {

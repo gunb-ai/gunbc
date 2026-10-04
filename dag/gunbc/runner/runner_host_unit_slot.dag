@@ -1,0 +1,87 @@
+module gunbc.runner.runner_host_unit_slot
+
+import std.types { List, NonEmptyStr, String }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.github.actions_runner {
+  ActionsRunnerRelease, ActionsRunnerBinaryArtifact, actions_runner_binary_artifact_for_arch,
+  actions_runner_release_2_337_0, actions_runner_base_dir, actions_runner_listener_relative_path,
+  actions_runner_listener_run_verb,
+}
+import gunbc.managed_host { ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound }
+import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_argv, ephemeral_slot_labels }
+
+// THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
+//
+// gunbc.runner_jit_mint plans a JIT registration over a slot; a microVM cell is one realization of
+// a slot and this is the other. The mint is not forked per binding (DESIGN §3: transport is
+// realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
+// everything else over the sum both bindings inhabit.
+//
+// The host is admitted only through the ManagedHost seam (gunbc.managed_host): a host whose binding
+// standing is anything but ManagedHostBound has no slot, and the refusal carries that standing
+// unchanged rather than a re-coined cause. No mtcollins1_* module is named here; mtcollins1 reaches
+// this fold as the gunbc.managed_host managed_hosts row and nothing else.
+//
+// The unit, its systemd-run argv and its labels are the qualification route's own derivations
+// (gunbc.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_argv /
+// ephemeral_slot_labels), so the slot the mint registers is by construction the slot the route
+// stages -- one spelling of the attempt label, not two.
+//
+// THE ARGV CARRIES NO CREDENTIAL. The listener reads its JIT config from the environment
+// (extdeps.github.actions_runner actions_runner_jitconfig_env_name) and deletes it once read, so the
+// command is the bare listener run verb; an argv is readable by every process on the host
+// (gunbc.credential_argv_exposure), and putting the encoded config there would re-open that class.
+// Placing the credential into the unit's environment is the launch's act, not the registration's.
+type HostUnitSlot sole_constructor {
+  host: ManagedHostBinding
+  attempt: NonEmptyStr
+  workflow: NonEmptyStr
+  unit: NonEmptyStr
+  labels: List<String>
+  argv: List<String>
+  runner: ActionsRunnerBinaryArtifact
+}
+
+type HostUnitSlotRefusal
+  = HostUnitSlotHostNotBound { standing: ManagedHostBindingStanding }
+  | HostUnitSlotRunnerBinaryUnpublished { binary_release: ActionsRunnerRelease }
+
+type HostUnitSlotStanding
+  = HostUnitSlotBound { slot: HostUnitSlot }
+  | HostUnitSlotRefused { refusal: HostUnitSlotRefusal }
+
+// THE SAME RELEASE THE microVM GUEST RUNS (gunbc.runner_microvm), so the two bindings of one mint
+// run one listener whose environment contract is the one cited in extdeps.github.actions_runner.
+data host_unit_slot_runner_release: ActionsRunnerRelease = actions_runner_release_2_337_0
+
+fn host_unit_slot_listener_argv() -> List<String> {
+  [concat(actions_runner_base_dir, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
+}
+
+// THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
+// group restricted to any other (gunbc.runner_jit_mint jit_slot_workflow). It is spelled the way
+// GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
+fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
+  match host {
+    ManagedHostBound { binding: b } =>
+      match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
+        Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
+        Present { value: artifact } => {
+          let unit = ephemeral_slot_unit(host: b.host.host, attempt: attempt)
+          HostUnitSlotBound {
+            slot: HostUnitSlot {
+              host: b,
+              attempt: attempt,
+              workflow: workflow,
+              unit: unit,
+              labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
+              argv: ephemeral_slot_argv(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()),
+              runner: artifact,
+            },
+          }
+        }
+      }
+    other => HostUnitSlotRefused { refusal: HostUnitSlotHostNotBound { standing: other } }
+  }
+}
