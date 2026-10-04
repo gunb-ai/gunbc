@@ -176,23 +176,16 @@ fn infer_census(ingest: SourceRootIngest) -> InferCensus {
   }
 }
 
-// ONE NULLARY PRODUCER FOR ALL THREE SHAPES, forced once and shared by the claims (the warm-row
-// precedent v2.test.claim.native_census.cascade_root_fan_out states).
-type InferCensuses {
-  cascade: InferCensus
-  infer_only: InferCensus
-  fixed: InferCensus
-  subject: InferCensus
-}
+// ONE NULLARY PRODUCER PER SHAPE, each forced once and read by its own claim. They are WARM rows of
+// v2.workflow.floor_pure_producer_share, because one front end plus infer is more than one claim's
+// budget; each claim reads counts and member rows, never a context.
+fn infer_cascade_census() -> InferCensus { infer_census(ingest: infer_ingest(b_source: infer_b_unresolvable_source)) }
 
-fn infer_censuses() -> InferCensuses {
-  InferCensuses {
-    cascade: infer_census(ingest: infer_ingest(b_source: infer_b_unresolvable_source)),
-    infer_only: infer_census(ingest: infer_ingest(b_source: infer_b_infer_only_source)),
-    fixed: infer_census(ingest: infer_ingest(b_source: infer_b_fixed_source)),
-    subject: infer_census(ingest: infer_subject_ingest())
-  }
-}
+fn infer_only_census() -> InferCensus { infer_census(ingest: infer_ingest(b_source: infer_b_infer_only_source)) }
+
+fn infer_fixed_census() -> InferCensus { infer_census(ingest: infer_ingest(b_source: infer_b_fixed_source)) }
+
+fn infer_subject_census() -> InferCensus { infer_census(ingest: infer_subject_ingest()) }
 
 fn infer_stage_is(stage: NativeCensusCauseStage, infer: Bool) -> Bool {
   match stage {
@@ -227,7 +220,7 @@ fn infer_single_root_is_b(roots: List<NativeCensusCauseMember>, infer: Bool, fan
 // (walls 2), if a's row is stamped Resolve (the stage conflation design section 3 forbids), if b carries no
 // fan-out, or if the infer call is gone (a has no member at all).
 test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bool {
-  match infer_censuses().cascade {
+  match infer_cascade_census() {
     InferCensusContextRefused => false
     InferCensusReported { walls: w, roots: roots, a_members: a, roots_in_subject: _, roots_outside_subject: _ } =>
       w == 1
@@ -250,7 +243,7 @@ test fn census_infer_provider_cascade_is_one_root_with_fan_out_one_holds() -> Bo
 // fan-out 1, and NO row for a. RED if the census invents the infer->infer edge v2 infer does not have:
 // a member for a, or a second wall.
 test fn census_infer_only_refusal_does_not_cascade_into_its_importer_holds() -> Bool {
-  match infer_censuses().infer_only {
+  match infer_only_census() {
     InferCensusContextRefused => false
     InferCensusReported { walls: w, roots: roots, a_members: a, roots_in_subject: _, roots_outside_subject: _ } =>
       w == 1 && length(xs: a) == 0 && infer_single_root_is_b(roots: roots, infer: true, fan_out: 1)
@@ -261,7 +254,7 @@ test fn census_infer_only_refusal_does_not_cascade_into_its_importer_holds() -> 
 // a's row existed only because of b. RED if a still refuses with b fixed, which would mean control 1's
 // member was not caused by the edge it claims.
 test fn census_infer_fixing_the_provider_removes_both_rows_holds() -> Bool {
-  match infer_censuses().fixed {
+  match infer_fixed_census() {
     InferCensusContextRefused => false
     InferCensusReported { walls: w, roots: roots, a_members: a, roots_in_subject: _, roots_outside_subject: _ } =>
       w == 0 && length(xs: roots) == 0 && length(xs: a) == 0
@@ -273,7 +266,7 @@ test fn census_infer_fixing_the_provider_removes_both_rows_holds() -> Bool {
 // marked inside (u would be), or if the walk followed importers instead of imports (b would be
 // outside, since nothing b imports reaches s).
 test fn census_infer_roots_are_marked_against_the_subject_closure_holds() -> Bool {
-  match infer_censuses().subject {
+  match infer_subject_census() {
     InferCensusContextRefused => false
     InferCensusReported { walls: _, roots: _, a_members: _, roots_in_subject: inside, roots_outside_subject: outside } =>
       inside == [^census_infer_b_cu] && outside == [^census_infer_u_cu]

@@ -721,6 +721,13 @@ import v2.std.algebra { any }
 // (a three-file chain and a four-file diamond), and each claim reads one CascadeCensus -- counts
 // and census member rows (Symbols, qualified names, Ints), no resolution context, no closure. WARM
 // because one front end is more than one claim's budget.
+// THE CENSUS PART 2 INFER ROWS ARE THE SAME GROUND: test.claim.native_census.infer_cascade drives
+// native_test_context_from_ingest, native_census_module_inference (resolve, then the real infer) and the
+// infer filing fold once per shape: a provider cascade, an infer-only provider, a fixed provider and a
+// subject closure. Each claim reads one InferCensus, made of counts, member rows and path Symbols, with
+// no resolution context and no closure. WARM because a front end plus infer is more than one claim's
+// budget: four claims sharing one producer were refused COMPLETED-OVER-COST-REQUIREMENT on #13308's
+// first floor run.
 // THE XL-2 REHEARSAL CONTROL ROW IS THE census_probe_outcomes GROUND AGAIN: test.claim
 // .namespace_xl2_rehearsal_census drives native_test_context_from_ingest once per field of
 // Xl2ControlRuns (read the type for the roster, not a count here) over two- and three-specimen ingests, and its
@@ -998,6 +1005,10 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.native_census.whole_tree_census_resolve.census_probe_outcomes",
   "v2.test.claim.native_census.cascade_root_fan_out.cascade_linear_census",
   "v2.test.claim.native_census.cascade_root_fan_out.cascade_diamond_census",
+  "v2.test.claim.native_census.infer_cascade.infer_cascade_census",
+  "v2.test.claim.native_census.infer_cascade.infer_only_census",
+  "v2.test.claim.native_census.infer_cascade.infer_fixed_census",
+  "v2.test.claim.native_census.infer_cascade.infer_subject_census",
   "v2.test.native_decl_selection.collision_resolved",
   "v2.test.name_resolve.explicit_fn_import_binds.efib_verdicts",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
