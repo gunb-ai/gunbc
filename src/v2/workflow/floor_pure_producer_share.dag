@@ -579,8 +579,27 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
 // Those nine are RETIRED as ClaimDeleted: gunbc#13293 reverted #13038 and the module with it. If the
 // change re-lands, its claims are re-probed, not un-retired by hand.
+// Twelve more were added from probe 37238532455, for the sixteen rows gunbc#13187 added to the hand
+// roster (v2.test.claim.compiler.generic_formal_instantiation): all twelve claims of the module.
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.generic_formal_instantiation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "gfi_alias_argument_at_its_aliased_formal_is_accepted", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_alias_argument_at_two_instances_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_alias_of_a_refined_type_keeps_the_refinement", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_nested_consistent_instance_is_accepted", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_nested_instance_disagreement_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_non_list_argument_at_a_list_formal_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_one_consistent_instance_is_accepted", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_one_variable_at_two_instances_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_plain_formal_takes_its_alias", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_record_wrapper_refuses_as_the_plain_formal_does", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_refined_argument_matches_through_its_carrier", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "gfi_refined_type_still_refuses_its_raw_carrier", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.type_application_kind",
     claims: [
