@@ -163,34 +163,52 @@ fn undeclared_input_refuses(h: ManagedHost, d: AuthorizedJitMintDispatch) -> Boo
   }
 }
 
-// THE RULING'S SCOPE IS CONSTRUCTION, AND THIS IS ITS RED. Through the one mint, no other workflow
-// and no other label can become a dispatch subject:
-//   - a slot registered for another workflow file, or for the qualification path on another branch,
-//     refuses before the workflow model is read;
-//   - a floor job whose runs-on is a literal label, another input, the attempt input composed with
-//     anything else, or a bare string, refuses;
-//   - a workflow that does not declare the input refuses;
-//   - the production mint, over today's generated fleet-converge model (no qualification mode yet),
-//     refuses rather than admitting anything.
-test fn no_other_workflow_or_label_can_be_dispatched_through_the_ruling() -> Bool {
+// THE RULING'S SCOPE IS CONSTRUCTION, AND THESE ARE ITS REDS -- one claim per independent case, so
+// each pays for its own mint and nothing else (DESIGN section 3: a conjunction of independent cases
+// forced through one budget). Through the one mint, no other workflow and no other label can become
+// a dispatch subject.
+
+// A slot registered for another workflow file refuses before the workflow model is read.
+test fn a_slot_for_another_workflow_file_cannot_become_a_subject() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => slot_refuses(h: h, slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
+    Absent => false
+  }
+}
+
+// The qualification path on another branch is another selected workflow, and refuses the same way.
+test fn a_slot_for_the_qualification_path_on_another_branch_cannot_become_a_subject() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => slot_refuses(h: h, slot_workflow: qualification_selected_workflow(branch: "feature"))
+    Absent => false
+  }
+}
+
+// A floor job whose runs-on is a literal label, another input, the attempt input composed with
+// anything else, or a bare string, refuses; so does a workflow that does not declare the input.
+test fn a_floor_runs_on_other_than_exactly_the_attempt_input_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
-      JitMintDispatchAuthorized { dispatch: d } => {
-  slot_refuses(h: h, slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
-    && slot_refuses(h: h, slot_workflow: qualification_selected_workflow(branch: "feature"))
-    && runs_on_refuses(h: h, d: d, runs_on: SelfHosted { labels: [attempt as String] })
-    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
-    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
-    && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "gunbc-qualification" })
-    && undeclared_input_refuses(h: h, d: d)
-    && (match qualification_dispatch_subject(
-      dispatch: d, delivery: delivered(d: d),
-      floor_job_id: floor_job_id, branch: branch, revision: revision,
-    ) {
-      QualificationSubjectAdmitted { subject: _ } => false
-      QualificationSubjectRefused { refusal: _ } => true
-    })
+      JitMintDispatchAuthorized { dispatch: d } => runs_on_refuses(h: h, d: d, runs_on: SelfHosted { labels: [attempt as String] })
+        && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
+        && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
+        && runs_on_refuses(h: h, d: d, runs_on: RunsOnExpression { expression: "gunbc-qualification" })
+        && undeclared_input_refuses(h: h, d: d)
+      JitMintDispatchRefused { refusal: _ } => false
     }
+    Absent => false
+  }
+}
+
+// THE REAL PATH: the production mint, over today's generated fleet-converge model -- which has no
+// qualification mode yet -- refuses rather than admitting anything.
+test fn the_production_mint_refuses_until_the_qualification_mode_lands() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match dispatch_jit_mint(binding: slot_binding(h: h, slot_workflow: qualification_slot()), authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group_restricted_to(workflow: qualification_slot()), attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
+      JitMintDispatchAuthorized { dispatch: d } => match qualification_dispatch_subject(dispatch: d, delivery: delivered(d: d), floor_job_id: floor_job_id, branch: branch, revision: revision) {
+        QualificationSubjectAdmitted { subject: _ } => false
+        QualificationSubjectRefused { refusal: _ } => true
+      }
       JitMintDispatchRefused { refusal: _ } => false
     }
     Absent => false
