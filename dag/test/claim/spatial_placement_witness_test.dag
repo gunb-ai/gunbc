@@ -40,7 +40,7 @@ import product.placement_supply {
   host_spatial_facts_for,
 }
 import std.types { NonEmptyStr, List }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_physical_inventory {
   operator_physical_site,
   rack_01,

@@ -18,7 +18,7 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 import product.fabric.work { Work, ExecutionRequirements, TrustDomainRef }
 import product.fabric.sanitation { CellId }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
 import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }

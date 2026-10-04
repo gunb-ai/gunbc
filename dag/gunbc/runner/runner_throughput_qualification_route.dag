@@ -8,7 +8,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner.runner_host_filtered_egress { EgressPolicyShape, runner_host_egress_policy }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight, CPUQuota }
 import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReading, systemd_run_transient_wait_unit_command }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import gunbc.runner_slot_desired { RunnerSlotDesired, RunnerSlotCpuQuota, CpuQuotaResolved, SlotCpuQuotaUnbounded, gunbc_runner_slot_desired }
 import gunbc.runner_throughput_qualification {
