@@ -1,0 +1,39 @@
+module test.claim.bare_imported_text_reading_witness_test
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.algebra { filter }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn probe_blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => {
+      let rs: List<CompileDiagnosticCensusRow> = rows
+      rs |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+    }
+  }
+}
+
+// THE STANDING EVIDENCE FOR gunbc.guarantee_stall text_carrier_render_not_keyed_on_identity_stall's
+// program (1). The checker reads a BARE imported v2.std.text String as host text: a host-text primitive
+// over it is admitted. The QUALIFIED spelling of the same declaration is refused. The s_ claims assert
+// today's standing and are expected to FLIP when program (1) (resolver identity on bare imported
+// references) lands -- at which point each becomes a permanent refusal control (DESIGN 4b(4)), not a
+// deletion. The q_ claim is the discriminating control that keeps the s_ claims from passing because
+// the census stopped running: the same mechanism refuses the qualified spelling.
+test fn s_bare_imported_v2_string_into_kernel_primitive_admitted_today() -> Bool {
+  probe_blocking_total(c: compile_dag_diagnostic_census("module probe_bare_import\nimport v2.std.text { String }\nfn text_len(t: String) -> Int { string_length(s: t) }\n")) == 0
+}
+
+test fn q_qualified_v2_string_into_kernel_primitive_refuses() -> Bool {
+  probe_blocking_total(c: compile_dag_diagnostic_census("module probe_qualified\nimport v2.std.text { string_is_empty }\nfn text_len(t: v2.std.text.String) -> Int { string_length(s: t) }\n")) > 0
+}
+
+test fn s_bare_imported_v2_string_concat_admitted_today() -> Bool {
+  probe_blocking_total(c: compile_dag_diagnostic_census("module probe_bare_concat\nimport v2.std.text { String }\nfn twice(t: String) -> String { concat(t, t) }\n")) == 0
+}

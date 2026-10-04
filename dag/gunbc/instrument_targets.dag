@@ -49,6 +49,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
+  V2NativeCensusProducer, ResolveRefusalReading, TypeDeclarationUseReading,
   DependencyDemandCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
@@ -256,6 +257,15 @@ fn v2_native_frontier_label() -> Label {
 // lives where it is authorable, in v2.test.claim.native_census.whole_tree_census_resolve.
 fn v2_native_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "v2-native-census" } }
+}
+
+// THE NOMINAL-TYPE PLAN'S M0 (docs/plans/nominal-type-declaration-plan.md section 2): every type
+// declaration and every `as` site of `dag` + `src/v2`, classified off the RESOLVED and INFERRED trees
+// by the native census-infer walk, with its fixture and unindexed-module controls run first.
+// `gunbc test //gunbc/instruments:type-declaration-use-census`. A report: its numbers are a receipt and
+// are not transcribed into committed prose (DESIGN section 6).
+fn type_declaration_use_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "type-declaration-use-census" } }
 }
 
 // THE EMITTED CLOSURE AS A MULTI-CRATE WORKSPACE (Pkg7e). The seed emits `v2.compiler.compile`'s
@@ -518,8 +528,12 @@ fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
   TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
 }
 
+fn type_declaration_use_census_binding() -> TargetBinding {
+  TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
+}
+
 fn v2_native_census_binding() -> TargetBinding {
-  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer {} }
+  TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer { reading: ResolveRefusalReading } }
 }
 
 fn v2_native_frontier_binding() -> TargetBinding {
@@ -662,7 +676,7 @@ fn instrument_targets() -> List<Label> {
   [
     heads_reading_differential_label(), behavioral_receipt_plan_label(),
     behavioral_receipt_census_label(), behavioral_receipt_selftest_label(),
-    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(),
+    compile_clean_diagnostic_census_label(), self_host_label(), v2_native_cli_label(), v2_native_frontier_label(), v2_native_census_label(), type_declaration_use_census_label(),
     evaluation_store_address_exact_head_label(), primitive_egress_census_label(),
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
@@ -678,7 +692,7 @@ fn instrument_bindings() -> List<TargetBinding> {
   [
     heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
-    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(),
+    compile_clean_diagnostic_census_binding(), self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(), v2_native_census_binding(), type_declaration_use_census_binding(),
     evaluation_store_address_exact_head_binding(), primitive_egress_census_binding(),
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
