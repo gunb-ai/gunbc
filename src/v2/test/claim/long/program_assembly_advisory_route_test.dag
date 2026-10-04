@@ -8,6 +8,7 @@ import v2.compiler.program_assembly {
   program_assembly_ingest_scope_outcome
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import extdeps.communication.medium { Lossless, Medium }
@@ -79,7 +80,7 @@ test fn a_supplied_residue_rides_each_accepted_file_through_the_real_assembly_fo
             spans: span_index_empty(),
             advisories: None
           }
-          match program_assembly_fold_step(state: start, read: advisory_route_read(), lm: dag_language_model(), prepared: prepared, residue: advisory, scope: scope) {
+          match program_assembly_fold_step(state: start, read: advisory_route_read(), lex: prepare_lex_rules(rules: dag_language_model().lex), prepared: prepared, residue: advisory, scope: scope) {
             ProgramAssemblyLocatedFoldFailed { diagnostics: _, spans: _ } => false
             ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: carried } =>
               length(xs: located) == 1
@@ -130,7 +131,7 @@ test fn a_later_refusal_keeps_the_accumulated_advisories_ahead_of_its_fatal_hold
               })
             }
           }
-          match program_assembly_fold_step(state: accumulated, read: advisory_route_refusing_read(), lm: dag_language_model(), prepared: prepared, residue: None, scope: scope) {
+          match program_assembly_fold_step(state: accumulated, read: advisory_route_refusing_read(), lex: prepare_lex_rules(rules: dag_language_model().lex), prepared: prepared, residue: None, scope: scope) {
             ProgramAssemblyLocatedFoldOk { located: _, index: _, alloc: _, spans: _, advisories: _ } => false
             ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
               d.head.reason == ^adv_a
