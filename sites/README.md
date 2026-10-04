@@ -45,3 +45,6 @@ stacked frames with a 150 mm cassette-withdrawal preview, separate shared-power 
 All 32 printed instances passed geometry checks; stack contact and seven sampled withdrawal
 positions were checked. Load rating, retention, continuous swept-volume and cables are not
 qualified. Source and test details: `docs/plans/cassette-stacking-review.md`.
+
+Published revision 07 Site source: `97f2dfb0229d82427b8919f95b8f50cf7a0d526e` (owner-private).
+Stacking model draft: https://github.com/gunb-ai/gunbc/pull/13283 .

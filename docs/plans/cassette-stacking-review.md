@@ -53,3 +53,8 @@ checks above. Both seated levels had zero positive-volume printed intersections.
 withdrawal samples passed after lowering the front cross-tie below the skids. All 17 original
 cassette STL files are byte-identical to r06, including P1 and P2. The six existing cassette
 witnesses passed; the four stacking witnesses cover the new source assembly and negative controls.
+
+Published review: https://altra-chassis-workbench.briansrls448156.chatgpt.site ; owner-private,
+Site source `97f2dfb0229d82427b8919f95b8f50cf7a0d526e`. Draft PR #13283 is stacked on #13222.
+Browser validation passed for the stack view, stop removal/replacement, withdrawal, isolated
+keyboard rotation, cassette and print-group rosters, interfaces, downloads and mobile layout.
