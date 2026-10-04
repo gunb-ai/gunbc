@@ -1,5 +1,6 @@
 module gunbc.runner_microvm_slot_controller
 
+import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { cas_unreadable_slot_detail }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.algebra { trim }
@@ -263,7 +264,10 @@ fn controller_credential_authority() -> GitHubCredentialAuthority {
   }
 }
 
-fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch {
+fn attempt_dispatch(binding: MicroVmCellBinding, state: GitHubAppControlPlaneState, runner_group: MicrovmRunnerGroupStanding) -> JitMintDispatch admit_callers: [
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_under_observed_group"),
+  decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "mint_attempt_credential"),
+] {
   dispatch_jit_mint(
     binding: MicroVmSlotBinding { binding: binding },
     authority: controller_credential_authority(),
@@ -310,7 +314,7 @@ fn mint_attempt_credential(binding: MicroVmCellBinding, state: GitHubAppControlP
         mint_under_observed_group(binding: binding, state: state)
       other => JitMintReceived { delivery: JitCredentialNotDispatched { refusal: other } }
     }
-    JitMintDispatchAuthorized { slot: _, app: _, installation: _, organization: _, request: _ } =>
+    JitMintDispatchAuthorized { dispatch: _ } =>
       mint_under_observed_group(binding: binding, state: state)
   }
 }
