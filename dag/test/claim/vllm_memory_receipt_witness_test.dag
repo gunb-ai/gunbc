@@ -7,7 +7,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
 import gunbc.spark.serving_deployment_selection { ServingExecutionProfile }
 import gunbc.spark.glm_canary_converge { glm_canary_arm, glm_canary_execution_profile }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading, MemoryProfileSummary, GpuKvCacheSize,

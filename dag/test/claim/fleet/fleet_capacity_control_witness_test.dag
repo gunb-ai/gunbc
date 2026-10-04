@@ -3,7 +3,7 @@ module test.claim.fleet_capacity_control_witness_test
 import std.types { Bool, NonEmptyStr, List, String }
 import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.fleet_capacity_control {
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,
   WithdrawnForMaintenance, WithdrawnToReduceSpend, WithdrawnForObservedFault,

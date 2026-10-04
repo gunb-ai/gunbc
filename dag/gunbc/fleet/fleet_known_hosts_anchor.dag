@@ -777,3 +777,19 @@ fn shape_fleet_ssh_exec(
 fn shape_ssh_shell_exec(host: NonEmptyStr, argv: List<String>) -> List<String> {
   concat([host as String, "--"], argv)
 }
+
+// Export only an exact enrolled public row after rereading the sealed anchor's identity.
+// Network scans cannot enter this projection, and aliases require their own enrollment row.
+fn fleet_openssh_known_host_line(policy: FleetOpenSshTrustPolicy, host: NonEmptyStr) -> NonEmptyStr? {
+  let readback = Filesystem.Read(path: policy.anchor.path as String)
+  if !readback.success || readback.content == "" { none }
+  else { match compare_content_hash(left: policy.anchor.registry_identity, right: content_hash_of_value(value: readback.content as NonEmptyStr)) {
+    ContentHashEqual => {
+      let matching = filter(split(s: readback.content, delimiter: "\n"), line => starts_with(s: line, prefix: concat(host as String, " ")))
+      if matching.count() != 1 { none }
+      else { match matching.first() { Present { value: enrolled_line } => Present { value: enrolled_line as NonEmptyStr } Absent => none } }
+    }
+    ContentHashDifferent => none
+    ContentHashCrossFamilyIncomparable => none
+  } }
+}
