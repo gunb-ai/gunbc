@@ -22,7 +22,6 @@ import gunbc.deployment_risk {
   resolve_deployment_bindings,
   prod_role_selection,
   deployment_external_binding_sets,
-  deployment_risk_interfaces,
   srv1_daily_workspace_deployment,
   srv1_lab_codex_feedback_deployment,
   srv2_deploy_deployment,
@@ -135,12 +134,6 @@ fn dashboard_instances() -> List<HostDashboardInstance> {
 test fn exactly_one_dashboard_instance_derives_prod_risk_and_it_is_the_daily_workspace() -> Bool {
   let prod = filter(dashboard_instances(), i => dashboard_instance_risk_class(instance: i) == ProdRisk)
   count(prod) == 1 && all(prod, i => i.deployment == srv1_daily_workspace_deployment)
-}
-
-// EVERY INSTANCE'S DEPLOYMENT EXPOSES THE INTERFACE: its id appears in deployment_risk_interfaces
-// exactly once, so no realization exists whose deployment carries no harm bet.
-test fn every_dashboard_deployment_exposes_exactly_one_risk_interface() -> Bool {
-  all(dashboard_instances(), i => count(filter(deployment_risk_interfaces, r => r.deployment == i.deployment)) == 1)
 }
 
 // THE FAILURE-MODE ROW RESOLVES AND NAMES THIS WITNESS AS ITS EVIDENCE, so a rename here cannot

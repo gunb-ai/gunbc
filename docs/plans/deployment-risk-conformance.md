@@ -19,7 +19,8 @@ Operator direction 2026-10-03; vocabulary fixed the same day by a side-chat ruli
 ## Deliverables
 
 1. **Model** (this PR): `gunbc.deployment_risk`; `HostDashboardInstance.deployment` (required, all six constructors); `dashboard_instance_risk_class`; the failure-mode row `a_test_deployment_acts_on_the_prod_deployments_state`; RED `test.claim.deployment_risk_witness_test`.
-   - Declared frontier (§3c): `resolve_deployment_bindings` and `dashboard_instance_risk_class` gain production consumers in deliverables 2 and 3.1; the harm bets are read by the deliverable-5 reviewer and decide nothing.
+   - Declared frontier (§3c): `resolve_deployment_bindings` and `dashboard_instance_risk_class` gain production consumers in deliverables 2 and 3.1.
+   - Deferred to deliverable 2 (review 74937): `DeploymentRiskInterface` and `DeploymentHarmMagnitudeBet` land with their first executing consumer, the operator-disposition gate (which actions on a deployment need an operator), and the bet's magnitude is grounded as an order of magnitude over `std.measure` `Duration`, not a bare `Int`.
 1b. **Machine qualification migration**: one motion over machine_intake (re-census on main first; coordinate warm-crane-577's mtcollins1 untangle lane). eager-gull-22 handed it to this lane.
 2. **Repoint the prod pins** through `prod_role_selection` (broker owner, fabric storage placement, approval client/store/trust, serve/dispatch entry points, apply's prod peer → `DashboardProtectedSibling`, `fleet_reach_endpoint`). RED: a fixture selection moves the broker owner and storage placement.
 3. **Split shared bindings**, one PR each: ntfy → Codex account/home → admitted ref → publication identity/GitHub App → R2/GCP → OIDC. Each adds a field to `DeploymentExternalBindingSet` and either a TestRisk resource (operator approval first) or a standing refusal.

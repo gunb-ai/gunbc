@@ -2,7 +2,6 @@ module gunbc.deployment_risk
 
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import v2.std.collection { Present, Absent }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
@@ -12,7 +11,8 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 //
 //   1. WHICH deployment holds the prod role       -- ProdRoleSelection, one row, the only switch
 //   2. WHAT a class attaches to                   -- DeploymentExternalBindingSet, one per class
-//   3. WHAT harm a deployment could do if wrong   -- DeploymentHarmMagnitudeBet, a 4d bet
+//   3. WHAT harm a deployment could do if wrong   -- DeploymentHarmMagnitudeBet, a 4d bet (lands
+//      with its first consumer; see the interface section below)
 //
 // The class is DERIVED from (1) and from nothing else. It is not authored on a deployment, it is
 // not inferred from a host name, "live", main, or a release stage, and the harm bet never decides
@@ -52,7 +52,7 @@ data macbook_local_deployment: DeploymentId = DeploymentId { name: "macbook-loca
 // ── The class ───────────────────────────────────────────────────────────────────────────────────
 // TWO POLES, because that is what the operator ruled ("prod is extreme risk, test is zero risk").
 // An ordered scale was considered and refused: every intermediate value would need a consequence
-// with a consumer (DESIGN 3c), and none exists. The magnitude lives on the bet, not here.
+// with a consumer (DESIGN 3c), and none exists. The magnitude belongs on the bet, not here.
 type DeploymentRiskClass
   = TestRisk
   | ProdRisk
@@ -75,21 +75,6 @@ fn deployment_risk_class(selection: ProdRoleSelection, deployment: DeploymentId)
     NoProdRole => TestRisk
     ProdRoleHeldBy { deployment: holder } => if holder == deployment { ProdRisk } else { TestRisk }
   }
-}
-
-// ── The bet ─────────────────────────────────────────────────────────────────────────────────────
-// A FERMI ORDER OF MAGNITUDE FOR THE HARM CONDITIONAL ON THE DEPLOYMENT DOING THE WRONG THING --
-// not a probability, not an SLA, and not the class. Harm is denominated in operator-hours to
-// recover, because time is the one value DESIGN 1 lets us assume is shared. ZeroHarm is its own
-// arm because a decade has no zero. Precedent for the typing: gunbc.spark.v41_capacity_measurement
-// V41ByteRangeBet, whose standing carries the reading that would settle it.
-type DeploymentHarmMagnitude
-  = ZeroHarm
-  | HarmDecade { log10_operator_hours: Int }
-
-type DeploymentHarmMagnitudeBet {
-  magnitude: DeploymentHarmMagnitude
-  standing: CitedFigureStanding
 }
 
 // ── The bindings ────────────────────────────────────────────────────────────────────────────────
@@ -151,71 +136,15 @@ fn resolve_deployment_bindings(
   }
 }
 
-// ── The interface ───────────────────────────────────────────────────────────────────────────────
-// WHAT EVERY CONVERGED DEPLOYMENT EXPOSES. It declares its identity and its harm bet; it consumes
-// its class and its bindings ONLY through deployment_risk_class and resolve_deployment_bindings
-// over prod_role_selection and deployment_external_binding_sets. The obligations a conforming
-// deployment carries, one per clause of the contract:
-//   - identity:  it names its DeploymentId and never another deployment's roots;
-//   - class:     it never authors a class; it derives one from prod_role_selection;
-//   - bindings:  every external attachment comes from its resolved set, never a literal;
-//   - refusal:   DeploymentBindingSetAbsent / Ambiguous stops the line, it never borrows;
-//   - retry:     its convergence is safe to re-run, and under today's operator policy it converges
-//                to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).
-// Not a DeploymentSpec (the desired realization convergence consumes), not an actuator, not a host
-// interface, not a release-stage model.
-type DeploymentRiskInterface {
-  deployment: DeploymentId
-  harm: DeploymentHarmMagnitudeBet
-}
-
-fn deployment_risk_interface_class(interface: DeploymentRiskInterface) -> DeploymentRiskClass {
-  deployment_risk_class(selection: prod_role_selection, deployment: interface.deployment)
-}
-
-fn deployment_risk_interface_bindings(interface: DeploymentRiskInterface) -> DeploymentBindingResolution {
-  resolve_deployment_bindings(
-    selection: prod_role_selection,
-    sets: deployment_external_binding_sets,
-    deployment: interface.deployment,
-  )
-}
-
-// THE BETS, one per deployment. Every one is TranscribedUncited: no incident cost has been
-// measured, and the read obligation names what would ground it. The daily workspace is the one
-// whose wrong action costs the operator's working day and the shared approval channel; the labs
-// and previews are disposable by construction. These values are bets and are consumed by nothing
-// that decides -- not the class, not a binding.
-fn uncited_harm_bet(magnitude: DeploymentHarmMagnitude, read_obligation: NonEmptyStr) -> DeploymentHarmMagnitudeBet {
-  DeploymentHarmMagnitudeBet { magnitude: magnitude, standing: TranscribedUncited { read_obligation: read_obligation } }
-}
-
-data deployment_risk_interfaces: List<DeploymentRiskInterface> = [
-  DeploymentRiskInterface {
-    deployment: srv1_daily_workspace_deployment,
-    harm: uncited_harm_bet(
-      magnitude: HarmDecade { log10_operator_hours: 1 },
-      read_obligation: "operator-hours to recover, summed over the wrong-instance incidents filed under gunbc.recurring_failure_mode a_test_deployment_acts_on_the_prod_deployments_state" as NonEmptyStr,
-    ),
-  },
-  DeploymentRiskInterface {
-    deployment: srv1_lab_codex_feedback_deployment,
-    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the lab costing no operator time beyond the run" as NonEmptyStr),
-  },
-  DeploymentRiskInterface {
-    deployment: srv2_preview_codex_feedback_deployment,
-    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the preview costing no operator time beyond the run" as NonEmptyStr),
-  },
-  DeploymentRiskInterface {
-    deployment: srv2_deploy_deployment,
-    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of srv2-deploy costing no operator time beyond the run" as NonEmptyStr),
-  },
-  DeploymentRiskInterface {
-    deployment: srv2_lab_v1_deletion_deployment,
-    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the lab costing no operator time beyond the run" as NonEmptyStr),
-  },
-  DeploymentRiskInterface {
-    deployment: macbook_local_deployment,
-    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a reset of the macbook-local instance root costing no operator time beyond the run" as NonEmptyStr),
-  },
-]
+// ── The interface, and the bet ──────────────────────────────────────────────────────────────────
+// DeploymentRiskInterface (each deployment exposes its identity and its DeploymentHarmMagnitudeBet;
+// it consumes its class and bindings only through deployment_risk_class and
+// resolve_deployment_bindings) and the bet itself are approved terms that land WITH THEIR FIRST
+// EXECUTING CONSUMER, not before it (DESIGN 3c; review 74937). That consumer is the operator-
+// disposition gate of deliverable 2 (docs/plans/deployment-risk-conformance.md), which is also where
+// the bet's magnitude gains a grounded carrier -- an order of magnitude over std.measure Duration --
+// rather than a bare Int named for its unit. Until then the obligations a conforming deployment
+// carries are: it names its DeploymentId and never another deployment's roots; it never authors a
+// class; every external attachment comes from its resolved set, never a literal; an absent or
+// ambiguous set stops the line; and its convergence is safe to re-run, converging under today's
+// operator policy to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).
