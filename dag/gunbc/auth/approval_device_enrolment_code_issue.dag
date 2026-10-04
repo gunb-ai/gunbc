@@ -14,7 +14,9 @@ import gunbc.live_deploy.slice_bounds { approval_broker_slice_memory_max, approv
 import extdeps.tools.env { env_prefixed_argv }
 import v2.std.orchestration { EnvSet }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.auth.approval_broker_placement { approval_broker_host_under, approval_broker_base_url_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import gunbc.roadmap_dashboard_instance { ProdRoleRealization, prod_role_realization, prod_role_realization_refusal_detail }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
@@ -37,7 +39,7 @@ import gunbc.live_deploy.release_locus {
 // ── THE OPERATOR'S CODE-ISSUING VERB, over the fleet SSH administrator edge ──────────────────
 // A FleetConvergeWorkflowMode step (ApprovalDeviceEnrolmentCodeIssue) run on the host-pinned
 // runner, exactly as gunbc.auth.approval_keyring_converge reaches srv1: the job prepares the fleet
-// SSH context, connects to srv1 as the bootstrap principal, and elevates to the OPERATOR'S POSIX
+// SSH context, connects to the broker's placed host as the bootstrap principal, and elevates to the OPERATOR'S POSIX
 // USER -- the owner of approval_device_store_root and a reader of the ntfy publisher token -- to
 // run gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code from the broker's admitted
 // release tree. The remote verb writes the code's slot and delivers the code over the operator's
@@ -53,9 +55,28 @@ import gunbc.live_deploy.release_locus {
 // missing binary and a loud remote failure, never a fallback to another tree.
 data approval_device_enrolment_code_issue_attempt_raw: String = "approval-device-enrolment-code-issue-ci"
 
-fn enrolment_code_issue_ssh_target() -> SshTarget {
+// THE BROKER'S HOST IS PLACEMENT'S, NOT A SPELLED srv1: the verb runs where the broker is installed,
+// which follows the prod-role holder (gunbc.auth.approval_broker_placement). The ssh target, the
+// dispatch host check and the base URL the verb is given all come from that one placement, and under
+// a refused realization the step refuses before reaching any host.
+type EnrolmentCodeIssuePlacement
+  = EnrolmentCodeIssuePlaced { host: NonEmptyStr, base_url: NonEmptyStr }
+  | EnrolmentCodeIssueUnplaced { detail: NonEmptyStr }
+
+fn enrolment_code_issue_placement_under(realization: ProdRoleRealization) -> EnrolmentCodeIssuePlacement {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostRefused { cause } =>
+      EnrolmentCodeIssueUnplaced { detail: ("approval device enrolment code: " + prod_role_realization_refusal_detail(cause: cause)) as NonEmptyStr }
+    ApprovalBrokerHostResolved { host } => match approval_broker_base_url_under(realization: realization) {
+      ApprovalBrokerAddressResolved { value: url } => EnrolmentCodeIssuePlaced { host: host, base_url: url }
+      ApprovalBrokerAddressRefused { detail } => EnrolmentCodeIssueUnplaced { detail: detail }
+    }
+  }
+}
+
+fn enrolment_code_issue_ssh_target(host: NonEmptyStr) -> SshTarget {
   SshTarget {
-    endpoint: fleet_probe_endpoint_for(host: operator_host_srv1 as String) as NonEmptyStr,
+    endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
     principal: executor_bootstrap_principal.login,
   }
 }
@@ -97,12 +118,13 @@ fn enrolment_code_issue_scope_properties() -> List<SystemdRunProperty> {
 // supplementary groups; systemd-run's own --uid/--gid did not, and every code was minted and then
 // refused delivery (fleet-converge run 37098981121). The drop sits inside the scope so the bound
 // still covers the whole verb.
-fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<String> {
+fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding, base_url: NonEmptyStr) -> List<String> {
   let root = srv1_gunbc_approval_broker_root as String
   let release_dir = approval_broker_release_dir(root: root, revision: revision)
   let account = fleet_posix_operator_user.name
   let verb = env_prefixed_argv(bindings: [
     EnvSet { name: gunbc_workspace_root_env_name, value: release_dir },
+    EnvSet { name: approval_broker_base_url_env_name as String, value: base_url as String },
   ], command_argv: [
     approval_broker_release_binary_path(root: root, revision: revision),
     "run",
@@ -117,18 +139,18 @@ fn enrolment_code_issue_remote_argv(revision: ReleaseRevisionBinding) -> List<St
   concat([inv.bin_path], inv.args)
 }
 
-fn enrolment_code_issue_refuses_off_srv1(host: String) -> ProcessExit {
-  if host == (operator_host_srv1 as String) { ExitSuccess }
-  else { exit_failure(reason: "approval device enrolment code: refuses host '" + host + "': the store lives on the machine that serves /approve, which is " + (operator_host_srv1 as String)) }
+fn enrolment_code_issue_refuses_off_broker_host(host: String, broker_host: NonEmptyStr) -> ProcessExit {
+  if host == (broker_host as String) { ExitSuccess }
+  else { exit_failure(reason: "approval device enrolment code: refuses host '" + host + "': the store lives on the machine that serves /approve, which is " + (broker_host as String)) }
 }
 
-fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding) -> CliWireResponse
+fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding, host: NonEmptyStr, base_url: NonEmptyStr) -> CliWireResponse
   uses net: Network
 {
   match prepare_fleet_ssh_agent_context(attempt_raw: approval_device_enrolment_code_issue_attempt_raw) {
     FleetSshContextRefused { cause: c } => CliWireUnprintable { cause: ("approval device enrolment code: " + c) as NonEmptyStr }
     FleetSshContextReady { context: context, receipt: _ } =>
-      match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(), context: context, argv: enrolment_code_issue_remote_argv(revision: revision)) {
+      match typed_argv_exec_over_fleet_ssh(target: enrolment_code_issue_ssh_target(host: host), context: context, argv: enrolment_code_issue_remote_argv(revision: revision, base_url: base_url)) {
         TypedArgvExecRefused { reason: why } => CliWireUnprintable { cause: ("approval device enrolment code: remote invocation refused: " + why) as NonEmptyStr }
         TypedArgvExecConverged { result: r } =>
           if r.success { CliWirePrintable { bytes: r.stdout, exit: ExitSuccess } }
@@ -137,21 +159,24 @@ fn enrolment_code_issue_remote(revision: ReleaseRevisionBinding) -> CliWireRespo
   }
 }
 
-// THE STEP ENTRY: one host per run, named by the dispatch and required to be srv1; one release,
-// named by the dispatch.
+// THE STEP ENTRY: one host per run, named by the dispatch and required to be the broker's placed host;
+// one release, named by the dispatch.
 fn approval_device_enrolment_code_issue_wet() -> CliWireResponse
   uses net: Network
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " " + d + "; one host per run, named by the dispatch") as NonEmptyStr }
-    ActionsVariablePresent { value: host } =>
-      match enrolment_code_issue_refuses_off_srv1(host: host) {
-        ExitSuccess =>
-          match read_expected_revision() {
-            ExpectedRevisionAbsent { variable: v, detail: d } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " " + d + "; the release to run is named by the dispatch") as NonEmptyStr }
-            ExpectedRevisionPresent { revision: rev } => enrolment_code_issue_remote(revision: RevisionBoundAtEmission { revision: rev as CommitSha })
-          }
-        ExitFailure { code: _, reason: why } => CliWireUnprintable { cause: why as NonEmptyStr }
-      }
+    ActionsVariablePresent { value: host } => match enrolment_code_issue_placement_under(realization: prod_role_realization()) {
+      EnrolmentCodeIssueUnplaced { detail } => CliWireUnprintable { cause: detail }
+      EnrolmentCodeIssuePlaced { host: broker_host, base_url } =>
+        match enrolment_code_issue_refuses_off_broker_host(host: host, broker_host: broker_host) {
+          ExitSuccess =>
+            match read_expected_revision() {
+              ExpectedRevisionAbsent { variable: v, detail: d } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " " + d + "; the release to run is named by the dispatch") as NonEmptyStr }
+              ExpectedRevisionPresent { revision: rev } => enrolment_code_issue_remote(revision: RevisionBoundAtEmission { revision: rev as CommitSha }, host: broker_host, base_url: base_url)
+            }
+          ExitFailure { code: _, reason: why } => CliWireUnprintable { cause: why as NonEmptyStr }
+        }
+    }
   }
 }

@@ -121,7 +121,10 @@ import gunbc.live_deploy.slice_bounds {
   repository_convergence_slice_memory_max, repository_convergence_slice_memory_high,
   repository_convergence_slice_memory_swap_max,
 }
+import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.live_deploy.spec {
+  HoldsProdRoleSingletons, HoldsNoRoleSingleton,
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_unit_name, deployment_fabric_storage_serve_endpoint, deployment_fabric_storage_door_socket, deployment_approval_broker_front_door_endpoints,
   gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
@@ -663,6 +666,7 @@ fn live_deploy_approval_broker_unit_file_on(
       ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
       WorkingDirectory { path: release_dir as NonEmptyStr },
       release_locus_workspace_root_environment(release_dir: release_dir),
+      approval_broker_base_url_environment(spec: spec),
       ExecStart { command: join([
         approval_broker_release_binary_path(root: svc.repo_root as String, revision: revision),
         " serve --source-root dag --source-root src/v2",
@@ -1815,6 +1819,21 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // from a directory that is not a git checkout, and a locus is not one -- measured on srv1
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
+// THE BROKER IS GIVEN ITS PUBLIC BASE URL, built from the holder token the spec carries
+// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder), so the serving broker
+// reads where it runs instead of resolving it. A spec holding no role never reaches a broker unit
+// write (apply_approval_broker_unit_write_steps is empty for it); if one is rendered anyway the
+// binding is a refusal marker the broker's address read rejects as a non-URL, never a guessed host.
+data approval_broker_base_url_unbound_marker: String = "__GUNBC_DEPLOY_REFUSED__no-prod-role-holder"
+
+fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {
+  let value = match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } => approval_broker_base_url_of_holder(holder: holder) as String
+    HoldsNoRoleSingleton => approval_broker_base_url_unbound_marker
+  }
+  Environment { assignment: join([approval_broker_base_url_env_name as String, "=", value], "") as NonEmptyStr }
+}
+
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
   Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
 }

@@ -2,6 +2,7 @@ module gunbc.auth.approval_broker_placement
 
 import std.types { NonEmptyStr }
 import gunbc.roadmap_dashboard_instance {
+  ProdRoleHolder,
   ProdRoleRealization,
   ProdRoleRealizedBy,
   ProdRoleRealizationRefused,
@@ -14,7 +15,9 @@ import gunbc.auth.approval_broker_endpoint {
   ApprovalBrokerAddressResolved,
   ApprovalBrokerAddressRefused,
   approval_broker_public_host_on,
+  approval_broker_base_url_on,
 }
+import gunbc.fleet_tailnet { fleet_tailnet_domain }
 
 // WHERE THE APPROVAL BROKER IS INSTALLED, for readers OUTSIDE the broker process: the GCP IAM
 // converge job that must run beside it (gunbc.fleet_converge_workflow) and the approvals app's build
@@ -42,6 +45,21 @@ fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: N
   match approval_broker_host_under(realization: realization) {
     ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: approval_broker_public_host_on(host: host, domain: domain) }
     ApprovalBrokerHostRefused { cause } =>
+      ApprovalBrokerAddressRefused { detail: ("approval broker address unresolved: " + prod_role_realization_refusal_detail(cause: cause)) as NonEmptyStr }
+  }
+}
+
+// THE BASE URL THE BROKER IS GIVEN, from the holder token itself: the emitter binds it into the unit
+// and the enrolment verb's environment (gunbc.auth.approval_broker_endpoint
+// approval_broker_base_url_env_name), so the serving broker never resolves its own host.
+fn approval_broker_base_url_of_holder(holder: ProdRoleHolder) -> NonEmptyStr {
+  approval_broker_base_url_on(host: holder.instance.host_identity, domain: fleet_tailnet_domain)
+}
+
+fn approval_broker_base_url_under(realization: ProdRoleRealization) -> ApprovalBrokerAddress {
+  match realization {
+    ProdRoleRealizedBy { holder } => ApprovalBrokerAddressResolved { value: approval_broker_base_url_of_holder(holder: holder) }
+    ProdRoleRealizationRefused { cause } =>
       ApprovalBrokerAddressRefused { detail: ("approval broker address unresolved: " + prod_role_realization_refusal_detail(cause: cause)) as NonEmptyStr }
   }
 }

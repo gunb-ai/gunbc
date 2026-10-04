@@ -77,6 +77,9 @@ import gunbc.live_deploy.role_singleton_convergence {
   role_singleton_observation_of,
 }
 import gunbc.fleet_converge_workflow { fleet_converge_gcp_iam_converge_job_under }
+import gunbc.live_deploy.emit { approval_broker_base_url_environment, approval_broker_base_url_unbound_marker }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, approval_broker_serving_base_url_of, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import extdeps.systemd.unit_file { SystemdServiceDirective, Environment }
 import extdeps.github.actions { SelfHosted, RunStep }
 import gunbc.fabric_storage_placement {
   FabricStoragePlacementRefused,
@@ -373,4 +376,33 @@ test fn the_real_selection_places_every_singleton_on_its_holder_and_converges_as
     && all(others, s => spec_holds_no_singleton(spec: s))
     && any(job_labels, l => l == (srv1_live_dashboard_instance().host_identity as String))
     && noop
+}
+
+// ── The broker is GIVEN its address, at the emitted-unit boundary ───────────────────────────────
+// The broker unit's Environment= line is built from the spec's holder token: srv2's base URL when the
+// role moves to srv2-deploy, srv1's under today's selection, and the refusal marker -- which the
+// broker's own read rejects as not an https URL -- for a spec holding no role.
+fn broker_env_assignment(spec: DeploymentSpec) -> String {
+  match approval_broker_base_url_environment(spec: spec) {
+    Environment { assignment } => assignment as String
+    _ => ""
+  }
+}
+
+fn bound(value: String) -> String {
+  join([approval_broker_base_url_env_name as String, "=", value], "")
+}
+
+test fn the_broker_unit_is_given_the_holders_base_url_and_a_non_holder_gets_a_refusal() -> Bool {
+  let moved = roster_specs_under(realization: fx_moved())
+  let real = roster_specs_under(realization: prod_role_realization())
+  let srv2_moved = moved |> filter(s => is_srv2_deploy(spec: s))
+  let srv1_moved = moved |> filter(s => (s.instance_id as String) == (srv1_live_dashboard_instance().instance_id as String))
+  let live_real = real |> filter(s => (s.instance_id as String) == (srv1_live_dashboard_instance().instance_id as String))
+  count(srv2_moved) == 1 && count(srv1_moved) == 1 && count(live_real) == 1
+    && all(srv2_moved, s => starts_with(s: broker_env_assignment(spec: s), prefix: bound(value: "https://srv2.")))
+    && all(live_real, s => starts_with(s: broker_env_assignment(spec: s), prefix: bound(value: "https://srv1.")))
+    && all(srv1_moved, s => broker_env_assignment(spec: s) == bound(value: approval_broker_base_url_unbound_marker))
+    && match approval_broker_serving_base_url_of(bound: Present { value: approval_broker_base_url_unbound_marker }) { ApprovalBrokerAddressRefused { detail: _ } => true  _ => false }
+    && match approval_broker_serving_base_url_of(bound: none) { ApprovalBrokerAddressRefused { detail: _ } => true  _ => false }
 }

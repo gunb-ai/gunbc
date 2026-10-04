@@ -20,7 +20,7 @@ import gunbc.auth.approval_ntfy_access_readback {
   AclEstablished, AclRefused,
   approval_ntfy_runtime_reading, approval_ntfy_channel_verdict, approval_ntfy_acl_deviation_sentence,
 }
-import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url, ApprovalBrokerAddress, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.auth.approval_request_submission { PublisherTokenRead, read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable }
 import gunbc.auth.approval_device_redemption {
   approval_device_store_root, issue_enrolment_code,
@@ -146,22 +146,22 @@ fn enrolment_code_issuance_response(i: EnrolmentCodeIssuance) -> CliWireResponse
 // executed by a claim on the route it has (review 69755 of gunbc#12013): the slot write runs on
 // the wet route against a fresh root, and the publish -- with the receipt minted from the
 // published message and never from the code -- runs on the hermetic ntfy arm.
-fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, expires_at: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance admit_callers: [
+fn issue_and_deliver_enrolment_code_until(root: NonEmptyStr, now: Timestamp, expires_at: Timestamp, code: NonEmptyStr, publisher: PublisherTokenRead, broker: ApprovalBrokerAddress) -> EnrolmentCodeIssuance admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
   decl_ref(module_path: "test.claim.approval_device_enrolment_code_wet_witness_test", decl_name: "the_code_slot_is_written_before_delivery_by_real_execution"),
 ] {
   match issue_enrolment_code(root: root, code: code, issued_at: now, expires_at: expires_at) {
     DeviceStoreSlotOccupied => EnrolmentCodeIssuanceRefused { cause: "the minted code's slot is already occupied; run again" }
     DeviceStoreRefused { detail: d } => EnrolmentCodeIssuanceRefused { cause: d as String }
-    DeviceStoreWritten => deliver_enrolment_code(code: code, expires_at: expires_at, publisher: publisher)
+    DeviceStoreWritten => deliver_enrolment_code(code: code, expires_at: expires_at, publisher: publisher, broker: broker)
   }
 }
 
-fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead) -> EnrolmentCodeIssuance admit_callers: [
+fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: PublisherTokenRead, broker: ApprovalBrokerAddress) -> EnrolmentCodeIssuance admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_and_deliver_enrolment_code_until"),
   decl_ref(module_path: "test.claim.approval_device_enrolment_code_witness_test", decl_name: "the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code"),
 ] {
-  match approval_broker_serving_base_url() {
+  match broker {
     ApprovalBrokerAddressRefused { detail } => EnrolmentCodeIssuanceRefused { cause: detail as String }
     ApprovalBrokerAddressResolved { value: url } => {
       let message = enrolment_code_notification(code: code, expires_at: expires_at, approval_url: url)
@@ -208,7 +208,7 @@ fn issue_device_enrolment_code(revision: String) -> CliWireResponse
           match mint_enrolment_code() {
             Absent => CliWireUnprintable { cause: "the entropy read did not yield the requested octets" }
             Present { value: code } =>
-              enrolment_code_issuance_response(i: issue_and_deliver_enrolment_code_until(root: approval_device_store_root, now: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window), code: code, publisher: read_publisher_token()))
+              enrolment_code_issuance_response(i: issue_and_deliver_enrolment_code_until(root: approval_device_store_root, now: now, expires_at: device_instant_plus(t: now, s: approval_enrolment_code_window), code: code, publisher: read_publisher_token(), broker: approval_broker_serving_base_url()))
           }
       }
   }
