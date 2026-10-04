@@ -35,7 +35,20 @@ type GenericIdentityContext {
   enclosing: String
   generic_names: List<String>
   si: Map<String, NewlineIndex>
+  sigs: Map<String, ResolvedFuncSig>
 }
+
+// WHOSE PARAMETER A MARKED NODE NAMES, RELATIVE TO WHERE IT WAS FOUND. A node carrying another
+// declaration's TypeParameter mark is that declaration's parameter left unsubstituted, and there are
+// two causes that must not share a count. Where a value argument of the owner mentions the
+// parameter, an argument could have bound it and did not: a substitution loss. Where none does (a
+// nullary generic constructor such as an empty map), only an expected type could bind it: unbound
+// for want of context, which is a different defect with a different repair.
+type ForeignParameterReading
+  = OwnParameterOrUnmarked
+  | ForeignOwnerIsNotAFunction
+  | ForeignParameterInAValueArgument
+  | ForeignParameterInNoValueArgument
 
 // ONE OBSERVED TYPE NODE. `spelled` is the node's own label and `resolved_label` the label of what it
 // resolves to; they differ at a kernel container's element child, which is spelled after the
@@ -54,6 +67,7 @@ type GenericIdentityRow {
   type_variable_id: String
   carries_type_variable: Bool
   resolved_label: String
+  foreign: ForeignParameterReading
 }
 
 // A POPULATION THIS READER DOES NOT REACH. `would_observe` names what a measurement of it needs, so
@@ -105,6 +119,57 @@ fn gi_declaration_is_type_parameter(d: DeclarationRef?) -> Bool {
   }
 }
 
+fn gi_declaration_key(d: DeclarationRef?) -> String {
+  match d {
+    Present { value: r } => declaration_ref_display_key(ref: r)
+    Absent => ""
+  }
+}
+
+// Whether a type mentions the parameter named by `key`, by the mark and never by the spelling.
+fn gi_type_mentions_parameter(n: Node, key: String) -> Bool {
+  if gi_is_bare(n: n) {
+    gi_declaration_is_type_parameter(d: n.declaration) && gi_declaration_key(d: n.declaration) == key
+  } else {
+    let is_arrow = match n.connective { Arrow => true  _ => false }
+    let in_children = n.children |> any(c => gi_type_mentions_parameter(n: c, key: key))
+    let in_params = is_arrow && (n.params |> any(p => gi_type_mentions_parameter(n: param_node_type_expr(n: p), key: key)))
+    let in_return = is_arrow && match n.inferred {
+      Present { value: Resolved { node: rt } } => gi_type_mentions_parameter(n: rt, key: key)
+      _ => false
+    }
+    in_children || in_params || in_return
+  }
+}
+
+fn gi_sig_key(module_path: String, decl_name: String) -> String {
+  concat(concat(module_path, "::"), decl_name)
+}
+
+fn gi_foreign_reading(ctx: GenericIdentityContext, n: Node) -> ForeignParameterReading {
+  match n.declaration {
+    Absent => OwnParameterOrUnmarked
+    Present { value: r } =>
+      if !gi_declaration_is_type_parameter(d: n.declaration) {
+        OwnParameterOrUnmarked
+      } else if (r.module_path as String) == ctx.module_file && (r.decl_name as String) == ctx.enclosing {
+        OwnParameterOrUnmarked
+      } else {
+        match map_get(ctx.sigs, gi_sig_key(module_path: r.module_path as String, decl_name: r.decl_name as String)) {
+          Absent => ForeignOwnerIsNotAFunction
+          Present { value: sig } =>
+            let key = declaration_ref_display_key(ref: r)
+            let value_params = sig.params |> filter(p => !param_is_generic_decl(p: p, source_indices: ctx.si))
+            if value_params |> any(p => gi_type_mentions_parameter(n: param_node_type_expr(n: p), key: key)) {
+              ForeignParameterInAValueArgument
+            } else {
+              ForeignParameterInNoValueArgument
+            }
+        }
+      }
+  }
+}
+
 fn gi_type_variable_id(n: Node) -> String {
   match n.inferred {
     Present { value: TypeVariable { id: tv } } => tv
@@ -147,7 +212,8 @@ fn gi_node_rows(ctx: GenericIdentityContext, carrier: String, path: String, pare
       declaration: n.declaration,
       type_variable_id: gi_type_variable_id(n: n),
       carries_type_variable: has_tv,
-      resolved_label: resolved
+      resolved_label: resolved,
+      foreign: gi_foreign_reading(ctx: ctx, n: n)
     }]
   } else {
     []
@@ -203,7 +269,8 @@ fn gi_awaiting_row(ctx: GenericIdentityContext) -> GenericIdentityRow {
     declaration: none,
     type_variable_id: "",
     carries_type_variable: false,
-    resolved_label: ""
+    resolved_label: "",
+    foreign: OwnParameterOrUnmarked
   }
 }
 
@@ -221,12 +288,12 @@ fn gi_generic_names(params: List<Node>, si: Map<String, NewlineIndex>) -> List<S
 
 // A SIGNATURE WITH NO TYPE PARAMETER IS NOT READ. Its formals name no generic of its own, and a
 // kernel element child inside them is the same population the body walk reads at every expression.
-fn gi_sig_rows(module_file: String, sig: ResolvedFuncSig, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+fn gi_sig_rows(module_file: String, sig: ResolvedFuncSig, si: Map<String, NewlineIndex>, sigs: Map<String, ResolvedFuncSig>) -> List<GenericIdentityRow> {
   let names = gi_generic_names(params: sig.params, si: si)
   if (names |> count) == 0 {
     []
   } else {
-    let ctx = GenericIdentityContext { module_file: module_file, enclosing: sig.name, generic_names: names, si: si }
+    let ctx = GenericIdentityContext { module_file: module_file, enclosing: sig.name, generic_names: names, si: si, sigs: sigs }
     let value_params = sig.params |> filter(p => !param_is_generic_decl(p: p, source_indices: si))
     let param_rows = value_params |> flat_map(p =>
       gi_type_rows(ctx: ctx, carrier: "signature_param_type", path: param_node_name_at(n: p, source_indices: si), parent_label: "", n: param_node_type_expr(n: p)))
@@ -253,7 +320,7 @@ fn gi_expr_rows(ctx: GenericIdentityContext, e: Node) -> List<GenericIdentityRow
   concat(concat(concat(own, child_rows), param_rows), body_rows)
 }
 
-fn gi_item_body_rows(module_file: String, item: Node, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+fn gi_item_body_rows(module_file: String, item: Node, si: Map<String, NewlineIndex>, sigs: Map<String, ResolvedFuncSig>) -> List<GenericIdentityRow> {
   match item.body {
     Absent => []
     Present { value: b } =>
@@ -262,18 +329,37 @@ fn gi_item_body_rows(module_file: String, item: Node, si: Map<String, NewlineInd
           module_file: module_file,
           enclosing: authored_name_at(source_indices: si, node: item),
           generic_names: gi_generic_names(params: item.params, si: si),
-          si: si
+          si: si,
+          sigs: sigs
         },
         e: b
       )
   }
 }
 
-fn gi_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+fn gi_module_rows(m: TypedModule, si: Map<String, NewlineIndex>, sigs: Map<String, ResolvedFuncSig>) -> List<GenericIdentityRow> {
   let module_file = authored_name_at(source_indices: si, node: m.module)
-  let sig_rows = map_values(m.func_env.local) |> flat_map(sig => gi_sig_rows(module_file: module_file, sig: sig, si: si))
-  let body_rows = m.items |> flat_map(item => gi_item_body_rows(module_file: module_file, item: item, si: si))
+  let sig_rows = map_values(m.func_env.local) |> flat_map(sig => gi_sig_rows(module_file: module_file, sig: sig, si: si, sigs: sigs))
+  let body_rows = m.items |> flat_map(item => gi_item_body_rows(module_file: module_file, item: item, si: si, sigs: sigs))
   concat(sig_rows, body_rows)
+}
+
+// Every function signature of the compiled graph, keyed by (module, name), built once per run so a
+// foreign parameter's owner is found by lookup and not by a scan per row.
+fn gi_all_sigs(modules: List<TypedModule>, si: Map<String, NewlineIndex>) -> Map<String, ResolvedFuncSig> {
+  fold(modules, init: empty_map(), f: (acc, m) =>
+    let module_file = authored_name_at(source_indices: si, node: m.module)
+    fold(map_values(m.func_env.local), init: acc, f: (inner, sig) =>
+      map_insert(inner, gi_sig_key(module_path: module_file, decl_name: sig.name), sig)))
+}
+
+fn gi_foreign_label(f: ForeignParameterReading) -> String {
+  match f {
+    OwnParameterOrUnmarked => "own_or_unmarked"
+    ForeignOwnerIsNotAFunction => "foreign_owner_not_a_function"
+    ForeignParameterInAValueArgument => "foreign_in_a_value_argument"
+    ForeignParameterInNoValueArgument => "foreign_in_no_value_argument"
+  }
 }
 
 fn gi_bool_label(b: Bool) -> String {
@@ -307,7 +393,7 @@ fn gi_tsv_escape(v: String) -> String {
 }
 
 fn generic_identity_census_header() -> String {
-  "kind\tmodule_file\tenclosing\tcarrier\tpath\tparent_label\tspelled\tspelled_as_in_scope_generic\tmark\tdeclaration\ttype_variable_id\tresolved_label"
+  "kind\tmodule_file\tenclosing\tcarrier\tpath\tparent_label\tspelled\tspelled_as_in_scope_generic\tmark\tdeclaration\ttype_variable_id\tresolved_label\tforeign_parameter"
 }
 
 fn gi_row_tsv(r: GenericIdentityRow) -> String {
@@ -323,7 +409,8 @@ fn gi_row_tsv(r: GenericIdentityRow) -> String {
     gi_mark_label(r: r),
     gi_tsv_escape(v: gi_declaration_label(d: r.declaration)),
     gi_tsv_escape(v: r.type_variable_id),
-    gi_tsv_escape(v: r.resolved_label)
+    gi_tsv_escape(v: r.resolved_label),
+    gi_foreign_label(f: r.foreign)
   ] |> join(separator: "\t")
 }
 
@@ -349,6 +436,7 @@ fn generic_identity_census_from_sources(sources: List<SourceFile>) -> String {
   match result.graph {
     Absent => "REFUSED\tcompile_to_resolved produced no graph"
     Present { value: g } =>
-      generic_identity_census_tsv(rows: g.modules |> flat_map(m => gi_module_rows(m: m, si: result.source_indices)))
+      let sigs = gi_all_sigs(modules: g.modules, si: result.source_indices)
+      generic_identity_census_tsv(rows: g.modules |> flat_map(m => gi_module_rows(m: m, si: result.source_indices, sigs: sigs)))
   }
 }
