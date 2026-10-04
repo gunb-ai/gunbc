@@ -43,26 +43,36 @@ fn probe_texts_of_subtree(node: Node) -> List<String> {
   )
 }
 
-fn probe_fold_hits(node: Node, acc: List<ProbeFoldHit>) -> List<ProbeFoldHit> {
+fn probe_hit_at(node: Node) -> List<ProbeFoldHit> {
   match callee_text_read(node: node) {
     CalleeText { text: t } =>
       if t == "filesystem_read_outcome" || t == "Read" || t == "Filesystem.Read" {
         match application_head_read(site: node) {
-          ApplicationHeadFound { head: _, head_identity: _, operands } => list_snoc_item(xs: acc, item: ProbeFoldHit {
+          ApplicationHeadFound { head: _, head_identity: _, operands } => [ProbeFoldHit {
             callee: t,
             operand_populations: fold_list(
               xs: operands,
               empty: probe_empty_strings,
               cons: fn(inner, op) { list_snoc_item(xs: inner, item: probe_texts_of_subtree(node: op)) },
             ),
-          })
-          _ => acc
+          }]
+          _ => probe_empty_hits
         }
       } else {
-        acc
+        probe_empty_hits
       }
-    _ => fold_list(xs: node.children, empty: acc, cons: fn(inner, e) { probe_fold_hits(node: e.target, acc: inner) })
+    _ => probe_empty_hits
   }
+}
+
+fn probe_fold_hits(node: Node) -> List<ProbeFoldHit> {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(self) { probe_hit_at(node: self) },
+      step: fn(acc, _edge, sub) { fold_list(xs: sub, empty: acc, cons: fn(inner, h) { list_snoc_item(xs: inner, item: h) }) },
+    },
+  )
 }
 
 fn probe_line(hit: ProbeFoldHit) -> String {
@@ -73,7 +83,7 @@ fn probe_gate() -> ProcessExit {
   let decls = fn_arrow_decl_facts_live(pool_roots: probe_pool_roots, pool_files: [])
   let lines = fold_list(xs: decls, empty: probe_empty_strings, cons: fn(acc, d) {
     if d.name == "observe_app_key_mint_record" || d.name == "app_key_mint_record_from_observation" {
-      list_snoc_item(xs: acc, item: concat(d.name, concat(": ", join(fold_list(xs: probe_fold_hits(node: d.output, acc: probe_empty_hits), empty: probe_empty_strings, cons: fn(inner, h) { list_snoc_item(xs: inner, item: probe_line(hit: h)) }), " ;; "))))
+      list_snoc_item(xs: acc, item: concat(d.name, concat(": ", join(fold_list(xs: probe_fold_hits(node: d.output), empty: probe_empty_strings, cons: fn(inner, h) { list_snoc_item(xs: inner, item: probe_line(hit: h)) }), " ;; "))))
     } else {
       acc
     }
