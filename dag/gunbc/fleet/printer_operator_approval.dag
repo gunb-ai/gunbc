@@ -20,7 +20,7 @@ import extdeps.shell.exec { ProcessOutputPresent }
 import gunbc.fleet.printer_report { report_using_session }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted }
-import gunbc.fleet.printer_receipt {write_receipt}
+import gunbc.fleet.printer_start_reconciliation {reconcile_start}
 import gunbc.fleet_printer_access {PrinterCredentialSession,read_existing_printer_session,PrinterSessionReady,PrinterSessionRefused}
 import gunbc.fleet.printer_project_delivery {
   PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
@@ -190,12 +190,12 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
             }
             if !fresh_authority { return exit_failure(reason:"Print approval expired or no longer matches after upload; claim retained") }
             match start_print_with_session(session:claim.session, remote_name:remote) {
-              PrintStartPublished { receipt: _ } => write_receipt(printer: printer, standing: "start-published; RUNNING not yet observed", version: version as String, remote: remote as String, digest: digest,token_source:token_source)
+              PrintStartPublished { receipt: _ } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-acknowledged",cleanup_issue:"")
               PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
               PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
-              PrintStartOutcomeUnknown { printer: _, cause: c } => exit_failure(reason: concat("Start outcome unknown; DO NOT REPLAY: ", c as String))
-              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start outcome unknown with residue; DO NOT REPLAY: ", c as String))
-              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => exit_failure(reason: concat("Start published but cleanup refused; DO NOT REPLAY: ", c as String))
+              PrintStartOutcomeUnknown { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:c as String,cleanup_issue:"")
+              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-uncertain",cleanup_issue:c as String)
+              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => reconcile_start(session:claim.session,remote:remote,version:version as String,digest:digest,token_source:token_source,evidence_prefix:start_claim_path(escalation_id:claim.request.escalation_id),publish_standing:"publish-acknowledged",cleanup_issue:c as String)
             }
           }
           ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)

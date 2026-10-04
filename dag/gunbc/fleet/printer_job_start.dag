@@ -1,6 +1,8 @@
 module gunbc.fleet.printer_job_start
 
 import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
+import extdeps.tools.gnu_coreutils {timeout_command}
+import std.measure {second}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
@@ -446,14 +448,14 @@ fn publish_start_with_credential(
           outcome = run_shell_command_capture(
             command: env_prefixed_command(
               bindings: mosquitto_options_env(binding: binding),
-              command: mosquitto_publish_command(
+              command: timeout_command(duration:second(count:20),kill_after:second(count:2),command:mosquitto_publish_command(
                 endpoint: endpoint,
                 topic: topic as NonEmptyStr,
                 payload: bambu_start_payload_json(
                   command: command,
                   sequence_id: start_attempt_identity(workspace: workspace) as String),
                 qos: bambu_start_command_qos,
-                ca_bundle: pinned_ca_bundle_path(bundle: bundle))),
+                ca_bundle: pinned_ca_bundle_path(bundle: bundle)))),
             transport: LocalExec
           )
           let credential_shredded = shred_mosquitto_options_binding(binding: binding)

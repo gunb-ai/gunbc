@@ -38,10 +38,18 @@ fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: Ac
   }
 }
 fn report_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+ report_session_attempts(session:session,remaining:8)
+}
+
+// Reconciliation owns its retry budget; do not multiply it by the readiness retry loop.
+fn report_once_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+ report_session_attempts(session:session,remaining:1)
+}
+fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> ProcessOutcome {
  let printer=session_printer(s:session)
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
-   PrinterAddressFound {address:a}=>complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:8)
+   PrinterAddressFound {address:a}=>if remaining==1 {report_with_credential(serial:serial,address:a,credential:session_credential(s:session))} else {complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:remaining)}
    _=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
   }
   _=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}

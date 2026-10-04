@@ -33,3 +33,34 @@ comment 2275068828); no broader nonzero-error exemption is introduced. Tests ret
 refusal of the actual prior SD fault 83902511, adjacent codes, active/paused states,
 missing/duplicate fields and string-typed errors. The durable claim and post-upload
 readiness/approval-expiry checks remain unchanged.
+
+## Automatic post-start reconciliation
+
+Both the Actions and operator routes now enter the same read-only reconciliation after
+an acknowledged or uncertain publish. The publisher is bounded by GNU timeout at 20 seconds
+with a 2-second kill grace; every nonzero outcome remains uncertain, never permission to
+republish. The cause of the observed connection drops is not established or claimed fixed.
+
+Reconciliation reuses the credential session and makes at most eight fresh single-response
+MQTT observations, each with the existing 15-second wait, separated by 5 seconds. It retains
+each raw response (including incomplete responses) beside the durable escalation claim.
+A report confirms running only if it contains the exact digest-derived `gcode_file`,
+`gcode_state: RUNNING`, and a nonblocking numeric `print_error` in the same JSON object.
+No display-name fallback, cached report, merged delta, FINISH or unknown state can confirm.
+The same project's pause/failure/blocking error stops reconciliation; wrong-file and partial
+reports can consume the observation budget but never trigger another start.
+
+The receipt records running-confirmed, expected-project-blocked or uncertain, the publisher
+outcome, cleanup problems and the retained evidence path. Only confirmed running with no
+cleanup failure returns success. Failure/uncertainty retains the claim and forbids replay.
+The MQTT wait budget excludes CA acquisition and local filesystem runtime. This change
+handles acknowledgement loss without manual telemetry checks; it does not promise that the
+LAN or firmware cannot fail or that MQTT provides application-level exactly-once printing.
+
+The two wave-three jobs were confirmed through the previous manual report route before this
+change: both exact digest filenames RUNNING. No physical start was issued to test this change.
+
+Validation for this change: five reconciliation witnesses, six approval/readiness witnesses,
+and 24 publisher/no-replay witnesses passed locally. Both shared entry paths typecheck through
+the common approval implementation. Live execution of the new post-start path remains for the
+next authorized print; the current jobs used the previous revision.
