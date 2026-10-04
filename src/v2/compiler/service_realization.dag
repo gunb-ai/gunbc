@@ -391,7 +391,7 @@ fn realization_config_refusal(config: Node) -> Optional<RealizationRefusal> {
   })
 }
 
-// Proceed with `then` when the node is a Conj; any other shape refuses with `reason`, at the node.
+// Call `proceed` when the node is a Conj; any other shape refuses with `reason`, at the node.
 fn realization_require_conj(n: Node, reason: Symbol, proceed: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
   match realization_node_shape(n: n) {
     ShapeConj => proceed()
