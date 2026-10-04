@@ -54,6 +54,7 @@ import extdeps.llm.cli {
 }
 import gunbc.roadmap_dispatch_actuator {
   attempt_state_prepare_argv_for_instance,
+  dispatch_reviewer_attempt_identity,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
@@ -1137,10 +1138,10 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
 // every reviewer lane exited 1 before any ssh leg with no verdict written (measured 2026-09-20 on
 // srv2, all fourteen lanes of one belt review pass). The criterion key is part of the mint because
 // the lanes of one attempt share the node id and attempt key, and each lane's identity must stay
-// distinct.
+// distinct, and the head is part of it because one criterion is reviewed again at each new head.
 
 test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool {
-  path_segment_is_safe(raw: join(["reviewer:", "node-1", "-", "att-20260920", "-", "conformance-external-facts"], ""))
+  path_segment_is_safe(raw: dispatch_reviewer_attempt_identity(node_id: "node-1", attempt_key: "att-20260920", criterion_key: "conformance-external-facts", head_sha: "abc123"))
 }
 
 test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
@@ -1175,7 +1176,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
   )
-  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:6.node-1.12.att-20260920.26.conformance-external-facts.6.abc123")
 }
 
 // THE ROW THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: an attempt identity built from a path-bearing

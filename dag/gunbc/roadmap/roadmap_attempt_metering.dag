@@ -2,6 +2,8 @@ module gunbc.roadmap_attempt_metering
 
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
+import std.types { path_segment_is_safe }
+import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import std.measure { Second, second, second_count, TokenCount, token_count, token_count_value }
 import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present, Absent }
@@ -16,6 +18,8 @@ import extdeps.languages.json.parse {
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused, filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
 import gunbc.harness.harness_wire { IntRead, IntAbsent, IntDuplicated, IntNotAnObject, IntNotANumber, IntNotAnInteger, harness_member_int, harness_int_read_gap }
 import gunbc.harness.harness_throughput {
@@ -41,7 +45,7 @@ import gunbc.harness.harness_seat_pointer {
   HarnessSeatPointer, HarnessSeatPointerDecoded, HarnessSeatPointerUndecodable, harness_seat_pointer_decode,
   harness_seat_pointer_path, harness_seat_pointer_reference_names_owner,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_state_path_for_instance, dispatch_attempt_events_path_for_instance,
   dispatch_attempt_review_events_path_for_instance, dispatch_attempt_audit_events_path_for_instance,
@@ -152,8 +156,8 @@ fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNod
 fn metered_role_seat_owner(node_id: String, attempt_key: String, role: MeteredRole) -> String {
   match role {
     MeteredWorker => dispatch_worker_attempt_identity(node_id: node_id, attempt_key: attempt_key)
-    MeteredReviewer { criterion_key: c, head: _ } => dispatch_reviewer_attempt_identity(node_id: node_id, attempt_key: attempt_key, criterion_key: c as String)
-    MeteredAuditor { head: _ } => dispatch_auditor_attempt_identity(node_id: node_id, attempt_key: attempt_key)
+    MeteredReviewer { criterion_key: c, head: h } => dispatch_reviewer_attempt_identity(node_id: node_id, attempt_key: attempt_key, criterion_key: c as String, head_sha: h as String)
+    MeteredAuditor { head: h } => dispatch_auditor_attempt_identity(node_id: node_id, attempt_key: attempt_key, head_sha: h as String)
     MeteredSupervisor { turn: t } => dispatch_supervisor_attempt_identity(node_id: node_id, attempt_key: attempt_key, turn: t)
   }
 }
@@ -415,6 +419,7 @@ type AttemptMeteringRecord {
   node_id: String
   attempt_key: String
   metered_at: EpochSecs
+  sealed_roster: String?
   roles: List<MeteredRoleUsage>
   compute: ComputeUsage
 }
@@ -432,8 +437,22 @@ fn metered_role_usage_final(u: MeteredRoleUsage) -> Bool {
   })
 }
 
-fn metering_standing_of(roles: List<MeteredRoleUsage>) -> MeteringStanding {
-  if list_length(items: roles) > 0 && all(roles, u => metered_role_usage_final(u: u)) { MeteringStandingFinal } else { MeteringStandingProvisional }
+// FINAL ONLY AGAINST A SEALED ROSTER THE RECORD IS BOUND TO, with every row complete. An open roster
+// can still grow, so nothing measured against it is final.
+fn metering_standing_of(record: AttemptMeteringRecord, seal: String?) -> MeteringStanding {
+  match seal {
+    Absent => MeteringStandingProvisional
+    Present { value: d } =>
+      match record.sealed_roster {
+        Present { value: bound } =>
+          if bound == d && list_length(items: record.roles) > 0 && all(record.roles, u => metered_role_usage_final(u: u)) {
+            MeteringStandingFinal
+          } else {
+            MeteringStandingProvisional
+          }
+        Absent => MeteringStandingProvisional
+      }
+  }
 }
 
 fn metering_wire_repeats(wires: List<String>) -> Bool {
@@ -443,10 +462,25 @@ fn metering_wire_repeats(wires: List<String>) -> Bool {
 // THE RECORD IS ADMISSIBLE ONLY AGAINST ITS ROSTER: every launch exactly once, no row outside the
 // roster, and no seat reference counted twice. The writer and
 // the reader both apply it, so a decoded record can claim no more than a constructed one.
-fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<MeteredRole>) -> String? {
+fn metering_row_owner_gap(record: AttemptMeteringRecord, u: MeteredRoleUsage) -> String? {
+  let owner = metered_role_seat_owner(node_id: record.node_id, attempt_key: record.attempt_key, role: u.role)
+  match u.seat {
+    SeatReleased { pointer: p, granted_at: _, released_at: _ } => seat_pointer_owned_by(pointer: p, owner: owner)
+    SeatStillHeld { pointer: p, granted_at: _ } => seat_pointer_owned_by(pointer: p, owner: owner)
+    SeatPointerAbsent => none
+    SeatRefused { cause: _ } => none
+  }
+}
+
+// THE RECORD IS ADMISSIBLE ONLY AGAINST ITS ROSTER: every launch exactly once, no row outside the
+// roster, no seat reference counted twice, every seat pointer owned by exactly the launch whose row
+// carries it, and a seal binding only to the roster's own seal. The writer and the reader both apply
+// it, so a decoded record can claim no more than a constructed one.
+fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<MeteredRole>, seal: String?) -> String? {
   let wires = map(record.roles, u => metered_role_wire(role: u.role))
   let roster_wires = map(roster, r => metered_role_wire(role: r))
   let refs = flat_map(record.roles, u => seat_reference(seat: u.seat))
+  let owner_gaps = flat_map(record.roles, u => match metering_row_owner_gap(record: record, u: u) { Present { value: c } => [join([metered_role_wire(role: u.role), ": ", c], "")] Absent => [] as List<String> })
   if list_length(items: record.roles) == 0 {
     Present { value: "the record meters no launch; the worker is always launched" }
   } else if metering_wire_repeats(wires: wires) {
@@ -458,7 +492,18 @@ fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<Mete
   } else if metering_wire_repeats(wires: refs) {
     Present { value: "one seat reference is attributed to more than one launch" }
   } else {
-    none
+    match owner_gaps.first() {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        match record.sealed_roster {
+          Absent => none
+          Present { value: bound } =>
+            match seal {
+              Present { value: d } => if bound == d { none } else { Present { value: "the record binds a roster seal other than the attempt's" } }
+              Absent => Present { value: "the record binds a roster seal the attempt does not carry" }
+            }
+        }
+    }
   }
 }
 
@@ -516,10 +561,9 @@ fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTo
 }
 
 // ── codec ─────────────────────────────────────────────────────────────────────────────────────
-data attempt_metering_schema: String = "gunbc-attempt-metering/v3"
+data attempt_metering_schema: String = "gunbc-attempt-metering/v4"
 data attempt_metering_basename: String = "metering.json"
-data attempt_metering_roster_schema: String = "gunbc-attempt-metering-roster/v1"
-data attempt_metering_roster_basename: String = "metering-roster.json"
+data attempt_metering_roster_schema: String = "gunbc-attempt-metering-roster/v2"
 
 fn role_tokens_json(t: RoleTokens) -> JsonValue {
   match t {
@@ -580,6 +624,7 @@ fn attempt_metering_json(record: AttemptMeteringRecord) -> String {
     json_kv(key: "node_id", value: json_string(s: record.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: record.attempt_key)),
     json_kv(key: "metered_at", value: json_int(n: record.metered_at)),
+    json_kv(key: "sealed_roster", value: match record.sealed_roster { Present { value: d } => json_string(s: d) Absent => JsonNull }),
     json_kv(key: "roles", value: json_array(elements: map(record.roles, u => json_object(members: [
       json_kv(key: "role", value: metered_role_json(role: u.role)),
       json_kv(key: "tokens", value: role_tokens_json(t: u.tokens)),
@@ -818,6 +863,17 @@ fn compute_usage_decode(doc: JsonValue) -> RowDecode<ComputeUsage> {
   }
 }
 
+fn metering_sealed_roster_decode(v: JsonValue) -> RowDecode<String?> {
+  match v {
+    JsonNull => RowDecoded { row: none }
+    JsonString { value: d } => if trim(d) == "" { RowUndecodable { cause: "the record's sealed_roster is empty" } } else { RowDecoded { row: Present { value: d } } }
+    JsonBool { value: _ } => RowUndecodable { cause: "the record's sealed_roster is neither null nor a digest" }
+    JsonNumber { lexeme: _ } => RowUndecodable { cause: "the record's sealed_roster is neither null nor a digest" }
+    JsonArray { elements: _ } => RowUndecodable { cause: "the record's sealed_roster is neither null nor a digest" }
+    JsonObject { members: _ } => RowUndecodable { cause: "the record's sealed_roster is neither null nor a digest" }
+  }
+}
+
 fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap: _ } => RowUndecodable { cause: "the metering record is not a JSON document" }
@@ -837,6 +893,12 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
                     match metering_member_int(doc: doc, key: "metered_at") {
                       MemberIntGap { cause: c } => RowUndecodable { cause: c }
                       MemberInt { value: at } =>
+                        match metering_member_value(doc: doc, key: "sealed_roster") {
+                          MemberValueGap { cause: c } => RowUndecodable { cause: join(["the metering record ", c], "") }
+                          MemberValue { value: sv } =>
+                            match metering_sealed_roster_decode(v: sv) {
+                            RowUndecodable { cause: c } => RowUndecodable { cause: c }
+                            RowDecoded { row: sealed } =>
                             match metering_member_array(doc: doc, key: "roles") {
                               MemberArrayGap { cause: c } => RowUndecodable { cause: c }
                               MemberArray { elements: rows } =>
@@ -847,12 +909,14 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
                                       RowUndecodable { cause: c } => RowUndecodable { cause: c }
                                       RowDecoded { row: compute } =>
                                         RowDecoded { row: AttemptMeteringRecord {
-                                          node_id: node, attempt_key: key, metered_at: at,
+                                          node_id: node, attempt_key: key, metered_at: at, sealed_roster: sealed,
                                           roles: roles, compute: compute,
                                         } }
                                     }
                                 }
                             }
+                            }
+                        }
                     }
                 }
             }
@@ -862,57 +926,176 @@ fn attempt_metering_decode(raw: String) -> RowDecode<AttemptMeteringRecord> {
 }
 
 // ── the launch roster ─────────────────────────────────────────────────────────────────────────
-fn metering_roster_json(node_id: String, attempt_key: String, launches: List<MeteredRole>) -> String {
+// APPEND-ONLY AND SEALABLE. Each launch is one create-only entry file in the attempt's state directory
+// (metering-launch.<key>.json), so two concurrent admissions commit two entries and neither can erase
+// the other; the worker is a member without an entry. The roster closes when the attempt leaves the
+// belt's workflow ledger (belt_metering_attempts_for_instance): the sealer writes a create-only
+// closing marker, THEN lists the entries, THEN writes the seal carrying that population and its
+// digest. An admission writes its entry and THEN reads the marker, refusing its spawn when the marker
+// is present -- so a racing admission either lands in the sealed listing or refuses. The seal is sound
+// only while every harness spawner iterates that ledger; a spawner that bypasses it would admit after
+// a seal it cannot see.
+data metering_launch_entry_prefix: String = "metering-launch."
+data metering_roster_closing_basename: String = "metering-roster-closing"
+data metering_roster_seal_basename: String = "metering-roster-sealed.json"
+
+fn metering_length_prefixed(parts: List<String>) -> String {
+  join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")
+}
+
+fn metered_role_key(role: MeteredRole) -> String {
+  match role {
+    MeteredWorker => "worker"
+    MeteredReviewer { criterion_key: c, head: h } => join(["reviewer.", metering_length_prefixed(parts: [c as String, h as String])], "")
+    MeteredAuditor { head: h } => join(["auditor.", metering_length_prefixed(parts: [h as String])], "")
+    MeteredSupervisor { turn: t } => join(["supervisor.", to_string(t)], "")
+  }
+}
+
+fn metering_launch_entry_name(role: MeteredRole) -> String {
+  join([metering_launch_entry_prefix, metered_role_key(role: role), ".json"], "")
+}
+
+fn metering_roster_entry_json(node_id: String, attempt_key: String, role: MeteredRole) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: attempt_metering_roster_schema)),
+    json_kv(key: "node_id", value: json_string(s: node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+    json_kv(key: "launch", value: metered_role_json(role: role)),
+  ]))
+}
+
+fn metering_attempt_member_check(doc: JsonValue, node_id: String, attempt_key: String, what: String) -> String? {
+  match metering_member_text(doc: doc, key: "node_id") {
+    MemberTextGap { cause: c } => Present { value: join([what, " ", c], "") }
+    MemberText { value: n } =>
+      match metering_member_text(doc: doc, key: "attempt_key") {
+        MemberTextGap { cause: c } => Present { value: join([what, " ", c], "") }
+        MemberText { value: k } =>
+          if n != node_id || k != attempt_key { Present { value: join([what, " names ", n, "-a", k], "") } } else { none }
+      }
+  }
+}
+
+fn metering_schema_check(doc: JsonValue, schema: String, what: String) -> String? {
+  match metering_member_text(doc: doc, key: "schema") {
+    MemberTextGap { cause: c } => Present { value: join([what, " ", c], "") }
+    MemberText { value: s } => if s != schema { Present { value: join(["unknown ", what, " schema ", s], "") } } else { none }
+  }
+}
+
+// ONE ENTRY, BY ITS FILE NAME AND CONTENT: the entry must name this attempt and the launch its name
+// encodes, so an entry cannot be renamed into another launch's place.
+fn metering_roster_entry_decode(node_id: String, attempt_key: String, name: String, raw: String) -> RowDecode<MeteredRole> {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => RowUndecodable { cause: join(["the roster entry ", name, " is not a JSON document"], "") }
+    JsonDocumentParsed { value: doc } =>
+      match metering_schema_check(doc: doc, schema: attempt_metering_roster_schema, what: "roster entry") {
+        Present { value: c } => RowUndecodable { cause: c }
+        Absent =>
+          match metering_attempt_member_check(doc: doc, node_id: node_id, attempt_key: attempt_key, what: join(["the roster entry ", name], "")) {
+            Present { value: c } => RowUndecodable { cause: c }
+            Absent =>
+              match metering_member_value(doc: doc, key: "launch") {
+                MemberValueGap { cause: c } => RowUndecodable { cause: join(["the roster entry ", name, " ", c], "") }
+                MemberValue { value: v } =>
+                  match metered_role_decode(v: v) {
+                    RowUndecodable { cause: c } => RowUndecodable { cause: c }
+                    RowDecoded { row: role } =>
+                      if metering_launch_entry_name(role: role) != name || metered_role_eq(a: role, b: MeteredWorker) {
+                        RowUndecodable { cause: join(["the roster entry ", name, " does not carry the launch its name encodes"], "") }
+                      } else {
+                        RowDecoded { row: role }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type RosterEntryText {
+  name: String
+  content: String
+}
+
+// The open population: the worker, then every committed entry. Entries are never rewritten, so the
+// union is monotone in time -- a later listing can only add.
+fn metering_roster_from_entries(node_id: String, attempt_key: String, entries: List<RosterEntryText>) -> MeteringRoster {
+  let decoded = map(entries, e => metering_roster_entry_decode(node_id: node_id, attempt_key: attempt_key, name: e.name, raw: e.content))
+  match fold(decoded, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: c } => Present { value: c }
+      Absent => match d { RowUndecodable { cause: c } => Present { value: c } RowDecoded { row: _ } => none }
+    }) {
+    Present { value: c } => RosterRefused { cause: c }
+    Absent => RosterOpen { launches: concat([MeteredWorker], flat_map(decoded, d => match d { RowDecoded { row: r } => [r] RowUndecodable { cause: _ } => [] as List<MeteredRole> })) }
+  }
+}
+
+fn metering_roster_digest(launches: List<MeteredRole>) -> String {
+  content_hash_tagged_structural(
+    tag: "gunbc-attempt-metering-roster" as NonEmptyStr,
+    payload: content_hash_atom(value: join(concat(["roster"], map(launches, r => metered_role_wire(role: r))), "\n") as NonEmptyStr),
+  ).digest as String
+}
+
+fn metering_roster_seal_json(node_id: String, attempt_key: String, launches: List<MeteredRole>) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: attempt_metering_roster_schema)),
     json_kv(key: "node_id", value: json_string(s: node_id)),
     json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
     json_kv(key: "launches", value: json_array(elements: map(launches, r => metered_role_json(role: r)))),
+    json_kv(key: "digest", value: json_string(s: metering_roster_digest(launches: launches))),
   ]))
 }
 
 type MeteringRoster
-  = RosterObserved { launches: List<MeteredRole> }
+  = RosterOpen { launches: List<MeteredRole> }
+  | RosterSealed { launches: List<MeteredRole>, digest: String }
   | RosterRefused { cause: String }
 
-// An unreadable or foreign roster refuses. The worker is a member whether or not the file names it.
-fn metering_roster_from_text(node_id: String, attempt_key: String, raw: String) -> MeteringRoster {
+fn metering_roster_launches(roster: MeteringRoster) -> List<MeteredRole> {
+  match roster {
+    RosterOpen { launches: ls } => ls
+    RosterSealed { launches: ls, digest: _ } => ls
+    RosterRefused { cause: _ } => [] as List<MeteredRole>
+  }
+}
+
+// THE SEAL CARRIES ITS POPULATION AND A DIGEST OF IT; a seal whose digest does not match its own
+// launches, that names another attempt, that lacks the worker or names a launch twice refuses.
+fn metering_roster_seal_decode(node_id: String, attempt_key: String, raw: String) -> MeteringRoster {
   match parse_json_document(s: raw) {
-    JsonDocumentUnreadable { gap: _ } => RosterRefused { cause: "the launch roster is not a JSON document" }
+    JsonDocumentUnreadable { gap: _ } => RosterRefused { cause: "the roster seal is not a JSON document" }
     JsonDocumentParsed { value: doc } =>
-      match metering_member_text(doc: doc, key: "schema") {
-        MemberTextGap { cause: c } => RosterRefused { cause: join(["the launch roster ", c], "") }
-        MemberText { value: schema } =>
-          if schema != attempt_metering_roster_schema {
-            RosterRefused { cause: join(["unknown launch roster schema ", schema], "") }
-          } else {
-            match metering_member_text(doc: doc, key: "node_id") {
-              MemberTextGap { cause: c } => RosterRefused { cause: join(["the launch roster ", c], "") }
-              MemberText { value: n } =>
-                match metering_member_text(doc: doc, key: "attempt_key") {
-                  MemberTextGap { cause: c } => RosterRefused { cause: join(["the launch roster ", c], "") }
-                  MemberText { value: k } =>
-                    if n != node_id || k != attempt_key {
-                      RosterRefused { cause: join(["the launch roster at this attempt's path names ", n, "-a", k], "") }
-                    } else {
-                      match metering_member_array(doc: doc, key: "launches") {
-                        MemberArrayGap { cause: c } => RosterRefused { cause: c }
-                        MemberArray { elements: es } =>
-                          match rows_decode(elements: es, decode: fn(v) { metered_role_decode(v: v) }) {
-                            RowUndecodable { cause: c } => RosterRefused { cause: c }
-                            RowDecoded { row: rs } => {
-                              let others = filter(rs, r => !metered_role_eq(a: r, b: MeteredWorker))
-                              if metering_wire_repeats(wires: map(others, r => metered_role_wire(role: r))) {
-                                RosterRefused { cause: "the launch roster names one launch more than once" }
-                              } else {
-                                RosterObserved { launches: concat([MeteredWorker], others) }
-                              }
-                            }
+      match metering_schema_check(doc: doc, schema: attempt_metering_roster_schema, what: "roster seal") {
+        Present { value: c } => RosterRefused { cause: c }
+        Absent =>
+          match metering_attempt_member_check(doc: doc, node_id: node_id, attempt_key: attempt_key, what: "the roster seal") {
+            Present { value: c } => RosterRefused { cause: c }
+            Absent =>
+              match metering_member_array(doc: doc, key: "launches") {
+                MemberArrayGap { cause: c } => RosterRefused { cause: c }
+                MemberArray { elements: es } =>
+                  match rows_decode(elements: es, decode: fn(v) { metered_role_decode(v: v) }) {
+                    RowUndecodable { cause: c } => RosterRefused { cause: c }
+                    RowDecoded { row: launches } =>
+                      match metering_member_text(doc: doc, key: "digest") {
+                        MemberTextGap { cause: c } => RosterRefused { cause: join(["the roster seal ", c], "") }
+                        MemberText { value: d } =>
+                          if d != metering_roster_digest(launches: launches) {
+                            RosterRefused { cause: "the roster seal's digest does not match its launches" }
+                          } else if !any(launches, r => metered_role_eq(a: r, b: MeteredWorker)) {
+                            RosterRefused { cause: "the roster seal does not name the worker" }
+                          } else if metering_wire_repeats(wires: map(launches, r => metered_role_wire(role: r))) {
+                            RosterRefused { cause: "the roster seal names one launch more than once" }
+                          } else {
+                            RosterSealed { launches: launches, digest: d }
                           }
                       }
-                    }
-                }
-            }
+                  }
+              }
           }
       }
   }
@@ -945,16 +1128,65 @@ fn metering_read_file(path: String) -> OptionalFileRead {
   }
 }
 
-fn metering_roster_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_metering_roster_basename], "")
+type MeteringListing
+  = MeteringListed { names: List<String> }
+  | MeteringListingRefused { cause: String }
+
+fn metering_list(dir: String) -> MeteringListing {
+  let listing = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(l) => MeteringListed { names: filesystem_listing_entry_names(listing: l) }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => MeteringListingRefused { cause: join(["the directory could not be listed: ", e], "") }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => MeteringListingRefused { cause: c }
+  }
 }
 
-// An absent roster file is an attempt for which nothing but its worker has launched.
+fn metering_attempt_dir(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
+  dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+}
+
+fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
+  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match metering_list(dir: dir) {
+    MeteringListingRefused { cause: c } => RosterRefused { cause: c }
+    MeteringListed { names: names } => {
+      let entry_names = filter(names, n => starts_with(s: n, prefix: metering_launch_entry_prefix))
+      let reads = map(entry_names, n => RosterEntryRead { name: n, read: metering_read_file(path: join([dir, "/", n], "")) })
+      match fold(reads, init: none, f: (acc, r) =>
+        match acc {
+          Present { value: c } => Present { value: c }
+          Absent =>
+            match r.read {
+              OptionalFileContent { content: _ } => none
+              OptionalFileAbsent => Present { value: join(["the roster entry ", r.name, " vanished while it was read"], "") }
+              OptionalFileRefused { cause: c } => Present { value: c }
+            }
+        }) {
+        Present { value: c } => RosterRefused { cause: c }
+        Absent =>
+          metering_roster_from_entries(node_id: node_id as String, attempt_key: attempt_key, entries: flat_map(reads, r =>
+            match r.read {
+              OptionalFileContent { content: c } => [RosterEntryText { name: r.name, content: c }]
+              OptionalFileAbsent => [] as List<RosterEntryText>
+              OptionalFileRefused { cause: _ } => [] as List<RosterEntryText>
+            }))
+      }
+    }
+  }
+}
+
+type RosterEntryRead {
+  name: String
+  read: OptionalFileRead
+}
+
+// A sealed roster is the seal's population; entries committed after the seal belong to launches that
+// refused to spawn and are not members.
 fn metering_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  match metering_read_file(path: metering_roster_path(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    OptionalFileAbsent => RosterObserved { launches: [MeteredWorker] }
+  match metering_read_file(path: join([metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", metering_roster_seal_basename], "")) {
     OptionalFileRefused { cause: c } => RosterRefused { cause: c }
-    OptionalFileContent { content: raw } => metering_roster_from_text(node_id: node_id as String, attempt_key: attempt_key, raw: raw)
+    OptionalFileContent { content: raw } => metering_roster_seal_decode(node_id: node_id as String, attempt_key: attempt_key, raw: raw)
+    OptionalFileAbsent => metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
   }
 }
 
@@ -962,27 +1194,154 @@ type MeteringRosterAdmission
   = RosterAdmitted
   | RosterAdmissionRefused { cause: String }
 
+// THE SECOND HALF OF ADMISSION, AFTER THE ENTRY IS COMMITTED: a closing marker means the roster may
+// already have been listed for its seal, so this launch must not spawn.
+fn metering_admission_after_entry(closing: OptionalFileRead) -> MeteringRosterAdmission {
+  match closing {
+    OptionalFileAbsent => RosterAdmitted
+    OptionalFileContent { content: _ } => RosterAdmissionRefused { cause: "the attempt's launch roster is closed; no further launch may be admitted" }
+    OptionalFileRefused { cause: c } => RosterAdmissionRefused { cause: join(["the roster closing marker is unreadable: ", c], "") }
+  }
+}
+
 // THE BELT CALLS THIS BEFORE IT SPAWNS A REVIEWER, AUDITOR OR SUPERVISOR, and does not spawn on a
-// refusal: a launch the roster does not name would be usage no record could ever account for.
+// refusal. The entry is create-only; an existing entry for the same launch is the same admission.
 fn metering_roster_admit(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> MeteringRosterAdmission {
-  match metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    RosterRefused { cause: c } => RosterAdmissionRefused { cause: join(["the launch roster is unreadable: ", c], "") }
-    RosterObserved { launches: ls } =>
-      if any(ls, r => metered_role_eq(a: r, b: role)) {
-        RosterAdmitted
-      } else {
-        let written = Filesystem.Write(
-          path: metering_roster_path(instance: instance, node_id: node_id, attempt_key: attempt_key),
-          content: metering_roster_json(node_id: node_id as String, attempt_key: attempt_key, launches: concat(ls, [role])),
-        )
-        if written.success { RosterAdmitted } else { RosterAdmissionRefused { cause: join(["the launch roster could not be written: ", written.error], "") } }
+  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  let name = metering_launch_entry_name(role: role)
+  if !path_segment_is_safe(raw: name) {
+    RosterAdmissionRefused { cause: join(["the launch key ", name, " is not a safe file name"], "") }
+  } else {
+    let content = metering_roster_entry_json(node_id: node_id as String, attempt_key: attempt_key, role: role)
+    let w = Filesystem.WriteCreateNew(path: join([dir, "/", name], ""), content: content)
+    let committed = match filesystem_create_new(path: join([dir, "/", name], ""), success: w.success, error: w.error, error_kind: w.error_kind) {
+      FilesystemCreated { path: _ } => none
+      FilesystemCreateTargetOccupied { path: p } =>
+        match metering_read_file(path: p) {
+          OptionalFileContent { content: existing } =>
+            match metering_roster_entry_decode(node_id: node_id as String, attempt_key: attempt_key, name: name, raw: existing) {
+              RowDecoded { row: _ } => none
+              RowUndecodable { cause: c } => Present { value: c }
+            }
+          OptionalFileAbsent => Present { value: "the roster entry was occupied and then absent" }
+          OptionalFileRefused { cause: c } => Present { value: c }
+        }
+      FilesystemCreateRefused { path: _, kind: _, error: e } => Present { value: join(["the roster entry could not be written: ", e], "") }
+      FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => Present { value: join(["the roster entry could not be written: ", e], "") }
+    }
+    match committed {
+      Present { value: c } => RosterAdmissionRefused { cause: c }
+      Absent => metering_admission_after_entry(closing: metering_read_file(path: join([dir, "/", metering_roster_closing_basename], "")))
+    }
+  }
+}
+
+fn metering_create_only(path: String, content: String) -> String? {
+  let w = Filesystem.WriteCreateNew(path: path, content: content)
+  match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
+    FilesystemCreated { path: _ } => none
+    FilesystemCreateTargetOccupied { path: _ } => none
+    FilesystemCreateRefused { path: _, kind: _, error: e } => Present { value: e }
+    FilesystemCreateKindUnrecognized { path: _, observed: _, error: e } => Present { value: e }
+  }
+}
+
+// SEAL, ONLY FOR AN ATTEMPT THAT HAS LEFT THE WORKFLOW LEDGER: marker, then listing, then the seal.
+// A seal already written is the seal; a second sealer's create-only write loses and reads it.
+fn metering_roster_seal(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
+  let dir = metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  match metering_create_only(path: join([dir, "/", metering_roster_closing_basename], ""), content: "closed: the attempt left the workflow ledger") {
+    Present { value: e } => RosterRefused { cause: join(["the roster closing marker could not be written: ", e], "") }
+    Absent =>
+      match metering_open_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+        RosterRefused { cause: c } => RosterRefused { cause: c }
+        RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
+        RosterOpen { launches: ls } =>
+          match metering_create_only(path: join([dir, "/", metering_roster_seal_basename], ""), content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
+            Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
+            Absent => metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
+          }
       }
   }
 }
 
+// ── the attempt index: which attempts the belt has seen, so a departed one can still be sealed ──
+data metering_attempt_index_prefix: String = "metering-attempt."
+
+fn metering_attempt_index_name(node_id: String, attempt_key: String) -> String {
+  join([metering_attempt_index_prefix, metering_length_prefixed(parts: [node_id, attempt_key]), ".json"], "")
+}
+
+fn metering_attempt_index_json(node_id: String, attempt_key: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: attempt_metering_roster_schema)),
+    json_kv(key: "node_id", value: json_string(s: node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
+  ]))
+}
+
+type MeteredAttempt {
+  node_id: String
+  attempt_key: String
+}
+
+fn metering_attempt_index_decode(name: String, raw: String) -> RowDecode<MeteredAttempt> {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: _ } => RowUndecodable { cause: join(["the attempt index entry ", name, " is not a JSON document"], "") }
+    JsonDocumentParsed { value: doc } =>
+      match metering_member_text(doc: doc, key: "node_id") {
+        MemberTextGap { cause: c } => RowUndecodable { cause: join(["the attempt index entry ", name, " ", c], "") }
+        MemberText { value: n } =>
+          match metering_member_text(doc: doc, key: "attempt_key") {
+            MemberTextGap { cause: c } => RowUndecodable { cause: join(["the attempt index entry ", name, " ", c], "") }
+            MemberText { value: k } =>
+              if metering_attempt_index_name(node_id: n, attempt_key: k) != name {
+                RowUndecodable { cause: join(["the attempt index entry ", name, " does not name the attempt its name encodes"], "") }
+              } else {
+                RowDecoded { row: MeteredAttempt { node_id: n, attempt_key: k } }
+              }
+          }
+      }
+  }
+}
+
+fn metering_attempt_index_admit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String? {
+  metering_create_only(
+    path: join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key)], ""),
+    content: metering_attempt_index_json(node_id: node_id, attempt_key: attempt_key),
+  )
+}
+
+type MeteredAttempts
+  = MeteredAttemptsObserved { attempts: List<MeteredAttempt> }
+  | MeteredAttemptsRefused { cause: String }
+
+fn metering_attempt_index(instance: HostDashboardInstance) -> MeteredAttempts {
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
+  match metering_list(dir: root) {
+    MeteringListingRefused { cause: c } => MeteredAttemptsRefused { cause: c }
+    MeteringListed { names: names } => {
+      let decoded = map(filter(names, n => starts_with(s: n, prefix: metering_attempt_index_prefix)), n =>
+        match metering_read_file(path: join([root, "/", n], "")) {
+          OptionalFileContent { content: c } => metering_attempt_index_decode(name: n, raw: c)
+          OptionalFileAbsent => RowUndecodable { cause: join(["the attempt index entry ", n, " vanished while it was read"], "") }
+          OptionalFileRefused { cause: c } => RowUndecodable { cause: c }
+        })
+      match fold(decoded, init: none, f: (acc, d) =>
+        match acc {
+          Present { value: c } => Present { value: c }
+          Absent => match d { RowUndecodable { cause: c } => Present { value: c } RowDecoded { row: _ } => none }
+        }) {
+        Present { value: c } => MeteredAttemptsRefused { cause: c }
+        Absent => MeteredAttemptsObserved { attempts: flat_map(decoded, d => match d { RowDecoded { row: a } => [a] RowUndecodable { cause: _ } => [] as List<MeteredAttempt> }) }
+      }
+    }
+  }
+}
+
 // ── the reader the dogfood receipt fold calls ─────────────────────────────────────────────────
-// Only a Final record is the attempt's meter. A Provisional record is reported as such, never in
-// the Observed arm, so no consumer can take a record that may still change for the current one.
+// Only a Final record is the attempt's meter. Final requires a SEALED roster whose digest the record
+// binds and complete rows; anything else is reported as Provisional, never in the Observed arm.
 type AttemptMeteringObservation
   = MeteringObserved { record: AttemptMeteringRecord }
   | MeteringProvisional { record: AttemptMeteringRecord }
@@ -990,20 +1349,28 @@ type AttemptMeteringObservation
   | MeteringRefused { cause: String }
 
 fn attempt_metering_path_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String {
-  join([dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_metering_basename], "")
+  join([metering_attempt_dir(instance: instance, node_id: node_id, attempt_key: attempt_key), "/", attempt_metering_basename], "")
 }
 
-fn metering_observe_from_text(node_id: String, attempt_key: String, roster: List<MeteredRole>, raw: String) -> AttemptMeteringObservation {
+fn metering_observe_from_text(node_id: String, attempt_key: String, roster: MeteringRoster, raw: String) -> AttemptMeteringObservation {
+  match roster {
+    RosterRefused { cause: c } => MeteringRefused { cause: join(["the launch roster is unreadable: ", c], "") }
+    RosterOpen { launches: _ } => metering_observe_against(node_id: node_id, attempt_key: attempt_key, launches: metering_roster_launches(roster: roster), seal: none, raw: raw)
+    RosterSealed { launches: ls, digest: d } => metering_observe_against(node_id: node_id, attempt_key: attempt_key, launches: ls, seal: Present { value: d }, raw: raw)
+  }
+}
+
+fn metering_observe_against(node_id: String, attempt_key: String, launches: List<MeteredRole>, seal: String?, raw: String) -> AttemptMeteringObservation {
   match attempt_metering_decode(raw: raw) {
     RowUndecodable { cause: c } => MeteringRefused { cause: c }
     RowDecoded { row: r } =>
       if r.node_id != node_id || r.attempt_key != attempt_key {
         MeteringRefused { cause: join(["the metering record at this attempt's path names ", r.node_id, "-a", r.attempt_key], "") }
       } else {
-        match metering_record_inadmissible(record: r, roster: roster) {
+        match metering_record_inadmissible(record: r, roster: launches, seal: seal) {
           Present { value: c } => MeteringRefused { cause: c }
           Absent =>
-            match metering_standing_of(roles: r.roles) {
+            match metering_standing_of(record: r, seal: seal) {
               MeteringStandingFinal => MeteringObserved { record: r }
               MeteringStandingProvisional => MeteringProvisional { record: r }
             }
@@ -1013,18 +1380,15 @@ fn metering_observe_from_text(node_id: String, attempt_key: String, roster: List
 }
 
 fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptMeteringObservation {
-  match metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    RosterRefused { cause: c } => MeteringRefused { cause: join(["the launch roster is unreadable: ", c], "") }
-    RosterObserved { launches: roster } =>
-      match metering_read_file(path: attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-        OptionalFileAbsent => MeteringNotYetWritten
-        OptionalFileRefused { cause: c } => MeteringRefused { cause: c }
-        OptionalFileContent { content: raw } => metering_observe_from_text(node_id: node_id as String, attempt_key: attempt_key, roster: roster, raw: raw)
-      }
+  match metering_read_file(path: attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
+    OptionalFileAbsent => MeteringNotYetWritten
+    OptionalFileRefused { cause: c } => MeteringRefused { cause: c }
+    OptionalFileContent { content: raw } =>
+      metering_observe_from_text(node_id: node_id as String, attempt_key: attempt_key, roster: metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key), raw: raw)
   }
 }
 
-// ── the writer the belt tick calls once the attempt's worker is terminal ──────────────────────
+// ── the writer the belt tick calls ────────────────────────────────────────────────────────────
 fn metering_launch_tokens(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> RoleTokens {
   match metering_read_file(path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role)) {
     OptionalFileAbsent => TokensStreamAbsent
@@ -1057,11 +1421,12 @@ fn metering_launch_seat(instance: HostDashboardInstance, node_id: RoadmapNodeId,
   }
 }
 
-fn metering_record_from_usage(node_id: String, attempt_key: String, metered_at: EpochSecs, roles: List<MeteredRoleUsage>) -> AttemptMeteringRecord {
+fn metering_record_from_usage(node_id: String, attempt_key: String, metered_at: EpochSecs, sealed_roster: String?, roles: List<MeteredRoleUsage>) -> AttemptMeteringRecord {
   AttemptMeteringRecord {
     node_id: node_id,
     attempt_key: attempt_key,
     metered_at: metered_at,
+    sealed_roster: sealed_roster,
     roles: roles,
     compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
   }
@@ -1073,7 +1438,7 @@ type MeteringPersist
   | MeteringNotDue
   | MeteringPersistRefused { cause: String }
 
-fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, roster: List<MeteredRole>) -> MeteringPersist {
+fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, launches: List<MeteredRole>, seal: String?) -> MeteringPersist {
   match now_epoch_seconds() {
     Absent => MeteringPersistRefused { cause: "the clock could not be read as epoch seconds" }
     Present { value: now } => {
@@ -1081,39 +1446,49 @@ fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNode
         node_id: node_id as String,
         attempt_key: attempt_key,
         metered_at: now,
-        roles: map(roster, role => MeteredRoleUsage {
+        sealed_roster: seal,
+        roles: map(launches, role => MeteredRoleUsage {
           role: role,
           tokens: metering_launch_tokens(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role),
           seat: metering_launch_seat(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role),
         }),
       )
-      match metering_record_inadmissible(record: record, roster: roster) {
+      match metering_record_inadmissible(record: record, roster: launches, seal: seal) {
         Present { value: c } => MeteringPersistRefused { cause: c }
         Absent => {
           let path = attempt_metering_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
           let written = Filesystem.Write(path: path, content: attempt_metering_json(record: record))
-          if written.success { MeteringPersisted { path: path, standing: metering_standing_of(roles: record.roles) } } else { MeteringPersistRefused { cause: written.error } }
+          if written.success { MeteringPersisted { path: path, standing: metering_standing_of(record: record, seal: seal) } } else { MeteringPersistRefused { cause: written.error } }
         }
       }
     }
   }
 }
 
-// A Final record is never rewritten. Anything else -- absent, Provisional, or inadmissible against a
-// roster that has since grown -- is rewritten from the current evidence.
-fn metering_persist_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringPersist {
+// A Final record is never rewritten. An attempt still in the workflow ledger is metered against its
+// open roster (never Final); one that has left it is sealed first, then metered against the seal.
+fn metering_persist_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, departed: Bool) -> MeteringPersist {
   if trim(attempt_key) == "" {
     MeteringPersistRefused { cause: "the attempt carries no key, so no attempt-state path names it" }
   } else {
-    match metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      RosterRefused { cause: c } => MeteringPersistRefused { cause: join(["the launch roster is unreadable: ", c], "") }
-      RosterObserved { launches: roster } =>
-        match metering_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-          MeteringObserved { record: _ } => MeteringAlreadyFinal
-          MeteringProvisional { record: _ } => metering_persist_record(instance: instance, node_id: node_id, attempt_key: attempt_key, roster: roster)
-          MeteringNotYetWritten => metering_persist_record(instance: instance, node_id: node_id, attempt_key: attempt_key, roster: roster)
-          MeteringRefused { cause: _ } => metering_persist_record(instance: instance, node_id: node_id, attempt_key: attempt_key, roster: roster)
-        }
+    match metering_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+      MeteringObserved { record: _ } => MeteringAlreadyFinal
+      MeteringProvisional { record: _ } => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
+      MeteringNotYetWritten => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
+      MeteringRefused { cause: _ } => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
     }
+  }
+}
+
+fn metering_persist_current(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, departed: Bool) -> MeteringPersist {
+  let roster = if departed {
+    metering_roster_seal(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  } else {
+    metering_roster_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key)
+  }
+  match roster {
+    RosterRefused { cause: c } => MeteringPersistRefused { cause: join(["the launch roster is unreadable: ", c], "") }
+    RosterOpen { launches: ls } => metering_persist_record(instance: instance, node_id: node_id, attempt_key: attempt_key, launches: ls, seal: none)
+    RosterSealed { launches: ls, digest: d } => metering_persist_record(instance: instance, node_id: node_id, attempt_key: attempt_key, launches: ls, seal: Present { value: d })
   }
 }

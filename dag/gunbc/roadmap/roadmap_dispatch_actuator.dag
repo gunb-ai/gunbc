@@ -1278,7 +1278,7 @@ fn dispatch_review_unit_argv(
         events_path: dispatch_attempt_review_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
         verdict_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
         verdict_name: dispatch_attempt_review_verdict_basename(head_sha: head_sha, criterion_key: criterion_key),
-        attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
+        attempt_identity: dispatch_reviewer_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key, head_sha: head_sha),
       ),
     ),
   )
@@ -1345,7 +1345,7 @@ fn dispatch_audit_unit_argv(
         "--arg", join(["events_path=", dispatch_attempt_audit_events_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha)], ""),
         "--arg", join(["verdict_dir=", dir], ""),
         "--arg", join(["verdict_name=", dispatch_attempt_audit_verdict_basename(head_sha: head_sha)], ""),
-        "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key)], ""),
+        "--arg", join(["attempt_identity=", dispatch_auditor_attempt_identity(node_id: node_id as String, attempt_key: attempt_key, head_sha: head_sha)], ""),
       ],
     ),
   )
@@ -1944,12 +1944,21 @@ data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner 
 // mint is one function: the unit's --arg and the attempt state's binding file cannot drift apart.
 // node id plus attempt key is the same uniqueness (the key hashes the id and the spawn instant) in
 // a form that is a safe path segment by construction.
-fn dispatch_reviewer_attempt_identity(node_id: String, attempt_key: String, criterion_key: String) -> String {
-  join(["reviewer:", node_id, "-", attempt_key, "-", criterion_key], "")
+// A REVIEWER'S OR AUDITOR'S LAUNCH IDENTITY NAMES ONE LAUNCH, rendered injectively. The seat ledger
+// and the per-attempt metering (gunbc.roadmap_attempt_metering) key on it, so two launches -- the same
+// criterion at two heads, or the auditor at two heads -- may never render the same text: each part is
+// length-prefixed and the head is a part, as it is of their events streams. The result is a safe
+// path segment (no '/').
+fn dispatch_launch_identity(kind: String, parts: List<String>) -> String {
+  join([kind, ":", join(map(parts, p => join([to_string(string_length(s: p)), ".", p], "")), ".")], "")
 }
 
-fn dispatch_auditor_attempt_identity(node_id: String, attempt_key: String) -> String {
-  join(["auditor:", node_id, "-", attempt_key], "")
+fn dispatch_reviewer_attempt_identity(node_id: String, attempt_key: String, criterion_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "reviewer", parts: [node_id, attempt_key, criterion_key, head_sha])
+}
+
+fn dispatch_auditor_attempt_identity(node_id: String, attempt_key: String, head_sha: String) -> String {
+  dispatch_launch_identity(kind: "auditor", parts: [node_id, attempt_key, head_sha])
 }
 
 fn dispatch_worker_attempt_identity(node_id: String, attempt_key: String) -> String {

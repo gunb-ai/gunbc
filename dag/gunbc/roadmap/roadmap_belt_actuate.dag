@@ -13,6 +13,7 @@ import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, Gi
 import gunbc.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
+  MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
 }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
@@ -6985,18 +6986,41 @@ fn belt_commit_outcome_persist(
   }
 }
 
-// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering) is written on every tick once
-// the attempt's worker is terminal, so reviewer, auditor and supervisor rounds and late seat
-// releases that land after that tick are folded into a later rewrite rather than missed. The pass
-// runs after review and audit, and its outcomes are the tick receipt's metering_pass.
+// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering). Every attempt in the workflow
+// ledger is entered in the metering attempt index and, once its worker is terminal, metered against
+// its open roster -- a Provisional record, rewritten each tick so later reviewer, auditor and
+// supervisor rounds and late seat releases are folded in. An indexed attempt that has LEFT the ledger
+// can no longer be spawned for, because every harness spawner iterates that ledger; it is sealed and
+// metered against the seal, which is the only route to a Final record. The pass runs after review
+// and audit, and its outcomes are the tick receipt's metering_pass.
 fn belt_metering_for_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> MeteringPersist {
-  if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
-    metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key)
-  } else {
-    MeteringNotDue
+  match metering_attempt_index_admit(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key) {
+    Present { value: e } => MeteringPersistRefused { cause: join(["the metering attempt index could not be written: ", e], "") }
+    Absent =>
+      if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
+        metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key, departed: false)
+      } else {
+        MeteringNotDue
+      }
+  }
+}
+
+fn belt_metering_departed(
+  instance: HostDashboardInstance,
+  attempts: List<WorkflowAttemptProgress>,
+) -> List<MeteringPersist> {
+  match metering_attempt_index(instance: instance) {
+    MeteredAttemptsRefused { cause } => [MeteringPersistRefused { cause: join(["the metering attempt index is unreadable: ", cause], "") }]
+    MeteredAttemptsObserved { attempts: indexed } =>
+      flat_map(indexed, a =>
+        if any(attempts, p => p.node_id == a.node_id && p.attempt_key == a.attempt_key) {
+          [] as List<MeteringPersist>
+        } else {
+          [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+        })
   }
 }
 
@@ -7005,9 +7029,12 @@ fn belt_metering_attempts_for_instance(
 ) -> List<MeteringPersist> {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      [MeteringPersistRefused { cause: join(["the attempts ledger is unobservable, so no attempt can be metered: ", reason], "") }]
+      [MeteringPersistRefused { cause: join(["the attempts ledger is unobservable, so no attempt can be metered or sealed: ", reason], "") }]
     WorkflowAttemptsObserved { attempts } =>
-      map(attempts, progress => belt_metering_for_attempt(instance: instance, progress: progress))
+      concat(
+        map(attempts, progress => belt_metering_for_attempt(instance: instance, progress: progress)),
+        belt_metering_departed(instance: instance, attempts: attempts),
+      )
   }
 }
 
