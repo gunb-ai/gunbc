@@ -121,7 +121,7 @@ import gunbc.roadmap_launch_admission {
   launch_refusal_label, launch_refusal_reason,
 }
 import gunbc.roadmap_page { issue_detail_not_found_page,
-  roadmap_page_for_projection_launch, roadmap_fleet_page,
+  roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
 }
 import gunbc.roadmap_authority {
@@ -132,17 +132,14 @@ import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
 }
 import gunbc.roadmap_static_site {
-  roadmap_site_roadmap_md_body_over,
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
 import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap_site_surface_render {
   roadmap_site_health_path,
-  roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
   roadmap_site_daily_url_path,
-  roadmap_site_full_url_path,
 }
 import gunbc.roadmap_served_observation {
   DailyPage, AttemptsJson, WorkflowJson, SessionsJson,
@@ -277,7 +274,6 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
-  | RoadmapFullPageHandler
   | AllocationPageHandler
   | SiteFaviconHandler
   | SiteClientHandler
@@ -287,7 +283,6 @@ type RoadmapServeHandler
   | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
-  | RoadmapMdHandler
   | DispatchJsonHandler
   | HealthzHandler
   | DashboardInstanceHandler
@@ -357,7 +352,6 @@ type ServedDailyBodyAuthority
 fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
     ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
     ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
     ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
@@ -367,7 +361,6 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: site_client_path, handler: SiteClientHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
-    ServedRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_dispatch_url_path as String, handler: DispatchJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_health_path as String, handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
@@ -1243,13 +1236,6 @@ fn roadmap_serve_invoke_over(
             ], ""),
           )
       }
-    RoadmapFullPageHandler => {
-      let p = plan()
-      serve_page_response(page: roadmap_page_for_projection_launch(
-        proj: p,
-        launch: belt_launch_host_standing_for_page_over(instance: instance, plan: p),
-      ))
-    }
     AllocationPageHandler => allocation_page_response(request: request)
     SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
     SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
@@ -1259,7 +1245,6 @@ fn roadmap_serve_invoke_over(
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
-    RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body_over(plan: plan()))
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body_over(plan: plan()))
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
     DashboardInstanceHandler =>

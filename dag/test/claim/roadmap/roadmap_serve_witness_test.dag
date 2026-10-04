@@ -7,7 +7,7 @@ import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAb
 import gunbc.roadmap_serve {
   RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
   roadmap_serve_handle_over,
-  RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
+  RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
@@ -85,7 +85,7 @@ import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap.roadmap_event_log { IssueComment, EventPrincipalAuthenticated, LegacyEmailPrincipal }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
-import gunbc.roadmap_site_surface_render { roadmap_site_roadmap_url_path, roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
+import gunbc.roadmap_site_surface_render { roadmap_site_dispatch_url_path, roadmap_site_daily_url_path }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.auth.approval_status_wire { filed_approval_status_text, StatusNotFiled }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -113,8 +113,6 @@ fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool 
 
 test fn witness_serve_table_selection() -> Bool {
   selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
-    && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
-    && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
     && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
     && selects(method: GET, path: "/healthz", want: HealthzHandler)
     && selects(method: GET, path: "/instance.json", want: DashboardInstanceHandler)
@@ -496,16 +494,6 @@ fn serve_over_plan_declaring(
   )
 }
 
-test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
-  let r = serve_over_plan(
-    plan: caller_supplied_plan_fixture(),
-    path: roadmap_site_roadmap_url_path as String,
-  )
-  r.status == 200
-    && string_contains(s: r.body, pattern: caller_supplied_plan_section_title())
-    && !string_contains(s: r.body, pattern: public_plan_section_title())
-}
-
 test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
   let r = serve_over_plan(
     plan: caller_supplied_plan_fixture(),
@@ -519,22 +507,16 @@ test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
 // roadmap: the detail the caller handed over is what the reader sees.
 test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
   let detail = "the caller's plan carrier could not be read"
-  let md = serve_over_plan(
-    plan: RoadmapAuthorityProjectionRefused { detail: detail },
-    path: roadmap_site_roadmap_url_path as String,
-  )
   let dispatch = serve_over_plan(
     plan: RoadmapAuthorityProjectionRefused { detail: detail },
     path: roadmap_site_dispatch_url_path as String,
   )
-  string_contains(s: md.body, pattern: "# roadmap unavailable")
-    && string_contains(s: md.body, pattern: detail)
-    && !string_contains(s: md.body, pattern: public_plan_section_title())
-    && string_contains(s: dispatch.body, pattern: "\"refused\": true")
+  string_contains(s: dispatch.body, pattern: "\"refused\": true")
+    && !string_contains(s: dispatch.body, pattern: public_plan_section_title())
     && string_contains(s: dispatch.body, pattern: detail)
 }
 
-// A CONTROL FOR THE CONTROL. The three witnesses above are claims about the PLAN, and a wrong path
+// A CONTROL FOR THE CONTROL. The witnesses above are claims about the PLAN, and a wrong path
 // would make every one of them vacuous while looking identical to a pass on the negative
 // assertions. This one asks an unrouted path and requires the 404, so "the responder answered from
 // the supplied plan" stays distinguishable from "the responder never reached a handler".
@@ -612,14 +594,13 @@ test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
 // caller that cannot vouch for the daily body still gets every other route answered from its own
 // plan, and the refusal is located on / alone.
 test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
-  let md = serve_over_plan_declaring(
+  let dispatch = serve_over_plan_declaring(
     plan: caller_supplied_plan_fixture(),
     daily_body: DailyBodyAuthorityUnknown,
-    path: roadmap_site_roadmap_url_path as String,
+    path: roadmap_site_dispatch_url_path as String,
   )
-  md.status == 200
-    && string_contains(s: md.body, pattern: caller_supplied_plan_section_title())
-    && !string_contains(s: md.body, pattern: public_plan_section_title())
+  dispatch.status == 200
+    && !string_contains(s: dispatch.body, pattern: public_plan_section_title())
 }
 
 // THE ISSUE DETAIL ROUTES (owner ruling 2026-09-24): the issue's detail page is a real served
