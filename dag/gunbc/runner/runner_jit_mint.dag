@@ -9,7 +9,7 @@ import extdeps.github.actions_jit_runner {
 }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
-  RunnerGroupRestrictionRefusal,
+  RunnerGroupRestrictionRefusal, microvm_shakedown_selected_workflow,
 }
 import gunbc.runner.runner_jit_admission {
   attempt_binding_admits_mint_name, JitAdmissionAxisStanding,
@@ -68,6 +68,7 @@ type JitMintPlan
     }
   | JitMintRefusedAttemptUnbound { cause: String }
   | JitMintRefusedRunnerGroupUnrestricted { group: NonEmptyStr, cause: RunnerGroupRestrictionRefusal }
+  | JitMintRefusedRunnerGroupForAnotherWorkflow { group: NonEmptyStr, selected: NonEmptyStr, intended: NonEmptyStr }
 
 // THE RUNNER NAME IS THE UNIT NAME, not a fresh identifier minted beside it. A second naming scheme
 // for one attempt is a nickname (DESIGN §3), and it is the expensive kind: an orphaned GitHub runner
@@ -114,6 +115,19 @@ fn jit_slot_runner_name(slot: JitSlot) -> JitRunnerName {
   match slot {
     MicroVmJitSlot { attempt: a } => jit_runner_name_for(attempt: a)
     HostUnitJitSlot { slot: h } => JitRunnerName { value: h.unit }
+  }
+}
+
+// THE WORKFLOW A SLOT EXISTS TO RUN. A restricted group is observed restricted to ONE workflow
+// (gunbc.runner_group_restriction_observation RestrictedRunnerGroup selected_workflow), and a slot
+// registered into a group restricted to a different workflow would take that workflow's jobs and
+// never its own. So the slot carries its intended workflow -- the microVM slot's is the shakedown's,
+// derived; a host-unit slot's is its caller's -- and the mint compares the two before it uses the
+// group id at all.
+fn jit_slot_workflow(slot: JitSlot) -> NonEmptyStr {
+  match slot {
+    MicroVmJitSlot { attempt: _ } => microvm_shakedown_selected_workflow()
+    HostUnitJitSlot { slot: h } => h.workflow
   }
 }
 
@@ -186,9 +200,17 @@ fn plan_jit_mint(
             RunnerGroupRestrictionRefused { name: n, cause: c } =>
               JitMintRefusedRunnerGroupUnrestricted { group: n, cause: c }
             RunnerGroupRestrictedToWorkflow { restriction: r } =>
-              JitMintAuthorized {
-                slot: slot,
-                request: jit_config_request_for(slot: slot, runner_group_id: r.group),
+              if (r.selected_workflow as String) != (jit_slot_workflow(slot: slot) as String) {
+                JitMintRefusedRunnerGroupForAnotherWorkflow {
+                  group: r.name,
+                  selected: r.selected_workflow,
+                  intended: jit_slot_workflow(slot: slot),
+                }
+              } else {
+                JitMintAuthorized {
+                  slot: slot,
+                  request: jit_config_request_for(slot: slot, runner_group_id: r.group),
+                }
               }
           }
         } else {
