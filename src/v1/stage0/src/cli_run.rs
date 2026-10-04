@@ -7351,9 +7351,8 @@ fn entry_eligible_for_discovery_skip_before_resolve(
 /// run resolved the ENTIRE roster on the width-1 pump thread and retained every resolved graph
 /// in the uncapped memo (~17 GB scoped runs became ~38 GB whole-corpus retention — the
 /// 2026-07-21 exit-137 floor kills). On a completed width-1 run this equals
-/// `DiscoverySummary::roster_closure_nodes`; `run_discovery_corpus_with_options` asserts that
-/// equality as the definition-drift oracle (a loader fork or seeding change localizes here
-/// instead of silently skewing bytes-per-node).
+/// `DiscoverySummary::roster_closure_nodes`. (The discovery-corpus path that asserted that
+/// equality as a definition-drift oracle was deleted as unreachable, 2026-10-04.)
 fn collect_both_closure_module_names_for_entry(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -13638,7 +13637,8 @@ pub struct MultiEntryIndex {
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
-    /// entry-completion in `run_discovery_rows`. `None` when unarmed (Adaptive shared
+    /// entry-completion. The discovery-corpus path that armed it was deleted as unreachable
+    /// (2026-10-04), so no production route arms it today. `None` when unarmed (Adaptive shared
     /// store, single-claim paths, tests): retention stays the pre-M2 process-lifetime
     /// hold, so the mechanism is strictly additive. Authority: modeled policy in
     /// `dag/gunbc/executor_schedule_retention.dag`, mirrored above.
@@ -14498,7 +14498,7 @@ impl ScheduleRetention {
 /// Arm schedule-derived retention over a discovery run's WHOLE schedule (`rows` = every
 /// scheduled entry's rows). Called ONCE by the drain caller (Serial: the single run; Adaptive
 /// width=1: before the entry-group loop) so refcounts span the whole batch and a shared module
-/// survives until its last consumer — NOT per `run_discovery_rows` call, which would hand the
+/// survives until its last consumer — NOT per entry-group call, which would hand the
 /// Adaptive inline drain a one-entry schedule per group (refcount 1 on the whole closure → the
 /// entries=1 cold-recompute churn). Only the private index path (`cross_worker_store == None`)
 /// arms — the serial + adaptive-width-1 inline drains that share the long-lived process index
@@ -27311,7 +27311,7 @@ fn discovery_rows_runtime_dependency_touched_count(
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
 // provably outside all three skip axes without loading the resolved graph. Dissolves at
 // Step 5 (`affected-set-precompute-pruning (plan doc deleted 2026-08-28)`) when the Rust parallel
-// (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
+// (`NodeFrontierSeeds` selection) is deleted and the `.dag`
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
 /// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
@@ -27544,8 +27544,7 @@ pub fn expand_explicit_witness_entries(
 // below — `floor_verbose` / `floor_ts` / `floor_stream_enabled` / `floor_color_enabled`,
 // `ShardStyle`, and `eprintln_affected_set_categorization` — is seed-side NARRATION wrapped
 // around the existing affected-set selection. It adds no selection authority: the fail-closed
-// skip/run decision, its refusals, and the `DiscoverySummary` counts are unchanged (see
-// `run_discovery_rows`); these helpers only choose how the already-decided run is printed. They
+// skip/run decision, its refusals, and the `DiscoverySummary` counts are unchanged; these helpers only choose how the already-decided run is printed. They
 // live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
 // `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
 // output already migrating into `dag/gunbc/ci/ci_render.dag` (the timing histogram + slowest-witness
