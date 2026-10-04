@@ -1,4 +1,5 @@
 module gunbc.site.dependency_graph
+import gunbc.site.status { status_badge }
 import v2.std.algebra { filter }
 import gunbc.design.scale { graph_row_height_px, graph_rail_width_px }
 import std.types { String, Int, Bool }
@@ -51,7 +52,7 @@ fn dependency_graph_row(item: DependencyGraphItem, role: String, selected: Bool)
   ], if selected { [attr(name: "aria-current", value: "true"), attr(name: "data-current", value: "1")] } else { [attr(name: "href", value: concat("/issue/", item.id))] }), [
     el_class("span", "issue-dag-role", [txt(role)]),
     el_class("span", "issue-dag-label", [txt(item.label)]),
-    el_class("span", "issue-dag-status", [txt(item.status)]),
+    el_class("span", "issue-dag-status", [status_badge(label: item.status)]),
   ])
 }
 // A one-hop directed graph: each emitted path has exactly one authored dependency.

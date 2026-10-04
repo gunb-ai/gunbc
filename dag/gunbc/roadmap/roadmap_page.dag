@@ -1,4 +1,5 @@
 module gunbc.roadmap_page
+import gunbc.site.status { status_badge, status_tone }
 import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
 import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, roadmap_priority_label, issue_priority_explanation }
@@ -1707,7 +1708,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
             el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
           ]
         }) ]
-    IssueColumnStatus => [el_attrs("span", [attr(name: "class", value: "taskbar-signal issue-status"), attr(name: "title", value: bar.signal)], [txt(issue_status_label(view: view))])]
+    IssueColumnStatus => [el_attrs("span", [attr(name: "class", value: "issue-status site-status"), attr(name: "data-status-tone", value: status_tone(label: issue_status_label(view: view))), attr(name: "title", value: bar.signal)], [txt(issue_status_label(view: view))])]
     IssueColumnLastModified => []
   }
 }
@@ -3315,7 +3316,7 @@ fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>)
 fn issue_status_node(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> Fragment {
   let facts = issue_status_details(view: view)
   el_class("details", "issue-status-detail", [
-    el("summary", [txt(issue_status_label(view: view))]),
+    el("summary", [status_badge(label: issue_status_label(view: view))]),
     el_class("dl", "issue-status-facts", [
       el("dt", [txt("Planning")]), el("dd", concat([txt(facts.planning)], if count(events) == 0 { [] } else { [el("p", [txt(issue_standing_text(s: roadmap_node_standing(envs: events), profiles: view.profiles))])] })),
       el("dt", [txt("Current obligation")]), el("dd", [txt(if facts.obligation == "" { "No unsettled obligation" } else { facts.obligation })]),

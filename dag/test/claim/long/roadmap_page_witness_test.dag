@@ -1765,7 +1765,7 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<aside class=\"issue-rail\">")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
-        && string_contains(s: h, pattern: "<details class=\"issue-status-detail\"><summary>Active</summary>")
+        && string_contains(s: h, pattern: "<details class=\"issue-status-detail\"><summary><span class=\"site-status\" data-status-tone=\"assigned\">Active</span></summary>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">not recorded (authored roadmap row)</span>")
         && !string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">agent-35</span>")
@@ -1870,10 +1870,10 @@ test fn witness_issue_table_is_summary_only_and_stale_attempts_preserve_current_
             && occurrence_count(s: stale_table, pattern: "taskbar-inspect") == 0
             && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-search=\"page task one page-task-one \"")
             && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-summary-only=\"\"")
-            && string_contains(s: live_table, pattern: "<span class=\"taskbar-signal issue-status\" title=\"Submission · failed\">Active</span>")
+            && string_contains(s: live_table, pattern: "<span class=\"issue-status site-status\" data-status-tone=\"assigned\" title=\"Submission · failed\">Active</span>")
             && !string_contains(s: live_table, pattern: "earlier attempt")
             && !string_contains(s: stale_table, pattern: "earlier attempt")
-            && string_contains(s: stale_table, pattern: "<span class=\"taskbar-signal issue-status\" title=\"ready to dispatch\">Active</span>")
+            && string_contains(s: stale_table, pattern: "<span class=\"issue-status site-status\" data-status-tone=\"assigned\" title=\"ready to dispatch\">Active</span>")
       }
   }
 }

@@ -438,7 +438,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: RawProperty { name: "outline-offset" }, value: "calc(0em - var(--space-2))")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag-row[data-current=\"1\"]" }, decls: [
-      decl(prop: Background, value: "color-mix(in srgb, var(--issue-action-hover) 9%, var(--surface))")
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 9%, var(--surface))")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"open\"]" }, decls: [
       decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--figure)")
@@ -447,10 +447,10 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--figure)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"selected\"]" }, decls: [
-      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-action-hover)")
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--status-assigned-ink)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"selected\"]" }, decls: [
-      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-action-hover)")
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--status-assigned-ink)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"done\"]" }, decls: [
       decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-text-dim)")
@@ -909,7 +909,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Width, value: "fit-content"),
       decl(prop: Padding, value: "var(--space-4) var(--space-8)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: Background, value: "var(--issue-bg-hover)")
+      decl(prop: Background, value: "transparent")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-status-facts" }, decls: [
       decl(prop: Padding, value: "var(--space-12) 0"),
@@ -1208,13 +1208,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Padding, value: "var(--space-4) var(--space-8)"),
       decl(prop: FontSize, value: "var(--text-13)")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-rail .issue-status-detail > summary::before" }, decls: [
-      decl(prop: RawProperty { name: "content" }, value: "\"\""),
-      decl(prop: Position, value: "absolute"),
-      decl(prop: Inset, value: "var(--space-4) 0"),
-      decl(prop: RawProperty { name: "z-index" }, value: "-1"),
-      decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: Background, value: "var(--issue-bg-hover)")
-    ] }
+
   ]
 }

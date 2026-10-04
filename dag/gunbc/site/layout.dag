@@ -2,12 +2,33 @@ module gunbc.site.layout
 import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }
-import extdeps.languages.css.properties { FlexDirection, MarginTop, Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
+import extdeps.languages.css.properties { CustomProperty, FlexDirection, MarginTop, Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
 import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
 
 fn site_layout_rules() -> List<BuildRule> {
   [
+    StaticRule { selector: RawSelector { text: ".site-status" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--text-dim)"),
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: Padding, value: "var(--space-2) var(--space-8)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Color, value: "var(--status-ink)"),
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-ink) 12%, var(--surface))"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"ready\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-ready-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"assigned\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-assigned-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-status[data-status-tone=\"blocked\"]" }, decls: [
+      decl(prop: CustomProperty { name: "status-ink" }, value: "var(--status-blocked-ink)")
+    ] },
     StaticRule { selector: RawSelector { text: "*" }, decls: [
       decl(prop: Margin, value: scale_var(t: space_0)),
       decl(prop: Padding, value: scale_var(t: space_0)),
