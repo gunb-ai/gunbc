@@ -1,6 +1,7 @@
 module extdeps.cron.mock_corpus
 
 import std.types { List }
+import std.hermetic_replay { PublishedMockCase }
 
 
 data cron_tab_mock_case_list: PublishedMockCase = PublishedMockCase {
