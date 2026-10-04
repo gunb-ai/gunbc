@@ -119,8 +119,8 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
-    empty_type_env, lookup_emit_type_summary,
+    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_env,
+    lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
@@ -186,7 +186,8 @@ pub use crate::v1_compiler_infer_lookup::{
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
-    infer_builtin_call_type, resolve_builtin_call_type,
+    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+    resolve_builtin_call_type,
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
@@ -13457,13 +13458,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         })
                                     }
                                 } else {
-                                    if (!callee_is_body_binding.clone()
-                                        && (func_name.clone() == "empty_map".to_string()))
-                                    {
-                                        {
-                                            let bare_m =
-                                                crate::v1_compiler_infer_types::bare_map_node();
-                                            match expected.clone() {
+                                    if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())) {
+                            {
+                                let bare_m = crate::v1_compiler_infer_types::bare_map_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13547,15 +13545,12 @@ match bare_m.clone() {
 }),
 },
 }
-                                        }
-                                    } else {
-                                        if (!callee_is_body_binding.clone()
-                                            && (func_name.clone() == "empty_set".to_string()))
-                                        {
-                                            {
-                                                let bare_s =
-                                                    crate::v1_compiler_infer_types::bare_set_node();
-                                                match expected.clone() {
+}
+                        } else {
+                            if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())) {
+                                {
+                                    let bare_s = crate::v1_compiler_infer_types::bare_set_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13624,9 +13619,9 @@ match bare_s.clone() {
 }),
 },
 }
-                                            }
-                                        } else {
-                                            if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
+}
+                            } else {
+                                if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let bt = tier2b.bt.clone();
@@ -13759,8 +13754,8 @@ Rc::new(InferResult {
                                         }
 }
                                 }
-                                        }
-                                    }
+                            }
+                        }
                                 }
                             }
                         }
@@ -31014,7 +31009,7 @@ pub fn build_emit_graph_info(
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-            type_decl_items: crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
+            type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
@@ -31038,7 +31033,6 @@ pub fn build_emit_graph_info(
                         } else {
                             crate::v1_compiler_infer_emit_info::add_emit_item_summary(
                                 inner_state.clone(),
-                                module_name.clone(),
                                 item.clone(),
                                 typed_module.type_env.clone().source_indices.clone(),
                             )
