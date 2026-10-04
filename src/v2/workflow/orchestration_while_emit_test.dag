@@ -222,7 +222,7 @@ data orch_while_locate_body_perturbed_intent: PipelineStep = While {
   }
 }
 
-test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
+test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool  {
   match orch_emit_pipeline(
     p: Pipeline {
       steps: [
@@ -246,7 +246,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
   }
 }
 
-test fn orch_while_step_matches_golden_holds() -> Bool {
+test fn orch_while_step_matches_golden_holds() -> Bool  {
   match orch_emit_pipeline(
     p: Pipeline {
       steps: [
@@ -275,7 +275,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
 // not expose a dedicated construction/lens refusal carrier yet. This witness only checks that
 // changing the raw cond text changes the emitted bytes.
 
-test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
+test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool  {
   match orch_emit_step(
     s: While {
       cond: ExitZero {
@@ -308,7 +308,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   }
 }
 
-test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
+test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool  {
   let regular = match bash_path_predicate_target_model(
     predicate: PathEntryKind {
       path: orch_while_memory_peak_path,

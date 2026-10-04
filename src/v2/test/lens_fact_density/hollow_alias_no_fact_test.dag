@@ -10,6 +10,6 @@ data hollow_alias_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn hollow_alias_no_fact_claim_holds() -> Bool {
+test fn hollow_alias_no_fact_claim_holds() -> Bool  {
   carrier_spec_fact(carrier: hollow_alias_input) == NoFact
 }

@@ -59,7 +59,7 @@ data synthesis_gap_it_sentinel: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn synthesis_gap_it_lens_non_empty() -> Bool {
+test fn synthesis_gap_it_lens_non_empty() -> Bool  {
   non_empty(synthesis_lens(n: synthesis_gap_it_input, declared_technique: InformationTheoretic))
 }
 
@@ -84,6 +84,6 @@ fn synthesis_gap_it_first_reason_node() -> Node {
   }
 }
 
-test fn synthesis_gap_it_reason_claim_holds() -> Bool {
+test fn synthesis_gap_it_reason_claim_holds() -> Bool  {
   synthesis_gap_it_first_reason_node() == synthesis_gap_it_input
 }

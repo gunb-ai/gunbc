@@ -39,7 +39,7 @@ fn log_base_two() -> Nat {
   Succ { prev: Succ { prev: Zero } }
 }
 
-test fn invalid_log_base_zero_refuses() -> Bool {
+test fn invalid_log_base_zero_refuses() -> Bool  {
   match normalize_cost_expr_to_symbolic(
     expr: cost_log_expr(
       base: Zero,
@@ -51,7 +51,7 @@ test fn invalid_log_base_zero_refuses() -> Bool {
   }
 }
 
-test fn invalid_log_base_one_refuses() -> Bool {
+test fn invalid_log_base_one_refuses() -> Bool  {
   match normalize_cost_expr_to_symbolic(
     expr: cost_log_expr(
       base: Succ { prev: Zero },
@@ -63,7 +63,7 @@ test fn invalid_log_base_one_refuses() -> Bool {
   }
 }
 
-test fn valid_log_base_two_projects_log_cost() -> Bool {
+test fn valid_log_base_two_projects_log_cost() -> Bool  {
   match normalize_cost_expr_to_symbolic(
     expr: cost_log_expr(
       base: log_base_two(),
@@ -75,7 +75,7 @@ test fn valid_log_base_two_projects_log_cost() -> Bool {
   }
 }
 
-test fn cost_effect_projects_unmodeled_effect_refusal() -> Bool {
+test fn cost_effect_projects_unmodeled_effect_refusal() -> Bool  {
   match normalize_cost_expr_to_symbolic(
     expr: CostEffect { operation: expr_refusal_effect_operation }
   ) {

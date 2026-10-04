@@ -41,7 +41,7 @@ data fact_bundle_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn fact_bundle_named_claim_holds() -> Bool {
+test fn fact_bundle_named_claim_holds() -> Bool  {
   match carrier_spec_fact(carrier: fact_bundle_input) {
     NamedFieldFacts { density: d } =>
       match d.prev {

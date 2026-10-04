@@ -44,7 +44,7 @@ fn located_row() -> NativeTestFileRefusal {
   )
 }
 
-test fn the_fatal_link_is_positioned_at_its_line_and_byte_column() -> Bool {
+test fn the_fatal_link_is_positioned_at_its_line_and_byte_column() -> Bool  {
   let row = located_row()
   match row.chain {
     Cons { head: h, tail: Cons { head: f, tail: Empty } } =>
@@ -57,7 +57,7 @@ test fn the_fatal_link_is_positioned_at_its_line_and_byte_column() -> Bool {
 
 // A locus in ANOTHER file is not positioned against this file's text: its byte offset would land on
 // an unrelated line here, a confident wrong answer.
-test fn a_locus_in_another_file_is_not_positioned_against_this_one() -> Bool {
+test fn a_locus_in_another_file_is_not_positioned_against_this_one() -> Bool  {
   let row = native_test_file_refusal(
     path: ^native_file_refusal_locus_fixture,
     module: optional_absent(),

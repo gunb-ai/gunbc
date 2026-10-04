@@ -69,7 +69,7 @@ data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismCl
   actual: parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
 }
 
-test fn parallelism_data_dependency_claim_holds() -> Bool {
+test fn parallelism_data_dependency_claim_holds() -> Bool  {
   match parallelism_data_dependency_claim.actual {
     Holds { value: actual } =>
       parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)

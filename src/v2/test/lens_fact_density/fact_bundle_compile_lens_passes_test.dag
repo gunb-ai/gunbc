@@ -46,7 +46,7 @@ fn fact_bundle_cl_tree() -> InferredTree {
   )
 }
 
-test fn fact_bundle_compile_lens_passes_holds() -> Bool {
+test fn fact_bundle_compile_lens_passes_holds() -> Bool  {
   match apply_compile_lens(
     lens: fact_density_lens,
     inferred: fact_bundle_cl_tree(),

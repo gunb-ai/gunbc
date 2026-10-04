@@ -46,7 +46,7 @@ data loop_linear_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn loop_linear_claim_holds() -> Bool {
+test fn loop_linear_claim_holds() -> Bool  {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
       match actual {

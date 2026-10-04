@@ -1,6 +1,6 @@
 module v2.test.language_model.rust_r3_internal
 
-test fn rust_r3_internal_emit_coupling_fixture_wired() -> Bool {
+test fn rust_r3_internal_emit_coupling_fixture_wired() -> Bool  {
   let receipt = rust_r3_internal_fixture()
   receipt.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
   && receipt.atom_realization_fact == ^rust_atom_realization_symbol
@@ -25,7 +25,7 @@ data rust_r3_internal_verification_run_receipt_default: LeafModelVerificationRun
   )
 }
 
-test fn rust_r3_internal_verification_receipt_claim_id_wired() -> Bool {
+test fn rust_r3_internal_verification_receipt_claim_id_wired() -> Bool  {
   rust_r3_internal_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r3_internal_symbol_coupling
 }
 

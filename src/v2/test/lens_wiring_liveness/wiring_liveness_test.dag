@@ -49,14 +49,14 @@ fn wl_disconnected_declared_input() -> Node {
   wl_atom(identity: ^wiring_liveness_dangling_input)
 }
 
-test fn wiring_liveness_wired_input_reaches_output() -> Bool {
+test fn wiring_liveness_wired_input_reaches_output() -> Bool  {
   return wiring_input_is_wired(
     output: wl_output_tree(),
     declared_input: wl_input_leaf()
   )
 }
 
-test fn wiring_liveness_dead_input_is_unwired() -> Bool {
+test fn wiring_liveness_dead_input_is_unwired() -> Bool  {
   return wiring_input_is_wired(
     output: wl_output_tree(),
     declared_input: wl_disconnected_declared_input()
@@ -91,7 +91,7 @@ fn wl_first_field_reachable(root: Node, edges: List<Edge>) -> Bool {
 // A REFUSED READ FAILS THIS CLAIM RATHER THAN READING AS AN UNREACHABLE FIELD. The two states are
 // different facts -- the type could not be resolved, versus the type resolved and its first field
 // is not reachable -- and only the second is what this claim is about.
-test fn wiring_liveness_real_reflected_type_field_reachable() -> Bool {
+test fn wiring_liveness_real_reflected_type_field_reachable() -> Bool  {
   match wl_reflected_dependency_kind() {
     Rejected { diagnostics: _ } => false
     Accepted { value: root, diagnostics: _ } =>

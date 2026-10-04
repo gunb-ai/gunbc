@@ -133,7 +133,7 @@ fn witness_dead_wire_detected() -> Bool {
 }
 
 
-test fn wiring_corpus_fixture_surface_holds() -> Bool {
+test fn wiring_corpus_fixture_surface_holds() -> Bool  {
   wiring_corpus_probe(alpha: true, beta: true)
     && wiring_corpus_helper(seed: true)
     && wiring_corpus_probe_live_let(seed: true)
@@ -166,7 +166,7 @@ data wiring_liveness_subject_files: List<String> = [
   "src/v2/test/lens_wiring_liveness/wiring_liveness_corpus_test.dag"
 ]
 
-test fn wiring_liveness_corpus_witnesses() -> Bool {
+test fn wiring_liveness_corpus_witnesses() -> Bool  {
   let decls = fn_arrow_decl_facts_live(
     pool_roots: wiring_liveness_subject_roots,
     pool_files: wiring_liveness_subject_files

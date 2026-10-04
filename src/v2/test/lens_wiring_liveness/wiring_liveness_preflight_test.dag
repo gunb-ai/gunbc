@@ -72,7 +72,7 @@ fn wlp_is_failclosed(frontier: ReExecFrontier) -> Bool {
   }
 }
 
-test fn preflight_wired_slice_runs() -> Bool {
+test fn preflight_wired_slice_runs() -> Bool  {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -81,7 +81,7 @@ test fn preflight_wired_slice_runs() -> Bool {
   return wlp_is_failclosed(frontier: result) == false
 }
 
-test fn preflight_dead_wire_failcloses() -> Bool {
+test fn preflight_dead_wire_failcloses() -> Bool  {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -90,7 +90,7 @@ test fn preflight_dead_wire_failcloses() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
+test fn preflight_mixed_slice_failcloses_on_dead() -> Bool  {
   let result = preflight_reexec_frontier(
     frontier: empty_frontier(),
     dependencies: wlp_slice(),
@@ -99,7 +99,7 @@ test fn preflight_mixed_slice_failcloses_on_dead() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_preserves_prior_failclosed() -> Bool {
+test fn preflight_preserves_prior_failclosed() -> Bool  {
   let prior = FailClosed { reason: ReasonSymbol { reason: ^wlp_prior_failure } }
   let result = preflight_reexec_frontier(
     frontier: prior,
@@ -109,7 +109,7 @@ test fn preflight_preserves_prior_failclosed() -> Bool {
   return wlp_is_failclosed(frontier: result)
 }
 
-test fn preflight_dead_wire_suggests_wiring_correction() -> Bool {
+test fn preflight_dead_wire_suggests_wiring_correction() -> Bool  {
   let obligation = wlp_dead_obligation()
   match dead_wire_reason(
     obligation: obligation,

@@ -106,13 +106,13 @@ fn nested_actual_complexity() -> ComplexityAssessment {
   complexity_lens(n: nested_input)
 }
 
-test fn nested_cost_projection_holds() -> Bool {
+test fn nested_cost_projection_holds() -> Bool  {
   match nested_actual_cost() {
     Holds { value: actual } => actual == nested_claim.expected_cost
     Violates { diagnostic: _ } => false
   }
 }
 
-test fn nested_complexity_projection_holds() -> Bool {
+test fn nested_complexity_projection_holds() -> Bool  {
   nested_actual_complexity() == established_complexity(bound: nested_claim.expected_complexity)
 }

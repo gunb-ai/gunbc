@@ -156,7 +156,7 @@ fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
 }
 
 // A planned identity whose terminal outcome is Passed carries the passed green standing.
-test fn planned_with_passed_verdict_stands_green() -> Bool {
+test fn planned_with_passed_verdict_stands_green() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -169,7 +169,7 @@ test fn planned_with_passed_verdict_stands_green() -> Bool {
 
 // The changed-witness sublane is a second planning mechanism, not an admission exception.
 // Its terminal verdict is judged identically while its distinct disposition preserves why it ran.
-test fn changed_sublane_with_passed_verdict_stands_green() -> Bool {
+test fn changed_sublane_with_passed_verdict_stands_green() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -180,7 +180,7 @@ test fn changed_sublane_with_passed_verdict_stands_green() -> Bool {
   ) == "planned-and-passed"
 }
 
-test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm() -> Bool {
+test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm() -> Bool  {
   match required_floor_disposition_with_changed_selection(
     ordinary: DeclinedOutsideGateClosure {},
     selected_as_changed_witness: true,
@@ -199,7 +199,7 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
   }
 }
 
-test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
+test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool  {
   match required_floor_disposition_with_changed_selection(
     ordinary: DeclinedOutsideGateClosure {},
     selected_as_changed_witness: false,
@@ -219,7 +219,7 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
 }
 
 // A planned identity the receipt records as never executed is nonterminal — red.
-test fn planned_but_not_executed_is_nonterminal() -> Bool {
+test fn planned_but_not_executed_is_nonterminal() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -232,7 +232,7 @@ test fn planned_but_not_executed_is_nonterminal() -> Bool {
 
 // An enrolled expected-red failing exactly as enrolled reached the terminal verdict the run
 // holds green for it — the sanctioned add-a-discriminating-RED move is not vetoed here.
-test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
+test fn planned_with_known_red_held_verdict_stands_green() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -245,7 +245,7 @@ test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
 
 // A planned identity with a non-Passed terminal outcome carries no passing verdict — red at
 // this grain too, whatever its own mechanism already did to the floor.
-test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
+test fn planned_with_failed_verdict_is_nonterminal() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -256,7 +256,7 @@ test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
   ) == "planned-without-terminal-verdict"
 }
 
-test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
+test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -269,7 +269,7 @@ test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
 
 // THE INCIDENT ARM: a changed identity declined because its module name is outside the gate
 // closure classifies Declined — the exact state PRs #9672/#9675 shipped green.
-test fn declined_outside_gate_closure_is_declined() -> Bool {
+test fn declined_outside_gate_closure_is_declined() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -280,7 +280,7 @@ test fn declined_outside_gate_closure_is_declined() -> Bool {
   ) == "declined"
 }
 
-test fn declined_long_module_is_declined() -> Bool {
+test fn declined_long_module_is_declined() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -291,7 +291,7 @@ test fn declined_long_module_is_declined() -> Bool {
   ) == "declined"
 }
 
-test fn declined_cost_debt_is_declined() -> Bool {
+test fn declined_cost_debt_is_declined() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -303,12 +303,12 @@ test fn declined_cost_debt_is_declined() -> Bool {
 }
 
 // A changed identity with no disposition row at all is a fact the receipt cannot speak for.
-test fn absent_row_is_missing_disposition() -> Bool {
+test fn absent_row_is_missing_disposition() -> Bool  {
   standing_kind(s: changed_standing_of(reading: NoDispositionRow {})) == "missing-disposition"
 }
 
 // Blocking polarity: the passed and enrolled-held standings are green.
-test fn passed_and_known_red_held_are_green() -> Bool {
+test fn passed_and_known_red_held_are_green() -> Bool  {
   !changed_witness_standing_blocks(standing: PlannedAndPassed {})
     && !changed_witness_standing_blocks(standing: PlannedAndKnownRedHeld {})
     && changed_witness_standing_blocks(standing: PlannedWithoutTerminalVerdict {})
@@ -320,7 +320,7 @@ test fn passed_and_known_red_held_are_green() -> Bool {
 
 // The fold keeps blocking rows in input order, drops the green rows, and CARRIES each blocker's
 // cause.
-test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
+test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool  {
   let rows = [
     ChangedWitnessRow {
       identity: "a.declined",
@@ -354,7 +354,7 @@ test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
 // that was declined and never ran, against a witness that was planned, ran, and reached no
 // verdict — must arrive at the consumer distinguishable. Against the `List<String>` this fold
 // returned through gunbc#10757 this assertion is UNSATISFIABLE: there was no cause to compare.
-test fn two_blocking_standings_do_not_share_one_cause() -> Bool {
+test fn two_blocking_standings_do_not_share_one_cause() -> Bool  {
   let rows = [
     ChangedWitnessRow {
       identity: "a.never_ran",
@@ -380,7 +380,7 @@ test fn two_blocking_standings_do_not_share_one_cause() -> Bool {
 // different fact — and a different discharge — from a module whose authored name misses the gate
 // prefixes. Enrolment follows the diff; discovery follows the source roots; the cause must say
 // which of the two refused.
-test fn two_declines_carry_their_own_dispositions() -> Bool {
+test fn two_declines_carry_their_own_dispositions() -> Bool  {
   let outside_closure = changed_witness_blocking_cause(
     standing: Declined { disposition: DeclinedOutsideGateClosure {} }
   )
@@ -394,7 +394,7 @@ test fn two_declines_carry_their_own_dispositions() -> Bool {
 // NO BLOCKING STANDING REPORTS THE OLD CONSTANT. The cause the merge gate used to receive for
 // every one of them was the flat name of the population itself, which offered its reader exactly
 // one affordance — rerun — for standings that a rerun cannot discharge.
-test fn no_blocking_cause_is_the_flat_population_name() -> Bool {
+test fn no_blocking_cause_is_the_flat_population_name() -> Bool  {
   let blocking = [
     Declined { disposition: DeclinedOutsideRequiredGate {} },
     MissingDisposition {},
@@ -411,7 +411,7 @@ test fn no_blocking_cause_is_the_flat_population_name() -> Bool {
 // must still produce TWO blockers. The identity is what the author has to act on, and a fold that
 // keyed or collapsed on the cause would lose one silently — a `List<String>` made that mistake
 // unobservable, and the repair must not introduce it.
-test fn two_declines_with_one_disposition_stay_two_blockers() -> Bool {
+test fn two_declines_with_one_disposition_stay_two_blockers() -> Bool  {
   let rows = [
     ChangedWitnessRow {
       identity: "a.declined",
@@ -441,7 +441,7 @@ test fn two_declines_with_one_disposition_stay_two_blockers() -> Bool {
 
 // POSITIVE CONTROL: a diff with no changed witness identities projects nothing and blocks
 // nothing.
-test fn empty_changed_set_blocks_nothing() -> Bool {
+test fn empty_changed_set_blocks_nothing() -> Bool  {
   match changed_witness_blockers(rows: []) {
     Empty {} => true
     Cons { head: _, tail: _ } => false
@@ -486,7 +486,7 @@ fn cost_debt_standing_of(disposition: RequiredFloorDisposition) -> String {
 // THE INTERSECTION IS BOTH CONDITIONS. A rostered identity that this change did not touch takes
 // the ordinary policy and never reaches the override; it is declined at build by
 // `required_floor_site_disposition` instead.
-test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool {
+test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: false,
@@ -499,7 +499,7 @@ test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool {
 // A CHANGED identity enrolled in the cost-debt roster takes the override. The identity is read
 // from the roster authority itself, so this witness reds if the specimen leaves the roster
 // through the explicit debt-removal transaction and the join is not re-pointed with it.
-test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool {
+test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
@@ -511,7 +511,7 @@ test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool {
 
 // THE DISCRIMINATING CONTROL FOR "not a general widening": a changed identity that is NOT
 // enrolled keeps the ordinary policy, so the CPU line still gates it.
-test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
+test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
@@ -537,7 +537,7 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
 // THE DISCRIMINATING DIRECTION IS BOTH WAYS. Asserting only that CPU is observed-only would pass
 // against a roster that observed EVERYTHING and gated nothing, which is the same failure wearing a
 // different face; so the two gating clocks are asserted to gate in the same fold.
-test fn cpu_is_observed_only_for_every_claim_and_still_published() -> Bool {
+test fn cpu_is_observed_only_for_every_claim_and_still_published() -> Bool  {
   match claim_cost_basis_standing(basis: CpuTimeBasis {}) {
     BasisGates => false
     BasisObservedOnly { published_by: publisher } =>
@@ -551,7 +551,7 @@ test fn cpu_is_observed_only_for_every_claim_and_still_published() -> Bool {
 
 // ACCEPTANCE ROW: changed cost-debt identity, semantic pass, observed CPU above the line. Green,
 // and the standing CARRIES the observation rather than laundering it into an ordinary pass.
-test fn verdict_only_pass_over_the_line_is_green_with_the_cost_observed() -> Bool {
+test fn verdict_only_pass_over_the_line_is_green_with_the_cost_observed() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -564,7 +564,7 @@ test fn verdict_only_pass_over_the_line_is_green_with_the_cost_observed() -> Boo
 
 // The same row's published observation is the measurement, not a re-derivation: the standing
 // hands back the marginal CPU, the wall figure and the line the run compared against.
-test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
+test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool  {
   match changed_standing_of(
     reading: verdict_only_changed_reading(
       terminal: TerminalOutcome { outcome: PassedOverBudget {} },
@@ -595,7 +595,7 @@ test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
 // An ordinary pass under the override is green too, and still carries its observation — the
 // specimen lands under the line on roughly half its runs and must not report a different
 // standing for the same policy.
-test fn verdict_only_ordinary_pass_still_publishes_its_cost() -> Bool {
+test fn verdict_only_ordinary_pass_still_publishes_its_cost() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -607,7 +607,7 @@ test fn verdict_only_ordinary_pass_still_publishes_its_cost() -> Bool {
 }
 
 // THE DISCRIMINATING RED FOR A STOOD-DOWN GATE WITH NOTHING IN ITS PLACE.
-test fn verdict_only_pass_without_a_published_cost_reds() -> Bool {
+test fn verdict_only_pass_without_a_published_cost_reds() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -620,7 +620,7 @@ test fn verdict_only_pass_without_a_published_cost_reds() -> Bool {
 
 // ACCEPTANCE ROW: the override moves the COST arm and nothing else. A semantic failure under the
 // override is red.
-test fn verdict_only_semantic_failure_reds() -> Bool {
+test fn verdict_only_semantic_failure_reds() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -633,7 +633,7 @@ test fn verdict_only_semantic_failure_reds() -> Bool {
 
 // ACCEPTANCE ROW: no verdict before the still-armed wall safety deadline is red under the
 // override, which is the arm that keeps this from being an escape hatch.
-test fn verdict_only_without_a_verdict_reds() -> Bool {
+test fn verdict_only_without_a_verdict_reds() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -647,7 +647,7 @@ test fn verdict_only_without_a_verdict_reds() -> Bool {
 // ACCEPTANCE ROW, AND THE CONTROL THAT KEEPS THE OVERRIDE NARROW: the identical terminal outcome
 // under the ORDINARY policy stays red. One field separates these two witnesses, so a repair that
 // greened `PassedOverBudget` generally would red this one.
-test fn ordinary_changed_witness_over_budget_still_reds() -> Bool {
+test fn ordinary_changed_witness_over_budget_still_reds() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: ordinary_changed_reading(
@@ -659,7 +659,7 @@ test fn ordinary_changed_witness_over_budget_still_reds() -> Bool {
 }
 
 // The green arm is green in the blocking fold too, and the missing-observation arm blocks.
-test fn cost_debt_observed_arm_is_green_and_missing_observation_blocks() -> Bool {
+test fn cost_debt_observed_arm_is_green_and_missing_observation_blocks() -> Bool  {
   match over_line_observation() {
     CostObserved { observation: o } =>
       !changed_witness_standing_blocks(
@@ -671,13 +671,13 @@ test fn cost_debt_observed_arm_is_green_and_missing_observation_blocks() -> Bool
 }
 
 // ACCEPTANCE ROW: an unchanged rostered identity is withheld and its standing says so.
-test fn withheld_row_stands_as_debt() -> Bool {
+test fn withheld_row_stands_as_debt() -> Bool  {
   cost_debt_standing_of(disposition: DeclinedCostDebt {}) == "withheld"
 }
 
 // ACCEPTANCE ROW: a cost-debt row planned by the changed override is NOT stale. It is still
 // valid debt; changed selection temporarily required its correctness verdict.
-test fn overridden_row_is_not_reported_stale() -> Bool {
+test fn overridden_row_is_not_reported_stale() -> Bool  {
   cost_debt_standing_of(disposition: PlannedAsChangedWitness {})
     == "withhold-overridden-for-changed-verdict"
     && !cost_debt_roster_standing_refuses(
@@ -687,14 +687,14 @@ test fn overridden_row_is_not_reported_stale() -> Bool {
 
 // THE DISCRIMINATING CONTROL BESIDE IT: an ordinary planned row over an enrolled identity is
 // still stale, so the new arm did not silence the whole refusal.
-test fn ordinarily_planned_rostered_row_is_still_stale() -> Bool {
+test fn ordinarily_planned_rostered_row_is_still_stale() -> Bool  {
   cost_debt_standing_of(disposition: Planned {}) == "declared-not-withheld"
     && cost_debt_roster_standing_refuses(standing: CostDebtDeclaredButNotWithheld {})
 }
 
 // ACCEPTANCE ROW: a deleted or renamed debt identity still refuses, and an identity the gate
 // never offered is still kept as record rather than counted as debt.
-test fn undeclared_refuses_and_outside_the_universe_does_not() -> Bool {
+test fn undeclared_refuses_and_outside_the_universe_does_not() -> Bool  {
   cost_debt_standing_kind(
     standing: cost_debt_roster_standing(reading: CostDebtNoDispositionRow {})
   ) == "undeclared"
@@ -706,7 +706,7 @@ test fn undeclared_refuses_and_outside_the_universe_does_not() -> Bool {
 
 // A home decline outranks cost debt in `required_floor_site_disposition`, so a rostered identity
 // carrying one never entered the withhold and its roster line is stale.
-test fn home_declined_rostered_row_is_stale() -> Bool {
+test fn home_declined_rostered_row_is_stale() -> Bool  {
   cost_debt_standing_of(
     disposition: DeclinedLongModule { matched_prefix: "test.claim.long." }
   ) == "declared-not-withheld"
@@ -717,7 +717,7 @@ test fn home_declined_rostered_row_is_stale() -> Bool {
 
 // THE SAME ABSENCE ONE LEVEL IN: an observation that carries only the clock that was NOT stood
 // down publishes nothing about the line it replaced, so it reds exactly as a missing one does.
-test fn an_observation_missing_its_gated_clock_reds() -> Bool {
+test fn an_observation_missing_its_gated_clock_reds() -> Bool  {
   standing_kind(
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
@@ -786,7 +786,7 @@ fn admitted_here() -> HermeticRouteGapWetEvidence {
   wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: lane_holds())
 }
 
-test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool {
+test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool  {
   match changed_standing_with_wet(reading: route_gap_reading(), wet: admitted_here()) {
     HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
       hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
@@ -798,7 +798,7 @@ test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool {
 // THE EVIDENCE MUST BE ABOUT THIS IDENTITY. The prior shape could not express this test at all:
 // three booleans carry no identity, so a terminal admitted for a DIFFERENT witness satisfied them
 // exactly as well as the right one.
-test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool {
+test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool  {
   standing_blocks_for(
     wet: wet_admitted(identity: wet_other_identity, candidate: wet_candidate, lane: lane_holds()),
   )
@@ -806,7 +806,7 @@ test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool
 
 // AND ABOUT THIS TREE. A terminal from another candidate is the standing that let a deleted
 // workflow read as coverage for months.
-test fn a_route_gap_whose_evidence_names_another_candidate_still_blocks() -> Bool {
+test fn a_route_gap_whose_evidence_names_another_candidate_still_blocks() -> Bool  {
   standing_blocks_for(
     wet: wet_admitted(identity: wet_identity, candidate: wet_other_candidate, lane: lane_holds()),
   )
@@ -815,7 +815,7 @@ test fn a_route_gap_whose_evidence_names_another_candidate_still_blocks() -> Boo
 // AND THE LANE ITSELF MUST BE HONEST. A per-identity admission is not enough while the lane's own
 // schedule and terminals disagree: one member may pass while another was never run, and accepting
 // the first would let a broken roster supply evidence for its intact rows.
-test fn a_route_gap_admitted_under_a_refused_lane_join_still_blocks() -> Bool {
+test fn a_route_gap_admitted_under_a_refused_lane_join_still_blocks() -> Bool  {
   standing_blocks_for(
     wet: wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: lane_refused()),
   )
@@ -824,7 +824,7 @@ test fn a_route_gap_admitted_under_a_refused_lane_join_still_blocks() -> Bool {
 // THE UNCHANGED POLARITY. A route gap carrying none of the three facts -- every changed identity
 // outside this lane -- keeps the standing and the block it always had, so the lane adds an arm
 // rather than widening the gate.
-test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
+test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool  {
   standing_blocks_for(wet: no_wet_join())
     && match changed_standing_with_wet(reading: route_gap_reading(), wet: no_wet_join()) {
       PlannedWithoutTerminalVerdict => true
@@ -845,7 +845,7 @@ test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
 // figures are read from there rather than copied to here, because a transcribed number is
 // unreachable from the producer that owns it (DESIGN section 6). This control is red on the code
 // that shipped that run.
-test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool {
+test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
@@ -860,7 +860,7 @@ test fn changed_long_module_witness_takes_the_verdict_only_policy() -> Bool {
 // CPU line still converts its crossing into a red. An arm that cannot be shown to STOP somewhere
 // is indistinguishable from raising the ceiling, which docs/plans/floor-cost-distribution-near-
 // the-ceiling.md refuses for this class.
-test fn changed_short_module_witness_still_takes_the_ordinary_policy() -> Bool {
+test fn changed_short_module_witness_still_takes_the_ordinary_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: true,
@@ -874,7 +874,7 @@ test fn changed_short_module_witness_still_takes_the_ordinary_policy() -> Bool {
 // no policy here at all. It is declined at build by required_floor_site_disposition as
 // DeclinedLongModule and never becomes a claim, so answering verdict-only for it would be a
 // policy over a population that does not execute.
-test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool {
+test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool  {
   cost_policy_kind(
     policy: changed_witness_cost_policy(
       selected_as_changed_witness: false,
@@ -888,7 +888,7 @@ test fn unchanged_long_module_witness_takes_no_verdict_only_policy() -> Bool {
 // the roster carries test.claim.long., v2.test.long. and v2.test.claim.long., and a one-prefix
 // reading excluded 42 rows of an expected ~310 when it was last tried. An arm keyed on one of
 // the three would be narrower than the class it claims.
-test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool {
+test fn every_long_prefix_selects_the_verdict_only_policy() -> Bool  {
   !any(["test.claim.long.x", "v2.test.long.x", "v2.test.claim.long.x"], m =>
     cost_policy_kind(
       policy: changed_witness_cost_policy(
@@ -933,7 +933,7 @@ fn standing_under_selected_policy(
   )
 }
 
-test fn a_long_module_changed_pass_carries_its_cost_debt_observation() -> Bool {
+test fn a_long_module_changed_pass_carries_its_cost_debt_observation() -> Bool  {
   standing_kind(
     s: standing_under_selected_policy(
       module_path: "v2.test.long.accumulator_copy_compile_gate",
@@ -948,7 +948,7 @@ test fn a_long_module_changed_pass_carries_its_cost_debt_observation() -> Bool {
 // new red, and it must reach a long-module row too. If a long-home witness projected as ordinary,
 // this arm could never fire for it -- the gate would be stood down with no measurement in its
 // place and the run would still read green.
-test fn a_long_module_changed_pass_without_a_measurement_is_red() -> Bool {
+test fn a_long_module_changed_pass_without_a_measurement_is_red() -> Bool  {
   standing_kind(
     s: standing_under_selected_policy(
       module_path: "v2.test.long.accumulator_copy_compile_gate",
@@ -963,7 +963,7 @@ test fn a_long_module_changed_pass_without_a_measurement_is_red() -> Bool {
 // ordinary policy, so its pass is an ordinary pass and carries no cost-debt observation. Without
 // this, the two controls above would be satisfied by an arm that made every changed witness
 // verdict-only.
-test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
+test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool  {
   standing_kind(
     s: standing_under_selected_policy(
       module_path: "v2.test.floor_changed_witness",
@@ -977,7 +977,7 @@ test fn a_short_module_changed_pass_is_an_ordinary_pass() -> Bool {
 // THE MODELED DECIDER CLASSIFIES A DECLARED BinWitnessWet SELECTION AS DeclinedNoCiWetLane, the
 // arm the seed's required_floor_runner already decides (gunbc#12794); before this the .dag type had
 // no such arm, so the modeled census could not say what the floor did.
-test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
+test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool  {
   match required_floor_disposition_with_changed_selection(
     ordinary: Planned {},
     selected_as_changed_witness: true,
@@ -999,7 +999,7 @@ test fn a_selected_declared_bin_wet_row_is_declined_no_ci_wet_lane() -> Bool {
 // THE NO-CI-WET-LANE DECLINE DOES NOT BLOCK: the declared loss is the rung drop. Every other decline
 // of a changed witness still blocks, except a selection outside discovery whose home is declared
 // non-executing (the claim below).
-test fn the_no_ci_wet_lane_decline_does_not_block_and_other_declines_do() -> Bool {
+test fn the_no_ci_wet_lane_decline_does_not_block_and_other_declines_do() -> Bool  {
   !changed_witness_decline_blocks(disposition: DeclinedNoCiWetLane { pattern: "bootstrap_test.dag" })
     && changed_witness_decline_blocks(disposition: DeclinedDiscoveryExcluded { matched_substring: "x" })
     && changed_witness_decline_blocks(disposition: DeclinedOutsideGateClosure {})
@@ -1008,7 +1008,7 @@ test fn the_no_ci_wet_lane_decline_does_not_block_and_other_declines_do() -> Boo
 // A SELECTION OUTSIDE DISCOVERY BLOCKS UNLESS ITS HOME IS DECLARED NON-EXECUTING. `v1` is the row
 // `gunbc.ci_layer_roots` `non_executing_witness_module_prefixes` carries, so a v1 home does not block.
 // The named-module subtree rule keeps `v1x` from riding on it, and a home with no roster row blocks.
-test fn a_selection_outside_discovery_blocks_unless_its_home_is_declared_non_executing() -> Bool {
+test fn a_selection_outside_discovery_blocks_unless_its_home_is_declared_non_executing() -> Bool  {
   !changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1.tests.claim.beta_witness" })
     && !changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1" })
     && changed_witness_decline_blocks(disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: "v1x.tests.claim.w" })

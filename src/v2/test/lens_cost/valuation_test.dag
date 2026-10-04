@@ -103,11 +103,11 @@ fn check_unit_body_over_size_five_evaluates_to_five() -> Bool {
   )
 }
 
-test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
+test fn unit_body_over_size_five_evaluates_to_five() -> Bool  {
   check_unit_body_over_size_five_evaluates_to_five()
 }
 
-test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
+test fn changing_the_bound_size_changes_the_derived_work() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -135,7 +135,7 @@ fn binder_dependent_loop() -> CostExpr {
   }
 }
 
-test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
+test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: binder_dependent_loop(),
@@ -145,7 +145,7 @@ test fn binder_dependent_body_is_summed_not_treated_as_invariant() -> Bool {
   )
 }
 
-test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
+test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: CostSum {
@@ -159,7 +159,7 @@ test fn invariant_body_control_does_not_produce_the_summed_answer() -> Bool {
   )
 }
 
-test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
+test fn missing_binding_refuses_and_never_becomes_zero() -> Bool  {
   match evaluate_cost_expr(
     expr: unit_loop_over(variable: outer_variable),
     bindings: []
@@ -173,7 +173,7 @@ test fn missing_binding_refuses_and_never_becomes_zero() -> Bool {
   }
 }
 
-test fn duplicate_bindings_refuse() -> Bool {
+test fn duplicate_bindings_refuse() -> Bool  {
   match evaluate_cost_expr(
     expr: unit_loop_over(variable: outer_variable),
     bindings: [
@@ -190,7 +190,7 @@ test fn duplicate_bindings_refuse() -> Bool {
   }
 }
 
-test fn distinct_bindings_control_does_not_refuse() -> Bool {
+test fn distinct_bindings_control_does_not_refuse() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -214,7 +214,7 @@ fn shadowing_expr() -> CostExpr {
   }
 }
 
-test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool {
+test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: shadowing_expr(),
@@ -224,7 +224,7 @@ test fn binder_shadowing_is_scoped_and_removed_on_exit() -> Bool {
   )
 }
 
-test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
+test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool  {
   !is_exact(
     evaluation: evaluate_cost_expr(
       expr: shadowing_expr(),
@@ -234,7 +234,7 @@ test fn shadowing_control_rejects_the_unshadowed_reading() -> Bool {
   )
 }
 
-test fn zero_iterations_produce_exact_zero() -> Bool {
+test fn zero_iterations_produce_exact_zero() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: CostSum {
@@ -254,7 +254,7 @@ data effect_operation: DeclarationRef = DeclarationRef {
   field: WholeDeclaration
 }
 
-test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
+test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool  {
   match evaluate_cost_expr(
     expr: CostEffect { operation: effect_operation },
     bindings: []
@@ -275,7 +275,7 @@ test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
 // grounded-argument: under the earlier arm both answered the same cause, so either one alone would
 // have passed while the arm was wrong, and only asserting that they differ catches it.
 
-test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
+test fn log_base_zero_refuses_as_an_invalid_base() -> Bool  {
   match evaluate_cost_expr(
     expr: CostLog { base: Zero, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -293,7 +293,7 @@ test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
   }
 }
 
-test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
+test fn log_base_one_refuses_as_an_invalid_base() -> Bool  {
   match evaluate_cost_expr(
     expr: CostLog { base: nat_1, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -311,7 +311,7 @@ test fn log_base_one_refuses_as_an_invalid_base() -> Bool {
   }
 }
 
-test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> Bool {
+test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument() -> Bool  {
   match evaluate_cost_expr(
     expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: [bind(variable: outer_variable, value: nat_8)]
@@ -325,7 +325,7 @@ test fn log_of_a_grounded_argument_names_the_missing_authority_not_the_argument(
   }
 }
 
-test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
+test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool  {
   match evaluate_cost_expr(
     expr: CostLog { base: nat_2, argument: size_of(variable: outer_variable) },
     bindings: []
@@ -345,7 +345,7 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
 // settled-disposition skip in evaluate_summation is removed, which is what makes it a regression
 // control rather than a description.
 
-test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
+test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool  {
   match evaluate_cost_expr(
     expr: CostSum {
       binder: inner_variable,
@@ -372,7 +372,7 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
 // and is fixed with this change. ONE times an unmodelled effect still REFUSES, because that factor
 // is executed.
 
-test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
+test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: CostMul {
@@ -385,7 +385,7 @@ test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
   )
 }
 
-test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
+test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool  {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: CostMul {
@@ -398,7 +398,7 @@ test fn an_unmodelled_effect_times_zero_is_exactly_zero() -> Bool {
   )
 }
 
-test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
+test fn one_times_an_unmodelled_effect_still_refuses() -> Bool  {
   match evaluate_cost_expr(
     expr: CostMul {
       left: CostConst { value: nat_1 },
@@ -427,28 +427,28 @@ fn unknown_symbolic_cost() -> SymbolicCost {
   normalize_cost_expr_to_symbolic(expr: CostEffect { operation: effect_operation })
 }
 
-test fn symbolic_product_absorbs_zero_from_the_left() -> Bool {
+test fn symbolic_product_absorbs_zero_from_the_left() -> Bool  {
   match symbolic_product(a: zero_cost(), b: unknown_symbolic_cost()) {
     ConstantCost { value: Zero } => true
     _ => false
   }
 }
 
-test fn symbolic_product_absorbs_zero_from_the_right() -> Bool {
+test fn symbolic_product_absorbs_zero_from_the_right() -> Bool  {
   match symbolic_product(a: unknown_symbolic_cost(), b: zero_cost()) {
     ConstantCost { value: Zero } => true
     _ => false
   }
 }
 
-test fn symbolic_product_still_returns_unknown_without_a_zero_factor() -> Bool {
+test fn symbolic_product_still_returns_unknown_without_a_zero_factor() -> Bool  {
   match symbolic_product(a: unknown_symbolic_cost(), b: unit_cost()) {
     UnknownCost { diagnostic: _ } => true
     _ => false
   }
 }
 
-test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
+test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool  {
   match symbolic_product(a: unit_cost(), b: unknown_symbolic_cost()) {
     UnknownCost { diagnostic: _ } => true
     _ => false

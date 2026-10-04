@@ -35,7 +35,7 @@ fn hollow_alias_cl_tree() -> InferredTree {
   )
 }
 
-test fn hollow_alias_compile_lens_rejects_holds() -> Bool {
+test fn hollow_alias_compile_lens_rejects_holds() -> Bool  {
   match apply_compile_lens(
     lens: fact_density_lens,
     inferred: hollow_alias_cl_tree(),

@@ -43,7 +43,7 @@ data enforce_rejecting_lens: CompileLens = CompileLens {
   gate: enforce_rejecting_gate
 }
 
-test fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
+test fn enforce_rejecting_gate_fires_claim_holds() -> Bool  {
   match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {
     Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false

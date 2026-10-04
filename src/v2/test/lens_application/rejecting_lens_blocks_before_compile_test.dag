@@ -64,7 +64,7 @@ data rejecting_lens_kernel_ambient_source: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
+test fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool  {
   match validate_then_compile(
     source: claim_resolved_tree_without_declarations(root: rejecting_lens_kernel_ambient_source),
     lenses: [rejecting_lens],

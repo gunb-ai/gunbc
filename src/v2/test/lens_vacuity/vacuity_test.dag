@@ -373,7 +373,7 @@ fn vacuity_falsification_expected_count(cases: List<VacuityFalsificationCase>, t
   count_where(xs: cases, predicate: fn(c) { vacuity_evidence_eq(a: c.expected, b: target) })
 }
 
-test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
+test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_emit_vs_eval_claim,
@@ -386,7 +386,7 @@ test fn vacuity_rung5_emit_vs_eval_classifies_proven_independent() -> Bool {
   )
 }
 
-test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool {
+test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_single_eval_readback_claim,
@@ -399,7 +399,7 @@ test fn vacuity_single_eval_readback_classifies_proven_duplicate() -> Bool {
   )
 }
 
-test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
+test fn vacuity_unknown_provenance_classifies_unknown() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_unknown_provenance_claim,
@@ -412,7 +412,7 @@ test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
   )
 }
 
-test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bool {
+test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_constant_inequality_claim,
@@ -425,7 +425,7 @@ test fn vacuity_constant_inequality_taxonomy_classifies_proven_duplicate() -> Bo
   )
 }
 
-test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool {
+test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_rendering_transform_claim,
@@ -438,7 +438,7 @@ test fn vacuity_rendering_transform_classifies_proven_independent() -> Bool {
   )
 }
 
-test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
+test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_unified_test_claim_vacuity(
       claim: NodeCorpus {
@@ -453,7 +453,7 @@ test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
   )
 }
 
-test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> Bool {
+test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> Bool  {
   return vacuity_evidence_eq(
     a: classify_test_claim_vacuity(
       claim: vacuity_test_datasheet_transcription_claim,
@@ -470,14 +470,14 @@ test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parall
     )
 }
 
-test fn vacuity_falsification_cases_each_match_expected_evidence() -> Bool {
+test fn vacuity_falsification_cases_each_match_expected_evidence() -> Bool  {
   return count_where(
       xs: vacuity_falsification_suite_cases,
       predicate: fn(c) { vacuity_falsification_case_matches_expected(case: c) }
     ) == length(xs: vacuity_falsification_suite_cases)
 }
 
-test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
+test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool  {
   let census = vacuity_advisory_census_from_rows(rows: vacuity_falsification_suite_rows)
   return vacuity_advisory_census_matches_row_count(
       rows: vacuity_falsification_suite_rows,
@@ -497,7 +497,7 @@ test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
     )
 }
 
-test fn vacuity_falsification_suite_nonempty() -> Bool {
+test fn vacuity_falsification_suite_nonempty() -> Bool  {
   return length(xs: vacuity_falsification_suite_rows) > 0
 }
 

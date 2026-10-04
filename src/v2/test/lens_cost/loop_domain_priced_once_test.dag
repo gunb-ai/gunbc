@@ -73,10 +73,10 @@ fn loop_domain_is_linear_plus_one(n: Node) -> Bool {
   }
 }
 
-test fn loop_domain_is_priced_once_beside_the_iteration() -> Bool {
+test fn loop_domain_is_priced_once_beside_the_iteration() -> Bool  {
   loop_domain_is_linear_plus_one(n: loop_domain_last)
 }
 
-test fn loop_domain_price_is_independent_of_edge_placement() -> Bool {
+test fn loop_domain_price_is_independent_of_edge_placement() -> Bool  {
   loop_domain_is_linear_plus_one(n: loop_domain_first)
 }

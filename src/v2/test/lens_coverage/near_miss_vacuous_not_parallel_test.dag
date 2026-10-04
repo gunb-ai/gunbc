@@ -13,6 +13,6 @@ data near_miss_vacuous_node: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn near_miss_vacuous_not_parallel_claim_holds() -> Bool {
+test fn near_miss_vacuous_not_parallel_claim_holds() -> Bool  {
   coverage_defect_vacuous_arm != coverage_defect_parallel_authority
 }

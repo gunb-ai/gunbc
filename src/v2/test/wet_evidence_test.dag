@@ -200,7 +200,7 @@ fn any_cause(causes: List<WetEvidenceRefusal>, p: fn(WetEvidenceRefusal) -> Bool
 // be written rather than being caught. What remains checkable is that the projection is the right
 // one and that a terminal claiming the OTHER route than its schedule derives is refused, which is
 // the residue the type cannot close: a terminal's route is an execution fact, not a schedule fact.
-test fn the_route_is_derived_and_a_foreign_route_terminal_refuses() -> Bool {
+test fn the_route_is_derived_and_a_foreign_route_terminal_refuses() -> Bool  {
   let binding = transported_binding(subject: "s", executor: "x")
   let requirement = transported_requirement(subject: "s", executor: "x")
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
@@ -244,7 +244,7 @@ fn is_local_antecedent(a: WetRouteAntecedent) -> Bool {
 // arm-for-arm, so a future antecedent arm cannot silently take one route's binding relation with
 // another's route. The negative half is the other arm of each projection: without it this witness
 // would pass over a projection that returned the local answer unconditionally.
-test fn one_requirement_derives_route_antecedent_and_binding_together() -> Bool {
+test fn one_requirement_derives_route_antecedent_and_binding_together() -> Bool  {
   let local = co_resident_requirement(subject: "s")
   let transported = transported_requirement(subject: "s", executor: "x")
   wet_route_eq_local(r: wet_route_of_requirement(requirement: local))
@@ -263,7 +263,7 @@ test fn one_requirement_derives_route_antecedent_and_binding_together() -> Bool 
 // THE POSITIVE CONTROL IS THE SAME EVIDENCE WITH THE MATCHING SUBJECT. Without it this witness
 // would pass over evidence that refuses for any reason at all, which is the vacuous-green shape:
 // the two halves differ by exactly the fact under test.
-test fn co_resident_wrong_prepared_subject_refuses_and_names_the_axis() -> Bool {
+test fn co_resident_wrong_prepared_subject_refuses_and_names_the_axis() -> Bool  {
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let wrong = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-OTHER"), terminal: passed())]
   let right = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: co_resident_binding(subject: "subject-THIS"), terminal: passed())]
@@ -280,7 +280,7 @@ test fn co_resident_wrong_prepared_subject_refuses_and_names_the_axis() -> Bool 
 // disagreed; a receipt whose EXECUTOR CONTRACT differs means the producer disagreed while the tree
 // agreed. They are separate causes because they send a reader to separate places, and the second is
 // the one a single-digest binding could never have expressed.
-test fn transported_wrong_subject_and_wrong_executor_are_separate_reds() -> Bool {
+test fn transported_wrong_subject_and_wrong_executor_are_separate_reds() -> Bool  {
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let requirement = transported_requirement(subject: "semantic-THIS", executor: "executor-THIS")
   let wrong_subject = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "semantic-OTHER", executor: "executor-THIS"), terminal: passed())]
@@ -301,7 +301,7 @@ test fn transported_wrong_subject_and_wrong_executor_are_separate_reds() -> Bool
 // to differ. Under `candidate: String` this could only ever have reported "not equal", which sends
 // the reader to compare two unrelated hashes. Both directions are asserted, because a wall that
 // fires in only one is half a wall.
-test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool {
+test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool  {
   let local_scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let transported_scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
   let transported_terminal = [terminal_alpha(route: LocalRepoCoResidentRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: passed())]
@@ -324,7 +324,7 @@ test fn evidence_of_the_wrong_kind_is_its_own_cause_in_both_directions() -> Bool
 // THIS WITNESS IS NAMED FOR THE DISPOSITION IT CARRIES, so it reads that disposition rather than
 // stopping at refuse-versus-admit. Without this the name asserted a payload nothing inspected, and
 // a refusal carrying any other cause would have kept it green.
-test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -> Bool {
+test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -> Bool  {
   let over = BudgetRefused {
     safety: CompletedPastSafetyLimit { observed_cpu: 505, observed_wall: 505, preemption: CooperativelyPollable {} }
   }
@@ -355,7 +355,7 @@ test fn completed_over_budget_is_refused_and_carries_the_ledgers_disposition() -
 // did not narrow to the co-resident roster's single arm. The transported route derives ExpectedRed
 // from canonical enrolment; the ledger maps ExpectedRed plus a false verdict to KnownRedHeld; this
 // join admits it. A type that could not represent ExpectedRed would make this witness unwritable.
-test fn an_enrolled_red_observed_red_is_agreement() -> Bool {
+test fn an_enrolled_red_observed_red_is_agreement() -> Bool  {
   let scheduled = [scheduled_alpha(expectation: ExpectedRed {})]
   let red = Returned { observation: ObservedVerdict { holds: false } }
   let terminals = [terminal_alpha(route: SelfHostTransportedRoute {}, binding: transported_binding(subject: "s", executor: "x"), terminal: red)]
@@ -372,7 +372,7 @@ test fn an_enrolled_red_observed_red_is_agreement() -> Bool {
 // implementation returning `WetTerminalMissing` for all three would satisfy -- the check was
 // narrower than its own declared claim. The tags are compared to their expected values AND to each
 // other, so neither a collapse onto one cause nor a permutation of the three survives.
-test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool {
+test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool  {
   let binding = transported_binding(subject: "s", executor: "x")
   let requirement = transported_requirement(subject: "s", executor: "x")
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
@@ -404,7 +404,7 @@ test fn missing_unscheduled_and_duplicated_stay_three_distinct_causes() -> Bool 
 // THE CROSS-ROUTE WALL. An identity evidenced by both routes refuses, and the union is derived from
 // the two rosters rather than transcribed as a third. The negative control is two disjoint rosters,
 // which must produce nothing — otherwise the wall would be firing on something other than overlap.
-test fn an_identity_on_both_routes_refuses_and_disjoint_rosters_do_not() -> Bool {
+test fn an_identity_on_both_routes_refuses_and_disjoint_rosters_do_not() -> Bool  {
   let overlap = wet_cross_route_overlap_causes(
     local_identities: ["test.claim.a.holds", "test.claim.b.holds"],
     transported_identities: ["test.claim.b.holds", "test.claim.c.holds"]
@@ -419,7 +419,7 @@ test fn an_identity_on_both_routes_refuses_and_disjoint_rosters_do_not() -> Bool
 // THE FOREIGN-RESOLUTION JOIN, and it is not tautological: the observed entry and function are what
 // the executor actually resolved, so they can DISAGREE with the scheduled row. Recopying the
 // scheduled values into the terminal would make this witness impossible to fail.
-test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool {
+test fn a_terminal_that_resolved_elsewhere_refuses() -> Bool  {
   let binding = transported_binding(subject: "s", executor: "x")
   let requirement = transported_requirement(subject: "s", executor: "x")
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]
@@ -516,7 +516,7 @@ fn one_cause_satisfying(row: WetTerminalRow, p: fn(WetEvidenceRefusal) -> Bool) 
   length(xs: cs) == 1 && fold_list(xs: cs, empty: false, cons: fn(acc, c) { acc || p(c) })
 }
 
-test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
+test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool  {
   one_cause_satisfying(
     row: terminal_at(entry: "dag/test/claim/other_test.dag", function: "alpha_holds"),
     p: fn(c) { is_foreign_entry(c: c) }
@@ -541,7 +541,7 @@ test fn a_wrong_entry_and_a_wrong_function_stay_two_distinct_causes() -> Bool {
 // carrying the authority's words, which name the path -- and NOT as `WetTerminalVerdictNotExpected`.
 // The positive control is the premise-met run that then FAILED: that one is the subject's red and
 // still reads as verdict-not-expected. Neither admits: the premise arm is a refusal, never a skip.
-test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as_the_verdict() -> Bool {
+test fn an_unmet_host_premise_refuses_as_the_runner_and_a_met_premise_failure_as_the_verdict() -> Bool  {
   let binding = co_resident_binding(subject: "s")
   let requirement = co_resident_requirement(subject: "s")
   let scheduled = [scheduled_alpha(expectation: ExpectedToHold {})]

@@ -65,7 +65,7 @@ fn is_triple_of_unit_costs(expr: CostExpr) -> Bool {
   }
 }
 
-test fn sequential_summary_adds_work_and_span() -> Bool {
+test fn sequential_summary_adds_work_and_span() -> Bool  {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let combined = summary_sequential(left: left, right: right)
@@ -73,7 +73,7 @@ test fn sequential_summary_adds_work_and_span() -> Bool {
     && is_pair_of_unit_costs(expr: combined.span)
 }
 
-test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
+test fn parallel_summary_adds_work_but_maxes_span() -> Bool  {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let combined = summary_parallel(left: left, right: right)
@@ -84,7 +84,7 @@ test fn parallel_summary_adds_work_but_maxes_span() -> Bool {
   }
 }
 
-test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
+test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool  {
   let sequential = triple_sequential_shape()
   let parallel = triple_parallel_shape()
   is_triple_of_unit_costs(expr: sequential.work)
@@ -93,7 +93,7 @@ test fn equal_work_different_shape_derives_equal_work_different_span() -> Bool {
     && sequential.span != parallel.span
 }
 
-test fn equal_work_span_operands_match_exactly() -> Bool {
+test fn equal_work_span_operands_match_exactly() -> Bool  {
   let left = unit_complexity_summary()
   let right = unit_complexity_summary()
   let sequential = summary_sequential(left: left, right: right)

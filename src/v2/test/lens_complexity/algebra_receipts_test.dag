@@ -80,10 +80,10 @@ fn variable_sensitive_dominance_actual() -> Bool {
   ) == variable_sensitive_dominance_claim.expected_dominates
 }
 
-test fn algebra_receipts_polynomial_product_projection_holds() -> Bool {
+test fn algebra_receipts_polynomial_product_projection_holds() -> Bool  {
   polynomial_product_projected_complexity() == established_complexity(bound: polynomial_product_degree_claim.expected_complexity)
 }
 
-test fn algebra_receipts_variable_sensitive_dominance_holds() -> Bool {
+test fn algebra_receipts_variable_sensitive_dominance_holds() -> Bool  {
   variable_sensitive_dominance_actual()
 }

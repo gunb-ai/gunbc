@@ -36,7 +36,7 @@ data map_linear_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn map_linear_claim_holds() -> Bool {
+test fn map_linear_claim_holds() -> Bool  {
   match cost_lens(n: map_linear_input) {
     Holds { value: actual } =>
       actual == LinearCost { variable: SizeVariable { source: map_linear_input } }

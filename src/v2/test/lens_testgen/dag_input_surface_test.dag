@@ -83,7 +83,7 @@ fn language_behavior_generator_uses_dag_input(g: Generator<TestgenConcept>) -> B
     language_behavior_generator_uses_transform_dag_input(g: g)
 }
 
-test fn scheduled_language_behavior_generators_cover_dag_inputs() -> Bool {
+test fn scheduled_language_behavior_generators_cover_dag_inputs() -> Bool  {
   let scheduled = testgen_scheduled_language_behavior_generators()
   length(xs: scheduled) == 3 &&
     for_all(
@@ -104,7 +104,7 @@ test fn scheduled_language_behavior_generators_cover_dag_inputs() -> Bool {
     )
 }
 
-test fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
+test fn bootstrap_generator_has_conj_dag_input_surface() -> Bool  {
   match bootstrap_claim_generator_for_manual_anchor(key: ManualLbeConjDagSurface) {
     Accepted { value: g, diagnostics: _ } =>
       g.kind == TestClaimCompilesClaimVariant &&

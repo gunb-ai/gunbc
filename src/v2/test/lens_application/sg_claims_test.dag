@@ -27,6 +27,6 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
   }
 }
 
-test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
+test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool  {
   lens_application_synthesis_gap_enforce_rejects()
 }

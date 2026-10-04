@@ -71,7 +71,7 @@ data disj_max_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn disj_max_claim_holds() -> Bool {
+test fn disj_max_claim_holds() -> Bool  {
   match cost_lens(n: disj_max_input) {
     Holds { value: actual } =>
       actual == LinearCost { variable: SizeVariable { source: disj_max_expensive_body } }

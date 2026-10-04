@@ -134,6 +134,6 @@ fn serialize_applied_diff_loop_body_claim_holds() -> Bool {
     && serialize_loop_patch_carrier_holds()
 }
 
-test fn serialize_applied_diff_loop_body_holds() -> Bool {
+test fn serialize_applied_diff_loop_body_holds() -> Bool  {
   serialize_applied_diff_loop_body_claim_holds()
 }

@@ -26,7 +26,7 @@ data synthesis_poly_y: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn polynomial_dominates_linear_claim_holds() -> Bool {
+test fn polynomial_dominates_linear_claim_holds() -> Bool  {
   symbolic_cost_dominates(
     a: PolynomialCost {
       variable: SizeVariable { source: synthesis_poly_x },

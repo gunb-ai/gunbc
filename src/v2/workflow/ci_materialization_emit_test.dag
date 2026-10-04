@@ -26,6 +26,6 @@ data ci_sccache_provider_shell_injection_golden: String = concat(
   )
 )
 
-test fn ci_sccache_provider_shell_injection_emit_matches_golden_holds() -> Bool {
+test fn ci_sccache_provider_shell_injection_emit_matches_golden_holds() -> Bool  {
   ci_sccache_provider_shell_injection() == ci_sccache_provider_shell_injection_golden
 }

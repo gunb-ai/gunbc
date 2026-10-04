@@ -10,7 +10,7 @@ data synthesis_const_x: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn constant_not_dominated_by_linear_claim_holds() -> Bool {
+test fn constant_not_dominated_by_linear_claim_holds() -> Bool  {
   !symbolic_cost_dominates(
     a: unit_cost(),
     b: LinearCost { variable: SizeVariable { source: synthesis_const_x } }

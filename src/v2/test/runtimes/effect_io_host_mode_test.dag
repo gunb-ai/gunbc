@@ -66,7 +66,7 @@ fn mode_host_read(runtime: V4EffectIoHostRuntime, arg: RuntimeValue) -> Outcome<
   effect_io_pure_invoke_handler(handler: handler, request: effect_io_pure_read_request(args: [arg]))
 }
 
-test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
+test fn effect_io_host_hermetic_replay_hit_holds() -> Bool  {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
     mode: Hermetic,
@@ -78,7 +78,7 @@ test fn effect_io_host_hermetic_replay_hit_holds() -> Bool {
   }
 }
 
-test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool {
+test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool  {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
     mode: Hermetic,
@@ -90,7 +90,7 @@ test fn effect_io_host_hermetic_miss_fail_closed_holds() -> Bool {
   }
 }
 
-test fn effect_io_host_wet_does_not_replay_holds() -> Bool {
+test fn effect_io_host_wet_does_not_replay_holds() -> Bool  {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
     mode: Wet,
@@ -102,7 +102,7 @@ test fn effect_io_host_wet_does_not_replay_holds() -> Bool {
   }
 }
 
-test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool {
+test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool  {
   let runtime = effect_io_host_runtime(
     backend: HttpResourceBackend,
     mode: Hermetic,

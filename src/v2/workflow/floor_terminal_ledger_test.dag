@@ -100,7 +100,7 @@ fn empty_reconciliation() -> LedgerReconciliation {
 // to a DISTINCT disposition rather than to a Bool. A Boolean assertion here would pass for three
 // different wrong mappings; naming the constructor each cell must produce is what makes the test
 // able to fail for the right reason.
-test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
+test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool  {
   claim_disposition(row: row(f: "a", expectation: ExpectedToHold, holds: 0 == 0)) == Passed
     && claim_disposition(row: row(f: "b", expectation: ExpectedToHold, holds: 0 == 1)) == Failed
     && claim_disposition(row: row(f: "c", expectation: ExpectedRed, holds: 0 == 1)) == KnownRedHeld
@@ -111,7 +111,7 @@ test fn the_four_verdict_cells_project_to_four_distinct_dispositions() -> Bool {
 // `ObservationUnrepresentable` into `Failed` is the fabricated plausible output -- it reports a
 // witness that answered wrongly where the truth is a witness whose answer was never in a shape the
 // floor could read, and the two have different remedies.
-test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
+test fn an_unreadable_observation_is_refused_not_failed() -> Bool  {
   claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "e"),
     expectation: ExpectedToHold,
@@ -124,7 +124,7 @@ test fn an_unreadable_observation_is_refused_not_failed() -> Bool {
 // unreadable observation is a witness to repair, a budget refusal is a cost to pay or a limit to
 // raise. Collapsing them would leave `budget_refused` underivable from the rows, which is the
 // counter dual-authority this whole change exists to remove.
-test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool {
+test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool  {
   claim_disposition(row: ClaimTerminalRow {
     identity: ident(f: "f"),
     expectation: ExpectedToHold,
@@ -146,7 +146,7 @@ test fn a_budget_refusal_is_a_pre_verdict_disposition_not_a_failure() -> Bool {
 //
 // This is the discriminating RED for the whole reconciliation: replace the identity join with
 // `terminal_rows.length() == planned.length()` and this test goes green while the ledger is wrong.
-test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> Bool {
+test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> Bool  {
   let swapped = LedgerReconciliation {
     planned_without_terminal: [ident(f: "lost")],
     terminal_without_planned: [],
@@ -163,7 +163,7 @@ test fn a_duplicate_replacing_an_omission_is_caught_though_no_count_moves() -> B
 
 // A FAILED PUBLICATION IS NOT GREEN EVEN WHEN EVERY WITNESS PASSED. Otherwise the instrumentation
 // is optional exactly when it fails, which is the failure arm that widens instead of refusing.
-test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool {
+test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool  {
   ledger_green_admission(
     ledger: ledger_with(publication: LedgerPartial { reason: "killed-before-finalize" }),
     reconciliation: empty_reconciliation(),
@@ -174,7 +174,7 @@ test fn a_partial_ledger_is_not_green_over_a_perfect_reconciliation() -> Bool {
 // THE FOOTER COUNT IS CHECKED AGAINST THE PLANNED POPULATION, not against itself. A truncation
 // that dropped rows and rewrote the footer to match would agree with itself; it cannot agree with
 // the planned population the caller independently holds.
-test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
+test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool  {
   ledger_green_admission(
     ledger: ledger_with(publication: LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }),
     reconciliation: empty_reconciliation(),
@@ -199,7 +199,7 @@ test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
 // first half returns `EvidenceComplete`. The second half is the positive control -- the identical
 // ledger with a coherent row IS complete -- without which an admission that refused everything
 // would also pass.
-test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> Bool {
+test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> Bool  {
   let incoherent = ClaimTerminalRow {
     identity: ident(f: "contradictory"),
     expectation: ExpectedToHold,
@@ -231,6 +231,6 @@ test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> B
 
 // THE FIXTURE ITSELF IS ASSERTED BOUND, so a bad commit hex above fails a test instead of quietly
 // producing an unbound ledger that every other test then happily exercises.
-test fn the_fixture_binding_is_candidate_bound() -> Bool {
+test fn the_fixture_binding_is_candidate_bound() -> Bool  {
   ledger_is_candidate_bound(binding: ledger_with(publication: LedgerPartial { reason: "probe" }).binding)
 }
