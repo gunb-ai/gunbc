@@ -19,7 +19,7 @@ import extdeps.github.effect { contents_write, workflows_write }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
