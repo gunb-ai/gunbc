@@ -4,7 +4,6 @@ import std.decl_ref { declaration_ref_eq, decl_ref }
 import gunbc.recurring_failure_mode.command_not_found_exit_cannot_distinguish_eviction_from_misnaming {
   command_not_found_exit_cannot_distinguish_eviction_from_misnaming,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

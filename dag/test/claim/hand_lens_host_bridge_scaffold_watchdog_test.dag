@@ -1,7 +1,6 @@
 module test.claim.hand_lens_host_bridge_scaffold_watchdog
 
 import gunbc.hand_lens_host_bridge_scaffold_index { transport_script_position_host_bridge_dissolution_trigger }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

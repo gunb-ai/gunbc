@@ -1,7 +1,6 @@
 module test.claim.ebay_listing_witness
 
 import gunbc.tools.ebay_listing { default_marketplace }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
