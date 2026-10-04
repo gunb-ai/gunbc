@@ -1,0 +1,261 @@
+module v2.test.claim.compiler.collection_callback_realization
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.fold_lowering { FoldIterationDirection, IteratesLeftToRight, IteratesRightToLeft, fold_family_realization, fold_loop_step, fold_realization_declaration_path, fold_realized_iteration_direction, fold_realized_path_iteration_direction, fold_step_body_node }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer, fmi_infer_tree, fmi_no_projection_refusal, fmi_reason }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.collection { List, list_at_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node_query { find_named_child }
+import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_to_dotted_string }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.algebra { Cons, Empty }
+import v2.std.node { ComputationNode, Found, Loop, Node, Symbol, loop_realized_declaration_target, node_subtree_nodes }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a std.algebra collection callback operation (map, all) lowers through the ONE
+// fold encoding (v2.compiler.fold_lowering CallbackRealization, v2.compiler.body_lowering_fold
+// body_lower_callback_encoding): its head binds to its own named template row, its callback's binder is
+// the synthesized step's member formal and so is typed from the domain element by role, and the step puts
+// one cell on the front of the carrier. BOUNDARY: source text in, through the production assembly route
+// (v2.test.claim.compiler.infer_fold_member_instance fmi_assemble), then v2.compiler.infer infer.
+// RED ON THE BASE for every control here: the base realized only the fold family, so `map(` reached
+// resolve as a bare name and the whole module refused resolve_reason_unbound_symbol.
+
+data ccr_map_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> List<Int> {\n  map(xs, e => e.target)\n}\n"
+
+data ccr_map_undeclared_field: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> List<Int> {\n  map(xs, e => e.nope)\n}\n"
+
+data ccr_declared_any: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn any(xs: List<Pair>, predicate: fn(Pair) -> Bool) -> Bool {\n  false\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  any(xs, e => e.target == 0)\n}\n"
+
+data ccr_all_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  all(xs, e => e.target == 0)\n}\n"
+
+data ccr_map_piped: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> List<Int> {\n  xs |> map(e => e.target)\n}\n"
+
+fn ccr_loops(tree: ResolvedTree) -> List<Node> {
+  fold(node_subtree_nodes(root: tree.root), init: [], f: fn(acc, n) {
+    match n.kind {
+      ComputationNode { behavior: Loop } => Cons { head: n, tail: acc }
+      _ => acc
+    }
+  })
+}
+
+fn ccr_loop_realized_path(l: Node) -> Optional<String> {
+  match loop_realized_declaration_target(children: l.children) {
+    Found { target: realized } =>
+      match declaration_reference_path_optional(node: realized) {
+        Present { value: path } => optional_present(value: qualified_name_to_dotted_string(qn: path))
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn ccr_tree_realizes(tree: ResolvedTree, row: String) -> Bool {
+  match ccr_loops(tree: tree) {
+    Cons { head: l, tail: Empty } =>
+      match ccr_loop_realized_path(l: l) {
+        Present { value: path } => path == row
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// The one Loop's direction, derived from its own realized edge through the production reader.
+fn ccr_tree_iterates_right_to_left(tree: ResolvedTree) -> Bool {
+  match ccr_loops(tree: tree) {
+    Cons { head: l, tail: Empty } => ccr_loop_iterates_right_to_left(l: l)
+    _ => false
+  }
+}
+
+fn ccr_loop_iterates_right_to_left(l: Node) -> Bool {
+  match loop_realized_declaration_target(children: l.children) {
+    Found { target: realized } => ccr_direction_is(d: fold_realized_iteration_direction(realized: realized), want_right: true)
+    _ => false
+  }
+}
+
+fn ccr_direction_is(d: Optional<FoldIterationDirection>, want_right: Bool) -> Bool {
+  match d {
+    Present { value: IteratesRightToLeft } => want_right
+    Present { value: IteratesLeftToRight } => !want_right
+    Absent => false
+  }
+}
+
+fn ccr_head_path(head: Symbol) -> String {
+  match fold_family_realization(head: head) {
+    Present { value: r } => qualified_name_to_dotted_string(qn: fold_realization_declaration_path(r: r))
+    Absent => ""
+  }
+}
+
+fn ccr_assembled_realizes(src: String, row: String) -> Bool {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } => ccr_tree_realizes(tree: tree, row: row)
+  }
+}
+
+fn ccr_step_accumulator_label(step: Node) -> Optional<Symbol> {
+  match arrow_declared_parameter_order(arrow: step) {
+    ArrowParameterOrderDeclared { labels: labels } => list_at_optional(xs: labels, index: 0)
+    ArrowParameterOrderAbsent => optional_absent()
+    ArrowParameterOrderMalformed => optional_absent()
+  }
+}
+
+fn ccr_tree_map_step_conses(tree: ResolvedTree) -> Bool {
+  match ccr_loops(tree: tree) {
+    Cons { head: l, tail: Empty } =>
+      match fold_loop_step(loop_node: l) {
+        Absent => false
+        Present { value: step } =>
+          match ccr_step_accumulator_label(step: step) {
+            Absent => false
+            Present { value: accumulator } =>
+              match fold_step_body_node(step: step) {
+                Absent => false
+                Present { value: body } =>
+                  match find_named_child(root: body, name: ^tail) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: tail, diagnostics: _ } =>
+                      match lexical_reference_label_optional(node: tail) {
+                        Present { value: label } => label == accumulator
+                        Absent => false
+                      }
+                  }
+              }
+          }
+      }
+    _ => false
+  }
+}
+
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm: source assembly is the real
+// route these claims must exercise (the producer IS that route), and it dominates every claim, so it is paid
+// once in floor preparation and each claim reads the DECIDED, portable value. Claims over one program share
+// its producer.
+type CcrMapRecordsReading {
+  reads_field: Bool
+  binds_row: Bool
+  step_conses: Bool
+  iterates_right_to_left: Bool
+}
+
+fn ccr_map_records_reading() -> CcrMapRecordsReading {
+  match fmi_assemble(src: ccr_map_records) {
+    Rejected { diagnostics: _ } => CcrMapRecordsReading { reads_field: false, binds_row: false, step_conses: false, iterates_right_to_left: false }
+    Accepted { value: tree, diagnostics: _ } =>
+      CcrMapRecordsReading {
+        reads_field: fmi_no_projection_refusal(o: fmi_infer_tree(tree: tree)),
+        binds_row: ccr_tree_realizes(tree: tree, row: "std.algebra.collection_map_shape"),
+        step_conses: ccr_tree_map_step_conses(tree: tree),
+        iterates_right_to_left: ccr_tree_iterates_right_to_left(tree: tree)
+      }
+  }
+}
+
+fn ccr_map_undeclared_field_reason() -> Symbol {
+  fmi_reason(o: fmi_infer(src: ccr_map_undeclared_field))
+}
+
+fn ccr_piped_map_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_map_piped, row: "std.algebra.collection_map_shape")
+}
+
+fn ccr_all_binds_its_row() -> Bool {
+  ccr_assembled_realizes(src: ccr_all_records, row: "std.algebra.collection_all_shape")
+}
+
+fn ccr_declared_any_lowers_no_loop() -> Bool {
+  match fmi_assemble(src: ccr_declared_any) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match ccr_loops(tree: tree) {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+  }
+}
+
+// (1) MAP OVER RECORDS READS A FIELD: the callback's binder `e` is the step's member formal, typed by the
+// domain element Pair, so `e.target` projects a declared field and infer raises no projection refusal.
+test fn ccr_map_over_records_reads_a_field() -> Bool {
+  ccr_map_records_reading().reads_field
+}
+
+// (2) A BAD FIELD REFUSES AT THE FIELD: the same map projecting a field Pair does not declare.
+test fn ccr_map_undeclared_field_refuses_at_the_field() -> Bool {
+  ccr_map_undeclared_field_reason() == ^infer_reason_field_not_declared_on_receiver
+}
+
+// (3) THE HEAD BINDS TO ITS OWN ROW, for every realized callback operation and for the piped spelling.
+test fn ccr_map_head_binds_its_row() -> Bool {
+  ccr_map_records_reading().binds_row
+}
+
+test fn ccr_piped_map_head_binds_its_row() -> Bool {
+  ccr_piped_map_binds_its_row()
+}
+
+// all's body joins through &&, which infer does not yet derive (a separate frontier), so this control
+// asserts the binding and lowering, not infer acceptance.
+test fn ccr_all_head_binds_its_row() -> Bool {
+  ccr_all_binds_its_row()
+}
+
+// (3b) A HEAD A CORPUS DECLARATION BINDS STAYS AN ORDINARY CALL. filter and any are NOT realized,
+// because v2.std.algebra declares ordinary fns of those names and lowering classifies a head by spelling;
+// a realized row would lower such a call to a Loop that resolve refuses as shadowed
+// (gunbc.recurring_failure_mode collection_callback_operation_unrealized_in_v2_lowering). The guard: a
+// module declaring its own `any` and calling it positionally assembles, and lowers to no Loop. Adding
+// any's row to v2.compiler.fold_lowering collection_roster_rows makes this control red.
+test fn ccr_declared_any_stays_an_ordinary_call() -> Bool {
+  ccr_declared_any_lowers_no_loop()
+}
+
+// (4) THE STRUCTURAL COST CONTROL: map's synthesized step body is a construct whose `tail` is the step's
+// OWN accumulator formal (declared position 0) -- one cell consed onto the carrier, O(1) per member, never
+// a snoc or append over it. This is the control that measures THIS lowering: no executor reads a
+// fold-realized Loop's encoding today (gunbc.recurring_failure_mode
+// fold_realized_loop_carries_no_iteration_direction), so an eval_steps figure measures the seed path.
+test fn ccr_map_step_conses_onto_its_accumulator() -> Bool {
+  ccr_map_records_reading().step_conses
+}
+
+// (5) THE LOOP SAYS WHICH WAY IT RUNS. map's synthesized step conses onto the carrier, which preserves
+// order only right to left, and the order is a fact of the realization rather than of the encoding
+// (v2.compiler.fold_lowering FoldIterationDirection). On the real route the one map Loop's realized edge
+// derives IteratesRightToLeft. Red if the reader is deleted or map's synthesis is declared left to right.
+test fn ccr_map_loop_iterates_right_to_left() -> Bool {
+  ccr_map_records_reading().iterates_right_to_left
+}
+
+// The same reader at supplied realized paths: the authored fold and all run left to right; fold_list and
+// fold_list_right, which share one encoding, are told apart by their realized declarations.
+test fn ccr_fold_and_all_iterate_left_to_right() -> Bool {
+  ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_fold_shape"), want_right: false)
+    && ccr_direction_is(d: fold_realized_path_iteration_direction(path: "std.algebra.collection_all_shape"), want_right: false)
+}
+
+test fn ccr_fold_list_and_fold_list_right_are_told_apart() -> Bool {
+  ccr_direction_is(d: fold_realized_path_iteration_direction(path: ccr_head_path(head: ^fold_list)), want_right: false)
+    && ccr_direction_is(d: fold_realized_path_iteration_direction(path: ccr_head_path(head: ^fold_list_right)), want_right: true)
+}
+
+// A path that names no collection fold derives no direction, rather than a default.
+test fn ccr_a_non_fold_path_has_no_direction() -> Bool {
+  match fold_realized_path_iteration_direction(path: "std.algebra.collection_map_shape_not") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

@@ -13,7 +13,7 @@ import v2.std.node { Node }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.integer { Int }
 import v2.std.runtime { runtime_value_conj_node }
 
