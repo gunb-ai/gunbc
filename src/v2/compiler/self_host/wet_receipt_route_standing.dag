@@ -22,7 +22,6 @@ import tools.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.std.algebra { fold_list, length }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // ROW-GRAIN ROUTE STANDING FOR THE WET SELF-HOST BEHAVIORAL RECEIPTS, and the grain is the whole
