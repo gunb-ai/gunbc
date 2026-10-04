@@ -65,7 +65,7 @@ fn ack_obs(id: String, seq: Int) -> ParityObservation {
   RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
 }
 
-test fn witness_empty_history_is_unobserved() -> Bool {
+test fn witness_empty_history_is_unobserved() -> Bool  {
   let unobserved = match parity_monitor_verdict(family: "add", observations: []) {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => false
@@ -75,7 +75,7 @@ test fn witness_empty_history_is_unobserved() -> Bool {
   unobserved && (parity_routing_admitted(family: "add", observations: []) == false)
 }
 
-test fn witness_green_holds() -> Bool {
+test fn witness_green_holds() -> Bool  {
   match parity_monitor_verdict(family: "add", observations: [green_obs(id: "w1", seq: 1)]) {
     ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
     ParityRevertRequired { family: _, red_window_id: _ } => false
@@ -84,7 +84,7 @@ test fn witness_green_holds() -> Bool {
   }
 }
 
-test fn witness_greens_accumulate_streak() -> Bool {
+test fn witness_greens_accumulate_streak() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), green_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
@@ -96,7 +96,7 @@ test fn witness_greens_accumulate_streak() -> Bool {
   }
 }
 
-test fn witness_red_demands_revert_naming_window() -> Bool {
+test fn witness_red_demands_revert_naming_window() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
@@ -108,7 +108,7 @@ test fn witness_red_demands_revert_naming_window() -> Bool {
   }
 }
 
-test fn witness_red_latches_over_later_green() -> Bool {
+test fn witness_red_latches_over_later_green() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
@@ -120,7 +120,7 @@ test fn witness_red_latches_over_later_green() -> Bool {
   }
 }
 
-test fn witness_latch_names_first_red_window() -> Bool {
+test fn witness_latch_names_first_red_window() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [red_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
@@ -141,7 +141,7 @@ fn latched_revert_names(v: ParityMonitorVerdict, expected_window: String) -> Boo
   }
 }
 
-test fn witness_latch_survives_qualified_later_green() -> Bool {
+test fn witness_latch_survives_qualified_later_green() -> Bool  {
   latched_revert_names(
     v: parity_monitor_verdict(
       family: "add",
@@ -155,7 +155,7 @@ test fn witness_latch_survives_qualified_later_green() -> Bool {
   )
 }
 
-test fn witness_mixed_family_while_latched_refuses() -> Bool {
+test fn witness_mixed_family_while_latched_refuses() -> Bool  {
   let obs = [
     green_obs(id: "w1", seq: 1),
     red_obs(id: "w2", seq: 2),
@@ -165,7 +165,7 @@ test fn witness_mixed_family_while_latched_refuses() -> Bool {
     && (parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_cadence_violation_while_latched_refuses() -> Bool {
+test fn witness_cadence_violation_while_latched_refuses() -> Bool  {
   let obs = [
     green_obs(id: "w1", seq: 1),
     red_obs(id: "w2", seq: 2),
@@ -175,7 +175,7 @@ test fn witness_cadence_violation_while_latched_refuses() -> Bool {
     && (parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
+test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool  {
   let obs = [
     red_obs(id: "w1", seq: 1),
     RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
@@ -185,7 +185,7 @@ test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
     && (parity_routing_admitted(family: "add", observations: obs) == false)
 }
 
-test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool {
+test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool  {
   let obs = [
     red_obs(id: "w1", seq: 1),
     observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
@@ -202,7 +202,7 @@ test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool {
     && parity_routing_admitted(family: "add", observations: unqualified_free)
 }
 
-test fn witness_cold_divergence_demands_revert() -> Bool {
+test fn witness_cold_divergence_demands_revert() -> Bool  {
   verdict_is_revert_required(
     v: parity_monitor_verdict(
       family: "add",
@@ -211,7 +211,7 @@ test fn witness_cold_divergence_demands_revert() -> Bool {
   )
 }
 
-test fn witness_mixed_family_receipt_refused() -> Bool {
+test fn witness_mixed_family_receipt_refused() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [
@@ -231,7 +231,7 @@ test fn witness_mixed_family_receipt_refused() -> Bool {
   }
 }
 
-test fn witness_refusal_is_absorbing() -> Bool {
+test fn witness_refusal_is_absorbing() -> Bool  {
   verdict_is_evidence_refused(
     v: parity_monitor_verdict(
       family: "add",
@@ -243,7 +243,7 @@ test fn witness_refusal_is_absorbing() -> Bool {
   )
 }
 
-test fn witness_refused_evidence_denies_routing_admission() -> Bool {
+test fn witness_refused_evidence_denies_routing_admission() -> Bool  {
   let refused_evidence = [
     green_obs(id: "w1", seq: 1),
     observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
@@ -262,7 +262,7 @@ test fn witness_refused_evidence_denies_routing_admission() -> Bool {
     ) == false)
 }
 
-test fn witness_cadence_order_violation_refused() -> Bool {
+test fn witness_cadence_order_violation_refused() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
@@ -279,7 +279,7 @@ test fn witness_cadence_order_violation_refused() -> Bool {
   }
 }
 
-test fn witness_ack_opens_new_epoch_then_green_holds() -> Bool {
+test fn witness_ack_opens_new_epoch_then_green_holds() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [
@@ -296,7 +296,7 @@ test fn witness_ack_opens_new_epoch_then_green_holds() -> Bool {
   }
 }
 
-test fn witness_ack_alone_is_unobserved_not_holding() -> Bool {
+test fn witness_ack_alone_is_unobserved_not_holding() -> Bool  {
   match parity_monitor_verdict(
     family: "add",
     observations: [red_obs(id: "w1", seq: 1), ack_obs(id: "revert-7091", seq: 2)]

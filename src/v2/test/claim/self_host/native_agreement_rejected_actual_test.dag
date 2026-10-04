@@ -81,7 +81,7 @@ fn rejected_actual_divergence(
   )
 }
 
-test fn rejected_native_side_is_named_and_the_interpreted_value_survives() -> Bool {
+test fn rejected_native_side_is_named_and_the_interpreted_value_survives() -> Bool  {
   match rejected_actual_divergence(
     falsification: Present { value: rejected_probe_receipt() }
   ) {
@@ -97,7 +97,7 @@ test fn rejected_native_side_is_named_and_the_interpreted_value_survives() -> Bo
 // falsification receipt must keep answering "?" on both sides. Without this, an arm that
 // answered "rejected"/"?" for every `Rejected` would satisfy the assertion above while having
 // swallowed the neighbouring case.
-test fn rejected_without_a_receipt_still_reports_both_sides_unknown() -> Bool {
+test fn rejected_without_a_receipt_still_reports_both_sides_unknown() -> Bool  {
   match rejected_actual_divergence(falsification: Absent) {
     Present { value: d } =>
       d.interpreted_value == "?" && d.native_value == "?"

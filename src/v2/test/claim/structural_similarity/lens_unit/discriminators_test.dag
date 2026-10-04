@@ -42,18 +42,18 @@ data single_decl: List<Node> = [
   disj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-test fn nickname_pair_is_similar() -> Bool {
+test fn nickname_pair_is_similar() -> Bool  {
   type_decls_anti_unify(decls: nickname_pair)
 }
-test fn width_family_is_similar() -> Bool {
+test fn width_family_is_similar() -> Bool  {
   type_decls_anti_unify(decls: width_family)
 }
-test fn distinct_decls_are_not_similar() -> Bool {
+test fn distinct_decls_are_not_similar() -> Bool  {
   !type_decls_anti_unify(decls: distinct_decls)
 }
-test fn divergent_family_is_not_similar() -> Bool {
+test fn divergent_family_is_not_similar() -> Bool  {
   !type_decls_anti_unify(decls: near_but_divergent)
 }
-test fn single_decl_is_not_similar() -> Bool {
+test fn single_decl_is_not_similar() -> Bool  {
   !type_decls_anti_unify(decls: single_decl)
 }

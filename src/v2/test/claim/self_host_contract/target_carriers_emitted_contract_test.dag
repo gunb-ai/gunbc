@@ -90,7 +90,7 @@ fn target_carriers_emitted_contract_holds(inject_fault: Bool) -> Bool {
   }
 }
 
-test fn target_carriers_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+test fn target_carriers_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool  {
   target_carriers_emitted_contract_holds(inject_fault: false)
     && !target_carriers_emitted_contract_holds(inject_fault: true)
 }

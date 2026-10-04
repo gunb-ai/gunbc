@@ -83,21 +83,21 @@ data admission_probe_partial_population_receipt: SourceRootProvenanceCoverageRec
     coverage: SourceRootCoverageComplete
   }
 
-test fn closure_emit_admission_refuses_empty_population_holds() -> Bool {
+test fn closure_emit_admission_refuses_empty_population_holds() -> Bool  {
   admission_reason_lexeme_or_admitted(
     refs: Empty,
     receipt: admission_probe_empty_receipt
   ) == "closure_emit_driver_empty_population"
 }
 
-test fn closure_emit_admission_refuses_incomplete_coverage_holds() -> Bool {
+test fn closure_emit_admission_refuses_incomplete_coverage_holds() -> Bool  {
   admission_reason_lexeme_or_admitted(
     refs: Empty,
     receipt: admission_probe_incomplete_coverage_receipt
   ) == "closure_emit_driver_coverage_incomplete"
 }
 
-test fn closure_emit_admission_refuses_partial_population_holds() -> Bool {
+test fn closure_emit_admission_refuses_partial_population_holds() -> Bool  {
   admission_reason_lexeme_or_admitted(
     refs: Empty,
     receipt: admission_probe_partial_population_receipt
@@ -108,7 +108,7 @@ test fn closure_emit_admission_refuses_partial_population_holds() -> Bool {
 // program and reporting Accepted. When a real manifest overlay lands this
 // witness flips, and it must be re-pointed at the stub rather than deleted,
 // because the stub state stays reachable.
-test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> Bool {
+test fn closure_emit_admission_refuses_committed_manifest_stub_holds() -> Bool  {
   admission_reason_lexeme_or_admitted(
     refs: host_source_root_closure_refs,
     receipt: host_source_root_ingest_coverage_receipt

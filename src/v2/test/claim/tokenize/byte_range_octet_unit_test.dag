@@ -25,7 +25,7 @@ fn lex(src: String) -> Outcome<TokenStream> {
 // `data d: String = "` is 18 octets, the three scalars are 2+3+4 = 9, then `" ` is 2, so the
 // unrecognized em dash (U+2014, 3 octets) starts at octet 29 and covers 29..32. Counted in scalars
 // it would be 23..24.
-test fn refusal_locus_is_the_octet_offset_after_multibyte_scalars_holds() -> Bool {
+test fn refusal_locus_is_the_octet_offset_after_multibyte_scalars_holds() -> Bool  {
   match lex(src: "data d: String = \"°€😀\" —") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } =>
@@ -50,7 +50,7 @@ fn last_token(stream: TokenStream) -> Optional<Token> {
 
 // The string-literal token after the three scalars spans octets 17..28 (11 octets: two quotes and
 // 9 octets of text), not 17..22.
-test fn token_extent_counts_octets_holds() -> Bool {
+test fn token_extent_counts_octets_holds() -> Bool  {
   match lex(src: "data d: String = \"°€😀\"") {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>

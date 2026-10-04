@@ -29,7 +29,7 @@ fn use_site_verdict_eq(a: UseSiteVerdict, b: UseSiteVerdict) -> Bool {
   }
 }
 
-test fn use_site_verdict_round_trips_every_variant() -> Bool {
+test fn use_site_verdict_round_trips_every_variant() -> Bool  {
   round_trips(verdict: MoveWhole)
     && round_trips(verdict: Borrow)
     && round_trips(verdict: CloneShared)
@@ -37,7 +37,7 @@ test fn use_site_verdict_round_trips_every_variant() -> Bool {
     && round_trips(verdict: MoveField { field: ^seen })
 }
 
-test fn use_site_verdict_absent_edge_is_distinguishable_from_unclassified() -> Bool {
+test fn use_site_verdict_absent_edge_is_distinguishable_from_unclassified() -> Bool  {
   match use_site_verdict_lookup(node: bare_occurrence_node()) {
     VerdictAbsent => true
     _ => false

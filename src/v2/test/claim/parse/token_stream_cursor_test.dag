@@ -35,26 +35,26 @@ fn tsc_first_matches_skip_first(all: List<Token>, n: Int) -> Bool {
   }
 }
 
-test fn token_stream_cursor_new_at_zero_holds() -> Bool {
+test fn token_stream_cursor_new_at_zero_holds() -> Bool  {
   let stream = token_stream_new(all: tsc_three_tokens)
   (token_stream_position(stream: stream) == 0)
     && (token_stream_remaining_count(stream: stream) == 3)
     && (length(xs: token_stream_all(stream: stream)) == 3)
 }
 
-test fn token_stream_cursor_advance_bumps_pos_holds() -> Bool {
+test fn token_stream_cursor_advance_bumps_pos_holds() -> Bool  {
   let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 2)
   (token_stream_position(stream: stream) == 2)
     && (token_stream_remaining_count(stream: stream) == 1)
 }
 
-test fn token_stream_cursor_first_after_advance_holds() -> Bool {
+test fn token_stream_cursor_first_after_advance_holds() -> Bool  {
   tsc_first_matches_skip_first(all: tsc_three_tokens, n: 0)
     && tsc_first_matches_skip_first(all: tsc_three_tokens, n: 1)
     && tsc_first_matches_skip_first(all: tsc_three_tokens, n: 2)
 }
 
-test fn token_stream_cursor_get_offset_holds() -> Bool {
+test fn token_stream_cursor_get_offset_holds() -> Bool  {
   let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 1)
   match token_stream_get(stream: stream, offset: 1) {
     Present { value: tok } => tok.lexeme == "c"
@@ -62,14 +62,14 @@ test fn token_stream_cursor_get_offset_holds() -> Bool {
   }
 }
 
-test fn token_stream_cursor_empty_first_absent_holds() -> Bool {
+test fn token_stream_cursor_empty_first_absent_holds() -> Bool  {
   match token_stream_first(stream: token_stream_empty()) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn token_stream_cursor_remaining_matches_skip_holds() -> Bool {
+test fn token_stream_cursor_remaining_matches_skip_holds() -> Bool  {
   let stream = token_stream_advance(stream: token_stream_new(all: tsc_three_tokens), n: 1)
   let remaining_len = length(xs: token_stream_remaining(stream: stream))
   let skip_len = length(xs: skip(xs: tsc_three_tokens, n: 1))

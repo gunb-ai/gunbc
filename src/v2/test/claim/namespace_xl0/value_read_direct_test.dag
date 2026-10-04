@@ -40,11 +40,11 @@ fn vrd_refused_unlowered_at(n: Node) -> Bool {
   }
 }
 
-test fn an_unrecognised_production_refuses_value_unlowered_at_itself() -> Bool {
+test fn an_unrecognised_production_refuses_value_unlowered_at_itself() -> Bool  {
   vrd_refused_unlowered_at(n: vrd_production(emitted: ^vrd_undeclared_production))
 }
 
-test fn a_lowerable_operand_is_not_refused_value_unlowered() -> Bool {
+test fn a_lowerable_operand_is_not_refused_value_unlowered() -> Bool  {
   match body_lower_value_read(value: vrd_atom(id: ^vrd_lowerable_operand)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

@@ -52,7 +52,7 @@ fn emit_verilog(emitted: Node) -> String {
 // THE POSITIVE CONTROL, as full byte equality rather than a contains-check. A substring assertion
 // would pass on a module with a duplicated port, a missing assignment, or wrong indentation —
 // four different circuits' worth of difference — so the whole artifact is pinned at once.
-test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
+test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool  {
   emit_verilog(emitted: verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
@@ -67,7 +67,7 @@ fn row_derives(lhs: Symbol, emitted: Node) -> Bool {
   }
 }
 
-test fn w_every_relation_row_derives() -> Bool {
+test fn w_every_relation_row_derives() -> Bool  {
   row_derives(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted())
     && row_derives(lhs: ^verilog_production_ansi_port, emitted: first_port())
     && row_derives(lhs: ^verilog_production_expr, emitted: verilog_signal_reference(name: ^verilog_interlock_fault))
@@ -117,13 +117,13 @@ fn unnegated_module() -> Node {
   )
 }
 
-test fn w_expression_perturbation_changes_the_bytes() -> Bool {
+test fn w_expression_perturbation_changes_the_bytes() -> Bool  {
   emit_verilog(emitted: unnegated_module()) != expected_interlock_verilog
     && string_contains(s: emit_verilog(emitted: unnegated_module()), pattern: "(conditioned_good & fault)")
     && !string_contains(s: emit_verilog(emitted: unnegated_module()), pattern: "~")
 }
 
-test fn w_expression_perturbation_leaves_the_port_region_intact() -> Bool {
+test fn w_expression_perturbation_leaves_the_port_region_intact() -> Bool  {
   string_contains(
     s: emit_verilog(emitted: unnegated_module()),
     pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n"
@@ -161,7 +161,7 @@ fn two_port_module() -> Node {
   )
 }
 
-test fn w_port_population_changes_only_the_port_region() -> Bool {
+test fn w_port_population_changes_only_the_port_region() -> Bool  {
   string_contains(
     s: emit_verilog(emitted: two_port_module()),
     pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  output wire power_permit\n);\n"
@@ -193,7 +193,7 @@ fn emit_with(productions: List<FormalProduction>, emitted: Node) -> String {
   }
 }
 
-test fn w_production_order_does_not_change_the_bytes() -> Bool {
+test fn w_production_order_does_not_change_the_bytes() -> Bool  {
   emit_with(productions: verilog_emission_formal_productions_reversed(), emitted: verilog_interlock_emitted()) == expected_interlock_verilog
 }
 
@@ -230,6 +230,6 @@ fn rebuilt_from_spine() -> Node {
   }
 }
 
-test fn w_token_spine_reads_back_to_the_same_emitted_node() -> Bool {
+test fn w_token_spine_reads_back_to_the_same_emitted_node() -> Bool  {
   rebuilt_from_spine() == verilog_interlock_emitted()
 }

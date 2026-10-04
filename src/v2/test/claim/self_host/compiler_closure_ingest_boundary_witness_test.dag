@@ -16,7 +16,7 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // Wet boundary witness: 07_target_carriers closure at manifest_inline_list_max (transport-run).
-test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool {
+test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool  {
   let receipt = host_source_root_ingest_coverage_receipt
   let refs = host_source_root_closure_refs
   let n = receipt.ingest_read_count

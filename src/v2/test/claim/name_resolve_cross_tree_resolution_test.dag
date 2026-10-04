@@ -340,7 +340,7 @@ fn ct_dag_to_v2_index() -> SourceRootIndex {
   )
 }
 
-test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
+test fn witness_dag_same_tree_import_resolves_holds() -> Bool  {
   match ct_dag_same_tree_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
@@ -358,7 +358,7 @@ test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
+test fn witness_v2_same_tree_import_resolves_holds() -> Bool  {
   match ct_v2_same_tree_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
@@ -376,7 +376,7 @@ test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
+test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool  {
   match ct_cross_tree_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
@@ -394,7 +394,7 @@ test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   }
 }
 
-test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
+test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool  {
   match ct_dag_to_v2_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>

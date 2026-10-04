@@ -15,7 +15,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Atom, Node, TypeNode }
 
-test fn port_refusal_classifies_only_from_available_evidence() -> Bool {
+test fn port_refusal_classifies_only_from_available_evidence() -> Bool  {
   let source = port_refusal_locus(
     at: Textual {
       file: ^port_locus_projection_source,
@@ -66,7 +66,7 @@ test fn port_refusal_classifies_only_from_available_evidence() -> Bool {
 // The two arms answer different ownership questions. A source refusal must retain the exact
 // source position; an invariant refusal must retain the invariant identity; and equality must
 // never collapse one into the other merely because both failures crossed the same port.
-test fn port_locus_states_are_distinct_and_retain_required_evidence() -> Bool {
+test fn port_locus_states_are_distinct_and_retain_required_evidence() -> Bool  {
   let source = source_port_locus(
     port: ^port_locus_classification_port,
     file: ^port_locus_classification_source,

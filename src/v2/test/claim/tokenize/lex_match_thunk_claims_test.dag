@@ -24,7 +24,7 @@ data str_block_comment: String = Cons { head: 47, tail: Cons { head: 42, tail: C
 
 data str_block_comment_extra_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: std.algebra.Empty } } } } }
 
-test fn lex_match_thunk_claims_holds() -> Bool {
+test fn lex_match_thunk_claims_holds() -> Bool  {
 
   let r1 = match lex_try_rule(
     rule: TriviaRule { pattern: EmptyPattern },

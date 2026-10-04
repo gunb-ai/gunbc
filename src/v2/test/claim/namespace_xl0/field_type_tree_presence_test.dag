@@ -105,7 +105,7 @@ fn present_anywhere(lexeme: String) -> Bool {
   atom_present(lexeme: lexeme) || label_present(lexeme: lexeme)
 }
 
-test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
+test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool  {
   atom_present(lexeme: "Xl0UserType")
 }
 
@@ -115,14 +115,14 @@ test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
 // presence is not true on a refused ingest. Named skip is enrolled on
 // declaration_graft !assemble_accepts, not as tree absence.
 // gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-test fn the_record_type_declaration_survives_in_the_tree_today() -> Bool {
+test fn the_record_type_declaration_survives_in_the_tree_today() -> Bool  {
   present_anywhere(lexeme: "Xl0Wrapper")
 }
 
-test fn the_bare_field_type_survives_in_the_tree_today() -> Bool {
+test fn the_bare_field_type_survives_in_the_tree_today() -> Bool  {
   present_anywhere(lexeme: "Xl0FieldOnly")
 }
 
-test fn the_field_name_survives_in_the_tree_today() -> Bool {
+test fn the_field_name_survives_in_the_tree_today() -> Bool  {
   present_anywhere(lexeme: "fld")
 }

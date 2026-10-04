@@ -53,11 +53,11 @@ fn nickname_registration() -> RosterRegistration {
   )
 }
 
-test fn roster_registry_standard_holds_live() -> Bool {
+test fn roster_registry_standard_holds_live() -> Bool  {
   roster_registry_standard_holds() && (roster_registry_nonstandard_count() == 0)
 }
 
-test fn roster_registry_enrolls_known_rosters() -> Bool {
+test fn roster_registry_enrolls_known_rosters() -> Bool  {
   length(xs: roster_registry) >= 26
 }
 
@@ -74,13 +74,13 @@ fn empty_trigger_registration() -> RosterRegistration {
 // Restored alongside the production guard, for the same reason: an empty
 // condition is still constructible, so this is the executing evidence that the
 // restored check refuses it.
-test fn roster_registry_red_control_empty_trigger_reds() -> Bool {
+test fn roster_registry_red_control_empty_trigger_reds() -> Bool  {
   roster_registry_nonstandard_count_from(
     registrations: [empty_trigger_registration()]
   ) == 1
 }
 
-test fn roster_registry_red_control_nickname_reds() -> Bool {
+test fn roster_registry_red_control_nickname_reds() -> Bool  {
   let findings = nonstandard_registrations_from(
     registrations: [nickname_registration()]
   )
@@ -92,7 +92,7 @@ test fn roster_registry_red_control_nickname_reds() -> Bool {
     )
 }
 
-test fn roster_registry_green_control_standard_forms_pass() -> Bool {
+test fn roster_registry_green_control_standard_forms_pass() -> Bool  {
   roster_registry_nonstandard_count_from(
     registrations: [
       synthetic_registration(membership: ByContainment),

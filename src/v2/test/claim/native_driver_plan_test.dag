@@ -108,13 +108,13 @@ fn plan_exit_is_success(argv: List<String>) -> Bool {
   }
 }
 
-test fn the_census_verb_plans_with_its_roots_holds() -> Bool {
+test fn the_census_verb_plans_with_its_roots_holds() -> Bool  {
   parsed_verb_is_census(argv: ["census", "dag", "src/v2"])
   && (planned_root_count(argv: ["census", "dag", "src/v2"]) == 2)
   && plan_exit_is_success(argv: ["census", "dag", "src/v2"])
 }
 
-test fn the_census_resolve_verb_is_not_the_census_verb_holds() -> Bool {
+test fn the_census_resolve_verb_is_not_the_census_verb_holds() -> Bool  {
   parsed_verb_is_census_resolve(argv: ["census-resolve", "dag"])
   && !parsed_verb_is_census(argv: ["census-resolve", "dag"])
 }
@@ -135,7 +135,7 @@ fn parsed_verb_is_census_infer(argv: List<String>) -> Bool {
 
 // census-infer is its own word with its own roots, never census-resolve under another spelling
 // (docs/plans/census-part-2-inference-design.md section 2a).
-test fn the_census_infer_verb_plans_with_its_roots_and_is_not_census_resolve_holds() -> Bool {
+test fn the_census_infer_verb_plans_with_its_roots_and_is_not_census_resolve_holds() -> Bool  {
   parsed_verb_is_census_infer(argv: ["census-infer", "dag", "src/v2"])
   && (planned_root_count(argv: ["census-infer", "dag", "src/v2"]) == 2)
   && !parsed_verb_is_census_resolve(argv: ["census-infer", "dag"])
@@ -143,49 +143,49 @@ test fn the_census_infer_verb_plans_with_its_roots_and_is_not_census_resolve_hol
 
 // The first word after `adjudicate` is the facts path and the second the target pattern; NEITHER is a source root -- the distinction
 // the rendered main made by consuming one argument before collecting the rest.
-test fn adjudicate_takes_its_facts_path_before_the_roots_holds() -> Bool {
+test fn adjudicate_takes_its_facts_path_before_the_roots_holds() -> Bool  {
   parsed_verb_is_adjudicate(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"])
   && (planned_facts_path(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == "host-facts.tsv")
   && (planned_root_count(argv: ["adjudicate", "host-facts.tsv", "//v2/test/...", "dag", "src/v2"]) == 2)
 }
 
-test fn only_adjudicate_names_a_facts_path_holds() -> Bool {
+test fn only_adjudicate_names_a_facts_path_holds() -> Bool  {
   (planned_facts_path(argv: ["census", "dag"]) == "")
   && (planned_facts_path(argv: ["census-resolve", "dag"]) == "")
 }
 
 // Preserved behaviour, asserted so a later reader does not "fix" it: the rendered main planned a
 // census with no roots and let the run fold answer. A parse-time refusal here would be a new wall.
-test fn a_census_with_no_roots_is_planned_not_refused_holds() -> Bool {
+test fn a_census_with_no_roots_is_planned_not_refused_holds() -> Bool  {
   parsed_verb_is_census(argv: ["census"])
   && (planned_root_count(argv: ["census"]) == 0)
 }
 
-test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool {
+test fn an_empty_command_line_refuses_with_the_usage_holds() -> Bool  {
   (refusal_detail(argv: []) == native_driver_usage)
   && plan_exit_is_misuse(argv: [])
 }
 
-test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool {
+test fn an_unknown_verb_refuses_and_names_the_word_holds() -> Bool  {
   (refusal_detail(argv: ["adjudicat", "x"])
     == "REFUSED: unknown mode adjudicat -- expected adjudicate, census, census-resolve, census-infer or demand-census")
   && plan_exit_is_misuse(argv: ["adjudicat", "x"])
 }
 
-test fn adjudicate_without_a_facts_path_refuses_holds() -> Bool {
+test fn adjudicate_without_a_facts_path_refuses_holds() -> Bool  {
   (refusal_detail(argv: ["adjudicate"]) == native_driver_adjudicate_needs_facts)
   && plan_exit_is_misuse(argv: ["adjudicate"])
 }
 
 // A refused plan names nothing to fetch, so the host walks no directory and reads no file for one.
-test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool {
+test fn a_refused_plan_names_no_roots_and_no_facts_path_holds() -> Bool  {
   (planned_root_count(argv: ["nonsense", "dag", "src/v2"]) == 0)
   && (planned_facts_path(argv: ["nonsense", "dag", "src/v2"]) == "")
 }
 
 // The first bad word is the located cause; later words cannot repair it, and cannot change which
 // refusal is reported.
-test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool {
+test fn a_later_word_cannot_repair_an_unknown_verb_holds() -> Bool  {
   refusal_detail(argv: ["nonsense", "census"])
     == "REFUSED: unknown mode nonsense -- expected adjudicate, census, census-resolve, census-infer or demand-census"
 }
@@ -206,19 +206,19 @@ fn planned_pattern_render(argv: List<String>) -> String {
   }
 }
 
-test fn adjudicate_carries_its_parsed_target_pattern_holds() -> Bool {
+test fn adjudicate_carries_its_parsed_target_pattern_holds() -> Bool  {
   (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/parse:expression_bodied_fn_decl_parse", "src/v2"])
     == "//v2/test/parse:expression_bodied_fn_decl_parse")
   && (planned_pattern_render(argv: ["adjudicate", "f.tsv", "//v2/test/parse/...", "src/v2"]) == "//v2/test/parse/...")
 }
 
-test fn adjudicate_with_an_unparseable_pattern_refuses_as_misuse_holds() -> Bool {
+test fn adjudicate_with_an_unparseable_pattern_refuses_as_misuse_holds() -> Bool  {
   plan_exit_is_misuse(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"])
   && string_contains(s: refusal_detail(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]), pattern: "not absolute")
   && (planned_root_count(argv: ["adjudicate", "f.tsv", "v2/test/parse", "src/v2"]) == 0)
 }
 
-test fn adjudicate_without_a_pattern_refuses_holds() -> Bool {
+test fn adjudicate_without_a_pattern_refuses_holds() -> Bool  {
   (refusal_detail(argv: ["adjudicate", "f.tsv"]) == native_driver_adjudicate_needs_pattern)
   && plan_exit_is_misuse(argv: ["adjudicate", "f.tsv"])
 }
@@ -239,7 +239,7 @@ fn parsed_verb_is_demand_census(argv: List<String>) -> Bool {
 
 // D13's dependency-demand census is its own verb over source roots (v2.compiler.compile
 // native_demand_census_report), so `demand-census` plans that verb with every following word a root.
-test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool {
+test fn demand_census_plans_its_own_verb_over_its_roots_holds() -> Bool  {
   parsed_verb_is_demand_census(argv: ["demand-census", "dag", "src/v2"])
     && (planned_root_count(argv: ["demand-census", "dag", "src/v2"]) == 2)
     && !parsed_verb_is_census_resolve(argv: ["demand-census", "dag"])

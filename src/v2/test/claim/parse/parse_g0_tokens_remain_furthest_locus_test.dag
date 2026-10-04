@@ -103,11 +103,11 @@ fn tokens_remain_start(parsed: Outcome<Node>) -> Int {
   }
 }
 
-test fn treatment_stream_is_what_tokenize_emits() -> Bool {
+test fn treatment_stream_is_what_tokenize_emits() -> Bool  {
   supplied_stream_matches_tokenize(text: treatment_source, file: ^furthest_locus_probe, supplied: treatment_stream())
 }
 
-test fn control_stream_is_what_tokenize_emits() -> Bool {
+test fn control_stream_is_what_tokenize_emits() -> Bool  {
   supplied_stream_matches_tokenize(text: control_source, file: ^furthest_locus_probe, supplied: control_stream())
 }
 
@@ -115,13 +115,13 @@ test fn control_stream_is_what_tokenize_emits() -> Bool {
 // across parses of one token stream (v1_interpreter parse_table_memo_scope_and_key), so the second
 // parse meets entries the first stored; each entry carries its own subparse's furthest record, and
 // the served parse must land on the same token. The cold assertion alone is implied by this claim.
-test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool {
+test fn tokens_remain_mid_item_locus_holds_cold_and_served() -> Bool  {
   let cold = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
   let warm = tokens_remain_start(parsed: supplied_stream_parse(tokens: treatment_stream()))
   cold == 24 && warm == 24
 }
 
-test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
+test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool  {
   tokens_remain_start(parsed: supplied_stream_parse(tokens: control_stream())) == 32
 }
 
@@ -137,6 +137,6 @@ fn rbracket_start(src: String) -> Int {
 // string precede the `]`: byte offset 9, code-point offset 6. This refusal's locus is the lexer's
 // extent, so it carries whatever unit tokenize counts; gunbc#12285 made that octets, and this control
 // goes red (6) if the lexer ever counts code points again.
-test fn tokens_remain_offset_unit_is_octets_as_lexed() -> Bool {
+test fn tokens_remain_offset_unit_is_octets_as_lexed() -> Bool  {
   rbracket_start(src: "\"ééé\" ]") == 9
 }

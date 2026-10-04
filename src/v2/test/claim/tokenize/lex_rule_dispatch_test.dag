@@ -66,7 +66,7 @@ fn lex_dispatch_census_disagreements(census: LexDispatchCensus) -> Int {
 
 // Non-vacuous: every specimen was checked, and dispatch actually removed candidates at some of them --
 // a dispatch that returned every rule everywhere would agree trivially.
-test fn lex_rule_dispatch_agrees_with_trying_every_rule() -> Bool {
+test fn lex_rule_dispatch_agrees_with_trying_every_rule() -> Bool  {
   let census = lex_dispatch_census_dag_specimens()
   (lex_dispatch_census_positions(census: census) == length(xs: lex_rule_dispatch_specimens))
     && (lex_dispatch_census_pruned_positions(census: census) > 0)

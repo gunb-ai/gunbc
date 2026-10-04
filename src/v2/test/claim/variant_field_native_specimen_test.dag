@@ -123,7 +123,7 @@ data vfb_specimen_index: SymbolIndex = symbol_index_fill_module_root(
 // The fold spells the observation without a record pattern: the candidate arrives as the fold's
 // item, and the claim holds when exactly it — the single candidate the specimen declares —
 // carries the type node at the declared path.
-test fn vfb_specimen_binder_present_value_node_binds() -> Bool {
+test fn vfb_specimen_binder_present_value_node_binds() -> Bool  {
   fold_list(
     xs: symbol_index_candidates_at(
       index: vfb_specimen_index,
@@ -145,7 +145,7 @@ test fn vfb_specimen_binder_present_value_node_binds() -> Bool {
 // THE BINDER CARRIES THE VARIANT ARM TOO: position inside the type, name = variant — the same
 // `Present { value: node }` arm, a different declared field identity ("0" on a variant declared
 // positionally is the OTHER arm of the row's one fact; here the variant's node comes back).
-test fn vfb_specimen_variant_binder_binds() -> Bool {
+test fn vfb_specimen_variant_binder_binds() -> Bool  {
   let type_position = qualified_name_snoc(qn: vfb_specimen_module_qn, segment: ^Mood)
   fold_list(
     xs: symbol_index_candidates_at(
@@ -167,7 +167,7 @@ test fn vfb_specimen_variant_binder_binds() -> Bool {
 
 // AN ABSENT LOOKUP STAYS ABSENT: the arm that answers Empty is the other edge of the same
 // Optional the specimen matches over.
-test fn vfb_specimen_unbound_name_yields_no_candidates() -> Bool {
+test fn vfb_specimen_unbound_name_yields_no_candidates() -> Bool  {
   is_empty(
     xs: symbol_index_candidates_at(
       index: vfb_specimen_index,

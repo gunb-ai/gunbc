@@ -95,11 +95,11 @@ data newline_minus_after_block_source: String = "module probe.nl_block\n\ndata d
 
 data same_line_minus_source: String = "module probe.nl_same\n\ndata d: Int = x - 1\n"
 
-test fn a_newline_minus_after_an_operand_refuses_holds() -> Bool {
+test fn a_newline_minus_after_an_operand_refuses_holds() -> Bool  {
   n_refuses_at_minus(text: newline_minus_after_operand_source, file: ^probe_nl_plain, start: 39, end: 40)
 }
 
-test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
+test fn a_newline_minus_after_a_block_refuses_holds() -> Bool  {
   n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 58, end: 59)
 }
 
@@ -136,14 +136,14 @@ fn n_negations(text: String, file: Symbol) -> Optional<Int> {
   }
 }
 
-test fn a_same_line_minus_is_subtraction_holds() -> Bool {
+test fn a_same_line_minus_is_subtraction_holds() -> Bool  {
   match n_negations(text: same_line_minus_source, file: ^probe_nl_same) {
     Present { value: n } => n == 0
     Absent => false
   }
 }
 
-test fn a_leading_minus_is_negation_holds() -> Bool {
+test fn a_leading_minus_is_negation_holds() -> Bool  {
   match n_negations(text: leading_minus_source, file: ^probe_nl_neg) {
     Present { value: n } => n == 1
     Absent => false
@@ -173,7 +173,7 @@ fn dag_class_breaks_no_line(class: Symbol) -> Bool {
   }
 }
 
-test fn no_dag_token_class_emits_a_line_break_holds() -> Bool {
+test fn no_dag_token_class_emits_a_line_break_holds() -> Bool  {
   fold_list(xs: lex_rule_set_matching_rules(rules: dag_lex_rules()), empty: true, cons: fn(acc, rule) {
     acc && match lex_rule_token_class_optional(rule: rule) {
       Present { value: c } => dag_class_breaks_no_line(class: c)

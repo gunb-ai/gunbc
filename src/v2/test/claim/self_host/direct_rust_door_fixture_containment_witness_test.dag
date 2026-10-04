@@ -24,7 +24,7 @@ import v2.std.text { String }
 
 data direct_rust_door_fixture_containment_lane_tag: String = "direct_rust_door_fixture_containment_hermetic"
 
-test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
+test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool  {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),
@@ -37,7 +37,7 @@ test fn fixture_synthetic_mint_is_fixture_source_produced_only() -> Bool {
   }
 }
 
-test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
+test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool  {
   match mint_synthetic_emitted_artifact_from_fixture_inferred(
     inferred: direct_rust_door_inferred_tree,
     target: direct_rust_door_target_model(),

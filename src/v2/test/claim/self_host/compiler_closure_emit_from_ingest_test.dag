@@ -151,7 +151,7 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
 }
 
-test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
+test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool  {
   (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
     && fold_list(
       xs: self_host_closure_witness_layer_roots,
@@ -170,7 +170,7 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
 // read_count/cap) while the ref population stays complete — overflow must never render as zero rows
 // and an empty ingest.
 
-test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
+test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool  {
   source_root_overflow_never_empty_population_holds(
     receipt: host_source_root_ingest_coverage_receipt,
     refs: host_source_root_closure_refs
@@ -182,7 +182,7 @@ test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
-test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
+test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool  {
   let receipt = host_source_root_ingest_coverage_receipt
   let refs = host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -197,7 +197,7 @@ test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
     }
 }
 
-test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
+test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool  {
   let receipt = host_source_root_ingest_coverage_receipt
   let refs = host_source_root_closure_refs
   let n = receipt.ingest_read_count
@@ -215,7 +215,7 @@ test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
   }
 }
 
-test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
+test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool  {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
     Gap4IngestProbeSourceReadFailed => false
@@ -236,7 +236,7 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
 // over zero rows fails here. On a real host overlay it requires a POSITIVE
 // read count as well as the identity join, so the equality can no longer be
 // satisfied at zero.
-test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
+test fn compiler_closure_scoped_ingest_parses_holds() -> Bool  {
   match closure_emit_population_admission(
     refs: host_source_root_closure_refs,
     receipt: host_source_root_ingest_coverage_receipt

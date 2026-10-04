@@ -28,10 +28,10 @@ fn probe_zero_bytes() -> RuntimeValue {
   }
 }
 
-test fn label_of_a_two_byte_primitive() -> Bool {
+test fn label_of_a_two_byte_primitive() -> Bool  {
   runtime_value_octet_label(value: probe_two_bytes()) != "?"
 }
 
-test fn label_of_an_empty_primitive_is_unknown() -> Bool {
+test fn label_of_an_empty_primitive_is_unknown() -> Bool  {
   runtime_value_octet_label(value: probe_zero_bytes()) == "?"
 }

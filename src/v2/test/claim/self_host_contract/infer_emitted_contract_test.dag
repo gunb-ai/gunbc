@@ -49,7 +49,7 @@ fn infer_emitted_contract_holds(inject_fault: Bool) -> Bool {
   }
 }
 
-test fn infer_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+test fn infer_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool  {
   infer_emitted_contract_holds(inject_fault: false)
     && !infer_emitted_contract_holds(inject_fault: true)
 }

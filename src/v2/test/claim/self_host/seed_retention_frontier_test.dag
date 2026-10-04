@@ -38,7 +38,7 @@ data probe_compared: List<String> = [
   "src/delta_generated.rs"
 ]
 
-test fn witness_control_population_is_total() -> Bool {
+test fn witness_control_population_is_total() -> Bool  {
   seed_retention_frontier_total_holds(
     roster: probe_roster,
     observed_crate_rust_paths: probe_observed,
@@ -46,7 +46,7 @@ test fn witness_control_population_is_total() -> Bool {
   )
 }
 
-test fn witness_control_classifies_every_retained_path() -> Bool {
+test fn witness_control_classifies_every_retained_path() -> Bool  {
   let census = seed_retention_census(
     roster: probe_roster,
     observed_crate_rust_paths: probe_observed,
@@ -66,7 +66,7 @@ data planted_unrostered_observed: List<String> = [
   "src/newly_hand_authored_seed_module.rs"
 ]
 
-test fn witness_unrostered_retained_path_refuses() -> Bool {
+test fn witness_unrostered_retained_path_refuses() -> Bool  {
   let census = seed_retention_census(
     roster: probe_roster,
     observed_crate_rust_paths: planted_unrostered_observed,
@@ -89,7 +89,7 @@ data planted_stale_observed: List<String> = [
   "src/delta_generated.rs"
 ]
 
-test fn witness_roster_row_without_observed_path_refuses() -> Bool {
+test fn witness_roster_row_without_observed_path_refuses() -> Bool  {
   let census = seed_retention_census(
     roster: probe_roster,
     observed_crate_rust_paths: planted_stale_observed,
@@ -110,7 +110,7 @@ data planted_collision_compared: List<String> = [
   "src/beta.rs"
 ]
 
-test fn witness_rostered_path_inside_compared_population_refuses() -> Bool {
+test fn witness_rostered_path_inside_compared_population_refuses() -> Bool  {
   let census = seed_retention_census(
     roster: probe_roster,
     observed_crate_rust_paths: probe_observed,
@@ -133,15 +133,15 @@ test fn witness_rostered_path_inside_compared_population_refuses() -> Bool {
 // property, the other that both reason populations exist at all, the discriminator against a roster
 // that quietly became all-undeclared or all-declared.
 
-test fn witness_live_roster_paths_are_unique() -> Bool {
+test fn witness_live_roster_paths_are_unique() -> Bool  {
   seed_retention_roster_paths_unique()
 }
 
-test fn witness_reason_split_is_total() -> Bool {
+test fn witness_reason_split_is_total() -> Bool  {
   seed_retention_reason_split_holds()
 }
 
-test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool {
+test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool  {
   (length(xs: declared_reason_rows()) > 0)
     && (length(xs: undeclared_reason_rows()) > 0)
     && (length(xs: seed_retention_frontier_roster) > 0)
@@ -152,6 +152,6 @@ test fn witness_declared_and_undeclared_populations_are_both_nonempty() -> Bool 
 // membership: that class is unreachable on the merge path while HAND_MAINTAINED absorbs
 // std_logic.rs first. Discrimination is the off-path #[test] pair, not this witness.
 
-test fn witness_top_level_src_basenames_are_nonempty() -> Bool {
+test fn witness_top_level_src_basenames_are_nonempty() -> Bool  {
   length(xs: seed_retention_frontier_top_level_src_basenames()) > 0
 }

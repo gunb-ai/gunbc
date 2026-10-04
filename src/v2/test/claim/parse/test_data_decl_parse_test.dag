@@ -48,18 +48,18 @@ data test_fn_source: String = "module m.t\n\ntest fn witness_holds() -> Bool {\n
 data test_marker_on_inadmissible_form_source: String = "module m.t\n\ntest import a.b { c }\n"
 
 // TREATMENT: the form the corpus uses and the grammar refused.
-test fn test_data_declaration_parses_holds() -> Bool {
+test fn test_data_declaration_parses_holds() -> Bool  {
   parse_outcome(src: test_data_source, file: ^test_data_decl_subject) == "ACCEPTED"
 }
 
 // CONTROL: the 19,839-declaration path must be undisturbed by the widened choice.
-test fn test_fn_declaration_still_parses_holds() -> Bool {
+test fn test_fn_declaration_still_parses_holds() -> Bool  {
   parse_outcome(src: test_fn_source, file: ^test_fn_decl_subject) == "ACCEPTED"
 }
 
 // STANDING RED: the marker admits the forms the top level admits, not every form. This does not
 // retire when the treatment greens -- it is the control that the choice stayed a choice.
-test fn test_marker_on_an_inadmissible_form_still_refuses_holds() -> Bool {
+test fn test_marker_on_an_inadmissible_form_still_refuses_holds() -> Bool  {
   parse_outcome(
     src: test_marker_on_inadmissible_form_source,
     file: ^test_marker_inadmissible_subject

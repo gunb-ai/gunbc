@@ -40,7 +40,7 @@ fn rd_real_projection() -> Node {
 }
 
 // (1) A DECLARATION REFERENCE IS NOT READ AS A PROJECTION.
-test fn rd_a_declaration_reference_is_not_a_projection_holds() -> Bool {
+test fn rd_a_declaration_reference_is_not_a_projection_holds() -> Bool  {
   (match declaration_reference_path_optional(node: rd_declaration_reference()) {
      Present { value: _ } => true
      Absent => false
@@ -53,7 +53,7 @@ test fn rd_a_declaration_reference_is_not_a_projection_holds() -> Bool {
 
 // (2) AND A PROJECTION IS NOT READ AS A DECLARATION REFERENCE. The pair is the control: either row alone is
 // satisfied by a reader that always answers Absent.
-test fn rd_a_projection_is_not_a_declaration_reference_holds() -> Bool {
+test fn rd_a_projection_is_not_a_declaration_reference_holds() -> Bool  {
   (match field_projection_optional(n: rd_real_projection()) {
      Present { value: _ } => true
      Absent => false

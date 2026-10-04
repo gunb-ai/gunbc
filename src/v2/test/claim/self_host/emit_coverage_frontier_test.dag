@@ -16,11 +16,11 @@ import v2.compiler.self_host.emit_coverage_frontier {
 import v2.std.algebra { length }
 import v2.std.text { String }
 
-test fn witness_roster_total_holds() -> Bool {
+test fn witness_roster_total_holds() -> Bool  {
   coverage_frontier_total_holds()
 }
 
-test fn witness_each_subject_has_exactly_one_row() -> Bool {
+test fn witness_each_subject_has_exactly_one_row() -> Bool  {
   fold(
     emit_coverage_frontier_roster,
     init: true,
@@ -30,7 +30,7 @@ test fn witness_each_subject_has_exactly_one_row() -> Bool {
   )
 }
 
-test fn witness_unlisted_subject_has_no_row() -> Bool {
+test fn witness_unlisted_subject_has_no_row() -> Bool  {
   length(
     xs: coverage_frontier_row_for_subject(
       subject: coverage_subject(
@@ -41,7 +41,7 @@ test fn witness_unlisted_subject_has_no_row() -> Bool {
   ) == 0
 }
 
-test fn witness_split_matches_expected() -> Bool {
+test fn witness_split_matches_expected() -> Bool  {
   (length(xs: self_emitted_native_rows()) == 15)
     && (length(xs: interpreter_retained_rows()) == 0)
 }
@@ -60,7 +60,7 @@ test fn witness_split_matches_expected() -> Bool {
 // and module, produced_module, call, record_construct on per-family fixed workspace roots
 // (octets 5/5/7/9 pinned against the equals_eval pairs' oracle legs). The fifteen decl names
 // are the closed membership; the InterpreterRetained population is zero.
-test fn witness_native_rows_closed_membership_holds() -> Bool {
+test fn witness_native_rows_closed_membership_holds() -> Bool  {
   let natives = self_emitted_native_rows()
   (length(xs: natives) == 15)
     && fold(
@@ -88,7 +88,7 @@ test fn witness_native_rows_closed_membership_holds() -> Bool {
     )
 }
 
-test fn witness_real_native_row_is_backed() -> Bool {
+test fn witness_real_native_row_is_backed() -> Bool  {
   fold(
     self_emitted_native_rows(),
     init: true,
@@ -96,7 +96,7 @@ test fn witness_real_native_row_is_backed() -> Bool {
   )
 }
 
-test fn witness_all_claims_backed_holds() -> Bool {
+test fn witness_all_claims_backed_holds() -> Bool  {
   coverage_frontier_all_native_claims_backed()
 }
 
@@ -123,7 +123,7 @@ fn synthetic_unbacked_native_row() -> EmitCoverageFrontierRow {
   }
 }
 
-test fn witness_synthetic_unbacked_claim_reds() -> Bool {
+test fn witness_synthetic_unbacked_claim_reds() -> Bool  {
   let probe = synthetic_unbacked_native_row()
   coverage_row_is_native(row: probe) && !coverage_row_backing_is_enrolled(row: probe)
 }

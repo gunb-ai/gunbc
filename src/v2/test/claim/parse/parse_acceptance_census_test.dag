@@ -18,11 +18,11 @@ data census_accepted_source: String = "module probe.census_ok\n\ndata d: Int = m
 // The `-` that begins the last line is at bytes 45..46.
 data census_refused_source: String = "module probe.census_refused\n\ndata d: Int = x\n- 1\n"
 
-test fn the_census_reports_a_block_headed_operand_accepted_holds() -> Bool {
+test fn the_census_reports_a_block_headed_operand_accepted_holds() -> Bool  {
   parse_acceptance_of_text(text: census_accepted_source, path: "probe/census_ok.dag") == "accepted"
 }
 
-test fn the_census_reports_a_refusal_by_reason_and_extent_holds() -> Bool {
+test fn the_census_reports_a_refusal_by_reason_and_extent_holds() -> Bool  {
   parse_acceptance_of_text(text: census_refused_source, path: "probe/census_refused.dag")
     == "refused parse_newline_before_dual_role_operator 45..46"
 }

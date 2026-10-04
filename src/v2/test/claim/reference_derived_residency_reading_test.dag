@@ -167,28 +167,28 @@ fn population_is_whole_pool(p: CarrierKeyPopulation) -> Bool {
   }
 }
 
-test fn a_tree_map_field_derives_syntax_grain() -> Bool {
+test fn a_tree_map_field_derives_syntax_grain() -> Bool  {
   grain_is_syntax(g: grain_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
 }
 
-test fn a_tree_map_field_derives_a_whole_pool_population() -> Bool {
+test fn a_tree_map_field_derives_a_whole_pool_population() -> Bool  {
   population_is_whole_pool(p: population_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
 }
 
-test fn an_index_entries_field_derives_syntax_grain() -> Bool {
+test fn an_index_entries_field_derives_syntax_grain() -> Bool  {
   grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
 }
 
-test fn an_index_entries_field_derives_a_whole_pool_population() -> Bool {
+test fn an_index_entries_field_derives_a_whole_pool_population() -> Bool  {
   population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
 }
 
 // A bare Node field is SYNTAX for ONE subject: syntax grain, and not a population.
-test fn a_bare_node_field_derives_syntax_grain() -> Bool {
+test fn a_bare_node_field_derives_syntax_grain() -> Bool  {
   grain_is_syntax(g: grain_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
 }
 
-test fn a_bare_node_field_does_not_derive_a_population() -> Bool {
+test fn a_bare_node_field_does_not_derive_a_population() -> Bool  {
   !population_is_whole_pool(p: population_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
 }
 
@@ -197,18 +197,18 @@ test fn a_bare_node_field_does_not_derive_a_population() -> Bool {
 // conflated derivation population implied syntax, so this pair could not be expressed at all and the
 // module could not describe the producer shape it exists to admit. Asserting each axis directly is
 // what makes the shape reachable rather than argued for in a comment.
-test fn a_digest_keyed_map_derives_a_bounded_grain() -> Bool {
+test fn a_digest_keyed_map_derives_a_bounded_grain() -> Bool  {
   !grain_is_syntax(g: grain_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
 }
 
-test fn a_digest_keyed_map_still_derives_a_whole_pool_population() -> Bool {
+test fn a_digest_keyed_map_still_derives_a_whole_pool_population() -> Bool  {
   population_is_whole_pool(p: population_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
 }
 
 // THE CONJUNCTION, through the AUTHORITY'S OWN predicate rather than a copy of it. Only syntax held
 // per population member is whole-corpus residency; each of the other three fixtures fails exactly one
 // of the two conjuncts, which is what makes the conjunction do real work.
-test fn only_syntax_held_per_population_member_is_whole_corpus_residency() -> Bool {
+test fn only_syntax_held_per_population_member_is_whole_corpus_residency() -> Bool  {
   carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
     && carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
     && !carrier_holds_whole_corpus_syntax(reading: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
@@ -225,7 +225,7 @@ fn readability_is_recognised(r: ProducerCarrierReading) -> Bool {
 
 // THE FOUR FIXTURES ABOVE ARE ALL READ, which is what makes their axis claims mean anything: an
 // unreadable carrier would refuse regardless of what the axes said.
-test fn the_four_recognised_fixtures_are_readable() -> Bool {
+test fn the_four_recognised_fixtures_are_readable() -> Bool  {
   readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
     && readability_is_recognised(r: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
     && readability_is_recognised(r: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
@@ -234,7 +234,7 @@ test fn the_four_recognised_fixtures_are_readable() -> Bool {
 
 // THE ALIAS IS NOT READABLE, and that is the whole point: the derivation reads an UNRESOLVED type
 // expression, so a named type is a spelling it does not know rather than a bounded payload.
-test fn an_alias_typed_field_is_not_readable() -> Bool {
+test fn an_alias_typed_field_is_not_readable() -> Bool  {
   !readability_is_recognised(r: reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration()))
 }
 
@@ -242,7 +242,7 @@ test fn an_alias_typed_field_is_not_readable() -> Bool {
 // admitting values -- so a producer could buy the admission by renaming a type while the same corpus
 // stayed resident (review 68724). It must refuse, and it must refuse NAMING the carrier and the
 // spelling rather than with a generic cause.
-test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool {
+test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool  {
   match qualify_bounded_realization(
     reading: lifecycle_from(
       constructed: [reading_of(decl_name: "ReferenceDerivedPool", decl: alias_typed_declaration())],
@@ -262,7 +262,7 @@ test fn an_alias_typed_carrier_refuses_rather_than_qualifying() -> Bool {
 
 // AND THE ADMISSION CANNOT BE MINTED FROM IT EITHER, which is the harm stated at its real boundary:
 // semantic delivery plus an unreadable carrier is not a bounded-realization claim.
-test fn semantic_delivery_plus_an_unreadable_carrier_does_not_admit() -> Bool {
+test fn semantic_delivery_plus_an_unreadable_carrier_does_not_admit() -> Bool  {
   match admit_bounded_realization(
     semantic_delivered: true,
     resource: qualify_bounded_realization(
@@ -288,7 +288,7 @@ fn lifecycle_from(constructed: List<ProducerCarrierReading>) -> ProductionLifecy
 // THE DERIVATION FEEDS THE QUALIFIER, so the two halves are joined by execution rather than by
 // assertion: readings derived from declarations refuse, and readings derived from bounded
 // declarations qualify.
-test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bool {
+test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bool  {
   match qualify_bounded_realization(
     reading: lifecycle_from(
       constructed: [
@@ -309,7 +309,7 @@ test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bo
   }
 }
 
-test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
+test fn derived_readings_of_a_bounded_producer_qualify() -> Bool  {
   match qualify_bounded_realization(
     reading: lifecycle_from(
       constructed: [
@@ -344,7 +344,7 @@ test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
 
 // POSITIVE CONTROL, and the load-bearing half. A function declaration in the fixture resolves through
 // the live ingest, so every link the type lookup uses is proven to work.
-test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
+test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool  {
   live_fixture_lookup(segment: ^uses)
 }
 
@@ -353,7 +353,7 @@ test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
 // PR landed and the claim went red exactly as predicted above (measured at c2ab4458d2 and abcb48293f:
 // LocalWrapper resolves). It stays enrolled as the type-declaration half of the control. Wiring the
 // derivation to the producer's own declaration is the follow-on the trigger names; it is not done here.
-test fn a_type_declaration_resolves_from_a_live_module_root() -> Bool {
+test fn a_type_declaration_resolves_from_a_live_module_root() -> Bool  {
   live_fixture_lookup(segment: ^LocalWrapper)
 }
 

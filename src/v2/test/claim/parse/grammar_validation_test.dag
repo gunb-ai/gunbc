@@ -246,7 +246,7 @@ data validation_three_alt_tail_overlap_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
+test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool  {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_three_alt_inner_nullable_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
@@ -254,7 +254,7 @@ test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
   }
 }
 
-test fn validation_three_alt_tail_overlap_accepts_with_residue() -> Bool {
+test fn validation_three_alt_tail_overlap_accepts_with_residue() -> Bool  {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
   match grammar_validate_for_parse(root: validation_three_alt_tail_overlap_root, at: at) {
     Accepted { value: _, diagnostics: d } =>
@@ -528,23 +528,23 @@ data validation_indirect_terminating_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn validation_direct_left_recursion_is_detected() -> Bool {
+test fn validation_direct_left_recursion_is_detected() -> Bool  {
   grammar_has_left_recursion(root: validation_left_recursive_root)
 }
 
-test fn validation_right_recursion_is_not_left_recursion() -> Bool {
+test fn validation_right_recursion_is_not_left_recursion() -> Bool  {
   grammar_has_left_recursion(root: validation_right_recursive_root) == false
 }
 
-test fn validation_indirect_left_recursion_is_detected_RED() -> Bool {
+test fn validation_indirect_left_recursion_is_detected_RED() -> Bool  {
   grammar_has_left_recursion(root: validation_indirect_left_recursive_root)
 }
 
-test fn validation_indirect_terminating_is_not_left_recursion() -> Bool {
+test fn validation_indirect_terminating_is_not_left_recursion() -> Bool  {
   grammar_has_left_recursion(root: validation_indirect_terminating_root) == false
 }
 
-test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool {
+test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool  {
   grammar_has_left_recursion(root: validation_two_distinct_root) == false
 }
 
@@ -596,10 +596,10 @@ data validation_chain_5_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn validation_five_hop_cycle_is_left_recursive() -> Bool {
+test fn validation_five_hop_cycle_is_left_recursive() -> Bool  {
   grammar_has_left_recursion(root: validation_cycle_5_root)
 }
 
-test fn validation_five_hop_chain_is_not_left_recursive() -> Bool {
+test fn validation_five_hop_chain_is_not_left_recursive() -> Bool  {
   grammar_has_left_recursion(root: validation_chain_5_root) == false
 }

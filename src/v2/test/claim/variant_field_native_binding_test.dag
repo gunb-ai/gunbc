@@ -43,7 +43,7 @@ fn seal_unbox(s: Seal) -> Int {
 // THE POSITIONAL ROUND TRIP THE ROW NAMES: "a positional `A(x)` construction and match round-trip
 // field \"0\"". Construction `Boxed(41)` supplies field "0"; the arm pattern's binder receives it;
 // the comparison closes the round trip.
-test fn vfb_positional_construction_and_match_round_trip_field_zero() -> Bool {
+test fn vfb_positional_construction_and_match_round_trip_field_zero() -> Bool  {
   let s = Boxed(41)
   match s {
     Boxed(v) => v == 41
@@ -53,13 +53,13 @@ test fn vfb_positional_construction_and_match_round_trip_field_zero() -> Bool {
 
 // THE SAME ROUND TRIP THROUGH A CALL: the construction and the match bind in different fns, so the
 // value crosses a call boundary as the declared field's inhabitant and comes back as the binder's.
-test fn vfb_positional_round_trip_through_a_call_holds() -> Bool {
+test fn vfb_positional_round_trip_through_a_call_holds() -> Bool  {
   seal_unbox(s: Boxed(41)) == 41
 }
 
 // THE NAMED SPELLING, ONE FACT TWO WAYS (the row's reason for one frontier over both spellings):
 // `Held { value: 7 }` declares-and-supplies `value`; the arm binds it under its name.
-test fn vfb_named_construction_and_match_round_trip_holds() -> Bool {
+test fn vfb_named_construction_and_match_round_trip_holds() -> Bool  {
   let s = Held { value: 7 }
   match s {
     Held { value: w } => w == 7
@@ -70,7 +70,7 @@ test fn vfb_named_construction_and_match_round_trip_holds() -> Bool {
 // THE OTHER ARM STILL ANSWERS: a matched-away arm is a verdict, not a dropped field. A named
 // arm whose field binder is a wildcard must not swallow a positional value — the claim holds
 // when the match answers with the Boxed arm.
-test fn vfb_named_arm_of_a_positional_value_stays_unmatched() -> Bool {
+test fn vfb_named_arm_of_a_positional_value_stays_unmatched() -> Bool  {
   let s = Boxed(41)
   match s {
     Held { value: _ } => false

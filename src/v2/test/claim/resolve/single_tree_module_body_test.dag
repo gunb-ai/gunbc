@@ -90,14 +90,14 @@ fn stmb_flat_header_name_collision() -> StmbBinds {
 
 // RED BEFORE: the record `t` was selected as the body, so `leaked` was bound. The declaration `t`
 // itself is still bound from the root, which is the positive half: root harvesting keeps working.
-test fn a_record_matching_the_path_suffix_is_not_a_module_body_holds() -> Bool {
+test fn a_record_matching_the_path_suffix_is_not_a_module_body_holds() -> Bool  {
   match stmb_prefix_miss_suffix_hit() {
     StmbNotAdmitted => false
     StmbBindings { leaked: leaked, t: t } => !leaked && t
   }
 }
 
-test fn a_record_named_like_a_flat_module_is_not_its_body_holds() -> Bool {
+test fn a_record_named_like_a_flat_module_is_not_its_body_holds() -> Bool  {
   match stmb_flat_header_name_collision() {
     StmbNotAdmitted => false
     StmbBindings { leaked: leaked, t: t } => !leaked && t

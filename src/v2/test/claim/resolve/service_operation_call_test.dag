@@ -116,15 +116,15 @@ fn soc_resolves(at: String, reference: String) -> Bool {
   }
 }
 
-test fn an_operation_resolves_at_its_declaration_path_holds() -> Bool {
+test fn an_operation_resolves_at_its_declaration_path_holds() -> Bool  {
   soc_resolves(at: "t.caller", reference: "t.svc.s.F.Run")
 }
 
-test fn two_services_under_one_prefix_reach_distinct_operations_holds() -> Bool {
+test fn two_services_under_one_prefix_reach_distinct_operations_holds() -> Bool  {
   soc_resolves(at: "t.caller", reference: "t.svc.s.E.Get")
 }
 
-test fn an_operation_the_service_does_not_declare_refuses_RED() -> Bool {
+test fn an_operation_the_service_does_not_declare_refuses_RED() -> Bool  {
   !soc_resolves(at: "t.caller", reference: "t.svc.s.F.Get")
 }
 
@@ -136,10 +136,10 @@ test fn an_operation_the_service_does_not_declare_refuses_RED() -> Bool {
 // is pre-existing qualified-path behaviour, being recorded as its own recurring-failure-mode row; imports
 // never bind a service bare (a whole-module import binds only the module, qualified; a brace import of a
 // service refuses).
-test fn a_bare_service_prefix_does_not_resolve_from_a_sibling_module_RED() -> Bool {
+test fn a_bare_service_prefix_does_not_resolve_from_a_sibling_module_RED() -> Bool  {
   !soc_resolves(at: "t.other", reference: "s.F.Run")
 }
 
-test fn a_bare_service_prefix_does_not_resolve_from_a_module_nested_under_the_service_module_RED() -> Bool {
+test fn a_bare_service_prefix_does_not_resolve_from_a_module_nested_under_the_service_module_RED() -> Bool  {
   !soc_resolves(at: "t.svc.inner", reference: "s.F.Run")
 }

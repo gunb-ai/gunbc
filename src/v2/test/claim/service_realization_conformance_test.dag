@@ -146,24 +146,24 @@ fn sr_refused_as(realization: Node, reason: Symbol) -> Bool {
   }
 }
 
-test fn a_shell_entry_and_a_rest_entry_conform_holds() -> Bool {
+test fn a_shell_entry_and_a_rest_entry_conform_holds() -> Bool  {
   sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_shell_ok()))
     && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "5xx")), key: "entityName")))
 }
 
 // An entry keyed by a name the interface does not declare realizes nothing.
-test fn an_entry_without_its_operation_refuses_holds() -> Bool {
+test fn an_entry_without_its_operation_refuses_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Missing, entry: sr_shell_ok()), reason: ^service_realization_entry_without_operation)
 }
 
 // An entry with no transport, and an entry whose kind has no declared binding (`local`).
-test fn an_entry_without_a_modeled_transport_refuses_holds() -> Bool {
+test fn an_entry_without_a_modeled_transport_refuses_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_projection(field: ^out, key: "stdout")])), reason: ^service_realization_entry_without_transport)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "local", fields: Empty)])), reason: ^service_realization_transport_unmodeled)
 }
 
 // A field of another kind's binding: `method` is rest's, not shell's.
-test fn a_binding_field_of_another_kind_refuses_holds() -> Bool {
+test fn a_binding_field_of_another_kind_refuses_holds() -> Bool  {
   sr_refused_as(
     realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_transport(kind: "shell", fields: [sr_named(name: ^method, target: sr_atom(id: ^GET))])])),
     reason: ^service_realization_binding_field_unknown
@@ -172,12 +172,12 @@ test fn a_binding_field_of_another_kind_refuses_holds() -> Bool {
 
 // An exit status is never an HTTP status and the reverse: a `5xx` class on shell and `nonzero` on rest
 // each refuse at the pattern.
-test fn a_status_pattern_of_the_other_transport_refuses_holds() -> Bool {
+test fn a_status_pattern_of_the_other_transport_refuses_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_atom(id: sr_lex(s: "5xx")))], field: ^out, key: "stdout")), reason: ^service_realization_status_pattern_not_of_transport)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_atom(id: sr_lex(s: "nonzero")), key: "x")), reason: ^service_realization_status_pattern_not_of_transport)
 }
 
-test fn a_repeated_status_pattern_refuses_holds() -> Bool {
+test fn a_repeated_status_pattern_refuses_holds() -> Bool  {
   sr_refused_as(
     realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0")), sr_arm(pat: sr_code(lexeme: "0"))], field: ^out, key: "stdout")),
     reason: ^service_realization_status_pattern_repeated
@@ -186,12 +186,12 @@ test fn a_repeated_status_pattern_refuses_holds() -> Bool {
 
 // A wire key the shell does not observe refuses; the same misspelling on rest is an open body member
 // and is admitted (the accepted control above reads `entityName`).
-test fn a_wire_key_the_transport_does_not_observe_refuses_holds() -> Bool {
+test fn a_wire_key_the_transport_does_not_observe_refuses_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0"))], field: ^out, key: "stdoutt")), reason: ^service_realization_wire_key_not_of_transport)
     && sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_rest_entry(pat: sr_code(lexeme: "404"), key: "stdoutt")))
 }
 
-test fn a_projection_onto_an_undeclared_output_refuses_holds() -> Bool {
+test fn a_projection_onto_an_undeclared_output_refuses_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_shell_entry(arms: [sr_arm(pat: sr_code(lexeme: "0"))], field: ^other, key: "stdout")), reason: ^service_realization_projection_field_not_an_output)
 }
 
@@ -218,7 +218,7 @@ fn sr_indexed(index: SymbolIndex, path: List<Symbol>) -> Bool {
   }
 }
 
-test fn a_realization_entry_is_never_indexed_holds() -> Bool {
+test fn a_realization_entry_is_never_indexed_holds() -> Bool  {
   let realized = sr_index(module: sr_module(realization_label: realization_root_label()))
   let control = sr_index(module: sr_module(realization_label: ^R))
   sr_indexed(index: realized, path: [^S, ^Run])
@@ -236,7 +236,7 @@ fn sr_rest_code(lexeme: String) -> Node {
 // P1a. A rest exact code is admitted only through std.types http_status_of: the range's ends conform and
 // one past either end refuses at the pattern. A shell exit code stays on its own integer route: 600 is an
 // admitted exit-status spelling there, never read as an HTTP status.
-test fn a_rest_code_is_admitted_only_as_an_http_status_holds() -> Bool {
+test fn a_rest_code_is_admitted_only_as_an_http_status_holds() -> Bool  {
   sr_admitted(realization: sr_rest_code(lexeme: "100"))
     && sr_admitted(realization: sr_rest_code(lexeme: "599"))
     && sr_refused_as(realization: sr_rest_code(lexeme: "99"), reason: ^service_realization_status_pattern_not_of_transport)
@@ -255,7 +255,7 @@ fn sr_arms_of(label: Symbol, arms: List<Node>) -> Edge {
 // P1b. THE DOCUMENTED SHAPE. An entry is a Conj; each optional member at most once; a projection
 // projects an output once; the transport block is a Conj whose kind is a CHILDLESS Atom; arms and
 // projection are Conjs.
-test fn the_entry_shape_is_enforced_holds() -> Bool {
+test fn the_entry_shape_is_enforced_holds() -> Bool  {
   sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_atom(id: ^Unit)), reason: ^service_realization_entry_malformed)
     && sr_refused_as(
          realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm(pat: sr_code(lexeme: "0"))]), sr_arms(arms: [sr_arm(pat: sr_code(lexeme: "1"))])])),
@@ -312,7 +312,7 @@ fn sr_argv_cause_tag(c: ArgvRefusalCause) -> String {
 // P1c. A SHELL ARGV IS READ IN THE SHARED ARGV VOCABULARY (v2.std.operation_argv ArgvRefusalCause). The
 // accepted control references the declared input x; each red differs in the one property its cause
 // names.
-test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool {
+test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool  {
   sr_admitted(realization: sr_argv_entry(argv: sr_argv_ok()))
     && sr_argv_cause_is(argv: sr_string(value: "git status"), expected: "BindingMalformed")
     && sr_argv_cause_is(argv: sr_list(elements: Empty), expected: "ArgvEmpty")
@@ -322,7 +322,7 @@ test fn a_shell_argv_is_checked_in_the_shared_argv_vocabulary_holds() -> Bool {
 }
 
 // P2. One red for each remaining refusal reason, each differing from an accepted shape in that property.
-test fn each_remaining_refusal_has_its_red_holds() -> Bool {
+test fn each_remaining_refusal_has_its_red_holds() -> Bool  {
   sr_refused_as(realization: sr_conj(children: [sr_named(name: ^Run, target: sr_shell_ok()), sr_named(name: ^Run, target: sr_shell_ok())]), reason: ^service_realization_entry_repeated)
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_named(name: ^bogus, target: sr_atom(id: ^Unit))])), reason: ^service_realization_member_unknown)
     && sr_refused_as(realization: sr_conj(children: [sr_named(name: realization_config_label(), target: sr_conj(children: Empty))]), reason: ^service_realization_config_malformed)
@@ -344,7 +344,7 @@ fn sr_arm_under(connective_conj: Bool) -> Node {
   }
 }
 
-test fn an_arm_that_is_not_a_conj_refuses_holds() -> Bool {
+test fn an_arm_that_is_not_a_conj_refuses_holds() -> Bool  {
   sr_admitted(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm_under(connective_conj: true)])])))
     && sr_refused_as(realization: sr_leaf(op: ^Run, entry: sr_conj(children: [sr_shell_transport(), sr_arms(arms: [sr_arm_under(connective_conj: false)])])), reason: ^service_realization_arm_malformed)
 }

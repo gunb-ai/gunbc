@@ -84,7 +84,7 @@ fn refusal_of(o: Outcome<Node>) -> Diagnostics {
   }
 }
 
-test fn a_retained_shell_is_refused_at_its_own_locus() -> Bool {
+test fn a_retained_shell_is_refused_at_its_own_locus() -> Bool  {
   diagnostics_eq(
     a: refusal_of(o: admit_retention_free(tree: retained_tree(shell: probe_other_shell()), diagnostics: None)),
     b: Some { diagnostics: NonEmptyDiagnostics { head: door_diagnostic_at(shell: probe_other_shell()), tail: [] } }
@@ -131,7 +131,7 @@ fn door_fatal_at(shell: Node) -> Diagnostics {
 
 // THE TYPED POPULATION keeps every retention, in order: A then B. This is the carrier a census reads;
 // the refusal below is a projection of it, not a copy.
-test fn the_typed_population_holds_every_retention_in_order() -> Bool {
+test fn the_typed_population_holds_every_retention_in_order() -> Bool  {
   match retentions_of(shells: a_then_b()) {
     Cons { head: a, tail: Cons { head: b, tail: Empty } } =>
       (content_hash(n: a.shell) == content_hash(n: probe_shell()))
@@ -144,7 +144,7 @@ test fn the_typed_population_holds_every_retention_in_order() -> Bool {
 // and it is the WHOLE refusal: no second retention rides in front of it as a pending advisory. Red
 // against the first MQ-4 revision, which packed A then B into one NonEmptyDiagnostics, so the
 // carrier's fatal (its LAST element, v2.std.diagnostic diagnostics_fatal) was B.
-test fn the_fatal_is_the_first_retention() -> Bool {
+test fn the_fatal_is_the_first_retention() -> Bool  {
   diagnostics_eq(
     a: refusal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b()), diagnostics: None)),
     b: door_fatal_at(shell: probe_shell())
@@ -153,7 +153,7 @@ test fn the_fatal_is_the_first_retention() -> Bool {
 
 // An independent LATER retention does not move the primary cause. Red against the packed encoding,
 // whose fatal moved from B to C.
-test fn a_later_retention_does_not_change_the_fatal() -> Bool {
+test fn a_later_retention_does_not_change_the_fatal() -> Bool  {
   diagnostics_eq(
     a: fatal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b_then_c()), diagnostics: None)),
     b: fatal_of(o: admit_retention_free(tree: tree_retaining(shells: a_then_b()), diagnostics: None))
@@ -164,7 +164,7 @@ test fn a_later_retention_does_not_change_the_fatal() -> Bool {
 }
 
 // Diagnostics gathered before the refusal survive it, ahead of it.
-test fn a_retention_keeps_pending_diagnostics() -> Bool {
+test fn a_retention_keeps_pending_diagnostics() -> Bool  {
   diagnostics_eq(
     a: refusal_of(
       o: admit_retention_free(
@@ -181,7 +181,7 @@ test fn a_retention_keeps_pending_diagnostics() -> Bool {
   )
 }
 
-test fn a_clean_tree_is_admitted_positive_control() -> Bool {
+test fn a_clean_tree_is_admitted_positive_control() -> Bool  {
   match admit_retention_free(tree: clean_tree(), diagnostics: None) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -191,7 +191,7 @@ test fn a_clean_tree_is_admitted_positive_control() -> Bool {
 // THE SCAN IS GONE. A diagnostic spelling the deleted retention reason, handed to the door beside a
 // clean tree, is just a diagnostic: the door reads the variant, never a reason. Red against the
 // pre-MQ-4 door, which refused on exactly this.
-test fn the_old_retention_reason_does_not_refuse_RED() -> Bool {
+test fn the_old_retention_reason_does_not_refuse_RED() -> Bool  {
   match admit_retention_free(
     tree: clean_tree(),
     diagnostics: Some {
@@ -214,7 +214,7 @@ fn two_probe_roots() -> FreeMonoid<Node> {
   Cons { head: probe_shell(), tail: Cons { head: probe_shell(), tail: Empty } }
 }
 
-test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
+test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool  {
   match admit_unmarked_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: Some {

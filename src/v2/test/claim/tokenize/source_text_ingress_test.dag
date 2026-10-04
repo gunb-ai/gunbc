@@ -42,7 +42,7 @@ data ingress_empty_host: String = ""
 
 data ingress_ascii_structural: v2.std.text.String = Cons { head: 97, tail: Cons { head: 98, tail: std.algebra.Empty } }
 
-test fn source_text_ingress_converts_at_scalar_grain() -> Bool {
+test fn source_text_ingress_converts_at_scalar_grain() -> Bool  {
 
   let ascii_agrees = is_prefix_of(prefix: chars(s: ingress_ascii_host), xs: ingress_ascii_structural, eq: fn(a, b) { a == b })
     && length(xs: chars(s: ingress_ascii_host)) == 2
@@ -67,7 +67,7 @@ test fn source_text_ingress_converts_at_scalar_grain() -> Bool {
 // The public argument is host-valued by ruling. Under VoidLexRules an empty host source is the
 // accepted arm and a non-empty one is the refusal, and both arms read the CONVERTED value -- so
 // this row also fails if the conversion is moved below the match rather than kept above it.
-test fn source_text_ingress_accepts_host_text_at_the_public_boundary() -> Bool {
+test fn source_text_ingress_accepts_host_text_at_the_public_boundary() -> Bool  {
   let empty_accepted = match tokenize(text: ingress_empty_host, file: ^source_text_ingress_file, rules: VoidLexRules) {
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
     v2.std.diagnostic.Rejected { diagnostics: _ } => false

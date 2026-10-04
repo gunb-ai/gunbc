@@ -111,7 +111,7 @@ fn token_same(a: Token, b: Token) -> Bool {
 }
 
 // THE LEXING CONTROL: same tokens, different layout, and the derivation tells them apart.
-test fn same_tokens_different_layout_is_told_apart_by_the_source_holds() -> Bool {
+test fn same_tokens_different_layout_is_told_apart_by_the_source_holds() -> Bool  {
   match lexed(text: same_line_text, file: ^layout_same) {
     Rejected { diagnostics: _ } => false
     Accepted { value: same, diagnostics: _ } =>
@@ -134,7 +134,7 @@ test fn same_tokens_different_layout_is_told_apart_by_the_source_holds() -> Bool
 }
 
 // THE FAIL-CLOSED ARM OF THE DERIVATION: tokens alone (no source) answer Unknown, never one line.
-test fn a_stream_without_source_answers_unknown_holds() -> Bool {
+test fn a_stream_without_source_answers_unknown_holds() -> Bool  {
   match lexed(text: next_line_text, file: ^layout_unknown) {
     Rejected { diagnostics: _ } => false
     Accepted { value: next, diagnostics: _ } =>
@@ -161,7 +161,7 @@ fn identity_parse(stream: TokenStream) -> Outcome<ParseArtifact> {
   }
 }
 
-test fn carrying_the_source_changes_no_parse_tree_holds() -> Bool {
+test fn carrying_the_source_changes_no_parse_tree_holds() -> Bool  {
   match lexed(text: identity_module_text, file: ^layout_identity) {
     Rejected { diagnostics: _ } => false
     Accepted { value: with_source, diagnostics: _ } =>
@@ -235,7 +235,7 @@ fn fatal_is(parsed: Outcome<ParseArtifact>, reason: ParseRefusalReason, file: Sy
 }
 
 // Same line: the refusal arm's layout question answers no, and `- 1` is the continuation.
-test fn a_same_line_minus_continues_holds() -> Bool {
+test fn a_same_line_minus_continues_holds() -> Bool  {
   match lexed(text: same_line_text, file: ^lb_same) {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>
@@ -248,7 +248,7 @@ test fn a_same_line_minus_continues_holds() -> Bool {
 
 // Next line: the `-` (bytes 2..3) matches after a line break, and the parse REFUSES there. No
 // alternative succeeds around it, although `- 1` as subtraction would have parsed.
-test fn a_next_line_minus_refuses_at_the_minus_holds() -> Bool {
+test fn a_next_line_minus_refuses_at_the_minus_holds() -> Bool  {
   match lexed(text: next_line_text, file: ^lb_next) {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>
@@ -258,7 +258,7 @@ test fn a_next_line_minus_refuses_at_the_minus_holds() -> Bool {
 
 // No source: the layout question has no answer, and the parse refuses with LayoutUnknownWithoutSource
 // at the `-` instead of treating the tokens as one line (which would have accepted).
-test fn a_layout_question_without_source_refuses_holds() -> Bool {
+test fn a_layout_question_without_source_refuses_holds() -> Bool  {
   match lexed(text: same_line_text, file: ^lb_unknown) {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>
@@ -277,7 +277,7 @@ test fn a_layout_question_without_source_refuses_holds() -> Bool {
 // warm memo entry could replay a same-line acceptance for a next-line refusal. The layout (its line-break-preceded starts) is part of
 // the stream's digest (v2.compiler.parse parse_token_stream_layout_digest): same tokens, different
 // digest; and the token-only digest, which is what a sourceless stream keys by, is unchanged.
-test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool {
+test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bool  {
   match lexed(text: same_line_text, file: ^layout_digest) {
     Rejected { diagnostics: _ } => false
     Accepted { value: same, diagnostics: _ } =>
@@ -296,7 +296,7 @@ test fn same_tokens_different_layout_have_different_stream_digests_holds() -> Bo
 // token's gap line-break-free; only the gap after the string is asked about.
 data string_line_feed_text: String = "x \"a\nb\" - 1"
 
-test fn a_line_feed_inside_a_token_is_not_layout_holds() -> Bool {
+test fn a_line_feed_inside_a_token_is_not_layout_holds() -> Bool  {
   match lexed(text: string_line_feed_text, file: ^layout_string) {
     Rejected { diagnostics: _ } => false
     Accepted { value: stream, diagnostics: _ } =>

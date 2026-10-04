@@ -163,7 +163,7 @@ fn walk_complete(w: ResolveNodeWalk) -> Bool {
 
 // TWO INDEPENDENT FAILING REFERENCES UNDER ONE NODE YIELD TWO CHAINS, in walk order, and the
 // observation is complete: the binder was accepted, so the body's scope is real.
-test fn walk_two_independent_refs_yield_two_chains_holds() -> Bool {
+test fn walk_two_independent_refs_yield_two_chains_holds() -> Bool  {
   let w = resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
@@ -174,7 +174,7 @@ test fn walk_two_independent_refs_yield_two_chains_holds() -> Bool {
 }
 
 // EACH IS REACHABLE ALONE: with the other reference made good, each still refuses, as one chain.
-test fn walk_each_ref_refuses_alone_holds() -> Bool {
+test fn walk_each_ref_refuses_alone_holds() -> Bool  {
   let only_a = resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_reference(name: ^x, ordinal: 1))
@@ -189,7 +189,7 @@ test fn walk_each_ref_refuses_alone_holds() -> Bool {
 
 // THE LEGACY PROJECTION IS THE FIRST CHAIN: resolve_node answers the fatal the short-circuiting
 // walk stopped at, and nothing about the second chain leaks into it.
-test fn walk_legacy_outcome_is_the_first_chain_holds() -> Bool {
+test fn walk_legacy_outcome_is_the_first_chain_holds() -> Bool  {
   match resolve_node(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
@@ -200,7 +200,7 @@ test fn walk_legacy_outcome_is_the_first_chain_holds() -> Bool {
 }
 
 // REVERSING SIBLING ORDER KEEPS MEMBERSHIP AND REVERSES ONLY POSITION.
-test fn walk_sibling_order_changes_only_order_holds() -> Bool {
+test fn walk_sibling_order_changes_only_order_holds() -> Bool  {
   let forward = resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
@@ -219,7 +219,7 @@ test fn walk_sibling_order_changes_only_order_holds() -> Bool {
 // binder, so it is not resolved at all and the walk says so. RED if the body were resolved under
 // the invented scope: ^absent_b would appear as a third chain and the observation would read
 // complete.
-test fn walk_refused_prerequisite_marks_incomplete_holds() -> Bool {
+test fn walk_refused_prerequisite_marks_incomplete_holds() -> Bool  {
   let w = resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_malformed_binder, value: walk_atom(name: ^absent_a), body: walk_atom(name: ^absent_b))
@@ -232,7 +232,7 @@ test fn walk_refused_prerequisite_marks_incomplete_holds() -> Bool {
 // THE POSITIVE CONTROL: with no failing site the Bind resolves whole, its body bound by its own
 // binder. Without it every claim above is satisfied by a walk that refuses everything. The body's
 // reference is the one lexical binding the walk records.
-test fn walk_clean_bind_is_accepted_holds() -> Bool {
+test fn walk_clean_bind_is_accepted_holds() -> Bool  {
   match resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_reference(name: ^x, ordinal: 2))
@@ -244,7 +244,7 @@ test fn walk_clean_bind_is_accepted_holds() -> Bool {
 
 // NO PARTIALLY ACCEPTED TREE: one refused site anywhere refuses the whole node, even when every
 // other site resolved.
-test fn walk_one_refusal_refuses_the_node_holds() -> Bool {
+test fn walk_one_refusal_refuses_the_node_holds() -> Bool  {
   match resolve_node_walk(
     ctx: walk_probe_ctx(),
     n: walk_bind(binder: walk_atom(name: ^x), value: walk_int_literal, body: walk_atom(name: ^absent_b))

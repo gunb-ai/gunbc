@@ -137,7 +137,7 @@ data cfp_repeated_mention_sites: FreeMonoid<ReferenceSite> = Cons {
   tail: Cons { head: cfp_second_mention_site, tail: Empty }
 }
 
-test fn cross_file_name_answers_with_its_owning_module_and_derives_the_edge_holds() -> Bool {
+test fn cross_file_name_answers_with_its_owning_module_and_derives_the_edge_holds() -> Bool  {
   let answer = resolve_reference_provenance(
     index: cfp_index,
     roster: cfp_roster,
@@ -170,7 +170,7 @@ test fn cross_file_name_answers_with_its_owning_module_and_derives_the_edge_hold
 // dependency set and must NOT collapse in the per-mention record. A derivation
 // that kept only the set would pass the first clause and fail the second; one
 // that kept only the records would pass the second and fail the first.
-test fn repeated_mentions_collapse_only_in_the_dependency_set_holds() -> Bool {
+test fn repeated_mentions_collapse_only_in_the_dependency_set_holds() -> Bool  {
   let derived = module_dependencies_from_sites(
     index: cfp_index,
     roster: cfp_roster,
@@ -216,7 +216,7 @@ test fn repeated_mentions_collapse_only_in_the_dependency_set_holds() -> Bool {
 // for. The spelling here carries the producer module as its prefix, so the
 // segment-prefix match this lane replaces would emit the edge; resolution
 // refuses, and the refusal is counted rather than dropped.
-test fn undeclared_spelling_under_a_module_prefix_derives_no_edge_holds() -> Bool {
+test fn undeclared_spelling_under_a_module_prefix_derives_no_edge_holds() -> Bool  {
   let answer = resolve_reference_provenance(
     index: cfp_index,
     roster: cfp_roster,

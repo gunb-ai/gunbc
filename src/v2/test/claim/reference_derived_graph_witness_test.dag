@@ -194,7 +194,7 @@ fn rd_mutant_re_admitting_import_decl_edges() -> List<ModuleDependencyEdge> {
   )
 }
 
-test fn reference_only_module_has_edge_and_unused_import_does_not() -> Bool {
+test fn reference_only_module_has_edge_and_unused_import_does_not() -> Bool  {
   let edges = rd_production_edges()
   rd_edge_count(
     edges: edges,
@@ -208,7 +208,7 @@ test fn reference_only_module_has_edge_and_unused_import_does_not() -> Bool {
     ) == 0
 }
 
-test fn both_gives_exactly_one_reference_derived_edge() -> Bool {
+test fn both_gives_exactly_one_reference_derived_edge() -> Bool  {
   rd_edge_count(
     edges: rd_production_edges(),
     path: rd_both_path,
@@ -216,7 +216,7 @@ test fn both_gives_exactly_one_reference_derived_edge() -> Bool {
   ) == 1
 }
 
-test fn mutant_re_admitting_import_decl_makes_import_only_property_red() -> Bool {
+test fn mutant_re_admitting_import_decl_makes_import_only_property_red() -> Bool  {
   rd_edge_count(
     edges: rd_mutant_re_admitting_import_decl_edges(),
     path: rd_import_only_path,
@@ -224,7 +224,7 @@ test fn mutant_re_admitting_import_decl_makes_import_only_property_red() -> Bool
   ) != 0
 }
 
-test fn readable_fixture_fold_is_total() -> Bool {
+test fn readable_fixture_fold_is_total() -> Bool  {
   reference_derived_edge_fold_is_total(
     fold: reference_derived_edges_from_located_roots(
       items: rd_located_roots
@@ -254,7 +254,7 @@ fn rd_headerless_root() -> Node {
   }
 }
 
-test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool {
+test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool  {
   let fold = reference_derived_edges_from_located_roots(
     items: [
       LocatedModuleRoot { path: rd_provider_path, root: rd_provider_root, record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations() },
@@ -265,7 +265,7 @@ test fn a_headerless_module_root_is_counted_unreadable_not_zero_edges() -> Bool 
     && length(xs: fold.unreadable_roots) == 1
 }
 
-test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool {
+test fn unreadable_root_is_counted_not_a_silent_leaf() -> Bool  {
   let fold = reference_derived_edges_from_located_roots(
     items: [LocatedModuleRoot { path: "unreadable.dag", root: rd_unreadable_root(), record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations() }]
   )

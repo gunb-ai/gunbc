@@ -110,23 +110,23 @@ fn refusal_of(rules: LexRuleSet, src: String) -> RefusalAt {
 // POSITIVE. Inside the hole, `{ c }` nests and pops back to the hole, so the `}>` after it is the
 // hole's close and `d` lexes in the default mode again. Outside a hole there is no `{` rule, so the
 // same braces would refuse there: the mode, not the character, decides.
-test fn nested_braces_inside_a_hole_return_to_the_hole_holds() -> Bool {
+test fn nested_braces_inside_a_hole_return_to_the_hole_holds() -> Bool  {
   classes_of(rules: modal_rules(), src: "a <{ b { c } }> d") == [^m_ident, ^m_open, ^m_ident, ^m_lbrace, ^m_ident, ^m_rbrace, ^m_close, ^m_ident]
 }
 
-test fn a_brace_outside_any_hole_is_not_lexed_holds() -> Bool {
+test fn a_brace_outside_any_hole_is_not_lexed_holds() -> Bool  {
   refusal_of(rules: modal_rules(), src: "a { b").reason == ^tokenize_lex_e1_unrecognized_char
 }
 
 // RED: the source ends inside the hole. Refused at the `<{` that opened it (octets 2..4), not at
 // end of input.
-test fn an_unclosed_hole_refuses_at_its_opening_token_holds() -> Bool {
+test fn an_unclosed_hole_refuses_at_its_opening_token_holds() -> Bool  {
   let r = refusal_of(rules: modal_rules(), src: "a <{ b")
   (r.reason == ^tokenize_lex_e4_mode_unterminated) && (r.start == 2) && (r.end == 4)
 }
 
 // RED: a pop in the default mode, which has nothing beneath it.
-test fn a_pop_in_the_default_mode_refuses_holds() -> Bool {
+test fn a_pop_in_the_default_mode_refuses_holds() -> Bool  {
   let rules = LexRuleSet {
     rules: [
       space_rule(),
@@ -140,7 +140,7 @@ test fn a_pop_in_the_default_mode_refuses_holds() -> Bool {
 }
 
 // RED: a push naming a mode the rule set never declared.
-test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool {
+test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool  {
   let rules = LexRuleSet {
     rules: [
       space_rule(),
@@ -152,7 +152,7 @@ test fn a_push_to_an_undeclared_mode_refuses_holds() -> Bool {
 }
 
 // RED: one mode name declared twice is refused before any text is walked.
-test fn a_mode_declared_twice_refuses_holds() -> Bool {
+test fn a_mode_declared_twice_refuses_holds() -> Bool  {
   let rules = LexRuleSet {
     rules: [
       ident_rule()
@@ -180,11 +180,11 @@ fn literal_brace_rules() -> LexRuleSet {
   }
 }
 
-test fn a_brace_not_followed_by_an_ident_start_lexes_alone_holds() -> Bool {
+test fn a_brace_not_followed_by_an_ident_start_lexes_alone_holds() -> Bool  {
   classes_of(rules: literal_brace_rules(), src: "{ {") == [^m_literal_brace, ^m_literal_brace]
 }
 
-test fn a_brace_followed_by_an_ident_start_is_refused_by_the_predicate_holds() -> Bool {
+test fn a_brace_followed_by_an_ident_start_is_refused_by_the_predicate_holds() -> Bool  {
   let r = refusal_of(rules: literal_brace_rules(), src: "\{a")
   (r.reason == ^tokenize_lex_e1_unrecognized_char) && (r.start == 0)
 }

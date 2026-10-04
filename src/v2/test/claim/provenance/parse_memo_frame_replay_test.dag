@@ -214,7 +214,7 @@ fn parse_memo_frame_replay_entry_count(run: ParseMemoFrameReplayRun) -> Int {
   length(xs: map_keys(run.index.entries))
 }
 
-test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool {
+test fn parse_memo_hit_carries_no_abandoned_path_provenance() -> Bool  {
   match abandoned_path_run(materialization: Memoize) {
     Absent => false
     Present { value: memo_run } =>
@@ -305,7 +305,7 @@ fn nested_frame_run(materialization: Materialization) -> Optional<ParseMemoFrame
   }
 }
 
-test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool {
+test fn parse_memo_hit_replays_nested_frames_like_a_memo_free_parse() -> Bool  {
   match nested_frame_run(materialization: Memoize) {
     Absent => false
     Present { value: warm } =>
@@ -419,11 +419,11 @@ fn derived_memo_materialization_is(root: GrammarRoot, want: Materialization) -> 
 // if these are retargeted or rewritten for replay reasons, that coverage leaves with them and
 // every remaining control stays green. Keep an admitted-Memoize route through prepare_grammar
 // somewhere, or move it deliberately and say where it went.
-test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool {
+test fn parse_memo_demand_derived_discharged_when_the_grammar_abandons_a_demand() -> Bool  {
   derived_memo_materialization_is(root: abandoned_path_root(), want: Memoize)
 }
 
-test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool {
+test fn parse_memo_demand_derived_single_when_the_grammar_cannot_recur() -> Bool  {
   derived_memo_materialization_is(root: linear_root(), want: Recompute)
 }
 
@@ -531,7 +531,7 @@ fn parse_full_run_hits(run: ParseFullRun) -> Int {
   run.hits
 }
 
-test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool {
+test fn parse_memo_direct_arm_preserves_the_whole_parse() -> Bool  {
   match linear_run(forced: optional_absent()) {
     Absent => false
     Present { value: direct } =>

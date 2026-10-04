@@ -73,7 +73,7 @@ fn carries_requirements_edge(root: Node) -> Bool {
 // differs in one fact (whether T is marked a declared resource), so neither verdict can come from
 // anything but the requirement check.
 // The positive fixture's Arrow does carry the edge, so the absence below is a discriminating control.
-test fn a_requires_clause_lowers_onto_the_operation_arrow_holds() -> Bool {
+test fn a_requires_clause_lowers_onto_the_operation_arrow_holds() -> Bool  {
   match census_of_stream(tokens: requires_resource_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } => carries_requirements_edge(root: census_tree_binding_source(t: t).root)
@@ -83,7 +83,7 @@ test fn a_requires_clause_lowers_onto_the_operation_arrow_holds() -> Bool {
 // A REQUIREMENT-FREE OPERATION KEEPS ITS IDENTITY: no requires clause, no edge, so its Arrow is the
 // three signature edges it was before this change (v2.compiler.body_lowering_fold
 // body_lower_operation_arrow_children).
-test fn an_operation_without_requires_carries_no_requirements_edge_holds() -> Bool {
+test fn an_operation_without_requires_carries_no_requirements_edge_holds() -> Bool  {
   match census_of_stream(tokens: no_requires_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } => !carries_requirements_edge(root: census_tree_binding_source(t: t).root)
@@ -91,7 +91,7 @@ test fn an_operation_without_requires_carries_no_requirements_edge_holds() -> Bo
 }
 
 
-test fn a_requirement_spelled_twice_refuses_at_lowering_RED() -> Bool {
+test fn a_requirement_spelled_twice_refuses_at_lowering_RED() -> Bool  {
   match census_of_stream(tokens: requires_spelled_twice_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => diagnostics_fatal_reason(d: r) == ^body_lowering_reason_operation_requirement_repeated
@@ -126,7 +126,7 @@ fn requires_resource_stream() -> TokenStream {
   ])
 }
 
-test fn requires_resource_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn requires_resource_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: requires_resource_source, file: ^requires_edge_probe, supplied: requires_resource_stream())
 }
 
@@ -160,7 +160,7 @@ fn requires_spelled_twice_stream() -> TokenStream {
   ])
 }
 
-test fn requires_spelled_twice_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn requires_spelled_twice_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: requires_spelled_twice_source, file: ^requires_edge_probe, supplied: requires_spelled_twice_stream())
 }
 
@@ -180,7 +180,7 @@ fn no_requires_stream() -> TokenStream {
   ])
 }
 
-test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: no_requires_source, file: ^requires_edge_probe, supplied: no_requires_stream())
 }
 
@@ -194,7 +194,7 @@ test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
 // removes no execution of it.
 data resource_only_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\n"
 
-test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() -> Bool {
+test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() -> Bool  {
   match census_of_stream(tokens: resource_only_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
@@ -213,7 +213,7 @@ test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() ->
 
 // The same decision admits the resource named once, so the refusal above is the repetition and not the
 // member: a discriminating control at the same interface.
-test fn one_resource_named_once_is_admitted_by_the_requirement_decision_holds() -> Bool {
+test fn one_resource_named_once_is_admitted_by_the_requirement_decision_holds() -> Bool  {
   match census_of_stream(tokens: resource_only_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
@@ -243,7 +243,7 @@ fn resource_only_stream() -> TokenStream {
   ])
 }
 
-test fn resource_only_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn resource_only_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: resource_only_source, file: ^requires_edge_probe, supplied: resource_only_stream())
 }
 
@@ -268,7 +268,7 @@ fn node_requirements_atom_count(n: Node, identity: Symbol) -> Int {
   }
 }
 
-test fn requires_none_and_requires_opaque_lower_to_their_declared_atoms_holds() -> Bool {
+test fn requires_none_and_requires_opaque_lower_to_their_declared_atoms_holds() -> Bool  {
   match census_of_stream(tokens: requires_words_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
@@ -278,7 +278,7 @@ test fn requires_none_and_requires_opaque_lower_to_their_declared_atoms_holds() 
   }
 }
 
-test fn requires_none_followed_by_a_member_refuses_RED() -> Bool {
+test fn requires_none_followed_by_a_member_refuses_RED() -> Bool  {
   match census_of_stream(tokens: requires_none_with_member_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -308,7 +308,7 @@ fn requires_words_stream() -> TokenStream {
   ])
 }
 
-test fn requires_words_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn requires_words_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: requires_words_source, file: ^requires_edge_probe, supplied: requires_words_stream())
 }
 
@@ -331,7 +331,7 @@ fn requires_none_with_member_stream() -> TokenStream {
   ])
 }
 
-test fn requires_none_with_member_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn requires_none_with_member_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: requires_none_with_member_source, file: ^requires_edge_probe, supplied: requires_none_with_member_stream())
 }
 
@@ -403,10 +403,10 @@ fn req_refusal_reason(resources: FreeMonoid<Symbol>) -> Symbol {
   }
 }
 
-test fn a_requirement_naming_a_declared_resource_resolves_at_resolve_holds() -> Bool {
+test fn a_requirement_naming_a_declared_resource_resolves_at_resolve_holds() -> Bool  {
   req_refusal_reason(resources: Cons { head: ^T, tail: Empty }) == ^accepted
 }
 
-test fn a_requirement_naming_a_non_resource_refuses_at_resolve_RED() -> Bool {
+test fn a_requirement_naming_a_non_resource_refuses_at_resolve_RED() -> Bool  {
   req_refusal_reason(resources: Empty) == ^resolve_reason_requirement_not_a_resource
 }

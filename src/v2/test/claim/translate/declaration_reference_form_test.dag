@@ -90,7 +90,7 @@ fn drf_serialized(emitted: Outcome<Node>) -> Outcome<String> {
 }
 
 // (a) THE FOLD. A reference spine under the rust row emits the crate-rooted, module-joined path.
-test fn a_declaration_reference_emits_the_module_scoped_spelling_holds() -> Bool {
+test fn a_declaration_reference_emits_the_module_scoped_spelling_holds() -> Bool  {
   match drf_serialized(
     emitted: translate_type_expression_project(
       node: drf_reference_spine(),
@@ -105,7 +105,7 @@ test fn a_declaration_reference_emits_the_module_scoped_spelling_holds() -> Bool
 
 // THE RED: the same spine under a row with no path form refuses, located, with the form-absent
 // reason -- and does not print the leaf.
-test fn a_declaration_reference_with_no_path_form_refuses_located() -> Bool {
+test fn a_declaration_reference_with_no_path_form_refuses_located() -> Bool  {
   match translate_type_expression_project(
     node: drf_reference_spine(),
     target: drf_target,
@@ -118,7 +118,7 @@ test fn a_declaration_reference_with_no_path_form_refuses_located() -> Bool {
 
 // THE CONTROL: a bare Atom is not a declaration reference and still emits through the atom row,
 // under either projection -- the arm added for the spine changed nothing for it.
-test fn a_bare_atom_still_emits_through_the_atom_row_holds() -> Bool {
+test fn a_bare_atom_still_emits_through_the_atom_row_holds() -> Bool  {
   match drf_serialized(
     emitted: translate_type_expression_project(
       node: drf_bare_atom(),
@@ -142,7 +142,7 @@ fn drf_form_is_module_scoped(form: DeclarationReferenceForm) -> Bool {
 // fold reads at run time (the encoded projection a TargetModel carries) decodes to a module-scoped
 // form too -- the encoder and decoder agree, so a target cannot declare the form and hand the fold
 // a bundle without it.
-test fn the_rust_target_declares_a_module_scoped_path_form_and_its_bundle_carries_it_holds() -> Bool {
+test fn the_rust_target_declares_a_module_scoped_path_form_and_its_bundle_carries_it_holds() -> Bool  {
   drf_form_is_module_scoped(form: rust_type_expression_projection().declaration_reference_form)
     && (match type_expression_projection_from_target(target: drf_target) {
       Accepted { value: decoded, diagnostics: _ } =>

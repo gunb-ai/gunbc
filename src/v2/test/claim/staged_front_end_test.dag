@@ -56,7 +56,7 @@ fn passed_stage_count(run: FrontEndRun) -> Int {
   })
 }
 
-test fn staged_front_end_accepts_a_well_formed_module() -> Bool {
+test fn staged_front_end_accepts_a_well_formed_module() -> Bool  {
   let run = run_front_end(source: candidate_accepted_source, file: ^candidate_module)
   match run.completion {
     FrontEndResolvedModule { resolved: _ } => passed_stage_count(run: run) == 4
@@ -65,18 +65,18 @@ test fn staged_front_end_accepts_a_well_formed_module() -> Bool {
   }
 }
 
-test fn staged_front_end_parse_and_resolve_deaths_land_on_different_stages() -> Bool {
+test fn staged_front_end_parse_and_resolve_deaths_land_on_different_stages() -> Bool  {
   rejected_at_index(source: candidate_dies_at_parse_source, index: 2)
     && rejected_at_index(source: candidate_dies_at_resolve_source, index: 4)
 }
 
-test fn staged_front_end_resolve_death_still_passes_parse() -> Bool {
+test fn staged_front_end_resolve_death_still_passes_parse() -> Bool  {
   passed_stage_count(
     run: run_front_end(source: candidate_dies_at_resolve_source, file: ^candidate_module)
   ) == 3
 }
 
-test fn staged_front_end_projection_agrees_with_the_staged_steps() -> Bool {
+test fn staged_front_end_projection_agrees_with_the_staged_steps() -> Bool  {
   match front_end_run_outcome(
     run: run_front_end(source: candidate_accepted_source, file: ^candidate_module)
   ) {
@@ -91,7 +91,7 @@ test fn staged_front_end_projection_agrees_with_the_staged_steps() -> Bool {
   }
 }
 
-test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() -> Bool {
+test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() -> Bool  {
   let run = run_front_end_to(source: candidate_dies_at_resolve_source, file: ^candidate_module, depth: 2)
   match run.completion {
     FrontEndBoundReached { last: last } => front_end_stage_index(stage: last) == 2
@@ -100,7 +100,7 @@ test fn staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for() ->
   }
 }
 
-test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> Bool {
+test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> Bool  {
   match front_end_run_outcome(
     run: run_front_end_to(source: candidate_accepted_source, file: ^candidate_module, depth: 2)
   ) {
@@ -120,6 +120,6 @@ fn first_refusal_reason(source: String) -> Symbol {
   })
 }
 
-test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
+test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool  {
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
 }

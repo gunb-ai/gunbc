@@ -33,7 +33,7 @@ fn licenses_receipt(outcome: ProductReceiptOutcome) -> Bool {
 // THE OLD PREDICATE, RESTATED EXECUTABLY. A refuted receipt and an unreached subject agree here, and
 // that agreement is the aliasing. Green because the collapse is real at this projection, not because
 // it is acceptable -- the next witness is what makes it survivable.
-test fn establishes_cannot_separate_refutation_from_absence() -> Bool {
+test fn establishes_cannot_separate_refutation_from_absence() -> Bool  {
   let refuted = subject_evidence_establishes(
     evidence: EvidenceSubjectCompleted { outcome: ReceiptNotGreen { body: "RECEIPT: RED" } },
     licenses: licenses_receipt
@@ -49,7 +49,7 @@ test fn establishes_cannot_separate_refutation_from_absence() -> Bool {
 // of the first. A verdict WAS produced for the refuted receipt and was NOT produced for the unreached
 // subject, so a consumer can now tell a statement about the subject from the absence of one. Collapse
 // the transport back to a conjunction and there is no standing to ask, so this stops compiling.
-test fn produced_a_verdict_separates_refutation_from_absence() -> Bool {
+test fn produced_a_verdict_separates_refutation_from_absence() -> Bool  {
   let refuted = subject_evidence_produced_a_verdict(
     evidence: EvidenceSubjectCompleted { outcome: ReceiptNotGreen { body: "RECEIPT: RED" } }
   )
@@ -62,7 +62,7 @@ test fn produced_a_verdict_separates_refutation_from_absence() -> Bool {
 // THE TWO NO-VERDICT ARMS ARE NOT ONE ARM. Owner-shaped, per the carrier: a bench this harness failed
 // to set up and a subject that failed to arrive have different repairers. Both answer false to
 // establishes, which is why the distinction has to live in the standing rather than in the Bool.
-test fn instrument_refusal_is_distinguishable_from_subject_absence() -> Bool {
+test fn instrument_refusal_is_distinguishable_from_subject_absence() -> Bool  {
   let instrument = EvidenceInstrumentRefused { cause: ReceiptTxnNotCleared }
   let unreached = EvidenceSubjectUnreached { cause: ReceiptFileUnreadable }
   let both_fail_to_establish =
@@ -76,7 +76,7 @@ test fn instrument_refusal_is_distinguishable_from_subject_absence() -> Bool {
 
 // A GREEN RECEIPT IS THE ONLY THING THAT LICENSES THE CLAIM. Widen product_receipt_outcome_licenses
 // to admit a non-green body and this goes red.
-test fn only_a_green_receipt_licenses_the_claim() -> Bool {
+test fn only_a_green_receipt_licenses_the_claim() -> Bool  {
   product_receipt_outcome_licenses(outcome: ReceiptGreen)
     && !product_receipt_outcome_licenses(outcome: ReceiptNotGreen { body: "RECEIPT: RED" })
 }

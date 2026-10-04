@@ -22,22 +22,22 @@ import v2.std.text { String }
 // than asserted as 'both', so adding a third measured shard that lands elsewhere reds this instead
 // of silently weakening the finding.
 
-test fn the_five_shards_partition_into_measured_and_capped_holds() -> Bool {
+test fn the_five_shards_partition_into_measured_and_capped_holds() -> Bool  {
   (shard_count() == 5) && (measured_shard_count() + capped_shard_count() == shard_count())
 }
 
-test fn two_shards_are_measured_and_three_are_capped_holds() -> Bool {
+test fn two_shards_are_measured_and_three_are_capped_holds() -> Bool  {
   (measured_shard_count() == 2) && (capped_shard_count() == 3)
 }
 
-test fn every_capped_shard_exceeds_the_cap_it_names_holds() -> Bool {
+test fn every_capped_shard_exceeds_the_cap_it_names_holds() -> Bool  {
   every_capped_shard_exceeds_its_own_cap()
 }
 
-test fn both_measured_shards_name_body_lowering_beneath_the_mask_holds() -> Bool {
+test fn both_measured_shards_name_body_lowering_beneath_the_mask_holds() -> Bool  {
   shards_naming_body_lowering_beneath_the_mask() == 2
 }
 
-test fn every_measured_chain_is_non_uniform_holds() -> Bool {
+test fn every_measured_chain_is_non_uniform_holds() -> Bool  {
   every_measured_chain_is_non_uniform()
 }

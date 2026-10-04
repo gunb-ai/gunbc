@@ -15,7 +15,7 @@ data git_path_template: ArgvTemplate = Template {
   ]
 }
 
-test fn template_holes_are_names_in_authored_order() -> Bool {
+test fn template_holes_are_names_in_authored_order() -> Bool  {
   template_holes(t: git_path_template) == ["repository_path" as OperationInputName, "sub" as OperationInputName]
 }
 

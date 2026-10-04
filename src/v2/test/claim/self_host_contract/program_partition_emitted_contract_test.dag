@@ -57,7 +57,7 @@ fn program_partition_emitted_contract_holds(inject_fault: Bool) -> Bool {
     && (collected |> filter(t => t.name == ^Shape && ppc_is_disj(n: t.semantic)) |> count) == 1
 }
 
-test fn program_partition_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+test fn program_partition_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool  {
   program_partition_emitted_contract_holds(inject_fault: false)
     && !program_partition_emitted_contract_holds(inject_fault: true)
 }

@@ -90,26 +90,26 @@ fn tdm_observed(src: String) -> String {
 }
 
 // CONTROL: no modifier, no row -- the answer the slot gave before this change, kept.
-test fn unmodified_alias_carries_no_modifier_holds() -> Bool {
+test fn unmodified_alias_carries_no_modifier_holds() -> Bool  {
   tdm_observed(src: "module m\ntype T = Int\n") == "none"
 }
 
 // RED BEFORE THIS CHANGE (the slot was consumed and nothing read it): the alias carries its modifier.
-test fn nominal_opaque_alias_carries_its_modifier_holds() -> Bool {
+test fn nominal_opaque_alias_carries_its_modifier_holds() -> Bool  {
   tdm_observed(src: "module m\ntype T nominal_opaque = Int\n") == "T nominal_opaque"
 }
 
-test fn sole_constructor_record_carries_its_modifier_holds() -> Bool {
+test fn sole_constructor_record_carries_its_modifier_holds() -> Bool  {
   tdm_observed(src: "module m\ntype T sole_constructor { x: Int }\n") == "T sole_constructor"
 }
 
 // Both terminals, in slot order, on a generic declaration: the read is positional past `<T>`.
-test fn generic_declaration_carries_both_modifiers_in_slot_order_holds() -> Bool {
+test fn generic_declaration_carries_both_modifiers_in_slot_order_holds() -> Bool  {
   tdm_observed(src: "module m\ntype T<A> nominal_opaque sole_constructor = A\n") == "T nominal_opaque sole_constructor"
 }
 
 // A modifier SPELLING used as the type's own name is a name, not a modifier.
-test fn modifier_spelling_as_the_name_is_not_a_modifier_holds() -> Bool {
+test fn modifier_spelling_as_the_name_is_not_a_modifier_holds() -> Bool  {
   tdm_observed(src: "module m\ntype sole_constructor = Int\n") == "none"
 }
 
@@ -125,7 +125,7 @@ fn tdm_normalized_rows(src: String) -> FreeMonoid<DeclaredTypeModifiers> {
   }
 }
 
-test fn normalize_carries_the_modifier_row_onto_the_tree_holds() -> Bool {
+test fn normalize_carries_the_modifier_row_onto_the_tree_holds() -> Bool  {
   match tdm_normalized_rows(src: "module m\ntype T nominal_opaque\n") {
     Cons { head: row, tail: rest } =>
       match rest {

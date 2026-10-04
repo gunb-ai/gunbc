@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data keyword_module_path_source: String = "module rt.match\n"
 
 // `match` is bytes 10..15 of keyword_module_path_source.
-test fn a_keyword_module_path_segment_refuses_at_the_keyword_holds() -> Bool {
+test fn a_keyword_module_path_segment_refuses_at_the_keyword_holds() -> Bool  {
   g_fatal_at(
     parsed: g_tokenize_parse(text: keyword_module_path_source, file: ^probe_keyword_module_path),
     reason: KeywordAsPathSegment,
@@ -32,7 +32,7 @@ test fn a_keyword_module_path_segment_refuses_at_the_keyword_holds() -> Bool {
 data keyword_import_path_source: String = "module rt.ok\nimport std.if\n"
 
 // `if` is bytes 24..26 of keyword_import_path_source.
-test fn a_keyword_import_path_segment_refuses_at_the_keyword_holds() -> Bool {
+test fn a_keyword_import_path_segment_refuses_at_the_keyword_holds() -> Bool  {
   g_fatal_at(
     parsed: g_tokenize_parse(text: keyword_import_path_source, file: ^probe_keyword_import_path),
     reason: KeywordAsPathSegment,
@@ -44,7 +44,7 @@ test fn a_keyword_import_path_segment_refuses_at_the_keyword_holds() -> Bool {
 
 data identifier_module_path_source: String = "module rt.matcher\n"
 
-test fn an_identifier_spelled_after_a_keyword_is_a_path_segment_holds() -> Bool {
+test fn an_identifier_spelled_after_a_keyword_is_a_path_segment_holds() -> Bool  {
   match g_tokenize_parse(text: identifier_module_path_source, file: ^probe_identifier_module_path) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

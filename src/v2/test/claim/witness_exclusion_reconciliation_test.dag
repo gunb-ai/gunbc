@@ -51,7 +51,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // bare-nickname row, an unbacked BinWitnessWet row, an unbacked rehomed row, an unbacked
 // substrate-long-lane row, and a quarantine row in the path carrier.
 
-test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
+test fn witness_exclusion_frontier_reconciliation_holds() -> Bool  {
   witness_exclusion_rows_well_formed_holds()
     && witness_exclusion_explicit_roster_rows_consistent_holds()
     && witness_exclusion_falsifier_rows_consistent_holds()
@@ -82,14 +82,14 @@ fn synthetic_row(pattern: String) -> WitnessExclusionRow {
   }
 }
 
-test fn witness_exclusion_red_control_discovery_selection_row_reds() -> Bool {
+test fn witness_exclusion_red_control_discovery_selection_row_reds() -> Bool  {
   let verdict = witness_exclusion_rows_well_formed(
     rows: [synthetic_row(pattern: "synthetic_row.dag")]
   )
   verdict == false
 }
 
-test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
+test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool  {
   witness_exclusion_rows_well_formed(
     rows: [
       WitnessExclusionRow {
@@ -102,7 +102,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool  {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       WitnessExclusionRow {
@@ -118,7 +118,7 @@ test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool  {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       WitnessExclusionRow {
@@ -134,7 +134,7 @@ test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
   ) == false
 }
 
-test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> Bool {
+test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> Bool  {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
       WitnessExclusionRow {
@@ -150,11 +150,11 @@ test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() ->
   ) == false
 }
 
-test fn witness_exclusion_frontier_carries_no_quarantine_row_holds() -> Bool {
+test fn witness_exclusion_frontier_carries_no_quarantine_row_holds() -> Bool  {
   witness_exclusion_frontier_carries_no_admission_holds()
 }
 
-test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> Bool {
+test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> Bool  {
   witness_exclusion_rows_well_formed(
     rows: [
       WitnessExclusionRow {
@@ -177,7 +177,7 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
 // residue stays empty, never the population's numeric value -- a count copied from the current tree
 // is not an independent oracle (DESIGN.md §5).
 
-test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Bool {
+test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Bool  {
   falsifier_self_host_wet_dark_lane_unclassified_rows().length() == 0
 }
 
@@ -192,11 +192,11 @@ test fn falsifier_self_host_wet_dark_lane_unclassified_rows_empty_holds() -> Boo
 // is on the falsifier template roster when the cadence is active (Lane D enrollment, separate from
 // per-PR bin-witness execution receipts).
 
-test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool {
+test fn falsifier_self_host_wet_dark_lane_population_matches_waiting_rows_holds() -> Bool  {
   falsifier_self_host_wet_dark_lane_population() == falsifier_self_host_wet_dark_lane_waiting_rows().length()
 }
 
-test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool {
+test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_holds() -> Bool  {
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet()
 }
 
@@ -225,7 +225,7 @@ fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> Str
   )
 }
 
-test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> Bool {
+test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_witness_identity_holds() -> Bool  {
   string_contains(
     s: dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note(),
     pattern: "interpreter_dispatch_bijection_real_roster_red_holds"
@@ -248,14 +248,14 @@ fn synthetic_wet_lane_row(dissolution: DissolutionCondition) -> WitnessExclusion
 // unclassified-residue mechanism can actually distinguish (not merely always return true/empty by
 // construction).
 
-test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool {
+test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool  {
   let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet lane activates for this trigger"))
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && !witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
 
 // Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
-test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
+test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool  {
   let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "witness_cadence_has_scheduled_route(FalsifierSelfHostWet) returns true"))
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && witness_exclusion_row_waits_on_wet_lane_undarken(row: row)

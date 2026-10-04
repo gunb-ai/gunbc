@@ -12,6 +12,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Arrow+Transform, premature-shell RED) live in long/wave1_gate1_a1_fn_body_seam_witness_test.dag
 // via fn_body_seam_witness_helpers.
 
-test fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_witness_holds() -> Bool {
+test fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_witness_holds() -> Bool  {
   wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds()
 }

@@ -110,33 +110,33 @@ data type_field_default_red_source: String = "module m\ntype T { x: Int = 1 }\n"
 
 data type_field_from_red_source: String = "module m\ntype T { x: Int from \"k\" }\n"
 
-test fn fn_control_still_parses_holds() -> Bool {
+test fn fn_control_still_parses_holds() -> Bool  {
   parses(src: fn_control_source)
 }
 
-test fn smallest_service_parses_holds() -> Bool {
+test fn smallest_service_parses_holds() -> Bool  {
   match smallest_service_parsed() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn smallest_service_tree_is_well_formed_holds() -> Bool {
+test fn smallest_service_tree_is_well_formed_holds() -> Bool  {
   match smallest_service_parsed() {
     Accepted { value: a, diagnostics: _ } => well_formed(n: a.tree)
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn service_without_name_still_refuses_holds() -> Bool {
+test fn service_without_name_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: missing_name_red_source)
 }
 
-test fn service_without_brace_still_refuses_holds() -> Bool {
+test fn service_without_brace_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: missing_brace_red_source)
 }
 
-test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
+test fn unknown_operation_modifier_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: unknown_modifier_red_source)
 }
 
@@ -163,62 +163,62 @@ data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> 
 // which is the point, since those five could not tell the two doors apart either.
 data lexically_invalid_source: String = "module m\nfn f() -> Int { 1 @ 2 }\n"
 
-test fn a_lexical_failure_is_not_a_parse_door_refusal_holds() -> Bool {
+test fn a_lexical_failure_is_not_a_parse_door_refusal_holds() -> Bool  {
   match refuses_at_parse(src: lexically_invalid_source) {
     true => false
     false => true
   }
 }
 
-test fn service_keywords_remain_usable_as_names_holds() -> Bool {
+test fn service_keywords_remain_usable_as_names_holds() -> Bool  {
   parses(src: keyword_as_name_source)
 }
 
-test fn field_default_parses_holds() -> Bool {
+test fn field_default_parses_holds() -> Bool  {
   parses(src: field_default_source)
 }
 
-test fn field_default_without_expr_still_refuses_holds() -> Bool {
+test fn field_default_without_expr_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: field_default_without_expr_red_source)
 }
 
-test fn posix_effective_principal_service_parses_holds() -> Bool {
+test fn posix_effective_principal_service_parses_holds() -> Bool  {
   parses(src: posix_effective_principal_service_source)
 }
 
-test fn remaining_service_arms_parse_holds() -> Bool {
+test fn remaining_service_arms_parse_holds() -> Bool  {
   parses(src: remaining_arms_service_source)
 }
 
-test fn service_config_parses_holds() -> Bool {
+test fn service_config_parses_holds() -> Bool  {
   parses(src: service_config_source)
 }
 
-test fn service_config_unknown_field_still_refuses_holds() -> Bool {
+test fn service_config_unknown_field_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: service_config_unknown_field_red_source)
 }
 
-test fn service_config_without_colon_still_refuses_holds() -> Bool {
+test fn service_config_without_colon_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: service_config_without_colon_red_source)
 }
 
-test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
+test fn exit_entry_without_arrow_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: exit_entry_without_arrow_red_source)
 }
 
-test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
+test fn mock_entry_without_expr_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: mock_entry_without_expr_red_source)
 }
 
-test fn plain_type_still_parses_holds() -> Bool {
+test fn plain_type_still_parses_holds() -> Bool  {
   parses(src: plain_type_source)
 }
 
-test fn type_field_default_still_refuses_holds() -> Bool {
+test fn type_field_default_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: type_field_default_red_source)
 }
 
-test fn type_field_from_key_still_refuses_holds() -> Bool {
+test fn type_field_from_key_still_refuses_holds() -> Bool  {
   refuses_at_parse(src: type_field_from_red_source)
 }
 
@@ -268,18 +268,18 @@ data empty_service_source: String = "module m\nservice S {}\n"
 
 data transport_only_service_source: String = "module m\nservice S {\n  transport shell { argv: [] }\n}\n"
 
-test fn a_service_with_a_transport_is_refused_at_the_normalized_tree_door_holds() -> Bool {
+test fn a_service_with_a_transport_is_refused_at_the_normalized_tree_door_holds() -> Bool  {
   normalize_refuses_for_set_aside_realization(src: transport_only_service_source)
 }
 
-test fn an_empty_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+test fn an_empty_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool  {
   normalize_admits(src: empty_service_source)
 }
 
-test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
+test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool  {
   normalize_admits(src: plain_type_source)
 }
 
-test fn config_only_service_is_refused_for_its_set_aside_realization_holds() -> Bool {
+test fn config_only_service_is_refused_for_its_set_aside_realization_holds() -> Bool  {
   normalize_refuses_for_set_aside_realization(src: config_only_service_source)
 }

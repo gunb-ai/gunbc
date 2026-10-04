@@ -37,31 +37,31 @@ data bc_or_source: String = "module probe.bc_or\n\ndata d: Int = match w {\n  _ 
 // pipe `|>`
 data bc_pipe_source: String = "module probe.bc_pipe\n\ndata d: Int = match w {\n  _ => 1\n} |> g\n"
 
-test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_mul_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_mul_source, path: "probe/bc_mul.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_add_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_add_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_add_source, path: "probe/bc_add.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_sub_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_sub_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_sub_source, path: "probe/bc_sub.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_cmp_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_cmp_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_cmp_source, path: "probe/bc_cmp.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_eq_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_eq_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_eq_source, path: "probe/bc_eq.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_or_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_or_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_or_source, path: "probe/bc_or.dag") == "accepted"
 }
 
-test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool {
+test fn a_block_headed_left_operand_of_pipe_parses_holds() -> Bool  {
   parse_acceptance_of_text(text: bc_pipe_source, path: "probe/bc_pipe.dag") == "accepted"
 }
 

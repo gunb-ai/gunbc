@@ -44,7 +44,7 @@ fn adf_named_first_arrow() -> Node {
   }
 }
 
-test fn arrow_domain_is_first_positional_in_resolve_holds() -> Bool {
+test fn arrow_domain_is_first_positional_in_resolve_holds() -> Bool  {
   let arrow = adf_named_first_arrow()
   arrow_domain_has_named_bindings(n: arrow)
     && match map_lookup(m: arrow_domain_frame_binders(n: arrow).locals, key: ^x) {
@@ -53,7 +53,7 @@ test fn arrow_domain_is_first_positional_in_resolve_holds() -> Bool {
     }
 }
 
-test fn arrow_domain_is_first_positional_in_symbol_index_fill_holds() -> Bool {
+test fn arrow_domain_is_first_positional_in_symbol_index_fill_holds() -> Bool  {
   match symbol_index_lookup(
     index: symbol_index_fill_containment_node(
       index: empty_symbol_index(),

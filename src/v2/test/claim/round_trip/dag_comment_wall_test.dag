@@ -26,43 +26,43 @@ fn dag_comment_wall_probe_compiles(source: String, path: String) -> Bool {
   compile_dag_rust_emit_check(source, path, [], [])
 }
 
-test fn dag_comment_wall_clean_source_compiles() -> Bool {
+test fn dag_comment_wall_clean_source_compiles() -> Bool  {
   dag_comment_wall_probe_compiles(
     source: "module comment_wall_clean\n\nfn probe() -> Bool { true }\n",
     path: "src/comment_wall_clean.rs"
   )
 }
 
-test fn dag_comment_wall_line_comment_refused() -> Bool {
+test fn dag_comment_wall_line_comment_refused() -> Bool  {
   !dag_comment_wall_probe_compiles(
     source: "module comment_wall_line\n\nfn probe() -> Bool { true } // comment\n",
     path: "src/comment_wall_line.rs"
   )
 }
 
-test fn dag_comment_wall_block_comment_refused() -> Bool {
+test fn dag_comment_wall_block_comment_refused() -> Bool  {
   !dag_comment_wall_probe_compiles(
     source: "module comment_wall_block\n\n/* comment */\nfn probe() -> Bool { true }\n",
     path: "src/comment_wall_block.rs"
   )
 }
 
-test fn dag_comment_wall_slash_slash_inside_string_compiles() -> Bool {
+test fn dag_comment_wall_slash_slash_inside_string_compiles() -> Bool  {
   dag_comment_wall_probe_compiles(
     source: "module comment_wall_string\n\nfn url() -> String { \"https://example.com\" }\n",
     path: "src/comment_wall_string.rs"
   )
 }
 
-test fn dag_line_comment_is_fail_closed() -> Bool {
+test fn dag_line_comment_is_fail_closed() -> Bool  {
   dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed }
 }
 
-test fn dag_block_comment_is_fail_closed() -> Bool {
+test fn dag_block_comment_is_fail_closed() -> Bool  {
   dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-test fn slash_slash_inside_string_literal_accepted() -> Bool {
+test fn slash_slash_inside_string_literal_accepted() -> Bool  {
   slash_slash_in_string() == "https://example.com"
 }
 
@@ -72,7 +72,7 @@ Nothing above was edited, because nothing above became wrong — the line probe'
 
 What distinguishes the new rule from the old one is the POSITIVE control below: a leading annotation above a module item now compiles through the same production path that refuses the other three. Without it, every probe in this file is a refusal, and a wall that only ever says no is indistinguishable from one that rejects everything."
 
-test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool {
+test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool  {
   dag_comment_wall_probe_compiles(
     source: "module comment_wall_leading\n\n// prose about the probe\nfn probe() -> Bool { true }\n",
     path: "src/comment_wall_leading.rs"
@@ -80,7 +80,7 @@ test fn dag_leading_annotation_above_a_module_item_compiles() -> Bool {
 }
 
 // Body-grain prose stays refused, and this is the discriminating partner of the row above: the two sources differ ONLY in whether the comment sits above the declaration or inside its body, so acceptance cannot be coming from the comment being ignored — an ignored comment would make both compile.
-test fn dag_annotation_inside_a_body_is_still_refused() -> Bool {
+test fn dag_annotation_inside_a_body_is_still_refused() -> Bool  {
   !dag_comment_wall_probe_compiles(
     source: "module comment_wall_body\n\nfn probe() -> Bool {\n  // prose inside the body\n  true\n}\n",
     path: "src/comment_wall_body.rs"

@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The Char value is a code point while Atom.identity is a Symbol. The target expression carries
 // the one-character lexeme's interned identity; placing the numeric code point in that field is the
 // model mismatch this witness keeps RED under a revert.
-test fn char_unicode_scalar_expression_carries_a_symbol_identity() -> Bool {
+test fn char_unicode_scalar_expression_carries_a_symbol_identity() -> Bool  {
   match target_value_template_apply(
     template: TargetValueTemplate {
       kind: ValueCharUnicodeScalar,
@@ -73,7 +73,7 @@ fn ownership_witness_row() -> TargetUseSiteOwnershipRealization {
 
 // Invalid is absorbing at the catalog layer. It has no constructor in the inner lookup coproduct,
 // so the step must return before converting the accumulator rather than fabricating an inner arm.
-test fn invalid_ownership_catalog_accumulator_remains_invalid() -> Bool {
+test fn invalid_ownership_catalog_accumulator_remains_invalid() -> Bool  {
   match target_use_site_ownership_catalog_lookup_step_for_row(
     acc: TargetUseSiteOwnershipCatalogInvalid,
     row_node: target_use_site_ownership_realization_to_node(row: ownership_witness_row()),
@@ -88,7 +88,7 @@ test fn invalid_ownership_catalog_accumulator_remains_invalid() -> Bool {
 
 // Positive control: the same decoded row and lookup inputs, starting from Missing, must still
 // advance to Unique. This prevents the absorbing repair from returning Invalid for every input.
-test fn valid_ownership_catalog_row_advances_missing_to_unique() -> Bool {
+test fn valid_ownership_catalog_row_advances_missing_to_unique() -> Bool  {
   match target_use_site_ownership_catalog_lookup_step_for_row(
     acc: TargetUseSiteOwnershipCatalogMissing,
     row_node: target_use_site_ownership_realization_to_node(row: ownership_witness_row()),

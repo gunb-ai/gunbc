@@ -14,7 +14,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RED control: pre-capless elision with produced_row_count 0 and empty refs must refuse.
-test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool {
+test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool  {
   let bad_receipt = SourceRootProvenanceCoverageReceipt {
     ingest_read_count: 165,
     produced_row_count: 0,

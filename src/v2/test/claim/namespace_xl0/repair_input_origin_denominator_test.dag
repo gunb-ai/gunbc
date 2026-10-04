@@ -119,7 +119,7 @@ fn xl0_count_sites_spelled(sites: FreeMonoid<ReferenceSite>, spelling: String) -
 // and red here.
 // The third clause below is the positive half, so the first two cannot be satisfied by a
 // collector that found nothing at all.
-test fn declared_names_and_the_module_header_are_not_mentions_holds() -> Bool {
+test fn declared_names_and_the_module_header_are_not_mentions_holds() -> Bool  {
   let no_declared_name_reported =
     xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0BareUse") == 0
       && xl0_count_sites_spelled(sites: xl0_consumer_sites, spelling: "Xl0QualifiedUse") == 0
@@ -138,7 +138,7 @@ test fn declared_names_and_the_module_header_are_not_mentions_holds() -> Bool {
 // RED 2 -- A DOTTED MENTION IS ONE SITE. `v2.test.xl0_producer.Xl0Helper` is four atoms in the
 // tree and one reference in the source. A walk that emitted a site per atom reports four mentions
 // and a denominator four times too large, and it also loses the only spelling that resolves.
-test fn a_dotted_mention_is_one_site_not_one_per_segment_holds() -> Bool {
+test fn a_dotted_mention_is_one_site_not_one_per_segment_holds() -> Bool  {
   xl0_count_sites_spelled(
     sites: xl0_consumer_sites,
     spelling: "v2.test.xl0_producer.Xl0Helper"
@@ -151,7 +151,7 @@ test fn a_dotted_mention_is_one_site_not_one_per_segment_holds() -> Bool {
 // at two positions are two repair inputs; a collector that stamped every site with the module
 // qualified name would make them indistinguishable and would also change how the resolver walks
 // the containment chain to answer them.
-test fn a_mention_sits_at_its_containment_position_holds() -> Bool {
+test fn a_mention_sits_at_its_containment_position_holds() -> Bool  {
   let sits_at_its_declaration = xl0_any_site(
     sites: xl0_consumer_sites,
     f: fn(site) {
@@ -185,7 +185,7 @@ fn xl0_roster_has(roster: FreeMonoid<RepairInputOriginCandidate>, f: fn(SourceDe
 // THE POSITIVE CONTROL BY EXECUTION: a cross-module mention carries the DECLARATION that answered
 // it, as a DeclarationRef naming the owning module and the declaration inside it -- not a file
 // path, which is the position std.repair_input_origin's divergence note refuses to carry.
-test fn a_cross_module_mention_carries_its_declaring_identity_holds() -> Bool {
+test fn a_cross_module_mention_carries_its_declaring_identity_holds() -> Bool  {
   xl0_roster_has(
     roster: xl0_roster,
     f: fn(identity) {
@@ -208,7 +208,7 @@ test fn a_cross_module_mention_carries_its_declaring_identity_holds() -> Bool {
 // and would be indistinguishable from a tree with nothing left to repair.
 // The second clause below holds the digest the ACT-0 receipt is taken over to one line per row: a
 // rendering that silently skipped an arm would digest a smaller denominator than the roster says.
-test fn an_unanswerable_mention_is_a_row_and_not_a_drop_holds() -> Bool {
+test fn an_unanswerable_mention_is_a_row_and_not_a_drop_holds() -> Bool  {
   let unbound_row_present = xl0_roster_has(
     roster: xl0_roster,
     f: fn(identity) {
@@ -240,7 +240,7 @@ data xl0_roots_with_one_unreadable: FreeMonoid<Node> = Cons {
   tail: Cons { head: xl0_unreadable_root, tail: Empty }
 }
 
-test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() -> Bool {
+test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() -> Bool  {
   let clean = collect_reference_sites(roots: Cons { head: xl0_consumer_root, tail: Empty })
   let with_bad = collect_reference_sites(roots: xl0_roots_with_one_unreadable)
   length(xs: with_bad.sites) == length(xs: clean.sites)
@@ -252,7 +252,7 @@ test fn an_unreadable_module_root_is_counted_and_not_silently_dropped_holds() ->
 
 // THE REFUSAL SURVIVES THE SEAM INTO THE ROSTER. A collector that counted the loss and a producer
 // that dropped it at the next call would be the same silent degradation one layer down.
-test fn the_roster_carries_the_unreadable_roots_it_was_built_over_holds() -> Bool {
+test fn the_roster_carries_the_unreadable_roots_it_was_built_over_holds() -> Bool  {
   let roster = repair_input_origin_roster_over_roots(sources: module_binding_sources_without_imports_or_records(roots: xl0_roots_with_one_unreadable))
   length(xs: roster.unreadable_roots) == 1
     && !repair_input_origin_roster_is_total(roster: roster)

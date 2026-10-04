@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds, which
 // runs translate on this same tree against rust_target_model() and stays enrolled.
 
-test fn pipeline_lower_add_fixture_relationship_green() -> Bool {
+test fn pipeline_lower_add_fixture_relationship_green() -> Bool  {
   match translate(tree: rust_add_inferred_tree, target: rust_emit_small_add_translate_target()) {
     Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
     Rejected { diagnostics: _ } => false

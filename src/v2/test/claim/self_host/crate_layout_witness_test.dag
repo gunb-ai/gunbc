@@ -65,7 +65,7 @@ fn witness_generated_has_no_phantom_registration_holds() -> Bool {
   )
 }
 
-test fn crate_layout_witnesses() -> Bool {
+test fn crate_layout_witnesses() -> Bool  {
   witness_generated_pub_mod_block_matches_registrations_holds()
     && witness_generated_basenames_match_registrations_holds()
     && witness_generated_filenames_match_registrations_holds()
