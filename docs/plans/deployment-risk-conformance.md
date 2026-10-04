@@ -6,7 +6,7 @@ Operator direction 2026-10-03; vocabulary fixed the same day by a side-chat ruli
 
 | Term | Meaning | Is NOT |
 |---|---|---|
-| `DeploymentId` | one convergence subject whose desired state, mutable state and external attachments move together; an instance realizes it | a host, machine, process, release stage, dashboard `instance_id` |
+| `DeploymentId` | the stable identity of one Deployment whose desired state, mutable state, and external attachments move together; an instance realizes that Deployment and carries this identity | a host, machine, process, release stage, dashboard `instance_id` |
 | `DeploymentRiskClass = TestRisk \| ProdRisk` | coarse harm class, DERIVED from `ProdRoleSelection` only | a number, machine qualification, stage, branch, host |
 | `DeploymentHarmMagnitudeBet` | Fermi order of magnitude of harm conditional on doing the wrong thing, typed as a §4d bet | a probability, a fact, the class, an SLA |
 | `ProdRoleSelection = NoProdRole \| ProdRoleHeldBy { deployment }` | the sole switch (`prod_role_selection`) | inferred from srv1, "live", main, a host |

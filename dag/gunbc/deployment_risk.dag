@@ -29,10 +29,11 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 // MachineOperatingEnvironment lands in its own one-motion migration on top of this module.
 
 // ── The subject ─────────────────────────────────────────────────────────────────────────────────
-// ONE CONVERGENCE SUBJECT whose desired state, mutable state and external attachments move
-// together. Not a host, a machine, a process, a release stage, or a dashboard instance_id: an
-// instance (gunbc.roadmap_dashboard_instance HostDashboardInstance) is a realization of a
-// deployment and carries this id, it does not stand for it. A record rather than a branded string
+// THE STABLE IDENTITY OF ONE Deployment -- the convergence subject whose desired state, mutable
+// state and external attachments move together. The id identifies the Deployment; it is not the
+// Deployment. Not a host, a machine, a process, a release stage, or a dashboard instance_id: an
+// instance (gunbc.roadmap_dashboard_instance HostDashboardInstance) realizes that Deployment and
+// carries this identity, it does not stand for it. A record rather than a branded string
 // so equality is structural and cannot be satisfied by an unrelated string of the same spelling.
 type DeploymentId {
   name: NonEmptyStr
@@ -118,6 +119,18 @@ fn binding_sets_for_class(
   filter(sets, s => s.class == class)
 }
 
+// ── The interface, and the bet ──────────────────────────────────────────────────────────────────
+// DeploymentRiskInterface (each deployment exposes its identity and its DeploymentHarmMagnitudeBet;
+// it consumes its class and bindings only through deployment_risk_class and
+// resolve_deployment_bindings) and the bet itself are approved terms that land WITH THEIR FIRST
+// EXECUTING CONSUMER, not before it (DESIGN 3c; review 74937). That consumer is the operator-
+// disposition gate of deliverable 2 (docs/plans/deployment-risk-conformance.md), which is also where
+// the bet's magnitude gains a grounded carrier -- an order of magnitude over std.measure Duration --
+// rather than a bare Int named for its unit. Until then the obligations a conforming deployment
+// carries are: it names its DeploymentId and never another deployment's roots; it never authors a
+// class; every external attachment comes from its resolved set, never a literal; an absent or
+// ambiguous set stops the line; and its convergence is safe to re-run, converging under today's
+// operator policy to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).
 fn resolve_deployment_bindings(
   selection: ProdRoleSelection,
   sets: List<DeploymentExternalBindingSet>,
@@ -135,16 +148,3 @@ fn resolve_deployment_bindings(
       }
   }
 }
-
-// ── The interface, and the bet ──────────────────────────────────────────────────────────────────
-// DeploymentRiskInterface (each deployment exposes its identity and its DeploymentHarmMagnitudeBet;
-// it consumes its class and bindings only through deployment_risk_class and
-// resolve_deployment_bindings) and the bet itself are approved terms that land WITH THEIR FIRST
-// EXECUTING CONSUMER, not before it (DESIGN 3c; review 74937). That consumer is the operator-
-// disposition gate of deliverable 2 (docs/plans/deployment-risk-conformance.md), which is also where
-// the bet's magnitude gains a grounded carrier -- an order of magnitude over std.measure Duration --
-// rather than a bare Int named for its unit. Until then the obligations a conforming deployment
-// carries are: it names its DeploymentId and never another deployment's roots; it never authors a
-// class; every external attachment comes from its resolved set, never a literal; an absent or
-// ambiguous set stops the line; and its convergence is safe to re-run, converging under today's
-// operator policy to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).

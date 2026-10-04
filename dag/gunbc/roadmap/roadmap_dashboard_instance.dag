@@ -199,7 +199,7 @@ type DispatchStateScope
       attempt_state_root: FilePath,
     }
 
-// deployment IS THE CONVERGENCE SUBJECT THIS INSTANCE REALIZES (gunbc.deployment_risk). It is a
+// deployment IDENTIFIES THE CONVERGENCE SUBJECT THIS INSTANCE REALIZES (gunbc.deployment_risk). It is a
 // required field so every constructor answers it; the instance's risk class is DERIVED from it
 // through prod_role_selection (dashboard_instance_risk_class) and never from instance_id, host,
 // or a constructor's name -- srv1_live is a migration-era name and determines nothing.
