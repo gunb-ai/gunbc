@@ -7,7 +7,6 @@ import std.algebra { list_append }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus }
 import v2.std.grammar { grammar_relation_row_forward_production_selection }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Arrow, Atom, ComputationNode, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }

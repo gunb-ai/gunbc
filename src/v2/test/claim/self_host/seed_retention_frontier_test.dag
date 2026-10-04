@@ -17,7 +17,6 @@ import v2.compiler.self_host.seed_retention_frontier {
   undeclared_reason_rows
 }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data fixture_note: String = "THE ORACLE IS A CONTROLLED FIXTURE, not a measurement copied from the current tree (DESIGN section 5). Every probe authors the roster, the observed population and the compared population by hand, plants exactly one defect of one class, and asserts that class alone. The green control and the three planted REDs share one synthetic roster, so no probe can pass by comparing a population against itself, and none of them moves when the live seed gains or loses a file."

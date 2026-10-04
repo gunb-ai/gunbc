@@ -8,7 +8,6 @@ import v2.lens.fact_density {
   NotATypeCarrier,
   carrier_spec_fact
 }
-import v2.std.logic { Bool }
 import std.nat { Succ, Zero }
 import v2.std.node_query { binder_edge }
 import v2.std.node {

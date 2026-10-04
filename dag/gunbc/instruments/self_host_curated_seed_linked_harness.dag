@@ -11,6 +11,7 @@ import extdeps.gunbc
 import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.text { String }
+import gunbc.rust_emitted_edge { rust_module_emit_filename }
 import tools.emitted_crate_harness_manifest {
   derive_harness_manifest_in_place,
   harness_manifest_derived,
@@ -285,15 +286,140 @@ fn cssl_classify_receipt(setup_refusal: String, pass_ok: Bool, fault_detected: B
   }
 }
 
+// WHERE A ROW'S WITNESS DRIVER COMES FROM. A HandDriverFile is Rust written by hand against the
+// emitted spelling of the subject's API; nothing compiles it per change, so it goes stale at the
+// next API cut and is found only when a fleet run fails to build it (three rows were, after the
+// EdgeLabel cut and a ResolvedTree parameter change). An EmittedContractDriver has no hand Rust:
+// the row's contract is a .dag function (inject_fault: Bool) -> Bool in a claim module whose
+// closure contains the subject, so the floor typechecks it against the real declarations, the
+// emission carries it into the same crate as its subject, and the driver is rendered from the row.
+// The hand arm stands only for rows not yet migrated and takes no new rows.
+type CsslWitnessDriver
+  = HandDriverFile { driver_rel: String }
+  | EmittedContractDriver { contract_entry_rel: String, contract_module: String, contract_function: String }
+
+// The module the emission is entered at: the subject itself under a hand driver, the contract
+// module under an emitted one (its import closure contains the subject).
+fn cssl_driver_emit_entry_rel(source_rel: String, driver: CsslWitnessDriver) -> String {
+  match driver {
+    HandDriverFile { driver_rel: _ } => source_rel
+    EmittedContractDriver { contract_entry_rel: entry, contract_module: _, contract_function: _ } => entry
+  }
+}
+
+// THE WHOLE OF THE RUST A CONTRACT ROW AUTHORS. Its only dependency on the emitted API is the
+// signature this harness itself fixes -- fn(bool) -> bool -- so a subject's API can change without
+// this text changing. The markers are the row's: PASS when the contract holds, the stem plus FAIL
+// when it does not, which is what cssl_fault_run_detected_the_planted_fault reads.
+fn cssl_contract_driver_main_source(
+  contract_module: String,
+  contract_function: String,
+  pass_marker: String
+) -> String {
+  concat(
+    "fn main() \{\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let holds = v1_compiled::",
+    concat(
+      rust_module_emit_filename(module_name: contract_module),
+      concat(
+        "::",
+        concat(
+          contract_function,
+          concat(
+            "(inject_fault);\n    println!(\"emitted contract inject_fault=\{inject_fault\} holds=\{holds\}\");\n    if holds \{\n        println!(\"",
+            concat(
+              pass_marker,
+              concat(
+                "\");\n        std::process::exit(0);\n    \}\n    println!(\"",
+                concat(
+                  cssl_pass_marker_stem(pass_marker: pass_marker),
+                  "FAIL\");\n    std::process::exit(1);\n\}\n"
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE INTERPRETED REALIZATION OF THE SAME CONTRACT, run by the receipt beside the emitted one. A
+// contract row holds only when both hold: the emitted crate's run agreeing with the interpreter's
+// on a discriminating input is the behavioral-equivalence claim, and a systematic emitter defect
+// that moved the emitted contract and its subject together shows up as disagreement here. The
+// claim's name is the contract function's plus a fixed suffix, so a contract module that does not
+// declare it fails the claim run and the row has no verdict.
+fn cssl_contract_interpreted_claim_function(contract_function: String) -> String {
+  concat(contract_function, "_and_its_planted_fault_does_not")
+}
+
+fn cssl_driver_claim_runs(
+  driver: CsslWitnessDriver,
+  claim_runs: List<CuratedSeedLinkedClaimRun>
+) -> List<CuratedSeedLinkedClaimRun> {
+  match driver {
+    HandDriverFile { driver_rel: _ } => claim_runs
+    EmittedContractDriver { contract_entry_rel: entry, contract_module: _, contract_function: contract_fn } =>
+      concat(
+        [CuratedSeedLinkedClaimRun {
+          entry_rel: entry,
+          function: cssl_contract_interpreted_claim_function(contract_function: contract_fn)
+        }],
+        claim_runs
+      )
+  }
+}
+
+type CsslDriverMain
+  = CsslDriverMainReady { content: String }
+  | CsslDriverMainUnavailable { step: String }
+
+fn cssl_driver_main(root: String, driver: CsslWitnessDriver, pass_marker: String) -> CsslDriverMain {
+  match driver {
+    EmittedContractDriver { contract_entry_rel: _, contract_module: contract_mod, contract_function: contract_fn } =>
+      CsslDriverMainReady {
+        content: cssl_contract_driver_main_source(
+          contract_module: contract_mod,
+          contract_function: contract_fn,
+          pass_marker: pass_marker
+        )
+      }
+    HandDriverFile { driver_rel: driver_rel } => {
+      let read = Filesystem.Read(path: cssl_repo_path(root: root, rel: driver_rel))
+      if read.success {
+        CsslDriverMainReady { content: read.content }
+      } else {
+        CsslDriverMainUnavailable { step: concat("read driver ", driver_rel) }
+      }
+    }
+  }
+}
+
+fn cssl_driver_main_content(main: CsslDriverMain) -> String {
+  match main {
+    CsslDriverMainReady { content: c } => c
+    CsslDriverMainUnavailable { step: _ } => ""
+  }
+}
+
+fn cssl_driver_main_refusal(main: CsslDriverMain) -> String {
+  match main {
+    CsslDriverMainReady { content: _ } => ""
+    CsslDriverMainUnavailable { step: step } => step
+  }
+}
+
 fn cssl_seed_linked_behavioral_receipt(
   source_rel: String,
-  driver_rel: String,
+  driver: CsslWitnessDriver,
   pass_marker: String,
   claim_runs: List<CuratedSeedLinkedClaimRun>
 ) -> CsslReceiptOutcome {
   let root = git.Inspect.Toplevel()
   let module_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: source_rel))
-  let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
+  let driver_main = cssl_driver_main(root: root.path, driver: driver, pass_marker: pass_marker)
+  let driver_main_refusal = cssl_driver_main_refusal(main: driver_main)
+  let emit_entry_rel = cssl_driver_emit_entry_rel(source_rel: source_rel, driver: driver)
 
   let out_dir = shell.Mktemp.Dir()
   let gunbc_ready = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
@@ -307,7 +433,7 @@ fn cssl_seed_linked_behavioral_receipt(
       "compile",
       "--source-root", "dag",
       "--source-root", "src/v2",
-      "--entry", source_rel,
+      "--entry", emit_entry_rel,
       "--output-dir", out_dir.path,
       "--target", "rust",
       "--dependency-pool-index", "primary-precedence"
@@ -318,7 +444,7 @@ fn cssl_seed_linked_behavioral_receipt(
   let generic_assembly_ok = cssl_run_generic_closure_assembly(
     root: root.path,
     out_dir: out_dir.path,
-    source_rel: source_rel,
+    source_rel: emit_entry_rel,
     cssl_assemble_bin: cssl_assemble_bin
   )
   let manifest = derive_harness_manifest_in_place(
@@ -326,7 +452,7 @@ fn cssl_seed_linked_behavioral_receipt(
     target: WitnessBinTarget,
     linkage: SeedLinked { root: root.path }
   )
-  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: cssl_driver_main_content(main: driver_main))
 
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
@@ -347,7 +473,7 @@ fn cssl_seed_linked_behavioral_receipt(
   let claim_ok = cssl_supplemental_claims_ok(
     root: root.path,
     gunbc_bin: gunbc_bin,
-    claim_runs: claim_runs
+    claim_runs: cssl_driver_claim_runs(driver: driver, claim_runs: claim_runs)
   )
 
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
@@ -357,11 +483,11 @@ fn cssl_seed_linked_behavioral_receipt(
   let witness_refusal = cssl_readiness_refusal(readiness: witness_ready)
   let setup = cssl_first_setup_refusal(steps: [
     CsslStep { name: concat("read module ", source_rel), ok: module_read.success },
-    CsslStep { name: concat("read driver ", driver_rel), ok: driver_read.success },
+    CsslStep { name: driver_main_refusal, ok: driver_main_refusal == "" },
     CsslStep { name: "make scratch directory", ok: out_dir.success },
     CsslStep { name: gunbc_refusal, ok: gunbc_refusal == "" },
     CsslStep { name: cssl_assemble_refusal, ok: cssl_assemble_refusal == "" },
-    CsslStep { name: concat("emit ", source_rel), ok: emit.success },
+    CsslStep { name: concat("emit ", emit_entry_rel), ok: emit.success },
     CsslStep { name: "make src directory", ok: src_dir.success },
     CsslStep { name: "assemble the emitted closure", ok: generic_assembly_ok },
     CsslStep { name: "derive Cargo.toml from the emitted manifest", ok: harness_manifest_derived(derivation: manifest) },

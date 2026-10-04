@@ -4,7 +4,6 @@ import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import v2.std.algebra { filter, fold_list }
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -15,7 +14,8 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
-  outcome_accepted
+  outcome_accepted,
+  diagnostics_fatal
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -307,7 +307,7 @@ fn stage_emission_equality(
         }
       }
     Rejected { diagnostics: d } =>
-      Violates { diagnostic: d.head }
+      Violates { diagnostic: diagnostics_fatal(d: d) }
   }
 }
 

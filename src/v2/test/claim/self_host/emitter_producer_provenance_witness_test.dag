@@ -11,7 +11,6 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries
 }
-import v2.std.logic { Bool }
 
 data witness_roster_half_deleted_note: String = "TWENTY-FIVE WITNESSES WERE DELETED FROM THIS FILE with the self-host frontier roster, and the deletion is a retirement rather than a coverage loss, for one reason: every one of them had the roster's promotion state as its subject. They asked whether an oracle row was enrolled, whether an enrolled row authorized an EmitterProduced disposition, whether a hand-forged authorization token failed mint consistency, whether the executed-verdict mint refused at a baseline of zero, and whether the producer-qualified counts matched their baselines. With no roster there is no row to promote, no disposition to authorize, and no baseline to count against — the invalid states those witnesses guarded have no representation left, which is the highest rung DESIGN section 4b describes and the one place it permits the evidence to go with the machinery.
 

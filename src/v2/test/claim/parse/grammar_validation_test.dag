@@ -31,7 +31,6 @@ import v2.std.witness { Holds, Violates }
 import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, invariant_port_locus }
 import std.algebra { Cons, Empty }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.logic { Bool }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,

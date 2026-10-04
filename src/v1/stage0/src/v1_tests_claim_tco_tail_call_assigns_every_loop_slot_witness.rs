@@ -2,7 +2,6 @@
 // Source module: v1.tests.claim.tco_tail_call_assigns_every_loop_slot_witness
 
 pub use crate::std_types::Bool;
-use crate::std_types::Bool::*;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Go, Python, Rust};
 pub use crate::v1_compiler_emit::{shared_tco_reassign, tco_loop_slot_name};

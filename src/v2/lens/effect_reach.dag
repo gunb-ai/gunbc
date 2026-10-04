@@ -51,7 +51,6 @@ import v2.std.fn_index {
   is_path_like_lexeme
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

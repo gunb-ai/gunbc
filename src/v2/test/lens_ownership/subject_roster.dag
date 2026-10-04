@@ -7,7 +7,6 @@ import v2.compiler.eval {
   eval_context_v4_evaluator,
   eval_test_claim_subject
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.verification {
   EqualsClaim,

@@ -17,7 +17,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  outcome_rejected
+  outcome_rejected,
+  diagnostics_fatal_reason
 }
 import v2.std.compilers.target_model {
   TargetModel,
@@ -267,7 +268,7 @@ fn coercion_wrap_find_witness_rejection(
 ) -> Outcome<NonEmptyDiagnostics> {
   match find_witness_rejection_kind_from_reason(
     source: source,
-    reason: upstream.head.reason
+    reason: diagnostics_fatal_reason(d: upstream)
   ) {
     Accepted { value: fw_kind, diagnostics: _ } =>
       Accepted {

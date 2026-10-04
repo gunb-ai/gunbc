@@ -8,30 +8,23 @@ import v2.std.integer { Int }
 
 // THE CAUSE-OWNERSHIP AUTHORITY FOR THE v2 FRONT-END FRONTIER, HOMED BELOW ITS CONSUMERS.
 //
-// The table and its two-grain lookup were declared inside v2.workflow.compile_door_ledger, whose
+// The table and its lookup were declared inside v2.workflow.compile_door_ledger, whose
 // own imports reach v2.compiler.compile and v2.workflow.floor_diff_observe — a closure of ~846
 // modules. Its second consumer, gunbc.witness_v2_native_route, is evaluated INSIDE the emitted
 // native compiler (the required-v2-native lane's admission), whose entry is v2.compiler.compile
 // itself: importing the ledger there would have been a cycle, and carrying the ledger's closure
 // would have made the emitted crate the whole corpus. Ownership is one fact with two readers, so
 // the fact moves to a module both can import (DESIGN section 3: a fact's home is its LAYER, not
-// its file) rather than being forked. The ledger keeps its head-grain contract and imports this.
+// its file) rather than being forked. The ledger imports this.
 
-// THE KEY CARRIES THE GRAIN (review on #10882, 2026-09-09: a head-grain authority must not become
-// a general bag of reasons). A rejection is a LIST with two observed positions: the HEAD — what
-// the door ledger's own DoorRefused rows carry, where rejected_with_pending prepends non-fatal
-// advisories — and the FATAL — the last diagnostic, the cause that actually refused. The same
-// symbol can be owned at both grains (parse_grammar_choice_overlap_residue is the native route's
-// head advisory on 876 modules and never its fatal; parse_g0_tokens_remain is the fatal under it
-// and never surfaces at head), and ownership at one grain says NOTHING about the other — the
-// grains are different observations of the same frontier class. the door ledger's cause_is_attributed keeps its
-// head-grain contract (its rows are head-grain by construction); the fatal-grain lookup
-// is the native route's instrument (gunbc.witness_v2_native_route), derived from the SAME table —
-// one ownership authority, two grains, neither instrument re-enumerates the other.
-
-type DiagnosticGrain
-  = HeadGrain
-  | FatalGrain
+// ONE OWNERSHIP AUTHORITY, KEYED BY CAUSE (advisories steps 3+4). A rejection is a LIST whose
+// LAST element is the cause that actually refused (v2.std.diagnostic diagnostics_fatal); the
+// elements before it are advisories that rejected_with_pending prepended. Every cause reader reads
+// the fatal element (advisories step 2), so a row here owns a cause in the one position that
+// refuses. Advisories are COUNTED, not owned: an accepted file's advisories are carried by the
+// accepted-file advisory instrument (advisories step 1). The head-grain dimension this key used to
+// carry (review on #10882) is deleted with its last reader; a second grain would be the same cause
+// owned twice.
 
 type CauseLane
   = ThisLaneCalibration
@@ -40,366 +33,296 @@ type CauseLane
 
 type CauseOwnership {
   cause: Symbol
-  grain: DiagnosticGrain
   lane: CauseLane
   flip_trigger: String
 }
 
-// ROW GROUPS, BY GRAIN. The first four rows are the door ledger's own head-grain observations. The
-// tokenize_lex_e1_unrecognized_char HEAD row is the native route's head-grain observation
-// (gunbc.witness_v2_native_route joins this table at head grain): the lexer-coverage cause
-// surfaces at HEAD on the native route when it is the first diagnostic, even where a later fatal
-// follows — owned here so the native head join has no unowned advisory; the fatal-grain row of
-// the same cause is the position that refuses. The FATAL-grain rows were measured 2026-09-09 and
-// 2026-09-10 by the gunbc.witness_v2_native_route census as the LAST diagnostic — the cause that
-// actually refused — through the emitted native binary, at the per-row scope each flip_trigger
-// states. rejected_with_pending prepends the non-fatal overlap residue, so the fatal-grain causes
-// never surface at the head grain the door ledger's own rows count; their ownership lives here at
-// the grain they are observed at, and the native-route census classifies against exactly those
-// rows.
+// ONE ROW PER CAUSE (cause_ownership_lookup returns the first match, so a duplicate would be
+// silent; v2.test.claim.compile_door_ledger_ownership asserts there is none). The rows were
+// measured 2026-09-09 onward by the gunbc.witness_v2_native_route census and the door ledger as
+// the LAST diagnostic -- the cause that actually refused -- at the per-row scope each flip_trigger
+// states.
 
 data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^fact_density_hollow_alias_locus,
-    grain: HeadGrain,
     lane: ThisLaneCalibration,
     flip_trigger: "fact_density subtree roster corpus-calibrated (smart-eagle burn-down); flips to Blocking when the count zeroes — calibration must never become relaxing the lens"
   },
   CauseOwnership {
-    cause: ^resolve_reason_unbound_symbol,
-    grain: HeadGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "resolve grows generic type-param binding (sharp-bee std/logic thread); flips to Blocking when the count zeroes"
-  },
-  CauseOwnership {
     cause: ^resolve_ambiguous_export,
-    grain: HeadGrain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — dissolves by construction at the namespace-only containment flip (admit_named_exports flat-merge replaced by position-distinct containment; nimble-boar-198)"
   },
   CauseOwnership {
-    cause: ^parse_grammar_choice_overlap_residue,
-    grain: HeadGrain,
+    cause: ^member_not_a_binder,
     lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — dissolves by construction at phase-3 import-grammar deletion / grammar-surgery (nimble-boar-198)"
-  },
-  CauseOwnership {
-    cause: ^tokenize_lex_e1_unrecognized_char,
-    grain: HeadGrain,
-    lane: MigrationOwned,
-    flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at HEAD grain by the gunbc.witness_v2_native_route census (6 modules, the annotation-channel and comment-wall syntax among them)"
+    flip_trigger: "RETIRED WHEN v2.lens.lifecycle_carrier and v2.lens.unit_modeling narrow their carrier predicate so that a node whose Authored members are module surface nodes (a container of modules, not a record or payload type) is never judged as a record carrier; this row is then deleted and the door-ledger long test's member_not_a_binder count returns to zero. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag. Each refusal is located at the TARGET of the offending member edge, a synthetic dag_surface_module node: both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder, and a node carrying modules as Authored members reaches that fold. That is a lens defect (the carrier predicate admits a module container), not a correct refusal of these subjects. It was masked at head grain by parse_grammar_choice_overlap_residue. The fix is owned by its own work item, not this row"
   },
   CauseOwnership {
     cause: ^parse_g0_tokens_remain,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — same grammar-surgery class as parse_grammar_choice_overlap_residue (nimble-boar-198). Measured 2026-09-09 by the gunbc.witness_v2_native_route census as the fatal refusal on 706 real v2.test.* modules through the emitted native binary"
   },
   CauseOwnership {
     cause: ^tokenize_lex_e1_unrecognized_char,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (6 modules)"
   },
   CauseOwnership {
     cause: ^namespace_graft_body_dissolved_refused,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "no per-cause trigger — the graft is namespace machinery and dissolves with it (nimble-boar-198). Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (41 modules)"
   },
   CauseOwnership {
     cause: ^normalize_reason_post_normalize_not_well_formed,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (6 modules)"
   },
   CauseOwnership {
     cause: ^normalized_tree_reason_wrapper_retention_not_normalized,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "normalize stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_match_arm_navigation_refused,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-09 at fatal grain by the gunbc.witness_v2_native_route census (2 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_parameter_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a parameter slot the typed-parameter reader cannot read refuses the declaration here, located at the slot, rather than being filtered out of the domain (gunbc.recurring_failure_mode lowering_accessor_collapses_a_sequence_operand). No parameter shape found parses and then fails to read, so this is a wall with no measured population; it flips only if a parameter form the grammar admits gains no reading"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_else_less_if_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a guard -- an else-less `if` heading a tail spine with a following statement, whose arm ends in a return -- lowers to Branch(c, arm, rest of the spine) (v2.compiler.body_lowering_fold body_lower_guard_branch). What still refuses here is an else-less `if` whose arm falls through with no return: it is a statement run for effect with no value, which v2 core does not model as a statement; flips if that is modeled (gunbc.recurring_failure_mode else_less_if_statement_has_no_lowered_form)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_return_not_in_tail_position,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A return out of a non-tail position (a let value, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
+    flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A let whose value is a match with returning arms, heading a tail spine with exactly ONE binding arm, lowers to that match with the rest of the spine under the binding arm (v2.compiler.body_lowering_fold body_lower_let_match_exit_join). A return out of any other non-tail position (a let value otherwise, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a let-match with returning arms heading a tail spine and TWO OR MORE binding arms: each binding arm would need the rest of the spine, and copying it per arm is a cost-shape defect, so it refuses here, located at the let (v2.compiler.body_lowering_fold body_lower_exit_walk_let_match). Flips when v2 infer types a local fn value (frontier lambda_value_has_no_derived_type_in_v2_infer), which admits one shared join point k(x) = rest. Count on the PR"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a service declaration lowers at declaration grade (v2.compiler.body_lowering_fold body_lower_service_decl) and its realization and unmodeled interface members are set aside; full normalize refuses a closure member carrying any, because resolution, eval and emission would have to assume them. Flips only when ALL of these exist: the realization binding (a sibling keyed by OperationRef carrying transport, config, exit, response, mock_response and the io `from` wire key); the Arrow effect-claims edge (readonly, idempotent); the separate Arrow execution-mode edge (hermetic); and the one binder representation carrying an optional default. Only then does no set-aside reason have a producer (gunbc.recurring_failure_mode service_interface_member_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_unrecognised_lowered_shape,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a reader in v2.compiler.body_lowering_fold meets a node that is lowered output (no grammar projection edge) but that body_lower_is_core_substrate does not name, and refuses at it instead of re-reading it as raw parse and answering a part of it (body_lower_is_unrecognised_lowered_shape). The MQ-5 census found no producer that reaches this today. Flips when every producer declares the shape it emits (LoweredShape carried in a BodyTerm through the reducers, neat-boar-16 ruling 2026-09-30), so a reader never classifies a node by shape and the reason has no producer (gunbc.recurring_failure_mode lowered_output_reread_as_raw_parse_at_v2_body_lowering)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_form_not_admitted,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a `pattern` declaration shares the one fn_decl production but v1 admits it only without generic params and with a block body (dag syntax dag_item_forms: has_type_params false, body_kind BlockBody); a pattern-headed declaration writing generic params or an `= expr` body refuses located at what it wrote (v2.compiler.body_lowering_fold body_lower_pattern_form_refusal_optional). This is a fidelity wall, not a frontier: it retires only if the grammar can express the narrower pattern form without changing the fn_decl spine depth the positional readers walk, so the form becomes unwritable rather than refused"
   },
 
   CauseOwnership {
     cause: ^body_lowering_reason_parameter_refinement_unmodeled,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a fn parameter whose type is refined by a where clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_param_refinement_refusal_optional), because the only where-clause reader serves a type variant and a parameter's type reader would drop the refinement. Flips when a parameter's lowered type carries its refinement -- the parameter type read through the one where-clause reader that type variants use -- so the reason has no producer (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_uses_clause_unmodeled,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a fn declaring a `uses` clause parses and refuses at the clause on both lowering arms (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), because v2 has no carrier for a fn's resource requirement and lowering the fn would drop it. Flips when D13's DependencyDemand carrier derives each resource requirement keyed on the resource declaration (so derived demand names Network: the restoration trigger of gunbc.rung_drop network_requirement_unrepresented_after_uses_cut) AND the restatement rows are then retired under operator D13 (no carrier is built for the authored row: it would be a second authority for DependencyDemand, docs/plans/service-interface-and-uses-carriers.md), so the reason has no producer on a fn reaching normalize (gunbc.recurring_failure_mode uses_clause_has_no_carrier)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_field_decl_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a variant or record field declaration the field lowering cannot read (a where clause beside a payload, a field whose type expression the type reader does not lower). Replaces the positional_pattern_binder_unlowered row, whose refusal is retired now that gunbc.rung_drop variant_fields_unlowered_on_the_native_route's lowering half is executed (the row is retired by both halves of its trigger, lowering and the resolver frame). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_pattern_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a match pattern the pattern lowering cannot read (two positional binders, a suffix that is neither braced nor parenthesised). Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_field_init_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path: a record-literal field initializer whose shape is not `name: value`. Measured 2026-09-22 at fatal grain by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_postfix_suffix_carried,
-    grain: HeadGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a postfix chain step whose suffix is neither empty nor a parenthesised argument row -- today the module-qualified record construction `a.b.C { f: v }` and an `as` suffix. gunbc#12057 deleted body_lower_try_postfix_projection and with it the unowned FATAL cause postfix_field_access_refused, which had refused these shapes loudly on base; refusing them from the new one-walk door instead was MEASURED to turn 32 modules that ACCEPT on base into refusals (28 directly, 4 as match_arm_navigation_refused propagating out of a match scrutinee), so the door declines them to the pre-existing arms as gunbc#11683 did for the call-before-end class. This row is what keeps that decline ON the ladder rather than below it (review 70078): the residue is located and counted at head grain instead of vanishing silently, the file still Accepts, and 8 of the 42 base-refusing files carry this shape so the population is real. The drop from the base refusal is declared in full as gunbc.rung_drop postfix_suffix_step_declined_to_the_pre_existing_arms (review 70293). Flips to Blocking when a construct tag can carry a qualified name, which is what the brace-suffix shape needs to LOWER and is a wider package than gunbc#12057. Measured 2026-09-22 at head grain by the workload adjudicate over dag + src/v2 (count on the PR)"
+    flip_trigger: "a postfix chain step whose suffix is neither empty nor a parenthesised argument row -- today the module-qualified record construction `a.b.C { f: v }` and an `as` suffix. gunbc#12057 deleted body_lower_try_postfix_projection and with it the unowned FATAL cause postfix_field_access_refused, which had refused these shapes loudly on base; refusing them from the new one-walk door instead was MEASURED to turn 32 modules that ACCEPT on base into refusals (28 directly, 4 as match_arm_navigation_refused propagating out of a match scrutinee), so the door declines them to the pre-existing arms as gunbc#11683 did for the call-before-end class. This row is what keeps that decline ON the ladder rather than below it (review 70078): as an ADVISORY (the accepted decline) it is counted by the accepted-file advisory instrument (advisories step 1) instead of vanishing silently, and the file still Accepts; as a FATAL cause (the as-suffix refusal, body_lower_dotted_chain_lowered_optional) this row owns it, and 8 of the 42 base-refusing files carry this shape so the population is real. The drop from the base refusal is declared in full as gunbc.rung_drop postfix_suffix_step_declined_to_the_pre_existing_arms (review 70293). Flips to Blocking when a construct tag can carry a qualified name, which is what the brace-suffix shape needs to LOWER and is a wider package than gunbc#12057. Measured 2026-09-22 by the workload adjudicate over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_value_unlowered,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a value position -- record-literal field initializer, if condition or arm, let value, block statement, match-arm body -- whose value the value reader (v2.compiler.body_lowering_fold body_lower_value_read) cannot lower: a function value, chiefly, until fn-literal lowering covers it. It REPLACES the head-grain advisory body_lowering_reason_value_carried_unlowered, which carried the unlowered shell, let the file Accept, and refused later at resolve at the wrong atom (gunbc.recurring_failure_mode carried_unlowered_value_accepted_as_an_advisory_refuses_downstream_at_the_wrong_atom); the value now refuses at itself. Flips to Blocking when every value shape lowers. The newly-refusing population at the cut is listed on the PR that made it"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_call_argument_unread,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "value-position lowering: a call argument whose value v2.compiler.body_lowering_fold body_lower_call_arg_value cannot read refuses its module here. Dominated by function values in argument position (inline lambdas and fn literals, gunbc.recurring_failure_mode lambda_has_no_lowered_function_value_form), which gunbc#12210 lowers to the generic fn Arrow; the positional fold-step residue is gunbc#12272. Flips to Blocking when the count zeroes after both land. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_operator_operand_unread,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering modeling pass (gentle-koi-724's lane): an operator operand body_lower_read_operator_expression cannot lower -- a caret symbol (gunbc.recurring_failure_mode caret_symbol_has_no_lowered_form) or a parenthesised `as` cast (as_cast_has_no_lowered_form, whose typed cast node is gunbc#12315). Flips to Blocking when every operand shape lowers and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_type_annotation_not_carried,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "an authored type annotation with no carrier: a statement-form let annotation (gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, retired by the let-annotation Bind carrier gunbc#12322) or a fn literal's return annotation; an `as` cast's target type rides the typed cast node gunbc#12315. Flips to Blocking when both carriers land and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_paren_group_unread,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "value-position lowering: raised by v2.compiler.body_lowering_fold body_lower_paren_group_lowered when a parenthesised group's inner expression neither lowered bottom-up nor reads as an operand (gunbc#12173 introduced the refusal in place of the left-element narrowing). The group adds no semantics, so it owns nothing of its own: it flips when the inner value shapes lower -- function values (gunbc#12210) and `as` casts (gunbc#12315) -- and the count zeroes. Measured at fatal grain by the gunbc.witness_v2_native_route census at main bd2c586926b9 over dag + src/v2 (count on the PR)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_statement_precedes_without_binding,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (71 files: 40 under v2.test.* homes, 31 in dag/extdeps and dag/gunbc)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_if_navigation_refused,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (5 files, all under v2.test.* homes)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_let_body_not_reachable_from_node,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (3 files, all under v2.test.* homes)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_statement_spine_headless,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body-lowering stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (1 file: dag/gunbc/discovery_census.dag)"
   },
   CauseOwnership {
     cause: ^resolve_reason_unbound_symbol,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps, the head-grain row's thread)"
+    flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2059 v2.test.* members across 417 modules, dominantly the parse frontier's import cascade: the member's own file parses while a file in its import closure refuses, so the imported names resolve to nothing — zeroing rides the parse-frontier rows beside resolve's own binding gaps)"
   },
   CauseOwnership {
     cause: ^resolve_reason_ambiguous_symbol,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "resolve stage frontier on the self-host critical path; flips to Blocking when the count zeroes. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (29 v2.test.* members across 6 modules)"
   },
   CauseOwnership {
     cause: ^infer_grounding_not_derived,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at prepare, where the carried diagnostic is fatal rather than eval-gated; retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (2 v2.test.* members, both in v2.test.manual.recompute_trace_probe)"
   },
   CauseOwnership {
     cause: ^infer_grounding_demanded_not_derived,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a consumer demanded a canonical grounding (coercion, translate's coerce fold, eval's constraints) of a node the grounding frontier left underived (v2.compiler.inferred_tree NodeGrounding). Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived; same frontier, split out so a chain can tell the refusing link from the frontier rows in front of it. Retires under node_grounding_frontier_retirement"
   },
   CauseOwnership {
     cause: ^translate_rejected_grounding_not_derived,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "translate's grounding gate refuses a node it must emit whose inferred facts carry no DerivedGrounding -- the node grounding frontier (v2.compiler.inferred_tree NodeGrounding) observed at emission. Until 2026-09-21 this refusal was spelled with the advisory's own symbol, infer_grounding_not_derived, so its population was counted under that row; it is the same frontier at the emit stage, split out so a chain can tell the refusing link from the frontier rows in front of it. Retires under node_grounding_frontier_retirement"
   },
   CauseOwnership {
     cause: ^eval_rejected_grounding_not_derived,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "eval's grounding gate refuses a body whose inferred facts carry no DerivedGrounding — the node grounding frontier (v2.compiler.inferred_tree NodeGrounding); retires under node_grounding_frontier_retirement. Measured 2026-09-10 at fatal grain by the gunbc.witness_v2_native_route census over the lane's source roots dag + src/v2 (261 v2.test.* members across 110 modules)"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_unsupported_form,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "body lowering's CATCH-ALL refusal: a value, arm capture or postfix/as-suffix shape v2.compiler.body_lowering_fold reads but has no dedicated reason for (gunbc#12245 and gunbc#12315 added producers without this row). Owned as a frontier, not as a class: it retires when each producing site refuses with a cause that names its shape (or lowers), so that no body-lowering path answers with this symbol and the count zeroes. Observed at fatal grain on the native route at main 1457bd81d00 over dag + src/v2 (member rows and file refusals)"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_record_no_expected_type,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless record literal `{ f: v }` reached by an edge no authored annotation types -- a call argument, a let without an annotation, a match-arm body, an element of an unannotated list -- so v2.compiler.resolve has no expected type to choose its constructor from, and refuses rather than guess or read the field names (docs/plans/anonymous-record-literal-design.md). Not a frontier to drive to zero: each occurrence is a source that names no type where one is needed, and flips when that source writes the constructor head or an annotation. A position whose type is authored but not yet threaded (a call argument's formal) is a named extension of the position rules, not a reason to widen this one"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_record_expected_type_not_record,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless record literal whose authored expected type does not resolve, by syntactic peel and the existing lexical lookup, to a single record (v2.std.symbol_index RecordTypePayload): a coproduct with several constructors, a primitive, a type binder, an optional, or a head reached only through alias unfolding resolve does not do. Refused rather than guessed (docs/plans/anonymous-record-literal-design.md, review condition 1). Flips per site when the source writes the constructor head. A Map head is not in this population: it takes the map arm (resolve_anonymous_map_*)"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_no_expected_type,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless string-keyed map literal reached by an edge no authored annotation types (a call argument, an unannotated let, a match-arm body), so v2.compiler.resolve's map arm has no Map<K, V> to elaborate from and refuses rather than guess (docs/plans/map-literal-introduction-design.md). Not a frontier: each occurrence flips when its source writes an annotation"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_expected_type_not_map,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless map literal whose authored expected type does not resolve, by declaration identity, to a Map head (v2.std.map_introduction map_introduction_expected_head_is_map): a record, a coproduct, a binder, or a head reached only by alias unfolding resolve does not do. Refused, never guessed; flips per site when the source writes a Map annotation"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_expected_type_not_closed,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless map literal under a Map head that is not syntactically a closed Map<K, V> instantiation, so K and V cannot be peeled without inference. Refused at the literal; flips per site when the annotation writes both type arguments"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_name_key,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless brace of NAME keys under an authored Map head: a record literal where a map was declared. Refused at its first item; flips when the source writes string keys or the declared type is corrected"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_key_kind_mismatch,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a map literal whose declared key type K is not the type a string literal denotes (the unbound kernel String, v2.extdeps.languages.dag dag_kernel_string_type_spelling), so a literal key would cross into K with no declared route (DESIGN section 4). Refused at the first key; flips when K is the kernel String or a declared unfold route is written"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_key_text_unavailable,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a map literal key that carries no string-literal lexeme, so the key law has no text to compare: in v2 today every string literal lowers to one class-stamped atom with no payload (gunbc.recurring_failure_mode string_literal_lowers_to_one_class_stamped_atom). Refused at the key rather than compared, since comparing payload-less keys would call every pair a duplicate. A frontier: flips to zero when string literals lower to lexeme-stamped terminals (sleek-owl-120, gunbc#12759)"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_entry_malformed,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a map literal pair that does not carry both its key and its value field, refused at the pair by v2.compiler.resolve's map arm rather than substituting a node for the missing field (DESIGN 5). Body lowering always writes both, so this names a lowering defect if it ever fires; not a frontier, and expected to stay at zero"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_map_duplicate_key,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a map literal whose keys repeat under the key type's equality (decoded text, via the decoder gunbc#12759 lands), judged by the one key law v2.std.map_introduction map_introduction_duplicate_key and refused at the SECOND occurrence, never last-wins. Not a frontier: each occurrence is a source defect and flips when the repeated entry is removed"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_brace_key_kind_mismatch,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a brace no key-kind choice could type: a constructor head over string keys, or a headless brace mixing name keys and string keys. Refused at lowering at the first item of the offending kind (docs/plans/map-literal-introduction-design.md); flips per site when the source writes one kind"
   },
   CauseOwnership {
     cause: ^resolve_anonymous_record_alias_cycle,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a headless record literal whose authored expected type reaches a cycle of pure-renaming aliases (`type A = B`, `type B = A`) while v2.compiler.resolve follows renamings to the record or list head (docs/plans/anonymous-record-literal-design.md, Pure-renaming aliases). The cycle is refused at the literal rather than followed. Not a frontier: each occurrence is an alias cycle in source, and flips when the source breaks it"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_function_value_body_unread,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "a function value in value position (gunbc#12210) whose body neither body reader of v2.compiler.body_lowering_fold body_lower_function_value_body lowers: the refusal is located at the body rather than narrowing the value to its parameter. Flips when every function-value body shape in the corpus lowers through the same statement/expression readers an fn body uses, and the count zeroes. Observed at fatal grain as file refusals on the native route at main 1457bd81d00 over dag + src/v2"
   },
   CauseOwnership {
     cause: ^infer_match_shape_invalid,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "v2.compiler.04_infer infer_match_bool_arm_row reached a match arm that is not a Conj carrying match_arm_pattern and match_arm_body, i.e. a lowered arm shape infer does not read. Now observable at PREPARE because more modules clear body lowering and reach infer. Flips when every arm shape body lowering emits is the one infer reads (one arm carrier, no second shape) and the count zeroes. Observed at fatal grain on native-route member rows at main 1457bd81d00 over dag + src/v2"
   },
   CauseOwnership {
     cause: ^infer_match_scrutinee_not_bool,
-    grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "v2.compiler.04_infer types a Match only through infer_match_bool, which admits a Bool or Int scrutinee and refuses every other scrutinee type here -- so a match over a declared coproduct (variant-pattern arms, e.g. `match c { Deterministic => .. NonDeterministic { source: _ } => .. }`) has no infer row at all. Same one-match-carrier frontier as infer_match_shape_invalid, observed at the scrutinee instead of the arm. Flips when infer types a Match whose scrutinee is a named sum (arms joined to its alternatives, exhaustiveness over them) and the count zeroes. That capability is built and in flight: gunbc#12641 (v2 infer types a match over a declared, generic coproduct and its arm binders) merged onto lane/reference-evidence-consumer and reaches main with gunbc#12506; its landing is the expected flip, confirmed only by a native-route run whose count for this cause is zero. Observed at fatal grain at PREPARE on native-route member rows at main 55e78f40e9a over dag + src/v2: 6 v2.test.* members, all in v2.test.claim.determinism_contract_test (det_is_deterministic's match on Determinism); not among the unowned causes gunbc#12626 measured at 1457bd81d00, so newly reachable as that module cleared resolve"
   },
 
   CauseOwnership {
     cause: ^infer_binder_default_generic_unmodeled,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "a generic declaration -- an Arrow or a type declaration with type parameters -- carries a binder with a default, and a default is judged without its declaration's type parameters in scope (v2.compiler.infer infer_binder_default_check), where a default typed by one would be InhabitanceUndecidable and advisory-accepted; so v2.compiler.infer infer_generic_default_refusal refuses it at the default. Flips when a default is judged with its declaring type parameters in scope (a parent-aware judgment), so a generic default derives or refuses on its own merits"
   },
   CauseOwnership {
     cause: ^named_child_not_a_binder,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "a domain or payload member read for its type (v2.std.node_query find_binder_type) is a Named edge whose target is not a binder node: a hand-built name-to-type edge the binder builder did not make. Not a frontier to retire but a wall: it refuses for as long as such an edge can be written, and stays as the regression control once the Arrow-domain wall (v2.std.type_binder arrow_domain_members_are_binders) refuses every one upstream"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_operation_modifier_repeated,
-    grain: FatalGrain,
     lane: MigrationOwned,
     flip_trigger: "an operation declares one effect claim twice (`readonly` twice) or two execution-mode claims, so its contract edges would carry a duplicate; v2.compiler.body_lowering_fold body_lower_operation_modifier refuses at the repeated modifier. Not a frontier to retire but a wall over authored input: it stays for as long as a modifier can be written twice, as the regression control for the claims carrying no duplicate"
   }
@@ -407,8 +330,8 @@ data known_frontier_causes: List<CauseOwnership> = [
 
 
 // A FRONTIER'S RETIREMENT CONDITION, TYPED. A frontier observed under several causes (one per stage
-// that meets it) retires when EVERY one of its causes counts zero at fatal grain over the route's
-// population. Each cause must also be owned by a fatal-grain row of known_frontier_causes, because a
+// that meets it) retires when EVERY one of its causes counts zero over the route's
+// population. Each cause must also be owned by a row of known_frontier_causes, because a
 // retirement over a cause nobody counts would read as retired at zero forever.
 // gunbc.witness_v2_native_route native_route_frontier_retirement_standing joins this condition to
 // the route's derived tally, and admission refuses a retirement whose causes are unowned.
@@ -431,11 +354,11 @@ data node_grounding_frontier_retirement: FrontierRetirement = FrontierRetirement
 
 data known_frontier_retirements: List<FrontierRetirement> = [node_grounding_frontier_retirement]
 
-fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<CauseOwnership> {
+fn cause_ownership_lookup(cause: Symbol) -> Optional<CauseOwnership> {
   list_find_first(
     xs: known_frontier_causes,
     predicate: fn(row) {
-      row.cause == cause && discriminant(v: row.grain) == discriminant(v: grain)
+      row.cause == cause
     }
   )
 }
@@ -450,7 +373,7 @@ fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<Cau
 // retires it) and the flip (the pull request that made the cause start firing, and why that is a
 // correction) are two facts with different lifetimes: the flip matters only while a roster minted
 // before it is being reconciled, and the ownership outlives it. A declaration counts only when its
-// cause is OWNED at the same grain (cause_correctness_flip_lookup_over joins the two), so an orphan
+// cause is OWNED (cause_correctness_flip_lookup_over joins the two), so an orphan
 // declaration grants nothing and the unowned increase stays a loss.
 //
 // THE LIFETIME IS A FIELD, NOT A PROMISE (review 71692). `reconciles_tested_tree` names the tested
@@ -460,7 +383,6 @@ fn cause_ownership_lookup(cause: Symbol, grain: DiagnosticGrain) -> Optional<Cau
 // not a correction relabelled.
 type CorrectnessFlipDeclaration {
   cause: Symbol
-  grain: DiagnosticGrain
   pull_request: Int
   reconciles_tested_tree: String
   why: String
@@ -480,17 +402,16 @@ data known_correctness_flips: List<CorrectnessFlipDeclaration> = []
 
 fn cause_correctness_flip_lookup_over(
   cause: Symbol,
-  grain: DiagnosticGrain,
   owners: List<CauseOwnership>,
   flips: List<CorrectnessFlipDeclaration>
 ) -> Optional<CauseCorrectnessFlip> {
   match list_find_first(xs: owners, predicate: fn(row) {
-    row.cause == cause && discriminant(v: row.grain) == discriminant(v: grain)
+    row.cause == cause
   }) {
     Absent => optional_absent()
     Present { value: owner } =>
       match list_find_first(xs: flips, predicate: fn(d) {
-        d.cause == cause && discriminant(v: d.grain) == discriminant(v: grain)
+        d.cause == cause
       }) {
         Absent => optional_absent()
         Present { value: d } => optional_present(value: CauseCorrectnessFlip { owner: owner, pull_request: d.pull_request, reconciles_tested_tree: d.reconciles_tested_tree, why: d.why })

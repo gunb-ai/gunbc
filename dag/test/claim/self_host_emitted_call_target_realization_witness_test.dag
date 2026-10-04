@@ -758,6 +758,22 @@ test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwr
   )
 }
 
+// A FUNCTION VALUE IS NOT AN OPTIONAL ARGUMENT. A typed lambda node carries its BODY's type, so a
+// lambda returning `String?` passed to `fn(String) -> T` read as an optional flowing into a
+// required parameter and earned the unwrap -- appended to the lambda, where Rust parses it into
+// the closure body, turning a closure that must return Option<String> into one returning String
+// (E0308 at std.materialization_object store_object_line_malformed_text and store_lookup_payload).
+// The `end: none` argument is the positive control in the same call: a bare type-variable
+// parameter was already declined, so the row reds only on the callable arm.
+test fn w_optional_returning_lambda_argument_is_not_unwrapped_as_an_optional_value() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_lambda_probe\nimport std.types { String, Bool }\nfn pick<T>(flag: Bool, hit: fn(String) -> T, miss: T) -> T { if flag { hit(\"x\") } else { miss } }\nfn probe(flag: Bool) -> String? { pick(flag: flag, hit: t => Present { value: t }, miss: none) }\n",
+    "src/test_claim_optional_lambda_probe.rs",
+    ["|t| Some(t.clone())"],
+    [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
+  )
+}
+
 // The shared-field accessor returns T by value from &self; without T: Clone on its impl rustc
 // clones the reference.
 test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool {

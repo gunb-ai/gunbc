@@ -27,7 +27,6 @@ import v2.workflow.product_receipt {
   product_receipt_identity_chain_intact
 }
 import v2.std.algebra { Empty, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,

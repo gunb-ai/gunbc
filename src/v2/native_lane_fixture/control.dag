@@ -1,6 +1,5 @@
 module v2.native_lane_fixture.control
 
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // THE required-v2-native LANE'S LIVE-VERDICT CONTROL PAIR (authority:

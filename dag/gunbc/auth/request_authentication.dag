@@ -8,10 +8,7 @@ import std.access {
   AccessActionNotGranted, AccessContextAbsent, AccessPolicyRefused,
   decision_meet,
 }
-import extdeps.http.server {
-  RequestAccessPath, AccessPathDirectHttps, AccessPathTailnetProxy, AccessPathLocalDev,
-  RequestSecurityContext, TailnetRouteReadback, TailnetRouteReadbackObserved,
-}
+import extdeps.http.server { RequestSecurityContext }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetIdentityAbsent, tailnet_identity_of }
@@ -32,10 +29,28 @@ import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
 }
 
+// THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
+// as its AccessPath type argument. It moved from that module because which front doors this
+// deployment routes through is a fact about this deployment, not about HTTP, and enumerating it
+// there made every HTTP program import the Tailscale modules (DESIGN section 3).
+//
+// THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
+// the arm carries the tailscale serve route key and the ACL policy revision the modeling was
+// computed under (the versioned readback), so a deployment that stops routing through the
+// proxy, or whose ACL drifts, changes the modeled path rather than silently widening it.
+type TailnetRouteReadback
+  = TailnetRouteReadbackObserved { acl_revision: ContentHash, serve_route: TailscaleServeRouteKey }
+  | TailnetRouteReadbackUnobserved { reason: String }
+
+type RequestAccessPath
+  = AccessPathDirectHttps
+  | AccessPathTailnetProxy { transport_observation: TailnetIdentity, route_readback: TailnetRouteReadback }
+  | AccessPathLocalDev
+
 // THE REQUEST-SECURITY LAW (owner directive 2026-09-25, lane A3). This module owns the two facts
 // every consequential route decides over, SEPARATELY, and the write law that joins them:
 //
-//   ACCESS PATH (extdeps.http.server.RequestAccessPath)      -- how the request arrived,
+//   ACCESS PATH (RequestAccessPath, below)      -- how the request arrived,
 //     modeled through the tailnet ACL and serve-route authorities with a versioned readback,
 //     never as ambient reachability.
 //   AUTHENTICATION EVIDENCE (RequestAuthenticationEvidence)  -- what the request presents: a
@@ -211,7 +226,7 @@ data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWr
 fn human_write_admission(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   authorization_policy: ServeWriteAuthorizationPolicy,
   deployment_policy: DeploymentAccessPolicy,
   csrf_presented: String,
@@ -236,7 +251,7 @@ fn human_write_admission(
 fn human_authentication_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   observed_at: Timestamp,
 ) -> AccessDecision {
   match security.authentication {
@@ -281,7 +296,7 @@ fn human_authentication_decision(
 fn human_action_authorization_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   policy: ServeWriteAuthorizationPolicy,
 ) -> AccessDecision {
   match security.authentication {
@@ -331,7 +346,7 @@ fn human_action_authorization_decision(
 fn csrf_write_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   csrf_presented: String,
 ) -> AccessDecision {
   match security.authentication {
@@ -376,7 +391,7 @@ fn csrf_write_decision(
 fn deployment_path_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   policy: DeploymentAccessPolicy,
 ) -> AccessDecision {
   if !policy.tailnet_path_required {
@@ -411,7 +426,7 @@ fn deployment_path_decision(
 fn service_write_authentication_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> AccessDecision {
   match security.authentication {
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Permit
@@ -464,7 +479,7 @@ fn csrf_refusal_reason(c: CsrfRefusalCause) -> String {
 fn human_write_access_request(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> AccessRequest<String, ServeRouteAction, NonEmptyStr, RequestAccessPath, RequestAuthenticationEvidence> {
   AccessRequest {
     subject: evidence_subject_label(security.authentication),
@@ -487,7 +502,7 @@ fn evidence_subject_label(evidence: RequestAuthenticationEvidence) -> String {
 fn write_refused(
   route_path: NonEmptyStr,
   action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
+  security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
   cause: AccessRefusalCause,
 ) -> AccessDecision {
   let request = human_write_access_request(route_path: route_path, action: action, security: security)
@@ -519,7 +534,7 @@ fn authenticated_viewer_label(evidence: RequestAuthenticationEvidence) -> String
 // THE TAILNET OBSERVATION a transport-consuming route (the approval broker's attribution seam)
 // reads off the access path: the proxy-attributed login when the tailnet path was modeled with
 // its readback, absent otherwise. It is audit metadata, never authentication evidence.
-fn tailnet_transport_observation(security: RequestSecurityContext<RequestAuthenticationEvidence>) -> TailnetIdentity {
+fn tailnet_transport_observation(security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>) -> TailnetIdentity {
   match security.access_path {
     AccessPathTailnetProxy { transport_observation: obs, route_readback: _ } => obs
     AccessPathDirectHttps => TailnetIdentityAbsent

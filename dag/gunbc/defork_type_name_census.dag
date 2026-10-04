@@ -192,15 +192,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     disposition: ForkOpen { reason: "next PR of the de-fork wave (the v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`)" }
   },
   SharedTypeNameRow {
-    names: ["Bool"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`std.types` `= True \\| False`",
-      v2_side: "`v2.std.logic` `= True \\| False` (arms are two more same-name declarations)",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
     names: ["Int", "UInt"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.nat` `Nat` (via `std.algebra` `GroupCompletion`)",
@@ -271,6 +262,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     names: ["Float"],
     resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
     change: 12547
+  },
+  ResolvedSharedTypeName {
+    names: ["Bool"],
+    resolution: ResolvedByDeletingV2 { reason: "per-name de-fork ruling A (neat-boar-16, 2026-09-28): `std.types` `Bool` survives because `v2.std.logic` already reaches `std.types` through its imports, so only that direction is acyclic; the coproduct and the host bool are a bijection, so the structural route it carried (BooleanUnfold literal row, declared-connective rows) was a second representation of one fact and was deleted with it" },
+    change: 12583
   },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],

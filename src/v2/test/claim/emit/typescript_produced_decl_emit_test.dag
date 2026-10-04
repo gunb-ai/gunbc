@@ -35,7 +35,6 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

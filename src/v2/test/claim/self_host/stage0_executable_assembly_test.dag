@@ -47,7 +47,6 @@ import v2.workflow.rust_crate_partition {
   stage0_unit_std_core
 }
 import v2.std.algebra { any, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // THE WALL THE MONOLITH-MEMBERSHIP JOIN USED TO STAND IN FOR.

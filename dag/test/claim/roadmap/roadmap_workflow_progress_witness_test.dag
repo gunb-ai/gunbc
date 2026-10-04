@@ -1,5 +1,6 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -155,6 +156,7 @@ fn fixture_evidence(
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 
@@ -411,6 +413,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   }
   let progress = workflow_attempt_progress(evidence: forged)
   segment_state(progress.segments, "environment") != "" 
@@ -446,6 +449,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   })
   match progress.provider {
     ProviderFailed { activity: "dispatch staging failed", detail } =>
@@ -496,6 +500,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
   match progress.provider {
     ProviderEventsRefused { activity, detail: _ } =>
@@ -537,6 +542,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   })
   match progress.provider {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
@@ -680,6 +686,7 @@ fn publication_segment_of(
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: base.session_placement,
   })
   fold(progress.segments, init: WorkflowSegment {
     kind: PublicationWorkflowSegment,
@@ -842,6 +849,7 @@ fn evidence_with_worktree(base: WorkflowAttemptEvidence, worktree: AttemptWorktr
     integration: base.integration,
     review: base.review,
     goal_audit: base.goal_audit,
+    session_placement: base.session_placement,
   }
 }
 

@@ -965,6 +965,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "pair_serving_d0_grant_row_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: "SUBSTANTIATED: the one fn runs git.Plumbing HashObjectStdinNoWrite (`git hash-object --no-filters --stdin`) over caller-held bytes and compares git's own blob id for them; that operation has no mock_response, and an input-blind one would return one id for every input and fabricate the fact under test. THE EXECUTION IS PURELY LOCAL -- one git process reading stdin, no repository, no network -- so it belongs on the local-repo wet lane; the hermetic half is test.claim.spark.pair_serving_d0_release_witness rw_admission_follows_the_captured_row_not_the_path." as String,
+    dissolution: unbound_dissolution(description: "git.Plumbing HashObjectStdinNoWrite gains an input-varying hermetic arm (a modeled git blob-id computation) -- at which point this claim re-enrols as ordinary hermetic discovery and this row deletes. A fixed-output mock does NOT discharge it")},
+  WitnessExclusionRow {
     pattern: "login_transaction_consume_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1075,12 +1080,22 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "roadmap_dogfood_route_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "review_sheet_legacy_declaration_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
     pattern: "durable_cas_file_store_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "filesystem_link_create_new_wet_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
