@@ -1,5 +1,6 @@
 module test.claim.roadmap_validation_oracle_witness_test
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
 
@@ -886,6 +887,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   }
 }
 
