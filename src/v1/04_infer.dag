@@ -123,7 +123,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
-  text_representation_by_identity, text_crossing_by_identity, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
+  text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -5623,7 +5623,13 @@ fn direct_call_structured_application_mismatch_diags(
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
+          let host_into_sequence = host_text_into_structural_sequence(
+            formal: formal,
+            actual: peel_nominal_alias_identity(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
+            env: type_env)
+          if host_into_sequence {
+            [text_crossing_route_error(expected: formal, got: resolved_type(n: actual_expr), route: "unicode_scalar_unfold", si: source_indices, span: actual_expr.span, module_name: module_name)]
+          } else if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
             && (literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
             || structured_application_site_type_mismatch_with_peeled(
               formal: formal_subst,

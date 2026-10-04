@@ -243,3 +243,17 @@ fn census_runs(source: String) -> Bool {
     CensusObserved { rows: _ } => true
   }
 }
+
+// THE GENERIC-FORMAL HOLE (gunbc.rung_drop text_boundary_identity_wall, third gap). A host String at a
+// FreeMonoid<T> formal whose T is unbound at the call was admitted, because the direct-call check
+// stopped judging a formal carrying an unbound variable and a FreeMonoid over a non-Char element is
+// not text to the classifier; std.effect_grant's call to v2.std.algebra length reached rustc. The r_
+// row must refuse at the crossing; the c_ row hands the same formal a code-point sequence and must stay
+// admitted, so the wall refuses by representation and not by the formal's shape.
+test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool {
+  refuses(source: "module probe_generic_free_monoid_host\nimport v2.std.algebra { length }\nfn n(t: String) -> Int { length(xs: t) }\n")
+}
+
+test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool {
+  admitted(source: "module probe_generic_free_monoid_structural\nimport v2.std.algebra { length }\nimport v2.std.text { string_is_empty }\nfn n(t: v2.std.text.String) -> Int { length(xs: t) }\n")
+}
