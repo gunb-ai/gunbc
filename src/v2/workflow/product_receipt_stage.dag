@@ -1,7 +1,17 @@
 module v2.workflow.product_receipt_stage
 
 import extdeps.cargo_build
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemEstablishedAbsence,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
@@ -26,11 +36,10 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { Empty, fold_list, length }
-import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Present }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.workflow.body_lowering_retention_census {
   EvidenceNotApplicable,
   B4EvidenceOutcome,
@@ -63,6 +72,7 @@ import v2.workflow.product_receipt {
   CargoBuild,
   CargoBuildFailed,
   CargoManifestWriteFailed,
+  EmittedCargoManifestUnreadable,
   ClosureCandidateEmitted,
   EmittedHardRefusalsPresent,
   DiagnosticCauseTally,
@@ -76,10 +86,12 @@ import v2.workflow.product_receipt {
   ManifestPopulationAdmitted,
   ManifestPopulationEmpty,
   ManifestPopulationPartial,
+  ManifestUnobservable,
   AdmissionReasonUnrecognized,
   ManifestSourceReadFailed,
   PopulationDigestMismatch,
   ProducerReportedNoArtifact,
+  ProducerUnobservable,
   ProductBoundary,
   ProductReceipt,
   RefsHashVerified,
@@ -88,8 +100,13 @@ import v2.workflow.product_receipt {
   product_receipt_green,
   product_receipt_render
 }
-import tools.self_host_curated_seed_linked_harness {
-  cssl_v1_compiled_probe_lib_cargo_toml
+import tools.emitted_crate_harness_manifest {
+  derive_harness_manifest_in_place,
+  HarnessManifestDerived,
+  EmittedManifestUnreadable,
+  HarnessManifestWriteFailed,
+  ProbeLibTarget,
+  SeedLinked
 }
 
 // THE COMPOSITION, and why it runs HERE rather than in the driver that launched it.
@@ -165,6 +182,93 @@ fn stage_admission_cause(reason: Symbol) -> BoundaryRefusalCause {
   }
 }
 
+// THE MANIFEST IS OBSERVED THROUGH THE FILESYSTEM OBSERVATION FOLD, AND ABSENCE IS ESTABLISHED BY
+// THE LISTING, NEVER BY THE READ. Boundary 1 (the host derives the manifest) used to be decided by
+// `manifest_read.success` alone, and an unreadable manifest answered
+// `ArtifactIdentityAbsent { ProducerReportedNoArtifact }` -- attributing to the producer a report
+// it never made. A read that refused cannot say whether the manifest was there; only a listing
+// that succeeded and did not name it can. The three worlds now travel as three arms: observed
+// (bytes in hand), absent (established by the listing), unobservable (a typed refusal carrying the
+// cause). `ManifestSourceReadFailed` is deliberately NOT reused here: it is the closure-admission
+// ladder's cause for ITS source reads, and one name with two meanings is the fork section 3
+// forbids.
+type ManifestFileObservation
+  = ManifestObserved { content: String }
+  | ManifestAbsent(FilesystemEstablishedAbsence)
+  | ManifestUnobserved { cause: String }
+
+fn manifest_file_observation_of(o: FilesystemFileObservation) -> ManifestFileObservation {
+  match o {
+    FilesystemFileRead { path: _, content: c } => ManifestObserved { content: c }
+    FilesystemFileAbsent(established) => ManifestAbsent(established)
+    FilesystemFileIndeterminate { cause: c } => ManifestUnobserved { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => ManifestUnobserved { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => ManifestUnobserved { cause: c }
+  }
+}
+
+// THE BOUNDARY DECISIONS ARE TOTAL OVER THE OBSERVATION, which is what makes them claimable: the
+// wet stage executes the listing and the read and then consumes these verdicts verbatim, so the
+// claim suite can hold the policy (observed completes boundary 1 and feeds boundary 2's ladder; an
+// established absence refuses boundary 1 and 2 as not produced; an unobserved manifest refuses
+// both with its cause and is never attributed to the producer) without running a transaction.
+fn manifest_boundary1_standing(o: ManifestFileObservation) -> BoundaryStanding {
+  match o {
+    ManifestObserved { content: _ } => BoundaryCompleted
+    ManifestAbsent(_) => BoundaryRefused { cause: ManifestNotProduced }
+    ManifestUnobserved { cause: c } => BoundaryRefused { cause: ManifestUnobservable { cause: c } }
+  }
+}
+
+fn manifest_boundary2_consumed(o: ManifestFileObservation) -> ArtifactIdentity {
+  match o {
+    ManifestObserved { content: c } => product_artifact_identity(value: c, file_count: 1)
+    ManifestAbsent(_) => ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
+    ManifestUnobserved { cause: c } =>
+      ArtifactIdentityAbsent { cause: ProducerUnobservable { cause: c } }
+  }
+}
+
+fn manifest_overlay_resolved(o: ManifestFileObservation) -> Bool {
+  match o {
+    ManifestObserved { content: c } =>
+      host_source_root_ingest_content_hash != ""
+        && string_contains(s: c, pattern: host_source_root_ingest_content_hash)
+    ManifestAbsent(_) => false
+    ManifestUnobserved { cause: _ } => false
+  }
+}
+
+fn observed_manifest_b2_standing(
+  overlay_resolved: Bool,
+  admitted: Bool,
+  admission_cause: BoundaryRefusalCause,
+  consumed: ArtifactIdentity,
+  population_digest: ArtifactIdentity
+) -> BoundaryObservation {
+  if !overlay_resolved {
+    stage_refused(
+      boundary: ManifestPopulationAdmitted,
+      cause: ManifestOverlayNotResolved,
+      consumed: consumed
+    )
+  } else {
+    if admitted || stage_cause_belongs_to_read(cause: admission_cause) {
+      stage_completed(
+        boundary: ManifestPopulationAdmitted,
+        consumed: consumed,
+        produced: population_digest
+      )
+    } else {
+      stage_refused(
+        boundary: ManifestPopulationAdmitted,
+        cause: admission_cause,
+        consumed: consumed
+      )
+    }
+  }
+}
+
 // Boundary 2 owns the population checks and boundary 3 owns the read. The
 // admission ladder short-circuits, so a refusal on a boundary-2 cause leaves
 // boundary 3 NotExercised -- which is the honest answer, not a failure.
@@ -172,6 +276,7 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
   match cause {
     ManifestSourceReadFailed => true
     IngestRowShortfall => true
+    ManifestUnobservable { cause: _ } => false
     AdmissionReasonUnrecognized { reason: _ } => false
     ManifestNotProduced => false
     ManifestOverlayNotResolved => false
@@ -179,9 +284,10 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
     ManifestCoverageIncomplete => false
     ManifestPopulationPartial => false
     PopulationDigestMismatch => false
-    EmitterRejected { causes: _ } => false
+    EmitterRejected { causes: _, advisories: _ } => false
     EmittedHardRefusalsPresent { count: _ } => false
     AssemblyRefused => false
+    EmittedCargoManifestUnreadable => false
     CargoManifestWriteFailed => false
     CargoBuildFailed => false
   }
@@ -239,16 +345,30 @@ fn stage_completed(
 // realization of it unchanged. Stated because the receipt would otherwise
 // look portable across realizations when one of its fields is not.
 fn emitter_diagnostic_causes(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
+  diagnostic_tally_bump(tally: Empty, reason: symbol_lexeme(sym: diagnostics_fatal_reason(d: ds)))
+}
+
+// THE ADVISORIES ARE EVERY ELEMENT BUT THE LAST, counted by reason and kept apart from the cause:
+// the chain is its prepended advisories followed by its fatal element, so tallying the whole chain
+// as causes counted the grammar overlap residue once per row it carried and as often as the cause.
+fn emitter_diagnostic_advisories(ds: NonEmptyDiagnostics) -> List<DiagnosticCauseTally> {
   fold_list(
     xs: ds.tail,
-    empty: diagnostic_tally_bump(
-      tally: Empty,
-      reason: symbol_lexeme(sym: ds.head.reason)
-    ),
+    empty: EmitterAdvisoryWalk { pending: ds.head, tally: Empty },
     cons: fn(acc, d) {
-      diagnostic_tally_bump(tally: acc, reason: symbol_lexeme(sym: d.reason))
+      EmitterAdvisoryWalk {
+        pending: d,
+        tally: diagnostic_tally_bump(tally: acc.tally, reason: symbol_lexeme(sym: acc.pending.reason))
+      }
     }
-  )
+  ).tally
+}
+
+// The walk holds one element back: each step tallies the element before it, so the last element
+// (the fatal cause) is never tallied as an advisory.
+type EmitterAdvisoryWalk {
+  pending: Diagnostic
+  tally: List<DiagnosticCauseTally>
 }
 
 type ProductReceiptCandidate {
@@ -305,7 +425,7 @@ fn product_receipt_candidate_refused(
   ProductReceiptCandidate {
     observation: stage_refused(
       boundary: ClosureCandidateEmitted,
-      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds) },
+      cause: EmitterRejected { causes: emitter_diagnostic_causes(ds: ds), advisories: emitter_diagnostic_advisories(ds: ds) },
       consumed: population_digest
     ),
     emitted_source: "",
@@ -352,7 +472,7 @@ fn product_receipt_candidate_materialize(
       ProductReceiptCandidate {
         observation: stage_refused(
           boundary: ClosureCandidateEmitted,
-          cause: EmitterRejected { causes: Empty },
+          cause: EmitterRejected { causes: Empty, advisories: Empty },
           consumed: population_digest
         ),
         emitted_source: emitted_source,
@@ -377,55 +497,66 @@ fn product_receipt_tail_not_exercised() -> ProductReceiptTail {
   }
 }
 
+fn product_receipt_manifest_refused(
+  b5: BoundaryObservation,
+  assembled_identity: ArtifactIdentity,
+  cause: BoundaryRefusalCause
+) -> ProductReceiptTail {
+  ProductReceiptTail {
+    b5: b5,
+    b6: stage_refused(
+      boundary: AuthorityCargoManifest,
+      cause: cause,
+      consumed: assembled_identity
+    ),
+    b7: stage_not_exercised(boundary: CargoBuild)
+  }
+}
+
 fn product_receipt_cargo_tail(
   root: String,
   candidate_dir: String,
   b5: BoundaryObservation,
   assembled_identity: ArtifactIdentity
 ) -> ProductReceiptTail {
-  let cargo_manifest_text = cssl_v1_compiled_probe_lib_cargo_toml(root: root)
-  let written = Filesystem.Write(
-    path: concat(candidate_dir, "/Cargo.toml"),
-    content: cargo_manifest_text
-  )
-  if written.success {
-    let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
-    let build = cargo.Build.BuildManifest(
-      workdir: candidate_dir,
-      manifest_path: concat(candidate_dir, "/Cargo.toml"),
-      target_dir: concat(candidate_dir, "/target"),
-      extra_args: ["--release"]
-    )
-    ProductReceiptTail {
-      b5: b5,
-      b6: stage_completed(
-        boundary: AuthorityCargoManifest,
-        consumed: assembled_identity,
-        produced: manifest_identity
-      ),
-      b7: if build.success {
-        stage_completed(
-          boundary: CargoBuild,
-          consumed: manifest_identity,
-          produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
-        )
-      } else {
-        stage_refused(
-          boundary: CargoBuild,
-          cause: CargoBuildFailed,
-          consumed: manifest_identity
-        )
+  match derive_harness_manifest_in_place(
+    crate_dir: candidate_dir,
+    target: ProbeLibTarget,
+    linkage: SeedLinked { root: root }
+  ) {
+    EmittedManifestUnreadable { path: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnreadable)
+    HarnessManifestWriteFailed { path: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: CargoManifestWriteFailed)
+    HarnessManifestDerived { content: cargo_manifest_text } => {
+      let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
+      let build = cargo.Build.BuildManifest(
+        workdir: candidate_dir,
+        manifest_path: concat(candidate_dir, "/Cargo.toml"),
+        target_dir: concat(candidate_dir, "/target"),
+        extra_args: ["--release"]
+      )
+      ProductReceiptTail {
+        b5: b5,
+        b6: stage_completed(
+          boundary: AuthorityCargoManifest,
+          consumed: assembled_identity,
+          produced: manifest_identity
+        ),
+        b7: if build.success {
+          stage_completed(
+            boundary: CargoBuild,
+            consumed: manifest_identity,
+            produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
+          )
+        } else {
+          stage_refused(
+            boundary: CargoBuild,
+            cause: CargoBuildFailed,
+            consumed: manifest_identity
+          )
+        }
       }
-    }
-  } else {
-    ProductReceiptTail {
-      b5: b5,
-      b6: stage_refused(
-        boundary: AuthorityCargoManifest,
-        cause: CargoManifestWriteFailed,
-        consumed: assembled_identity
-      ),
-      b7: stage_not_exercised(boundary: CargoBuild)
     }
   }
 }
@@ -487,6 +618,10 @@ fn product_receipt_tail(
   }
 }
 
+// ONE OBSERVATION, THREE WORLDS. The listing establishes what the read cannot: a manifest that
+// was never written is ABSENT (the producer's transaction holds no manifest, which is what
+// `ProducerReportedNoArtifact` may finally assert); a manifest that is there and cannot be read
+// is UNOBSERVED and refuses with the cause; only bytes in hand are OBSERVED.
 fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: String) -> ProcessExit {
   let manifest_path = concat(txn, product_receipt_stage_manifest_rel)
   let candidate_dir = concat(txn, product_receipt_stage_candidate_rel)
@@ -494,16 +629,13 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
 
   let b1_produced = stage_identity_from_hex(hex: manifest_identity, file_count: 1)
 
-  let manifest_read = Filesystem.Read(path: manifest_path)
-  let b2_consumed = if manifest_read.success {
-    product_artifact_identity(value: manifest_read.content, file_count: 1)
-  } else {
-    ArtifactIdentityAbsent { cause: ProducerReportedNoArtifact }
-  }
+  let manifest_observation = manifest_file_observation_of(o: filesystem_file_observation_of_path(
+    path: manifest_path
+  ))
 
-  let overlay_resolved = manifest_read.success
-    && host_source_root_ingest_content_hash != ""
-    && string_contains(s: manifest_read.content, pattern: host_source_root_ingest_content_hash)
+  let b2_consumed = manifest_boundary2_consumed(o: manifest_observation)
+
+  let overlay_resolved = manifest_overlay_resolved(o: manifest_observation)
 
   let admission = closure_emit_population_admission(
     refs: host_source_root_closure_refs,
@@ -521,34 +653,27 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
 
   let population_digest = stage_population_digest_identity()
 
-  let b2 = if !manifest_read.success {
-    stage_refused(
-      boundary: ManifestPopulationAdmitted,
-      cause: ManifestNotProduced,
-      consumed: b2_consumed
-    )
-  } else {
-    if !overlay_resolved {
+  let b2 = match manifest_observation {
+    ManifestAbsent(_) =>
       stage_refused(
         boundary: ManifestPopulationAdmitted,
-        cause: ManifestOverlayNotResolved,
+        cause: ManifestNotProduced,
         consumed: b2_consumed
       )
-    } else {
-      if admitted || stage_cause_belongs_to_read(cause: admission_cause) {
-        stage_completed(
-          boundary: ManifestPopulationAdmitted,
-          consumed: b2_consumed,
-          produced: population_digest
-        )
-      } else {
-        stage_refused(
-          boundary: ManifestPopulationAdmitted,
-          cause: admission_cause,
-          consumed: b2_consumed
-        )
-      }
-    }
+    ManifestUnobserved { cause: c } =>
+      stage_refused(
+        boundary: ManifestPopulationAdmitted,
+        cause: ManifestUnobservable { cause: c },
+        consumed: b2_consumed
+      )
+    ManifestObserved { content: _ } =>
+      observed_manifest_b2_standing(
+        overlay_resolved: overlay_resolved,
+        admitted: admitted,
+        admission_cause: admission_cause,
+        consumed: b2_consumed,
+        population_digest: population_digest
+      )
   }
 
   let b2_ok = match b2.standing {
@@ -622,9 +747,7 @@ fn run_product_receipt_stage(txn: String, manifest_identity: String, entry: Stri
     observations: [
       BoundaryObservation {
         boundary: HostDerivesManifest,
-        standing: if manifest_read.success { BoundaryCompleted } else {
-          BoundaryRefused { cause: ManifestNotProduced }
-        },
+        standing: manifest_boundary1_standing(o: manifest_observation),
         consumed: ArtifactIdentityAbsent { cause: BoundaryNotReached },
         produced: b1_produced
       },

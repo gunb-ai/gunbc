@@ -1,5 +1,6 @@
 module v2.lens.effect_reach
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.lens.module_graph { path_matches_touched }
@@ -21,7 +22,7 @@ import v2.std.algebra {
   TailAbsent
 }
 import std.algebra { list_snoc_item }
-import v2.std.collection { Absent, List, Present }
+import v2.std.collection { Absent, Present }
 import v2.std.data_index {
   DataInitDecl,
   data_init_decl_facts_live,
@@ -50,7 +51,6 @@ import v2.std.fn_index {
   is_path_like_lexeme
 }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,
@@ -84,7 +84,7 @@ fn callee_text_is_host_sink(text: String) -> Bool {
 }
 
 fn data_init_belongs_to_modules(decl: DataInitDecl, modules: List<String>) -> Bool {
-  any(xs: modules, predicate: fn(m) { string_eq(a: decl.module, b: m) })
+  any(xs: modules, predicate: fn(m) { decl.module == m })
 }
 
 fn data_inits_in_modules(
@@ -110,15 +110,15 @@ fn data_init_fp_matches_path(decl: DataInitDecl, path: String) -> Bool {
 }
 
 fn sink_kind_for_callee(callee_text: String) -> HostEffectSinkKind {
-  if string_eq(a: callee_text, b: "Read")
-    || string_eq(a: callee_text, b: "Filesystem.Read") {
+  if callee_text == "Read"
+    || callee_text == "Filesystem.Read" {
     FilesystemReadSink
-  } else if string_eq(a: callee_text, b: "WitnessBin.Run")
-    || string_eq(a: callee_text, b: "gunbc.WitnessBin.Run") {
+  } else if callee_text == "WitnessBin.Run"
+    || callee_text == "gunbc.WitnessBin.Run" {
     WitnessBinRunSink
-  } else if string_eq(a: callee_text, b: "Run")
-    || string_eq(a: callee_text, b: "shell.Exec.Run")
-    || string_eq(a: callee_text, b: "Exec.Run") {
+  } else if callee_text == "Run"
+    || callee_text == "shell.Exec.Run"
+    || callee_text == "Exec.Run" {
     ShellExecRunSink
   } else {
     UnknownHostEffectSink
@@ -130,8 +130,8 @@ fn flow_eq(a: EffectReachFlow, b: EffectReachFlow) -> Bool {
     EffectReachFlow { sink: sa, path_literal: pa, init_literal_fp: fpa } =>
       match b {
         EffectReachFlow { sink: sb, path_literal: pb, init_literal_fp: fpb } =>
-          string_eq(a: pa, b: pb)
-            && string_eq(a: fpa, b: fpb)
+          pa == pb
+            && fpa == fpb
             && sink_kind_eq(a: sa, b: sb)
       }
   }
@@ -185,7 +185,7 @@ fn path_literal_from_lexeme(
         } else {
           ""
         }
-      } else if string_eq(a: decl.name, b: text) && data_init_is_path_literal(decl: decl) {
+      } else if decl.name == text && data_init_is_path_literal(decl: decl) {
         decl.name
       } else {
         acc

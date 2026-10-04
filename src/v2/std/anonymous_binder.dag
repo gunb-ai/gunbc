@@ -1,10 +1,9 @@
 module v2.std.anonymous_binder
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_reverse }
-import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
 import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 
@@ -63,6 +62,56 @@ fn fresh_type_variable(path: List<Int>, label: Symbol) -> Symbol {
     if acc == "" { integer_int_to_decimal_string(value: i) } else { acc + "." + integer_int_to_decimal_string(value: i) }
   })
   symbol_intern_lexeme(lexeme: fresh_type_variable_prefix() + p + ":" + symbol_lexeme(sym: label) + ">")
+}
+
+// A FOLD'S PERSISTENT CARRIER IS A GENERATED VALUE BINDER, AND IT MAY NOT BORROW THE AUTHORED STEP
+// PARAMETER'S SPELLING. The fold encoding is
+// Bind { carrier := init, Loop { step, domain, carrier, bound, realized } }: the Bind's binder is a slot
+// that persists ACROSS iterations, while the step's first formal is bound FRESHLY for one invocation of
+// an ordinary callable. They hold the same value at the call boundary and they are not the same binding
+// occurrence -- the author wrote only the formal, and the compiler introduces the slot.
+//
+// WHY THIS MINT EXISTS AT ALL: v2.compiler.fold_lowering used to spell the slot with the step's own first
+// binder symbol, so the lowered tree held two visible binders with one name and v2.compiler.resolve's
+// value-binder admission refused the inner one -- correctly, against the tree it received. The repair is
+// here rather than in the admission: an exception keyed on "same spelling at a synthetic occurrence near a
+// carrier edge" would put fold semantics inside the general binder law and rest on a heuristic, and
+// OccurrenceSynthetic states only that there is NO authored occurrence, which is not a semantic identity.
+//
+// NAMED BY STRUCTURE, like the type variable above and for the same reason: the digest is the content hash
+// of the STEP, so two folds whose scopes can overlap get different carriers. A nested fold's step strictly
+// contains the inner fold, so their digests differ; two sibling folds with identical steps share a digest
+// and that is harmless, because neither Bind's frame contains the other and the admission refuses only a
+// binder hiding a VISIBLE one. It is not derived from an occurrence or from traversal order, so an edit
+// elsewhere in the declaration does not rename it.
+//
+// THE RELATION TO THE STEP IS POSITIONAL, NEVER NOMINAL. A consumer that needs the step's accumulator
+// formal reads the step callable's first declared parameter; a consumer that needs the slot reads the
+// carrier edge. Nothing may infer one from the other by equal spelling -- `<` is not an identifier
+// character, so after this mint they can never be equal.
+fn fold_carrier_prefix() -> String {
+  "<fold-carrier@"
+}
+
+fn fresh_fold_carrier(step_digest: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: fold_carrier_prefix() + step_digest + ">")
+}
+
+// A SYNTHESIZED STEP'S ACCUMULATOR FORMAL. A callback operation (map, filter, any, all) has no authored
+// step, so v2.compiler.body_lowering_fold builds one, and its first formal needs a name no author can
+// write. It is keyed by the CALLBACK's content hash for the same reason the slot is keyed by the step's:
+// a callback nested inside another's body has different content, so the inner formal never hides the
+// outer one. It is distinct from the slot's prefix, so the formal and the slot are never one spelling.
+fn fold_accumulator_prefix() -> String {
+  "<fold-accumulator@"
+}
+
+fn fresh_fold_accumulator(callback_digest: String) -> Symbol {
+  symbol_intern_lexeme(lexeme: fold_accumulator_prefix() + callback_digest + ">")
+}
+
+fn is_fold_carrier_binder(sym: Symbol) -> Bool {
+  starts_with(s: symbol_lexeme(sym: sym), prefix: fold_carrier_prefix())
 }
 
 fn fresh_return_type_variable(path: List<Int>) -> Symbol {

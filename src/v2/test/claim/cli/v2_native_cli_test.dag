@@ -18,6 +18,8 @@ import v2.cli.compile_cli {
   CliTargetRust,
   CliTargetSwift,
   CliUsageRefused,
+  CliDifferentialReported,
+  CliIfArmReaderDifferential,
   cli_emit_target_spelling,
   v2_cli_exit,
   v2_cli_parse,
@@ -29,7 +31,6 @@ import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -68,6 +69,7 @@ fn plan_first_root(plan: CliPlan) -> String {
             HeadAbsent => ""
             HeadFound { value: first } => first
           }
+        CliIfArmReaderDifferential { source_roots: _ } => ""
       }
   }
 }
@@ -79,6 +81,8 @@ fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
     CliUsageRefused { reason: reason, detail: _ } => reason
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } =>
       ^cli_outcome_was_not_refused
+    CliDifferentialReported { text: _, observed: _, detail: _ } =>
+      ^cli_outcome_was_not_refused
   }
 }
 
@@ -88,6 +92,7 @@ fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
     CliCensusRefused { reason: _, detail: _, text: _ } => false
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => true
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }
 
@@ -259,6 +264,7 @@ fn plan_is_target(plan: CliPlan, expected: CliEmitTarget) -> Bool {
       match verb {
         CliEmitClosure { entry: _, source_roots: _, target: target } =>
           cli_emit_target_spelling(t: target) == cli_emit_target_spelling(t: expected)
+        CliIfArmReaderDifferential { source_roots: _ } => false
       }
   }
 }
@@ -417,9 +423,9 @@ test fn an_emit_refusal_exits_general_error_holds() -> Bool {
 // the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
 // which on every such refusal is the same grammar-global advisory, so three different broken
 // entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
-data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
+data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
 
-data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
+data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport std.types { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
 
 fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -470,5 +476,6 @@ test fn a_trailing_token_refusal_locates_its_fatal_in_the_file_holds() -> Bool {
         && string_contains(s: detail, pattern: "parse_g0_tokens_remain @ cli_probe_trailing_cu bytes ")
     CliUsageRefused { reason: _, detail: _ } => false
     CliEmitted { text: _, closure_size: _, refused_count: _, refusal_detail: _ } => false
+    CliDifferentialReported { text: _, observed: _, detail: _ } => false
   }
 }

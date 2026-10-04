@@ -29,21 +29,26 @@ test fn witness_scale_well_formed() -> Bool {
   scale_well_formed()
 }
 
-// THE PIN MOVED 13 -> 14 WITH `DispatchTransitionInhibited`, 14 -> 22 WITH RLM-1, and 22 -> 25
+// THE PIN MOVED 13 -> 14 WITH `DispatchTransitionInhibited`, 14 -> 22 WITH RLM-1, 22 -> 25
 // WITH three LaunchNotAgentWork exemplars (one per NonAgentWorkMode; wire labels operator_exclusive,
-// external_lead, calendar_observation). 25 = Spawned + SpawnFailed + one SpawnNotAdmitted per
-// launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
+// external_lead, calendar_observation), and 25 -> 26 WITH LaunchCenteringAbsent (the 2026-09-19
+// centering gate; wire label centering_absent), and 26 -> 27 WITH SupervisorConvened (the
+// 2026-09-22 supervisor escalation path; wire label supervisor_convened), and 27 -> 18 WITH the
+// readiness collapse (2026-09-30): the eight per-fact node refusals and the three non-agent-work
+// exemplars became the one LaunchNotReady { missing } (wire label not_ready), and 18 -> 19 WITH the
+// G5 placement refusal (2026-10-03; wire label no_placement_grant). 19 = Spawned +
+// SupervisorConvened + SpawnFailed + one SpawnNotAdmitted
+// per launch_refusal_exemplars. Maintenance rather than a loosening: the roster is one exemplar
 // per outcome variant over a CLOSED coproduct, so the literal pins a hand-enumerated fixture's
 // size and not a measured population. The two clauses above it are the ones with the failure
 // mode -- both directions of totality, derived on each side -- and they held through this
 // change because the component's states are `map`ped from the label authority rather than
 // listed beside it. What this literal catches is a variant added to the wire without its
-// exemplar, which is the half derivation cannot see. A 26 here was a miscount (23+3 as if
-// the 23 already excluded Spawned/SpawnFailed).
+// exemplar, which is the half derivation cannot see.
 test fn witness_dispatch_button_states_total_over_wire() -> Bool {
   dispatch_button_wire_total()
     && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
-    && belt_dispatch_all_status_labels().length() == 25
+    && belt_dispatch_all_status_labels().length() == 19
 }
 
 test fn witness_dropped_state_is_located_red() -> Bool {

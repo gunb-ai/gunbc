@@ -1,0 +1,50 @@
+module gunbc.roadmap_session_client
+
+import extdeps.languages.typescript.program {
+  TsStmt, ts_ident, ts_lit_str, ts_member, ts_call,
+  ts_arrow, ts_block, ts_const, ts_return, ts_if,
+  ts_new, ts_prefix, ts_object, ts_field,
+}
+
+// THE ONE SESSION READ (2026-09-27): the emitted client names GET /auth/session ONCE — a single
+// promise every consumer rides. Before this module, the tracker bundle's inline assignment and
+// the account area's header swap each carried their own fetch of the same route with different
+// option sets and different failure shapes; now the read is one const, emitted before both
+// consumers (roadmap_component's dispatch_client_program_for). The read presents the session
+// cookie (credentials same-origin) and refuses cached standings (cache no-store); a non-OK
+// response rejects, so each consumer's catch renders the honest unauthenticated state — the
+// account area leaves Sign in, the assignment surfaces disable with the session-unavailable
+// title. THE CSRF TOKEN IS NOT HERE: the session wire carries viewer + principal + expiry and
+// no csrf (roadmap_serve's auth_session_body); the assignment POST's csrf stays single-sourced
+// from the /assignment context response (gunbc.roadmap_inline_assignment), and the account area
+// adds no write surface at all — sign out is the target's native form POST, safe by the session
+// cookie's SameSite=Lax seam (the logout handler needs no csrf proof).
+fn session_read_bind_statements() -> List<TsStmt> {
+  [
+    ts_const(name: "gunbcSessionRead", value: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_ident(name: "fetch"),
+          args: [
+            ts_lit_str(value: "/auth/session"),
+            ts_object(fields: [
+              ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")),
+              ts_field(key: "cache", value: ts_lit_str(value: "no-store")),
+            ]),
+          ]),
+        property: "then"),
+      args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")),
+          then: ts_block(stmts: [
+            ts_return(expr: Present { value: ts_call(
+              callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"),
+              args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Session read failed")])]) }),
+          ]),
+          else_stmt: none),
+        ts_return(expr: Present { value: ts_call(
+          callee: ts_member(object: ts_ident(name: "response"), property: "json"),
+          args: []) }),
+      ]))])),
+  ]
+}

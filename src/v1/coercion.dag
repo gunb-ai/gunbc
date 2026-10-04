@@ -136,8 +136,7 @@ data type_reference_identity_note: String = "A realization decision is made at R
 fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
-    "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
-    "Bool" => ["src/v2/std/logic.dag"]
+    "String" => ["src/v2/std/text.dag"]
     _ => []
   }
 }
@@ -171,9 +170,11 @@ data structural_declaration_gate_note: String = "Companion to checkpoint_table_b
 // still holds, its premise does not, and a silent rewrite would erase the argument.
 //
 // NOT DELETED, and the reason is a dependency rather than caution: the ProvenUniqueKernelBinding
-// proofs for BOTH "String" and "Bool" in gunbc.rust_source_type_bindings checkpoint_row_migration_rows
-// cite structural_declaration_modules_for BY NAME as the mechanism gating their second declaration.
-// The roster is load-bearing for two standing proofs, so a vacuous row inside it is a finding to
+// proof for "String" in gunbc.rust_source_type_bindings checkpoint_row_migration_rows cites
+// structural_declaration_modules_for BY NAME as the mechanism gating its second declaration. (The
+// "Bool" row left the roster with the Bool de-fork: v2.std.logic's second declaration was retired,
+// so std.types Bool is the only one and there is nothing left to gate.) The roster is load-bearing
+// for a standing proof, so a vacuous row inside it is a finding to
 // file, not a line to cut in a change about how the roster is asked.
 fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenance) -> Bool {
   match p {
@@ -183,7 +184,7 @@ fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenan
   }
 }
 
-data numeric_realization_identity_note: String = "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account."
+data numeric_realization_identity_note: String = "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is the naturals' one declaration and realizes natively (gunbc.structural_realization_bindings kernel_grounding_rows binds it to the kernel integer), while a user-declared Peano coproduct spelled Nat in another module must NOT -- so a bare-name rule realizes the wrong one. (Until the Nat de-fork, operator ruling A 2026-09-30, the second declaration was v2.std.nat.Nat, in the corpus.) decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account."
 
 data numeric_realization_roster_extension_note: String = "THIS ROSTER IS A LIVE ENUMERATION AND A ROW MAY ONLY BE ADDED FOR A DECLARATION WHOSE NATIVE REALIZATION IS ALREADY TRUE, NEVER TO MAKE A FAILING SITE COMPILE. A module belongs here when the types it declares ARE the host numeric type at the target -- dag/std/nat.dag and dag/std/integer.dag are the two grounded numeric authorities, and the <kernel: prefix covers declarations the seed mints with no source file. Adding a module to silence an E0308 or an E0109 at some call site is the §5 workaround: it converts one site's diagnostic into a corpus-wide realization change, and it does so by editing the roster rather than the fact the roster reports. The tell is that the author cannot say what the added module's type IS at the target without referring to the site that failed. If a site needs a realization this roster does not grant, the question is whether that declaration is genuinely a host numeric -- and if it is not, the fix is at the site or in the checkpoint binding, never here. This enumeration is itself provisional: it exists because there is no corpus-side declaration-to-Rust-type binding yet, and it dissolves into that binding when it lands -- see checkpoint_table_bypasses_identity_note for the two-authority shape."
 

@@ -111,6 +111,7 @@ type SharedTypeNameRow {
 type ForkResolution
   = ResolvedByRenamingV2 { renamed_to: String, citation: String }
   | ResolvedByDeletingV2 { reason: String }
+  | ResolvedByDeletingDag { reason: String }
   | ResolvedByRenamingDag { renamed_to: String, citation: String }
   | ResolvedByRehomingBothToExtdeps { authority: String, citation: String }
 
@@ -191,42 +192,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     disposition: ForkOpen { reason: "next PR of the de-fork wave (the v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`)" }
   },
   SharedTypeNameRow {
-    names: ["String"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= FreeMonoid<Char>` → `std.algebra` `FreeMonoid`, `std.types` `Char`",
-      v2_side: "`v2.std.text` `String`: same referents; `v2.std.node` `String`: opaque kernel host text (gunbc#12760), a different type under the same name, bound only where no other String declaration is visible",
-      class: "the structural pair is one concept, two declarations (duplicate); the v2.std.node host-text String is a distinct concept, not a third copy (gunbc.recurring_failure_mode carrier_by_spelling)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
-    names: ["List"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= FreeMonoid<element>` → `std.algebra` `FreeMonoid`",
-      v2_side: "`= std.algebra.FreeMonoid<T>` → same",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
-    names: ["Bool"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`std.types` `= True \\| False`",
-      v2_side: "`v2.std.logic` `= True \\| False` (arms are two more same-name declarations)",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
-    names: ["Nat"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= CommutativeSemiring<Magnitude>`",
-      v2_side: "`= Zero \\| Succ` (Peano coproduct)",
-      class: "same concept, divergent model"
-    },
-    disposition: ForkNeedsDecisionRecord { family: "integer family root" }
-  },
-  SharedTypeNameRow {
     names: ["Int", "UInt"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.nat` `Nat` (via `std.algebra` `GroupCompletion`)",
@@ -284,9 +249,24 @@ data defork_census_rows: List<SharedTypeNameRow> = [
 
 data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
+    names: ["String"],
+    resolution: ResolvedByDeletingDag { reason: "operator-ruled retirement of `std.string_type` `String` (`= FreeMonoid<Char>`), the duplicate of `v2.std.text` `String`. It had zero importers after gunbc#12512 deleted the 81 that used it as host text (XL-0T ruling B), verified by the #12760 literal-site census. `v2.std.text` `String` stays the one structural declaration, and `v2.std.node` `String` is the distinct host-text concept (gunbc.recurring_failure_mode carrier_by_spelling)" },
+    change: 13089
+  },
+  ResolvedSharedTypeName {
+    names: ["Nat"],
+    resolution: ResolvedByDeletingV2 { reason: "operator ruling A (2026-09-30): the carrier is Peano, declared once in `std.nat` and realized as the kernel integer (`gunbc.structural_realization_bindings` `kernel_grounding_rows`); the `v2.std.nat` declaration is deleted, `std.magnitude` retired, and the semiring moved to inhabitance" },
+    change: 12846
+  },
+  ResolvedSharedTypeName {
     names: ["Float"],
     resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
     change: 12547
+  },
+  ResolvedSharedTypeName {
+    names: ["Bool"],
+    resolution: ResolvedByDeletingV2 { reason: "per-name de-fork ruling A (neat-boar-16, 2026-09-28): `std.types` `Bool` survives because `v2.std.logic` already reaches `std.types` through its imports, so only that direction is acyclic; the coproduct and the host bool are a bijection, so the structural route it carried (BooleanUnfold literal row, declared-connective rows) was a second representation of one fact and was deleted with it" },
+    change: 12583
   },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],
@@ -319,6 +299,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     change: 12252
   },
   ResolvedSharedTypeName {
+    names: ["List"],
+    resolution: ResolvedByDeletingV2 { reason: "one concept, two declarations of `= FreeMonoid`; `std.types` keeps it because `v2.std.collection` already imports `std.types`, so the reverse import would be a cycle. Its importers re-point to `std.types` and the name stays bare, since the container-arity authority is bare-keyed" },
+    change: 12526
+  },
+  ResolvedSharedTypeName {
     names: ["TestClaim"],
     resolution: ResolvedByRenamingDag { renamed_to: "AssertionClaim", citation: "a name collision resolved by renaming apart, not a grounding merge" },
     change: 5640
@@ -344,6 +329,7 @@ fn census_resolution_text(r: ForkResolution) -> String {
   match r {
     ResolvedByRenamingV2 { renamed_to, citation } => concat(concat(concat("v2 side renamed `", renamed_to), "` — "), citation)
     ResolvedByDeletingV2 { reason } => concat("v2 side deleted — ", reason)
+    ResolvedByDeletingDag { reason } => concat("dag side deleted — ", reason)
     ResolvedByRenamingDag { renamed_to, citation } => concat(concat(concat("dag side renamed `", renamed_to), "` — "), citation)
     ResolvedByRehomingBothToExtdeps { authority, citation } => concat(concat(concat("both sides deleted; the concept is homed at `", authority), "` — "), citation)
   }

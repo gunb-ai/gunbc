@@ -1,5 +1,6 @@
 module v2.std.compilers.target_model
 
+import std.types { List }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
@@ -33,7 +34,6 @@ import v2.std.algebra {
   list_tail
 }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -188,9 +188,6 @@ import v2.std.qualified_name {
   parameter_reference_path_optional,
   lexical_reference_label_optional,
   declaration_reference_path_optional
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.text {
   Char,
@@ -1371,10 +1368,16 @@ fn target_text_is_empty(t: TargetText) -> Bool {
   t.empty
 }
 
-fn bound_tokens_source_text(
+// THE FLAT TOKEN FOLD CONSULTS THE SAME EMIT-TRANSFORM MAP AS THE RELATION-ROW ROUTE. It read only
+// the lexer and the binding spellings, so a target whose separation is declared on its token classes
+// (token_class_emit_transforms) lost it on this route and its tokens ran together: the dag target
+// wrote a Bind as "letx=ainx", one identifier. A transform is a fact about how a TOKEN CLASS
+// renders, whichever fold spells the token, so both folds reach layout_or_atom_in.
+fn bound_tokens_source_text_with_transforms(
   tokens: List<ConcreteSyntaxToken>,
   lex: LexRules,
-  binding_spellings: Map<Symbol, String>
+  binding_spellings: Map<Symbol, String>,
+  transforms: Map<Symbol, TokenClassEmitTransform>
 ) -> Outcome<TargetText> {
   fold_list(
     xs: tokens,
@@ -1388,19 +1391,38 @@ fn bound_tokens_source_text(
               bind_outcome(
                 o: lex_rules_literal_for_class(rules: lex, token_class: tc),
                 f: fn(spelling) {
-                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                  bind_outcome(
+                    o: layout_or_atom_in(transforms: transforms, token_class: tc, spelling: spelling),
+                    f: fn(text) { Accepted { value: target_text_seq(acc: partial, next: text), diagnostics: ad } }
+                  )
                 }
               )
-            BoundToken { token_class: _, binding: b } =>
+            BoundToken { token_class: tc, binding: b } =>
               bind_outcome(
                 o: bound_spelling_from_map(binding_spellings: binding_spellings, binding: b),
                 f: fn(spelling) {
-                  Accepted { value: target_text_seq(acc: partial, next: text_atom(lexeme: spelling)), diagnostics: ad }
+                  bind_outcome(
+                    o: layout_or_atom_in(transforms: transforms, token_class: tc, spelling: spelling),
+                    f: fn(text) { Accepted { value: target_text_seq(acc: partial, next: text), diagnostics: ad } }
+                  )
                 }
               )
           }
       }
     }
+  )
+}
+
+fn bound_tokens_source_text(
+  tokens: List<ConcreteSyntaxToken>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<TargetText> {
+  bound_tokens_source_text_with_transforms(
+    tokens: tokens,
+    lex: lex,
+    binding_spellings: binding_spellings,
+    transforms: target_model_emit_transforms_empty
   )
 }
 
@@ -1524,8 +1546,8 @@ fn bound_token_spelling_from_model(
   )
 }
 
-fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) -> Outcome<TargetText> {
-  match map_get(target.token_class_emit_transforms, token_class) {
+fn layout_or_atom_in(transforms: Map<Symbol, TokenClassEmitTransform>, token_class: Symbol, spelling: String) -> Outcome<TargetText> {
+  match map_get(transforms, token_class) {
     Accepted { value: Present { value: transform }, diagnostics: d } =>
       match transform {
         EmitLineBreaks { before: b, after: a } =>
@@ -1540,6 +1562,10 @@ fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) ->
       outcome_with_diagnostics(value: text_atom(lexeme: spelling), diagnostics: d)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
+}
+
+fn layout_or_atom(target: TargetModel, token_class: Symbol, spelling: String) -> Outcome<TargetText> {
+  layout_or_atom_in(transforms: target.token_class_emit_transforms, token_class: token_class, spelling: spelling)
 }
 
 // THE CARRIER-NATIVE TOKEN SPELLING: the lexeme (fixed: the lex literal; bound: the binding's
@@ -1824,11 +1850,37 @@ type TargetConditionalShape {
   delimiting: ConditionalDelimiting
 }
 
+// THE TOKEN BETWEEN A BINDING AND ITS BODY, WHEN THE TARGET HAS ONE. `let k = v in b` (`in`) and the
+// statement-sequenced C/Rust/TypeScript forms (`;`) name it. A target whose let is a STATEMENT and
+// has no separator token (dag: statement `let` only, `let x = e in body` dropped by the 2026-10-02
+// zero-ambiguity decisions) declares Absent, and a core Bind is emitted as a block that holds the
+// binding as its first statement and the body as its last: `{ let k = (v) { b } }`
+// (bind_let_block_scoped_tokens). The value is parenthesised and the body braced so that no
+// continuation of the value can absorb the body -- a call suffix, an operator or a brace literal
+// cannot follow a closed group into a block -- whatever the value and body are; the outer braces give
+// the binding a statement position wherever the Bind stands, an expression position included.
 type TargetBindLetShape {
   let_token: Symbol
   assign_token: Symbol
-  in_token: Symbol
+  in_token: Optional<Symbol>
 }
+
+// Absent is carried in the projection bundle as its own atom, never as a missing field: a bundle that
+// lost the field still refuses at decode rather than reading as "no separator".
+fn target_bind_let_separator_atom(in_token: Optional<Symbol>) -> Symbol {
+  match in_token {
+    Present { value: t } => t
+    Absent => ^target_bind_let_no_separator
+  }
+}
+
+fn target_bind_let_separator_of_atom(atom: Symbol) -> Optional<Symbol> {
+  if atom == ^target_bind_let_no_separator { target_bind_let_separator_absent() } else { target_bind_let_separator_present(token: atom) }
+}
+
+fn target_bind_let_separator_absent() -> Optional<Symbol> { Absent }
+
+fn target_bind_let_separator_present(token: Symbol) -> Optional<Symbol> { Present { value: token } }
 
 type TargetLoopShape {
   loop_token: Symbol
@@ -3011,7 +3063,7 @@ fn decode_bind_let_shape_bundle(bundle: Node) -> Outcome<TargetBindLetShape> {
                 TargetBindLetShape {
                   let_token: let_token,
                   assign_token: assign_token,
-                  in_token: in_token
+                  in_token: target_bind_let_separator_of_atom(atom: in_token)
                 }
               )
             }
@@ -6492,6 +6544,62 @@ fn bind_let_value_producing_tokens(
   value_tokens: List<ConcreteSyntaxToken>,
   body_tokens: List<ConcreteSyntaxToken>
 ) -> List<ConcreteSyntaxToken> {
+  match projection.let_form.in_token {
+    Present { value: in_token } =>
+      bind_let_separated_tokens(projection: projection, in_token: in_token, key_tokens: key_tokens, value_tokens: value_tokens, body_tokens: body_tokens)
+    Absent =>
+      bind_let_block_scoped_tokens(projection: projection, key_tokens: key_tokens, value_tokens: value_tokens, body_tokens: body_tokens)
+  }
+}
+
+// `{ let k = ( v ) { b } }`, with the target's own block and group delimiters (closure body and
+// primitive apply). See TargetBindLetShape for why each delimiter is there.
+fn bind_let_block_scoped_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [
+              FixedToken { token_class: projection.closure_form.body_open },
+              FixedToken { token_class: projection.let_form.let_token }
+            ],
+            right: key_tokens
+          ),
+          right: [
+            FixedToken { token_class: projection.let_form.assign_token },
+            FixedToken { token_class: projection.primitive_apply_form.open }
+          ]
+        ),
+        right: value_tokens
+      ),
+      right: [
+        FixedToken { token_class: projection.primitive_apply_form.close },
+        FixedToken { token_class: projection.closure_form.body_open }
+      ]
+    ),
+    right: list_append(
+      left: body_tokens,
+      right: [
+        FixedToken { token_class: projection.closure_form.body_close },
+        FixedToken { token_class: projection.closure_form.body_close }
+      ]
+    )
+  )
+}
+
+fn bind_let_separated_tokens(
+  projection: TargetValueExpressionProjection,
+  in_token: Symbol,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
   list_append(
     left: list_append(
       left: list_append(
@@ -6509,7 +6617,7 @@ fn bind_let_value_producing_tokens(
         right: value_tokens
       ),
       right: [
-        FixedToken { token_class: projection.let_form.in_token }
+        FixedToken { token_class: in_token }
       ]
     ),
     right: body_tokens
@@ -8956,7 +9064,7 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
             target_model_named_edge(
               name: ^target_value_expr_field_in_token,
               target: target_model_type_atom_node(
-                identity: projection.let_form.in_token
+                identity: target_bind_let_separator_atom(in_token: projection.let_form.in_token)
               )
             )
           ]
@@ -13791,7 +13899,7 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     PositionalPrefixThenLabeledEdges =>
       target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
-    PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPlusNamedMarkerEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
 

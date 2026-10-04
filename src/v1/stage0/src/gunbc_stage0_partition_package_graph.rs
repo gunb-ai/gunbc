@@ -12,7 +12,6 @@ pub use crate::gunbc_stage0_executable_assembly_generated::{
     generated_host_shell_package_name, generated_host_shell_partition_dependencies,
     generated_next_pass_bin_name,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

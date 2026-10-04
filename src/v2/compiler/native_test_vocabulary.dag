@@ -1,6 +1,7 @@
 module v2.compiler.native_test_vocabulary
 
-import std.algebra { list_snoc_item }
+import std.algebra { FreeMonoid, list_snoc_item }
+import v2.std.algebra { fold_list }
 import v2.std.diagnostic {
   Diagnostic,
   Locus,
@@ -16,6 +17,9 @@ import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 import v2.std.optional { Optional }
+import v2.std.integer { Int }
+import v2.std.source_position { SourceByteColumn }
+import v2.std.collection { List }
 
 // THE NATIVE-TEST VERDICT VOCABULARY, HOMED BELOW BOTH OF ITS READERS.
 //
@@ -177,10 +181,60 @@ type NativeTestObservation {
 // parsed module node to read it from. It is what lets a module that IMPORTS the refused one be
 // told why its import cannot bind (NativeModuleResolveImportTargetFileRefused), instead of being
 // told only that a name is unbound. Absent means the file declares no module line.
+//
+// `chain` IS THE REFUSAL'S DIAGNOSTICS, EACH LINK WITH ITS POSITION, in carriage order: the head
+// first, the fatal last. It is what `head_reason` and `fatal_reason` were folded out of
+// (gunbc.recurring_failure_mode located_cause_folded_to_its_reason_at_a_result_boundary named this
+// row as that class's declared remainder). Positions are RESOLVED at the absorb, against the
+// refused file's own span index and text, so the row retains no occurrence id: a refused parse's
+// ids are re-minted by the next file, and a retained NodeLocus would resolve to the wrong one.
+// The two symbols stay because the door ledger and the lane classifier key on them.
 type NativeTestFileRefusal {
   path: Symbol
   module: Optional<QualifiedName>
   head_reason: Symbol
   fatal_reason: Symbol
+  chain: List<FileRefusalLink>
 }
 
+type FileRefusalLink {
+  reason: Symbol
+  at: FileRefusalAt
+}
+
+// WHERE ONE LINK POINTS, AND WHY IT HAS NO LINE WHEN IT HAS NONE. The column unit is BYTES
+// (v2.std.source_position SourceLineCol), named in the field. A locus in ANOTHER file is not
+// positioned against this one's text; an invariant port has no position by construction (the
+// grammar-construction residue heads every file this way); a node the span index does not cover
+// is unresolved, never guessed.
+type FileRefusalAt
+  = FileRefusalAtLine { line: Int, byte_column: SourceByteColumn }
+  | FileRefusalAtWholeFile
+  | FileRefusalAtOtherFile { file: Symbol }
+  | FileRefusalAtInvariant { invariant: Symbol }
+  | FileRefusalAtDeclaration { declaration: QualifiedName }
+  | FileRefusalAtUnresolvedNode
+
+
+// AN ACCEPTED FILE'S ADVISORIES, COUNTED RATHER THAN DROPPED. An Accepted front-end outcome may
+// carry non-fatal diagnostics (parse residue, body lowering, infer, the accumulator-copy lens), and
+// they are prepended to any later refusal of the same file. The context fold used to match them
+// away as `diagnostics: _`, so an accepted file's advisories were visible only when something
+// downstream refused, and only as the head of that refusal's chain. Each accepted file with any
+// advisory is one row here, carrying every advisory reason in chain order: the reasons are the
+// identities, and the count is their length -- never a separate number that could disagree. The
+// chain is non-empty BY CONSTRUCTION (head plus tail, the shape of NonEmptyDiagnostics it is read
+// from), so a row with no advisory has no constructor rather than a reader that must refuse it.
+type NativeTestFileAdvisories {
+  path: Symbol
+  head: Symbol
+  tail: FreeMonoid<Symbol>
+}
+
+fn native_test_file_advisories(path: Symbol, d: NonEmptyDiagnostics) -> NativeTestFileAdvisories {
+  NativeTestFileAdvisories {
+    path: path,
+    head: d.head.reason,
+    tail: fold_list(xs: d.tail, empty: [], cons: fn(acc, x) { list_snoc_item(xs: acc, item: x.reason) })
+  }
+}

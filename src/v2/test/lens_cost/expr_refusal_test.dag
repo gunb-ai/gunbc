@@ -9,9 +9,8 @@ import v2.lens.cost.expr {
   normalize_cost_expr_to_symbolic,
   size_of
 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.nat { Nat, Succ, Zero }
+import std.nat { Nat, Succ, Zero }
 import v2.std.node {
   Atom,
   Node,

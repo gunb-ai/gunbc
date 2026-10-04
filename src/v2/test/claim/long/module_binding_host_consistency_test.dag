@@ -23,7 +23,6 @@ import v2.std.collection { Absent, Present }
 import v2.std.algebra { Empty, length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
 

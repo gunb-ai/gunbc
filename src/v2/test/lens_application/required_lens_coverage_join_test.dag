@@ -1,5 +1,6 @@
 module v2.test.lens_application.required_lens_coverage_join
 
+import std.types { List }
 // THE EXECUTING CONSUMER OF THE REGISTRATION/OBSERVATION JOIN. The registration carries identity
 // and grain so that a witness can be joined back to the lens that produced it; this module is what
 // makes that claim green BY EXECUTION rather than by the fields existing. One positive control (a
@@ -50,9 +51,7 @@ import v2.compiler.compile {
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { Cons, Empty, fold_list, length, list_reverse }
 import std.algebra { list_append }
-import v2.std.collection { List }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }

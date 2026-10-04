@@ -1,12 +1,13 @@
 module v2.test.v2_native_route
 
+import std.types { List }
 
 import extdeps.bazel.label { LabelParsed, LabelRefused, render_label }
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern, target_pattern_matches
 }
 import gunbc.witness_v2_native_route {
-  native_route_admission_with, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
+  native_route_admission_with, native_route_head_advisories_attributed, NativeRouteLivePairStanding, LivePairRequired, LivePairExpectedRed,
   NativeRouteTestIdentity, native_route_identity_qualified, native_route_identities_unique,
   native_route_identity_member,
   native_route_universe_member,
@@ -71,10 +72,8 @@ import v2.std.optional { Absent, Optional, Present, optional_present, optional_a
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import v2.std.collection { List }
 import std.algebra { Cons }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
 
@@ -130,7 +129,7 @@ fn refused_row(
 }
 
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal, chain: [] }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
@@ -980,6 +979,33 @@ test fn an_unattributed_head_advisory_is_refused() -> Bool {
   )
 }
 
+// A HEAD THAT IS ITS OWN FATAL CAUSE IS NOT AN ADVISORY. The refusal below carries one diagnostic,
+// a body-lowering cause owned at FatalGrain only; reading the head as an advisory demanded a
+// HeadGrain row for it and refused. The clause now asks only about heads that differ from the
+// fatal cause, so this holds -- and the unowned advisory above still refuses.
+test fn a_bare_fatal_head_needs_no_advisory_ownership_holds() -> Bool {
+  native_route_head_advisories_attributed(receipt: receipt_over(
+    universe: [],
+    module_source_index: [],
+    population: [],
+    file_refusals: [file_refusal_row(
+      path: ^bare_fatal_path,
+      head: ^body_lowering_reason_call_argument_unread,
+      fatal: ^body_lowering_reason_call_argument_unread
+    )]
+  ))
+    && !native_route_head_advisories_attributed(receipt: receipt_over(
+      universe: [],
+      module_source_index: [],
+      population: [],
+      file_refusals: [file_refusal_row(
+        path: ^bare_fatal_path,
+        head: ^some_unowned_advisory,
+        fatal: ^body_lowering_reason_call_argument_unread
+      )]
+    ))
+}
+
 // ── admission: context refusals are bound to their observation ─────────────────────────────
 
 test fn a_context_refusal_without_its_file_refusal_is_refused() -> Bool {
@@ -1405,7 +1431,7 @@ test fn the_admission_summary_names_every_violated_clause() -> Bool {
 
 test fn the_declared_module_is_read_off_the_header_and_nothing_else() -> Bool {
   match native_lane_declared_module_name(
-    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport v2.std.logic { Bool }\nmodule not.the.header\n"
+    content: "// a leading annotation\n\nmodule v2.test.subject\n\nimport std.types { Bool }\nmodule not.the.header\n"
   ) {
     Present { value: declared } => declared == "v2.test.subject"
     Absent => false

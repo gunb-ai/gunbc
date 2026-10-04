@@ -2,17 +2,24 @@ module gunbc.structural_realization_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold }
-import std.operator_realization { StructuralOrderingBinding, StructuralConnectiveBinding }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
+import std.operator_realization { StructuralOrderingBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
 // std.operator_realization): which of THIS corpus's structural declarations supply a kernel literal,
 // and through which of their own constructors; and which declare an ordering, and by which
-// comparison. Keyed on the exact declaration, never on a spelling: std.nat Nat (a native-realizing
-// semiring alias) and v2.std.nat Nat (the Peano coproduct) share a spelling and only the second is
-// a row here. The sibling gunbc.rust_source_type_bindings answers the OTHER question -- which
-// declarations realize natively on the Rust target -- and a declaration is never in both: a native
-// realization takes the kernel literal directly and the host operator directly.
+// comparison. Keyed on the exact declaration, never on a spelling or a shape: std.nat Nat (the
+// naturals, realized as the kernel integer by the kernel_grounding_rows row below) and
+// test.fixture.structural_peano_nat StructuralNat (a user-declared Peano type) have the same
+// shape, and only the second has a literal and an ordering row here. The sibling
+// gunbc.rust_source_type_bindings answers the OTHER question -- which declarations realize natively
+// on the Rust target -- and a declaration is never in both: a native realization takes the kernel
+// literal directly and the host operator directly.
+//
+// XL-0N SUPERSEDED FOR std.nat Nat (operator default, 2026-09-30). These rows used to name
+// v2.std.nat Nat, the second declaration of the naturals. That declaration is gone -- there is one
+// Nat, in std.nat, realized as the kernel integer on every route -- and the structural realization
+// the lane built is kept inhabited by the fixture declaration, which is what it is now true of.
 //
 // A ROW MAY ONLY STATE A HOMOMORPHISM THAT IS ALREADY TRUE OF THE DESTINATION, never be added to
 // make a failing site compile (the same discipline gunbc.rust_source_type_bindings and
@@ -33,21 +40,10 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
   }
 }
 
-fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_variant: String, false_variant: String) -> LiteralHomomorphism {
-  LiteralHomomorphism {
-    source_kind: KernelBoolLiteral,
-    destination: decl_ref(module_path: module_path, decl_name: bool_decl),
-    element: none,
-    producer: BooleanUnfold {
-      true_variant: decl_ref(module_path: module_path, decl_name: true_variant),
-      false_variant: decl_ref(module_path: module_path, decl_name: false_variant)
-    }
-  }
-}
-
-// v2.std.logic Bool = True | False is gated structural on purpose (v1.compiler.coercion
-// structural_declaration_modules_for); the corpus-wide prelude std.types Bool realizes natively and
-// is NOT a row -- a kernel true/false at that boundary stays the host bool.
+// No Bool row: std.types Bool is the only Bool (the Bool de-fork retired v2.std.logic's structural
+// `Bool = True | False` and its BooleanUnfold producer with it), and it realizes natively, so a
+// kernel true/false at a Bool boundary stays the host bool with no homomorphism to ask. A Boolean
+// coproduct and the host bool are a bijection, so there was never information for a row to carry.
 // The text row is true by the definition of the free monoid: a string over an alphabet IS the free
 // monoid over that alphabet (std.string_type / v2.std.text both declare `type String =
 // FreeMonoid<Char>`), and the literal-to-carrier map is the unique monoid homomorphism reading the
@@ -61,8 +57,7 @@ fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_var
 // RustStdString row in gunbc.rust_source_type_bindings) and the kernel String never present that
 // structure and must never acquire a row -- a native realization takes the kernel literal directly.
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
-  peano_literal_homomorphism(module_path: "v2.std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev"),
-  boolean_literal_homomorphism(module_path: "v2.std.logic", bool_decl: "Bool", true_variant: "True", false_variant: "False"),
+  peano_literal_homomorphism(module_path: "test.fixture.structural_peano_nat", nat: "StructuralNat", zero: "StructuralZero", succ: "StructuralSucc", prev_field: "prev"),
   LiteralHomomorphism {
     source_kind: KernelStringLiteral,
     destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
@@ -80,16 +75,19 @@ fn structural_ordering_binding(carrier_module: String, carrier: String, compare_
 }
 
 data structural_ordering_rows: List<StructuralOrderingBinding> = [
-  structural_ordering_binding(carrier_module: "v2.std.nat", carrier: "Nat", compare_module: "v2.std.nat", compare: "nat_compare", ordering_module: "std.algebra", ordering: "Ordering")
+  structural_ordering_binding(carrier_module: "test.fixture.structural_peano_nat", carrier: "StructuralNat", compare_module: "test.fixture.structural_peano_nat", compare: "structural_nat_compare", ordering_module: "std.algebra", ordering: "Ordering")
 ]
 
-// Which structural carriers declare their connectives (&&, ||) host-realized. v2.std.logic Bool is
-// the corpus's ordinary Bool (True | False); its conjunction IS the host conjunction, which is why
-// this row may exist at all. A structural carrier with no row here refuses under a connective.
-fn structural_connective_binding(carrier_module: String, carrier: String) -> StructuralConnectiveBinding {
-  StructuralConnectiveBinding { carrier: decl_ref(module_path: carrier_module, decl_name: carrier) }
-}
-
-data structural_connective_rows: List<StructuralConnectiveBinding> = [
-  structural_connective_binding(carrier_module: "v2.std.logic", carrier: "Bool")
+// WHICH INDUCTIVE CARRIERS REALIZE AS THE KERNEL VALUE THEIR CONSTRUCTORS DENOTE
+// (std.literal_elaboration KernelGrounding). std.nat Nat is the naturals, and its host
+// representation is the machine integer on every seed route -- a REALIZATION fact bound to the
+// carrier (DESIGN section 3), which is why the carrier may be the accepted inductive definition and
+// still never run unary. The seed folds the carrier's constructors and constructor patterns into
+// kernel integers once, at the end of typechecking (v1.compiler.infer ground_kernel_views), so the
+// emitter and the interpreter read ONE tree and cannot disagree about it.
+//
+// A ROW MAY ONLY STATE A REALIZATION THAT IS ALREADY TRUE OF THE CARRIER ON EVERY ROUTE, under the
+// same discipline as the rows above: it is never added to make a failing site compile.
+data kernel_grounding_rows: List<KernelGrounding> = [
+  KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat") }
 ]

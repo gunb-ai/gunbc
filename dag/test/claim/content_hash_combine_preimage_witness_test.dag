@@ -1,5 +1,6 @@
 module test.claim.content_hash_combine_preimage_witness_test
 
+import std.types { List }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -7,9 +8,7 @@ import std.content_hash {
   content_hash_combine_structural
 }
 import v2.std.algebra { any, length }
-import v2.std.collection { List }
 import v2.std.fn_index { FnArrowDecl, callee_texts_in_decl, fn_arrow_decl_facts_live }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // gunbc#11637 cut 1. The structural combine relation is the Fnv1a64Structural family applied to a

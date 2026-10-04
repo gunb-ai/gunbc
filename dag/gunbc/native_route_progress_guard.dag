@@ -1,10 +1,10 @@
 module gunbc.native_route_progress_guard
 
+import std.types { List }
 import v2.std.algebra { any, count_where, fold_list, is_empty, length, list_flat_map, list_map }
 import std.algebra { list_append }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.compiler.native_test_vocabulary {
   NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval

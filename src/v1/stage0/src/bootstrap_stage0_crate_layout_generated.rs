@@ -10,7 +10,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "coproduct_reflection.rs",
     "data_initializer_identity.rs",
     "declaration_index.rs",
-    "resolved_graph_cache.rs",
+    "closure_identity.rs",
     "shared_typecheck_store.rs",
     "recorded_fixture.rs",
     "phase_profile.rs",

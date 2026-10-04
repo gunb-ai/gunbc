@@ -168,11 +168,7 @@ pub fn type_reference_identity_note() -> String {
 pub fn structural_declaration_modules_for(dag_name: String) -> Rc<Vec<String>> {
     match dag_name.clone().as_str() {
         "Hash" => Rc::new(vec!["src/v2/std/node.dag".to_string()]),
-        "String" => Rc::new(vec![
-            "src/v2/std/text.dag".to_string(),
-            "dag/std/string_type.dag".to_string(),
-        ]),
-        "Bool" => Rc::new(vec!["src/v2/std/logic.dag".to_string()]),
+        "String" => Rc::new(vec!["src/v2/std/text.dag".to_string()]),
         _ => Rc::new(vec![]),
     }
 }
@@ -212,7 +208,7 @@ pub fn provenance_declares_structurally(
 pub fn numeric_realization_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively, while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT -- so a bare-name rule realizes the wrong one. decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account.".to_string()
+            "Realization is keyed on the DECLARING MODULE of the type, never on the authored spelling alone. Two declarations may share a spelling -- std.nat.Nat is the naturals' one declaration and realizes natively (gunbc.structural_realization_bindings kernel_grounding_rows binds it to the kernel integer), while a user-declared Peano coproduct spelled Nat in another module must NOT -- so a bare-name rule realizes the wrong one. (Until the Nat de-fork, operator ruling A 2026-09-30, the second declaration was v2.std.nat.Nat, in the corpus.) decl_file is the resolved declaration's ident_span file; the empty string means identity is UNKNOWN at this site, which yields NO realization (render structurally) rather than a guess. This replaces the deleted rust_corpus_repr closure-provenance switch: what a declaration realizes as is a fact about that declaration and its target, never about which other sources happen to share the closure. RELOCATED here from v1.compiler.emit_rust (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335) alongside numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias -- completing the relocation structural_declaration_modules_for's own precedent already established for the negative-form (structural) half of this two-authority shape; emit_rust now imports rust_seed_host_numeric_alias back from here exactly as it already imports lookup_checkpoint, one direction, no cycle. See v1.compiler.emit_rust numeric_realization_relocation_note for the fuller account.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

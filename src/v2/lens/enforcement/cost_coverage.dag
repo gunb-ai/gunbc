@@ -1,5 +1,6 @@
 module v2.lens.enforcement.cost_coverage
 
+import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.compiler.normalized_tree { NormalizedTree }
 
 
@@ -279,7 +280,7 @@ fn cost_coverage_file_receipt(rel_path: String) -> CostCoverageFileReceipt {
       cost_coverage_rejected_file_receipt(
         rel_path: rel_path,
         stage: "ingest",
-        reason: d.head.reason
+        reason: diagnostics_fatal_reason(d: d)
       )
     Accepted { value: module_root, diagnostics: _ } =>
       cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root.root)

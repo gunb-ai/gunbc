@@ -1,0 +1,1359 @@
+module test.claim.spark.execution_cell_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
+import std.nat { Nat }
+import std.measure { token_count, token_count_value , second, second_count }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.execution_cell {
+  ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,
+  CellPhaseReadback, CellPhasePreparation, CellPhaseActivation, CellPhaseRollback,
+  execution_cell_phase_precedes, execution_cell_phases_in_contract_order,
+  execution_cell_actuations_in_contract_order,
+  ExecutionGeneration, execution_generation_of_intent, execution_generation_eq,
+  ExecutionCellActuation, ExecutionCellOperation, ExecutionCellPhaseResult,
+  ExecutionCellActuated, ExecutionCellPhaseRefused,
+  ExecutionCellRefusal,
+  ExecutionCellInventoryRefused, ExecutionCellQuiescenceRefused, ExecutionCellDisposalRefused,
+  ExecutionCellSettlementRefused, ExecutionCellReadbackRefused, ExecutionCellPreparationRefused,
+  ExecutionCellActivationRefused, ExecutionCellRollbackRefused,
+  ExecutionCellCohort, execution_cell_cohort_admit,
+  ExecutionCellPreparation, ExecutionCellAllPrepared, ExecutionCellPrepareHalted, execution_cell_preparation_verdict,
+  ExecutionCellActivation, ExecutionCellConverged, ExecutionCellPartiallyActivated,
+  ExecutionCellActivationRefusedBeforeStart, execution_cell_activation_verdict, execution_cell_rollback_members,
+  ExecutionCellSlotStanding, ExecutionCellSlotsFree, ExecutionCellSlotsOccupied, execution_cell_readback_standing,
+  ExecutionConservation, ExecutionConservationHeld, ExecutionConservationLeaked, execution_cell_conservation,
+  ExecutionCellGenerationObservation, ExecutionCellConvergence, ExecutionCellOneGeneration,
+  ExecutionCellGenerationSplit, ExecutionCellConvergenceRefused, execution_cell_convergence_of,
+}
+import gunbc.spark.systemd_execution_cell {
+  SystemdExecutionMember, systemd_member_key,
+  systemd_workload_header_safety_tokens,
+  systemd_workload_stall_seconds, systemd_workload_watchdog_poll_seconds,
+  systemd_workload_stall_tick, systemd_workload_stall_fired,
+  systemd_inventory_script, systemd_quiescence_script, systemd_disposal_script, systemd_settlement_script,
+  systemd_readback_script, systemd_prepare_script, systemd_activate_script, systemd_rollback_script,
+  systemd_profile_readback_script,
+  SystemdResidueClass, SystemdResidueUnitFailed, SystemdResidueStartRateTripped, SystemdResidueOrphanContainer,
+  systemd_residue_repair_phase,
+}
+import gunbc.spark.native_experiment_apply {
+  ArmExperimentActuationAdmission, ArmExperimentActuationAdmitted, ArmExperimentActuationRefused,
+  spark_native_experiment_default_actuation, spark_experiment_route, spark_native_experiment_actuation_dry,
+  spark_experiment_actuation_admit, spark_experiment_members,
+  spark_native_experiment_profile_anchor, spark_native_experiment_rank_profile_anchor,
+  spark_profile_readback_verdict,
+  SparkProfileReadbacksConverged, SparkProfileReadbackHalted,
+  SparkHeadProfileReadbackRefused, SparkRankProfileReadbackRefused,
+  SparkExperimentRouteResult,
+  spark_plan_targets_fragmentation, spark_experiment_workload_phase, spark_experiment_seat_window,
+  spark_seat_window_tokens, spark_seat_window_margin_tokens,
+  spark_workload_variants, spark_active_workload_variant, spark_workload_variant_named, spark_active_workload_variant_value,
+  spark_workload_mode_wire, SparkWorkloadVariant, SparkSeatsConcurrent, SparkSeatsSequential,
+  spark_churn_window_seconds, spark_churn_requests_per_seat, spark_churn_band_floor_tokens,
+  spark_allocator_sample_cadence_seconds, spark_churn_request_timeout_seconds,
+  SparkSeatWindowReady, SparkSeatWindowRefused,
+  SparkEndpointReadinessRefused, SparkPrefillSeatsRefused, SparkChurnRefused, SparkAllocatorSamplingRefused,
+}
+import gunbc.spark.arm_memory_experiment_observed {
+  arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
+  arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
+  arm_experiment_2026_09_27_liveness_repro_matrix,
+}
+import gunbc.spark.pair_serving_apply {
+  SparkPairHostApplyPlan, SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed,
+  spark_pair_apply_all_applied,
+}
+import gunbc.spark.pair_serving_launch_receipt { serving_standing }
+import gunbc.spark.native_serving_realization { glm_native_experiment_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name, glm_native_rank_unit_name, glm_native_head_log_path, glm_native_rank_log_path }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import gunbc.spark.serving_arm { serving_launch_profile_key, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4 }
+import gunbc.spark.arm_memory_fit {
+  arm_memory_experiment_runtime, ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan, arm_memory_subject_open_components,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused, ArmMemoryFitUnestablished,
+}
+
+// ── WHAT THIS SUITE ESTABLISHES ──────────────────────────────────────────────────────────────────
+//
+// The execution-cell contract (gunbc.spark.execution_cell) and its systemd/Docker realization
+// (gunbc.spark.systemd_execution_cell), consumed by the reshaped experiment bracket
+// (gunbc.spark.native_experiment_apply). Each witness names the receipt it locks out: run 2 (a
+// tripped start-rate counter and an orphan container blocked start admission downstream of every
+// cleanup hook) and run 3 (a sequential bracket whose ranks and head were never alive together).
+// The contract-level arms supply their inputs at the fold boundary (per DESIGN 3's witness rule);
+// the route-level arms supply the leg runner and keep the real wet entry as the inhabitance claim.
+
+fn fx_host(raw: String) -> HostIdentity {
+  raw as HostIdentity
+}
+
+fn fx_member(host: String, unit: NonEmptyStr) -> SystemdExecutionMember {
+  SystemdExecutionMember {
+    host: fx_host(raw: host),
+    unit_name: unit,
+    container_name: "glm-native-tp4" as NonEmptyStr,
+    log_path: if (unit as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
+    unit_text: "[Unit]\nfx\n",
+  }
+}
+
+fn fx_generation() -> ExecutionGeneration {
+  execution_generation_of_intent(intent_key: "fx-launch-intent" as NonEmptyStr)
+}
+
+fn fx_actuated(m: SystemdExecutionMember, p: ExecutionCellPhase) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellActuated { actuation: ExecutionCellActuation { member: m, phase: p, body: "fx" } }
+}
+
+fn fx_refused(r: ExecutionCellRefusal<SystemdExecutionMember>) -> ExecutionCellPhaseResult<SystemdExecutionMember> {
+  ExecutionCellPhaseRefused { refusal: r }
+}
+
+fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  SparkPairHostApplied { host: plan.host, detail: "ok", standing: serving_standing(attempts: []) }
+}
+
+fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  SparkPairHostApplyFailed { host: plan.host, cause: "planted leg failure" }
+}
+
+// ── THE ADMISSION'S INPUTS, SUPPLIED (DESIGN 3: a witness discriminates at one interface) ──────
+//
+// spark_experiment_actuation_admit is the interface every bracket, route, verdict and script claim
+// below is about, so they hand it its two inputs as values: a four-member cohort (one head, three
+// ranks) and the minted fragmentation-churn plan with a SHORT admitted duration. The duration is
+// supplied small on purpose: every bounded wait renders one poll word per five admitted seconds, so
+// the production figure (arm_memory_experiment_runtime) would make each claim re-render
+// thousands of words it never reads. Every relation these claims assert -- loops from the admitted
+// seconds, the churn window as its twelfth, the shared budget -- holds at any admitted figure.
+// The two producers of those inputs are each executed for real by an inhabitance claim below
+// (w_one_generation_identity_appears_on_every_member_unit, w_the_real_plan_targets_the_subjects_
+// open_obligations_at_the_one_admitted_runtime), and the dry entry's claims run the composed real
+// path end to end.
+data fx_admitted_seconds: Nat = 60
+
+fn fx_cohort() -> ExecutionCellCohort<SystemdExecutionMember> {
+  ExecutionCellCohort {
+    members: [
+      fx_member(host: "fx-head", unit: glm_native_head_unit_name),
+      fx_member(host: "fx-rank-1", unit: glm_native_rank_unit_name),
+      fx_member(host: "fx-rank-2", unit: glm_native_rank_unit_name),
+      fx_member(host: "fx-rank-3", unit: glm_native_rank_unit_name),
+    ],
+    generation: fx_generation(),
+  }
+}
+
+fn fx_plan() -> ArmMemoryExperimentPlan? {
+  match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentRefused { cause: _ } => none
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      Present { value: ArmMemoryExperimentPlan {
+        checkpoint: p.checkpoint,
+        runtime: p.runtime,
+        topology: p.topology,
+        workload: p.workload,
+        profile: p.profile,
+        targets: p.targets,
+        envelope_basis_points: p.envelope_basis_points,
+        max_runtime_seconds: fx_admitted_seconds,
+        expected_receipts: p.expected_receipts,
+        stop: p.stop,
+      } }
+  }
+}
+
+fn fx_actuation() -> ArmExperimentActuationAdmission {
+  match fx_plan() {
+    Absent => ArmExperimentActuationRefused { cause: "the minted fragmentation-churn plan refused" as NonEmptyStr }
+    Present { value: p } => spark_experiment_actuation_admit(cohort: fx_cohort(), plan: p)
+  }
+}
+
+// ── THE PHASE ORDER IS LAW ───────────────────────────────────────────────────────────────────────
+
+test fn w_phase_order_prior_generation_before_preparation_before_activation() -> Bool {
+  execution_cell_phase_precedes(a: CellPhaseInventory, b: CellPhaseSettlement)
+    && execution_cell_phase_precedes(a: CellPhaseQuiescence, b: CellPhaseSettlement)
+    && execution_cell_phase_precedes(a: CellPhaseDisposal, b: CellPhaseReadback)
+    && execution_cell_phase_precedes(a: CellPhaseSettlement, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: CellPhaseReadback, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: CellPhasePreparation, b: CellPhaseActivation)
+    && execution_cell_phase_precedes(a: CellPhaseActivation, b: CellPhaseRollback)
+    && execution_cell_phases_in_contract_order(ps: [CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement, CellPhaseReadback, CellPhasePreparation, CellPhaseActivation])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhasePreparation, CellPhaseSettlement])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhaseActivation, CellPhasePreparation])
+    && !execution_cell_phases_in_contract_order(ps: [CellPhaseReadback, CellPhaseInventory])
+}
+
+// ── THE COHORT MINT ──────────────────────────────────────────────────────────────────────────────
+
+test fn w_cohort_admission_refuses_empty_and_duplicate_rosters() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let m4 = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let empty = execution_cell_cohort_admit(members: [] as List<SystemdExecutionMember>, generation: g, member_key: systemd_member_key)
+  let dup = execution_cell_cohort_admit(members: [m1, m1, m2, m3], generation: g, member_key: systemd_member_key)
+  let good = execution_cell_cohort_admit(members: [m1, m2, m3, m4], generation: g, member_key: systemd_member_key)
+  (match empty { ExecutionCellCohortRefused { cause: _ } => true  _ => false })
+    && (match dup { ExecutionCellCohortRefused { cause: _ } => true  _ => false })
+    && (match good {
+      ExecutionCellCohortAdmitted { cohort: c } => length(c.members) == 4
+      _ => false
+    })
+}
+
+// ── PREPARATION IS ALL-OR-NOTHING ────────────────────────────────────────────────────────────────
+
+test fn w_preparation_failure_halts_and_starts_none() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let halt = execution_cell_preparation_verdict(results: [
+    fx_actuated(m: m1, p: CellPhasePreparation),
+    fx_actuated(m: m2, p: CellPhasePreparation),
+    fx_refused(r: ExecutionCellPreparationRefused { member: m3, cause: "planted rank-2 prepare failure" as NonEmptyStr }),
+    fx_actuated(m: m1, p: CellPhasePreparation),
+  ])
+  let all = execution_cell_preparation_verdict(results: map([m1, m2, m3], x => fx_actuated(m: x, p: CellPhasePreparation)))
+  (match halt {
+    ExecutionCellPrepareHalted { prepared: p, refusal: r } =>
+      length(p) == 2 && (match r { ExecutionCellPreparationRefused { member: _, cause: _ } => true  _ => false })
+    _ => false
+  })
+    && (match all {
+      ExecutionCellAllPrepared { actuations: a } => length(a) == 3
+      _ => false
+    })
+}
+
+// ── PARTIAL ACTIVATION ROLLS BACK THE STARTED MEMBERS ────────────────────────────────────────────
+
+test fn w_partial_activation_rolls_back_exactly_the_started_members() -> Bool {
+  let g = fx_generation()
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let partial = execution_cell_activation_verdict(results: [
+    fx_actuated(m: m1, p: CellPhaseActivation),
+    fx_actuated(m: m2, p: CellPhaseActivation),
+    fx_refused(r: ExecutionCellActivationRefused { member: m3, cause: "planted rank-3 start failure" as NonEmptyStr }),
+  ])
+  let refused_first = execution_cell_activation_verdict(results: [
+    fx_refused(r: ExecutionCellActivationRefused { member: m1, cause: "planted first start failure" as NonEmptyStr }),
+    fx_actuated(m: m2, p: CellPhaseActivation),
+  ])
+  let converged = execution_cell_activation_verdict(results: map([m1, m2, m3], x => fx_actuated(m: x, p: CellPhaseActivation)))
+  (match partial {
+    ExecutionCellPartiallyActivated { started: s, refusal: _ } =>
+      length(s) == 2 && length(execution_cell_rollback_members(activation: partial)) == 2
+    _ => false
+  })
+    && (match refused_first {
+      ExecutionCellActivationRefusedBeforeStart { refusal: _ } =>
+        length(execution_cell_rollback_members(activation: refused_first)) == 0
+      _ => false
+    })
+    && (match converged {
+      ExecutionCellConverged { started: s } =>
+        length(s) == 3 && length(execution_cell_rollback_members(activation: converged)) == 0
+      _ => false
+    })
+}
+
+// ── CONSERVATION: NOTHING LEAKS ──────────────────────────────────────────────────────────────────
+
+test fn w_conservation_counts_started_against_rolled_back() -> Bool {
+  (match execution_cell_conservation(started: 2, rolled_back: 2) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
+    && (match execution_cell_conservation(started: 0, rolled_back: 0) { ExecutionConservationHeld { started: _, rolled_back: _ } => true  _ => false })
+    && (match execution_cell_conservation(started: 2, rolled_back: 1) { ExecutionConservationLeaked { started: s, rolled_back: r, cause: _ } => s == 2 && r == 1  _ => false })
+}
+
+// ── SUCCESS IS ONE EXACT GENERATION OBSERVED ON EVERY MEMBER ─────────────────────────────────────
+
+test fn w_convergence_splits_when_any_member_observes_another_generation() -> Bool {
+  let g = fx_generation()
+  let other = execution_generation_of_intent(intent_key: "fx-other-intent" as NonEmptyStr)
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let m3 = fx_member(host: "srv12", unit: glm_native_rank_unit_name)
+  let m4 = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let cohort = match execution_cell_cohort_admit(members: [m1, m2, m3, m4], generation: g, member_key: systemd_member_key) {
+    ExecutionCellCohortAdmitted { cohort: c } => c
+    _ => ExecutionCellCohort { members: [], generation: g }
+  }
+  let obs = map([m1, m2, m3, m4], x => ExecutionCellGenerationObservation { member: x, observed: g })
+  let split_obs = [
+    ExecutionCellGenerationObservation { member: m1, observed: g },
+    ExecutionCellGenerationObservation { member: m2, observed: g },
+    ExecutionCellGenerationObservation { member: m3, observed: g },
+    ExecutionCellGenerationObservation { member: m4, observed: other },
+  ]
+  let short_obs = [
+    ExecutionCellGenerationObservation { member: m1, observed: g },
+    ExecutionCellGenerationObservation { member: m2, observed: g },
+    ExecutionCellGenerationObservation { member: m3, observed: g },
+  ]
+  (match execution_cell_convergence_of(cohort: cohort, observations: obs, member_key: systemd_member_key) {
+    ExecutionCellOneGeneration { generation: gen, observed_on: on } =>
+      execution_generation_eq(a: gen, b: g) && length(on) == 4
+    _ => false
+  })
+    && (match execution_cell_convergence_of(cohort: cohort, observations: split_obs, member_key: systemd_member_key) {
+      ExecutionCellGenerationSplit { observations: _ } => true
+      _ => false
+    })
+    && (match execution_cell_convergence_of(cohort: cohort, observations: short_obs, member_key: systemd_member_key) {
+      ExecutionCellConvergenceRefused { member: _, cause: _ } => true
+      _ => false
+    })
+}
+
+// ── THE PRIOR-GENERATION READBACK FOLDS INTO THE ADMISSION'S CAS ─────────────────────────────────
+
+test fn w_readback_standing_occupies_until_every_slot_reads_free() -> Bool {
+  let m1 = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let m2 = fx_member(host: "srv11", unit: glm_native_rank_unit_name)
+  let free = execution_cell_readback_standing(readbacks: [
+    fx_actuated(m: m1, p: CellPhaseReadback),
+    fx_actuated(m: m2, p: CellPhaseReadback),
+  ])
+  let occupied = execution_cell_readback_standing(readbacks: [
+    fx_actuated(m: m1, p: CellPhaseReadback),
+    fx_refused(r: ExecutionCellReadbackRefused { member: m2, cause: "planted: prior generation still resident" as NonEmptyStr }),
+  ])
+  (match free { ExecutionCellSlotsFree { members: ms } => length(ms) == 2  _ => false })
+    && (match occupied {
+      ExecutionCellSlotsOccupied { refusal: r } =>
+        (match r { ExecutionCellReadbackRefused { member: _, cause: _ } => true  _ => false })
+      _ => false
+    })
+}
+
+// ── THE REALIZATION'S PHASE SCRIPTS ──────────────────────────────────────────────────────────────
+
+test fn w_settlement_disposal_and_prepare_carry_the_run2_repair() -> Bool {
+  let m = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let settlement = systemd_settlement_script(member: m)
+  let disposal = systemd_disposal_script(member: m)
+  let prepare = systemd_prepare_script(member: m)
+  string_contains(s: settlement, pattern: "systemctl reset-failed")
+    && !string_contains(s: settlement, pattern: "docker rm")
+    && string_contains(s: disposal, pattern: "docker rm -f glm-native-tp4")
+    && !string_contains(s: disposal, pattern: "reset-failed")
+    && !string_contains(s: prepare, pattern: "systemctl start")
+    && !string_contains(s: prepare, pattern: "systemctl enable")
+    && string_contains(s: prepare, pattern: "systemctl daemon-reload")
+}
+
+// ACTIVATION IS NON-BLOCKING AND THE WAIT IS THE READBACK PHASE'S, one leg per host. The start
+// leg carries no wait of its own; the head leg greps the head's log for the cohort anchor; each
+// rank leg greps its own rank log for the rank profile line; and every leg polls the same way —
+// anchored grep, unit-active assertion, five-second sleep — so the head leg and the rank legs are
+// one script inhabited per host, not two wait spellings that can drift.
+test fn w_activation_is_non_blocking_and_the_profile_wait_is_one_leg_per_host() -> Bool {
+  let m = fx_member(host: "srv9", unit: glm_native_head_unit_name)
+  let rank = fx_member(host: "srv10", unit: glm_native_rank_unit_name)
+  let activate = systemd_activate_script(member: m)
+  let head_readback = systemd_profile_readback_script(member: m, profile_anchor: spark_native_experiment_profile_anchor, admitted_seconds: 3600)
+  let rank_readback = systemd_profile_readback_script(member: rank, profile_anchor: spark_native_experiment_rank_profile_anchor, admitted_seconds: 3600)
+  string_contains(s: activate, pattern: "systemctl start")
+    && !string_contains(s: activate, pattern: spark_native_experiment_profile_anchor)
+    && !string_contains(s: activate, pattern: spark_native_experiment_rank_profile_anchor)
+    && !string_contains(s: activate, pattern: "sleep")
+    && string_contains(s: head_readback, pattern: spark_native_experiment_profile_anchor)
+    && string_contains(s: head_readback, pattern: glm_native_head_log_path as String)
+    && !string_contains(s: head_readback, pattern: spark_native_experiment_rank_profile_anchor)
+    && string_contains(s: rank_readback, pattern: spark_native_experiment_rank_profile_anchor)
+    && string_contains(s: rank_readback, pattern: glm_native_rank_log_path as String)
+    && !string_contains(s: rank_readback, pattern: spark_native_experiment_profile_anchor)
+    && string_contains(s: rank_readback, pattern: "sleep 5")
+    && string_contains(s: rank_readback, pattern: "systemctl is-active")
+}
+
+// ── THE PLANTED RESIDUE ROUTES TO THE PHASE THAT REPAIRS IT, AHEAD OF PREPARATION ────────────────
+
+test fn w_planted_residue_is_settled_or_disposed_before_any_prepare() -> Bool {
+  let failed = systemd_residue_repair_phase(r: SystemdResidueUnitFailed)
+  let tripped = systemd_residue_repair_phase(r: SystemdResidueStartRateTripped)
+  let orphan = systemd_residue_repair_phase(r: SystemdResidueOrphanContainer)
+  execution_cell_phase_precedes(a: failed, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: tripped, b: CellPhasePreparation)
+    && execution_cell_phase_precedes(a: orphan, b: CellPhasePreparation)
+    && (match failed { CellPhaseSettlement => true  _ => false })
+    && (match tripped { CellPhaseSettlement => true  _ => false })
+    && (match orphan { CellPhaseDisposal => true  _ => false })
+}
+
+// ── THE ADMITTED BRACKET IS ONE CELL, PHASE-ORDERED, ONE GENERATION ──────────────────────────────
+
+fn w_admitted_shape(
+  admission: ArmExperimentActuationAdmission,
+  order_ok: fn(List<ExecutionCellActuation<SystemdExecutionMember>>) -> Bool,
+) -> Bool {
+  match admission {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: cohort, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: stop, admitted_seconds: admitted } =>
+      length(cohort.members) == 4
+        && length(prior) == 20
+        && length(prep) == 4
+        && length(act) == 4
+        && length(ranks) == 3
+        && length(stop) == 4
+        && order_ok(concat(prior, concat(prep, act)))
+        && all(prior, a => {
+          (match a.phase {
+            CellPhaseSettlement => string_contains(s: a.body, pattern: "systemctl reset-failed")
+            _ => true
+          })
+        })
+        && all(act, a => !string_contains(s: a.body, pattern: spark_native_experiment_profile_anchor) && !string_contains(s: a.body, pattern: spark_native_experiment_rank_profile_anchor) && !string_contains(s: a.body, pattern: "sleep"))
+        && string_contains(s: head.plan.script, pattern: spark_native_experiment_profile_anchor)
+        && !string_contains(s: head.plan.script, pattern: spark_native_experiment_rank_profile_anchor)
+        && all(ranks, l => string_contains(s: l.plan.script, pattern: spark_native_experiment_rank_profile_anchor)
+          && !string_contains(s: l.plan.script, pattern: spark_native_experiment_profile_anchor))
+        && (head.member.host as String) != ""
+        && admitted > 0
+        && w_workload_shape(admission: admission, head_member: head.member, admitted: admitted)
+  }
+}
+
+// THE WORKLOAD PHASE'S SHAPE, asserted inside the admitted-shape fold so every admitted-bracket
+// witness checks it: the default actuation's plan targets every open obligation and the subject's
+// fragmentation allowance is open, so the phase is present with exactly the four legs on the head
+// host — the prefill seats, the churn launch, the allocator sampling — the window rendered from
+// the plan's one admitted duration, and the cadence the runbook pins.
+fn w_workload_shape(admission: ArmExperimentActuationAdmission, head_member: SystemdExecutionMember, admitted: Nat) -> Bool {
+  match admission {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          (phase.readiness_gate.member.host as String) == (head_member.host as String)
+            && (phase.prefill_seats.member.host as String) == (head_member.host as String)
+            && (phase.churn.member.host as String) == (head_member.host as String)
+            && (phase.sampling.member.host as String) == (head_member.host as String)
+            && (phase.readiness_gate.plan.unit_name as String) == (head_member.unit_name as String)
+            && (phase.prefill_seats.plan.unit_name as String) == (head_member.unit_name as String)
+            && phase.readiness_bounded_seconds == admitted
+            && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: admitted)
+            && phase.churn_window_seconds > 0
+            && phase.sample_cadence_seconds == spark_allocator_sample_cadence_seconds
+      }
+  }
+}
+
+test fn w_the_admitted_bracket_is_phase_ordered_and_carries_reset_failed() -> Bool {
+  w_admitted_shape(
+    admission: fx_actuation(),
+    order_ok: fn(legs) { execution_cell_actuations_in_contract_order(legs: legs) })
+}
+
+// ONE EXACT GENERATION ACROSS ALL FOUR MEMBERS, ON THE REAL COHORT PATH -- the inhabitance claim
+// for the supplied cohort: the real ranked hosts and the real experiment renders mint four members,
+// the cohort admits them under the restoration profile's generation (the launch-profile hash), and
+// every member's rendered unit embeds that profile's served alias -- the generation identity is on
+// each unit by construction, never "three ranks on G, one on G-1".
+test fn w_one_generation_identity_appears_on_every_member_unit() -> Bool {
+  match group_b_restoration_executable() {
+    Absent => false
+    Present { value: executable } =>
+      let expected = execution_generation_of_intent(intent_key: serving_launch_profile_key(p: executable.profile))
+      let alias = executable.profile.served_alias as String
+      match spark_experiment_members(hosts: glm_native_ranked_hosts(), renders: glm_native_experiment_all_unit_renders()) {
+        Absent => false
+        Present { value: members } =>
+          match execution_cell_cohort_admit(members: members, generation: expected, member_key: systemd_member_key) {
+            ExecutionCellCohortRefused { cause: _ } => false
+            ExecutionCellCohortAdmitted { cohort: cohort } =>
+              length(cohort.members) == 4
+                && length(filter(cohort.members, m => (m.unit_name as String) == (glm_native_head_unit_name as String))) == 1
+                && execution_generation_eq(a: cohort.generation, b: expected)
+                && all(cohort.members, m => string_contains(s: m.unit_text, pattern: alias))
+          }
+      }
+  }
+}
+
+// THE REAL PLAN TARGETS THE SUBJECT'S OPEN OBLIGATIONS AT THE ONE ADMITTED RUNTIME -- the
+// inhabitance claim for the supplied plan: the restoration profile's subject on the Group B tuple
+// is Unestablished, the plan the default actuation admits targets exactly its open components
+// (fragmentation among them, so the workload phase plans), runs the restoration profile, and admits
+// the one runtime authority every rank unit's RuntimeMaxSec carries.
+test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitted_runtime() -> Bool {
+  match group_b_restoration_executable() {
+    Absent => false
+    Present { value: executable } =>
+      match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
+        ArmMemorySubjectRefused { cause: _ } => false
+        ArmMemorySubjectReady { subject: subject } =>
+          match arm_memory_fit_verdict(subject: subject) {
+            ArmMemoryFitUnestablished { obligations: os } =>
+              let open = arm_memory_subject_open_components(subject: subject)
+              length(os) > 0
+                && (match arm_memory_fit_experiment_plan(
+                  checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+                  workload: subject.intent, policy_profile: executable.profile, targets: open, deployment_env: glm_group_b_deployment_env()) {
+                  ArmMemoryExperimentRefused { cause: _ } => false
+                  ArmMemoryExperimentAdmitted { plan: p } =>
+                    p.max_runtime_seconds == second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
+                      && 3600 <= p.max_runtime_seconds
+                      && (match spark_workload_variant_named(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
+                        Present { value: e } =>
+                          spark_churn_window_seconds(admitted_seconds: p.max_runtime_seconds) + e.request_timeout_seconds < second_count(s: arm_memory_experiment_runtime(ready_timeout: second(count: 3600), max_num_seqs: p.profile.max_num_seqs))
+                        Absent => false
+                      })
+                      && length(p.targets) == length(open)
+                      && spark_plan_targets_fragmentation(plan: p)
+                      && serving_launch_profile_key(p: p.profile) == serving_launch_profile_key(p: executable.profile)
+                })
+            _ => false
+          }
+      }
+  }
+}
+
+// ── THE ROUTE'S SEQUENCING, DRIVEN BY A SUPPLIED LEG RUNNER ──────────────────────────────────────
+
+fn fx_route_result(run_leg: fn(SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome) -> SparkExperimentRouteResult? {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => none
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: prior, preparation_actuations: prep, activation_actuations: act, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: stop, admitted_seconds: _ } =>
+      Present { value: spark_experiment_route(
+        prior_generation_actuations: prior,
+        preparation_actuations: prep,
+        activation_actuations: act,
+        head_readback: head,
+        rank_readbacks: ranks,
+        workload_phase: workload,
+        stop_legs: stop,
+        run_leg: run_leg) }
+  }
+}
+
+fn fx_run_fail_prepare(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "prepared ") { fx_failed(plan: plan) } else { fx_applied(plan: plan) }
+}
+
+fn fx_run_fail_rank_activation(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if (plan.unit_name as String) == (glm_native_rank_unit_name as String) && string_contains(s: plan.script, pattern: "systemctl start") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+// PLANTED READBACK FAILURES, discriminated by the anchor each leg waits on — the exact vocabulary
+// the readback legs carry, which no activation, preparation, prior-generation, or stop leg
+// carries (the activation non-blocking arm above asserts the starts carry no anchor).
+fn fx_run_fail_rank_readback(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: spark_native_experiment_rank_profile_anchor) {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+fn fx_run_fail_head_readback(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: spark_native_experiment_profile_anchor) && string_contains(s: plan.script, pattern: "sleep 5") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+// A PREPARATION FAILURE STARTS NONE: 20 prior-generation legs + 4 halted preparations, no
+// activation, no readback, no stop — the all-or-nothing law, observed at the route boundary.
+test fn w_route_prepare_failure_starts_none() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_prepare) {
+    Present { value: result } => length(result.outcomes) == 24 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+    Absent => false
+  }
+}
+
+// A PARTIAL ACTIVATION ROLLS BACK BEFORE IT REFUSES: 20 prior + 4 prepared + 4 activation attempts
+// + exactly 1 rollback leg for the started head (the three rank starts were the planted failures)
+// = 29 outcomes, and the run refuses. No readback leg ran — the cohort never converged.
+test fn w_route_partial_activation_rolls_back_before_refusing() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_rank_activation) {
+    Present { value: result } => length(result.outcomes) == 29 && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL: every leg applies, 20 prior + 4 prepared + 4 activated + 1 head readback
+// + 3 rank readbacks + 4 workload legs (readiness gate, prefill seats, churn launch, sampler) +
+// 4 stopped = 40 outcomes, the run reports convergence, and neither halt is minted.
+test fn w_route_full_success_runs_prior_prepare_activate_readback_workload_stop() -> Bool {
+  match fx_route_result(run_leg: fx_applied) {
+    Present { value: result } =>
+      length(result.outcomes) == 40
+        && spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+        && (match result.workload_halt { Absent => true  Present { value: _ } => false })
+    Absent => false
+  }
+}
+
+// A RANK THAT DIES BEFORE PRINTING refuses located: the runner plants a failure in exactly the
+// rank readback legs. The head leg applies, all three rank legs are issued (a halt does not
+// short-circuit the cohort's observation), every rank leg reports the planted failure, the workload
+// phase never runs behind a readback halt — 20 + 4 + 4 + 1 + 3 + 4 = 36 outcomes, the same count
+// the pre-workload bracket minted — the run refuses, and the halt is located on a rank host by the
+// rank-profile variant. The count IS the gate's witness: four workload legs behind a halted
+// readback would make 40.
+test fn w_route_rank_readback_failure_refuses_located_on_the_rank() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_rank_readback) {
+    Present { value: result } =>
+      length(result.outcomes) == 36
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt {
+          Present { value: SparkRankProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_rank_unit_name as String) && (m.host as String) != ""
+          _ => false
+        })
+        && (match result.workload_halt { Absent => true  Present { value: _ } => false })
+    Absent => false
+  }
+}
+
+// THE HEAD'S ANCHOR GATES THE RANK LEGS: a runner that plants a failure in exactly the head
+// readback leg yields 20 + 4 + 4 + 1 + 0 + 4 = 33 outcomes — the count itself proves no rank leg
+// was issued, because the head's anchor never appeared — and the halt is located on the head by
+// the head-anchor variant. No workload leg ran behind the halted readback either: 33, not 36.
+test fn w_route_head_readback_failure_issues_no_rank_legs() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_head_readback) {
+    Present { value: result } =>
+      length(result.outcomes) == 33
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt {
+          Present { value: SparkHeadProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+        && (match result.workload_halt { Absent => true  Present { value: _ } => false })
+    Absent => false
+  }
+}
+
+// ── THE WORKLOAD PHASE: GATED, BOUNDED, ORDERED, LOCATED ─────────────────────────────────────────
+
+// THE GATE DISCRIMINATES BY TARGET, on the plan mints the observation layer carries: the
+// loader-transient plan targets only ArmLoaderTransform and the gate reads false; the
+// fragmentation-churn plan targets ArmFragmentationAllowance and the gate reads true. The bracket's
+// own default plan targets every open obligation of a subject whose allowance is open, so its
+// actuation plans the phase — but the gate, not the subject, is the spelling.
+test fn w_workload_phase_gate_follows_the_plans_targets() -> Bool {
+  let loader_targets = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } => !spark_plan_targets_fragmentation(plan: p)
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  let churn_targets = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } => spark_plan_targets_fragmentation(plan: p)
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  loader_targets && churn_targets
+}
+
+// THE GATE PLANS THE PHASE OR NOTHING, on the same cohort: the loader-transient plan against the
+// supplied cohort plans Absent — the bracket for a memory-profile experiment is the
+// bracket that has always run — and the fragmentation-churn plan plans four legs, every one on the
+// head host.
+test fn w_workload_phase_is_absent_for_memory_profile_plans() -> Bool {
+  let cohort = fx_cohort()
+  let loader_absent = match arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
+        SparkSeatWindowRefused { cause: _ } => false
+        SparkSeatWindowReady { seat_window: sw } =>
+          match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
+            Absent => true
+            Present { value: _ } => false
+          }
+      }
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  let churn_present = match fx_plan() {
+    Present { value: p } =>
+      match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
+        SparkSeatWindowRefused { cause: _ } => false
+        SparkSeatWindowReady { seat_window: sw } =>
+          match spark_experiment_workload_phase(cohort: cohort, plan: p, variant: spark_workload_variants_a(), seat_window: sw) {
+            Absent => false
+            Present { value: phase } =>
+              (phase.prefill_seats.member.host as String) == (phase.churn.member.host as String)
+                && (phase.churn.member.host as String) == (phase.sampling.member.host as String)
+          }
+      }
+    Absent => false
+  }
+  loader_absent && churn_present
+}
+
+// THE WORKLOAD SCRIPTS CARRY THE BOUNDS AND THE INSTRUMENTS, rendered where the review reads them.
+// The scripts read the (a) row's deterministic no-watchdog render through fx_phase_for_variant —
+// the actuation supplies the cohort and the admitted seconds while the ACTIVE variant moves under
+// the parent's per-run flips, so this witness must not go red because a watchdog-armed variant is
+// selected (the 2026-09-28 q-active red). The budget arithmetic still reads the actuation's
+// admitted seconds:
+// the churn driver stops at the window end and the per-client count with the floor band and the
+// full-window ceiling rendered in, the prefill calibrates its per-block yield against the engine
+// and carries every seat's realized prompt_tokens, the prompt material varies per seat and per
+// block so the prefix cache cannot fold two seats, and the sampler reads the named instruments at
+// the runbook cadence and folds the peak line the receipt mints from.
+test fn w_workload_scripts_render_the_bounds_variation_and_instruments() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
+      match fx_phase_for_variant(name: "a-repro-six-full-window" as NonEmptyStr) {
+        Absent => false
+        Present { value: phase } =>
+          let gate = phase.readiness_gate.plan.script
+          let prefill = phase.prefill_seats.plan.script
+          let churn = phase.churn.plan.script
+          let sampling = phase.sampling.plan.script
+          let window = spark_churn_window_seconds(admitted_seconds: admitted)
+          let context_window = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+            ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
+            ArmMemoryExperimentRefused { cause: _ } => 0
+          }
+          let seat_window = match spark_seat_window_tokens(context_window: phase.variant.window_tokens) {
+            Present { value: w } => w
+            Absent => 0
+          }
+          string_contains(s: gate, pattern: "/v1/models")
+            && string_contains(s: gate, pattern: join(["endpoint-not-ready-after-", to_string(phase.readiness_bounded_seconds), "s"], ""))
+            && string_contains(s: gate, pattern: "unit-inactive-before-endpoint-ready")
+            && string_contains(s: gate, pattern: "sleep 5")
+            && string_contains(s: prefill, pattern: "/v1/completions")
+            && string_contains(s: prefill, pattern: "prompt_tokens=")
+            && !string_contains(s: prefill, pattern: "s%02db%05d")
+            && string_contains(s: prefill, pattern: "seat%d %s ")
+            && string_contains(s: prefill, pattern: "probe_a.json")
+            && string_contains(s: prefill, pattern: "probe_b.json")
+            && string_contains(s: prefill, pattern: "(probe_b_tokens - unit_base) / 2")
+            && string_contains(s: prefill, pattern: "unit_base_tokens")
+            && string_contains(s: prefill, pattern: "unit_marginal_tokens")
+            && string_contains(s: prefill, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1"], ""))
+            && string_contains(s: prefill, pattern: join(["( ", to_string(seat_window), " - unit_base"], ""))
+            && string_contains(s: prefill, pattern: "warm_mib")
+            && string_contains(s: prefill, pattern: "-D \"$state/seat_$seat.hdr\"")
+            && string_contains(s: prefill, pattern: "-w '%\{time_starttransfer} %\{time_total}'")
+            && string_contains(s: prefill, pattern: "seats.timing.tsv")
+            && string_contains(s: prefill, pattern: "metrics.pre")
+            && string_contains(s: prefill, pattern: "metrics.post")
+            && string_contains(s: prefill, pattern: "metrics-endpoint-unreadable")
+            && string_contains(s: prefill, pattern: "cut -d' ' -f2")
+            && string_contains(s: prefill, pattern: "prefill-failed http=")
+            && string_contains(s: prefill, pattern: "prefill-failed transport rc=")
+            && string_contains(s: prefill, pattern: "body=$(tr -d '\\n' <")
+            && string_contains(s: prefill, pattern: "over-limit")
+            && string_contains(s: prefill, pattern: "(driver defect")
+            && string_contains(s: prefill, pattern: join(["limit=", to_string(context_window)], ""))
+            && string_contains(s: prefill, pattern: "context_window_tokens=")
+            && !string_contains(s: prefill, pattern: "stall-watchdog")
+            && string_contains(s: churn, pattern: "churn-driver-launched")
+            && string_contains(s: churn, pattern: "churn_large.lock")
+            && string_contains(s: churn, pattern: "512000")
+            && string_contains(s: churn, pattern: "nohup")
+            && string_contains(s: churn, pattern: "GUNBC_CHURN_DRIVER_EOF")
+            && string_contains(s: churn, pattern: join(["while [ \"$(date +%s)\" -lt \"$end\" ] && [ \"$n\" -lt ", to_string(spark_churn_requests_per_seat), " ]"], ""))
+            && string_contains(s: churn, pattern: join(["$(date +%s) + ", to_string(window)], ""))
+            && string_contains(s: churn, pattern: to_string(spark_churn_band_floor_tokens))
+            && !string_contains(s: churn, pattern: "s%02db%05d")
+            && string_contains(s: churn, pattern: "c%02dr%05d %s ")
+            && string_contains(s: churn, pattern: "unit_marginal_tokens")
+            && string_contains(s: churn, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal"], ""))
+            && string_contains(s: churn, pattern: "srand")
+            && string_contains(s: churn, pattern: "churn-request-failed")
+            && string_contains(s: churn, pattern: "\"$state/churn_c\"$client\"_last.resp\"")
+            && string_contains(s: churn, pattern: "srand(client * 1000003 + req)")
+            && string_contains(s: churn, pattern: "rm -f \"$state/churn_driver.exit\"")
+            && string_contains(s: sampling, pattern: "vllm:kv_cache_usage_perc")
+            && string_contains(s: sampling, pattern: "nvidia-smi")
+            && string_contains(s: sampling, pattern: "/v1/models")
+            && string_contains(s: sampling, pattern: join(["sleep ", to_string(spark_allocator_sample_cadence_seconds)], ""))
+            && string_contains(s: sampling, pattern: "allocator-gap-peak")
+            && string_contains(s: sampling, pattern: join([" + ", to_string(window), " + ", to_string(phase.variant.request_timeout_seconds)], ""))
+      }
+  }
+}
+
+
+// THE VERDICT FOLD, at the unit boundary: every leg applied is the only converged arm; a failed
+// head outcome halts located on the head with no rank outcome beside it; and one failed rank leg
+// halts located on THAT leg's member — discriminated by changing exactly one outcome of the
+// converged control, the located-refusal wall the route's rollback consumes.
+test fn w_profile_readback_verdict_locates_the_halt_by_host_and_phase() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      let first_rank_host = match first(ranks) { Present { value: l } => l.member.host as String  Absent => "" }
+      let all_applied = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_applied(plan: head.plan), rank_legs: ranks, rank_outcomes: map(ranks, l => fx_applied(plan: l.plan)))
+      let head_failed = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_failed(plan: head.plan), rank_legs: ranks, rank_outcomes: [] as List<SparkPairHostApplyOutcome>)
+      let first_rank_failed = spark_profile_readback_verdict(head_leg: head, head_outcome: fx_applied(plan: head.plan), rank_legs: ranks, rank_outcomes: map(ranks, l => if (l.member.host as String) == first_rank_host { fx_failed(plan: l.plan) } else { fx_applied(plan: l.plan) }))
+      (match all_applied { SparkProfileReadbacksConverged => true  _ => false })
+        && (match head_failed {
+          SparkProfileReadbackHalted { refusal: SparkHeadProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.host as String) == (head.member.host as String)
+          _ => false
+        })
+        && (match first_rank_failed {
+          SparkProfileReadbackHalted { refusal: SparkRankProfileReadbackRefused { member: m, cause: _ } } =>
+            (m.host as String) == first_rank_host && first_rank_host != ""
+          _ => false
+        })
+  }
+}
+
+// THE DRY RENDERING ORDERS THE READBACK PHASE: filtering the dry text to exactly the readback
+// banners and the stop block's banner yields, in order, the head leg's banner, one banner per rank
+// leg in cohort order, and the stop banner — no stop line before any readback, no rank leg before
+// the head's, and every leg the admission planned present in the rendering. (The readiness gate
+// carries a bounded_seconds banner too now; this witness names the readback banners because the
+// readback phase is its subject — the gate's ordering is the workload witness's.)
+test fn w_the_dry_readback_phase_is_per_rank_ordered_before_the_stops() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
+      let dry = spark_native_experiment_actuation_dry()
+      let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: "HEAD READBACK ") || string_contains(s: l, pattern: "RANK READBACK ") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
+      let expected = concat(
+        [join(["HEAD READBACK ", head.member.host as String, " ", head.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")],
+        concat(
+          map(ranks, l => join(["RANK READBACK ", l.member.host as String, " ", l.plan.unit_name as String, " bounded_seconds=", to_string(admitted)], "")),
+          ["STOP (deterministic end on every rank)"]))
+      length(actual) == length(expected)
+        && join(actual, "\n") == join(expected, "\n")
+        && string_contains(s: dry, pattern: "inventory")
+        && string_contains(s: dry, pattern: "settlement")
+        && string_contains(s: dry, pattern: "ACTIVATE COHORT concurrently")
+  }
+}
+
+// THE SHARED BUDGET, PINNED: the plan admits ONE experiment duration — the engine's own multi-node
+// ready timeout (gunbc.spark.arm_memory_fit arm_memory_experiment_runtime, the same figure
+// every rank unit's RuntimeMaxSec carries) — and the readbacks share it. The admission's seconds
+// equal that one authority, and every leg's poll loop — head's and ranks' alike — is derived from
+// the admission's single admitted_seconds with the identical (seconds + 4) / 5 iteration
+// arithmetic, so the cohort is charged one duration in total, never one per leg: a bracket that
+// minted a fresh budget per leg would count a single run four times.
+test fn w_the_readback_phase_shares_the_plans_one_admitted_duration() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: head, rank_readbacks: ranks, workload_phase: _, stop_legs: _, admitted_seconds: admitted } =>
+      let expected_loop = join(["i=0; while [ \"$i\" -lt ", to_string((admitted + 4) / 5), " ]; do i=$((i+1)); "], "")
+      admitted == fx_admitted_seconds
+        && string_contains(s: head.plan.script, pattern: expected_loop)
+        && all(ranks, l => string_contains(s: l.plan.script, pattern: expected_loop))
+  }
+}
+
+// VARIANT a FROM THE REGISTRY, for fixtures that need a concrete variant: the lookup's absence is
+// unreachable while the registry witness holds (the registry is a literal with a pinned), so the
+// fallback value only satisfies the totality checker.
+fn spark_workload_variants_a() -> SparkWorkloadVariant {
+  match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
+    Present { value: v } => v
+    Absent => SparkWorkloadVariant { name: "unreachable-fixture-arm" as NonEmptyStr, seat_count: 0, window_tokens: 0, mode: SparkSeatsConcurrent, watchdog: false, request_timeout_seconds: 1800, decode_probe: false }
+  }
+}
+
+// THE SEAT MARGIN REFUSES AN OVERSHOOTING CONSTRUCTION AT BUILD TIME: the derivation returns the
+// context window minus one 2304-token scheduler block at this launch's 262144-token window
+// (259840), returns nothing when the window cannot span the margin (at the margin, below it), and
+// the plan-level admission is ready with the margin'd figure for the minted churn plan while a
+// plan whose window equals the margin refuses with the arithmetic named — the actuation wall that
+// keeps an unbuildable seat construction from ever reaching a credential.
+test fn w_the_seat_window_margin_refuses_an_overshooting_construction() -> Bool {
+  let at_this_window = match spark_seat_window_tokens(context_window: 262144) {
+    Present { value: w } => w == 262144 - spark_seat_window_margin_tokens
+    Absent => false
+  }
+  let at_the_margin = match spark_seat_window_tokens(context_window: spark_seat_window_margin_tokens) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let below_the_margin = match spark_seat_window_tokens(context_window: 100) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let churn_ready = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      match spark_experiment_seat_window(plan: p, variant: spark_workload_variants_a()) {
+        SparkSeatWindowReady { seat_window: w } => w == spark_workload_variants_a().window_tokens - spark_seat_window_margin_tokens
+        SparkSeatWindowRefused { cause: _ } => false
+      }
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  let tiny_variant = SparkWorkloadVariant {
+    name: "fixture-tiny-window" as NonEmptyStr,
+    seat_count: 6,
+    window_tokens: spark_seat_window_margin_tokens,
+    mode: SparkSeatsConcurrent,
+    watchdog: false,
+    request_timeout_seconds: 1800,
+    decode_probe: false,
+  }
+  let tiny_refused = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+    ArmMemoryExperimentAdmitted { plan: p } =>
+      match spark_experiment_seat_window(plan: p, variant: tiny_variant) {
+        SparkSeatWindowRefused { cause: c } => string_contains(s: c as String, pattern: "margin")
+        SparkSeatWindowReady { seat_window: _ } => false
+      }
+    ArmMemoryExperimentRefused { cause: _ } => false
+  }
+  at_this_window && at_the_margin && below_the_margin && churn_ready && tiny_refused
+}
+
+// THE SEAT CONSTRUCTION IS TOKEN-EXACT, and the drift scenario that 400'd the first churn rerun
+// provably cannot recur. The law: a seat is one header word plus verbatim repeats of the
+// calibration unit — no text shape in a seat that the two probes did not send (the retired
+// per-block marker "s%02db%05d" is asserted ABSENT from both the prefill and the churn scripts).
+// The arithmetic: the probes measure the unit base a and the exact marginal m — B's count is a + 2m
+// because every appended unit tokenizes after the identical left context — a seat realizes at most
+// a + header drift + (M - 1) x m with M built from (seat_window - a - safety), so the realized
+// count stays under seat_window - safety + header drift, the header drift is one word (bounded by
+// the named safety), and safety sits three orders of magnitude inside the scheduler-block margin.
+// The bounds are pinned here as data: safety < margin, seat_window + margin == context window, and
+// the scripts carry the exact-marginal arithmetic and the safety-absorbing unit formula.
+test fn w_the_seat_construction_is_token_exact() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let prefill = phase.prefill_seats.plan.script
+          let churn = phase.churn.plan.script
+          let context_window = match arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() {
+            ArmMemoryExperimentAdmitted { plan: p } => token_count_value(t: p.profile.max_model_len)
+            ArmMemoryExperimentRefused { cause: _ } => 0
+          }
+          let seat_window = match spark_seat_window_tokens(context_window: phase.variant.window_tokens) {
+            Present { value: w } => w
+            Absent => 0
+          }
+          systemd_workload_header_safety_tokens < spark_seat_window_margin_tokens
+            && seat_window + spark_seat_window_margin_tokens == phase.variant.window_tokens
+            && !string_contains(s: prefill, pattern: "s%02db%05d")
+            && !string_contains(s: churn, pattern: "s%02db%05d")
+            && string_contains(s: prefill, pattern: "(probe_b_tokens - unit_base) / 2")
+            && string_contains(s: prefill, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal + 1"], ""))
+            && string_contains(s: churn, pattern: join(["- unit_base - ", to_string(systemd_workload_header_safety_tokens), " ) / unit_marginal"], ""))
+            && string_contains(s: prefill, pattern: "(driver defect")
+      }
+  }
+}
+
+// THE READINESS GATE'S REFUSAL IS THE NEVER-READY LOCATED HALT: the runner plants a failure in
+// exactly the gate leg — discriminated by the not-ready line its script alone carries. The gate
+// outcome fails, the prefill, churn and sampling legs are never issued, and the stops still run:
+// 20 + 4 + 4 + 1 + 3 + 1 + 4 = 37 outcomes, the workload halt is located on the head by the
+// readiness variant, and the readback halt is absent — the readbacks converged; the front door
+// never opened.
+fn fx_run_fail_readiness_gate(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "endpoint-not-ready-after-") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+test fn w_route_never_ready_endpoint_halts_the_workload_before_the_stops() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_readiness_gate) {
+    Present { value: result } =>
+      length(result.outcomes) == 37
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+        && (match result.workload_halt {
+          Present { value: SparkEndpointReadinessRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// THE READINESS GATE SHARES THE PLAN'S ONE ADMITTED DURATION: its poll loop renders from the same
+// admitted_seconds with the identical (seconds + 4) / 5 iteration arithmetic as the profile
+// readbacks, so the cohort is charged one experiment duration across every bounded wait in the
+// cell — the gate's bound is the budget shared, never a fresh duration minted at the phase edge.
+test fn w_the_readiness_gate_shares_the_plans_one_admitted_duration() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: admitted } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let expected_loop = join(["i=0; while [ \"$i\" -lt ", to_string((admitted + 4) / 5), " ]; do i=$((i+1)); "], "")
+          phase.readiness_bounded_seconds == admitted
+            && string_contains(s: phase.readiness_gate.plan.script, pattern: expected_loop)
+            && string_contains(s: phase.readiness_gate.plan.script, pattern: join(["endpoint-not-ready-after-", to_string(admitted), "s"], ""))
+      }
+  }
+}
+
+// A WORKLOAD LEG THAT FAILS HALTS LOCATED AND SHORT-CIRCUITS THE PHASE: the runner plants a
+// failure in exactly the prefill leg — discriminated by the calibration refusal the prefill script
+// alone carries. The gate and prefill outcomes are on the spine, the churn and sampling legs are
+// never issued, and the stops still run: 20 + 4 + 4 + 1 + 3 + 2 + 4 = 38 outcomes, the workload
+// halt is located on the head by the prefill variant, and the readback halt is absent — the
+// readbacks converged; it was the engine under load that refused.
+fn fx_run_fail_prefill(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "prefill-calibration-unreadable") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+fn fx_run_fail_sampling(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
+  if string_contains(s: plan.script, pattern: "allocator-gap-peak") {
+    fx_failed(plan: plan)
+  } else {
+    fx_applied(plan: plan)
+  }
+}
+
+test fn w_route_prefill_failure_halts_the_workload_before_the_stops() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_prefill) {
+    Present { value: result } =>
+      length(result.outcomes) == 38
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+        && (match result.workload_halt {
+          Present { value: SparkPrefillSeatsRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// THE SAMPLER'S REFUSAL IS THE MID-RUN LOCATED HALT: the runner plants a failure in exactly the
+// sampling leg — discriminated by the peak line its script alone folds. The gate, prefill and churn
+// legs apply (the driver launches), the sampler refuses, the stops run after: 20 + 4 + 4 + 1 + 3 +
+// 4 + 4 = 40 outcomes with one failure among them, the workload halt is located on the head by the
+// sampler variant — the endpoint-unreachable-mid-run arm lands here — and the readback halt stays
+// absent.
+test fn w_route_sampling_failure_refuses_located_on_the_head() -> Bool {
+  match fx_route_result(run_leg: fx_run_fail_sampling) {
+    Present { value: result } =>
+      length(result.outcomes) == 40
+        && !spark_pair_apply_all_applied(outcomes: result.outcomes)
+        && (match result.halt { Absent => true  Present { value: _ } => false })
+        && (match result.workload_halt {
+          Present { value: SparkAllocatorSamplingRefused { member: m, cause: _ } } =>
+            (m.unit_name as String) == (glm_native_head_unit_name as String)
+          _ => false
+        })
+    Absent => false
+  }
+}
+
+// THE DRY RENDERING ORDERS THE WORKLOAD PHASE: filtering the dry text to exactly the lines that
+// carry a workload banner or the stop block's banner yields, in order, the readiness gate banner,
+// the prefill banner, the churn banner, the sampler banner, then the stop banner — the gate after
+// the readback legs and ahead of every workload leg, the workload phase between the readbacks and
+// the deterministic stop, and the stops always last.
+test fn w_the_dry_workload_phase_is_ordered_between_the_readbacks_and_the_stops() -> Bool {
+  match spark_native_experiment_default_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let dry = spark_native_experiment_actuation_dry()
+          let actual = filter(split(s: dry, delimiter: "\n"), l => string_contains(s: l, pattern: "WORKLOAD ENDPOINT READINESS ") || string_contains(s: l, pattern: "WORKLOAD PREFILL SEATS ") || string_contains(s: l, pattern: "WORKLOAD CHURN ") || string_contains(s: l, pattern: "WORKLOAD ALLOCATOR SAMPLING ") || string_contains(s: l, pattern: "STOP (deterministic end on every rank)"))
+          let expected = [
+            join(["WORKLOAD ENDPOINT READINESS ", phase.readiness_gate.member.host as String, " ", phase.readiness_gate.plan.unit_name as String, " bounded_seconds=", to_string(phase.readiness_bounded_seconds)], ""),
+            join(["WORKLOAD PREFILL SEATS ", phase.prefill_seats.member.host as String, " ", phase.prefill_seats.plan.unit_name as String, " variant=", phase.variant.name as String, " seats=", to_string(phase.variant.seat_count), " window_tokens=", to_string(phase.variant.window_tokens), " mode=", spark_workload_mode_wire(mode: phase.variant.mode), " watchdog=", if phase.variant.watchdog { "armed" } else { "off" }], ""),
+            join(["WORKLOAD CHURN ", phase.churn.member.host as String, " ", phase.churn.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " requests_per_client=", to_string(spark_churn_requests_per_seat), " band_floor_tokens=", to_string(spark_churn_band_floor_tokens)], ""),
+            join(["WORKLOAD ALLOCATOR SAMPLING ", phase.sampling.member.host as String, " ", phase.sampling.plan.unit_name as String, " window_seconds=", to_string(phase.churn_window_seconds), " cadence_seconds=", to_string(phase.sample_cadence_seconds)], ""),
+            "STOP (deterministic end on every rank)",
+          ]
+          length(actual) == 5
+            && join(actual, "\n") == join(expected, "\n")
+            && string_contains(s: dry, pattern: "endpoint-ready bounded_seconds=")
+            && string_contains(s: dry, pattern: "prefill-seats-complete")
+            && string_contains(s: dry, pattern: "churn-driver-launched")
+            && string_contains(s: dry, pattern: "allocator-gap-peak")
+      }
+  }
+}
+
+// THE WORKLOAD PHASE FOR ONE NAMED VARIANT, built from the supplied cohort and plan: the fixture
+// every variant witness inhabits, so each variant's scripts are read from the planning function
+// the admission itself calls (spark_experiment_workload_phase), for any registry variant -- not
+// only the active one the admission selects.
+fn fx_phase_for_variant(name: NonEmptyStr) -> SparkExperimentWorkloadPhase? {
+  match spark_workload_variant_named(name: name) {
+    Absent => none
+    Present { value: variant } =>
+      match fx_plan() {
+        Absent => none
+        Present { value: p } =>
+          match spark_experiment_seat_window(plan: p, variant: variant) {
+            SparkSeatWindowRefused { cause: _ } => none
+            SparkSeatWindowReady { seat_window: sw } =>
+              spark_experiment_workload_phase(cohort: fx_cohort(), plan: p, variant: variant, seat_window: sw)
+          }
+      }
+  }
+}
+
+// THE CACHE-REUSE SCRIPT, rendered for w2: four sequential legs (prime/replay/suffix/miss) on
+// one admitted engine/cache incarnation — the replay body byte-identical to the prime (cp),
+// the suffix appending eighteen units of genuinely new tail, the miss differing at the first
+// token — each leg recording driver timing and the response's ACTUAL accounting
+// (prompt_tokens + cached_tokens) into cache_reuse.timing.tsv, with the engine's /metrics
+// bracketing the phase and every refusal carrying the leg named.
+test fn w_the_cache_reuse_script_renders_the_four_legs_and_the_actual_accounting() -> Bool {
+  match fx_phase_for_variant(name: "w2-cache-reuse-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      let script = phase.prefill_seats.plan.script
+      string_contains(s: script, pattern: "leg_prime.json")
+        && string_contains(s: script, pattern: "cp \"$state/leg_prime.json\" \"$state/leg_replay.json\"")
+        && string_contains(s: script, pattern: "leg_suffix.json")
+        && string_contains(s: script, pattern: "leg_miss.json")
+        && string_contains(s: script, pattern: "for leg in prime replay suffix miss; do")
+        && string_contains(s: script, pattern: "cache_reuse.timing.tsv")
+        && string_contains(s: script, pattern: "\"cached_tokens\":[0-9][0-9]*")
+        && string_contains(s: script, pattern: "tail ")
+        && string_contains(s: script, pattern: "cache-reuse-leg leg=$leg prompt_tokens=$leg_prompt cached_tokens=$leg_cached")
+        && string_contains(s: script, pattern: "metrics.pre")
+        && string_contains(s: script, pattern: "metrics.post")
+        && string_contains(s: script, pattern: "cache-reuse-complete legs=4")
+  }
+}
+
+// THE Q SCRIPT CARRIES THE WHOLE-SEQUENCE BUDGET AND THE DECODE PROBE (2026-09-28 steering):
+// the per-request curl bound reads the variant's DECLARED request_timeout_seconds (3600 for q —
+// eight cold full-window seats at the observed cold price exceed the old 1800s bound, whose rc=28
+// expiries with the engine still progressing were timeout-as-hang, never an engine failure), the
+// stall watchdog's own bound derives at twice it, and the decode leg re-issues seat 1's resident
+// context with max_tokens=64 — real decode evidence with the actual completion accounting.
+test fn w_the_q_script_carries_the_whole_sequence_budget_and_the_decode_probe() -> Bool {
+  match fx_phase_for_variant(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      let script = phase.prefill_seats.plan.script
+      string_contains(s: script, pattern: "-m 3600 -D")
+        && string_contains(s: script, pattern: "bound_seconds=7200")
+        && string_contains(s: script, pattern: "decode_1.json")
+        && string_contains(s: script, pattern: "decode-probe-complete completion_tokens=$decode_completion cached_tokens=$decode_cached")
+        && string_contains(s: script, pattern: "\"max_tokens\":64")
+        && string_contains(s: script, pattern: "seats.timing.tsv")
+  }
+}
+
+// THE VARIANT REGISTRY AGREES WITH THE LIVENESS MATRIX, row for row: five repro variants each
+// way, every matrix name a registry row and every discriminating axis reading the same value the
+// matrix's prose names — five seats at the full window for b, 65536 for c, sequential issue for
+// d, the armed watchdog for e — and the active variant is a registry member. The registry's SIXTH
+// row is not a matrix row: w1-cold-single-full-window is the ATTRIBUTION workload of
+// docs/plans/glm-group-b-workload-qualification.md (2026-09-28), one cold full-window request
+// alone on the engine, and w2-cache-reuse-full-window is its warm twin — the four-leg
+// cache-reuse qualification (prime/replay/suffix/miss) pricing ACTUAL prefix/state reuse from
+// the engine's own cached_tokens accounting — both joining under the qualification plan's
+// authority rather than by
+// amending the dated 2026-09-27 liveness matrix. The witness holds both halves: the matrix
+// join cannot drift, and the only non-matrix rows are w1 and w2 with their plan shapes.
+test fn w_the_variant_registry_agrees_with_the_liveness_matrix() -> Bool {
+  let five_each = length(spark_workload_variants) == 8 && length(arm_experiment_2026_09_27_liveness_repro_matrix) == 5
+  let names_join = all(arm_experiment_2026_09_27_liveness_repro_matrix, r => any(spark_workload_variants, v => v.name == r.variant))
+  let a_ok = match spark_workload_variant_named(name: "a-repro-six-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 6 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && !v.watchdog
+    Absent => false
+  }
+  let b_ok = match spark_workload_variant_named(name: "b-five-concurrent-full-window" as NonEmptyStr) {
+    Present { value: v } =>
+      v.seat_count == 5 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent
+        && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "b-five-concurrent-full-window" as NonEmptyStr)) {
+          Present { value: row } => string_contains(s: row.workload as String, pattern: "five concurrent")
+          Absent => false
+        })
+    Absent => false
+  }
+  let c_ok = match spark_workload_variant_named(name: "c-six-concurrent-short-window" as NonEmptyStr) {
+    Present { value: v } =>
+      v.seat_count == 6 && v.window_tokens == 65536 && v.mode == SparkSeatsConcurrent
+        && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "c-six-concurrent-short-window" as NonEmptyStr)) {
+          Present { value: row } => string_contains(s: row.workload as String, pattern: "65536")
+          Absent => false
+        })
+    Absent => false
+  }
+  let d_ok = match spark_workload_variant_named(name: "d-six-sequential-full-window" as NonEmptyStr) {
+    Present { value: v } =>
+      v.seat_count == 6 && v.window_tokens == 262144 && v.mode == SparkSeatsSequential
+        && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "d-six-sequential-full-window" as NonEmptyStr)) {
+          Present { value: row } => string_contains(s: row.workload as String, pattern: "sequentially")
+          Absent => false
+        })
+    Absent => false
+  }
+  let e_ok = match spark_workload_variant_named(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
+    Present { value: v } =>
+      v.seat_count == 6 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && v.watchdog
+        && (match first(filter(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == "e-stall-captured-six-full-window" as NonEmptyStr)) {
+          Present { value: row } => string_contains(s: row.workload as String, pattern: "py-spy")
+          Absent => false
+        })
+    Absent => false
+  }
+  let active_ok = match spark_active_workload_variant_value() {
+    Present { value: v } => (v.name as String) == (spark_active_workload_variant as String)
+    Absent => false
+  }
+  let w1_ok = match spark_workload_variant_named(name: "w1-cold-single-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkSeatsSequential && !v.watchdog
+    Absent => false
+  }
+  let w2_ok = match spark_workload_variant_named(name: "w2-cache-reuse-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 1 && v.window_tokens == 262144 && v.mode == SparkCacheReuseQualification && !v.watchdog
+    Absent => false
+  }
+  let q_ok = match spark_workload_variant_named(name: "q-eight-concurrent-full-window" as NonEmptyStr) {
+    Present { value: v } => v.seat_count == 8 && v.window_tokens == 262144 && v.mode == SparkSeatsConcurrent && v.watchdog && v.request_timeout_seconds == 3600 && v.decode_probe
+    Absent => false
+  }
+  let only_qualification_beyond_matrix = all(
+    filter(spark_workload_variants, v => !any(arm_experiment_2026_09_27_liveness_repro_matrix, r => r.variant == v.name)),
+    v => (v.name as String) == "w1-cold-single-full-window" || (v.name as String) == "w2-cache-reuse-full-window" || (v.name as String) == "q-eight-concurrent-full-window")
+  five_each && names_join && only_qualification_beyond_matrix && a_ok && b_ok && c_ok && d_ok && e_ok && w1_ok && w2_ok && q_ok && active_ok
+}
+
+// VARIANT b RENDERS FIVE SEATS AND THE UNCHANGED BUDGET: the prefill script's seat loop bounds at
+// five, the churn driver's client loop bounds at five, and the window_seconds/bounded_seconds
+// figures every variant shares still render — the variant discriminates occupancy alone, never
+// the budget.
+test fn w_variant_b_renders_five_seats_and_the_unchanged_budget() -> Bool {
+  match fx_phase_for_variant(name: "b-five-concurrent-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      string_contains(s: phase.prefill_seats.plan.script, pattern: "while [ \"$seat\" -le 5 ]")
+        && string_contains(s: phase.churn.plan.script, pattern: "while [ \"$client\" -le 5 ]")
+        && string_contains(s: phase.churn.plan.script, pattern: join(["window_seconds=", to_string(phase.churn_window_seconds)], ""))
+        && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: phase.readiness_bounded_seconds)
+  }
+}
+
+// VARIANT d RENDERS SEQUENTIAL ISSUE — ONE REQUEST IN FLIGHT BY CONSTRUCTION: the prefill script
+// carries the sequential marker and the concurrency markers are absent (no backgrounded seat
+// subshells, no pid join); the variant values render in the dry line.
+test fn w_variant_d_renders_sequential_issue_one_request_at_a_time() -> Bool {
+  match fx_phase_for_variant(name: "d-six-sequential-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      string_contains(s: phase.prefill_seats.plan.script, pattern: "sequential issue")
+        && !string_contains(s: phase.prefill_seats.plan.script, pattern: "seat_pids")
+        && !string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog")
+        && phase.variant.seat_count == 6
+        && spark_workload_mode_wire(mode: phase.variant.mode) == "sequential"
+  }
+}
+
+// THE STALL WATCHDOG FIRES ON A SIMULATED STALL AND CAPTURES BEFORE THE STOPS. The fixture drives
+// the pure stall law the script inhabits: 24 consecutive frozen polls (zero prompt throughput with
+// a request running — the 2026-09-27 hang's exact signature) fire the bound at the matrix's 120
+// seconds; 23 do not; any progress, or a quiet engine, resets the count to zero. The script side
+// is pinned on variant e's prefill leg: the watchdog arms INSIDE the prefill leg — which the dry
+// ordering places before the stops — so the capture necessarily lands before any teardown; it
+// dumps every container process (the hung worker and the head among them) via py-spy with the
+// /proc fallback, names the instrument in the evidence, and stands down on the prefills-done flag
+// without extending the admitted budget.
+test fn w_the_stall_watchdog_fires_on_a_simulated_stall_and_captures_before_teardown() -> Bool {
+  let s1 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: 0)
+  let s2 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s1)
+  let s3 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s2)
+  let s4 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s3)
+  let s5 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s4)
+  let s6 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s5)
+  let s7 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s6)
+  let s8 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s7)
+  let s9 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s8)
+  let s10 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s9)
+  let s11 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s10)
+  let s12 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s11)
+  let s13 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s12)
+  let s14 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s13)
+  let s15 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s14)
+  let s16 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s15)
+  let s17 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s16)
+  let s18 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s17)
+  let s19 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s18)
+  let s20 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s19)
+  let s21 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s20)
+  let s22 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s21)
+  let s23 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s22)
+  let s24 = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 1, stall_polls: s23)
+  let fires_at_bound = systemd_workload_stall_fired(stall_polls: s24, stall_seconds: systemd_workload_stall_seconds, poll_seconds: systemd_workload_watchdog_poll_seconds)
+  let below_bound = !systemd_workload_stall_fired(stall_polls: s23, stall_seconds: systemd_workload_stall_seconds, poll_seconds: systemd_workload_watchdog_poll_seconds)
+  let progress_resets = systemd_workload_stall_tick(prompt_throughput: 7, running_requests: 1, stall_polls: s23) == 0
+  let quiet_resets = systemd_workload_stall_tick(prompt_throughput: 0, running_requests: 0, stall_polls: s23) == 0
+  match fx_phase_for_variant(name: "e-stall-captured-six-full-window" as NonEmptyStr) {
+    Absent => false
+    Present { value: phase } =>
+      let prefill = phase.prefill_seats.plan.script
+      let sampling = phase.sampling.plan.script
+      fires_at_bound
+        && below_bound
+        && progress_resets
+        && quiet_resets
+        && s24 == systemd_workload_stall_seconds / systemd_workload_watchdog_poll_seconds
+        && string_contains(s: prefill, pattern: "stall-watchdog-armed")
+        && string_contains(s: prefill, pattern: "rides=workload-phase")
+        && string_contains(s: prefill, pattern: "stall_watchdog.pid")
+        && string_contains(s: prefill, pattern: "GUNBC_WATCHDOG_EOF")
+        && string_contains(s: prefill, pattern: "Avg prompt throughput")
+        && string_contains(s: prefill, pattern: join(["-ge ", to_string(systemd_workload_stall_seconds / systemd_workload_watchdog_poll_seconds)], ""))
+        && string_contains(s: prefill, pattern: "py-spy dump --pid")
+        && string_contains(s: prefill, pattern: "/proc/")
+        && string_contains(s: prefill, pattern: "docker top glm-native-tp4")
+        && string_contains(s: prefill, pattern: "workload_phase_done")
+        && string_contains(s: prefill, pattern: "rm -f \"$state/workload_phase_done\"")
+        && string_contains(s: prefill, pattern: "watchdog: stall captured")
+        && !string_contains(s: prefill, pattern: "prefill_firing_done")
+        && !string_contains(s: prefill, pattern: "stall-watchdog-reaped")
+        && string_contains(s: sampling, pattern: "workload_phase_done")
+        && string_contains(s: sampling, pattern: "stall_watchdog.pid")
+        && string_contains(s: sampling, pattern: "stall-watchdog-reaped")
+  }
+}
+
+// THE ACTIVE VARIANT RENDERS ITSELF, WHATEVER THE PARENT SET: the phase's variant is the active
+// row, the dry banner names it with its own values, the stall instrumentation renders exactly when
+// the variant arms it, and the sampler's phase-end stand-down rides every variant (inert when no
+// watchdog was armed). The budget arithmetic is the plan's own, as every variant — this witness
+// holds for whichever variant the parent's per-run flip selects, a through e.
+test fn w_the_active_variant_renders_itself_and_the_watchdog_follows_the_variant() -> Bool {
+  match fx_actuation() {
+    ArmExperimentActuationRefused { cause: _ } => false
+    ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: workload, stop_legs: _, admitted_seconds: _ } =>
+      match workload {
+        Absent => false
+        Present { value: phase } =>
+          let watchdog_markers = if phase.variant.watchdog {
+            string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog-armed")
+              && string_contains(s: phase.prefill_seats.plan.script, pattern: "workload_phase_done")
+          } else {
+            !string_contains(s: phase.prefill_seats.plan.script, pattern: "stall-watchdog")
+          }
+          (phase.variant.name as String) == (spark_active_workload_variant as String)
+            && watchdog_markers
+            && string_contains(s: phase.sampling.plan.script, pattern: "workload_phase_done")
+            && string_contains(s: phase.sampling.plan.script, pattern: "stall_watchdog.pid")
+            && string_contains(s: phase.churn.plan.script, pattern: join(["window_seconds=", to_string(phase.churn_window_seconds)], ""))
+            && phase.churn_window_seconds == spark_churn_window_seconds(admitted_seconds: phase.readiness_bounded_seconds)
+      }
+  }
+}

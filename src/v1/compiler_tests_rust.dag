@@ -820,19 +820,13 @@ fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
     "    /// `v1.compiler.emit_rust` `emit_shell_return`.\n",
     "    ///\n",
     "    /// `gunbc.recurring_failure_mode` `shell_projection_return_convention_selected_by_arity`: the\n",
-    "    /// projection wraps a shell operation's value in `Ok(..)` only when the declared output carries\n",
-    "    /// MORE THAN ONE field, while the same declaration signs the method `Result<.., Box<dyn Error>>`.\n",
-    "    /// A single-field output answers its channel bare, so the emitted body violates its own emitted\n",
-    "    /// type -- rustc E0308 over a source gunbc accepts with zero blocking diagnostics.\n",
+    "    /// projection used to wrap a shell operation's value in `Ok(..)` only when the declared output\n",
+    "    /// carried MORE THAN ONE field, while the same declaration signs the method\n",
+    "    /// `Result<.., Box<dyn Error>>`. The convention is now unconditional, so BOTH arms must compile.\n",
     "    ///\n",
-    "    /// THE RED ARM IS A KNOWN HOLE, NOT A WALL WORKING, and may not be cited as coverage of\n",
-    "    /// anything. It is that row's specimen committed as a runnable file. When the class climbs this\n",
-    "    /// arm flips to compiling and is KEPT as the regression control on the direction it established\n",
-    "    /// (DESIGN 4b(4)); the expectation below changes then, not the fixtures.\n",
-    "    ///\n",
-    "    /// BOTH ARMS ARE THIS PAIR'S OWN, unlike the three emitter-arm pairs beside it, and they differ\n",
-    "    /// in ONE authored thing: how many fields the output block declares. Borrowing the route's red\n",
-    "    /// would measure nothing about the arity, which is the whole subject.\n",
+    "    /// PERMANENT REGRESSION CONTROL (DESIGN 4b(4)). The one-field arm was a known-hole red; when the\n",
+    "    /// class climbed it FLIPPED to compiling and is KEPT, with the expectation changed and the\n",
+    "    /// fixtures untouched. A rustc refusal of either arm now means the arity fork came back.\n",
     "    ///\n",
     "    /// #[ignore] AND WHY, on the same terms as the pairs beside it: this arm spawns cargo and\n",
     "    /// compiles two emitted crates, which is minutes rather than milliseconds. It is runnable on\n",
@@ -849,16 +843,11 @@ fn ct_shell_projection_arity_fixture_closure_discrimination_test() -> String {
     "            eprintln!(\"shell-projection-arity {}\", line);\n",
     "        }\n",
     "        assert!(\n",
-    "            crate::cli_run::fixture_closure_reached_rustc(&pair.red),\n",
-    "            \"the red arm never reached a rustc verdict, so nothing about the emitted bytes was measured: {}\",\n",
-    "            crate::cli_run::fixture_closure_summary(&pair.red)\n",
-    "        );\n",
-    "        assert!(\n",
-    "            crate::cli_run::fixture_discrimination_passed(&pair),\n",
-    "            \"the two-field control must COMPILE and the one-field arm must still be refused by rustc in its own emitted module with the claimed E0308; a green red arm means the class climbed and this pair's expectation is what changes. control={} red={} attribution={:?} diagnostic={:?}\",\n",
+    "            crate::cli_run::fixture_closure_compiled(&pair.green)\n",
+    "                && crate::cli_run::fixture_closure_compiled(&pair.red),\n",
+    "            \"the return convention is derived once for every arity, so the two-field control AND the one-field arm must both COMPILE; a refused arm means the arity fork returned. control={} one-field={} diagnostic={:?}\",\n",
     "            crate::cli_run::fixture_closure_summary(&pair.green),\n",
     "            crate::cli_run::fixture_closure_summary(&pair.red),\n",
-    "            crate::cli_run::fixture_closure_attributed_line(&pair.red),\n",
     "            crate::cli_run::fixture_closure_attributed_diagnostic(&pair.red)\n",
     "        );\n",
     "    }\n\n")
@@ -1894,6 +1883,8 @@ fn ct_coercion_tests() -> String {
     ct_rust_btree_set_ord_eligibility_test(),
     ct_unresolved_variant_pattern_refuses_test(),
     ct_diagnostics_carrier_grounding_test(),
+    ct_std_nat_realization_agreement_test(),
+    ct_std_nat_operators_refuse_overflow_test(),
     ct_render_rust_applied_type_qualified_base_test(),
     ct_measure_unit_variant_exact_one_test(),
     ct_renderer_hop_identity_keying_test(),
@@ -2243,9 +2234,9 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "            \"the grounded numeric declaration must realize as the host numeric\"\n",
     "        );\n",
     "        assert_eq!(\n",
-    "            base(\"Nat\", \"src/v2/std/nat.dag\"),\n",
+    "            base(\"Nat\", \"dag/test/claim/user_declared_peano.dag\"),\n",
     "            \"Nat\",\n",
-    "            \"the Peano declaration of the same spelling must NOT realize as a machine integer\"\n",
+    "            \"a user-declared type of the same spelling must NOT realize as a machine integer\"\n",
     "        );\n",
     "        // POSITIVE CONTROL. Without it every row above is satisfied by a renderer that had simply\n",
     "        // stopped consulting identity and echoed the authored name, which is half of each pair.\n",
@@ -2266,6 +2257,60 @@ fn ct_renderer_hop_identity_keying_test() -> String {
     "        );\n",
     "    }\n",
     "\n")
+}
+
+// ONE PROGRAM OVER std.nat Nat, THE EMITTED HALF (operator ruling A, 2026-09-30, condition 3). The
+// functions called here are std.nat's own, as the seed EMITTER rendered them into the stage0 mirror
+// this test binary links: the eliminator's constructor match under a tail call, the divisor match
+// and successor rebuild in division, and the difference crossing back into the naturals. The
+// INTERPRETED half is test.claim.std_nat_realization_agreement_witness_test, which evaluates the
+// same functions on the same arguments under the seed interpreter. Both halves hold the same
+// expected values, which are arithmetic facts about small naturals rather than a reading of either
+// route, so a route that realized a constructor, a match or the eliminator differently fails its own
+// half.
+fn ct_std_nat_realization_agreement_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn std_nat_emitted_realization_agrees_with_the_interpreted_witness() {\n",
+    "        use crate::std_nat::\{NatDivision, NatSubtraction\};\n",
+    "        let three: i64 = 3;\n",
+    "        let seventeen = crate::std_nat::nat_add(crate::std_nat::nat_mul(three, 5), 2);\n",
+    "        assert_eq!(seventeen, 17, \"numerals and arithmetic are the integers they denote\");\n",
+    "        assert_eq!(crate::std_nat::nat_cata(three, 10i64, |acc: i64| acc + 7), 31, \"the eliminator applies its step once per successor\");\n",
+    "        assert_eq!(crate::std_nat::nat_cata(0, 10i64, |acc: i64| acc + 7), 10, \"the eliminator over zero is its zero case\");\n",
+    "        assert!(three != 0);\n",
+    "        assert!(matches!(&*crate::std_nat::nat_sub(seventeen, three), NatSubtraction::NatDifference \{ value \} if *value == 14));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_sub(three, seventeen), NatSubtraction::NatSubtrahendExceedsMinuend));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 5), NatDivision::NatQuotientRemainder \{ quotient, remainder \} if *quotient == 3 && *remainder == 2));\n",
+    "        assert!(matches!(&*crate::std_nat::nat_div_rem(seventeen, 0), NatDivision::NatDivisionByZero));\n",
+    "        let by_succ = crate::std_nat::nat_div_rem_by_succ(seventeen, 4);\n",
+    "        assert_eq!((by_succ.quotient, by_succ.remainder), (3, 2), \"division by a successor has no zero arm and divides\");\n",
+    "    }\n\n")
+}
+
+// THE EMITTED NAT OPERATORS REFUSE OVERFLOW, AS THE INTERPRETER DOES. std.nat Nat is declared
+// inductively and grounded to the kernel integer, so its type reference has no checkpoint of its
+// own; v1.compiler.emit_rust expr_realizes_as_refusing_int must still route its operators through
+// the refusing helpers. The subject is the seed's own emitted std.realization_schedule
+// runnable_batch_clamp_ms, whose `second_count(overhead) * 1000` is a Nat product of a call result --
+// the operand shape the de-fork first emitted as the wrapping infix token. The discriminator is the
+// refusal TEXT, not the panic: this crate builds with overflow-checks on, so a raw `*` also panics,
+// with rustc's text; the emitted crate's release profile wraps instead. Positive control: an
+// in-range clamp is the integer it denotes.
+fn ct_std_nat_operators_refuse_overflow_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn std_nat_emitted_operators_refuse_overflow_through_the_runtime_helpers() \{\n",
+    "        let clamp = |overhead_s: i64| std::rc::Rc::new(crate::std_realization_schedule::RunnableBatchClamp \{\n",
+    "            overhead: crate::std_measure::second(overhead_s),\n",
+    "            per_unit: crate::std_measure::millisecond(5),\n",
+    "            authority: crate::std_decl_ref::decl_ref(\"ct\".to_string(), \"clamp\".to_string()),\n",
+    "        });\n",
+    "        assert_eq!(crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(2), 3), 2015, \"an in-range clamp is the integer it denotes\");\n",
+    "        let refusal = std::panic::catch_unwind(|| crate::std_realization_schedule::runnable_batch_clamp_ms(clamp(i64::MAX / 10), 0)).expect_err(\"a Nat product past i64 must refuse\");\n",
+    "        let text = refusal.downcast_ref::<String>().cloned().unwrap_or_default();\n",
+    "        assert!(text.starts_with(\"integer overflow:\"), \"the Nat product must refuse through v1_rt, got \{text:?}\");\n",
+    "    }\n\n")
 }
 
 fn ct_diagnostics_carrier_grounding_test() -> String {
