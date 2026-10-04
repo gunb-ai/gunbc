@@ -391,12 +391,12 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
 }
 
 // THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT registration,
-// deregistration and the qualification dispatch are each a
+// deregistration, the qualification dispatch and its per-attempt branch pin are each a
 // recurring automated effect under the dispatching run's federated identity, so the selection must
 // answer the federated scoped grant and the row must conform; rowing it as an approval capability or
 // a per-registration ntfy approval turns this red.
 test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federated_grant_and_conform() -> Bool {
-  ["dispatch_jit_mint", "ensure_jit_runner_deregistered", "dispatch_qualification_floor"] |> all(name =>
+  ["dispatch_jit_mint", "ensure_jit_runner_deregistered", "dispatch_qualification_floor", "ensure_qualification_ref_pin", "remove_qualification_ref_pin"] |> all(name =>
     any(census_verdicts(), v =>
       (v.site.decl_name as String) == name
         && selected_federated(s: v.selection)

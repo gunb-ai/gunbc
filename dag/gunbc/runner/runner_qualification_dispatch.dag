@@ -11,6 +11,7 @@ import extdeps.transports.rest {
   RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
 import extdeps.github.effect { GitHubEffect, DispatchWorkflow, GitHubWorkflowRef }
+import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.actions {
   Workflow, Job, DispatchInput, InputString, RunnerSpec, RunsOnExpression, HostedRunner, SelfHosted,
   WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, WorkflowRunCompleted, MergeGroup,
@@ -24,14 +25,13 @@ import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
+import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
 import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
-import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation, jit_mint_identity_of }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
 import gunbc.github_effect_perform {
@@ -55,6 +55,9 @@ import gunbc.witness_floor_workflow { required_floor_claim_cost_artifact_name }
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.runner.runner_host_unit_slot { HostUnitSlot }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.runner.runner_qualification_ref_pin {
+  QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
+}
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
@@ -67,8 +70,10 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom }
 // THE SUBJECT IS SEALED AND ITS SCOPE IS FIXED BY CONSTRUCTION. QualificationDispatchSubject is
 // minted only by qualification_dispatch_subject_over, and only from:
 //   - the sealed AuthorizedJitMintDispatch (gunbc.runner.runner_jit_perform), whose only mint is
-//     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and the credential
-//     delivered for that same slot -- so
+//     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and a credential
+//     delivered by THAT mint -- the delivery's JitMintIdentity (App, installation, organization,
+//     runner name) and slot must equal the dispatch's, so a same-slot delivery from another mint
+//     refuses -- so
 //     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
@@ -96,21 +101,11 @@ data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   type: InputString,
 }
 
-fn qualification_workflow_path() -> NonEmptyStr {
-  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
-}
-
 fn qualification_workflow_file_name() -> NonEmptyStr {
   match last(split(qualification_workflow_path() as String, "/")) {
     Present { value: f } => f as NonEmptyStr
     Absent => qualification_workflow_path()
   }
-}
-
-// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
-// form gunbc.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
-fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
-  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
 }
 
 fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
@@ -123,29 +118,36 @@ type QualificationDispatchSubject sole_constructor {
   registration: JitRegistration
   host: HostIdentity
   attempt: NonEmptyStr
-  branch: NonEmptyStr
-  revision: CommitSha
+  runner_id: Int
+  pin: QualificationRefPin
   floor_job_name: NonEmptyStr
 }
 
 type QualificationSubjectRefusal
   = SubjectCredentialNotDelivered { delivery: JitCredentialDelivery }
   | SubjectNoRegistration
-  | SubjectDeliveryForAnotherSlot
+  | SubjectMintedIntoAnotherGroup { minted_group: Int, pinned_group: Int }
+  | SubjectPinForAnotherAttempt { pin_attempt: NonEmptyStr, slot_attempt: NonEmptyStr }
+  | SubjectDeliveryForAnotherDispatch
   | SubjectSlotNotHostUnit
   | SubjectSlotForAnotherWorkflow { slot_workflow: NonEmptyStr, qualification_workflow: NonEmptyStr }
   | SubjectAttemptInputUndeclared { input: String }
   | SubjectFloorJobAbsent { job_id: NonEmptyStr }
   | SubjectFloorRunsOnNotTheAttemptInput { job_id: NonEmptyStr, runs_on: String }
+  | SubjectFloorNameNotUnique { name: NonEmptyStr, jobs_with_name: Int }
 
 type QualificationSubjectStanding
   = QualificationSubjectAdmitted { subject: QualificationDispatchSubject }
   | QualificationSubjectRefused { refusal: QualificationSubjectRefusal }
 
+fn dispatch_inputs_declare(inputs: List<DispatchInput>, input: DispatchInput) -> Bool {
+  inputs |> any(i => i.name == input.name)
+}
+
 fn workflow_declares_dispatch_input(workflow: Workflow, input: DispatchInput) -> Bool {
   workflow.on |> any(t =>
     match t {
-      WorkflowDispatch { inputs: ins } => ins |> any(i => i.name == input.name)
+      WorkflowDispatch { inputs: ins } => dispatch_inputs_declare(inputs: ins, input: input)
       Push { branches: _, paths: _ } => false
       PullRequest { branches: _, types: _ } => false
       Schedule { cron: _ } => false
@@ -226,10 +228,16 @@ fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) 
     match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
       Absent => QualificationFloorRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
       Present { value: job } =>
-        if runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
-          QualificationFloorAdmitted { floor_job_name: job_display_name(job: job) }
-        } else {
+        if !runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
           QualificationFloorRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: floor_job_id, runs_on: runner_spec_text(runner: job.runner) } }
+        } else {
+          let name = job_display_name(job: job)
+          let sharing = workflow.jobs |> filter(j => (job_display_name(job: j) as String) == (name as String))
+          if count(sharing) != 1 {
+            QualificationFloorRefused { refusal: SubjectFloorNameNotUnique { name: name, jobs_with_name: count(sharing) } }
+          } else {
+            QualificationFloorAdmitted { floor_job_name: name }
+          }
         }
     }
   }
@@ -244,26 +252,31 @@ fn qualification_dispatch_subject_over(
   delivery: JitCredentialDelivery,
   workflow: Workflow,
   floor_job_id: NonEmptyStr,
-  branch: NonEmptyStr,
-  revision: CommitSha,
+  pin: QualificationRefPin,
 ) -> QualificationSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
   ]
 {
   match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
     Absent => QualificationSubjectRefused { refusal: SubjectNoRegistration }
     Present { value: registration } =>
   match delivery {
-    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: _ } =>
-      if delivered_slot != registration.slot {
-        QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherSlot }
+    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: runner_id, minted_for: minted_for } =>
+      if minted_for != jit_mint_identity_of(dispatch: dispatch) || delivered_slot != dispatch.slot {
+        QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch }
       } else {
         match registration.slot {
           MicroVmJitSlot { attempt: _ } => QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
           HostUnitJitSlot { slot: h } =>
-            match qualification_slot_refusal(slot_workflow: h.workflow, branch: branch) {
+            if (pin.name.attempt as String) != (h.attempt as String) {
+              QualificationSubjectRefused { refusal: SubjectPinForAnotherAttempt { pin_attempt: pin.name.attempt, slot_attempt: h.attempt } }
+            } else if dispatch.request.runner_group_id.value != pin.group.group.value {
+              QualificationSubjectRefused { refusal: SubjectMintedIntoAnotherGroup { minted_group: dispatch.request.runner_group_id.value, pinned_group: pin.group.group.value } }
+            } else {
+            match qualification_slot_refusal(slot_workflow: h.workflow, branch: pin.name.branch) {
               Present { value: r } => QualificationSubjectRefused { refusal: r }
               Absent =>
                 match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
@@ -274,12 +287,13 @@ fn qualification_dispatch_subject_over(
                         registration: registration,
                         host: h.host.host.host,
                         attempt: h.attempt,
-                        branch: branch,
-                        revision: revision,
+                        runner_id: runner_id,
+                        pin: pin,
                         floor_job_name: n,
                       },
                     }
                 }
+            }
             }
         }
       }
@@ -288,31 +302,41 @@ fn qualification_dispatch_subject_over(
   }
 }
 
-// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model. Until the
-// boot leg lands the route's mode there, it has no floor job reading the attempt input and this
-// refuses -- the wiring the route leg owes, refused rather than faked.
+// THE PRODUCTION MINT: the qualification workflow is the generated fleet-converge model.
+//
+// THE DECLARED INPUTS ARE READ BEFORE THE WORKFLOW IS BUILT. The model's workflow_dispatch inputs are
+// their own declaration (gunbc.fleet_converge_workflow fleet_converge_dispatch_inputs), and the jobs
+// are built by fleet_converge_jobs(); evaluating the whole fleet_converge_workflow builds every job of
+// every mode, ~600k eval steps measured by the required floor, and the first check the mint makes
+// reads only the inputs. So the wrapper asks that check of the inputs declaration directly and builds
+// the workflow only when the inputs declare the attempt input -- the refusal is the same
+// SubjectAttemptInputUndeclared the mint would reach, without the construction it would never read.
+// Until the boot leg lands the qualification mode there, this refuses -- the wiring the route leg
+// owes, refused rather than faked.
 fn qualification_dispatch_subject(
   dispatch: AuthorizedJitMintDispatch,
   delivery: JitCredentialDelivery,
   floor_job_id: NonEmptyStr,
-  branch: NonEmptyStr,
-  revision: CommitSha,
+  pin: QualificationRefPin,
 ) -> QualificationSubjectStanding {
-  qualification_dispatch_subject_over(
-    dispatch: dispatch,
-    delivery: delivery,
-    workflow: fleet_converge_workflow,
-    floor_job_id: floor_job_id,
-    branch: branch,
-    revision: revision,
-  )
+  if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
+    QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
+  } else {
+    qualification_dispatch_subject_over(
+      dispatch: dispatch,
+      delivery: delivery,
+      workflow: fleet_converge_workflow,
+      floor_job_id: floor_job_id,
+      pin: pin,
+    )
+  }
 }
 
 fn qualification_dispatch_effect(subject: QualificationDispatchSubject) -> GitHubEffect {
   DispatchWorkflow {
     repository: gunbc_repository,
     workflow: GitHubWorkflowRef { file_name: qualification_workflow_file_name() },
-    subject: subject.revision,
+    subject: subject.pin.revision,
   }
 }
 
@@ -335,6 +359,8 @@ type DispatchedQualificationRun sole_constructor {
 type QualificationDispatchRefusal
   = DispatchCredentialRefused { unsatisfied: List<CredentialCapability> }
   | DispatchTokenForAnotherInstallation
+  | DispatchAuthorityForAnotherInstallation { authority_app: DeclaredGitHubApp, authority_installation: GitHubAppInstallationId }
+  | DispatchAuthorityNotAnInstallation
   | DispatchHoldForAnotherHost { held: HostIdentity, slot: HostIdentity }
   | DispatchStatusRefused { status: Int, body: String }
 
@@ -361,6 +387,23 @@ fn qualification_dispatch_standing(performance: RestExchangePerformance) -> Qual
   }
 }
 
+// THE PERMISSION IS ASKED OF THE INSTALLATION THAT PERFORMS THE REQUEST. credential_authorizes answers
+// for whatever authority it is given; the request is made with the controller token. So the
+// authority must name the very App and installation the registration (and therefore the token) was
+// minted under, or the actions:write it proves is some other installation's. An Actions job
+// credential names no installation at all and cannot authorize an installation-token request.
+fn dispatch_authority_refusal(authority: GitHubCredentialAuthority, app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> QualificationDispatchRefusal? {
+  match authority_installation(authority: authority) {
+    Absent => Present { value: DispatchAuthorityNotAnInstallation }
+    Present { value: held } =>
+      if held.app == app && held.installation == installation {
+        none
+      } else {
+        Present { value: DispatchAuthorityForAnotherInstallation { authority_app: held.app, authority_installation: held.installation } }
+      }
+  }
+}
+
 // THE INTERLOCK, as a pure comparison: the proof's admitted host against the slot's host.
 fn hold_covers_slot_host(held: HostIdentity, slot_host: HostIdentity) -> Bool {
   (held as String) == (slot_host as String)
@@ -378,24 +421,30 @@ fn dispatch_qualification_floor(
     QualificationDispatchRefused { subject: subject, refusal: DispatchHoldForAnotherHost { held: hold.subject.host.host, slot: subject.host } }
   } else if token.app != subject.registration.app || token.installation != subject.registration.installation {
     QualificationDispatchRefused { subject: subject, refusal: DispatchTokenForAnotherInstallation }
-  } else if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
-    QualificationDispatchRefused {
-      subject: subject,
-      refusal: DispatchCredentialRefused { unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect) },
-    }
   } else {
-    let answer = dispatch_workflow_with(
-      token: token,
-      owner: gunbc_repository.owner as NonEmptyStr,
-      repo: gunbc_repository.name as NonEmptyStr,
-      workflow_id: qualification_workflow_file_name(),
-      git_ref: subject.branch,
-      inputs: qualification_dispatch_inputs(attempt: subject.attempt),
-    )
-    match qualification_dispatch_standing(performance: answer.performance) {
-      DispatchStandingSucceeded => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: answer.receipt } }
-      DispatchStandingRefused { status: s, body: b } => QualificationDispatchRefused { subject: subject, refusal: DispatchStatusRefused { status: s, body: b } }
-      DispatchStandingCommitAmbiguous { detail: d } => QualificationDispatchCommitAmbiguous { subject: subject, detail: d }
+    match dispatch_authority_refusal(authority: authority, app: subject.registration.app, installation: subject.registration.installation) {
+      Present { value: r } => QualificationDispatchRefused { subject: subject, refusal: r }
+      Absent =>
+        if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
+          QualificationDispatchRefused {
+            subject: subject,
+            refusal: DispatchCredentialRefused { unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect) },
+          }
+        } else {
+          let answer = dispatch_workflow_with(
+            token: token,
+            owner: gunbc_repository.owner as NonEmptyStr,
+            repo: gunbc_repository.name as NonEmptyStr,
+            workflow_id: qualification_workflow_file_name(),
+            git_ref: subject.pin.name.branch,
+            inputs: qualification_dispatch_inputs(attempt: subject.attempt),
+          )
+          match qualification_dispatch_standing(performance: answer.performance) {
+            DispatchStandingSucceeded => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: answer.receipt } }
+            DispatchStandingRefused { status: s, body: b } => QualificationDispatchRefused { subject: subject, refusal: DispatchStatusRefused { status: s, body: b } }
+            DispatchStandingCommitAmbiguous { detail: d } => QualificationDispatchCommitAmbiguous { subject: subject, detail: d }
+          }
+        }
     }
   }
 }
@@ -425,12 +474,14 @@ type QualificationRunRefusal
   | RunSubjectMismatch { observed_run_id: Int, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
   | RunAdvancedPastDispatchedAttempt { observed_attempt: Int }
   | RunRevisionNotPinned { pinned: CommitSha, observed: CommitSha }
+  | RunOnAnotherBranch { pinned: NonEmptyStr, observed: String? }
   | RunNotCompleted { status: WorkflowRunStatus }
   | RunCompletedWithoutConclusion
   | RunJobsUnreadable { performance: RestExchangePerformance }
   | RunJobsTruncated { returned: Int, total: Int }
   | RunFloorJobNotUnique { floor_job_name: NonEmptyStr, matching: Int }
-  | RunNeverReachedAttemptRunner { registered_runner: NonEmptyStr, runner_names_seen: List<String> }
+  | RunNeverReachedAttemptRunner { registered_runner_id: Int, runner_ids_seen: List<Int?> }
+  | RunRunnerNameDisagrees { registered_runner_id: Int, registered_runner: NonEmptyStr, observed_runner_name: String? }
   | RunRegisteredRunnerRanAnotherJob { registered_runner: NonEmptyStr, job_name: String }
   | RunFloorJobNotStarted { job_id: Int }
 
@@ -463,12 +514,8 @@ fn optional_text_is(o: String?, expected: String) -> Bool {
 // THE ONE JOIN FROM A JOB TO A JIT REGISTRATION: the runner GitHub reports took the job is the
 // name the authorized mint fixed (gunbc.runner.runner_jit_deregistration JitRegistration name).
 // Labels cannot make this join -- two runners can carry identical labels.
-fn job_ran_on(job: WorkflowJobRun, runner_name: NonEmptyStr) -> Bool {
-  optional_text_is(o: job.runner_name, expected: runner_name as String)
-}
-
-fn job_runner_name_seen(job: WorkflowJobRun) -> String {
-  match job.runner_name { Present { value: n } => n Absent => "(no runner assigned)" }
+fn job_ran_on(job: WorkflowJobRun, runner_id: Int) -> Bool {
+  match job.runner_id { Present { value: v } => v == runner_id Absent => false }
 }
 
 fn job_started(job: WorkflowJobRun) -> Bool {
@@ -486,29 +533,34 @@ type QualificationRunVerdict
 // the floor job the subject fixed, and the pinned revision. collect_qualification_run derives it from
 // the sealed subject (qualification_run_expectation); a claim supplies it directly.
 type QualificationRunExpectation {
+  registered_runner_id: Int
   registered_runner: NonEmptyStr
   floor_job_name: NonEmptyStr
   revision: CommitSha
+  branch: NonEmptyStr
 }
 
 fn qualification_run_expectation(subject: QualificationDispatchSubject) -> QualificationRunExpectation {
   QualificationRunExpectation {
+    registered_runner_id: subject.runner_id,
     registered_runner: subject.registration.name.value,
     floor_job_name: subject.floor_job_name,
-    revision: subject.revision,
+    revision: subject.pin.revision,
+    branch: subject.pin.name.branch,
   }
 }
 
 fn decide_floor_job(subject: QualificationRunExpectation, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
-  let registered = subject.registered_runner
-  let on_runner = jobs |> filter(j => job_ran_on(job: j, runner_name: registered))
+  let on_runner = jobs |> filter(j => job_ran_on(job: j, runner_id: subject.registered_runner_id))
   match first(on_runner) {
-    Absent => RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner: registered, runner_names_seen: jobs |> map(j => job_runner_name_seen(job: j)) } }
+    Absent => RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner_id: subject.registered_runner_id, runner_ids_seen: jobs |> map(j => j.runner_id) } }
     Present { value: job } =>
       if count(on_runner) != 1 {
         RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: count(on_runner) } }
+      } else if !optional_text_is(o: job.runner_name, expected: subject.registered_runner as String) {
+        RunVerdictRefused { refusal: RunRunnerNameDisagrees { registered_runner_id: subject.registered_runner_id, registered_runner: subject.registered_runner, observed_runner_name: job.runner_name } }
       } else if job.name != (subject.floor_job_name as String) {
-        RunVerdictRefused { refusal: RunRegisteredRunnerRanAnotherJob { registered_runner: registered, job_name: job.name } }
+        RunVerdictRefused { refusal: RunRegisteredRunnerRanAnotherJob { registered_runner: subject.registered_runner, job_name: job.name } }
       } else if !job_started(job: job) {
         RunVerdictRefused { refusal: RunFloorJobNotStarted { job_id: job.id } }
       } else {
@@ -531,6 +583,8 @@ fn decide_qualification_run(
         RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: [] } }
       } else if run.run_attempt != dispatched_run_attempt {
         RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: run.run_attempt } }
+      } else if !optional_text_is(o: run.head_branch, expected: subject.branch as String) {
+        RunVerdictRefused { refusal: RunOnAnotherBranch { pinned: subject.branch, observed: run.head_branch } }
       } else if (run.head_sha as String) != (subject.revision as String) {
         RunVerdictRefused { refusal: RunRevisionNotPinned { pinned: subject.revision, observed: run.head_sha } }
       } else {

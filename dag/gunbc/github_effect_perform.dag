@@ -31,6 +31,9 @@ import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
 import extdeps.github.workflows
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs
+import extdeps.github.git_database
+import extdeps.github.git_database { GitRefWire }
+import extdeps.github.org_actions
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
 import extdeps.github.actions_artifacts
 import extdeps.github.actions_artifacts { ActionsArtifactList }
@@ -399,4 +402,35 @@ type ArtifactArchiveRead sole_constructor {
 fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
   let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: artifact_id as String)
   ArtifactArchiveRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), artifact_id: artifact_id }
+}
+
+// THE QUALIFICATION REF PIN'S EXCHANGES (gunbc.runner.runner_qualification_ref_pin), under the same
+// controller installation token. Ref and group reads are reads; the create, delete and group write
+// are mutations, so a lost answer is commit-ambiguous. Each answer is sealed for the same reason as
+// the dispatch's: the decision module judges only what GitHub returned.
+type GitRefRead sole_constructor {
+  performance: RestExchangePerformance
+  reference: GitRefWire
+}
+
+fn read_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, ref: NonEmptyStr) -> GitRefRead uses net: Network {
+  let read = github.GitDatabase.GetRef(auth_token: token.token, owner: owner as String, repo: repo as String, ref: ref as String)
+  GitRefRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }), reference: read.reference }
+}
+
+fn create_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, full_ref: NonEmptyStr, sha: String) -> RestExchangePerformance uses net: Network {
+  let created = github.GitDatabase.CreateRef(auth_token: token.token, owner: owner as String, repo: repo as String, full_ref: full_ref as String, sha: sha)
+  classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome })
+}
+
+fn delete_git_ref_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, ref: NonEmptyStr) -> RestExchangePerformance uses net: Network {
+  let deleted = github.GitDatabase.DeleteRef(auth_token: token.token, owner: owner as String, repo: repo as String, ref: ref as String)
+  classify_rest_outcome(standing: RestMutationExchange { rest: deleted.outcome })
+}
+
+fn update_runner_group_workflows_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_group_id: Int, selected_workflows: List<String>) -> RestExchangePerformance uses net: Network {
+  let updated = github.OrgRunnerGroupsRest.UpdateOrganizationRunnerGroupWorkflows(
+    installation_token: token.token, org: organization, runner_group_id: runner_group_id, selected_workflows: selected_workflows,
+  )
+  classify_rest_outcome(standing: RestMutationExchange { rest: updated.outcome })
 }

@@ -114,6 +114,29 @@ type AuthorizedJitMintDispatch sole_constructor {
   request: JitRunnerConfigRequest
 }
 
+// WHICH MINT A DELIVERY CAME FROM, AS A PLAIN VALUE. A delivery agrees with another on slot,
+// credential and runner id when two authorized mints name the same slot; what tells them apart is
+// the App, installation and organization the mint was performed under and the runner name it fixed.
+// receive_jit_mint stamps that identity from the authorized dispatch, and a consumer that holds the
+// sealed dispatch (gunbc.runner.runner_qualification_dispatch) compares the two. It is a value, not
+// the sealed dispatch itself, because the delivery variant is not sealed: carrying the dispatch would
+// hand every holder of a delivery a sealed value, and the identity is what the comparison needs.
+type JitMintIdentity {
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+  organization: GitHubOrganizationRef
+  runner_name: NonEmptyStr
+}
+
+fn jit_mint_identity_of(dispatch: AuthorizedJitMintDispatch) -> JitMintIdentity {
+  JitMintIdentity {
+    app: dispatch.app,
+    installation: dispatch.installation,
+    organization: dispatch.organization,
+    runner_name: dispatch.request.name.value,
+  }
+}
+
 type AuthorityInstallation {
   app: DeclaredGitHubApp
   installation: GitHubAppInstallationId
@@ -139,6 +162,8 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
   decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
 ] {
   match plan_jit_mint(
     binding: binding,
@@ -207,6 +232,7 @@ type JitCredentialDelivery
       slot: JitSlot
       credential: EncodedJitConfig
       runner_id: Int
+      minted_for: JitMintIdentity
     }
   | JitCredentialNotDispatched { refusal: JitDispatchRefusal }
   | JitCredentialMintNotCreated { outcome: JitConfigMintOutcome }
@@ -225,6 +251,7 @@ fn receive_jit_mint(
             slot: slot,
             credential: config,
             runner_id: runner_id,
+            minted_for: jit_mint_identity_of(dispatch: authorized),
           }
         JitConfigMintRefused { status: s, reason: reason } =>
           JitCredentialMintNotCreated {
@@ -249,6 +276,7 @@ fn jit_credential_delivered(delivery: JitCredentialDelivery) -> Bool {
       slot: _,
       credential: _,
       runner_id: _,
+      minted_for: _,
     } => true
     JitCredentialNotDispatched { refusal: _ } => false
     JitCredentialMintNotCreated { outcome: _ } => false
