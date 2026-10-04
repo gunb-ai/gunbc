@@ -334,13 +334,7 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
         }
       }) {
         Present { value: row } => optional_present(value: row.value_type)
-        Absent =>
-          let path = qualified_name_from_dotted_string(dotted: n)
-          if length(xs: path) > 1 {
-            optional_present(value: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic))
-          } else {
-            optional_absent()
-          }
+        Absent => optional_absent()
       }
     ContainerOf { source: _, element: _ } => optional_absent()
     OptionalOf { inner: _ } => optional_absent()

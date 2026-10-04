@@ -1,14 +1,8 @@
 module v2.test.claim.compiler.collection_count_realization
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.test.claim.compiler.infer_fold_member_instance { fmi_infer_tree, fmi_list_peers, fmi_reason }
-import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
-import v2.compiler.source_authority { DagSourceReadWitness }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.artifact { Artifact, SourceFile }
-import std.algebra { Cons }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.optional { Absent, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -19,27 +13,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: a bare `count` whose name no declaration claims binds to the std.algebra collection roster's
 // primitive-call row (collection_count_shape), and v2 infer types the call by that row: the free-monoid carrier
-// in, std.nat Nat out (the stated-Int departure is retired: v2 infer elaborates an integer literal at an expected
-// Nat, v2.test.claim.compiler.literal_elaboration). BOUNDARY: source text in (module p, plus peers restating
-// v2.std.collection, std.algebra and std.nat), through the production assembly route, then infer. RED ON THE BASE:
+// in, a STATED Int out -- the declared departure recorded on std.algebra algebra_count_length_name_fork_note
+// (trigger: v2 infer elaborates a literal at an expected type, sufficient for a Nat result with literals as
+// written). BOUNDARY: source text in, through the production assembly route, then infer. RED ON THE BASE:
 // `count(` refused resolve_reason_unbound_symbol, so no module reached infer.
 
 data ccc_size_compared_to_a_literal: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n"
-data ccc_size_in_arithmetic: String = "module p\n\nimport v2.std.collection { List }\nimport std.nat { Nat }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Nat {\n  count(xs)\n}\n"
+data ccc_size_in_arithmetic: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  count(xs) - 1\n}\n"
 data ccc_size_of_an_int: String = "module p\n\nfn f(x: Int) -> Int {\n  count(x)\n}\n"
 data ccc_size_declared_bool: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(xs: List<Int>) -> Bool {\n  count(xs)\n}\n"
-
-data ccc_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^collection_count_nat_artifact, file_path: "src/v2/pilot/collection_count_nat.dag" }
-
-fn ccc_assemble(src: String) -> Outcome<ResolvedTree> {
-  bla_assemble_with_peers(
-    p_src: src,
-    peers: Cons {
-      head: DagSourceReadWitness { source: Medium { carried: "module std.nat\n\ntype Nat\n  = Zero\n  | Succ { prev: Nat }\n", fidelity: Lossless }, artifact: ccc_nat_artifact, compilation_unit: ^collection_count_nat_cu, source_root: V2Tree },
-      tail: fmi_list_peers()
-    }
-  )
-}
 
 fn ccc_binds_row(tree: ResolvedTree) -> Bool {
   fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
@@ -56,7 +38,7 @@ type CccReading {
 }
 
 fn ccc_reading(src: String) -> CccReading {
-  match ccc_assemble(src: src) {
+  match fmi_assemble(src: src) {
     Rejected { diagnostics: d } => CccReading { binds_row: false, reason: fmi_reason(o: Rejected { diagnostics: d }) }
     Accepted { value: tree, diagnostics: _ } => CccReading { binds_row: ccc_binds_row(tree: tree), reason: fmi_reason(o: fmi_infer_tree(tree: tree)) }
   }
@@ -67,13 +49,13 @@ fn ccc_arithmetic_reading() -> CccReading { ccc_reading(src: ccc_size_in_arithme
 fn ccc_int_reading() -> CccReading { ccc_reading(src: ccc_size_of_an_int) }
 fn ccc_declared_bool_reading() -> CccReading { ccc_reading(src: ccc_size_declared_bool) }
 
-// POSITIVE: count over a List binds the row and compares against a literal as written.
+// POSITIVE: count over a List binds the row and its Int compares against a literal as written.
 test fn ccc_list_size_compares_to_an_int_literal() -> Bool {
   let r = ccc_literal_reading()
   r.binds_row && r.reason == ^accepted
 }
 
-// POSITIVE: the size inhabits a declared std.nat Nat.
+// POSITIVE: the stated Int takes part in Int arithmetic.
 test fn ccc_list_size_in_int_arithmetic() -> Bool {
   let r = ccc_arithmetic_reading()
   r.binds_row && r.reason == ^accepted
@@ -85,13 +67,8 @@ test fn ccc_size_of_a_non_collection_refuses() -> Bool {
   r.binds_row && r.reason == ^application_argument_does_not_inhabit
 }
 
-// RED: the row's result is Nat, so returning it where Bool is declared refuses.
+// RED: the row's result is Int, so returning it where Bool is declared refuses.
 test fn ccc_size_result_is_the_stated_int() -> Bool {
   let r = ccc_declared_bool_reading()
   r.binds_row && r.reason != ^accepted
 }
-
-// PROBES (temporary)
-test fn cccp_plain_nat_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport std.nat { Nat, Zero }\n\nfn mk() -> Nat {\n  Zero\n}\n\nfn f() -> Bool {\n  mk()\n}\n").reason != ^accepted }
-test fn cccp_generic_nat_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport v2.std.collection { List }\nimport std.nat { Nat, Zero }\n\nfn mk<T>(xs: List<T>) -> Nat {\n  Zero\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs: xs)\n}\n").reason != ^accepted }
-test fn cccp_generic_int_return_at_bool_refuses() -> Bool { ccc_reading(src: "module p\n\nimport v2.std.collection { List }\n\nfn mk<T>(xs: List<T>) -> Int {\n  0\n}\n\nfn f(xs: List<Int>) -> Bool {\n  mk(xs: xs)\n}\n").reason != ^accepted }
