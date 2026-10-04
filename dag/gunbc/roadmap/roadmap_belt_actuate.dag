@@ -562,6 +562,9 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
   filesystem_read_outcome,
   filesystem_file_observation,
 }
@@ -4951,47 +4954,89 @@ fn belt_occurrence_unit_row(unit: String) -> ObservedContainerRow {
 // attempt whose identity cannot be read produces no record, so a live container over it joins
 // nothing and reads Unclassified -- visible, occupying, never reaped -- rather than borrowing
 // today's selection as its meaning.
-fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> List<DurableAttemptRecord> {
+// The attempt's durable occurrence is a typed read outcome, never a silently emptied list: before
+// the fold conversion, an unreadable launch record returned [] and the occurrence census lost the
+// attempt without a word. A refusal here reaches the census as a refusal naming the attempt, the
+// same way an unobservable attempt population already does.
+type AttemptOccurrenceRecordRead
+  = AttemptOccurrenceRecordDecoded { record: DurableAttemptRecord }
+  | AttemptOccurrenceRecordRefused { reason: NonEmptyStr }
+
+fn belt_occurrence_record_from_launch_read(attempt: DispatchAttemptRef, read: FilesystemReadOutcome) -> AttemptOccurrenceRecordRead {
+  match read {
+    FilesystemReadRefused { error } =>
+      AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record could not be read, so its durable occurrence is unknown: ", error], "") }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } =>
+          AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record does not decode as JSON: ", gap], "") }
+        JsonDocumentParsed { value: doc } =>
+          match launch_identity_of_json(doc: doc) {
+            LaunchIdentityUnreadable { reason } =>
+              AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record carries no readable launch identity: ", reason], "") }
+            LaunchIdentityDecoded { identity } =>
+              AttemptOccurrenceRecordDecoded {
+                record: DurableAttemptRecord {
+                  node: attempt.node_id as String,
+                  attempt: attempt.attempt_key,
+                  spawn_identity: join([
+                    "cause=", launch_cause_label(c: identity.cause),
+                    " mode=", spawn_mode_label(m: identity.mode),
+                    " instance=", identity.instance_id as String,
+                    " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
+                  ], ""),
+                },
+              }
+          }
+      }
+  }
+}
+
+fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
   let path = dispatch_attempt_launch_path_for_instance(
     instance: instance,
     node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: attempt.attempt_key,
   )
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    []
-  } else {
-    match parse_json_document(s: read.content) {
-      JsonDocumentUnreadable { gap: _ } => []
-      JsonDocumentParsed { value: doc } =>
-        match launch_identity_of_json(doc: doc) {
-          LaunchIdentityUnreadable { reason: _ } => []
-          LaunchIdentityDecoded { identity } =>
-            [DurableAttemptRecord {
-              node: attempt.node_id as String,
-              attempt: attempt.attempt_key,
-              spawn_identity: join([
-                "cause=", launch_cause_label(c: identity.cause),
-                " mode=", spawn_mode_label(m: identity.mode),
-                " instance=", identity.instance_id as String,
-                " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
-              ], ""),
-            }]
+  belt_occurrence_record_from_launch_read(
+    attempt: attempt,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+// One unreadable attempt refuses the whole census rather than shrinking it silently: a census with
+// a hole is not a census. The refusal names every attempt whose record could not be read.
+type BeltAttemptOccurrenceRecords
+  = BeltAttemptOccurrenceRecordsObserved { records: List<DurableAttemptRecord> }
+  | BeltAttemptOccurrenceRecordsRefused { reason: NonEmptyStr }
+
+fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> BeltAttemptOccurrenceRecords {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason } =>
+      BeltAttemptOccurrenceRecordsRefused { reason: join(["the attempt population is unobservable: ", reason], "") }
+    AttemptsObserved { attempts } => {
+      let outcomes = map(attempts, a => belt_occurrence_record_for_attempt(instance: instance, attempt: a))
+      let refusal_reasons = fold(outcomes, init: [], f: (acc, o) => match o {
+        AttemptOccurrenceRecordRefused { reason } => concat(acc, [reason as String])
+        AttemptOccurrenceRecordDecoded { record: _ } => acc
+      })
+      if any(outcomes, o => match o {
+        AttemptOccurrenceRecordRefused { reason: _ } => true
+        AttemptOccurrenceRecordDecoded { record: _ } => false
+      }) {
+        BeltAttemptOccurrenceRecordsRefused { reason: join(refusal_reasons, "; ") as NonEmptyStr }
+      } else {
+        BeltAttemptOccurrenceRecordsObserved {
+          records: flat_map(outcomes, o => match o {
+            AttemptOccurrenceRecordDecoded { record: r } => [r]
+            AttemptOccurrenceRecordRefused { reason: _ } => []
+          }),
         }
+      }
     }
   }
 }
-
-fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> List<DurableAttemptRecord>? {
-  match belt_attempts_observe_for_instance(instance: instance) {
-    AttemptsRefused { reason } => none
-    AttemptsObserved { attempts } =>
-      Present {
-        value: attempts |> flat_map(a => belt_occurrence_record_for_attempt(instance: instance, attempt: a)),
-      }
-  }
-}
-
 fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance) -> BeltOccurrencePopulation {
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason } =>
@@ -5002,9 +5047,9 @@ fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance
           OccurrencePopulationRefused { reason: "the user manager's gunbc unit population is unobservable; the census over half the population is unknowable" }
         Present { value: unit_names } =>
           match belt_occurrence_records_for_instance(instance: instance) {
-            Absent =>
-              OccurrencePopulationRefused { reason: "the durable attempt records are unobservable; occurrence identity cannot be joined" }
-            Present { value: records } =>
+            BeltAttemptOccurrenceRecordsRefused { reason } =>
+              OccurrencePopulationRefused { reason: join(["the durable attempt records are unobservable; occurrence identity cannot be joined: ", reason], "") }
+            BeltAttemptOccurrenceRecordsObserved { records } =>
               OccurrencePopulationObserved {
                 occurrences: occurrence_population(
                   containers: concat(
@@ -5445,6 +5490,86 @@ fn belt_verification_receipt_source(
   }
 }
 
+// The modeled-state pointer read is a typed outcome, and the two failure facts are kept apart: a
+// pointer that is established absent means this attempt has no modeled state; a pointer that could
+// not be read means WHETHER the attempt has modeled state is unknown. Collapsing them -- the old
+// `!read.success || trim(content) == ""` -- made an unreadable pointer claim "has no modeled state
+// pointer", an absence the read never established.
+type WorkflowModeledStatePointerState
+  = WorkflowModeledStatePointerAbsent
+  | WorkflowModeledStatePointerUnreadable { cause: NonEmptyStr }
+
+fn belt_workflow_attempt_evidence_without_modeled_state(
+  instance: HostDashboardInstance,
+  panes: BeltAttemptPanes,
+  attempt: DispatchAttemptRef,
+  pointer_state: WorkflowModeledStatePointerState,
+) -> WorkflowAttemptEvidence {
+  let pointer_reason = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so neither its attempt key nor its head is established: ", cause], "")
+  }
+  let worktree_cause = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so no attempt key names its worktree"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so whether an attempt key names its worktree is unknown: ", cause], "")
+  }
+  let placement_detail = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so no attempt key names its session placement"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so whether an attempt key names its session placement is unknown: ", cause], "")
+  }
+  let provider_events_error = match pointer_state {
+    WorkflowModeledStatePointerAbsent => ""
+    WorkflowModeledStatePointerUnreadable { cause } => cause as String
+  }
+  WorkflowAttemptEvidence {
+    node_id: attempt.node_id,
+    attempt_key: attempt.attempt_key,
+    branch: attempt.branch,
+    modeled_state_present: false,
+    worktree: AttemptWorktreeUnobserved { path: "", cause: worktree_cause },
+    admission_receipt_readable: false,
+    admission_receipt: "",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: false,
+    provider_events: "",
+    provider_events_error: provider_events_error,
+    process: attempt_process_for_node(
+      panes: panes,
+      node_id: attempt.node_id,
+      attempt_key: attempt.attempt_key,
+    ),
+    validation_summary: belt_validation_summary_for_node(
+      instance: instance,
+      node_id: attempt.node_id,
+    ),
+    verification_subject: VerificationSubjectUnobserved {
+      reason: pointer_reason,
+    },
+    verification_selection: SelectionAbsent,
+    verification_source: VerificationReceiptAbsent,
+    publication_subject: PublicationSubjectUnobserved {
+      reason: pointer_reason,
+    },
+    publication_source: ReceiptSourceAbsent,
+    submission_capture: CaptureUnreadable {
+      reason: pointer_reason,
+    },
+    integration: IntegrationReceiptUnreadable {
+      reason: pointer_reason,
+    },
+    review: review_report_absent(reason: pointer_reason),
+    goal_audit: [],
+    session_placement: SessionPlacementUnreadable { unit: "", detail: placement_detail },
+  }
+}
+
 fn belt_workflow_attempt_evidence_for_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -5456,57 +5581,28 @@ fn belt_workflow_attempt_evidence_for_ref(
       node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
     ),
   )
-  if !key_read.success || trim(key_read.content) == "" {
-    WorkflowAttemptEvidence {
-      node_id: attempt.node_id,
-      attempt_key: attempt.attempt_key,
-      branch: attempt.branch,
-      modeled_state_present: false,
-      worktree: AttemptWorktreeUnobserved { path: "", cause: "this attempt has no modeled state pointer, so no attempt key names its worktree" },
-      admission_receipt_readable: false,
-      admission_receipt: "",
-      spawn_failure_present: false,
-      spawn_failure: "",
-      provider_events_readable: false,
-      provider_events: "",
-      provider_events_error: key_read.error,
-      process: attempt_process_for_node(
-        panes: panes,
-        node_id: attempt.node_id,
-        attempt_key: attempt.attempt_key,
-      ),
-      validation_summary: belt_validation_summary_for_node(
+  match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+    FilesystemReadRefused { error } =>
+      belt_workflow_attempt_evidence_without_modeled_state(
         instance: instance,
-        node_id: attempt.node_id,
-      ),
-      verification_subject: VerificationSubjectUnobserved {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      verification_selection: SelectionAbsent,
-      verification_source: VerificationReceiptAbsent,
-      publication_subject: PublicationSubjectUnobserved {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      publication_source: ReceiptSourceAbsent,
-      submission_capture: CaptureUnreadable {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      integration: IntegrationReceiptUnreadable {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
-      goal_audit: [],
-      session_placement: SessionPlacementUnreadable { unit: "", detail: "this attempt has no modeled state pointer, so no attempt key names its session placement" },
-    }
-  } else {
-    belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(key_read.content))
+        panes: panes,
+        attempt: attempt,
+        pointer_state: WorkflowModeledStatePointerUnreadable { cause: error as NonEmptyStr },
+      )
+    FilesystemReadSucceeded { content } =>
+      if trim(content) == "" {
+        belt_workflow_attempt_evidence_without_modeled_state(
+          instance: instance,
+          panes: panes,
+          attempt: attempt,
+          pointer_state: WorkflowModeledStatePointerAbsent,
+        )
+      } else {
+        belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(content))
+      }
   }
 }
 
-// THE ATTEMPT-VARYING RECORDS OF ONE NAMED ATTEMPT, addressed by its key -- the one place the
-// evidence builder's admission, provider-event and spawn-failure reads are named, so a witness can
-// establish that a historical attempt's reads name that attempt and never the node's current
-// projection.
 type BeltAttemptRecordPaths {
   admission: String
   events: String
@@ -11522,17 +11618,25 @@ fn belt_publish_node_for_instance(
           node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
         ),
       )
-      if !key_read.success || trim(key_read.content) == "" {
-        PublishDeferred {
-          node_id: node_id,
-          reason: "this node has no current attempt, so there is no branch or head for publication to be about",
-        }
-      } else {
-        belt_publish_attempt_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: trim(key_read.content),
-        )
+      match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+        FilesystemReadRefused { error } =>
+          PublishDeferred {
+            node_id: node_id,
+            reason: join(["the node's current-attempt-key pointer could not be read, so whether the node has a current attempt is unknown: ", error], ""),
+          }
+        FilesystemReadSucceeded { content } =>
+          if trim(content) == "" {
+            PublishDeferred {
+              node_id: node_id,
+              reason: "this node has no current attempt, so there is no branch or head for publication to be about",
+            }
+          } else {
+            belt_publish_attempt_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: trim(content),
+            )
+          }
       }
     }
       }
