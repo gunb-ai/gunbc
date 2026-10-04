@@ -8,7 +8,6 @@ import v2.lens.fallback_arm_census {
   fallback_arm_seed_inventory_count_is_24_holds
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

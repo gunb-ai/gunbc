@@ -39,7 +39,6 @@ import tools.rust_stage0_gates {
   should_run_gates_coverage_note
 }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

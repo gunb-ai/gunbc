@@ -4,7 +4,6 @@ import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
-import v2.std.logic { Bool }
 import v2.std.arrow_signature { declared_signature }
 import v2.std.node {
   Arrow,

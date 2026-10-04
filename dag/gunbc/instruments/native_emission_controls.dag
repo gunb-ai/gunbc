@@ -201,7 +201,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), concat(claim_driver_filesystem_cases(), effectful_fold_step_cases()))
+  concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
