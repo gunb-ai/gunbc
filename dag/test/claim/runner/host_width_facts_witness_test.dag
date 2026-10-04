@@ -2,7 +2,7 @@ module test.claim.host_width_facts_witness
 
 import std.types { Bool, Int, List, String }
 import std.measure { byte_size, byte_size_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.ci_fleet { srv3_offer }
 import gunbc.runner_slot_allocation {
