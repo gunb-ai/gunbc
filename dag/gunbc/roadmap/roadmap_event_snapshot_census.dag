@@ -4,7 +4,7 @@ import std.types { String, Int, Bool, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, serialize_json, json_string, json_int, json_array, json_object, json_kv }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, serialize_json, json_string, json_int, json_array, json_object, json_kv }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -105,6 +105,8 @@ fn roadmap_snapshot_census_receipt_json(receipt: RoadmapSnapshotCensusReceipt) -
   ])
 }
 
+data snapshot_census_non_string_path: String = "the snapshot census receipt snapshots holds a non-string"
+
 // The next tick reads back only what it decides over: the paths the previous census held.
 fn snapshot_census_prior_decode(raw: String) -> SnapshotCensusPrior {
   match parse_json_document(s: raw) {
@@ -120,7 +122,11 @@ fn snapshot_census_prior_decode(raw: String) -> SnapshotCensusPrior {
                 fold(elements, init: SnapshotCensusPriorRead { snapshots: [] }, f: (acc, e) => match acc {
                   SnapshotCensusPriorRead { snapshots } => match e {
                     JsonString { value: path } => SnapshotCensusPriorRead { snapshots: concat(snapshots, [path]) }
-                    _ => SnapshotCensusPriorUnreadable { reason: "the snapshot census receipt snapshots holds a non-string" }
+                    JsonNull => SnapshotCensusPriorUnreadable { reason: snapshot_census_non_string_path }
+                    JsonBool { value: _ } => SnapshotCensusPriorUnreadable { reason: snapshot_census_non_string_path }
+                    JsonNumber { lexeme: _ } => SnapshotCensusPriorUnreadable { reason: snapshot_census_non_string_path }
+                    JsonArray { elements: _ } => SnapshotCensusPriorUnreadable { reason: snapshot_census_non_string_path }
+                    JsonObject { members: _ } => SnapshotCensusPriorUnreadable { reason: snapshot_census_non_string_path }
                   }
                   SnapshotCensusPriorAbsent => SnapshotCensusPriorAbsent
                   SnapshotCensusPriorUnreadable { reason } => SnapshotCensusPriorUnreadable { reason: reason }

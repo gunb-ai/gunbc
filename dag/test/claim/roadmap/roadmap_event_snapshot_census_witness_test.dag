@@ -113,7 +113,12 @@ test fn the_census_receipt_round_trips_and_a_bad_one_is_unreadable_not_empty() -
     SnapshotCensusPriorRead { snapshots: _ } => false
     SnapshotCensusPriorAbsent => false
   }
-  round && carried && missing && denied && other_schema && not_json
+  let non_string_path = match snapshot_census_prior_decode(raw: "{\"schema\":\"roadmap-event-snapshot-census/v1\",\"snapshots\":[\"/tmp/a\",7]}") {
+    SnapshotCensusPriorUnreadable { reason } => string_contains(s: reason, pattern: "non-string")
+    SnapshotCensusPriorRead { snapshots: _ } => false
+    SnapshotCensusPriorAbsent => false
+  }
+  round && carried && missing && denied && other_schema && not_json && non_string_path
 }
 
 // THE TICK REFUSES ONLY WHEN THE CENSUS COULD NOT BE TAKEN. A census that was recorded leaves the
