@@ -545,8 +545,20 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Seven members were added from probe 37177499463, which planned the three modules behind the
 // eleven rows main added to the hand roster after the comparison (gunbc#13118, #13069, #13120): each is
 // the one claim demanding a nullary producer that roster had warmed.
+// Five more were added from probe 37186494805, for the six rows gunbc#13060 added to the hand roster
+// (v2.test.claim.algebra_operator_derivation), on the same ground.
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.algebra_operator_derivation",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "aod_bool_add_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "aod_bool_join_derives_bool", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "aod_int_add_still_derives_int", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "aod_int_join_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "aod_well_typed_operators_are_accepted", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.callexec.let_match_early_return_eval",
     claims: [
