@@ -6611,7 +6611,12 @@ fn infer_admit_entry_field_symbol(entry: Node, field: Symbol) -> Optional<Symbol
 fn infer_admit_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
-    _ => optional_absent()
+    TypeNode { connective: Conj } => optional_absent()
+    TypeNode { connective: Disj } => optional_absent()
+    TypeNode { connective: Arrow } => optional_absent()
+    TypeNode { connective: Cardinality } => optional_absent()
+    TypeNode { connective: Instantiation } => optional_absent()
+    ComputationNode { behavior: _ } => optional_absent()
   }
 }
 
@@ -6810,7 +6815,12 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
                       },
                       module_symbol: ctx.module_symbol
                     }
-                  _ => ctx
+                  TypeNode { connective: Atom { identity: _ } } => ctx
+                  TypeNode { connective: Conj } => ctx
+                  TypeNode { connective: Disj } => ctx
+                  TypeNode { connective: Cardinality } => ctx
+                  TypeNode { connective: Instantiation } => ctx
+                  ComputationNode { behavior: _ } => ctx
                 }
               } else {
                 ctx
@@ -6820,7 +6830,12 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
           }
         Absent => ctx
       }
-    _ => ctx
+    TypeNode { connective: Atom { identity: _ } } => ctx
+    TypeNode { connective: Disj } => ctx
+    TypeNode { connective: Arrow } => ctx
+    TypeNode { connective: Cardinality } => ctx
+    TypeNode { connective: Instantiation } => ctx
+    ComputationNode { behavior: _ } => ctx
   }
 }
 
