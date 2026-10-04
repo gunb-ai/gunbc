@@ -400,13 +400,35 @@ fn auth_callback_exchange_decoded(instance: HostDashboardInstance, transaction: 
         } else {
           let got = http.Client.PostFormFromFile(url: "https://oauth2.googleapis.com/token" as NonEmptyStr, request_body_file: form_path, max_seconds: "15" as NonEmptyStr)
           let cleanup = Filesystem.Delete(path: form_path)
-          if !got.success {
-            serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the code exchange refused: ", got.body, "\n"], ""))
-          } else {
-            auth_callback_id_token(instance: instance, transaction: transaction, config: config, exchange_body: got.body)
+          match auth_token_exchange_disposition(cleanup_succeeded: cleanup.success, cleanup_error: cleanup.error, exchange_succeeded: got.success, exchange_body: got.body) {
+            TokenExchangeRefused { response: r } => r
+            TokenExchangeAnswered { body: b } => auth_callback_id_token(instance: instance, transaction: transaction, config: config, exchange_body: b)
           }
         }
     }
+  }
+}
+
+// THE STAGED FORM'S REMOVAL IS CONSUMED, NOT ASSUMED. The owner-only form carries the
+// authorization code, the client secret and the PKCE verifier, so a form that could not be deleted
+// refuses the login whatever the exchange answered: no session is minted while that material is on
+// disk. Both refusals are reported when both happened.
+type TokenExchangeDisposition
+  = TokenExchangeAnswered { body: String }
+  | TokenExchangeRefused { response: ServeHttpResponse }
+
+fn auth_token_exchange_disposition(cleanup_succeeded: Bool, cleanup_error: String, exchange_succeeded: Bool, exchange_body: String) -> TokenExchangeDisposition {
+  if !cleanup_succeeded {
+    TokenExchangeRefused { response: serve_text_response(status: 503, content_type: text_plain_utf8, body: join([
+      "login refused: the staged token request (code, client secret, verifier) could not be removed: ",
+      cleanup_error,
+      if exchange_succeeded { "" } else { join(["; the code exchange also refused: ", exchange_body], "") },
+      "\n",
+    ], "")) }
+  } else if !exchange_succeeded {
+    TokenExchangeRefused { response: serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["login refused: the code exchange refused: ", exchange_body, "\n"], "")) }
+  } else {
+    TokenExchangeAnswered { body: exchange_body }
   }
 }
 

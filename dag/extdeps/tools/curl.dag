@@ -8,6 +8,7 @@ import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { apt_bin_dir, package_curl }
@@ -174,6 +175,18 @@ data curl_aws_sigv4_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
 }
 
+// %header{} IN --write-out LANDED IN curl 7.84.0 (curl.se/docs/manpage.html, "-w, --write-out
+// <format>": "header{name}" ... "Added in 7.84.0"). Only the entity-tag-reporting form of the S3
+// builders spells it, so it is a THIRD row on the same pattern as the SigV4 one: a host carrying
+// 7.75 still runs every status-only S3 transfer, and owes 7.84 only on the path that reads a tag.
+data curl_write_out_header_min_version: VersionConstraint = ">= 7.84"
+
+data curl_s3_entity_tag_cli_tool: CliTool = CliTool {
+  program: curl_program(),
+  min_version: Present { value: curl_write_out_header_min_version },
+  installable_via: [SourceApt { package: package_curl, bin_dir: apt_bin_dir }],
+}
+
 // THE SIGV4 PROVIDER STRING FOR AN S3-SHAPED ENDPOINT. curl's --aws-sigv4 value is
 // provider1[:provider2[:region[:service]]]; "aws:amz" is the algorithm/header prefix pair every
 // AWS-signature-compatible store expects, and region and service are the two variables an S3
@@ -254,12 +267,46 @@ fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStat
 
 data curl_if_none_match_any_header: String = "If-None-Match: *"
 
+// If-Match carries the entity tag verbatim as the store returned it, quotes included (RFC 9110
+// section 8.8.3: the quotes are part of the entity-tag).
+fn curl_if_match_header(tag: ObjectEntityTag) -> String {
+  join(["If-Match: ", tag.value as String], "")
+}
+
+fn curl_put_precondition_arguments(precondition: ObjectPutPrecondition) -> List<String> {
+  match precondition {
+    PutUnconditional => []
+    PutIfAbsent => ["-H", curl_if_none_match_any_header]
+    PutIfMatch { tag: t } => ["-H", curl_if_match_header(tag: t)]
+  }
+}
+
+// WHAT A TRANSFER REPORTS ON STDOUT. Status alone is the form every existing consumer reads (an
+// emitted shell compares the whole stdout to "200"). A store used as a compare-and-set also needs the
+// representation's entity tag, the validator its next If-Match must carry, so that form prints the
+// tag on a second line from the response header (curl's %header{} write-out variable, curl 7.84.0,
+// curl_s3_entity_tag_cli_tool). An absent header
+// prints an empty line, which the classifier reads as no tag rather than an empty one.
+type S3TransferReport
+  = ReportStatus
+  | ReportStatusAndEntityTag
+
+data curl_http_code_then_etag_write_out_format: String = "%\{http_code\}\n%header\{etag\}"
+
+fn curl_s3_write_out_format(report: S3TransferReport) -> String {
+  match report {
+    ReportStatus => curl_http_code_write_out_format
+    ReportStatusAndEntityTag => curl_http_code_then_etag_write_out_format
+  }
+}
+
 fn curl_sigv4_s3_upload_command(
   url: String,
   local_path: String,
   netrc_path: FilePath,
   sigv4_region: NonEmptyStr,
-  create_only: Bool,
+  precondition: ObjectPutPrecondition,
+  report: S3TransferReport,
 ) -> ArgvCommand {
   argv_command(
     program: curl_program(),
@@ -269,10 +316,10 @@ fn curl_sigv4_s3_upload_command(
         "--netrc-file", netrc_path as String,
         "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
         "-o", "/dev/null",
-        "-w", curl_http_code_write_out_format,
+        "-w", curl_s3_write_out_format(report: report),
       ],
       concat(
-        if create_only { ["-H", curl_if_none_match_any_header] } else { [] },
+        curl_put_precondition_arguments(precondition: precondition),
         ["-T", local_path, url],
       ),
     ),
@@ -284,6 +331,7 @@ fn curl_sigv4_s3_download_command(
   destination: String,
   netrc_path: FilePath,
   sigv4_region: NonEmptyStr,
+  report: S3TransferReport,
 ) -> ArgvCommand {
   argv_command(
     program: curl_program(),
@@ -292,7 +340,7 @@ fn curl_sigv4_s3_download_command(
       "--netrc-file", netrc_path as String,
       "--aws-sigv4", curl_aws_sigv4_s3_provider(region: sigv4_region),
       "-o", destination,
-      "-w", curl_http_code_write_out_format,
+      "-w", curl_s3_write_out_format(report: report),
       url,
     ],
   )
