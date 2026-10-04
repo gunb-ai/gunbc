@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr }
 import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
 import gunbc.fabric_storage_placement { fabric_storage_placement_under, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused }
 import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
 
 // THE STORE'S RUNTIME PLACEMENT, over the prod role as something that can be actuated

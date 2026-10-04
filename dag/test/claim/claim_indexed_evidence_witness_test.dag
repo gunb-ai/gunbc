@@ -72,7 +72,7 @@ import gunbc.source_integration_claim_evidence {
   source_binding_admissible_claim,
   source_binding_capture_inference,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }

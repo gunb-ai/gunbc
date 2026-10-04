@@ -3,7 +3,7 @@ module gunbc.fabric_storage_placement
 import gunbc.fabric_storage_address { fabric_storage_route_prefix, fabric_storage_state_suffix, fabric_storage_state_root, fabric_storage_state_file_root }
 
 import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_fabric_storage_root, dashboard_instance_child, dashboard_ownership_marker_in,
