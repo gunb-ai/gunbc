@@ -32,7 +32,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreBatchLookup, LocalStoreBatchLooked,
   local_store_initialize, local_store_open, local_store_lookup, local_store_commit,
   local_store_lookup_batch, store_path, materialization_store_marker_name,
-  LocalStoreCommit, LocalStoreSweep, LocalStoreSwept, LocalStoreSweepUnavailable, LocalStoreSweepNotRun,
+  LocalStoreCommit, LocalStoreSweep, LocalStoreSwept, LocalStoreSweepUnavailable,
   LocalStoreIndexRead, LocalStoreIndexAt, LocalStoreIndexUnavailable, local_store_read_index, local_store_index_key,
   LocalStoreRecency, LocalStoreRecencyRecorded, LocalStoreRecencyNothingToRecord, LocalStoreRecencyLost, LocalStoreRecencyRaced,
   LocalStoreDeleteAttempt,
@@ -44,7 +44,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
   LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
-  LocalStoreCatalogMismatch, LocalStoreUnavailableCause,
+  LocalStoreCatalogMismatch, LocalStoreCatalogInadmissible, LocalStoreSweepIncomplete, LocalStoreUnavailableCause,
   local_store_index_retention,
   LocalStoreRecordDeleteAttempt, LocalStoreRecordGone, LocalStoreRecordFileRefused, LocalStoreRecordPartsRefused, LocalStoreRecordPartsUnlisted, LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
@@ -192,7 +192,7 @@ fn fresh_root_path() -> String {
 fn opened(root: MaterializationStoreRoot) -> LocalStoreCapability? {
   match local_store_initialize(root: root, instance_label: "wet-witness", budgets: witness_family_budgets) {
     LocalStoreInitialized { opening: o } => match o {
-      LocalStoreOpened { capability: c, durability: _, sweep: _ } => Present { value: c }
+      LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
       LocalStoreUnavailable { root_path: _, cause: _ } => none
     }
     LocalStoreInitializationRefused { root_path: _, cause: _ } => none
@@ -355,14 +355,14 @@ test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() ->
       LocalStoreNotInitialized { marker_path: _ } => true
       _ => false
     }
-    LocalStoreOpened { capability: _, durability: _, sweep: _ } => false
+    LocalStoreOpened { capability: _, durability: _ } => false
   }
   let ungranted = match local_store_open(root: WitnessScratchRoot { root: "/tmp/not_a_gunbc_store_root" }, budgets: witness_family_budgets) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreGrantRefused { verb: _, target: _, frame: _ } => true
       _ => false
     }
-    LocalStoreOpened { capability: _, durability: _, sweep: _ } => false
+    LocalStoreOpened { capability: _, durability: _ } => false
   }
   let no_marker = shell.Test.IsFile(path: store_path(root_path: root_path, name: materialization_store_marker_name))
   let no_object = shell.Test.IsFile(path: object_path(root_path: root_path, req: bundle_req(module: "a")))
@@ -526,11 +526,7 @@ test fn an_open_sweeps_an_object_no_index_names_by_real_execution() -> Bool {
       let orphan = object_name(req: bundle_req(module: "orphan"))
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
       let swept = match local_store_open(root: root, budgets: witness_family_budgets) {
-        LocalStoreOpened { capability: _, durability: _, sweep: sw } => match sw {
-          LocalStoreSwept { removed: r, delete_refused: f, releases: _ } => r |> any(n => n == orphan) && count(f) == 0
-          LocalStoreSweepUnavailable { refusal: _ } => false
-          LocalStoreSweepNotRun => false
-        }
+        LocalStoreOpened { capability: c, durability: _ } => c.sweep.removed |> any(n => n == orphan)
         LocalStoreUnavailable { root_path: _, cause: _ } => false
       }
       commit_tag(c: kept.commit) == "committed" && planted.success && swept
@@ -802,11 +798,7 @@ test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> 
       let foreign = "notes.materialization.txt"
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: foreign), content: "not the store's").success
       let swept_alone = match local_store_open(root: root, budgets: witness_family_budgets) {
-        LocalStoreOpened { capability: _, durability: _, sweep: sw } => match sw {
-          LocalStoreSwept { removed: r, delete_refused: _, releases: _ } => !(r |> any(n => n == foreign))
-          LocalStoreSweepUnavailable { refusal: _ } => false
-          LocalStoreSweepNotRun => false
-        }
+        LocalStoreOpened { capability: c, durability: _ } => !(c.sweep.removed |> any(n => n == foreign))
         LocalStoreUnavailable { root_path: _, cause: _ } => false
       }
       let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
@@ -1077,13 +1069,16 @@ test fn mutating_the_staging_file_after_commit_leaves_the_stored_part_unchanged_
 
 fn opening_refused_for_catalog(o: LocalStoreOpening) -> Bool {
   match o {
-    LocalStoreOpened { capability: _, durability: _, sweep: _ } => false
+    LocalStoreOpened { capability: _, durability: _ } => false
     LocalStoreUnavailable { root_path: _, cause: c } => match c {
       LocalStoreCatalogMismatch { marker_path: _, offered: _ } => true
+      LocalStoreCatalogInadmissible { detail: _ } => true
       LocalStoreGrantRefused { verb: _, target: _, frame: _ } => false
       LocalStoreNotInitialized { marker_path: _ } => false
       LocalStoreMarkerUnrecognized { marker_path: _ } => false
       LocalStoreMarkerUnavailable { fault: _ } => false
+      LocalStoreMarkerMalformed { marker_path: _, detail: _ } => false
+      LocalStoreSweepIncomplete { sweep: _ } => false
     }
   }
 }
@@ -1233,6 +1228,112 @@ test fn reopening_with_a_larger_budget_than_the_store_was_created_with_refuses_b
       commit_tag(c: c.commit) == "committed"
         && opening_refused_for_catalog(o: local_store_open(root: root, budgets: larger))
         && root_object_bytes(root_path: root_path) <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+fn opening_refused_for_sweep(o: LocalStoreOpening) -> Bool {
+  match o {
+    LocalStoreOpened { capability: _, durability: _ } => false
+    LocalStoreUnavailable { root_path: _, cause: c } => match c {
+      LocalStoreSweepIncomplete { sweep: _ } => true
+      _ => false
+    }
+  }
+}
+
+// AN OPEN WHOSE SWEEP LEAVES AN ORPHAN ON DISK MINTS NO CAPABILITY. A canonical object name the index
+// does not charge is planted as a directory holding exactly the bytes the budget has left, so its
+// delete is refused. Reopening refuses with the incomplete sweep, and nothing is written: the root
+// holds the charged object plus that orphan and stays at the budget. Red when the capability is minted
+// regardless of the sweep: the reopened store commits a second half-budget object beside the orphan
+// and the root exceeds the budget.
+test fn a_refused_orphan_delete_leaves_the_store_unwritable_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let kept = local_store_commit(capability: store, req: bundle_req(module: "kept"), payloads: half_budget_verdicts(module: "kept"), parts: [])
+      let orphan_dir = store_path(root_path: root_path, name: object_name(req: bundle_req(module: "orphan")))
+      let orphan_bytes = budget - root_object_bytes(root_path: root_path)
+      let planted = shell.Mkdir.NewOwnerOnly(path: orphan_dir).success
+        && Filesystem.WriteCreateNew(path: concat(orphan_dir, "/residue"), content: repeat_string(s: "x", n: orphan_bytes)).success
+      let reopened = local_store_open(root: root, budgets: witness_family_budgets)
+      let wrote = match reopened {
+        LocalStoreOpened { capability: c, durability: _ } =>
+          commit_tag(c: local_store_commit(capability: c, req: bundle_req(module: "late"), payloads: half_budget_verdicts(module: "late"), parts: []).commit) == "committed"
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+      }
+      commit_tag(c: kept.commit) == "committed" && orphan_bytes > 0 && planted
+        && opening_refused_for_sweep(o: reopened) && !wrote
+        && root_object_bytes(root_path: root_path) + orphan_bytes <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// AN OPEN WHOSE SWEEP CANNOT RUN MINTS NO CAPABILITY. While a bracket holds the family, a reopen cannot
+// hold every family, so its sweep is unavailable and the open refuses; the planted orphan is still on
+// disk. Once the bracket has released, the same reopen sweeps the orphan and opens.
+test fn an_unavailable_sweep_leaves_the_store_unwritable_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let orphan = object_name(req: bundle_req(module: "orphan"))
+      let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue").success
+      match local_store_with_family(capability: store, of: bundle_req(module: "o"), run: h => local_store_open(root: root, budgets: witness_family_budgets)) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: inside, hold_release: _ } => {
+          let still_there = Filesystem.Read(path: store_path(root_path: root_path, name: orphan)).success
+          let after = local_store_open(root: root, budgets: witness_family_budgets)
+          planted && opening_refused_for_sweep(o: inside) && still_there
+            && match after {
+              LocalStoreOpened { capability: c, durability: _ } => c.sweep.removed |> any(n => n == orphan)
+              LocalStoreUnavailable { root_path: _, cause: _ } => false
+            }
+            && !Filesystem.Read(path: store_path(root_path: root_path, name: orphan)).success
+        }
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// A CRASH-LEFT TEMPORARY COPY THAT CANNOT BE REMOVED KEEPS THE STORE UNWRITABLE. The open sweep removes
+// every store copy (no writer can be mid-copy while it holds every family); here one is planted as a
+// directory holding exactly the bytes the budget has left, so its delete is refused. The reopen
+// refuses with the incomplete sweep and writes nothing, so the root stays at the budget. Red when the
+// capability is minted regardless of the sweep: the reopened store commits a second half-budget
+// object beside the copy and the root exceeds the budget.
+test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let kept = local_store_commit(capability: store, req: bundle_req(module: "kept"), payloads: half_budget_verdicts(module: "kept"), parts: [])
+      let copy_dir = copy_path_of(root_path: root_path, req: bundle_req(module: "crashed"))
+      let residue = budget - root_object_bytes(root_path: root_path)
+      let planted = shell.Mkdir.NewOwnerOnly(path: copy_dir).success
+        && Filesystem.WriteCreateNew(path: concat(copy_dir, "/residue"), content: repeat_string(s: "x", n: residue)).success
+      let reopened = local_store_open(root: root, budgets: witness_family_budgets)
+      let wrote = match reopened {
+        LocalStoreOpened { capability: c, durability: _ } =>
+          commit_tag(c: local_store_commit(capability: c, req: bundle_req(module: "late"), payloads: half_budget_verdicts(module: "late"), parts: []).commit) == "committed"
+        LocalStoreUnavailable { root_path: _, cause: _ } => false
+      }
+      commit_tag(c: kept.commit) == "committed" && residue > 0 && planted
+        && opening_refused_for_sweep(o: reopened) && !wrote
+        && root_object_bytes(root_path: root_path) + residue <= budget
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)

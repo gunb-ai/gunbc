@@ -3,6 +3,13 @@ module gunbc.workspace_allocation_plan
 import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_seal }
 import std.decl_ref { decl_ref }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import gunbc.workspace_acquisition_invocation { workspace_current_acquisition_invocation, WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable }
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_release,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
+}
+
 import std.types { NonEmptyStr, String, Int }
 import std.measure { money_amount_micro }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
@@ -99,6 +106,26 @@ fn workspace_reservation_prepare(
 // observation of the original reservation, never a grant to relaunch an existing process.
 fn workspace_reservation_apply(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> WorkspaceReservationApply
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_acquisition", decl_name: "workspace_apply_recorded_plan")]
+{
+  let reservation = plan.reservation
+  match workspace_current_acquisition_invocation(plan: plan) {
+    Absent => WorkspaceReservationApplyRefused { reason: "reservation mutation has no manager-attested controller invocation" }
+    Present { value: invocation } => {
+      let owner = concat("workspace-controller:", invocation) as DurableHoldOwnerRef
+      match workspace_slot_mutation_acquire(slot_key: fabric_cell_allocation_key(slot: reservation.slot), owner: owner) {
+        WorkspaceSlotMutationRefused { reason } => WorkspaceReservationApplyRefused { reason: reason }
+        WorkspaceSlotMutationAdmitted { lease } => {
+          let result = workspace_reservation_apply_under_exclusion(root: root, plan: plan)
+          if workspace_slot_mutation_release(lease: lease) { result }
+          else { WorkspaceReservationApplyRefused { reason: "reservation operation returned but mutation exclusion is unsettled; retain the prepared allocation for recovery" } }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_reservation_apply_under_exclusion(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> WorkspaceReservationApply
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_plan", decl_name: "workspace_reservation_apply")]
   = {
   if root != plan.root { WorkspaceReservationApplyRefused { reason: "prepared plan names another allocation store" } } else {
   let reservation = plan.reservation
@@ -147,11 +174,6 @@ fn workspace_reservation_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: Dur
 // with quota held forever. Takeover needs BOTH facts, read in this order: the recorded actor's
 // systemd invocation is terminal (the slot unit now runs another invocation, or none), and a fresh
 // hold observation of the exact slot. Only then can no effect of the old actor still be queued.
-type WorkspacePriorActorStanding
-  = PriorActorRunning
-  | PriorActorTerminal
-  | PriorActorUnobservable { reason: NonEmptyStr }
-
 type WorkspaceActorIntent
   = ActorIntentAcquire
   | ActorIntentRetire

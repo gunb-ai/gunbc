@@ -81,11 +81,24 @@ test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
   admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot") == 1
 }
 
-// THE OPENED STORE IS UNFORGEABLE. Root, store identity and the verified catalog travel together in a
-// LocalStoreCapability minted only after the marker verifies, so neither a hand-built store for an
-// uninitialized root nor one store's identity paired with another root can be spelled.
-data forged_capability_source: String = "module probe_store_forged_capability\nimport extdeps.realization.materialization_store_local { LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreCapability {\n  LocalStoreCapability { root: c.root, store: c.store, budgets: c.budgets }\n}\n"
+// THE OPENED STORE IS UNFORGEABLE. A capability is a verified binding plus its clean-sweep proof, minted
+// only by the open after its sweep cleared every orphan. A pre-open (what marker verification alone
+// yields) cannot be promoted by spelling a capability around its binding, a binding cannot be
+// spelled with different budgets, and a clean-sweep proof cannot be spelled for a sweep that never ran.
+data forged_capability_source: String = "module probe_store_forged_capability\nimport extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStorePreOpen }\nfn forged(p: LocalStorePreOpen, c: LocalStoreCapability) -> LocalStoreCapability {\n  LocalStoreCapability { binding: p.binding, sweep: c.sweep }\n}\n"
+
+data forged_binding_source: String = "module probe_store_forged_binding\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreBinding {\n  LocalStoreBinding { root: c.binding.root, store: c.binding.store, budgets: [] }\n}\n"
+
+data forged_clean_sweep_source: String = "module probe_store_forged_clean_sweep\nimport extdeps.realization.materialization_store_local { LocalStoreCleanSweep }\nfn forged() -> LocalStoreCleanSweep {\n  LocalStoreCleanSweep { removed: [], releases: [] }\n}\n"
 
 test fn a_forged_store_capability_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_capability_source, subject: "LocalStoreCapability") == 1
+}
+
+test fn a_forged_store_binding_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_binding_source, subject: "LocalStoreBinding") == 1
+}
+
+test fn a_forged_clean_sweep_proof_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_clean_sweep_source, subject: "LocalStoreCleanSweep") == 1
 }

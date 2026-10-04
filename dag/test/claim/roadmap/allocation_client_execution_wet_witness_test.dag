@@ -1,0 +1,194 @@
+module test.claim.roadmap.allocation_client_execution_wet_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import gunbc.runner_browser_toolchain { runner_browser_toolchain_here_wet, runner_browser_toolchain_node_command, BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved }
+import gunbc.roadmap_allocation_client { allocation_live_source }
+
+// THE EMITTED CLIENT, EXECUTED. Each control writes gunbc.roadmap_allocation_client
+// allocation_live_source -- the exact program the allocation page serves -- to a temporary
+// directory and runs it under the runner's pinned node (gunbc.runner_browser_toolchain) inside the
+// harness below. The harness supplies ONLY the browser surface the client touches: a scripted fetch,
+// a Map-backed localStorage and a minimal DOM. It reimplements none of the client's decisions; every
+// verdict is read from what the real program did -- the requests it sent, the intent it persisted,
+// the text and control state it left. Each scenario is one way a create can go wrong for the
+// pending-intent contract (review 5406897918): an unreadable 200, a 200 naming another or no
+// allocation, a lost Large create followed by a reload, a matching answer that must settle exactly
+// once, a fetch that never reached the server, and a listed allocation that must settle a pending
+// intent without a second create. A host with no ready toolchain refuses rather than passes.
+data allocation_client_harness: String = "const vm = require('vm');
+const fs = require('fs');
+const source = fs.readFileSync(process.argv[process.argv.length - 2], 'utf8');
+const only = process.argv[process.argv.length - 1];
+const LARGE = '4cpu-8gib';
+const SMALL = '2cpu-4gib';
+const settle = () => new Promise((done) => setImmediate(() => setImmediate(() => setImmediate(done))));
+const node = (tag) => (\{ tag: tag, textContent: '', dataset: \{\}, disabled: false, children: [], attrs: \{\}, listeners: \{\},
+  append(...kids) \{ this.children.push(...kids); \}, appendChild(kid) \{ this.children.push(kid); \},
+  replaceWith() \{\}, setAttribute(k, v) \{ this.attrs[k] = v; \},
+  addEventListener(kind, fn) \{ this.listeners[kind] = fn; \} \});
+const page = (store, fetches) => \{
+  const radios = [SMALL, LARGE].map((value, i) => Object.assign(node('input'), \{ value: value, checked: i === 0 \}));
+  const ids = \{ 'allocation-workspace': node('main'), 'allocation-request': node('form'), 'allocation-create': node('button'), 'allocation-status': node('p'), 'allocation-list': node('div') \};
+  ids['allocation-workspace'].dataset.csrf = 'csrf-1';
+  ids['allocation-request'].querySelector = () => radios.find((r) => r.checked) || null;
+  ids['allocation-request'].querySelectorAll = () => radios;
+  const sent = [];
+  const removals = [];
+  const context = \{
+    document: \{ getElementById: (id) => ids[id], createElement: node, querySelectorAll: () => [] \},
+    localStorage: \{ getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => \{ removals.push(k); store.delete(k); \} \},
+    fetch: (path, init) => \{ sent.push(\{ path: path, method: (init && init.method) || 'GET', body: init && init.body ? JSON.parse(init.body) : null \}); const next = fetches.shift(); return next ? next() : Promise.reject(new Error('unscripted')); \},
+    crypto: require('crypto').webcrypto, btoa: btoa, JSON: JSON, Map: Map, Array: Array, String: String, Uint8Array: Uint8Array, Promise: Promise,
+    encodeURIComponent: encodeURIComponent, setInterval: () => 0,
+  \};
+  vm.createContext(context);
+  vm.runInContext(source, context);
+  return \{ ids: ids, radios: radios, sent: sent, removals: removals,
+    submit: async () => \{ ids['allocation-request'].listeners.submit(\{ preventDefault() \{\} \}); await settle(); \},
+    creates: () => sent.filter((s) => s.method === 'POST') \};
+\};
+const ok = (status, body) => () => Promise.resolve(\{ status: status, json: () => Promise.resolve(body) \});
+const unreadable = (status) => () => Promise.resolve(\{ status: status, json: () => Promise.reject(new SyntaxError('truncated')) \});
+const unreached = () => () => Promise.reject(new TypeError('network'));
+const intentOf = (store) => JSON.parse(store.get('gunbc.allocation.pending-intent') || 'null');
+const choose = (p, profile) => p.radios.forEach((r) => \{ r.checked = r.value === profile; \});
+const snapshot = (id, profile) => (\{ id: id, profile: profile, phase: 'wanted', reason: '', host: '', observed_at: '', observation_fresh: false, expires_at: '', retired_at: '', connection: '', generation: '0' \});
+
+const scenarios = \{
+  async json_reject_keeps_intent() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), unreadable(200), ok(200, snapshot('x', LARGE))]);
+    await settle(); choose(p, LARGE); await p.submit();
+    const first = p.creates()[0].body;
+    const kept = intentOf(store);
+    if (!kept || kept.key !== first.idempotency_key || kept.profile !== LARGE) return 'intent not kept after unreadable 200';
+    if (p.ids['allocation-status'].textContent.startsWith('Request recorded')) return 'reported success';
+    await p.submit();
+    const second = p.creates()[1].body;
+    return second.idempotency_key === first.idempotency_key && second.profile === LARGE ? '' : 'retry did not repeat the request';
+  \},
+  async foreign_snapshot_keeps_intent() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), ok(200, snapshot('someone-else', LARGE))]);
+    await settle(); choose(p, LARGE); await p.submit();
+    const kept = intentOf(store);
+    return kept && kept.key === p.creates()[0].body.idempotency_key ? '' : 'foreign snapshot settled the intent';
+  \},
+  async malformed_snapshot_keeps_intent() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), ok(200, 'recorded')]);
+    await settle(); choose(p, LARGE); await p.submit();
+    return intentOf(store) ? '' : 'non-object 200 settled the intent';
+  \},
+  async lost_large_then_reload_repeats_large() \{
+    const store = new Map();
+    const before = page(store, [ok(200, []), unreached()]);
+    await settle(); choose(before, LARGE); await before.submit();
+    const first = before.creates()[0].body;
+    const after = page(store, [ok(200, []), ok(200, snapshot(first.idempotency_key, LARGE))]);
+    await settle();
+    if (!after.radios.find((r) => r.value === LARGE).checked) return 'reload did not restore the pending size';
+    await after.submit();
+    const retried = after.creates()[0].body;
+    if (retried.idempotency_key !== first.idempotency_key || retried.profile !== LARGE) return 'reload retry changed the request';
+    return intentOf(store) ? 'matching answer did not settle' : '';
+  \},
+  async valid_match_clears_once() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), (() => \{ let k = null; return () => \{ k = p.creates()[0].body.idempotency_key; return ok(200, snapshot(k, LARGE))(); \}; \})()]);
+    await settle(); choose(p, LARGE); await p.submit();
+    if (intentOf(store)) return 'matching snapshot left the intent';
+    if (p.removals.length !== 1) return 'intent removed ' + p.removals.length + ' times';
+    return p.ids['allocation-status'].textContent.startsWith('Request recorded') ? '' : 'no success shown';
+  \},
+  async fetch_reject_is_retryable() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), unreached()]);
+    await settle(); choose(p, LARGE); await p.submit();
+    if (p.ids['allocation-create'].disabled) return 'control left disabled';
+    return intentOf(store) ? '' : 'intent dropped on fetch rejection';
+  \},
+  async list_reconciles_recorded_intent() \{
+    const store = new Map([['gunbc.allocation.pending-intent', JSON.stringify(\{ key: 'K1', profile: LARGE \})]]);
+    const p = page(store, [ok(200, [snapshot('K1', LARGE)])]);
+    await settle();
+    if (intentOf(store)) return 'listed allocation did not settle the intent';
+    return p.creates().length === 0 ? '' : 'reconcile re-created';
+  \},
+\};
+
+let unhandled = null;
+process.on('unhandledRejection', (error) => \{ unhandled = error; \});
+(async () => \{
+  for (const name of Object.keys(scenarios).filter((n) => only === 'all' || n === only)) \{
+    let why;
+    unhandled = null;
+    try \{ why = await scenarios[name](); \} catch (error) \{ why = 'threw ' + error.message; \}
+    await settle();
+    if (!why && unhandled) why = 'unhandled rejection: ' + unhandled.message;
+    console.log(why ? 'FAIL ' + name + ': ' + why : 'PASS ' + name);
+  \}
+\})();
+"
+
+fn allocation_client_scenario_output(scenario: String) -> String {
+  let made = shell.Mktemp.Dir()
+  let dir = trim(s: made.path as String)
+  match runner_browser_toolchain_here_wet() {
+    BrowserToolchainReady { location: loc, standing: _ } => {
+      let client_path = concat(dir, "/allocation-client.js")
+      let wrote = Filesystem.Write(path: client_path, content: allocation_live_source())
+      let words = argv_words(command: runner_browser_toolchain_node_command(location: loc, directory: dir, script: allocation_client_harness, operands: [client_path, scenario]))
+      let output = match first(words) {
+        Absent => ""
+        Present { value: program } => if wrote.success { shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: words |> skip(n: 1)).stdout } else { "" }
+      }
+      let _gone = shell.Remove.RecursiveForce(path: dir)
+      output
+    }
+    BrowserToolchainNotReady { standing: _ } => {
+      let _gone = shell.Remove.RecursiveForce(path: dir)
+      ""
+    }
+    BrowserToolchainUnresolved { cause: _ } => {
+      let _gone = shell.Remove.RecursiveForce(path: dir)
+      ""
+    }
+  }
+}
+
+fn allocation_client_scenario_holds(scenario: String) -> Bool {
+  trim(s: allocation_client_scenario_output(scenario: scenario)) == concat("PASS ", scenario)
+}
+
+test fn client_json_reject_keeps_intent() -> Bool {
+  allocation_client_scenario_holds(scenario: "json_reject_keeps_intent")
+}
+
+test fn client_foreign_snapshot_keeps_intent() -> Bool {
+  allocation_client_scenario_holds(scenario: "foreign_snapshot_keeps_intent")
+}
+
+test fn client_malformed_snapshot_keeps_intent() -> Bool {
+  allocation_client_scenario_holds(scenario: "malformed_snapshot_keeps_intent")
+}
+
+test fn client_lost_large_then_reload_repeats_large() -> Bool {
+  allocation_client_scenario_holds(scenario: "lost_large_then_reload_repeats_large")
+}
+
+test fn client_valid_match_clears_once() -> Bool {
+  allocation_client_scenario_holds(scenario: "valid_match_clears_once")
+}
+
+test fn client_fetch_reject_is_retryable() -> Bool {
+  allocation_client_scenario_holds(scenario: "fetch_reject_is_retryable")
+}
+
+test fn client_list_reconciles_recorded_intent() -> Bool {
+  allocation_client_scenario_holds(scenario: "list_reconciles_recorded_intent")
+}

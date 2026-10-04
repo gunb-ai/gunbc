@@ -24,6 +24,7 @@ import std.fabric_blob {
   read_staged_fabric_blob, fabric_blob_reading_digest, fabric_blob_reading_size, fabric_blob_fault_text,
 }
 import std.checked_arithmetic { int_inclusive_max }
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import v2.std.algebra { skip }
 import v2.std.collection { empty_map, map_lookup, map_insert }
 import extdeps.external_authority { ExternalAuthority }
@@ -164,45 +165,124 @@ data materialization_store_local_id: CacheInterfaceId = "materialization_store_l
 
 data materialization_store_marker_name: String = "materialization-store.identity"
 
-data materialization_store_marker_magic: String = "gunbc-materialization-store v2"
-
 fn store_path(root_path: String, name: String) -> String {
   if ends_with(s: root_path, suffix: "/") { concat(root_path, name) } else { concat(root_path, "/", name) }
 }
 
 // THE STORE'S FAMILY CATALOG -- every family AND its byte budget -- IS A FACT OF THE STORE, written once
-// into its identity marker at initialization. A reopen with a different budget for a family is a
-// different catalog and refuses, so the budget a writer enforces is the one the store was created with. Every family whose objects live in the root is in it, so a sweep -- which decides
-// what is an orphan by reading every family's index -- runs only against the catalog the store was
-// created with. A caller that opens with a partial or different roster is refused before anything is
-// swept, rather than having the families it forgot treated as orphans.
-fn store_marker_catalog_line(budgets: List<LocalStoreFamilyBudget>) -> String {
-  concat("families ", join(budgets |> map(b => concat(concat(b.family as String, "="), measure_count(m: b.budget) as String)) |> sort_by(e => e), ","))
+// into its identity marker at initialization, and the budgets a writer enforces are DECODED from that
+// marker, never taken from the caller. A reopen whose offered catalog differs from the decoded one in
+// any family or any budget refuses before anything is swept, so a caller's partial roster cannot have
+// the families it forgot treated as orphans, and a larger offered budget cannot be enforced.
+//
+// ONE CANONICAL ENCODING, AND ITS DECODER ACCEPTS EXACTLY THE ENCODER'S IMAGE. A family is written
+// length-prefixed in Unicode scalars, "<n>:<family>=<bytes>;", so no character of a family name is ever
+// read as a delimiter; rows are sorted by family and a family appears once. The decoder is a total
+// scan over the whole marker: exactly one catalog field, no leading zeros, no duplicate family, no
+// unsorted or extra row, and exactly one instance line after it -- anything else is malformed and
+// refuses, so one marker never authorizes two catalogs.
+data materialization_store_marker_magic: String = "gunbc-materialization-store v3"
+
+fn store_marker_family_row(b: LocalStoreFamilyBudget) -> String {
+  let family = b.family as String
+  join([count(unicode_scalar_unfold(s: family)) as String, ":", family, "=", measure_count(m: b.budget) as String, ";"], "")
 }
 
-fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmptyStr, budgets: List<LocalStoreFamilyBudget>) -> String {
+fn store_marker_catalog_field(budgets: List<LocalStoreFamilyBudget>) -> String {
+  join(budgets |> sort_by(b => b.family as String) |> map(b => store_marker_family_row(b: b)), "")
+}
+
+fn store_marker_head(root: MaterializationStoreRoot) -> String {
   join([
     materialization_store_marker_magic,
     concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
-    store_marker_catalog_line(budgets: budgets),
-    concat("instance ", instance_label as String),
-    "",
+    "families ",
   ], "\n")
 }
 
-fn store_marker_recognized(root: MaterializationStoreRoot, content: String) -> Bool {
-  starts_with(
-    s: content,
-    prefix: join([
-      materialization_store_marker_magic,
-      concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
-      "families ",
-    ], "\n")
-  )
+fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmptyStr, budgets: List<LocalStoreFamilyBudget>) -> String {
+  join([store_marker_head(root: root), store_marker_catalog_field(budgets: budgets), "\ninstance ", instance_label as String, "\n"], "")
 }
 
-fn store_marker_catalog_matches(content: String, budgets: List<LocalStoreFamilyBudget>) -> Bool {
-  content.split(delimiter: "\n") |> any(l => l == store_marker_catalog_line(budgets: budgets))
+// The offered catalog is encodable only when it names each family once and an instance label is one
+// line; initialization refuses anything else before a marker is written.
+fn store_marker_catalog_admissible(budgets: List<LocalStoreFamilyBudget>) -> Bool {
+  count(budgets) > 0 && count(local_store_name_set(names: budgets |> map(b => b.family as String))) == count(budgets)
+}
+
+fn store_marker_label_admissible(instance_label: NonEmptyStr) -> Bool {
+  !string_contains(s: instance_label as String, pattern: "\n")
+}
+
+type StoreMarkerSpan { start: Int, length: Int, bytes: Int }
+
+// The scan's phases: 0 reading a family's scalar count, 1 inside the family name, 2 expecting "=",
+// 3 reading the byte count, 4 past the field's terminating line feed (the instance line).
+type StoreMarkerScan { ok: Bool, phase: Int, number: Int, digits: Int, remaining: Int, start: Int, position: Int, tail: Int, spans: List<StoreMarkerSpan> }
+
+fn store_marker_scan_digit(acc: StoreMarkerScan, c: Int) -> StoreMarkerScan {
+  if (acc.digits > 0 && acc.number == 0) || acc.number > (int_inclusive_max() - (c - 48)) / 10 {
+    StoreMarkerScan { ok: false, phase: acc.phase, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0, spans: acc.spans }
+  } else {
+    StoreMarkerScan { ok: true, phase: acc.phase, number: acc.number * 10 + (c - 48), digits: acc.digits + 1, remaining: acc.remaining, start: acc.start, position: acc.position + 1, tail: acc.tail, spans: acc.spans }
+  }
+}
+
+fn store_marker_scan_step(acc: StoreMarkerScan, c: Int) -> StoreMarkerScan {
+  let refused = StoreMarkerScan { ok: false, phase: acc.phase, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0, spans: acc.spans }
+  let is_digit = c >= 48 && c <= 57
+  if !acc.ok { acc } else if acc.phase == 0 {
+    if is_digit { store_marker_scan_digit(acc: acc, c: c) }
+    else if c == 58 && acc.digits > 0 && acc.number > 0 {
+      StoreMarkerScan { ok: true, phase: 1, number: 0, digits: 0, remaining: acc.number, start: acc.position + 1, position: acc.position + 1, tail: 0, spans: acc.spans }
+    } else if c == 10 && acc.digits == 0 && count(acc.spans) > 0 {
+      StoreMarkerScan { ok: true, phase: 4, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: acc.position + 1, spans: acc.spans }
+    } else { refused }
+  } else if acc.phase == 1 {
+    StoreMarkerScan { ok: true, phase: if acc.remaining == 1 { 2 } else { 1 }, number: 0, digits: 0, remaining: acc.remaining - 1, start: acc.start, position: acc.position + 1, tail: 0, spans: acc.spans }
+  } else if acc.phase == 2 {
+    if c == 61 { StoreMarkerScan { ok: true, phase: 3, number: 0, digits: 0, remaining: acc.position - acc.start, start: acc.start, position: acc.position + 1, tail: 0, spans: acc.spans } } else { refused }
+  } else if acc.phase == 3 {
+    if is_digit { store_marker_scan_digit(acc: acc, c: c) }
+    else if c == 59 && acc.digits > 0 {
+      StoreMarkerScan {
+        ok: true, phase: 0, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0,
+        spans: acc.spans |> list_push(StoreMarkerSpan { start: acc.start, length: acc.remaining, bytes: acc.number })
+      }
+    } else { refused }
+  } else { StoreMarkerScan { ok: acc.ok, phase: 4, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: acc.tail, spans: acc.spans } }
+}
+
+type StoreMarkerDecode
+  = StoreMarkerDecoded { catalog: List<LocalStoreFamilyBudget> }
+  | StoreMarkerForeign
+  | StoreMarkerMalformed { detail: String }
+
+fn store_marker_decode(root: MaterializationStoreRoot, content: String) -> StoreMarkerDecode {
+  let head = store_marker_head(root: root)
+  if !starts_with(s: content, prefix: head) { StoreMarkerForeign } else {
+    let scalars = unicode_scalar_unfold(s: substring(s: content, start: string_length(s: head), end: string_length(s: content)))
+    let scan = fold(scalars, init: StoreMarkerScan { ok: true, phase: 0, number: 0, digits: 0, remaining: 0, start: 0, position: 0, tail: 0, spans: [] }, f: (acc, c) => store_marker_scan_step(acc: acc, c: c))
+    if !scan.ok || scan.phase != 4 {
+      StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
+    } else {
+      let field = unicode_scalar_fold(xs: take(scalars, scan.tail - 1))
+      let tail = unicode_scalar_fold(xs: skip(scalars, scan.tail))
+      let catalog = scan.spans |> map(sp => LocalStoreFamilyBudget {
+        family: unicode_scalar_fold(xs: take(skip(scalars, sp.start), sp.length)) as ArtifactKindId,
+        budget: byte_size(count: sp.bytes)
+      })
+      if !starts_with(s: tail, prefix: "instance ") || string_length(s: tail) <= 10 || !ends_with(s: tail, suffix: "\n") || count(tail.split(delimiter: "\n")) != 2 {
+        StoreMarkerMalformed { detail: "the catalog field is not followed by exactly one instance line" }
+      } else if !store_marker_catalog_admissible(budgets: catalog) {
+        StoreMarkerMalformed { detail: "the family catalog names a family more than once" }
+      } else if store_marker_catalog_field(budgets: catalog) != field {
+        StoreMarkerMalformed { detail: "the family catalog is not in its canonical sorted encoding" }
+      } else {
+        StoreMarkerDecoded { catalog: catalog }
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -252,27 +332,60 @@ type LocalStoreUnavailableCause
   = LocalStoreGrantRefused { verb: Verb, target: NamespacePosition, frame: Frame }
   | LocalStoreNotInitialized { marker_path: String }
   | LocalStoreMarkerUnrecognized { marker_path: String }
+  | LocalStoreMarkerMalformed { marker_path: String, detail: String }
   | LocalStoreCatalogMismatch { marker_path: String, offered: String }
+  | LocalStoreCatalogInadmissible { detail: String }
   | LocalStoreMarkerUnavailable { fault: StoreFault }
+  | LocalStoreSweepIncomplete { sweep: LocalStoreSweep }
 
-// THE OPENED STORE IS ONE CAPABILITY. It binds the root, the store instance its marker names, and the
-// exact family catalog the marker verified, and it is minted only after that verification
-// (local_store_open_decide, sealed to local_store_open). Every public operation consumes it and takes
-// no separate root, store or budgets, so a store cannot be hand-built for an uninitialized root, a
-// reopen cannot enforce a budget the store was not created with, and one store's identity cannot be
-// paired with another root.
-type LocalStoreCapability sole_constructor {
+// THE VERIFIED BINDING: the root, the store instance its marker names, and the family catalog DECODED
+// from that marker. It is minted only by local_store_open_decide after the marker decodes and matches
+// the offered catalog, and it is what every hold carries, so a hold derives root, store and budgets
+// from the marker it was verified against and from nothing a caller passed.
+type LocalStoreBinding sole_constructor {
   root: MaterializationStoreRoot
   store: OpenedMaterializationStore
   budgets: List<LocalStoreFamilyBudget>
 }
 
+// A VERIFIED BUT NOT YET WRITABLE STORE. The marker decision yields only this; no public operation takes
+// it, so marker verification alone never confers the right to write.
+type LocalStorePreOpen sole_constructor {
+  binding: LocalStoreBinding
+}
+
+// THE PROOF THAT THE OPEN SWEEP ESTABLISHED THE BOUND: every family was held, the listing and every
+// index were read, and every canonical name no index charges was confirmed gone. It is minted only
+// from a sweep with no refused delete (local_store_open_swept), so no capability exists while an
+// uncharged orphan the sweep saw is still on disk.
+type LocalStoreCleanSweep sole_constructor {
+  removed: List<String>
+  releases: List<LocalStoreHoldRelease>
+}
+
+// THE OPENED STORE IS ONE CAPABILITY: a verified binding plus its clean-sweep proof. Every public
+// operation consumes it and takes no separate root, store or budgets, so a store cannot be hand-built
+// for an uninitialized root, a reopen cannot enforce a budget the store was not created with, one
+// store's identity cannot be paired with another root, and a store whose open could not clear its
+// orphans is never writable.
+type LocalStoreCapability sole_constructor {
+  binding: LocalStoreBinding
+  sweep: LocalStoreCleanSweep
+}
+
 type LocalStoreOpening
-  = LocalStoreOpened { capability: LocalStoreCapability, durability: MaterializationStoreDurability, sweep: LocalStoreSweep }
+  = LocalStoreOpened { capability: LocalStoreCapability, durability: MaterializationStoreDurability }
   | LocalStoreUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
 
-// PURE: the open decision over the marker read. Hermetic controls call this directly.
-fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreOpening
+type LocalStorePreOpening
+  = LocalStorePreOpened { pre: LocalStorePreOpen, durability: MaterializationStoreDurability }
+  | LocalStorePreOpenRefused { root_path: String, cause: LocalStoreUnavailableCause }
+
+// PURE: the marker decision. It decodes the whole marker and binds the DECODED catalog, after checking
+// that the offered catalog encodes to exactly the same canonical field (an identity comparison: the
+// encoding is injective over catalogs that name each family once, and the offered one is refused
+// otherwise). Hermetic controls call this directly; what they get is a pre-open, which writes nothing.
+fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: FilesystemExactRead, budgets: List<LocalStoreFamilyBudget>) -> LocalStorePreOpening
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
     decl_ref(module_path: "test.claim.materialization_store_witness", decl_name: "a_store_opens_only_on_its_own_marker"),
@@ -282,37 +395,65 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
   let marker_path = store_path(root_path: root_path, name: materialization_store_marker_name)
   match marker_read {
     FilesystemExactPathAbsent { path: _ } =>
-      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreNotInitialized { marker_path: marker_path } }
+      LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreNotInitialized { marker_path: marker_path } }
     FilesystemExactPathUnreadable { path: _, kind: k, error: e } =>
-      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: filesystem_fault(kind: k, error: e) } }
+      LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: filesystem_fault(kind: k, error: e) } }
     FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
-      LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat(o, ": ", e) } } }
+      LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat(o, ": ", e) } } }
     FilesystemExactPathRead { path: _, content: c } =>
-      if !store_marker_recognized(root: root, content: c) {
-        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
-      } else if !store_marker_catalog_matches(content: c, budgets: budgets) {
-        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreCatalogMismatch { marker_path: marker_path, offered: store_marker_catalog_line(budgets: budgets) } }
+      if !store_marker_catalog_admissible(budgets: budgets) {
+        LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the offered family catalog is empty or names a family more than once" } }
       } else {
-        LocalStoreOpened {
-          capability: LocalStoreCapability {
-            root: root,
-            store: OpenedMaterializationStore {
-              provider: materialization_store_local_id,
-              instance: content_hash_of_value(value: c as NonEmptyStr)
-            },
-            budgets: budgets
-          },
-          durability: materialization_store_durability(root: root),
-          sweep: LocalStoreSweepNotRun
+        match store_marker_decode(root: root, content: c) {
+          StoreMarkerForeign => LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
+          StoreMarkerMalformed { detail: d } => LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerMalformed { marker_path: marker_path, detail: d } }
+          StoreMarkerDecoded { catalog: decoded } =>
+            if store_marker_catalog_field(budgets: decoded) != store_marker_catalog_field(budgets: budgets) {
+              LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreCatalogMismatch { marker_path: marker_path, offered: store_marker_catalog_field(budgets: budgets) } }
+            } else {
+              LocalStorePreOpened {
+                pre: LocalStorePreOpen {
+                  binding: LocalStoreBinding {
+                    root: root,
+                    store: OpenedMaterializationStore {
+                      provider: materialization_store_local_id,
+                      instance: content_hash_of_value(value: c as NonEmptyStr)
+                    },
+                    budgets: decoded
+                  }
+                },
+                durability: materialization_store_durability(root: root)
+              }
+            }
         }
       }
+  }
+}
+
+// The capability is minted HERE and nowhere else: only from a sweep that held every family, read every
+// index and confirmed every orphan it saw gone. A sweep that could not run, or that left any delete
+// unconfirmed, makes the store unavailable -- the orphan stays uncharged on disk, so writing beside it
+// could exceed the budget.
+fn local_store_open_swept(pre: LocalStorePreOpen, durability: MaterializationStoreDurability, sweep: LocalStoreSweep) -> LocalStoreOpening
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
+  ]
+{
+  let root_path = materialization_store_root_path(root: pre.binding.root)
+  match sweep {
+    LocalStoreSwept { removed: r, delete_refused: d, releases: rs } =>
+      if count(d) == 0 {
+        LocalStoreOpened { capability: LocalStoreCapability { binding: pre.binding, sweep: LocalStoreCleanSweep { removed: r, releases: rs } }, durability: durability }
+      } else {
+        LocalStoreUnavailable { root_path: root_path, cause: LocalStoreSweepIncomplete { sweep: sweep } }
+      }
+    LocalStoreSweepUnavailable { refusal: _ } => LocalStoreUnavailable { root_path: root_path, cause: LocalStoreSweepIncomplete { sweep: sweep } }
   }
 }
 
 fn local_store_read(path: String) -> FilesystemExactRead
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_lookup"),
   ]
 {
@@ -345,9 +486,8 @@ fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFami
         marker_read: local_store_read(path: store_path(root_path: root_path, name: materialization_store_marker_name)),
         budgets: budgets
       ) {
-        LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
-        LocalStoreOpened { capability: cap, durability: d, sweep: _ } =>
-          LocalStoreOpened { capability: cap, durability: d, sweep: local_store_sweep(capability: cap) }
+        LocalStorePreOpenRefused { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
+        LocalStorePreOpened { pre: pre, durability: d } => local_store_open_swept(pre: pre, durability: d, sweep: local_store_sweep(binding: pre.binding))
       }
   }
 }
@@ -368,6 +508,9 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
         cause: LocalStoreGrantRefused { verb: Write, target: absolute_path_position(path: root_path), frame: materialization_store_frame }
       }
     Permit =>
+      if !store_marker_catalog_admissible(budgets: budgets) || !store_marker_label_admissible(instance_label: instance_label) {
+        LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the family catalog must name each family once and the instance label must be one line" } }
+      } else {
       match store_publish_observation(create: local_store_create_new(
         path: store_path(root_path: root_path, name: materialization_store_marker_name),
         content: store_marker_content(root: root, instance_label: instance_label, budgets: budgets)
@@ -376,6 +519,7 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
           LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
         StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
         StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
+      }
       }
   }
 }
@@ -802,7 +946,7 @@ fn local_store_write_index_current(held: LocalStoreFamilyHeld, expected: CasExpe
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index"),
   ]
 {
-  match local_store_settle_slot(root_path: materialization_store_root_path(root: held.capability.root), key: local_store_index_key(family: held.family)) {
+  match local_store_settle_slot(root_path: materialization_store_root_path(root: held.binding.root), key: local_store_index_key(family: held.family)) {
     LocalStoreSlotSettled => local_store_write_index_settled(held: held, expected: expected, index: index)
     LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
     LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
@@ -815,7 +959,7 @@ fn local_store_write_index_settled(held: LocalStoreFamilyHeld, expected: CasExpe
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index_current"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   let family = held.family
   let content = local_store_index_encode(index: index) as NonEmptyStr
   match local_store_index_retention() {
@@ -895,7 +1039,7 @@ fn local_store_hold_refusal_text(refusal: LocalStoreHoldRefusal) -> String {
 }
 
 type LocalStoreFamilyHeld sole_constructor {
-  capability: LocalStoreCapability
+  binding: LocalStoreBinding
   family: ArtifactKindId
   owner: DurableHoldOwnerRef
   generation: CasGeneration
@@ -913,14 +1057,14 @@ fn local_store_hold_owner_process(owner: DurableHoldOwnerRef) -> ProcessHoldHold
   }
 }
 
-fn local_store_acquire_family_hold(capability: LocalStoreCapability, family: ArtifactKindId, recovered: Bool) -> LocalStoreHoldAcquisition
+fn local_store_acquire_family_hold(binding: LocalStoreBinding, family: ArtifactKindId, recovered: Bool) -> LocalStoreHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_with_family_of"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_all"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_hold_occupied"),
   ]
 {
-  let root = capability.root
+  let root = binding.root
   let root_path = materialization_store_root_path(root: root)
   match local_store_index_retention() {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: local_store_index_window_k } }
@@ -931,7 +1075,7 @@ fn local_store_acquire_family_hold(capability: LocalStoreCapability, family: Art
           let owner = concat(local_store_hold_owner_prefix, process_hold_text(p: me, pid_namespace: ns)) as DurableHoldOwnerRef
           let key = local_store_hold_key(family: family)
           match local_store_settle_slot(root_path: root_path, key: key) {
-            LocalStoreSlotSettled => local_store_acquire_settled(capability: capability, family: family, key: key, owner: owner, retention: retention, recovered: recovered)
+            LocalStoreSlotSettled => local_store_acquire_settled(binding: binding, family: family, key: key, owner: owner, retention: retention, recovered: recovered)
             LocalStoreSlotGenerationsOutstanding { key: k, stale: st } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotGenerationsOutstanding { key: k, stale: st } } }
             LocalStoreSlotUnlisted { key: k, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldUnsettled { settlement: LocalStoreSlotUnlisted { key: k, cause: c } } }
             LocalStoreSlotWindowTooNarrow { k: k } => LocalStoreHoldRefused { refusal: LocalStoreHoldWindowTooNarrow { k: k } }
@@ -941,18 +1085,18 @@ fn local_store_acquire_family_hold(capability: LocalStoreCapability, family: Art
   }
 }
 
-fn local_store_acquire_settled(capability: LocalStoreCapability, family: ArtifactKindId, key: NonEmptyStr, owner: DurableHoldOwnerRef, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
+fn local_store_acquire_settled(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, owner: DurableHoldOwnerRef, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_family_hold"),
   ]
 {
-  let root = capability.root
+  let root = binding.root
   let root_path = materialization_store_root_path(root: root)
           match file_hold_acquire(root: root_path as NonEmptyStr, slot_key: key, requested_owner: owner, retention: retention) {
             FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
-              LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { capability: capability, family: family, owner: o, generation: g, retention: retention } }
+              LocalStoreHoldAcquired { held: LocalStoreFamilyHeld { binding: binding, family: family, owner: o, generation: g, retention: retention } }
             FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
-              local_store_hold_occupied(capability: capability, family: family, key: key, holder: h, generation: g, retention: retention, recovered: recovered)
+              local_store_hold_occupied(binding: binding, family: family, key: key, holder: h, generation: g, retention: retention, recovered: recovered)
             FileHoldAcquireLost { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
             FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldStoreUnavailable { cause: c } }
             FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => LocalStoreHoldRefused { refusal: LocalStoreHoldSlotUndecodable { detail: d } }
@@ -963,12 +1107,12 @@ fn local_store_acquire_settled(capability: LocalStoreCapability, family: Artifac
 // An occupied family is looked at ONCE: a live or unobservable holder refuses; a holder observed dead is
 // recovered at the generation the refused acquire saw, and the acquire is tried once more. A family
 // still held after that recovery is busy -- the loop is bounded by construction.
-fn local_store_hold_occupied(capability: LocalStoreCapability, family: ArtifactKindId, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
+fn local_store_hold_occupied(binding: LocalStoreBinding, family: ArtifactKindId, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration, retention: CasSlotRetention, recovered: Bool) -> LocalStoreHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_settled"),
   ]
 {
-  let root = capability.root
+  let root = binding.root
   let root_path = materialization_store_root_path(root: root)
   match local_store_hold_owner_process(owner: holder) {
     Absent => LocalStoreHoldRefused { refusal: LocalStoreHolderUnobservable { holder: holder, cause: "the holder is not a materialization-store process" as NonEmptyStr } }
@@ -985,7 +1129,7 @@ fn local_store_hold_occupied(capability: LocalStoreCapability, family: ArtifactK
               FileHoldRecoveryNotEligible { slot_key: _, refusal: r } => LocalStoreHoldRefused { refusal: LocalStoreHoldRecoveryRefused { refusal: r } }
               FileHoldRecoveryPlanned { plan: pl, dead_holder: _, evidence: _ } =>
                 match file_hold_release_commit(plan: pl) {
-                  FileHoldReleased { slot_key: _, generation: _ } => local_store_acquire_family_hold(capability: capability, family: family, recovered: true)
+                  FileHoldReleased { slot_key: _, generation: _ } => local_store_acquire_family_hold(binding: binding, family: family, recovered: true)
                   FileHoldReleaseLost { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldContended }
                   FileHoldReleaseStoreUnavailable { slot_key: _, cause: c } => LocalStoreHoldRefused { refusal: LocalStoreHoldStoreUnavailable { cause: c } }
                   FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => LocalStoreHoldRefused { refusal: LocalStoreHoldKeyNotAddressable }
@@ -1015,7 +1159,7 @@ fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
   ]
 {
-  let observed = observe_file_hold(root: materialization_store_root_path(root: held.capability.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), retention: held.retention)
+  let observed = observe_file_hold(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, key: local_store_hold_key(family: held.family), retention: held.retention)
   match observed {
     HoldSlotHeld { generation: g, owner: o } =>
       if cas_generation_count(g: g) == cas_generation_count(g: held.generation) && durable_hold_owner_equal(left: o, right: held.owner) { LocalStoreHoldCurrent } else { LocalStoreHoldNotCurrent { observed: observed } }
@@ -1035,16 +1179,16 @@ type LocalStoreBracket<T>
   | LocalStoreBracketRefused { refusal: LocalStoreHoldRefusal }
 
 fn local_store_with_family<T>(capability: LocalStoreCapability, of: ArtifactRequest, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T> {
-  local_store_with_family_of(capability: capability, family: request_kind(req: of), run: run)
+  local_store_with_family_of(binding: capability.binding, family: request_kind(req: of), run: run)
 }
 
-fn local_store_with_family_of<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
+fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_with_family"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency"),
   ]
 {
-  match local_store_acquire_family_hold(capability: capability, family: family, recovered: false) {
+  match local_store_acquire_family_hold(binding: binding, family: family, recovered: false) {
     LocalStoreHoldRefused { refusal: r } => LocalStoreBracketRefused { refusal: r }
     LocalStoreHoldAcquired { held: h } => {
       let value = run(h)
@@ -1069,7 +1213,7 @@ fn local_store_release_family_hold(held: LocalStoreFamilyHeld) -> LocalStoreHold
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_acquire_all"),
   ]
 {
-  match file_hold_release_assess(root: materialization_store_root_path(root: held.capability.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, retention: held.retention) {
+  match file_hold_release_assess(root: materialization_store_root_path(root: held.binding.root) as NonEmptyStr, slot_key: local_store_hold_key(family: held.family), owner: held.owner, acquired_generation: held.generation, released_by: local_store_hold_release_ref, retention: held.retention) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: r } => LocalStoreHoldReleaseNotEligible { refusal: r }
     FileHoldReleasePlanned { plan: pl } =>
       match file_hold_release_commit(plan: pl) {
@@ -1103,8 +1247,8 @@ type LocalStoreWriteAuthority
 
 fn local_store_authority_root(authority: LocalStoreWriteAuthority) -> String {
   match authority {
-    LocalStoreFamilyAuthority { held: h } => materialization_store_root_path(root: h.capability.root)
-    LocalStoreSweepAuthority { all: a } => materialization_store_root_path(root: a.capability.root)
+    LocalStoreFamilyAuthority { held: h } => materialization_store_root_path(root: h.binding.root)
+    LocalStoreSweepAuthority { all: a } => materialization_store_root_path(root: a.binding.root)
   }
 }
 
@@ -1203,9 +1347,9 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
   ]
 {
-  let budgets = held.capability.budgets
+  let budgets = held.binding.budgets
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   if attempt > local_store_reservation_attempt_bound {
     LocalStoreReservationIndexRefused { refusal: LocalStoreIndexContended { attempts: local_store_reservation_attempt_bound } }
   } else {
@@ -1372,8 +1516,6 @@ fn local_store_delete_records(authority: LocalStoreWriteAuthority, records: List
 // other file are never touched, nothing is recursed into, and an index that cannot be read stops the
 // sweep (nothing is deleted on a guess).
 
-// LocalStoreSweepNotRun: the pure open decision never touches the filesystem, so it reports the
-// sweep as not run; the effectful local_store_open runs it once the marker has opened the store.
 // Why a sweep did not run, typed: the root's listing observation as the filesystem layer gave it, or
 // the family whose index could not be read with that index's typed refusal.
 type LocalStoreSweepRefusal
@@ -1384,19 +1526,18 @@ type LocalStoreSweepRefusal
 type LocalStoreSweep
   = LocalStoreSwept { removed: List<String>, delete_refused: List<LocalStoreDeleteAttempt>, releases: List<LocalStoreHoldRelease> }
   | LocalStoreSweepUnavailable { refusal: LocalStoreSweepRefusal }
-  | LocalStoreSweepNotRun
 
 type LocalStoreIndexedNames
   = LocalStoreIndexedNamesRead { names: List<String> }
   | LocalStoreIndexedNamesRefused { family: ArtifactKindId, refusal: LocalStoreIndexRefusal }
 
-fn local_store_indexed_names(capability: LocalStoreCapability) -> LocalStoreIndexedNames
+fn local_store_indexed_names(binding: LocalStoreBinding) -> LocalStoreIndexedNames
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_current"),
   ]
 {
-  let root = capability.root
-  let budgets = capability.budgets
+  let root = binding.root
+  let budgets = binding.budgets
   let root_path = materialization_store_root_path(root: root)
   fold(budgets, init: LocalStoreIndexedNamesRead { names: [] }, f: (acc, b) => match acc {
     LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreIndexedNamesRefused { family: f, refusal: r }
@@ -1415,33 +1556,33 @@ type LocalStoreAllHeld
   | LocalStoreAllHeldRefused { family: ArtifactKindId, refusal: LocalStoreHoldRefusal, released: List<LocalStoreHoldRelease> }
 
 type LocalStoreAllFamiliesHeld sole_constructor {
-  capability: LocalStoreCapability
+  binding: LocalStoreBinding
   held: List<LocalStoreFamilyHeld>
 }
 
-fn local_store_acquire_all(capability: LocalStoreCapability) -> LocalStoreAllHeld
+fn local_store_acquire_all(binding: LocalStoreBinding) -> LocalStoreAllHeld
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep"),
   ]
 {
-  fold(capability.budgets, init: LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { capability: capability, held: [] } }, f: (acc, b) => match acc {
+  fold(binding.budgets, init: LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { binding: binding, held: [] } }, f: (acc, b) => match acc {
     LocalStoreAllHeldRefused { family: f, refusal: r, released: rs } => LocalStoreAllHeldRefused { family: f, refusal: r, released: rs }
-    LocalStoreAllHeldAcquired { all: a } => match local_store_acquire_family_hold(capability: capability, family: b.family, recovered: false) {
-      LocalStoreHoldAcquired { held: h } => LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { capability: a.capability, held: a.held |> list_push(h) } }
+    LocalStoreAllHeldAcquired { all: a } => match local_store_acquire_family_hold(binding: binding, family: b.family, recovered: false) {
+      LocalStoreHoldAcquired { held: h } => LocalStoreAllHeldAcquired { all: LocalStoreAllFamiliesHeld { binding: a.binding, held: a.held |> list_push(h) } }
       LocalStoreHoldRefused { refusal: r } => LocalStoreAllHeldRefused { family: b.family, refusal: r, released: a.held |> map(x => local_store_release_family_hold(held: x)) }
     }
   })
 }
 
-fn local_store_sweep(capability: LocalStoreCapability) -> LocalStoreSweep
+fn local_store_sweep(binding: LocalStoreBinding) -> LocalStoreSweep
   admit_callers: [
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
   ]
 {
-  let root = capability.root
-  let budgets = capability.budgets
+  let root = binding.root
+  let budgets = binding.budgets
   let root_path = materialization_store_root_path(root: root)
-  match local_store_acquire_all(capability: capability) {
+  match local_store_acquire_all(binding: binding) {
     LocalStoreAllHeldRefused { family: f, refusal: r, released: rs } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepHoldRefused { family: f, refusal: r, released: rs } }
     LocalStoreAllHeldAcquired { all: a } => {
       let swept = local_store_sweep_held(all: a)
@@ -1449,7 +1590,6 @@ fn local_store_sweep(capability: LocalStoreCapability) -> LocalStoreSweep
       match swept {
         LocalStoreSwept { removed: r, delete_refused: d, releases: _ } => LocalStoreSwept { removed: r, delete_refused: d, releases: releases }
         LocalStoreSweepUnavailable { refusal: x } => LocalStoreSweepUnavailable { refusal: x }
-        LocalStoreSweepNotRun => LocalStoreSweepNotRun
       }
     }
   }
@@ -1460,7 +1600,7 @@ fn local_store_sweep_held(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep"),
   ]
 {
-  let root = all.capability.root
+  let root = all.binding.root
   let root_path = materialization_store_root_path(root: root)
   let stale = fold(all.held, init: none, f: (acc, h) => match acc {
     Present { value: _ } => acc
@@ -1480,7 +1620,7 @@ fn local_store_sweep_current(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_held"),
   ]
 {
-  let root = all.capability.root
+  let root = all.binding.root
   let root_path = materialization_store_root_path(root: root)
   let listing = Filesystem.List(path: root_path)
   let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
@@ -1488,7 +1628,7 @@ fn local_store_sweep_current(all: LocalStoreAllFamiliesHeld) -> LocalStoreSweep
     FilesystemDirectorySubjectRefused { directory: _, cause: _ } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepListingRefused { listing: observed } }
     FilesystemDirectoryListingRefused { directory: _, error: _ } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepListingRefused { listing: observed } }
     FilesystemDirectoryListed(listed) =>
-      match local_store_indexed_names(capability: all.capability) {
+      match local_store_indexed_names(binding: all.binding) {
         LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepIndexRefused { family: f, refusal: r } }
         LocalStoreIndexedNamesRead { names: indexed } => {
           let indexed_set = local_store_name_set(names: indexed)
@@ -1524,13 +1664,13 @@ type LocalStoreRecencyReceipt {
 // is the request's own kind and the name its own object name, so nothing beside the capability says
 // which family or which file.
 fn local_store_record_recency(capability: LocalStoreCapability, served: List<ArtifactRequest>) -> List<LocalStoreRecencyReceipt> {
-  capability.budgets |> flat_map(b => {
+  capability.binding.budgets |> flat_map(b => {
     let names = served |> filter(q => request_kind(req: q) == b.family) |> flat_map(q => match evaluation_store_address(req: q) {
       Admitted { address: addr } => [store_object_name(address: addr)]
       FamilyRefused { family: _, scope: _ } => []
     })
     if count(names) == 0 { [] } else {
-      [match local_store_with_family_of(capability: capability, family: b.family, run: h => local_store_record_recency_held(held: h, served: names)) {
+      [match local_store_with_family_of(binding: capability.binding, family: b.family, run: h => local_store_record_recency_held(held: h, served: names)) {
         LocalStoreBracketRefused { refusal: r } => LocalStoreRecencyReceipt { family: b.family, recency: LocalStoreRecencyHoldRefused { family: b.family, refusal: r }, hold_release: none }
         LocalStoreBracketRan { value: recency, hold_release: rel } => LocalStoreRecencyReceipt { family: b.family, recency: recency, hold_release: Present { value: rel } }
       }]
@@ -1544,7 +1684,7 @@ fn local_store_record_recency_held(held: LocalStoreFamilyHeld, served: List<Stri
   ]
 {
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => LocalStoreRecencyHoldRefused { family: family, refusal: LocalStoreHoldStale { observed: o } }
     LocalStoreHoldCurrent => local_store_record_recency_current(held: held, served: served)
@@ -1557,7 +1697,7 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
   ]
 {
   let family = held.family
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   match local_store_read_index(root_path: root_path, family: family) {
     LocalStoreIndexUnavailable { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
     LocalStoreIndexAt { index: index, expected: expected } => {
@@ -1582,9 +1722,13 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
 // ---------------------------------------------------------------------------------------------
 // Lookup and commit over an opened store.
 
-fn local_store_record_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
-  let root = capability.root
-  let store = capability.store
+fn local_store_record_lookup(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_bound"),
+  ]
+{
+  let root = binding.root
+  let store = binding.store
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
@@ -1629,7 +1773,7 @@ type LocalStorePartCheck
 
 fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobPart) -> LocalStorePartCheck
   admit_callers: [
-    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts_bound"),
   ]
 {
   let path = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
@@ -1646,10 +1790,19 @@ fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobP
 }
 
 fn local_store_lookup_parts(capability: LocalStoreCapability, req: ArtifactRequest) -> LocalStorePartsLookup {
-  let root = capability.root
-  let store = capability.store
+  local_store_lookup_parts_bound(binding: capability.binding, req: req)
+}
+
+fn local_store_lookup_parts_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> LocalStorePartsLookup
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_parts"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup_bound"),
+  ]
+{
+  let root = binding.root
+  let store = binding.store
   let root_path = materialization_store_root_path(root: root)
-  let lookup = local_store_record_lookup(capability: capability, req: req)
+  let lookup = local_store_record_lookup(binding: binding, req: req)
   let blobs = store_lookup_blob_parts(l: lookup)
   if count(blobs) == 0 { LocalStorePartsLookup { lookup: lookup, parts: [] } } else {
     match evaluation_store_address(req: req) {
@@ -1678,7 +1831,18 @@ fn local_store_lookup_parts(capability: LocalStoreCapability, req: ArtifactReque
 // The record lookup with its byte parts verified: a record whose parts do not hold their bytes is
 // refused here too, so every caller -- including a commit's read-back -- judges the whole artifact.
 fn local_store_lookup(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
-  local_store_lookup_parts(capability: capability, req: req).lookup
+  local_store_lookup_bound(binding: capability.binding, req: req)
+}
+
+fn local_store_lookup_bound(binding: LocalStoreBinding, req: ArtifactRequest) -> StoreLookup
+  admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_lookup"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
+  ]
+{
+  local_store_lookup_parts_bound(binding: binding, req: req).lookup
 }
 
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
@@ -1747,11 +1911,11 @@ fn local_store_commit_held(
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_under"),
   ]
 {
-  let store = held.capability.store
-  let root = held.capability.root
+  let store = held.binding.store
+  let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
   let bytes = measure_add(a: local_store_object_bytes(object: object), b: local_store_parts_bytes(parts: blobs))
-  let presence = local_store_object_presence(lookup: local_store_lookup(capability: held.capability, req: req))
+  let presence = local_store_object_presence(lookup: local_store_lookup_bound(binding: held.binding, req: req))
   match presence {
     LocalStoreObjectUnavailable { lookup: _ } =>
       local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: "the object's presence could not be established, so its row is neither converged on nor replaced" } })
@@ -1779,18 +1943,18 @@ fn local_store_commit_verified(
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
   ]
 {
-  let root = held.capability.root
+  let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
   match local_store_hold_check(held: held) {
     LocalStoreHoldNotCurrent { observed: o } => local_store_commit_hold_refused(key: key, refusal: LocalStoreHoldStale { observed: o })
     LocalStoreHoldCurrent =>
       local_store_commit_refused(commit: store_commit_settle(
-        store: held.capability.store,
+        store: held.binding.store,
         prepared_key: key,
         offered_digest: offered,
         offered_result: offered_result,
         publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
-        read_back: local_store_lookup(capability: held.capability, req: req)
+        read_back: local_store_lookup_bound(binding: held.binding, req: req)
       ))
   }
 }
@@ -1812,9 +1976,8 @@ fn local_store_commit_reserved(
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_held"),
   ]
 {
-  let store = held.capability.store
-  let store = held.capability.store
-  let root = held.capability.root
+  let store = held.binding.store
+  let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
   match reservation {
     LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: key, refusal: r })
@@ -1848,7 +2011,7 @@ fn local_store_commit_reserved(
             offered_digest: offered,
             offered_result: offered_result,
             publish: store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object)),
-            read_back: local_store_lookup(capability: held.capability, req: req)
+            read_back: local_store_lookup_bound(binding: held.binding, req: req)
             )
           },
           evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc,
@@ -1917,7 +2080,7 @@ fn local_store_publish_part(held: LocalStoreFamilyHeld, record: String, part: Lo
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   let copy_name = local_store_copy_name(record: record, id: part.id)
   let authority = LocalStoreFamilyAuthority { held: held }
   if count(local_store_delete_split(attempts: local_store_delete_attempts(authority: authority, names: [copy_name])).refused) > 0 {
@@ -1946,7 +2109,7 @@ fn local_store_doom_copy(held: LocalStoreFamilyHeld, name: String, bytes: ByteSi
   ]
 {
   if attempt > local_store_reservation_attempt_bound { Present { value: "the occupancy index kept moving past the attempt bound" } } else {
-    match local_store_read_index(root_path: materialization_store_root_path(root: held.capability.root), family: held.family) {
+    match local_store_read_index(root_path: materialization_store_root_path(root: held.binding.root), family: held.family) {
       LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
       LocalStoreIndexAt { index: index, expected: expected } =>
         if index.doomed |> any(d => d.name == name) { none } else {
@@ -1965,7 +2128,7 @@ fn local_store_copy_and_link(held: LocalStoreFamilyHeld, record: String, part: L
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_publish_part"),
   ]
 {
-  let root_path = materialization_store_root_path(root: held.capability.root)
+  let root_path = materialization_store_root_path(root: held.binding.root)
   let copy_path = store_path(root_path: root_path, name: local_store_copy_name(record: record, id: part.id))
   let target = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
   let label = concat("byte part ", part.id as String)
@@ -2043,7 +2206,7 @@ fn local_store_commit_under(
   payloads: List<ArtifactPayload>,
   parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
-  let root = held.capability.root
+  let root = held.binding.root
   let root_path = materialization_store_root_path(root: root)
   if request_kind(req: req) != held.family {
     local_store_commit_hold_refused(key: request_key(req: req), refusal: LocalStoreHoldWrongFamily { held: held.family, requested: request_kind(req: req) })
@@ -2080,7 +2243,7 @@ type LocalStoreBatchLookup
   = LocalStoreBatchLooked { store: OpenedMaterializationStore, lookups: List<StoreLookup> }
 
 fn local_store_lookup_batch(capability: LocalStoreCapability, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
-  LocalStoreBatchLooked { store: capability.store, lookups: reqs |> map(req => local_store_lookup(capability: capability, req: req)) }
+  LocalStoreBatchLooked { store: capability.binding.store, lookups: reqs |> map(req => local_store_lookup(capability: capability, req: req)) }
 }
 
 // ---------------------------------------------------------------------------------------------
