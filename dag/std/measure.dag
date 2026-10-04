@@ -22,7 +22,6 @@ import extdeps.units.dimensionless {
   percent_unity_hundred_count,
   parts_per_million_unity_count,
 }
-import v2.std.optional { Present }
 
 type Quantity =
     Time

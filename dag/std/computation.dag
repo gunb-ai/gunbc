@@ -16,7 +16,6 @@ import std.algebra {
   PartialFunctionProfile, FinitelySupportedFunctionProfile,
   kernel_algebra_profile
 }
-import v2.std.optional { Absent, Present }
 
 
 type SizeBound

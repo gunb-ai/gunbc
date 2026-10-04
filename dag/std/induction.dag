@@ -17,7 +17,6 @@ import std.algebra {
   Ordering
 }
 import std.types { List }
-import v2.std.optional { Absent, Present }
 
 
 type RecursionShape

@@ -4,7 +4,6 @@ module std.source_annotation
 import std.types { String, SourceSpan, List, Bool }
 import std.algebra { FreeSemigroup }
 import std.occurrence_identity { OccurrenceId }
-import v2.std.optional { Absent, Present }
 
 // Placement is OBSERVED at capture, not reconstructed later, because it cannot be reconstructed later. Whitespace and line structure are consumed before the parser sees anything, so once they are gone `fn a() -> Int { 1 } // text` followed by `fn b()` leaves residue identical to a leading annotation on b — two opposite meanings, one byte pattern. LeadingAfterLineIndent means only indentation preceded the annotation on its line; TrailingAfterSemanticToken means a semantic token did. Only the leading form is eligible for attachment in the first realization; trailing refuses until its attachment rule is separately modeled.
 type AnnotationPlacement

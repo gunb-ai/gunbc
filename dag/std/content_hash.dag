@@ -1,7 +1,6 @@
 module std.content_hash
 
 import std.types { NonEmptyStr, String, Bool }
-import v2.std.optional { Absent, Present }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
 // git_object_id_text_note). Sha256Digest.hex and Sha1Digest.hex are Sha256DigestHex / Sha1DigestHex

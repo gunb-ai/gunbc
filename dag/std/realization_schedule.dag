@@ -24,7 +24,6 @@ import std.process_termination { ProcessTermination, ProcessExited, ProcessSigna
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.witness_admission { WitnessConsumerCadence }
-import v2.std.optional { Absent, Present }
 
 // EPISTEMIC BASIS IS PER AXIS, NOT PER ACCOUNT. One CostBasis over the whole account could not
 // say which of time, space and power the basis was about, so a constructor supplying only a time
