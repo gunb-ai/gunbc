@@ -75,35 +75,36 @@ test fn kvn_bare_eq_keyword_binder_still_refuses_holds() -> Bool {
   }
 }
 
-data kvn_pattern_value_source: String = "module m.t\ntype R = R { a: Int }\nfn f(r: R) -> Int {\n  match r {\n    R { a: as } => 0\n  }\n}\n"
+data kvn_pattern_value_source: String = "module m.t\nfn f(r: R) -> Int {\n  match r {\n    R { a: as } => 0\n  }\n}\n"
 
-// a field-pattern binder named by a keyword refuses at the keyword: `as` is bytes 76..78 of kvn_pattern_value_source.
+// a field-pattern binder named by a keyword refuses at the keyword: `as` is bytes 54..56 of kvn_pattern_value_source.
 test fn kvn_pattern_value_refuses_at_the_keyword_holds() -> Bool {
   g_fatal_at(
     parsed: g_tokenize_parse(text: kvn_pattern_value_source, file: ^probe_kvn_pattern_value),
     reason: KeywordAsValueName,
     file: ^probe_kvn_pattern_value,
-    start: 76,
-    end: 78
+    start: 54,
+    end: 56
   )
 }
 
-data kvn_pattern_pun_source: String = "module m.t\ntype R = R { then: Int }\nfn f(r: R) -> Int {\n  match r {\n    R { then } => 0\n  }\n}\n"
+data kvn_pattern_pun_source: String = "module m.t\nfn f(r: R) -> Int {\n  match r {\n    R { then } => 0\n  }\n}\n"
 
-// a punned field-pattern binder named by a keyword refuses at the keyword: `then` is bytes 76..80 of kvn_pattern_pun_source.
+// a punned field-pattern binder named by a keyword refuses at the keyword: `then` is bytes 51..55 of kvn_pattern_pun_source.
 test fn kvn_pattern_pun_refuses_at_the_keyword_holds() -> Bool {
   g_fatal_at(
     parsed: g_tokenize_parse(text: kvn_pattern_pun_source, file: ^probe_kvn_pattern_pun),
     reason: KeywordAsValueName,
     file: ^probe_kvn_pattern_pun,
-    start: 76,
-    end: 80
+    start: 51,
+    end: 55
   )
 }
 
-data kvn_label_keywords_source: String = "module m.t\ntype R = R { module: Int, then: Int }\nfn f(r: R, m: Int) -> Int {\n  let s = R { module: m, then: r.then }\n  match s {\n    R { module: x, then: y } => x\n  }\n}\n"
+data kvn_label_keywords_source: String = "module m.t\nfn f(r: R) -> R {\n  R { module: r.then }\n}\n"
 
-// Control: keyword LABELS still parse: a field decl, a record init, a projection, a field-pattern label.
+// Control: keyword LABELS still parse: a record-init label and a projection (a field-pattern label is in
+// the contextual control, a field-declaration label in kvn_field_decl_label).
 test fn kvn_label_keywords_control_holds() -> Bool {
   match g_tokenize_parse(text: kvn_label_keywords_source, file: ^probe_kvn_label_keywords) {
     Accepted { value: _, diagnostics: _ } => true
@@ -111,7 +112,7 @@ test fn kvn_label_keywords_control_holds() -> Bool {
   }
 }
 
-data kvn_contextual_module_data_source: String = "module m.t\ntype R = R { module: Int }\nfn f(module: Int, data: Int) -> Int {\n  let r = R { module: module }\n  match r {\n    R { module: module } => module\n  }\n}\n"
+data kvn_contextual_module_data_source: String = "module m.t\nfn f(module: Int, data: Int) -> Int {\n  match r {\n    R { module: module } => data\n  }\n}\n"
 
 // Control: the contextual value names module and data are declarable and referenceable.
 test fn kvn_contextual_module_data_control_holds() -> Bool {
@@ -121,7 +122,7 @@ test fn kvn_contextual_module_data_control_holds() -> Bool {
   }
 }
 
-data kvn_bool_literal_pattern_source: String = "module m.t\ntype R = R { ok: Bool }\nfn f(r: R) -> Int {\n  match r {\n    R { ok: true } => 1\n    R { ok: false } => 0\n  }\n}\n"
+data kvn_bool_literal_pattern_source: String = "module m.t\nfn f(r: R) -> Int {\n  match r {\n    R { ok: true } => 1\n  }\n}\n"
 
 // Control: true and false stay literal patterns in a field pattern.
 test fn kvn_bool_literal_pattern_control_holds() -> Bool {
@@ -131,7 +132,7 @@ test fn kvn_bool_literal_pattern_control_holds() -> Bool {
   }
 }
 
-data kvn_match_arm_true_source: String = "module m.t\nfn f(b: Bool) -> Int {\n  match b {\n    true => 1\n    false => 0\n  }\n}\n"
+data kvn_match_arm_true_source: String = "module m.t\nfn f(b: Bool) -> Int {\n  match b {\n    true => 1\n  }\n}\n"
 
 // Control: a match arm led by true is not a lambda binder.
 test fn kvn_match_arm_true_control_holds() -> Bool {
@@ -141,11 +142,21 @@ test fn kvn_match_arm_true_control_holds() -> Bool {
   }
 }
 
-data kvn_node_then_if_statement_source: String = "module m.t\nfn f(node: Int, c: Bool) -> Int {\n  node\n  if c {\n    1\n  } else {\n    0\n  }\n}\n"
+data kvn_node_then_if_statement_source: String = "module m.t\nfn f(node: Int, c: Bool) -> Int {\n  node\n  if c { 1 } else { 0 }\n}\n"
 
 // Control: a value named node followed by an if statement is not a node-NAME binder.
 test fn kvn_node_then_if_statement_control_holds() -> Bool {
   match g_tokenize_parse(text: kvn_node_then_if_statement_source, file: ^probe_kvn_node_then_if_statement) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data kvn_field_decl_label_source: String = "module m.t\ntype R = R { then: Int }\n"
+
+// Control: a field DECLARATION label is a label, not a value name, so it still admits a keyword.
+test fn kvn_field_decl_label_control_holds() -> Bool {
+  match g_tokenize_parse(text: kvn_field_decl_label_source, file: ^probe_kvn_field_decl_label) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
