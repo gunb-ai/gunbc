@@ -1,0 +1,354 @@
+module v1.tests.claim.generic_identity_census
+
+import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
+import v1.compiler.infer { param_is_generic_decl, type_node_label }
+import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
+import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
+import std.types { List, String, Map, Bool }
+
+// THE STEP-2 INSTRUMENT OF docs/plans/derived-node-identity-design.md (section 7), AT OUTPUT GRAIN.
+// For every type node the typed graph KEEPS -- a signature's parameter and return types, the three
+// type fields of each ResolvedFormal, and the resolved type of every expression in a function body --
+// it records which generic-identity facts the node carries: the Node.declaration TypeParameter mark
+// (v1.compiler.resolve binder_marked_type), the TypeVariable mark (v1.compiler.infer_env
+// env_with_type_variable_bindings), both, or neither, beside how the node is spelled and what it
+// resolves to. It reads; it changes no byte and edits no infer function.
+//
+//   compile_to_resolved -> ResolvedPipelineResult.graph -> ResolvedGraph.modules
+//                       -> TypedModule.func_env + TypedModule.items
+//
+// WHY OUTPUT GRAIN. The plan describes an event tap inside unify_generics and
+// substitute_generics_apply. Those are pure folds with no output channel, and adding one would grow
+// the seed to take a measurement (gentle-dove-36, 2026-10-04). The typed graph already holds the
+// nodes those folds returned, so the question "which stored carriers hold a generic with no identity"
+// is answerable by a reader, on the precedent of v1.tests.claim.carrier_realization_census.
+//
+// WHAT IT CANNOT SEE IS A TYPED POPULATION, NOT A ZERO. A node built and consumed inside one
+// unification -- a call plan's formals, a substitution map's bindings -- never reaches the typed
+// graph. Those populations are rows of GenericIdentityUnobserved, written into every receipt, so a
+// reader cannot take their absence from the observed rows for a count of none.
+
+type GenericIdentityContext {
+  module_file: String
+  enclosing: String
+  generic_names: List<String>
+  si: Map<String, NewlineIndex>
+}
+
+// ONE OBSERVED TYPE NODE. `spelled` is the node's own label and `resolved_label` the label of what it
+// resolves to; they differ at a kernel container's element child, which is spelled after the
+// container's template parameter and resolved to the element (the collision
+// gunbc.recurring_failure_mode generic_identity_decided_by_spelling records). `parent_label` is empty
+// at the root of a carrier.
+type GenericIdentityRow {
+  module_file: String
+  enclosing: String
+  carrier: String
+  path: String
+  parent_label: String
+  spelled: String
+  spelled_as_in_scope_generic: Bool
+  declaration: DeclarationRef?
+  type_variable_id: String
+  carries_type_variable: Bool
+  resolved_label: String
+}
+
+// A POPULATION THIS READER DOES NOT REACH. `would_observe` names what a measurement of it needs, so
+// a bet whose answer lives here is reported undecided with its deciding instrument, never inferred.
+type GenericIdentityUnobserved {
+  population: String
+  reason: String
+  would_observe: String
+}
+
+fn generic_identity_unobserved() -> List<GenericIdentityUnobserved> {
+  [
+    GenericIdentityUnobserved {
+      population: "call-plan formals built by v1.compiler.infer build_call_application_plan and bound by infer_call_arguments_generic_pass",
+      reason: "built and consumed inside one call's inference; the typed call node keeps the result type, not the plan",
+      would_observe: "an output on the call plan carrier, or a claim calling build_call_application_plan over supplied formals"
+    },
+    GenericIdentityUnobserved {
+      population: "the formal and actual nodes each unify_generics call compares, and the bindings of its substitution map",
+      reason: "the map is local to the caller and is dropped after substitute_generics_apply returns",
+      would_observe: "a claim calling unify_generics and substitute_generics_apply over supplied nodes"
+    },
+    GenericIdentityUnobserved {
+      population: "intermediate nodes of alias_chain_target_after_args, expand_alias_chain_for_field_access and record_lit_instantiated_fields",
+      reason: "only the final instantiated type is stored on the typed expression",
+      would_observe: "a claim calling each constructor over supplied nodes"
+    },
+    GenericIdentityUnobserved {
+      population: "signatures whose formals are LocalFormalsAwaitingModuleContext",
+      reason: "the formals were never bound, so there is no ResolvedFormal to read; each such signature is one row with carrier formals_awaiting_module_context",
+      would_observe: "the same reader after bind_local_func_conformance has run for that signature"
+    }
+  ]
+}
+
+fn gi_is_bare(n: Node) -> Bool {
+  (n.children |> count) == 0 && (n.params |> count) == 0
+}
+
+fn gi_declaration_is_type_parameter(d: DeclarationRef?) -> Bool {
+  match d {
+    Present { value: r } =>
+      match r.field {
+        TypeParameter { name: _ } => true
+        WholeDeclaration => false
+        NamedField { field_name: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn gi_type_variable_id(n: Node) -> String {
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => tv
+    _ => ""
+  }
+}
+
+fn gi_carries_type_variable(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+}
+
+fn gi_resolved_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => type_node_label(n: rt, source_indices: si)
+    _ => ""
+  }
+}
+
+// A bare node is recorded when ANY identity question can be asked of it: it is spelled as a generic
+// in scope, it carries either mark, or it sits in a type-argument position spelled one way and
+// resolved another. A node meeting none of these is an ordinary concrete reference and is not a row.
+fn gi_node_rows(ctx: GenericIdentityContext, carrier: String, path: String, parent_label: String, n: Node) -> List<GenericIdentityRow> {
+  let spelled = type_node_label(n: n, source_indices: ctx.si)
+  let in_scope = ctx.generic_names |> any(g => g == spelled)
+  let resolved = gi_resolved_label(n: n, si: ctx.si)
+  let has_tv = gi_carries_type_variable(n: n)
+  let renamed_in_argument_position = parent_label != "" && resolved != "" && spelled != "" && resolved != spelled
+  if in_scope || has_tv || gi_declaration_is_type_parameter(d: n.declaration) || renamed_in_argument_position {
+    [GenericIdentityRow {
+      module_file: ctx.module_file,
+      enclosing: ctx.enclosing,
+      carrier: carrier,
+      path: path,
+      parent_label: parent_label,
+      spelled: spelled,
+      spelled_as_in_scope_generic: in_scope,
+      declaration: n.declaration,
+      type_variable_id: gi_type_variable_id(n: n),
+      carries_type_variable: has_tv,
+      resolved_label: resolved
+    }]
+  } else {
+    []
+  }
+}
+
+// The walk over ONE type. It descends type arguments, and an arrow's parameter and return positions,
+// and never follows a reference's Resolved node into the declaration it names: that would walk every
+// declaration once per reference.
+fn gi_type_rows(ctx: GenericIdentityContext, carrier: String, path: String, parent_label: String, n: Node) -> List<GenericIdentityRow> {
+  if gi_is_bare(n: n) {
+    gi_node_rows(ctx: ctx, carrier: carrier, path: path, parent_label: parent_label, n: n)
+  } else {
+    let own_label = type_node_label(n: n, source_indices: ctx.si)
+    let is_arrow = match n.connective { Arrow => true  _ => false }
+    let child_rows = n.children |> flat_map(c => gi_type_rows(ctx: ctx, carrier: carrier, path: concat(path, "/arg"), parent_label: own_label, n: c))
+    let param_rows = if is_arrow {
+      n.params |> flat_map(p => gi_type_rows(ctx: ctx, carrier: carrier, path: concat(path, "/fn_param"), parent_label: own_label, n: param_node_type_expr(n: p)))
+    } else {
+      []
+    }
+    let return_rows = if is_arrow {
+      match n.inferred {
+        Present { value: Resolved { node: rt } } => gi_type_rows(ctx: ctx, carrier: carrier, path: concat(path, "/fn_return"), parent_label: own_label, n: rt)
+        _ => []
+      }
+    } else {
+      []
+    }
+    concat(concat(child_rows, param_rows), return_rows)
+  }
+}
+
+fn gi_formal_rows(ctx: GenericIdentityContext, f: ResolvedFormal) -> List<GenericIdentityRow> {
+  concat(
+    concat(
+      gi_type_rows(ctx: ctx, carrier: "formal_declared_type", path: f.parameter_identity, parent_label: "", n: f.declared_type),
+      gi_type_rows(ctx: ctx, carrier: "formal_declaration_bound_conformance", path: f.parameter_identity, parent_label: "", n: f.declaration_bound_conformance)
+    ),
+    gi_type_rows(ctx: ctx, carrier: "formal_substitution_basis", path: f.parameter_identity, parent_label: "", n: f.substitution_basis)
+  )
+}
+
+fn gi_awaiting_row(ctx: GenericIdentityContext) -> GenericIdentityRow {
+  GenericIdentityRow {
+    module_file: ctx.module_file,
+    enclosing: ctx.enclosing,
+    carrier: "formals_awaiting_module_context",
+    path: "",
+    parent_label: "",
+    spelled: "",
+    spelled_as_in_scope_generic: false,
+    declaration: none,
+    type_variable_id: "",
+    carries_type_variable: false,
+    resolved_label: ""
+  }
+}
+
+fn gi_formals_rows(ctx: GenericIdentityContext, formals: ResolvedFormals) -> List<GenericIdentityRow> {
+  match formals {
+    DeclarationBoundFormals { formals: fs } => fs |> flat_map(f => gi_formal_rows(ctx: ctx, f: f))
+    KernelGroundedFormals { formals: fs } => fs |> flat_map(f => gi_formal_rows(ctx: ctx, f: f))
+    LocalFormalsAwaitingModuleContext {} => [gi_awaiting_row(ctx: ctx)]
+  }
+}
+
+fn gi_generic_names(params: List<Node>, si: Map<String, NewlineIndex>) -> List<String> {
+  params |> filter(p => param_is_generic_decl(p: p, source_indices: si)) |> map(p => param_node_name_at(n: p, source_indices: si))
+}
+
+// A SIGNATURE WITH NO TYPE PARAMETER IS NOT READ. Its formals name no generic of its own, and a
+// kernel element child inside them is the same population the body walk reads at every expression.
+fn gi_sig_rows(module_file: String, sig: ResolvedFuncSig, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+  let names = gi_generic_names(params: sig.params, si: si)
+  if (names |> count) == 0 {
+    []
+  } else {
+    let ctx = GenericIdentityContext { module_file: module_file, enclosing: sig.name, generic_names: names, si: si }
+    let value_params = sig.params |> filter(p => !param_is_generic_decl(p: p, source_indices: si))
+    let param_rows = value_params |> flat_map(p =>
+      gi_type_rows(ctx: ctx, carrier: "signature_param_type", path: param_node_name_at(n: p, source_indices: si), parent_label: "", n: param_node_type_expr(n: p)))
+    let return_rows = gi_type_rows(ctx: ctx, carrier: "signature_return", path: "", parent_label: "", n: sig.inferred)
+    concat(concat(param_rows, return_rows), gi_formals_rows(ctx: ctx, formals: sig.resolved_formals))
+  }
+}
+
+// THE BODY WALK. Every node under a function body is visited as an expression: its resolved type, if
+// it has one, is read as a type, and its children, params and body are visited in turn. The carrier
+// names the expression by its own label so a reader can group by what built the type.
+fn gi_expr_rows(ctx: GenericIdentityContext, e: Node) -> List<GenericIdentityRow> {
+  let own = match e.inferred {
+    Present { value: Resolved { node: rt } } =>
+      gi_type_rows(ctx: ctx, carrier: "body_expression_type", path: type_node_label(n: e, source_indices: ctx.si), parent_label: "", n: rt)
+    _ => []
+  }
+  let child_rows = e.children |> flat_map(c => gi_expr_rows(ctx: ctx, e: c))
+  let param_rows = e.params |> flat_map(p => gi_expr_rows(ctx: ctx, e: p))
+  let body_rows = match e.body {
+    Present { value: b } => gi_expr_rows(ctx: ctx, e: b)
+    Absent => []
+  }
+  concat(concat(concat(own, child_rows), param_rows), body_rows)
+}
+
+fn gi_item_body_rows(module_file: String, item: Node, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+  match item.body {
+    Absent => []
+    Present { value: b } =>
+      gi_expr_rows(
+        ctx: GenericIdentityContext {
+          module_file: module_file,
+          enclosing: authored_name_at(source_indices: si, node: item),
+          generic_names: gi_generic_names(params: item.params, si: si),
+          si: si
+        },
+        e: b
+      )
+  }
+}
+
+fn gi_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<GenericIdentityRow> {
+  let module_file = authored_name_at(source_indices: si, node: m.module)
+  let sig_rows = map_values(m.func_env.local) |> flat_map(sig => gi_sig_rows(module_file: module_file, sig: sig, si: si))
+  let body_rows = m.items |> flat_map(item => gi_item_body_rows(module_file: module_file, item: item, si: si))
+  concat(sig_rows, body_rows)
+}
+
+fn gi_bool_label(b: Bool) -> String {
+  if b { "yes" } else { "no" }
+}
+
+fn gi_declaration_label(d: DeclarationRef?) -> String {
+  match d {
+    Present { value: r } => declaration_ref_display_key(ref: r)
+    Absent => "none"
+  }
+}
+
+// THE MARK COLUMN IS DERIVED FROM THE TWO FACTS BESIDE IT, never stored on the row: a stored verdict
+// next to the facts that produce it is a second authority for one fact.
+fn gi_mark_label(r: GenericIdentityRow) -> String {
+  let has_decl = gi_declaration_is_type_parameter(d: r.declaration)
+  if has_decl && r.carries_type_variable {
+    "declaration+type_variable"
+  } else if has_decl {
+    "declaration_only"
+  } else if r.carries_type_variable {
+    "type_variable_only"
+  } else {
+    "neither"
+  }
+}
+
+fn gi_tsv_escape(v: String) -> String {
+  replace(replace(v, "\t", "\\t"), "\n", "\\n")
+}
+
+fn generic_identity_census_header() -> String {
+  "kind\tmodule_file\tenclosing\tcarrier\tpath\tparent_label\tspelled\tspelled_as_in_scope_generic\tmark\tdeclaration\ttype_variable_id\tresolved_label"
+}
+
+fn gi_row_tsv(r: GenericIdentityRow) -> String {
+  [
+    "observed",
+    gi_tsv_escape(v: r.module_file),
+    gi_tsv_escape(v: r.enclosing),
+    r.carrier,
+    gi_tsv_escape(v: r.path),
+    gi_tsv_escape(v: r.parent_label),
+    gi_tsv_escape(v: r.spelled),
+    gi_bool_label(b: r.spelled_as_in_scope_generic),
+    gi_mark_label(r: r),
+    gi_tsv_escape(v: gi_declaration_label(d: r.declaration)),
+    gi_tsv_escape(v: r.type_variable_id),
+    gi_tsv_escape(v: r.resolved_label)
+  ] |> join(separator: "\t")
+}
+
+fn gi_unobserved_tsv(u: GenericIdentityUnobserved) -> String {
+  [
+    "UNOBSERVED",
+    gi_tsv_escape(v: u.population),
+    gi_tsv_escape(v: u.reason),
+    gi_tsv_escape(v: u.would_observe)
+  ] |> join(separator: "\t")
+}
+
+fn generic_identity_census_tsv(rows: List<GenericIdentityRow>) -> String {
+  concat([generic_identity_census_header()], concat(generic_identity_unobserved() |> map(u => gi_unobserved_tsv(u: u)), rows |> map(r => gi_row_tsv(r: r))))
+    |> join(separator: "\n")
+}
+
+// THE ENTRY THE DRIVER CALLS. Sources in as data, receipt out as a String. A compile that produces
+// no graph REFUSES in the return value, so a receipt that could not be produced and a receipt with no
+// observed rows do not share a spelling.
+fn generic_identity_census_from_sources(sources: List<SourceFile>) -> String {
+  let result = compile_to_resolved(sources: sources)
+  match result.graph {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: g } =>
+      generic_identity_census_tsv(rows: g.modules |> flat_map(m => gi_module_rows(m: m, si: result.source_indices)))
+  }
+}
