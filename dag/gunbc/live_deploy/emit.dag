@@ -1,6 +1,19 @@
 module gunbc.live_deploy.emit
 
+import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
+
+import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
+import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
+import gunbc.workspace_commissioning_executor_unit {
+  workspace_executor_template_name, workspace_executor_script_name, workspace_executor_helper_name,
+  workspace_executor_unit_text, workspace_executor_unit_path, workspace_executor_wait_bound,
+}
+import gunbc.fleet_generation_execution { fleet_generation_lock }
+
 import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import gunbc.auth.approval_device_redemption { approval_device_store_directory }
@@ -1791,7 +1804,7 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {
-  Environment { assignment: join([gunbc_workspace_root_env_name, "=", release_dir], "") as NonEmptyStr }
+  installed_release_environment(release_dir: release_dir)
 }
 
 // THE DIGEST IS OVER CONTENT, ORDER-INDEPENDENTLY, so two trees with the same bytes in the same
@@ -2112,15 +2125,7 @@ fn microvm_controller_vmm_install_steps(revision: ReleaseRevisionBinding) -> Lis
 // EVERY UNIT THAT RUNS `gunbc run` FROM THE LOCUS NEEDS THE SAME ROW, so the insertion is one function
 // over any such unit: the slot controller and the shakedown broker both exec from this locus.
 fn microvm_locus_unit_with_workspace_root(file: SystemdUnitFile, release_dir: String) -> SystemdUnitFile {
-  match file {
-    ServiceUnitFile { unit: u, service: s, install: i } =>
-      ServiceUnitFile {
-        unit: u,
-        service: concat([release_locus_workspace_root_environment(release_dir: release_dir)], s),
-        install: i,
-      }
-    other => other
-  }
+  installed_release_unit(file: file, release_dir: release_dir)
 }
 
 fn microvm_slot_unit_file_with_workspace_root(release_dir: String) -> SystemdUnitFile {
@@ -2152,6 +2157,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_unit_path() as String,
     )),
+  ] + (if microvm_controller_requires_ci_reservation_unit() { [
     deploy_raw(command: deploy_stage_write_command(
       stage_name: microvm_slot_reserve_unit_name as String,
       content: serialize_systemd_unit_file(file: microvm_locus_unit_with_workspace_root(
@@ -2164,7 +2170,7 @@ fn microvm_slot_unit_write_steps(revision: ReleaseRevisionBinding) -> List<Pipel
       mode: install_file_shared_mode,
       dest: microvm_slot_reserve_unit_path() as String,
     )),
-  ]
+  ] } else { [] })
 }
 
 // THE INSTALL IS ADDITIVE AND STARTS NOTHING: it writes the locus and the TEMPLATE unit and reloads
@@ -2189,8 +2195,9 @@ fn microvm_controller_install_intent(revision: ReleaseRevisionBinding) -> Pipeli
         [
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: microvm_slot_controller_receipt_dir)),
           deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: cell_readiness_store_location)),
+          deploy_raw(command: install_d_owned_for_user(user: microvm_controller_owner, path: workspace_commissioning_store_location)),
         ],
-        concat(microvm_slot_unit_write_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
+        concat(microvm_slot_unit_write_steps(revision: revision) + workspace_executor_install_steps(revision: revision) + workspace_dispatch_grant_steps(revision: revision), [deploy_effect(inv: systemctl_daemon_reload_effect())]),
       ),
     ),
     on_failure: FailFast,
@@ -3432,4 +3439,40 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     decl_name: "orch_emit_pipeline",
     field: WholeDeclaration,
   }
+}
+
+// Additive installation only: the executor is not enabled or started here. Its native waiter,
+// bounded adapter and unit are derived from the same installed release as the slot controller.
+fn workspace_executor_install_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let dir = microvm_controller_release_dir(revision: revision)
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_script_name,
+      content: workspace_commissioning_executor_script())),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_script_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_script_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_helper_name,
+      content: workspace_executor_helper_script(release_dir: dir))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_helper_name,
+      mode: install_executable_shared_mode, dest: join([dir, "/", workspace_executor_helper_name], ""))),
+    deploy_raw(command: deploy_stage_write_command(stage_name: workspace_executor_template_name as String,
+      content: workspace_executor_unit_text(release_dir: dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))),
+    deploy_raw(command: deploy_stage_install_command(stage_name: workspace_executor_template_name as String,
+      mode: install_file_shared_mode, dest: workspace_executor_unit_path() as String)),
+  ]
+}
+
+// The installer has already installed the exact controller release under root custody. These
+// argument-free grants name that binary, tree and three fixed entries; no job code is elevated.
+fn workspace_dispatch_grant_steps(revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  let stage = "workspace-commissioning-sudoers"
+  let pending = concat(workspace_dispatch_grant_path, ".pending")
+  [
+    deploy_raw(command: deploy_stage_write_command(stage_name: stage,
+      content: concat(workspace_dispatch_grant_content(release_dir: microvm_controller_release_dir(revision: revision) as NonEmptyStr), "\n"))),
+    deploy_raw(command: deploy_stage_visudo_check_command(stage_name: stage)),
+    deploy_raw(command: deploy_stage_install_owned_command(stage_name: stage, mode: "0440", owner: microvm_controller_owner, group: microvm_controller_owner, dest: pending)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: pending)),
+    deploy_raw(command: rename_no_target_directory_command(source: pending, dest: workspace_dispatch_grant_path)),
+    deploy_raw(command: installed_visudo_policy_check_command(path: workspace_dispatch_grant_path)),
+  ]
 }

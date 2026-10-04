@@ -1,0 +1,145 @@
+module gunbc.workspace_allocation_supply
+
+import gunbc.durable_cas_file_store { KeepAllGenerations }
+import std.types { NonEmptyStr, String, List, Int, Timestamp, EpochSecs }
+import std.algebra { trim }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import std.decl_ref { DeclarationRef }
+import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
+import product.host_identity { HostIdentity }
+import product.fabric.identity { fabric_identity_eq }
+import product.fabric.provider_route { CompliancePostureRevision }
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
+import product.fabric.candidate_field { CandidateField, FieldRequest, assemble_candidate_field }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities, identity_is_workspace_execution_member, gunbc_committed_host_runner_slot_allocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved }
+import gunbc.fabric_executor_class { fleet_cell_sanction }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key, bind_fabric_cell_candidate, CellCandidateBound, OfferExecutorIsNotTheCell }
+import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
+import gunbc.fabric_required_build_cell { members_for_slot, fabric_cell_shape, FabricCellShaped, FabricCellShapeIncomplete }
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationDecision, fabric_cell_observation_outcome, FabricCellObservationAdmitted,
+  fabric_cell_observed_population_members, fabric_cell_observed_population_host, admit_fabric_cell_probe, FabricCellObservationDenied, FabricCellObservationNotApplicable,
+}
+import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn }
+import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
+import gunbc.workspace_allocation { WorkspaceRequest, workspace_work, workspace_execution_requirements }
+import gunbc.workspace_allocation_reservation { WorkspaceDedicatedSupply }
+
+// Host observation is a read-only convergence input. No missing or quarantined substrate becomes
+// an empty/free offer; the shared cell observer and readiness admission decide those questions.
+type WorkspaceHostSupplyObservation {
+  host: HostIdentity
+  cells: FabricCellObservationDecision
+  readiness: CellReadinessStoreRead
+  observed_at: Timestamp
+}
+type WorkspaceSupplyRefusal { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+type WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply, refused: List<WorkspaceSupplyRefusal> }
+
+type WorkspaceHostSupplyRead
+  = WorkspaceHostSupplyObserved { observation: WorkspaceHostSupplyObservation }
+  | WorkspaceHostSupplyUnavailable { reason: NonEmptyStr }
+
+// Readiness and hold paths are host-local authorities. Refuse another host before probing any
+// supply or reading readiness; remote orchestration must execute this observer on that host.
+fn workspace_observe_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputAbsent => WorkspaceHostSupplyUnavailable { reason: "local host identity is absent" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostSupplyUnavailable { reason: "local host identity is unreadable" }
+    ProcessOutputPresent { text: hostname } => if trim(s: hostname) == "" || trim(s: hostname) != (host as String) {
+      WorkspaceHostSupplyUnavailable { reason: "workspace supply must be observed on the requested host" }
+    } else {
+      WorkspaceHostSupplyObserved { observation: WorkspaceHostSupplyObservation {
+        host: host, cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host)),
+        readiness: read_cell_readiness_store(),
+        observed_at: match clock_now_probed_at() { Present { value: instant } => instant as String Absent => "" },
+      } }
+    }
+  }
+}
+
+// Route policy and observations enter the same candidate-field authority CI uses. No workspace
+// permit is fabricated and no floor requirements can leak into this field.
+fn workspace_candidate_field(
+  request: WorkspaceRequest, routes: List<OfferRouteRow<NonEmptyStr>>,
+  sanctions: List<RouteScopeSanction>, active: CompliancePostureRevision,
+  scope: ProviderUseScope<NonEmptyStr>, decision_receipt: DeclarationRef,
+  exercises: List<RouteExercise>, readiness: RouteReadinessRequirement<NonEmptyStr>, at: EpochSecs,
+  offers: List<FieldRequest<NonEmptyStr>>,
+) -> CandidateField<NonEmptyStr> {
+  assemble_candidate_field(routes: routes, sanctions: sanctions, active: active, scope: scope,
+    decision_receipt: decision_receipt, exercises: exercises, readiness: readiness, at: at,
+    requirements: workspace_execution_requirements(profile: request.profile), requests: offers)
+}
+
+fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentity, observation: WorkspaceHostSupplyObservation, now: Timestamp) -> NonEmptyStr? {
+  if !identity_is_workspace_execution_member(identity: slot) { Present { value: "slot is not explicitly designated for workspace use" } }
+  else if (slot.host as String) != (observation.host as String) { Present { value: "supply observation belongs to another host" } }
+  else if !utc_instant_is_canonical(t: now) || !utc_instant_is_canonical(t: observation.observed_at) { Present { value: "supply observation has no canonical observation time" } }
+  else if utc_instant_seconds_after(later: now, earlier: observation.observed_at) < 0 || utc_instant_seconds_after(later: now, earlier: observation.observed_at) > 60 { Present { value: "supply observation is stale or in the future" } }
+  else { match gunbc_committed_host_runner_slot_allocation(host: slot.host) {
+    HostSlotAllocationAdmitted { allocation: _ } => match fabric_cell_observation_outcome(decision: observation.cells) {
+      FabricCellObservationAdmitted { population } =>
+        if (fabric_cell_observed_population_host(population: population) as String) != (slot.host as String) { Present { value: "cell observation belongs to another host" } }
+        else { match fabric_cell_shape(members: members_for_slot(members: fabric_cell_observed_population_members(population: population), slot: slot)) {
+          FabricCellShaped { shape: _ } => {
+            let next = match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot), retention: KeepAllGenerations) {
+              HoldSlotAbsent => Present { value: 1 }
+              HoldSlotFree { generation, released_by: _ } => match cas_generation_successor(g: generation) {
+                CasSuccessorGeneration { generation: successor } => Present { value: cas_generation_count(g: successor) }
+                CasSuccessorExhausted { head: _ } => none
+              }
+              HoldSlotHeld { generation: _, owner: _ } => none
+              HoldSlotUndecodable { generation: _, detail: _ } => none
+              HoldObservationUnavailable { cause: _ } => none
+            }
+            match next {
+              Absent => Present { value: "allocation slot is held, unreadable, or generation exhausted" }
+              Present { value: incarnation } => match cell_incarnation_admission(store: observation.readiness, cell: fabric_cell_id_for_slot(slot: slot), allocation_generation: incarnation) {
+                CellIncarnationAdmitted { cell: _, generation: _ } => none
+                CellRecoveryRequired { bound: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+                CellWithdrawn { cell: _, withdrawal: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+                HostWithdrawn { withdrawal: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+              }
+            }
+          }
+          FabricCellShapeIncomplete => Present { value: "cell substrate lacks its exact owned members" }
+        } }
+      FabricCellObservationDenied { host: _, blocked: _ } => Present { value: "host cell substrate has not converged" }
+      FabricCellObservationNotApplicable { host: _ } => Present { value: "host cell substrate has not converged" }
+    }
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => Present { value: "host capacity commitment is unresolved; no workspace offer admitted" }
+  } }
+}
+
+fn workspace_supply_from_field(root: NonEmptyStr, field: CandidateField<NonEmptyStr>, observations: List<WorkspaceHostSupplyObservation>, now: Timestamp) -> WorkspaceSupplyProjection {
+  fold(workspace_execution_slot_identities(), init: WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: [], sanctions: [] }, refused: [] }, f: (acc, slot) => {
+    let samples = filter(observations, sample => (sample.host as String) == (slot.host as String))
+    let candidates = filter(field.admitted, candidate => candidate.offer.executor == fabric_cell_allocation_key(slot: slot))
+    if samples.count() != 1 || candidates.count() != 1 { WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "expected one admitted offer and one current host observation" }] } }
+    else { match samples.first() {
+      Absent => acc
+      Present { value: sample } => match workspace_slot_observation_refusal(root: root, slot: slot, observation: sample, now: now) {
+        Present { value: reason } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: reason }] }
+        Absent => match candidates.first() {
+          Absent => acc
+          Present { value: candidate } => match bind_fabric_cell_candidate(slot: slot, candidate: candidate) {
+            CellCandidateBound { bound } => WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: acc.supply.roster + [bound], sanctions: acc.supply.sanctions + [fleet_cell_sanction(slot: slot)] }, refused: acc.refused }
+            OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "offer executor is not the designated slot" }] }
+          }
+        }
+      }
+    } }
+  })
+}

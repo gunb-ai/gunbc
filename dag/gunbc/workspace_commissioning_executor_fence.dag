@@ -1,0 +1,104 @@
+module gunbc.workspace_commissioning_executor_fence
+
+import gunbc.durable_cas_file_store { KeepAllGenerations }
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_snapshotted_submitter }
+
+import std.types { NonEmptyStr, String, Bool }
+import std.decl_ref { decl_ref }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.workspace_slot_mutation { workspace_slot_mutation_key, workspace_commissioning_mutation_owner }
+import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorInvocationRecorded,
+  workspace_executor_record_coherent, ExecutorGenerationCommitted, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorSubmissionFenced, ExecutorControllerRetryFenced
+}
+import gunbc.workspace_commissioning_executor_store {
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
+}
+
+// Fencing is enforced where commissioning effects begin, not solely by the submitting process.
+// A delayed StartUnit can create a refusing process but cannot create a second commissioning
+// actor. The durable CAS winner binds the invocation before readiness or provenance is written.
+type WorkspaceExecutorControllerPermit sole_constructor {
+  record: WorkspaceExecutorRecord
+}
+
+type WorkspaceExecutorControllerAdmission
+  = WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit }
+  | WorkspaceExecutorControllerRefused { reason: String }
+
+fn workspace_executor_mutation_matches(record: WorkspaceExecutorRecord) -> Bool {
+  match observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr,
+    key: workspace_slot_mutation_key(slot_key: record.subject.slot), retention: KeepAllGenerations) {
+    HoldSlotHeld { owner, generation } => owner == workspace_commissioning_mutation_owner(plan_hash: record.subject.plan_hash)
+      && generation == record.subject.mutation_generation
+    HoldSlotAbsent => false
+    HoldSlotFree { generation: _, released_by: _ } => false
+    HoldSlotUndecodable { generation: _, detail: _ } => false
+    HoldObservationUnavailable { cause: _ } => false
+  }
+}
+
+fn workspace_executor_claim_controller(provenance: WorkspaceCommissioningProvenance,
+  invocation: NonEmptyStr) -> WorkspaceExecutorControllerAdmission
+  admit_callers: [decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "workspace_slot_dispatch_directive")]
+{
+  let submitter = workspace_commissioning_snapshotted_submitter()
+  let slot_key = runner_slot_instance_name(slot: provenance.slot)
+  match workspace_executor_journal_observe(slot_key: slot_key) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => if !workspace_executor_submission_identity_matches(record: record, submitter: submitter)
+        || record.subject.plan_hash != provenance.plan_hash
+        || !workspace_executor_mutation_matches(record: record) {
+        WorkspaceExecutorControllerRefused { reason: "executor plan or exact mutation generation does not match this commissioning" }
+      } else { match record.phase {
+        ExecutorSubmissionRecorded => {
+          let bound = WorkspaceExecutorRecord { subject: record.subject, submitter: record.submitter,
+            previous_invocation: record.previous_invocation, invocation: invocation as String, phase: ExecutorInvocationRecorded }
+          if !workspace_executor_record_coherent(record: bound) {
+            WorkspaceExecutorControllerRefused { reason: "commissioning invocation is invalid or repeats the predecessor" }
+          } else { match workspace_executor_journal_publish(snapshot: snapshot, record: bound) {
+            WorkspaceExecutorJournalPublished { snapshot: _ } => if workspace_executor_mutation_matches(record: bound) {
+              WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit { record: bound } }
+            } else { WorkspaceExecutorControllerRefused { reason: "mutation exclusion changed while binding the controller" } }
+            WorkspaceExecutorJournalConflict => WorkspaceExecutorControllerRefused { reason: "controller invocation lost the journal CAS or could not read it back" }
+            WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorControllerRefused { reason: "controller invocation lost the journal CAS or could not read it back" }
+          } }
+        }
+        ExecutorInvocationRecorded => if record.invocation == (invocation as String) {
+          WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit { record: record } }
+        } else { WorkspaceExecutorControllerRefused { reason: "another invocation already owns commissioning; this delayed start is fenced" } }
+        ExecutorSubmissionFenced => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorControllerRetryFenced => WorkspaceExecutorControllerRefused { reason: "the failed controller is retry-fenced; only a rearmed submission may bind a replacement" }
+        ExecutorReadbackAccepted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorReleaseObserved => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorGenerationCommitted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+      } }
+      Absent => WorkspaceExecutorControllerRefused { reason: "commissioning has no durable executor submission" }
+    }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorControllerRefused { reason: "commissioning executor journal is unreadable" }
+  }
+}
+
+fn workspace_executor_controller_still_owned(permit: WorkspaceExecutorControllerPermit) -> Bool {
+  match workspace_executor_journal_observe(slot_key: permit.record.subject.slot) {
+    WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+      Present { value: record } => record == permit.record && workspace_executor_mutation_matches(record: record)
+      Absent => false
+    }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => false
+  }
+}
+
+// The per-invocation credential is essential: a stopped old process or queued predecessor
+// cannot claim a rearmed journal merely because both submissions share reviewed provenance.
+fn workspace_executor_submission_identity_matches(record: WorkspaceExecutorRecord, submitter: NonEmptyStr?) -> Bool {
+  match submitter {
+    Present { value } => record.submitter == value
+    Absent => false
+  }
+}
