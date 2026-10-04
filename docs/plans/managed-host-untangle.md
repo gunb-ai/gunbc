@@ -163,7 +163,7 @@ So the BMC and silicon leaves it needs move first.
 | **4b** | **Census boot image chain**: the 7 `mtcollins1_census_*` modules. Toolchain and QEMU modules are executor-host operations, so they are keyed by executor host, not managed host. | the `mtcollins1_census_*` procedure roots | After 4a. |
 | **4c** | **Boot federation standing**: `ManagedHostBootFederationStanding` replaces `gunbc.auth.mtcollins1_boot_federation*`, live names kept as the `mtcollins1` binding (ruling b). | `mtcollins1_boot_*` federation decls | After 0. Independent of 4a/4b. |
 | **4d** | **Boot run, dry realization, diagnostic bundle**: the vertical's root. Unit observations it reads today (`mtcollins1_memory_census_observation`, `mtcollins1_access_observation`) become row reads or parameters, so the dependency direction is procedure ← unit. | `mtcollins1_boot_run`, `_boot_dry_realization`, `_boot_diagnostic_bundle` | After 1, 4a, 4b, 4c. Likely split run/dry and bundle at dispatch. |
-| **O1** | **Arrival convergence, factory state through an admitted managed host** (operator requirement and rulings, 2026-10-03). Three PRs: O1a route standing, O1b state-shaped `BmcSecure` and observer clock, O1c the convergence and the admission population. See its own section below. | the family-keyed rotation route; the rotation-event-only `BmcSecure` derivation; the supplied `BmcSecureStanding` in the firmware convergence; the source-roster `managed_hosts()` | After 4c. Does not need the generic boot run. Each unit's live credential write needs its own operator go-ahead; mtcollins1 goes first. |
+| **O1** | **Arrival convergence, factory state through an admitted managed host** (operator requirement and rulings, 2026-10-03). PRs: O1a route standing, O1b state-shaped `BmcSecure` and observer clock, then O1c in three parts (the shared step-sequence fold with its first consumer; the prior-life archive; `BmcSecure` wiring and the admission population). See its own section below. | the family-keyed rotation route; the rotation-event-only `BmcSecure` derivation; the supplied `BmcSecureStanding` in the firmware convergence; the source-roster `managed_hosts()` | After 4c. Does not need the generic boot run. Each unit's live credential write needs its own operator go-ahead; mtcollins1 goes first. |
 | **O2** | **Boot enters through the arrival convergence** (replacement migration): the `mtcollins1_boot` mode is re-rooted onto the convergence in one transition, and the old boot entry is deleted. | the boot run's own entry (the root that assumes `BmcSecured`); the caller-supplied password path into the boot wrappers | **After 4d.** The convergence is host-generic, so it may not call a boot run whose answer is still fixed to mtcollins1. |
 | **5** | **Remaining BMC-stack observations**: fan observe, UI bundle observe, KVM observer, SOL notice, served-UI catalog, BMC fan, which the boot does not need. | those `mtcollins1_` procedure roots | After 3. |
 | **6** | **Platform**: physical orientation, DIMM connector and platform observation become logic over the baseboard read through `ManagedHost.access`. The Mt. Collins figure stays in `extdeps.ampere.mt_collins_*`. | the board bindings in those modules | After #13025 (it edits `mtcollins1_physical_orientation`). |
@@ -306,6 +306,49 @@ The dry realization over `gunbc.bmc_model` `BmcWorld` exercises those carriers, 
 
 **Observer clock.** `bmc_secure` carries bare `EpochMs`, so a comment cannot make a controller-sourced time unconstructible. O1b introduces an observer-clock timestamp whose only producer is `gunbc.clock_read`, and every ordering field in the phase consumes it. The controller's year-2000 clock is preserved as an `AccessDiscover` observation and can never be the ordering clock. Control: a controller-sourced year-2000 timestamp cannot satisfy the rotation and readback ordering, and an observer timestamp can. Setting the BMC clock is a write and is out of scope.
 
+#### The convergence fold: one shared home, landed with its first consumer (O1c-1)
+
+**Why this is here** (eager-gull-22, 2026-10-03). The Spark serving bring-up (valiant-crab-775) needs the same thing cut O does: several effectful steps run as one convergence instead of separately dispatched modes that a human sequences. The operator pointed that lane at this one. The home lands **once**, with cut O and the Spark arm as its consumers. It does not go inside `gunbc.machine_intake_arrival_converge`.
+
+**What already exists (DFS before naming anything).**
+- **The per-step lifecycle has a consumed home.** `gunbc.host_convergence_protocol` is the canonical protocol from the CONVERGENCE-ONE program (`docs/plans/convergence-one-program.md`): select, observe goal-blind, assess, plan, admit, apply, independently read back, terminal verdict.
+  - `HostEffectDomainProjection { observe, assess, decide }`, `inspect_via_host_effect_projection` and `reconcile_from_read_attempt` are the step.
+  - `gunbc.ensure` is a projection of it.
+  - That program's own rule: "anything that calls itself convergence without running that lifecycle is a second convergence algebra".
+- **The roster of persistent host effects has a home.** `gunbc.host_convergence_census` `host_convergence_census_rows`. Each arrival phase's effect, and each Spark step, is a row there. It is not a parallel list.
+- **The sealed receipt is the domain's.** `std.realization_reconcile` states that std cannot seal the relation decided plan ↔ performed plan ↔ evidence without accepting a law from the caller it would be checking, and that the binding "is the DOMAIN's obligation, discharged by a domain carrier minted only by the authority that performed the effect" (worked example: `gunbc.typed_remote_file_write` `RemoteFileConverged`). So there is **no generic sealed receipt** to build. O1b's `BmcSecure` receipt and Spark's receipts stay domain carriers.
+
+**So the one missing piece is the ordered composition of protocol steps.** It goes in the workflow layer, `gunbc.fleet`. It does not go in std, because lanes, principals and resumability are fleet policy. The module is named by DFS when built, and it is parameterized over each domain's steps.
+
+**Its shape, tested against two real consumers:** cut O's five arrival phases, and the Spark arm's ten steps (image produce and distribute, checkpoint seed and replica, sudo grants, claim recovery, supersede, launch, load).
+
+| Requirement | Shape | Driven by |
+|---|---|---|
+| A step | an identity; a subject; a `HostEffectDomainProjection`; its domain receipt type; its **preconditions as step identities** | both |
+| Order | derived from preconditions by an identity join (an unknown identity or a cycle refuses). **Where an order authority already exists, the derived order must equal it or refuse.** Cut O's is `arrival_phases_all`. | arrival (authority), Spark (derived) |
+| Per step | the canonical protocol, unchanged: Noop / Apply / Refuse, independent readback, the domain receipt minted by the effect authority | both |
+| Precondition satisfied | only by that step's **readback in this run**: a receipt for the same subject. Never by an earlier step's return value. | both |
+| Refusal | names the unmet step by identity. The fold may take that step **only if it is in the roster and ungated**. A gated step stops with a typed refusal naming the discharge it needs. | Spark S9 naming S6/S7; the arrival credential write |
+| Gate | a step is ungated, or gated on an authorization discharged for that subject and that run. The pattern comes from `select_authorization_pattern`, selected **before** the fold (§3d: the fold chooses nothing). | arrival `BmcSecure`; Spark S7 |
+| Principal | per step, from the same selection. A step whose principal is not bound refuses. | Spark S6/S7 vs S9 |
+| No fallback arms | a step with no admissible realization refuses; it never widens (§5) | Spark S5: no verified peer, no Hub fallback |
+| Uncertain completion | an applied step whose readback does not yet ground is **pending**, distinct from converged and from refused. The run ends pending, and a rerun re-observes and reattaches. A pending step never satisfies a precondition. | Spark S2/S4 (hours, resumable); arrival archive |
+| Deadline | every effect leg carries a deadline. A leg with none is unconstructible. | Spark's ssh leg that hangs instead of refusing |
+| Lane | the set of hosts a run may mutate is derived from its steps' subjects, one lane per affected host | Spark's host-keyed vs srv1-keyed lanes cancelling; the arrival unit hold |
+| Verdict | one ledger per run: each step converged, pending, refused, or not reached. The line stops at the first refusal. | both |
+
+**Workflow surface.** Lane derivation changes concurrency groups in the generated workflow, which is an operator-visible surface. Cut O's use changes none: it runs inside the existing `mtcollins1_boot` job and its unit hold. The Spark arm's reshaping of its modes is that lane's proposal to the operator, not part of this cut.
+
+**§3c: the home lands with a consumer in the same closure.** A fold with no consumer is a dangling declaration, so there is no "fold only" PR. O1c is therefore three PRs:
+
+- **O1c-1**: the fold in `gunbc.fleet`, with its **first consumer**: the arrival prefix's two read-only phases, `AccessDiscover` (including the O1a route standing) and `IdentityBindProvisional`, as real protocol steps with census rows. Controls: the order equals `arrival_phases_all` or refuses; an unknown precondition refuses; a gated step is not auto-taken; a pending step satisfies nothing; a leg without a deadline is a compile refusal.
+- **O1c-2**: `PriorLifeBoundary`'s archive arm as a step.
+- **O1c-3**: the `BmcSecure` step (O1b's domain receipt) and the `ManagedHostAdmission` population.
+
+The Spark arm becomes the second consumer in its own lane (valiant-crab-775), which also reviews O1c-1's shape before it lands. `DESIGN.md` §3d names the fleet admission spine as this cycle's first consumer, so the shape must not preclude it, and O1c-1's PR says how it fits.
+
+**What O1b changes.** Nothing in its scope. Its decision goes through the canonical protocol (`HostEffectDomainProjection`) and not through `gunbc.ensure` alone, and its effect is a census row.
+
 #### Authorization and what lands
 
 - **The rotation is a privileged effect.** It is classified by executing `gunbc.auth.authorization_pattern_selection` `select_authorization_pattern` over its real attributes, and it gets its row in `gunbc.auth.privileged_effect_census`. The pattern is what the selection returns.
@@ -345,6 +388,7 @@ These occurrences do not refuse through an import edge, so the import census abo
 | `docs/probes/mtcollins*` (12), `docs/rung-drops/*` (1), `docs/design-rung-drops.md` | dated observations and declared drops | **receipt**. |
 | `docs/plans/*` (14 files other than this one), `docs/recovered/*`, `ROADMAP.md` (2) | dated plans; the roadmap goal "Bring Mt. Collins unit 1 into service" is correctly unit-named | **residue / receipt**. Not edited by these cuts. |
 | `src/v1/stage0/src/cli_run.rs` (1) | a comment | **residue**. |
+| The IAM condition description string beginning `gunbc.auth.mtcollins1_boot_federation: the one version …` (kept by cut 4c in `gunbc.auth.managed_host_boot_federation`) | part of a **live** IAM binding condition | **receipt**: it must stay byte-identical until a deliberate re-provision. A name sweep must not "fix" it, although it names a deleted module. |
 
 Exact token `mtcollins1_boot`: 19 files at `26e99a9c7f`, all inside the populations above.
 
