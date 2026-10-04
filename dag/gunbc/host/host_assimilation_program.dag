@@ -42,7 +42,7 @@ import gunbc.host_standup {
   assimilation_complete_input_eq,
   assimilation_input_is_required,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host_phase_status crossed
 // every enrolled host with all of it. That was correct while every enrolled host was the same kind
