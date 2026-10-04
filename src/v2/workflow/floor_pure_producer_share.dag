@@ -318,6 +318,10 @@ fn closed_demand_decline(
 ) -> List<ShareDerivationDecline> {
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
+  } else if length(xs: claims) > 1 && length(xs: unobserved_read_causes(reads: reads)) > 0 {
+    list_map(xs: unobserved_read_causes(reads: reads), f: fn(k) { ConsumerReadUnknown { cause: k } })
+  } else if length(xs: claims) > 1 && length(xs: sole_projections(claims: claims, reads: reads)) > 0 {
+    [BundleOfDisjointProjections { sole_projections: sole_projections(claims: claims, reads: reads) }]
   } else if planned_claims == 0 {
     [ReachedByNoPlannedClaim]
   } else if any(xs: refused_names, predicate: fn(r) { r == producer }) {
@@ -326,10 +330,6 @@ fn closed_demand_decline(
     [CarriedInputProducer]
   } else if length(xs: sole_active_debt_claim(claims: claims, debt: debt)) == 1 {
     []
-  } else if length(xs: unobserved_read_causes(reads: reads)) > 0 {
-    list_map(xs: unobserved_read_causes(reads: reads), f: fn(k) { ConsumerReadUnknown { cause: k } })
-  } else if length(xs: sole_projections(claims: claims, reads: reads)) > 0 {
-    [BundleOfDisjointProjections { sole_projections: sole_projections(claims: claims, reads: reads) }]
   } else {
     ladder_decline(verdict: closed_demand_ladder_verdict(
       identity: share_ladder_identity(producer: producer, argument_preimage: argument_preimage),
@@ -338,7 +338,11 @@ fn closed_demand_decline(
   }
 }
 
-// THE BUNDLE REFUSAL (follow-up to #13043, flag by stern-bear-500). Two or more declared claims
+// THE BUNDLE REFUSAL (follow-up to #13043, flag by stern-bear-500). It is judged BEFORE the planned
+// reach because being a bundle is a fact about the identity's declared demand, not about which
+// claims one run plans: every bundle in the declared subject is named on every run, so the floor
+// log is the population. It applies only to identities two or more claims demand -- one claim
+// reading one field of its own fixture is a single recompute (or a named fill debt), not a bundle. Two or more declared claims
 // demanding one closed identity owe a carry only if they demand the SAME computed value. A
 // producer that bundles distinct work into one record, each claim reading its own field, is not
 // one shared value: admitting it nets every claim's own slice out of that claim's budget, which is
@@ -643,7 +647,22 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Five more were added from probe 37186494805, for the six rows gunbc#13060 added to the hand roster
 // (v2.test.claim.algebra_operator_derivation), on the same ground.
 // Re-derive with that probe; do not extend by hand.
+//
+// THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
+// declined as BundleOfDisjointProjections on floor run 37194676016: each reads its own rehearsal
+// run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
+// claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
+// producer per run; the shared `xl2_cut_run` is demanded by four claims and is not debt.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "test.claim.namespace_xl2_rehearsal_census",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "xl2_residual_control_resolves_before_the_cut_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "xl2_nested_reference_survives_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.algebra_operator_derivation",
     claims: [
