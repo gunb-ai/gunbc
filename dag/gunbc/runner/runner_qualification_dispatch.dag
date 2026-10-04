@@ -70,8 +70,21 @@ fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
 // A DISPATCH IS ONE ATTEMPT AND ITS ANSWER IS THE RECEIPT OR THE REFUSAL, never a run assumed to
 // exist. The run id comes from GitHub's 2026-03-10 response (WorkflowDispatchReceipt); a refused or
 // unreached request carries its RestOutcome and mints no run.
+//
+// THE DISPATCHED RUN IS SEALED, AND THAT IS WHAT PUTS COLLECTION CAUSALLY AFTER DISPATCH.
+// WorkflowDispatchReceipt is a plain upstream record anyone can write, so a collect fold taking one
+// would read back whatever run id a caller named. DispatchedQualificationRun is sole_constructor:
+// only this file can write it, and in this file only dispatch_qualification_floor does, from a
+// RestOk answer. collect_qualification_run takes that value, so no run is collected that this
+// module did not dispatch, for this target and this attempt.
+type DispatchedQualificationRun sole_constructor {
+  target: QualificationWorkflowTarget
+  attempt: NonEmptyStr
+  receipt: WorkflowDispatchReceipt
+}
+
 type QualificationDispatch
-  = QualificationDispatched { attempt: NonEmptyStr, receipt: WorkflowDispatchReceipt }
+  = QualificationDispatched { run: DispatchedQualificationRun }
   | QualificationDispatchRefused { attempt: NonEmptyStr, outcome: RestOutcome }
 
 fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: NonEmptyStr) -> QualificationDispatch uses net: Network {
@@ -85,11 +98,14 @@ fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: No
   match answered.outcome {
     RestOk =>
       QualificationDispatched {
-        attempt: attempt,
-        receipt: WorkflowDispatchReceipt {
-          workflow_run_id: answered.workflow_run_id,
-          run_url: answered.run_url,
-          html_url: answered.html_url,
+        run: DispatchedQualificationRun {
+          target: target,
+          attempt: attempt,
+          receipt: WorkflowDispatchReceipt {
+            workflow_run_id: answered.workflow_run_id,
+            run_url: answered.run_url,
+            html_url: answered.html_url,
+          },
         },
       }
     other => QualificationDispatchRefused { attempt: attempt, outcome: other }
@@ -97,6 +113,10 @@ fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: No
 }
 
 // ── COLLECT: THE RUN READ BACK, ENSURE-STYLE ──────────────────────────────────────────────────
+//
+// THE SUBJECT IS THE DISPATCHED RUN, CHECKED ON THE READBACK: the run read must carry the id the
+// dispatch returned and the workflow_dispatch event, and every job listed must belong to it;
+// anything else is RunSubjectMismatch, never a collection of some other run.
 //
 // A DISPATCH RECEIPT SAYS A RUN EXISTS, NOT THAT THE ATTEMPT'S RUNNER SERVED IT. The collection
 // therefore decides only from what GitHub reports about the run now: the run must be Completed with
@@ -115,17 +135,29 @@ type QualificationRunRefusal
   | RunJobsUnreadable { outcome: RestOutcome }
   | RunJobsTruncated { returned: Int, total: Int }
   | RunNeverReachedAttemptRunner { job_labels: List<List<String>> }
+  | RunSubjectMismatch { observed_run_id: Int, observed_event: String, foreign_job_run_ids: List<Int> }
 
 // A COLLECTED RUN IS A RUN THE ATTEMPT'S RUNNER SERVED, AND NOTHING YET ABOUT WHAT IT MEASURED. The
 // instruments are read from it afterwards (extract_qualification_instruments), because reading them
 // costs one log download per served job and that is only owed once the run is known to be this host's.
+//
+// THE SUCCESS PAYLOAD IS SEALED: CollectedQualificationRun is sole_constructor, written only by
+// conclude_qualification_run, whose callers are admitted by name -- the one production reader,
+// collect_qualification_run, and the witness claims that supply readbacks at that interface. An
+// admit list constrains the call edge, not where the result goes, so every admitted witness entry
+// is a `test fn` returning Bool that consumes the collection internally; a helper returning the
+// collection would be a public constructor proxy, and none is admitted. collect_qualification_run
+// returns the collection, but only from a sealed DispatchedQualificationRun.
+// A module elsewhere cannot mint "this host ran the floor" without a readback.
+type CollectedQualificationRun sole_constructor {
+  attempt: NonEmptyStr
+  run_id: Int
+  conclusion: WorkflowRunConclusion
+  attempt_jobs: List<WorkflowJobRun>
+}
+
 type QualificationRunCollection
-  = QualificationRunCollected {
-      attempt: NonEmptyStr
-      run_id: Int
-      conclusion: WorkflowRunConclusion
-      attempt_jobs: List<WorkflowJobRun>
-    }
+  = QualificationRunCollected { collected: CollectedQualificationRun }
   | QualificationRunRefused { attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal }
 
 fn job_served_by_attempt(job: WorkflowJobRun, attempt: NonEmptyStr) -> Bool {
@@ -144,9 +176,26 @@ fn conclude_qualification_run(
   run: WorkflowRun,
   jobs_outcome: RestOutcome,
   jobs: WorkflowJobRunList,
-) -> QualificationRunCollection {
+) -> QualificationRunCollection
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_run"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_or_unconcluded_run_refuses_rather_than_collecting"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_truncated_or_unreadable_readback_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_readback_of_another_run_refuses_on_the_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_log_with_phase_rows_and_the_slot_level_is_read"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_garbled_row_refuses_rather_than_being_skipped"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_log_missing_either_reading_refuses_with_what_it_saw"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unreadable_log_reads_nothing"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_extraction_reads_a_recorded_required_floor_log"),
+  ]
+{
   match run_outcome {
     RestOk =>
+      if run.id != run_id || run.event != "workflow_dispatch" {
+        refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: [] })
+      } else {
       match run.status {
         Completed =>
           match run.conclusion {
@@ -157,16 +206,23 @@ fn conclude_qualification_run(
                   if count(jobs.jobs) != jobs.total_count {
                     refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count })
                   } else {
+                    let foreign = jobs.jobs |> filter(j => j.run_id != run_id) |> map(j => j.run_id)
+                    if count(foreign) != 0 {
+                      refuse_run(attempt: attempt, run_id: run_id, refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, foreign_job_run_ids: foreign })
+                    } else {
                     let served = jobs.jobs |> filter(j => job_served_by_attempt(job: j, attempt: attempt))
                     if count(served) == 0 {
                       refuse_run(attempt: attempt, run_id: run_id, refusal: RunNeverReachedAttemptRunner { job_labels: jobs.jobs |> map(j => j.labels) })
                     } else {
                       QualificationRunCollected {
-                        attempt: attempt,
-                        run_id: run_id,
-                        conclusion: conclusion,
-                        attempt_jobs: served,
+                        collected: CollectedQualificationRun {
+                          attempt: attempt,
+                          run_id: run_id,
+                          conclusion: conclusion,
+                          attempt_jobs: served,
+                        },
                       }
+                    }
                     }
                   }
                 other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsUnreadable { outcome: other })
@@ -174,35 +230,32 @@ fn conclude_qualification_run(
           }
         other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunNotCompleted { status: other })
       }
+      }
     other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunReadUnreadable { outcome: other })
   }
 }
 
 fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
   match c {
-    QualificationRunCollected { attempt: _, run_id: _, conclusion: _, attempt_jobs: _ } => true
+    QualificationRunCollected { collected: _ } => true
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
 
-fn collect_qualification_run(
-  target: QualificationWorkflowTarget,
-  dispatched: WorkflowDispatchReceipt,
-  attempt: NonEmptyStr,
-) -> QualificationRunCollection uses net: Network {
-  let run_id = dispatched.workflow_run_id as String
+fn collect_qualification_run(dispatched: DispatchedQualificationRun) -> QualificationRunCollection uses net: Network {
+  let target = dispatched.target
+  let run_id = dispatched.receipt.workflow_run_id as String
   let read = github.WorkflowRuns.GetRun(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
   let jobs = github.WorkflowRuns.ListJobs(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
   conclude_qualification_run(
-    attempt: attempt,
-    run_id: dispatched.workflow_run_id,
+    attempt: dispatched.attempt,
+    run_id: dispatched.receipt.workflow_run_id,
     run_outcome: read.outcome,
     run: read.run,
     jobs_outcome: jobs.outcome,
     jobs: jobs.result,
   )
 }
-
 
 // ── EXTRACT: THE INSTRUMENTS READ FROM THE COLLECTED RUN ──────────────────────────────────────
 //
@@ -268,7 +321,6 @@ type QualificationInstrumentExtraction
       claim_cost: ClaimCostArtifactRead
     }
   | QualificationInstrumentsRefused { attempt: NonEmptyStr, run_id: Int, refusal: InstrumentReadRefusal }
-  | QualificationRunNotCollected { collection: QualificationRunCollection }
 
 // One log's rows, or the first row that could not be read. A garbled row stops the read: a reading
 // assembled around a row it skipped would report a phase or a level as absent that the run printed.
@@ -311,42 +363,42 @@ fn level_is_slot(row: FloorCgroupLevelRow, slot_unit: NonEmptyStr) -> Bool {
   ends_with(s: row.level as String, suffix: concat("/", slot_unit as String))
 }
 
-// THE SUPPLIED-INPUT BOUNDARY. Everything the extraction decides is decided here from the run's
-// collection and the logs as read; collect_qualification_instruments below is the only caller that
-// reaches the network, and it does nothing but read the logs and hand them in.
+// THE SUPPLIED-INPUT BOUNDARY. Everything the extraction decides is decided here from the sealed
+// collection and the reads as they came back; collect_qualification_instruments below is the only
+// caller that reaches the network, and it does nothing but perform the reads and hand them in. The
+// collection is CollectedQualificationRun and not the collection sum, so an extraction exists only for
+// a run conclude_qualification_run admitted -- a refused run has nothing to extract and is not asked.
 fn extract_qualification_instruments(
-  collection: QualificationRunCollection,
+  collected: CollectedQualificationRun,
   logs: List<AttemptJobLog>,
   claim_cost: ClaimCostArtifactRead,
   slot_unit: NonEmptyStr,
 ) -> QualificationInstrumentExtraction {
-  match collection {
-    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => QualificationRunNotCollected { collection: collection }
-    QualificationRunCollected { attempt: attempt, run_id: run_id, conclusion: conclusion, attempt_jobs: _ } =>
-      match fold(logs, init: JobLogRowsRead { phases: [], levels: [] }, f: (acc, l) => read_job_log_rows(acc: acc, log: l)) {
-        JobLogRowsRefused { refusal: r } => QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: r }
-        JobLogRowsRead { phases: phases, levels: levels } => {
-          let slot_levels = levels |> filter(l => level_is_slot(row: l, slot_unit: slot_unit))
-          let timed = phases |> filter(p => match p { FloorPhaseTimed { phase: _, wall_ms: _ } => true FloorPhaseUntimed { phase: _ } => false })
-          if count(timed) == 0 {
-            QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: FloorPhaseRowsAbsent }
-          } else if count(slot_levels) == 0 {
-            QualificationInstrumentsRefused {
-              attempt: attempt,
-              run_id: run_id,
-              refusal: SlotCgroupLevelAbsent { slot_unit: slot_unit, levels_seen: levels |> map(l => l.level as String) },
-            }
-          } else {
-            QualificationInstrumentsRead {
-              attempt: attempt,
-              run_id: run_id,
-              conclusion: conclusion,
-              readings: QualificationLogReadings { floor_phase_rows: phases, slot_cgroup_rows: slot_levels },
-              claim_cost: claim_cost,
-            }
-          }
+  let attempt = collected.attempt
+  let run_id = collected.run_id
+  match fold(logs, init: JobLogRowsRead { phases: [], levels: [] }, f: (acc, l) => read_job_log_rows(acc: acc, log: l)) {
+    JobLogRowsRefused { refusal: r } => QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: r }
+    JobLogRowsRead { phases: phases, levels: levels } => {
+      let slot_levels = levels |> filter(l => level_is_slot(row: l, slot_unit: slot_unit))
+      let timed = phases |> filter(p => match p { FloorPhaseTimed { phase: _, wall_ms: _ } => true FloorPhaseUntimed { phase: _ } => false })
+      if count(timed) == 0 {
+        QualificationInstrumentsRefused { attempt: attempt, run_id: run_id, refusal: FloorPhaseRowsAbsent }
+      } else if count(slot_levels) == 0 {
+        QualificationInstrumentsRefused {
+          attempt: attempt,
+          run_id: run_id,
+          refusal: SlotCgroupLevelAbsent { slot_unit: slot_unit, levels_seen: levels |> map(l => l.level as String) },
+        }
+      } else {
+        QualificationInstrumentsRead {
+          attempt: attempt,
+          run_id: run_id,
+          conclusion: collected.conclusion,
+          readings: QualificationLogReadings { floor_phase_rows: phases, slot_cgroup_rows: slot_levels },
+          claim_cost: claim_cost,
         }
       }
+    }
   }
 }
 
@@ -436,17 +488,12 @@ fn read_claim_cost_artifact(target: QualificationWorkflowTarget, run_id: Int) ->
 
 fn collect_qualification_instruments(
   target: QualificationWorkflowTarget,
-  collection: QualificationRunCollection,
+  collected: CollectedQualificationRun,
   slot_unit: NonEmptyStr,
 ) -> QualificationInstrumentExtraction uses net: Network {
-  match collection {
-    QualificationRunCollected { attempt: _, run_id: run_id, conclusion: _, attempt_jobs: served } => {
-      let logs = served |> map(j => read_attempt_job_log(target: target, job: j))
-      let claim_cost = read_claim_cost_artifact(target: target, run_id: run_id)
-      extract_qualification_instruments(collection: collection, logs: logs, claim_cost: claim_cost, slot_unit: slot_unit)
-    }
-    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => QualificationRunNotCollected { collection: collection }
-  }
+  let logs = collected.attempt_jobs |> map(j => read_attempt_job_log(target: target, job: j))
+  let claim_cost = read_claim_cost_artifact(target: target, run_id: collected.run_id)
+  extract_qualification_instruments(collected: collected, logs: logs, claim_cost: claim_cost, slot_unit: slot_unit)
 }
 
 // ── THE INSTRUMENTS THIS RUN'S LOG DOES NOT CARRY, EACH WITH THE CAPABILITY THAT WOULD READ IT ──

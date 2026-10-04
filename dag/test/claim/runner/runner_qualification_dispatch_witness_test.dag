@@ -3,7 +3,6 @@ module test.claim.runner_qualification_dispatch_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
 }
@@ -13,11 +12,11 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_attempt_dispatch_input, qualification_dispatch_inputs,
   QualificationRunCollection, QualificationRunCollected, QualificationRunRefused,
   RunReadUnreadable, RunNotCompleted, RunCompletedWithoutConclusion, RunJobsUnreadable,
-  RunJobsTruncated, RunNeverReachedAttemptRunner,
+  RunJobsTruncated, RunNeverReachedAttemptRunner, RunSubjectMismatch,
   conclude_qualification_run, qualification_run_collected,
   AttemptJobLog, AttemptJobLogRead, AttemptJobLogUnreadable,
-  QualificationInstrumentExtraction, QualificationInstrumentsRead, QualificationInstrumentsRefused, QualificationRunNotCollected,
-  QualificationLogReadings, JobLogUnreadable, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
+  QualificationInstrumentExtraction, QualificationInstrumentsRead, QualificationInstrumentsRefused,
+  QualificationLogReadings, InstrumentReadRefusal, JobLogUnreadable, FloorPhaseRowGarbledInLog, FloorCgroupRowGarbledInLog,
   FloorPhaseRowsAbsent, SlotCgroupLevelAbsent,
   extract_qualification_instruments, qualification_instrument_read_from_job_log,
   ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
@@ -28,6 +27,7 @@ import gunbc.runner.runner_qualification_dispatch {
 import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited }
 import std.measure { byte_size_count }
+import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import test.fixture.recorded_required_floor_log_excerpt {
   recorded_required_floor_log_excerpt, recorded_floor_log_job_id, recorded_floor_log_slot_unit,
 }
@@ -91,21 +91,14 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
   WorkflowJobRunList { total_count: count(js), jobs: js }
 }
 
-fn conclude(run_completed: Bool, concluded: Bool, js: WorkflowJobRunList) -> QualificationRunCollection {
-  conclude_qualification_run(
-    attempt: attempt, run_id: 77,
-    run_outcome: RestOk, run: run(status_completed: run_completed, concluded: concluded),
-    jobs_outcome: RestOk, jobs: js,
-  )
-}
 
 // THE POSITIVE CONTROL: a completed run whose job was taken under the attempt label is collected,
 // and its conclusion is the one read back (a FAILED floor is still collected and says so).
 test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion() -> Bool {
-  match conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
-    QualificationRunCollected { attempt: a, run_id: r, conclusion: c, attempt_jobs: served } =>
-      a == attempt && r == 77 && count(served) == 1
-        && (match c { Failure => true _ => false })
+  match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
+    QualificationRunCollected { collected: c } =>
+      c.attempt == attempt && c.run_id == 77 && count(c.attempt_jobs) == 1
+        && (match c.conclusion { Failure => true _ => false })
     QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
   }
 }
@@ -113,8 +106,8 @@ test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_concl
 // THE BRIEF'S REFUSAL: the run completed but no job carried the attempt label, or the one that did
 // never started (no runner under the attempt took it). Both refuse, and carry the labels observed.
 test fn a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw() -> Bool {
-  let other = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", "srv1"], started: true)]))
-  let unstarted = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: [attempt as String], started: false)]))
+  let other = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: ["self-hosted", "srv1"], started: true)]))
+  let unstarted = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: [attempt as String], started: false)]))
   (match other {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunNeverReachedAttemptRunner { job_labels: ls } } =>
       count(ls) == 1 && (ls |> all(l => l |> any(x => x == "srv1")))
@@ -126,11 +119,11 @@ test fn a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw() -
 
 test fn an_unfinished_or_unconcluded_run_refuses_rather_than_collecting() -> Bool {
   let served = jobs(js: [job(labels: [attempt as String], started: true)])
-  (match conclude(run_completed: false, concluded: false, js: served) {
+  (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: false, concluded: false), jobs_outcome: RestOk, jobs: served) {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunNotCompleted { status: InProgress } } => true
     _ => false
   })
-    && (match conclude(run_completed: true, concluded: false, js: served) {
+    && (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: false), jobs_outcome: RestOk, jobs: served) {
       QualificationRunRefused { attempt: _, run_id: _, refusal: RunCompletedWithoutConclusion } => true
       _ => false
     })
@@ -140,7 +133,7 @@ test fn an_unfinished_or_unconcluded_run_refuses_rather_than_collecting() -> Boo
 // page, so the fold refuses rather than reporting the runner never reached.
 test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
   let truncated = WorkflowJobRunList { total_count: 2, jobs: [job(labels: [attempt as String], started: true)] }
-  (match conclude(run_completed: true, concluded: true, js: truncated) {
+  (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: truncated) {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsTruncated { returned: 1, total: 2 } } => true
     _ => false
   })
@@ -162,6 +155,25 @@ test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
     })
 }
 
+// THE SUBJECT IS THE DISPATCHED RUN: a readback naming another run id, or listing a job of another
+// run, refuses as RunSubjectMismatch even when everything else would collect -- the served job
+// below carries the attempt label and started, so only the subject check can turn it red.
+test fn a_readback_of_another_run_refuses_on_the_subject() -> Bool {
+  let served = jobs(js: [job(labels: [attempt as String], started: true)])
+  let other_run = conclude_qualification_run(
+    attempt: attempt, run_id: 78,
+    run_outcome: RestOk, run: run(status_completed: true, concluded: true),
+    jobs_outcome: RestOk, jobs: served,
+  )
+  let foreign_job = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [WorkflowJobRun {
+    id: 501, run_id: 99, run_attempt: 1, name: "floor", status: Completed,
+    conclusion: Present { value: Success }, labels: [attempt as String],
+    created_at: none, started_at: Present { value: "2026-10-04T00:01:00Z" }, completed_at: none,
+  }]))
+  (match other_run { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: 77, observed_event: _, foreign_job_run_ids: _ } } => true _ => false })
+    && (match foreign_job { QualificationRunRefused { attempt: _, run_id: _, refusal: RunSubjectMismatch { observed_run_id: _, observed_event: _, foreign_job_run_ids: f } } => count(f) == 1 && (f |> all(x => x == 99)) _ => false })
+}
+
 // ── EXTRACTION, OVER SUPPLIED LOGS ─────────────────────────────────────────────────────────────
 //
 // These claims are about extract_qualification_instruments alone, so the collection and the logs are
@@ -171,21 +183,36 @@ data no_claim_cost: ClaimCostArtifactRead = ClaimCostArtifactAbsent { names_seen
 
 data slot: NonEmptyStr = "gunbc-qualification-mtcollins1-q-20261004-1.service"
 
-fn served_collection() -> QualificationRunCollection {
-  conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: [attempt as String], started: true)]))
-}
-
 data phase_line: String = "2026-10-04T00:10:00.0000000Z [floor-phase] phase=gate-closure state=completed wall_ms=22194 prefixes=0"
 data started_line: String = "2026-10-04T00:09:00.0000000Z [floor-phase] phase=strict-preparation state=started"
 data slot_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-q-20261004-1.service max=17179869184 high=16106127360 current=8949473280 peak=10444185600 events=[low,0]"
 data slice_level_line: String = "2026-10-04T00:09:00.0000000Z [floor-cgroup] when=floor-entry level=/sys/fs/cgroup/system.slice max=max high=max current=1 peak=364675248128"
 
+fn served_jobs() -> WorkflowJobRunList {
+  jobs(js: [job(labels: [attempt as String], started: true)])
+}
+
 fn log_of(lines: List<String>) -> List<AttemptJobLog> {
   [AttemptJobLogRead { job_id: 500, log: join(lines, "\n") }]
 }
 
-fn extract(lines: List<String>) -> QualificationInstrumentExtraction {
-  extract_qualification_instruments(collection: served_collection(), logs: log_of(lines: lines), claim_cost: no_claim_cost, slot_unit: slot)
+// THE COLLECTION IS SEALED, so no helper here returns one. Each claim below concludes its own served
+// readback (it is admitted by name to conclude_qualification_run for that) and hands the collection
+// to extraction_of, which only takes a collection apart and cannot mint one. A refused collection
+// has nothing to extract and answers none, which every claim below reads as red.
+fn extraction_of(c: QualificationRunCollection, logs: List<AttemptJobLog>, slot_unit: NonEmptyStr) -> QualificationInstrumentExtraction? {
+  match c {
+    QualificationRunCollected { collected: collected } =>
+      Present { value: extract_qualification_instruments(collected: collected, logs: logs, claim_cost: no_claim_cost, slot_unit: slot_unit) }
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => none
+  }
+}
+
+fn refused_with(e: QualificationInstrumentExtraction?, check: fn(InstrumentReadRefusal) -> Bool) -> Bool {
+  match e {
+    Present { value: QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: r } } => check(r)
+    _ => false
+  }
 }
 
 test fn the_job_log_instruments_are_the_two_the_extraction_reads() -> Bool {
@@ -195,12 +222,13 @@ test fn the_job_log_instruments_are_the_two_the_extraction_reads() -> Bool {
     && count(qualification_instrument_extraction_frontier_rows) == 3
 }
 
-// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, and only the slot's own level
-// is taken as the cgroup reading -- the slice above it has a larger peak and must not be read as the
-// slot's.
+// THE POSITIVE CONTROL: timed and untimed phase rows are both carried, the claim-cost read's refusal
+// rides beside them, and only the slot's own level is taken as the cgroup reading -- the slice above
+// it has a larger peak and must not be read as the slot's.
 test fn a_log_with_phase_rows_and_the_slot_level_is_read() -> Bool {
-  match extract(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]) {
-    QualificationInstrumentsRead { attempt: a, run_id: r, conclusion: _, readings: rd, claim_cost: cc } =>
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
+  match extraction_of(c: c, logs: log_of(lines: ["noise before the floor", started_line, slot_level_line, slice_level_line, phase_line]), slot_unit: slot) {
+    Present { value: QualificationInstrumentsRead { attempt: a, run_id: r, conclusion: _, readings: rd, claim_cost: cc } } =>
       a == attempt && r == 77
         && (match cc { ClaimCostArtifactAbsent { names_seen: _ } => true _ => false })
         && count(rd.floor_phase_rows) == 2
@@ -211,47 +239,35 @@ test fn a_log_with_phase_rows_and_the_slot_level_is_read() -> Bool {
 }
 
 test fn a_garbled_row_refuses_rather_than_being_skipped() -> Bool {
-  (match extract(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]) {
-    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorPhaseRowGarbledInLog { job_id: 500, line: _, cause: _ } } => true
-    _ => false
-  })
-    && (match extract(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]) {
-      QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorCgroupRowGarbledInLog { job_id: 500, line: _, cause: _ } } => true
-      _ => false
-    })
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
+  refused_with(
+    e: extraction_of(c: c, logs: log_of(lines: [slot_level_line, phase_line, "[floor-phase] phase=gate-closure wall_ms=twelve"]), slot_unit: slot),
+    check: r => match r { FloorPhaseRowGarbledInLog { job_id: 500, line: _, cause: _ } => true _ => false },
+  )
+    && refused_with(
+      e: extraction_of(c: c, logs: log_of(lines: [phase_line, "[floor-cgroup] when=beat-10 level=/sys/fs/cgroup/x.service high=lots peak=1"]), slot_unit: slot),
+      check: r => match r { FloorCgroupRowGarbledInLog { job_id: 500, line: _, cause: _ } => true _ => false },
+    )
 }
 
 test fn a_log_missing_either_reading_refuses_with_what_it_saw() -> Bool {
-  (match extract(lines: [started_line, slot_level_line]) {
-    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: FloorPhaseRowsAbsent } => true
-    _ => false
-  })
-    && (match extract(lines: [phase_line, slice_level_line]) {
-      QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } } =>
-        u == slot && count(seen) == 1
-      _ => false
-    })
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
+  refused_with(
+    e: extraction_of(c: c, logs: log_of(lines: [started_line, slot_level_line]), slot_unit: slot),
+    check: r => match r { FloorPhaseRowsAbsent => true _ => false },
+  )
+    && refused_with(
+      e: extraction_of(c: c, logs: log_of(lines: [phase_line, slice_level_line]), slot_unit: slot),
+      check: r => match r { SlotCgroupLevelAbsent { slot_unit: u, levels_seen: seen } => u == slot && count(seen) == 1 _ => false },
+    )
 }
 
-test fn an_unreadable_log_or_an_uncollected_run_reads_nothing() -> Bool {
-  (match extract_qualification_instruments(
-    collection: served_collection(),
-    logs: [AttemptJobLogUnreadable { job_id: 500, outcome: RestStatusRefused { status: 410, body: "Gone" } }],
-    claim_cost: no_claim_cost,
-    slot_unit: slot,
-  ) {
-    QualificationInstrumentsRefused { attempt: _, run_id: _, refusal: JobLogUnreadable { job_id: 500, outcome: _ } } => true
-    _ => false
-  })
-    && (match extract_qualification_instruments(
-      collection: conclude(run_completed: false, concluded: false, js: jobs(js: [])),
-      logs: log_of(lines: [phase_line, slot_level_line]),
-      claim_cost: no_claim_cost,
-      slot_unit: slot,
-    ) {
-      QualificationRunNotCollected { collection: _ } => true
-      _ => false
-    })
+test fn an_unreadable_log_reads_nothing() -> Bool {
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
+  refused_with(
+    e: extraction_of(c: c, logs: [AttemptJobLogUnreadable { job_id: 500, outcome: RestStatusRefused { status: 410, body: "Gone" } }], slot_unit: slot),
+    check: r => match r { JobLogUnreadable { job_id: 500, outcome: _ } => true _ => false },
+  )
 }
 
 // ── INHABITANCE: THE REAL PRODUCER'S BYTES ─────────────────────────────────────────────────────
@@ -266,13 +282,13 @@ test fn an_unreadable_log_or_an_uncollected_run_reads_nothing() -> Bool {
 // bound and floor entry's memory.peak as printed. If the host's row encoding moves, this goes red
 // while the designed fixtures above stay green.
 test fn the_extraction_reads_a_recorded_required_floor_log() -> Bool {
-  match extract_qualification_instruments(
-    collection: served_collection(),
+  let c = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: served_jobs())
+  match extraction_of(
+    c: c,
     logs: [AttemptJobLogRead { job_id: recorded_floor_log_job_id, log: recorded_required_floor_log_excerpt }],
-    claim_cost: no_claim_cost,
     slot_unit: recorded_floor_log_slot_unit as NonEmptyStr,
   ) {
-    QualificationInstrumentsRead { attempt: _, run_id: _, conclusion: _, readings: rd, claim_cost: _ } =>
+    Present { value: QualificationInstrumentsRead { attempt: _, run_id: _, conclusion: _, readings: rd, claim_cost: _ } } =>
       count(rd.floor_phase_rows) == 79
         && (rd.floor_phase_rows |> any(p => match p { FloorPhaseTimed { phase: ph, wall_ms: ms } => (ph as String) == "gate-closure" && ms == 22194 _ => false }))
         && (rd.floor_phase_rows |> any(p => match p { FloorPhaseUntimed { phase: ph } => (ph as String) == "strict-preparation" _ => false }))
