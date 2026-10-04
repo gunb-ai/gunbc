@@ -1,0 +1,61 @@
+module test.claim.printed_chassis_component_mass_witness
+import std.types {Bool,Int,List}
+import std.measure {gram,gram_count}
+import extdeps.memory.types {HostMemoryPopulation,MemoryPopulationRow}
+import extdeps.memory.samsung {m393a8g40d40_crb0q_catalog}
+import product.printed_chassis.assembly_geometry {placed}
+import product.printed_chassis.component_mass {
+ MassComponent,MassEvidence,MassNeeded,BoardWithSocket,BoundedMass,VendorNominal,
+ MassMeasurement,MassLedger,MassComplete,MassIncomplete,MassIssue,DuplicateMeasurement,
+ UnknownMeasurement,MissingMass,EnvelopeCentre,with_board_cpu_group,component,mass_ledger,node_components,dimm_count,
+}
+import product.printed_chassis.placed_mass_model {PlacedMass,SupportRectangle,LoadScenario,LoadScreen,RigidBodyScreen,InvalidLoadScenario,placed_load_screen,load_from_ledger,LowerMassEndpoint}
+fn population() -> HostMemoryPopulation {HostMemoryPopulation {rows:[MemoryPopulationRow {module:m393a8g40d40_crb0q_catalog,stick_count:8}]}}
+fn a() -> MassComponent {component(id:"A",quantity:8,mass:MassNeeded {reason:BoardWithSocket},x:0,y:1000,z:0,position:EnvelopeCentre)}
+fn measurement() -> MassMeasurement {MassMeasurement {id:"A",lower:gram(count:10),upper:gram(count:12),basis:"analytic fixture; not a server mass"}}
+test fn quantities_and_mass_bounds_fold_without_zeroing_missing_components() -> Bool {
+ let missing=match mass_ledger(components:[a()],measurements:[]) {MassIncomplete {issues:i}=>count(i)==1 MassComplete {total:_,rows:_}=>false}
+ let total=match mass_ledger(components:[a()],measurements:[measurement()]) {MassComplete {total:t,rows:_}=>gram_count(g:t.lower)==80 && gram_count(g:t.upper)==96 && t.components==8 && t.provisional_positions==1 MassIncomplete {issues:_}=>false}
+ missing && total
+}
+test fn duplicate_and_stale_measurements_refuse() -> Bool {
+ let duplicate=match mass_ledger(components:[a()],measurements:[measurement(),measurement()]) {MassIncomplete {issues:i}=>any(i,e=>match e {DuplicateMeasurement {id:_}=>true _=>false}) _=>false}
+ let stale=match mass_ledger(components:[a()],measurements:[MassMeasurement {id:"REMOVED_PART",lower:gram(count:1),upper:gram(count:1),basis:"fixture"}]) {MassIncomplete {issues:i}=>any(i,e=>match e {UnknownMeasurement {id:_}=>true _=>false}) _=>false}
+ duplicate && stale
+}
+test fn complete_inventory_includes_previously_omitted_loads_and_uses_population() -> Bool {
+ let rows=node_components(population:population())
+ dimm_count(population:population())==8 && count(filter(rows,r=>r.id=="COOLER"))==1
+ && !any(rows,r=>r.id=="CPU" || r.id=="RAM1" || r.id=="RAM2")
+ && any(rows,r=>r.id=="PROCESSOR") && any(rows,r=>r.id=="SSD")
+ && any(rows,r=>r.id=="DIMMS" && r.quantity==8)
+ && any(rows,r=>r.id=="NODE_HARNESS") && any(rows,r=>r.id=="BOARD_MOUNTING")
+ && any(rows,r=>r.id=="CORNER_STRUCTURE")
+ && (match mass_ledger(components:rows,measurements:[]) {MassIncomplete {issues:i}=>count(i)>3 _=>false})
+}
+fn scenario(x:Int,height:Int,push_height:Int) -> LoadScenario {
+ LoadScenario {components:[PlacedMass {id:"fixture",mass:gram(count:1000),at:placed(x:x,y:height,z:0)}],support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:push_height}
+}
+test fn top_push_and_base_acceleration_have_different_lever_arms() -> Bool {
+ match placed_load_screen(case:scenario(x:0,height:100000,push_height:200000)) {
+ RigidBodyScreen {mass_g:m,cg_x_um:_,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:_,restoring_x_negative_mn_mm:_,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:f,tip_base_acceleration_um_s2:a,corner_reactions_mn:c,boundary:_}=>m==1000 && f==4903 && a==9806650 && all(c,n=>n==2451)
+ _=>false}
+}
+test fn offcentre_load_changes_corner_reactions_and_tipping() -> Bool {
+ match placed_load_screen(case:scenario(x:50000,height:100000,push_height:200000)) {
+ RigidBodyScreen {mass_g:_,cg_x_um:x,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:p,restoring_x_negative_mn_mm:n,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:f,tip_base_acceleration_um_s2:a,corner_reactions_mn:c,boundary:_}=>x==50000 && n>p && f==2451 && a==4903325 && any(c,v=>v==1225) && any(c,v=>v==3677)
+ _=>false}
+}
+test fn outside_support_has_no_positive_tip_margin() -> Bool {
+ match placed_load_screen(case:scenario(x:150000,height:100000,push_height:200000)) {
+ RigidBodyScreen {mass_g:_,cg_x_um:_,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:_,restoring_x_negative_mn_mm:_,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:f,tip_base_acceleration_um_s2:a,corner_reactions_mn:c,boundary:_}=>f<0 && a<0 && any(c,v=>v<0)
+ _=>false}
+}
+
+test fn grouped_board_does_not_double_count_cpu_and_incomplete_mass_refuses_force() -> Bool {
+ let rows=with_board_cpu_group(components:node_components(population:population()))
+ let ledger=mass_ledger(components:rows,measurements:[])
+ !any(rows,r=>r.id=="BOARD" || r.id=="PROCESSOR")
+ && count(filter(rows,r=>r.id=="BOARD_AND_CPU"))==1
+ && (match load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:200000) {InvalidLoadScenario {reason:_}=>true _=>false})
+}

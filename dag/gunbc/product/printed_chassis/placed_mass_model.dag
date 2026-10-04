@@ -1,0 +1,68 @@
+module product.printed_chassis.placed_mass_model
+import std.types {Bool,Int,List,NonEmptyStr,String}
+import std.measure {Gram,gram,gram_count}
+import product.printed_chassis.component_mass {MassLedger,MassIncomplete,MassComplete,lower_mass,upper_mass}
+import std.affine_space {Point3,signed_frame_component_count}
+
+// Rigid-body statics for a DECLARED mass/position scenario, not FEA or admission.
+// At each interface pass the components above it, translated into that interface's
+// frame. A bottom power cassette shifts every node's y; its own mass stays at base.
+// Units: mass g, position um, moment g.um; gravity force microN = g * 9806.65.
+type PlacedMass {id:String,mass:Gram,at:Point3}
+type SupportRectangle {half_x_um:Int,half_z_um:Int}
+type LoadScenario {components:List<PlacedMass>,support:SupportRectangle,push_height_um:Int}
+type LoadScreen
+ = InvalidLoadScenario {reason:NonEmptyStr}
+ | RigidBodyScreen {mass_g:Int,cg_x_um:Int,cg_y_um:Int,cg_z_um:Int,
+   restoring_x_positive_mn_mm:Int,restoring_x_negative_mn_mm:Int,
+   restoring_z_positive_mn_mm:Int,restoring_z_negative_mn_mm:Int,
+   tip_push_mn:Int,tip_base_acceleration_um_s2:Int,
+   corner_reactions_mn:List<Int>,boundary:NonEmptyStr}
+
+fn minimum(a:Int,b:Int) -> Int {if a<b {a} else {b}}
+fn magnitude(n:Int) -> Int {if n<0 {0-n} else {n}}
+// Four equal vertical springs under a rigid platform: reaction W/4*(1 +/- x/a +/- z/b).
+// This differs from the bilinear load split. Negative reactions require a contact
+// re-solve (one foot lifts); they must not be clamped to zero or called a pass.
+// Compute milligram reactions first to avoid overflowing g.um^2 products; <0.01 mN quantization.
+fn placed_load_screen(case:LoadScenario) -> LoadScreen {
+ let m=fold(case.components,init:0,f:(n,c)=>n+gram_count(g:c.mass))
+ let sx=fold(case.components,init:0,f:(n,c)=>n+gram_count(g:c.mass)*signed_frame_component_count(c:c.at.x))
+ let sy=fold(case.components,init:0,f:(n,c)=>n+gram_count(g:c.mass)*signed_frame_component_count(c:c.at.y))
+ let sz=fold(case.components,init:0,f:(n,c)=>n+gram_count(g:c.mass)*signed_frame_component_count(c:c.at.z))
+ let a=case.support.half_x_um
+ let b=case.support.half_z_um
+ if m<=0 || a<=0 || b<=0 || sy<=0 || case.push_height_um<=0 {return InvalidLoadScenario {reason:"Positive total mass, support spans, CG height and push height required"}}
+ if any(case.components,c=>count(filter(case.components,q=>q.id==c.id))!=1) {return InvalidLoadScenario {reason:"Duplicate component identity in placed load scenario"}}
+ if any(case.components,c=>signed_frame_component_count(c:c.at.y)<0) {return InvalidLoadScenario {reason:"Interface load set includes a mass below that interface"}}
+ let rxp=m*a-sx
+ let rxn=m*a+sx
+ let rzp=m*b-sz
+ let rzn=m*b+sz
+ let least=minimum(a:minimum(a:rxp,b:rxn),b:minimum(a:rzp,b:rzn))
+ let corners=flat_map([-1,1],x=>map([-1,1],z=>(m*1000+x*sx*1000/a+z*sz*1000/b)*980665/400000000))
+ RigidBodyScreen {
+  mass_g:m,cg_x_um:sx/m,cg_y_um:sy/m,cg_z_um:sz/m,
+  restoring_x_positive_mn_mm:rxp*980665/100000000,
+  restoring_x_negative_mn_mm:rxn*980665/100000000,
+  restoring_z_positive_mn_mm:rzp*980665/100000000,
+  restoring_z_negative_mn_mm:rzn*980665/100000000,
+  tip_push_mn:least*980665/(case.push_height_um*100000),
+  tip_base_acceleration_um_s2:least*9806650/sy,
+  corner_reactions_mn:corners,
+  boundary:"Scenario only: four equal-stiffness contacts assumed. Negative reaction requires unilateral contact solve. Sliding, cable pulls, joint bending/shear, buckling, print anisotropy and hot creep remain unqualified. No safe stack height is certified.",
+ }
+}
+
+// Endpoint sweeps are explicitly declared scenarios, not an interval proof: the
+// adverse combination for tipping need not put every component at its upper mass.
+type MassEndpoint = LowerMassEndpoint | UpperMassEndpoint
+fn load_from_ledger(ledger:MassLedger,endpoint:MassEndpoint,support:SupportRectangle,push_height_um:Int) -> LoadScreen {
+ match ledger {
+  MassIncomplete {issues:_}=>InvalidLoadScenario {reason:"Complete component mass evidence is required before constructing a load scenario"}
+  MassComplete {total:_,rows:rows}=>placed_load_screen(case:LoadScenario {
+   components:map(rows,r=>PlacedMass {id:r.id,mass:gram(count:r.quantity*gram_count(g:match endpoint {LowerMassEndpoint=>lower_mass(m:r.mass) UpperMassEndpoint=>upper_mass(m:r.mass)})),at:r.at}),
+   support:support,push_height_um:push_height_um,
+  })
+ }
+}

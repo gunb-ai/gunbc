@@ -11,8 +11,8 @@ import std.measure { percent_count }
 // mains boundary of the whole column: the supply stays in its vendor enclosure inside this
 // cassette, the IEC inlet and the protective-earth bond are here, and what leaves it is 12 V on
 // protected branches. Every node cassette below is then a low-voltage zone with no mains part and
-// no earth obligation of its own, which is what lets the node cassettes be printed polymer
-// without violating the program's grounding law.
+// bonding/ESD obligations to resolve for the selected electrical design. Low voltage alone
+// does not establish insulation, touch-current or grounding compliance.
 //
 // PLACEMENT IS A PARAMETER, NOT A RULING. Top of column is the operator's first picture; bottom of
 // column puts the heaviest unit lowest (the mechanics instrument prices both) and keeps the one
@@ -42,18 +42,17 @@ fn station_wall_draw(station: PowerCassette, node_dc_loads: List<Watt>) -> Watt 
 }
 
 // WHAT THE GROUNDING WITNESSES G1-G5 BECOME under this arrangement, as rows a build can check off.
-// They were written against a metal rack; the subject moves to the power cassette and the node
-// cassettes drop out of the earth network entirely because nothing in them is at mains potential.
+// They were written against a metal rack; the subject moves to the power cassette and node bonding/ESD requirements remain an electrical-design decision, not inferred from voltage alone.
 type EarthObligation
   = SupplyEnclosureBondedToInletEarth
-  | DcReturnBondedOnceAtStation
+  | DcReturnBondingRequiresSelectedSupplyDesign
   | NoMainsPartOutsidePowerCassette
   | NoPrintedPolymerInEarthPath
   | NodeCassetteRemovalLeavesEarthIntact
 
 data power_cassette_earth_obligations: List<EarthObligation> = [
   SupplyEnclosureBondedToInletEarth,
-  DcReturnBondedOnceAtStation,
+  DcReturnBondingRequiresSelectedSupplyDesign,
   NoMainsPartOutsidePowerCassette,
   NoPrintedPolymerInEarthPath,
   NodeCassetteRemovalLeavesEarthIntact,

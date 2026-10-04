@@ -10,7 +10,7 @@ import extdeps.cpu.types {
 import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.vendor.dynatron { dynatron }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -48,8 +48,7 @@ data dynatron_w1_active_width: Micrometer = micrometer(count: 84000)
 data dynatron_w1_active_height: Micrometer = micrometer(count: 72000)
 
 // ---------------------------------------------------------------------------------------------
-// MASS AND AIRFLOW, read on 2026-10-04 through search summaries of a reseller listing (the vendor
-// page was refused by this session's egress), graded TranscribedUncited with one read obligation.
+// MASS AND AIRFLOW: manufacturer page directly read 2026-10-04.
 //
 // Mass is the figure the stack-mechanics roster sums: 612 +/- 10 g active (fan fitted), 512 +/- 10 g
 // passive. Airflow is the cooler's own 60 mm fan at three duty points, carried at mL/s by floor
@@ -60,9 +59,7 @@ data dynatron_w1_active_height: Micrometer = micrometer(count: 72000)
 // ---------------------------------------------------------------------------------------------
 data dynatron_w1_mass_active: Gram = gram(count: 612)
 data dynatron_w1_mass_passive: Gram = gram(count: 512)
-data dynatron_w1_mass_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Confirm 612 +/- 10 g active and 512 +/- 10 g passive on dynatron.co/product-page/w1 or by weighing the held cooler; relayed from a reseller listing on 2026-10-04.",
-}
+data dynatron_w1_mass_standing: CitedFigureStanding = CitedToAuthority {authority:extdeps_external_authority_anchor}
 
 type CoolerFanDutyPoint {
   duty: Percent
@@ -75,6 +72,7 @@ data dynatron_w1_fan_duty_points: List<CoolerFanDutyPoint> = [
   CoolerFanDutyPoint { duty: percent(50), speed: rpm(5400), airflow: millilitre_per_second(count: 13393) },
   CoolerFanDutyPoint { duty: percent(100), speed: rpm(11000), airflow: millilitre_per_second(count: 27519) },
 ]
-data dynatron_w1_fan_duty_points_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Confirm the 60 mm fan duty table (0-20 percent 2300 rpm 11.91 CFM; 50 percent 5400 rpm 28.38 CFM; 100 percent 11000 rpm 58.31 CFM, each +/-10 percent rpm) on the vendor page; relayed from a reseller listing on 2026-10-04.",
-}
+data dynatron_w1_fan_duty_points_standing: CitedFigureStanding = CitedToAuthority {authority:extdeps_external_authority_anchor}
+
+// First-party page read 2026-10-04; mass tolerance is not zero.
+data dynatron_w1_mass_tolerance: Gram = gram(count:10)

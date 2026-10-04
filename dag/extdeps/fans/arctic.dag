@@ -1,6 +1,7 @@
 module extdeps.fans.arctic
 
 import std.types { List }
+import std.measure {Celsius,celsius}
 import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
@@ -113,38 +114,25 @@ data arctic_p8_frame_depth: Micrometer = micrometer(count: 25000)
 // ---------------------------------------------------------------------------------------------
 // THE FIGURES A CHASSIS MODEL CONSUMES BEYOND THE SPEED RANGE, each with its own standing.
 //
-// 1.08 W at 12 V is in the listing the annotation above already quotes, so it cites the anchor.
-// Airflow, mass, current and cable length were read on 2026-10-04 through search summaries of
-// reseller listings (the vendor page was refused by this session's egress) and are graded
-// TranscribedUncited: the obligation is one read of the vendor page.
-//
-// AIRFLOW IS CARRIED AT MILLILITRES PER SECOND BY FLOOR CONVERSION of the listing's 40.3 m3/h
-// (40300000 mL / 3600 s = 11194.4 mL/s). The listing also prints 23.4 CFM; both are rounded
-// presentations of one measurement, and the conversion loses 0.004 percent, below the listing's
-// own rounding. A consumer dividing a heat load by this flow is not limited by that.
-// ---------------------------------------------------------------------------------------------
+// Airflow, mass, current, cable length and ambient range cite the primary PDF
+// directly read 2026-10-04. Maximum free-air flow is not installed airflow.
 data arctic_p8_rated_power: Milliwatt = milliwatt(count: 1080)
 data arctic_p8_rated_power_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
 
-data arctic_p8_published_airflow: MillilitrePerSecond = millilitre_per_second(count: 11194)
-data arctic_p8_published_airflow_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Read the ARCTIC P8 PWM PST product page specification block and confirm 40.3 m3/h (23.4 CFM) maximum airflow; relayed from reseller listings on 2026-10-04.",
-}
+data arctic_p8_spec_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.arctic.de/media/84/14/68/1697784882/Spec_Sheet_P8_PWM_PST_EN.pdf"}}
+// First-party PDF read 2026-10-04: 39.76 m3/h, not reseller 40.3. Maximum free-air flow.
+data arctic_p8_operating_ambient_max: Celsius = celsius(count:40)
+data arctic_p8_published_airflow: MillilitrePerSecond = millilitre_per_second(count: 11044)
+data arctic_p8_published_airflow_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
 
 data arctic_p8_mass: Gram = gram(count: 81)
-data arctic_p8_mass_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Confirm 81 g on the vendor page or by weighing a held fan; relayed from reseller listings on 2026-10-04.",
-}
+data arctic_p8_mass_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
 
 data arctic_p8_rated_current: Milliampere = milliampere(count: 90)
-data arctic_p8_rated_current_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Confirm 0.09 A on the vendor page; relayed from reseller listings on 2026-10-04 and consistent with the cited 1.08 W at 12 V.",
-}
+data arctic_p8_rated_current_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
 
 data arctic_p8_cable_length: Millimeter = millimeter(400)
-data arctic_p8_cable_length_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Confirm 400 mm cable length on the vendor page or measure a held fan; relayed from reseller listings on 2026-10-04.",
-}
+data arctic_p8_cable_length_standing: CitedFigureStanding = CitedToAuthority {authority:arctic_p8_spec_authority}
 
 // PWM SHARING TECHNOLOGY: the "PST" in the model name. Each fan carries a pass-through 4-pin
 // socket, so a bank of P8 PWM PST fans chains fan-to-fan and reaches the board on ONE header

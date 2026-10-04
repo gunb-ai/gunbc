@@ -18,11 +18,10 @@ import extdeps.standards.awg { awg_copper_resistance }
 import extdeps.standards.atx12v_psdg { DcOutputRegulationBand }
 import extdeps.fans.arctic { arctic_p8_rated_current, arctic_p8_pwm_sharing, PwmSharingChain, PstPassThrough, NoPassThrough }
 
-// ONE NODE'S 12 V FEED, DERIVED END TO END: how many of the board's three 8-pin inputs must be
-// populated for a given load, what current the branch carries, what voltage reaches the connector
-// after the branch's own drop, and whether that voltage is still inside the band the board is
-// designed to. Every input is either a cited row or a DECLARED assumption carried by name, and the
-// output is a typed admission or a typed refusal naming the limit that failed.
+// Node-feed screening under declared load, connector and voltage-band assumptions.
+// This does not establish ASRock's high-load input population or direct-DC voltage
+// tolerance. Branch-only drop omits contacts, protection, hot wiring and pigtails.
+// The result is a sensitivity screen or a named refusal, never electrical approval.
 //
 // THE LOAD IS SUPPLIED, NOT INVENTED HERE. product.node_power_envelope derives a node's DC load and
 // refuses while the DIMM population is unread; a caller passes that derived figure, or passes a
@@ -63,7 +62,7 @@ type NodeFeed {
 }
 
 type NodeFeedReading
-  = NodeFeedAdmitted { feed: NodeFeed }
+  = NodeFeedScreeningOnly { feed: NodeFeed }
   | NodeFeedRefused { cause: FeedRefusalCause }
 
 // I = P / V at the nominal input, in milliamperes: W * 1e6 / mV.
@@ -98,11 +97,15 @@ fn populated_count(current: Milliampere, limit: Milliampere) -> Nat {
 // resistance per metre, times the node current. uohm/m * mm / 1000 = uohm; uohm * mA / 1e6 = mV.
 fn branch_drop_mv(resistance: MicroohmPerMetre, length: Millimeter, current: Milliampere) -> Millivolt {
   let round_trip_uohm = 2 * microohm_per_metre_count(r: resistance) * millimeter_count(m: length) / 1000
-  millivolt(count: round_trip_uohm * milliampere_count(i: current) / 1000000)
+  millivolt(count: (round_trip_uohm * milliampere_count(i: current)+999999) / 1000000)
 }
 
 fn node_feed(inputs: NodeFeedInputs) -> NodeFeedReading {
-  let current = node_current_ma(load: inputs.node_dc_load, nominal: asrock_altrad8ud_atx12v_nominal_input)
+  if percent_count(p:inputs.derating.retained)==0 || percent_count(p:inputs.derating.retained)>100 || ampere_count(a:inputs.connector_rating.rated_current_per_circuit)==0 {return NodeFeedRefused {cause:PopulationRuleUnresolved}}
+  // Constant-power current bounded at the selected minimum voltage, rounded up.
+  let floor_mv=millivolt_count(v:inputs.regulation.minimum)
+  if floor_mv==0 {return NodeFeedRefused {cause:PopulationRuleUnresolved}}
+  let current=milliampere(count:(watt_count(w:inputs.node_dc_load)*1000000+floor_mv-1)/floor_mv)
   let limit = per_input_limit_ma(rating: inputs.connector_rating, derating: inputs.derating)
   match inputs_required(current: current, limit: limit, standing: asrock_altrad8ud_required_input_population) {
     Present { value: refused } => refused
@@ -117,7 +120,7 @@ fn node_feed(inputs: NodeFeedInputs) -> NodeFeedReading {
           if millivolt_count(v: at_connector) < millivolt_count(v: inputs.regulation.minimum) {
             NodeFeedRefused { cause: ConnectorVoltageBelowBand { at_connector: at_connector, band_minimum: inputs.regulation.minimum, drop: drop } }
           } else {
-            NodeFeedAdmitted { feed: NodeFeed { node_current: current, inputs_populated: populated_count(current: current, limit: limit), per_input_limit: limit, branch_round_trip_drop: drop, at_connector: at_connector } }
+            NodeFeedScreeningOnly { feed: NodeFeed { node_current: current, inputs_populated: populated_count(current: current, limit: limit), per_input_limit: limit, branch_round_trip_drop: drop, at_connector: at_connector } }
           }
         }
       }
@@ -139,3 +142,7 @@ fn fan_bank_header_load(fans: Nat) -> FanHeaderLoad {
     NoPassThrough => FanBankNeedsOneHeaderPerFan { fans: fans, headers_available: asrock_altrad8ud_system_fan_header_count }
   }
 }
+
+// NodeFeedScreeningOnly omits connector/pigtail/protection resistances, hot-wire resistance,
+// crimp quality, installed board header identity, ampacity, unequal current sharing and transients.
+// The manual does not authorize deriving high-load connector population solely from family ampacity.

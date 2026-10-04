@@ -5,21 +5,16 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Ampere, ampere, Micrometer, micrometer }
 import extdeps.vendor.molex { molex }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 
 // THE 4.2 MM PITCH POWER CONNECTOR FAMILY an ATX12V 8-pin input is built on.
 //
-// The board manual names the input "8-pin ATX 12V" and does not name the header part. The Mini-Fit
-// Jr. family is the de-facto part every ATX12V/EPS12V 8-pin uses, and the board's rows cite it as
-// the rating authority ONLY on that convention: whether ASRock populated a Mini-Fit Jr. header or a
-// compatible from another maker is unread, so the current figure below bounds the CABLE side that
-// the fleet crimps, and the header side inherits it by convention until a part number is read.
-//
-// Two ratings exist and they are not interchangeable. The standard terminal family rates up to
-// 9 A per circuit (the distributor summaries relay "9 A for the smallest circuit, 6 A for the
-// largest", i.e. derated by circuit count); the 45750 high-current terminal rates 13 A per circuit
-// with 16 AWG. Both are relayed from distributor datasheet summaries, graded below.
+// The ASRock manual names an 8-pin ATX12V input but not its manufacturer or
+// header part. These family test ratings are screening candidates; they do not
+// establish the installed header, terminal, wire or PCB current capability.
+// Standard and HCS terminal figures are not interchangeable. The standard row
+// uses the primary 8-circuit / 18 AWG table; the HCS row remains unverified.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -53,13 +48,14 @@ type MiniFitJrFamily {
   ratings: List<MiniFitJrTerminalRating>
 }
 
+data mini_fit_jr_current_table_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/productspecificationpdf/555/5556/PS-5556-001-001.pdf"}}
+// Rev H2 (2026-06-22), section 4.3: 7-10 circuits, 18 AWG, brass 7 A; phosphor bronze 6 A.
+// Use the lower of those two test figures for screening; actual installed terminal/header remains unidentified.
 data mini_fit_jr_standard_terminal_rating: MiniFitJrTerminalRating = MiniFitJrTerminalRating {
-  terminal_series_label: "5556/5558 standard terminal",
+  terminal_series_label: "5556/5558 8-circuit 18 AWG screening: lower material rating",
   wire_gauge_awg: 18,
-  rated_current_per_circuit: ampere(count: 9),
-  standing: TranscribedUncited {
-    read_obligation: "Open Molex product specification PS-5556-001 (current derating by circuit count and wire gauge) and record the 8-circuit, 18 AWG, 30 C rise figure; 9 A is the family maximum relayed from distributor summaries on 2026-10-04 and is NOT the 8-circuit derated value.",
-  },
+  rated_current_per_circuit: ampere(count: 6),
+  standing: CitedToAuthority {authority:mini_fit_jr_current_table_authority},
 }
 
 data mini_fit_jr_hcs_terminal_rating: MiniFitJrTerminalRating = MiniFitJrTerminalRating {

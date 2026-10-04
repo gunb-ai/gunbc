@@ -8,7 +8,7 @@ import std.measure {
   Megapascal, megapascal, megapascal_count,
   KilogramPerCubicMetre, kilogram_per_cubic_metre,
 }
-import extdeps.printing.fdm { FilamentMaterial, Pla, Petg, filament_material_eq }
+import extdeps.printing.fdm { FilamentTechnicalDataSheetRow, FilamentMaterial, Pla, Petg, filament_material_eq }
 import extdeps.vendor.bambu_lab { bambu_lab }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.uri { Uri, Https }
@@ -21,13 +21,8 @@ import extdeps.uri { Uri, Https }
 // what the two A1 minis in the fleet run. A row here is the thing the exhaust-thermal and
 // stack-mechanics models consult; a class-level nominal would be the fabricated figure fdm refuses.
 //
-// PROVENANCE, stated per row. The PETG HF sheet is served from the vendor's own CDN and that
-// locator is the first citation. The PLA Basic figures were read through search relays of
-// reseller-hosted copies of the vendor sheet (the vendor CDN copy was not located from this
-// session) and are graded TranscribedUncited with the obligation to open the vendor copy.
-//
-// WHAT NO SHEET PUBLISHES: compressive strength and creep. The stack-mechanics model therefore
-// cannot read a compressive limit here and must declare the stand-in it uses.
+// Vendor PDFs read directly on 2026-10-04. Neither row supplies a printed-joint
+// compressive allowable or creep qualification; bending strength cannot replace it.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -58,16 +53,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The sheet's own fields, at the sheet's own grain. HDT is the ISO 75 figure at 0.45 MPa, which is
 // the low-stress condition the sheets state; a load-bearing part at higher stress deflects at a
 // LOWER temperature than this, so a consumer must not read it as a service ceiling under load.
-type FilamentTechnicalDataSheetRow {
-  product_label: NonEmptyStr
-  material: FilamentMaterial
-  density: KilogramPerCubicMetre
-  heat_deflection_at_0_45_mpa: Celsius
-  tensile_strength: Megapascal
-  bending_strength: Megapascal
-  bending_modulus: Megapascal
-  standing: CitedFigureStanding
-}
+// Shared property shape lives in the vendor-neutral FDM module.
+
+data bambu_pla_basic_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"store.bblcdn.com/s7/default/b189de92249a4b9ebed28b8ea1f080f0/Bambu_PLA_Basic_Technical_Data_Sheet.pdf"}}
 
 data bambu_pla_basic_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataSheetRow {
   product_label: "Bambu PLA Basic",
@@ -77,9 +65,7 @@ data bambu_pla_basic_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataS
   tensile_strength: megapascal(count: 35),
   bending_strength: megapascal(count: 76),
   bending_modulus: megapascal(count: 2750),
-  standing: TranscribedUncited {
-    read_obligation: "Open the vendor-hosted Bambu PLA Basic TDS and confirm density 1.24 g/cm3, HDT 57 C at 0.45 MPa (ISO 75), tensile 35 +/- 4 MPa, bending 76 +/- 5 MPa, bending modulus 2750 +/- 160 MPa; the figures here were relayed through search summaries of reseller-hosted sheet copies on 2026-10-04.",
-  },
+  standing: CitedToAuthority {authority:bambu_pla_basic_authority},
 }
 
 data bambu_petg_hf_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataSheetRow {
@@ -90,9 +76,7 @@ data bambu_petg_hf_tds: FilamentTechnicalDataSheetRow = FilamentTechnicalDataShe
   tensile_strength: megapascal(count: 34),
   bending_strength: megapascal(count: 64),
   bending_modulus: megapascal(count: 2050),
-  standing: TranscribedUncited {
-    read_obligation: "Open store.bblcdn.com/3a230e260a3a47c2b0db0156e07eef91.pdf (Bambu PETG HF TDS V1.0) and confirm density 1.28 g/cm3, HDT 69 C at 0.45 MPa, tensile 34 +/- 4 MPa, bending 64 +/- 3 MPa, bending modulus 2050 +/- 120 MPa; relayed through a search summary on 2026-10-04, the CDN was not fetched first-party from this session.",
-  },
+  standing: CitedToAuthority {authority:extdeps_external_authority_anchor},
 }
 
 data bambu_filament_sheets: List<FilamentTechnicalDataSheetRow> = [bambu_pla_basic_tds, bambu_petg_hf_tds]

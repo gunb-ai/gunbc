@@ -216,6 +216,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/vendor/bambu_lab.dag",
   "dag/extdeps/vendor/molex.dag",
   "dag/extdeps/printing/bambu_lab_filament.dag",
+  "dag/extdeps/printing/sunlu_filament.dag",
   "dag/extdeps/connector/molex_mini_fit_jr.dag",
   "dag/extdeps/standards/awg.dag",
   "dag/extdeps/standards/atx12v_psdg.dag",

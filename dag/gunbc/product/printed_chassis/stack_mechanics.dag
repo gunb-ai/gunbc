@@ -12,28 +12,17 @@ import v2.std.optional { Present, Absent }
 import product.printed_chassis.assembly_geometry { AssemblyPart, Primitive, Block, RoundPrism, Printed, Purchased, Metal, Clearance }
 import product.printed_chassis.stack_geometry { cassette_parts, stack_pitch, pillar_side, pillar_section_area_mm2, pillar_height, footprint_half_depth, footprint_half_width }
 import product.printed_chassis.power_cassette { PowerCassette, PowerCassettePlacement, TopOfColumn, BottomOfColumn, BesideColumn, nodes_above }
-import extdeps.printing.bambu_lab_filament { FilamentTechnicalDataSheetRow }
+import extdeps.printing.fdm { FilamentTechnicalDataSheetRow }
 import extdeps.cooling.dynatron { dynatron_w1_mass_active }
 import extdeps.fans.arctic { arctic_p8_mass }
 
-// HOW MANY CASSETTES A COLUMN CAN STACK, as a force derivation over the parts the cassette model
-// already places, with every limit named and every missing mass a refusal.
-//
-// THE MASS ROSTER IS AN IDENTITY JOIN. Every Printed, Purchased or Metal part in cassette scope
-// must have exactly one mass row; a part with none refuses the whole admission rather than
-// weighing zero, because a zero is the one wrong answer that makes every verdict look safe.
-// Printed parts derive their mass from the modeled solids and the filament sheet's density;
-// purchased parts read a vendor row; the board and DIMMs have no vendor mass and refuse until
-// weighed. A caller may DECLARE a mass for such a part, by name and with a basis, and the
-// admission then reports that it rests on declared figures.
-//
-// FOUR LIMITS, THREE OF THEM DERIVED. Bearing stress on the tray corner under the pillar above;
-// Euler buckling of the pillar as a column; static tipping under a lateral push at the top. The
-// fourth, creep of the loaded polymer at exhaust temperature, has no sheet figure and no
-// derivation here: it is carried as the unqualified boundary it is, and the admission says so.
-//
-// STANDARD GRAVITY IS 9.80665 m/s^2 exactly by definition (CGPM 1901), carried at micrometre
-// grain so no rounding enters.
+// Legacy uniform-unit sensitivity screen. It is not the complete node mass ledger and
+// must not be used to qualify a populated stack. component_mass folds the complete
+// component inventory; placed_mass_model handles explicit load positions.
+// Positive primitive volume here is only a solid-envelope estimate (not sliced mass).
+// Euler buckling assumes an ideal homogeneous square column. No compressive allowable,
+// printed-joint stiffness, anisotropy or long-term creep rating is supplied.
+// Standard gravity is 9.80665 m/s^2.
 data standard_gravity: MicrometrePerSecondSquared = micrometre_per_second_squared(count: 9806650)
 
 // pi to four places, used only for cylinder volumes in the mass estimate.
@@ -50,7 +39,8 @@ type MassRow { part_id: String, mass: Gram, basis: MassBasis }
 type DeclaredMass { part_id: String, mass: Gram, basis: NonEmptyStr }
 
 // Volume of a part's positive solids in cubic millimetres; cuts are ignored so the figure is an
-// upper bound on the printed mass, which is the conservative direction for a load.
+// positive-volume estimate. It is not a conservative stability input: extra mass can add restoring moment.
+// Use measured/sliced masses and intervals for actual load cases.
 fn primitive_volume_mm3(p: Primitive) -> Nat {
   match p {
     Block { size: s, center: _ } => micrometer_count(m: s.size_x) * micrometer_count(m: s.size_y) / 1000000 * micrometer_count(m: s.size_z) / 1000
@@ -117,25 +107,16 @@ fn unit_mass(rows: List<MassRow>, sheet: FilamentTechnicalDataSheetRow) -> Gram 
 // Weight in millinewtons: g * um/s^2 = nN, / 1e6 = mN.
 fn weight_mn(m: Gram) -> Millinewton { millinewton(count: gram_count(g: m) * micrometre_per_second_squared_count(a: standard_gravity) / 1000000) }
 
-// DECLARED POLICY, named as such: the stress a printed corner may carry as a fraction of the
-// sheet's bending strength (no sheet publishes compressive strength), the pillar's effective
-// length factor, the lateral push a service action may apply at the top of the stack, and the
-// lateral acceleration (a bump, a cart, an uneven floor read as a tilt) the column must survive.
-//
-// THE TWO TIPPING CRITERIA ANSWER DIFFERENT QUESTIONS. For a column of equal units the push that
-// tips it is independent of height (weight and lever arm both scale with N), so a push criterion
-// never bounds N. The acceleration that tips it, g times half-base over centre-of-mass height,
-// FALLS with N; that is the criterion that bounds how high a milk-crate column may go.
+// Declared sensitivity inputs. Bending strength is deliberately not used as a
+// compressive allowable. Top push and base acceleration use different lever arms.
 type StackPolicy {
-  bearing_stress_fraction: Percent
   effective_length_factor_percent: Nat
   service_push: Newton
   service_acceleration: MicrometrePerSecondSquared
 }
 
 type StackLimit
-  = BearingStressExceeded { level_from_bottom: Nat, stress: Kilopascal, limit: Kilopascal }
-  | PillarBucklingExceeded { level_from_bottom: Nat, pillar_load: Millinewton, critical: Millinewton }
+  = PillarBucklingExceeded { level_from_bottom: Nat, pillar_load: Millinewton, critical: Millinewton }
   | TipsUnderServicePush { tip_force: Newton, push: Newton }
   | TipsUnderServiceAcceleration { tip_acceleration: MicrometrePerSecondSquared, required: MicrometrePerSecondSquared }
 
@@ -152,7 +133,7 @@ type StackVerdict {
 }
 
 type StackAdmission
-  = StackAdmitted { verdict: StackVerdict, creep_unqualified: NonEmptyStr }
+  = StackScreeningOnly { verdict: StackVerdict, creep_unqualified: NonEmptyStr }
   | StackLimited { first_limit: StackLimit, verdict: StackVerdict }
   | StackRefusedUnweighed { unweighed: List<String> }
 
@@ -173,11 +154,13 @@ fn pillar_critical_load(sheet: FilamentTechnicalDataSheetRow, policy: StackPolic
   millinewton(count: pi_squared_ten_thousandths * megapascal_count(p: sheet.bending_modulus) * i_mm4 / (kl * kl) / 10)
 }
 
-// Tip force at the top of the column: W * half-base / height of the centre of mass. The centre
+// Approximate uniform-unit CG. Bottom power cassette shifts every node upward one pitch.
+// Top-applied push uses the TOP HEIGHT, not this CG height. The centre
 // of mass of N equal units at pitch p is at N p / 2 above the floor; a station adds its own term.
 fn centre_of_mass_height_mm(unit: Gram, station: PowerCassette, node_count: Nat) -> Nat {
   let p = stack_pitch() / 1000
-  let node_moment = node_count * gram_count(g: unit) * (node_count * p) / 2
+  let offset = match station.placement {BottomOfColumn=>p TopOfColumn=>0 BesideColumn=>0}
+  let node_moment = node_count * gram_count(g: unit) * (node_count * p + 2 * offset) / 2
   let station_height = match station.placement { TopOfColumn => node_count * p + p / 2 BottomOfColumn => p / 2 BesideColumn => p / 2 }
   let station_term = match station.placement { TopOfColumn => gram_count(g: station.mass) * station_height BottomOfColumn => gram_count(g: station.mass) * station_height BesideColumn => no_mass }
   let total = match station.placement { TopOfColumn => node_count * gram_count(g: unit) + gram_count(g: station.mass) BottomOfColumn => node_count * gram_count(g: unit) + gram_count(g: station.mass) BesideColumn => node_count * gram_count(g: unit) }
@@ -190,7 +173,8 @@ fn column_mass(unit: Gram, station: PowerCassette, node_count: Nat) -> Gram {
 }
 
 fn tip_force(unit: Gram, station: PowerCassette, node_count: Nat) -> Newton {
-  let h = centre_of_mass_height_mm(unit: unit, station: station, node_count: node_count)
+  let station_levels = match station.placement {BesideColumn=>0 TopOfColumn=>1 BottomOfColumn=>1}
+  let h = (node_count + station_levels) * (stack_pitch()/1000)
   let half_base = footprint_half_width() / 1000
   if h == 0 { newton(count: no_mass) } else { newton(count: millinewton_count(f: weight_mn(m: column_mass(unit: unit, station: station, node_count: node_count))) * half_base / h / 1000) }
 }
@@ -203,15 +187,13 @@ fn tip_acceleration(unit: Gram, station: PowerCassette, node_count: Nat) -> Micr
 
 fn first_limit(unit: Gram, station: PowerCassette, sheet: FilamentTechnicalDataSheetRow, policy: StackPolicy, node_count: Nat) -> StackLimit? {
   let per_pillar = millinewton(count: millinewton_count(f: weight_mn(m: mass_above_level(unit: unit, station: station, node_count: node_count, level: 0))) / 4)
-  let stress = kilopascal(count: millinewton_count(f: per_pillar) / pillar_section_area_mm2())
-  let limit = kilopascal(count: megapascal_count(p: sheet.bending_strength) * 1000 * percent_count(p: policy.bearing_stress_fraction) / 100)
   let critical = pillar_critical_load(sheet: sheet, policy: policy)
   let tip = tip_force(unit: unit, station: station, node_count: node_count)
   let tip_a = tip_acceleration(unit: unit, station: station, node_count: node_count)
-  if kilopascal_count(p: stress) > kilopascal_count(p: limit) { Present { value: BearingStressExceeded { level_from_bottom: 0, stress: stress, limit: limit } } }
-  else { if millinewton_count(f: per_pillar) > millinewton_count(f: critical) { Present { value: PillarBucklingExceeded { level_from_bottom: 0, pillar_load: per_pillar, critical: critical } } }
+  // Bending strength is not a compressive allowable. Bearing stress is reported, not admitted.
+  if millinewton_count(f: per_pillar) > millinewton_count(f: critical) { Present { value: PillarBucklingExceeded { level_from_bottom: 0, pillar_load: per_pillar, critical: critical } } }
   else { if newton_count(f: tip) < newton_count(f: policy.service_push) { Present { value: TipsUnderServicePush { tip_force: tip, push: policy.service_push } } }
-  else { if micrometre_per_second_squared_count(a: tip_a) < micrometre_per_second_squared_count(a: policy.service_acceleration) { Present { value: TipsUnderServiceAcceleration { tip_acceleration: tip_a, required: policy.service_acceleration } } } else { none } } } }
+  else { if micrometre_per_second_squared_count(a: tip_a) < micrometre_per_second_squared_count(a: policy.service_acceleration) { Present { value: TipsUnderServiceAcceleration { tip_acceleration: tip_a, required: policy.service_acceleration } } } else { none } } }
 }
 
 fn verdict_for(unit: Gram, station: PowerCassette, sheet: FilamentTechnicalDataSheetRow, policy: StackPolicy, node_count: Nat, declared_count: Nat) -> StackVerdict {
@@ -229,9 +211,9 @@ fn verdict_for(unit: Gram, station: PowerCassette, sheet: FilamentTechnicalDataS
   }
 }
 
-data creep_boundary: NonEmptyStr = "Creep of the loaded polymer at exhaust temperature has no sheet figure and no derivation here; a loaded column held for weeks at the measured corner temperature is the only evidence, and until it exists no admission below is a creep rating."
+data creep_boundary: NonEmptyStr = "SCREENING ONLY: uniform unit CG approximation, ideal Euler column, unknown joint/contact stiffness, compressive allowable, print anisotropy, creep, friction and cable forces. No result admits a populated stack or states a safe height. Use placed_mass_model for actual load locations; qualify physical joints/material separately."
 
-fn stack_admission(sheet: FilamentTechnicalDataSheetRow, declared: List<DeclaredMass>, station: PowerCassette, policy: StackPolicy, node_count: Nat) -> StackAdmission {
+fn stack_screening(sheet: FilamentTechnicalDataSheetRow, declared: List<DeclaredMass>, station: PowerCassette, policy: StackPolicy, node_count: Nat) -> StackAdmission {
   match mass_roster(sheet: sheet, declared: declared) {
     MassRosterIncomplete { unweighed: u } => StackRefusedUnweighed { unweighed: u }
     MassRosterComplete { rows: rows, declared_count: dc } => {
@@ -239,20 +221,20 @@ fn stack_admission(sheet: FilamentTechnicalDataSheetRow, declared: List<Declared
       let verdict = verdict_for(unit: unit, station: station, sheet: sheet, policy: policy, node_count: node_count, declared_count: dc)
       match first_limit(unit: unit, station: station, sheet: sheet, policy: policy, node_count: node_count) {
         Present { value: l } => StackLimited { first_limit: l, verdict: verdict }
-        Absent => StackAdmitted { verdict: verdict, creep_unqualified: creep_boundary }
+        Absent => StackScreeningOnly { verdict: verdict, creep_unqualified: creep_boundary }
       }
     }
   }
 }
 
-// The largest column every limit admits, searched upward from one; zero when one is refused.
-fn max_admitted_height(sheet: FilamentTechnicalDataSheetRow, declared: List<DeclaredMass>, station: PowerCassette, policy: StackPolicy, ceiling: Nat) -> Nat {
+// Largest uniform approximation passing these screens; NOT a safe stack height.
+fn max_screened_height(sheet: FilamentTechnicalDataSheetRow, declared: List<DeclaredMass>, station: PowerCassette, policy: StackPolicy, ceiling: Nat) -> Nat {
   height_search(sheet: sheet, declared: declared, station: station, policy: policy, n: 1, ceiling: ceiling, best: 0)
 }
 fn height_search(sheet: FilamentTechnicalDataSheetRow, declared: List<DeclaredMass>, station: PowerCassette, policy: StackPolicy, n: Nat, ceiling: Nat, best: Nat) -> Nat {
   if n > ceiling { best } else {
-    match stack_admission(sheet: sheet, declared: declared, station: station, policy: policy, node_count: n) {
-      StackAdmitted { verdict: _, creep_unqualified: _ } => height_search(sheet: sheet, declared: declared, station: station, policy: policy, n: n + 1, ceiling: ceiling, best: n)
+    match stack_screening(sheet: sheet, declared: declared, station: station, policy: policy, node_count: n) {
+      StackScreeningOnly { verdict: _, creep_unqualified: _ } => height_search(sheet: sheet, declared: declared, station: station, policy: policy, n: n + 1, ceiling: ceiling, best: n)
       StackLimited { first_limit: _, verdict: _ } => best
       StackRefusedUnweighed { unweighed: _ } => best
     }

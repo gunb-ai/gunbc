@@ -4,7 +4,7 @@ import std.nat { Nat }
 import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count }
 import v2.std.optional { Present, Absent }
 import product.printed_chassis.node_power_feed {
-  NodeFeedInputs, declared_connector_derating, node_feed, NodeFeedReading, NodeFeedAdmitted, NodeFeedRefused,
+  NodeFeedInputs, declared_connector_derating, node_feed, NodeFeedReading, NodeFeedScreeningOnly, NodeFeedRefused,
   FeedRefusalCause, LoadExceedsBoardInputs, PopulationRuleUnresolved, BranchGaugeUnknown, ConnectorVoltageBelowBand, SetpointAboveBand,
   fan_bank_header_load, FanHeaderLoad, FanHeaderLoadAgainstUnreadLimit, FanBankNeedsOneHeaderPerFan,
 }
@@ -28,12 +28,12 @@ fn inputs(load_w: Nat, gauge: Nat, length_mm: Nat, setpoint_mv: Nat) -> NodeFeed
   }
 }
 
-// 300 W over 10 AWG at 1.5 m from a 12.2 V setpoint: 25 A, one input at 60 percent of 36 A
+// 300 W over 10 AWG at 1.5 m from a 12.2 V setpoint: 26.316 A at the 11.4 V floor, one input at 60 percent of 24 A
 // cannot carry it, two can; the round-trip drop is a few hundred millivolts and the connector
 // stays inside the band.
 test fn a_300_watt_node_takes_two_inputs_and_stays_in_band() -> Bool {
   match node_feed(inputs: inputs(load_w: 300, gauge: 10, length_mm: 1500, setpoint_mv: 12200)) {
-    NodeFeedAdmitted { feed: f } => f.inputs_populated == 2 && milliampere_count(i: f.node_current) == 25000
+    NodeFeedScreeningOnly { feed: f } => f.inputs_populated == 2 && milliampere_count(i: f.node_current) == 26316
       && millivolt_count(v: f.at_connector) >= millivolt_count(v: atx12v_twelve_volt_regulation.minimum)
       && millivolt_count(v: f.branch_round_trip_drop) > 0
     NodeFeedRefused { cause: _ } => false
@@ -44,22 +44,22 @@ test fn a_300_watt_node_takes_two_inputs_and_stays_in_band() -> Bool {
 // naming the drop, not a quietly undervolted board.
 test fn a_thin_long_branch_refuses_below_the_band() -> Bool {
   match node_feed(inputs: inputs(load_w: 300, gauge: 18, length_mm: 3000, setpoint_mv: 12000)) {
-    NodeFeedAdmitted { feed: _ } => false
+    NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { ConnectorVoltageBelowBand { at_connector: v, band_minimum: m, drop: _ } => millivolt_count(v: v) < millivolt_count(v: m) LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
 }
 
 test fn a_load_beyond_three_inputs_and_an_unknown_gauge_each_refuse_by_name() -> Bool {
   let over = match node_feed(inputs: inputs(load_w: 1500, gauge: 10, length_mm: 500, setpoint_mv: 12000)) {
-    NodeFeedAdmitted { feed: _ } => false
+    NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { LoadExceedsBoardInputs { required_inputs: r, available_inputs: a, per_input_limit: _ } => r > a && a == 3 ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
   let gauge = match node_feed(inputs: inputs(load_w: 300, gauge: 11, length_mm: 500, setpoint_mv: 12000)) {
-    NodeFeedAdmitted { feed: _ } => false
+    NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { BranchGaugeUnknown { gauge: g } => g == 11 LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
   let high = match node_feed(inputs: inputs(load_w: 300, gauge: 10, length_mm: 500, setpoint_mv: 12700)) {
-    NodeFeedAdmitted { feed: _ } => false
+    NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { SetpointAboveBand { setpoint: _, band_maximum: _ } => true LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false }
   }
   over && gauge && high
@@ -95,13 +95,13 @@ fn plan(top: Bool, front: Bool, allowance: Nat) -> HarnessPlan {
 }
 
 // Four nodes: per node one branch, two pigtails, two patch leads, one fan header cable and two
-// PST links, so five runs and eight cables per node, 20 runs and 32 cables in all. The fan lead reaches the front header with a 100 mm
-// allowance and does not with 150 mm, and the census says which.
+// PST links, so five runs and eight cables per node, 20 runs and 32 cables in all. The rear fan offset makes the lead too short with either 100 mm
+// or 150 mm allowance, and the census says which.
 test fn the_census_counts_every_cable_and_prices_the_fan_lead() -> Bool {
   let c = harness_census(plan: plan(top: false, front: false, allowance: 100))
   let tight = harness_census(plan: plan(top: false, front: false, allowance: 150))
   c.cable_count == 32 && count(c.runs) == 20 && millimeter_count(m: c.total_length) > 0
-  && !c.fan_header_extension_needed && tight.fan_header_extension_needed
+  && c.fan_header_extension_needed && tight.fan_header_extension_needed
   && disconnect_sets_to_pop(plan: plan(top: true, front: false, allowance: 100), node: 0) == 5
   && disconnect_sets_to_pop(plan: plan(top: false, front: false, allowance: 100), node: 0) == 4
 }
@@ -116,4 +116,10 @@ test fn inlet_placement_moves_copper_rather_than_removing_it() -> Bool {
 
 fn role_length(c: HarnessCensus, pigtail: Bool) -> Nat {
   fold(filter(c.runs, r => match r.role { Atx12vPigtail => pigtail DcBranch => !pigtail FanHeaderCable => false FanPstLink => false EthernetPatch => false }), init: 0, f: (acc, r) => acc + r.count * millimeter_count(m: r.each))
+}
+
+test fn zero_connector_derating_cannot_admit_a_feed() -> Bool {
+ let i=inputs(load_w:300,gauge:10,length_mm:1500,setpoint_mv:12200)
+ let invalid=NodeFeedInputs {node_dc_load:i.node_dc_load,connector_rating:i.connector_rating,derating:declared_connector_derating(retained:percent(count:0)),branch_gauge_awg:i.branch_gauge_awg,branch_length:i.branch_length,station_setpoint:i.station_setpoint,regulation:i.regulation}
+ match node_feed(inputs:invalid) {NodeFeedRefused {cause:PopulationRuleUnresolved}=>true _=>false}
 }
