@@ -1,5 +1,6 @@
 module test.claim.materialization_store_witness
 
+import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash, parse_content_hash,
@@ -404,16 +405,16 @@ test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool {
 // a durable store's marker is not an ephemeral store's marker: a scratch root holding it refuses
 test fn a_store_opens_only_on_its_own_marker() -> Bool {
   let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
-  let marker = store_marker_content(root: root, instance_label: "witness")
-  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }) {
+  let marker = store_marker_content(root: root, instance_label: "witness", families: [native_module_verdict_bundle_artifact_kind])
+  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, families: [native_module_verdict_bundle_artifact_kind]) {
     LocalStoreOpened { root: _, store: s, durability: _, sweep: _ } => s.provider == materialization_store_local_id
     LocalStoreUnavailable { root_path: _, cause: _ } => false
   }
-  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }) {
+  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }, families: [native_module_verdict_bundle_artifact_kind]) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
     LocalStoreOpened { root: _, store: _, durability: _, sweep: _ } => false
   }
-  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness") }) {
+  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness", families: [native_module_verdict_bundle_artifact_kind]) }, families: [native_module_verdict_bundle_artifact_kind]) {
     LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
     LocalStoreOpened { root: _, store: _, durability: _, sweep: _ } => false
   }

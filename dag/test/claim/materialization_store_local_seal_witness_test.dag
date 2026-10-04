@@ -1,0 +1,26 @@
+module test.claim.materialization_store_local_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for }
+
+// A FAMILY MUTATION WITHOUT THE FAMILY HOLD IS UNWRITABLE. Every mutator of
+// extdeps.realization.materialization_store_local takes a LocalStoreFamilyHeld (or, for the sweep, a
+// LocalStoreAllFamiliesHeld), and both are sole_constructor records minted only by the hold
+// acquisitions. So a caller that wants to write without holding the family has to spell one of them,
+// and that spelling is a located compile refusal. Each probe asserts EXACTLY ONE refusal on its subject.
+
+fn seal_violations(source: String, subject: String) -> Int {
+  blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+data forged_family_hold_source: String = "module probe_store_forged_family_hold\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld }\nfn forged(h: LocalStoreFamilyHeld) -> LocalStoreFamilyHeld {\n  LocalStoreFamilyHeld { root_path: h.root_path, family: h.family, owner: h.owner, generation: h.generation, retention: h.retention }\n}\n"
+
+data forged_all_families_source: String = "module probe_store_forged_all_families\nimport extdeps.realization.materialization_store_local { LocalStoreAllFamiliesHeld }\nfn forged(a: LocalStoreAllFamiliesHeld) -> LocalStoreAllFamiliesHeld {\n  LocalStoreAllFamiliesHeld { root_path: a.root_path, held: a.held }\n}\n"
+
+test fn a_forged_family_hold_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_family_hold_source, subject: "LocalStoreFamilyHeld") == 1
+}
+
+test fn a_forged_all_families_hold_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_all_families_source, subject: "LocalStoreAllFamiliesHeld") == 1
+}

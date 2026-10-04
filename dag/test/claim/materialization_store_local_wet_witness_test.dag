@@ -41,7 +41,8 @@ import extdeps.realization.materialization_store_local {
   local_store_acquire_family_hold, local_store_release_family_hold, local_store_hold_key, local_store_hold_owner_prefix,
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
-  LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow,
+  LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
+  LocalStoreCatalogMismatch, LocalStoreUnavailableCause,
   local_store_index_retention,
 }
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified, process_hold_text }
@@ -611,6 +612,7 @@ fn hold_refusal_is_busy(r: LocalStoreHoldRefusal?) -> Bool {
       LocalStoreHoldKeyNotAddressable => false
       LocalStoreHoldSelfUnidentified { cause: _ } => false
       LocalStoreHoldWindowTooNarrow { k: _ } => false
+      LocalStoreHoldUnsettled { settlement: _ } => false
     }
     Absent => false
   }
@@ -866,6 +868,73 @@ test fn an_object_whose_presence_cannot_be_established_refuses_before_any_index_
         && before == 1 && index_row_count(root_path: root_path) == before
     }
   }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+fn opening_refused_for_catalog(o: LocalStoreOpening) -> Bool {
+  match o {
+    LocalStoreOpened { root: _, store: _, durability: _, sweep: _ } => false
+    LocalStoreUnavailable { root_path: _, cause: c } => match c {
+      LocalStoreCatalogMismatch { marker_path: _, offered: _ } => true
+      LocalStoreGrantRefused { verb: _, target: _, frame: _ } => false
+      LocalStoreNotInitialized { marker_path: _ } => false
+      LocalStoreMarkerUnrecognized { marker_path: _ } => false
+      LocalStoreMarkerUnavailable { fault: _ } => false
+    }
+  }
+}
+
+// THE SWEEP RUNS ONLY AGAINST THE STORE'S OWN CATALOG. The store was initialized with two families and
+// holds an object of one of them. Reopening it with a roster that omits that family -- a partial one,
+// or none -- would make its object look like an orphan to the sweep; instead both opens refuse before
+// sweeping, and the object still serves.
+test fn opening_with_a_partial_family_catalog_refuses_and_sweeps_nothing_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"))
+      let partial = local_store_open(root: root, budgets: witness_family_budgets |> filter(b => b.family != native_module_verdict_bundle_artifact_kind))
+      let empty = local_store_open(root: root, budgets: [])
+      commit_tag(c: c.commit) == "committed"
+        && opening_refused_for_catalog(o: partial) && opening_refused_for_catalog(o: empty)
+        && Filesystem.Read(path: object_path(root_path: root_path, req: bundle_req(module: "b"))).success
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "b")))
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// A WINDOWED SLOT STOPS ADVANCING WHILE ITS CLEANUP IS OUTSTANDING. The occupancy index's first
+// generation is replaced by a directory, which no reclamation can delete. Once the window has moved
+// past it, the next write finds a stale generation it cannot reclaim and refuses; every later write
+// refuses too, and the slot's generation files do not grow with them.
+test fn an_unreclaimable_index_generation_stops_further_writes_and_bounds_the_slot_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let slot_prefix = concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".")
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c1 = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: bundle_req(module: "g1"), payloads: verdicts(text: "g pass"))
+      let c2 = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: bundle_req(module: "g2"), payloads: verdicts(text: "g pass"))
+      let first_gen = store_path(root_path: root_path, name: concat(slot_prefix, "1"))
+      let unlinked = Filesystem.Delete(path: first_gen).success
+      let blocked = shell.Mkdir.NewOwnerOnly(path: first_gen).success
+      let c3 = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: bundle_req(module: "g3"), payloads: verdicts(text: "g pass"))
+      let after_c3 = root_names_with_prefix(root_path: root_path, prefix: slot_prefix)
+      let later = [4, 5, 6, 7, 8] |> map(i => commit_tag(c: local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: bundle_req(module: concat("g", i as String)), payloads: verdicts(text: "g pass")).commit))
+      let population = root_names_with_prefix(root_path: root_path, prefix: slot_prefix)
+      commit_tag(c: c1.commit) == "committed" && commit_tag(c: c2.commit) == "committed" && unlinked && blocked
+        && commit_tag(c: c3.commit) == "committed"
+        && later |> all(t => t == "occupancy_unavailable")
+        && population == after_c3 && population <= 4
+    }
+  }
+  let _cleared = shell.Remove.RecursiveForce(path: concat(root_path, concat("/", concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
 }
