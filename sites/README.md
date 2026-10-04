@@ -35,3 +35,6 @@ There are no printer controls, credentials, external application access or persi
 Earlier visual-only source: concept 04 `c2a49273da70f20a23e2e044fe552dceb74b773f`.
 
 Historical review 05 Site source: `a9658fd05d27e83220c611b5fb00ac4397b74739` (owner-private audience unchanged).
+
+Published review 06 Site source: `8dcdc73e2ed18f6498f63204796018727e3f923f` (owner-private).
+Joinery/CAD draft: https://github.com/gunb-ai/gunbc/pull/13222 .
