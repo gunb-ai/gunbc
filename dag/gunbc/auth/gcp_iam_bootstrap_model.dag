@@ -28,16 +28,17 @@ data iam_bootstrap_roles: List<IamBootstrapRole> = [
   BootstrapObservePool, BootstrapObserveAccount, BootstrapObserveSecret, BootstrapProbeToken,
 ]
 
+fn iam_bootstrap_project_role_name(role_id: String) -> NonEmptyStr {
+  join(["projects/", fleet_secrets_project_id as String, "/roles/", role_id], "") as NonEmptyStr
+}
+
 fn iam_bootstrap_role_name(role: IamBootstrapRole) -> NonEmptyStr {
   match role {
     BootstrapApplyRole { role: r } => iam_converge_role_id(r: r) as NonEmptyStr
-    other => join(["projects/", fleet_secrets_project_id as String, "/roles/", match other {
-      BootstrapObservePool => "gunbcIamObservePool"
-      BootstrapObserveAccount => "gunbcIamObserveAccount"
-      BootstrapObserveSecret => "gunbcIamObserveSecret"
-      BootstrapProbeToken => "gunbcIamBootstrapProbeToken"
-      _ => "invalid"
-    }], "") as NonEmptyStr
+    BootstrapObservePool => iam_bootstrap_project_role_name(role_id: "gunbcIamObservePool")
+    BootstrapObserveAccount => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveAccount")
+    BootstrapObserveSecret => iam_bootstrap_project_role_name(role_id: "gunbcIamObserveSecret")
+    BootstrapProbeToken => iam_bootstrap_project_role_name(role_id: "gunbcIamBootstrapProbeToken")
   }
 }
 
@@ -59,8 +60,8 @@ fn iam_bootstrap_role_permissions(role: IamBootstrapRole) -> List<String> {
 
 fn iam_bootstrap_role_matches(role: IamBootstrapRole, name: String, permissions: List<String>?, stage: String?, deleted: Bool?) -> Bool {
   name == (iam_bootstrap_role_name(role: role) as String)
-    && match deleted { Present { value: true } => false _ => true }
-    && match stage { Present { value: "GA" } => true _ => false }
+    && match deleted { Present { value: d } => !d  Absent => true }
+    && match stage { Present { value: s } => s == "GA"  Absent => false }
     && match permissions { Present { value: ps } => same_key_set(a: ps, b: iam_bootstrap_role_permissions(role: role)) Absent => false }
 }
 
@@ -138,7 +139,7 @@ fn iam_bootstrap_deny_matches(rules: List<GcpDenyPolicyRule>?) -> Bool {
         && same_key_set(a: rule.denied_permissions, b: iam_converge_denied_permissions)
         && match rule.exception_principals { Absent => true Present { value: xs } => count(xs) == 0 }
         && match rule.exception_permissions { Absent => true Present { value: xs } => count(xs) == 0 }
-        && match rule.denial_condition { Absent => true _ => false }
+        && match rule.denial_condition { Absent => true  Present { value: _ } => false }
     })
   }
 }
