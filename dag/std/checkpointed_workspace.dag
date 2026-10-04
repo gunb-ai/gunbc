@@ -123,6 +123,10 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // decode that misreads is refused there rather than trusted here. Every malformed body is absent.
 // The parent is the object's single link, or none; more than one link is not an entry this module
 // wrote.
+// THE ENTRIES ARE PREPENDED AND REVERSED ONCE, so decoding is linear in the entry count: appending
+// each entry to a copied accumulator would be quadratic over a real workspace (DESIGN 6, bare minimum
+// cost), and the tail-recursive prepend keeps the walk a loop rather than a recursion as deep as the
+// workspace.
 type WorkspaceBodyField {
   value: String
   next: String
@@ -161,7 +165,7 @@ fn workspace_body_until(text: String, separator: String) -> WorkspaceBodyField? 
 
 fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
   if text == "" {
-    Present { value: acc }
+    Present { value: reverse(acc) }
   } else {
     match workspace_body_prefixed(text: text, tag: "F") {
       Absent => none
@@ -184,7 +188,7 @@ fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<Works
                           if n < 0 {
                             none
                           } else {
-                            workspace_body_entries(text: size.next, acc: concat(acc, [WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }]))
+                            workspace_body_entries(text: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
                           }
                       }
                   }

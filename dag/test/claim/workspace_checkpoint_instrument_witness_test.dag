@@ -248,6 +248,15 @@ test fn a_revision_and_a_fence_decode_to_what_they_encode() -> Bool {
     && round_trips(e: WorkspaceFence { writer: WorkspaceWriterEpoch { workspace: "ops", epoch: 4 }, parent: Present { value: parent } })
 }
 
+test fn a_multi_entry_revision_decodes_its_entries_in_order() -> Bool {
+  let w = WorkspaceWriterEpoch { workspace: "ops", epoch: 1 }
+  let revision = WorkspaceRevision { writer: w, parent: none, entries: [entry(path: "c", c: "c"), entry(path: "a", c: "a"), entry(path: "b/d", c: "b"), entry(path: "e", c: "e")] }
+  match workspace_head_entry_decode(object: workspace_head_entry_object(entry: revision)) {
+    Present { value: WorkspaceRevision { writer: _, parent: _, entries: es } } => map(es, e => e.path as String) == ["c", "a", "b/d", "e"] && round_trips(e: revision)
+    other => false
+  }
+}
+
 test fn a_body_that_is_not_a_head_entry_does_not_decode() -> Bool {
   let wrong_kind = workspace_head_entry_decode(object: FabricObject { links: [], body: "workspace.other;W3:ops;epoch=1;" })
   let truncated = workspace_head_entry_decode(object: FabricObject { links: [], body: "workspace.revision;W3:ops;epoch=1;F5:ab" })
