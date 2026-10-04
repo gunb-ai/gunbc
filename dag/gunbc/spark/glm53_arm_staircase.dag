@@ -13,7 +13,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
 import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
-import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name }
+import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name, glm53_staircase_head_log_path }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
@@ -35,7 +35,11 @@ import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, 
 // these variants, never a number typed at dispatch. Each step's ceiling is its own row below, and each
 // derives its envelope through serving_capacity_intent scheduler_envelope -- so a ceiling above the cold
 // floor exists only with the full-input gate on and the watermark stated, and one below it refuses.
-type Glm53Fp8StaircaseStep = Fp8Seats8 | Fp8Seats12 | Fp8Seats16 | Fp8Seats24
+// THE CEILING SWEEP (valiant-crab-775, approved 2026-10-04): 32, 64 and 128 are the same launch with a
+// higher scheduler ceiling over the same cold floor and the same gpu_memory_utilization; their receipts
+// are ENGINE CHARACTERIZATION, NON-QUALIFYING -- they measure what the ceiling costs (KV blocks, capture
+// sizes, time to ready) and whether it launches at all, and nothing promotes from them.
+type Glm53Fp8StaircaseStep = Fp8Seats8 | Fp8Seats12 | Fp8Seats16 | Fp8Seats24 | Fp8Seats32 | Fp8Seats64 | Fp8Seats128
 type Glm53Nvfp4StaircaseStep = Nvfp4Seats8 | Nvfp4Seats16 | Nvfp4Seats24 | Nvfp4Seats32
 
 type Glm53StaircaseStep
@@ -48,6 +52,9 @@ fn glm53_fp8_step_ceiling(s: Glm53Fp8StaircaseStep) -> Nat {
     Fp8Seats12 => 12
     Fp8Seats16 => 16
     Fp8Seats24 => 24
+    Fp8Seats32 => 32
+    Fp8Seats64 => 64
+    Fp8Seats128 => 128
   }
 }
 
@@ -89,6 +96,9 @@ fn glm53_step_wire(s: Glm53StaircaseStep) -> NonEmptyStr {
     Glm53Fp8Step { step: Fp8Seats12 } => "fp8-12" as NonEmptyStr
     Glm53Fp8Step { step: Fp8Seats16 } => "fp8-16" as NonEmptyStr
     Glm53Fp8Step { step: Fp8Seats24 } => "fp8-24" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats32 } => "fp8-32" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats64 } => "fp8-64" as NonEmptyStr
+    Glm53Fp8Step { step: Fp8Seats128 } => "fp8-128" as NonEmptyStr
     Glm53Nvfp4Step { step: Nvfp4Seats8 } => "nvfp4-8" as NonEmptyStr
     Glm53Nvfp4Step { step: Nvfp4Seats16 } => "nvfp4-16" as NonEmptyStr
     Glm53Nvfp4Step { step: Nvfp4Seats24 } => "nvfp4-24" as NonEmptyStr
@@ -98,6 +108,7 @@ fn glm53_step_wire(s: Glm53StaircaseStep) -> NonEmptyStr {
 
 data glm53_staircase_steps: List<Glm53StaircaseStep> = [
   Glm53Fp8Step { step: Fp8Seats8 }, Glm53Fp8Step { step: Fp8Seats12 }, Glm53Fp8Step { step: Fp8Seats16 }, Glm53Fp8Step { step: Fp8Seats24 },
+  Glm53Fp8Step { step: Fp8Seats32 }, Glm53Fp8Step { step: Fp8Seats64 }, Glm53Fp8Step { step: Fp8Seats128 },
   Glm53Nvfp4Step { step: Nvfp4Seats8 }, Glm53Nvfp4Step { step: Nvfp4Seats16 }, Glm53Nvfp4Step { step: Nvfp4Seats24 }, Glm53Nvfp4Step { step: Nvfp4Seats32 },
 ]
 
@@ -183,7 +194,7 @@ fn glm53_step_profile(s: Glm53StaircaseStep) -> ServingLaunchProfile? {
 data glm53_staircase_units: ArmUnitIdentity = ArmUnitIdentity {
   head_unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr,
   rank_unit_name: "gunbc-glm53-stair-rank.service" as NonEmptyStr,
-  head_log_path: "/var/log/gunbc/glm53-stair-head.log" as NonEmptyStr,
+  head_log_path: glm53_staircase_head_log_path,
   rank_log_path: "/var/log/gunbc/glm53-stair-rank.log" as NonEmptyStr,
   description: "gunbc GLM-5.3-Flash Group A staircase arm" as NonEmptyStr,
 }

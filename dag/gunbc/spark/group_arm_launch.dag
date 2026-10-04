@@ -33,7 +33,8 @@ import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held_by_subject_among, spark_serving_admissible_hosts }
 import gunbc.spark.serving_promotion { no_promotion_receipts }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
-import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
+import gunbc.spark.serving_arm_launch { glm53_staircase_head_log_path, ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
 import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, spark_native_unresolved_rollback_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }
@@ -855,7 +856,18 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
     gpu_process_lines(ctx: ctx, h: h),
     group_host_link_health(ctx: c, h: h),
     checkpoint_cache_bytes_lines(ctx: c),
-    if host_identity_eq(a: h, b: ctx.host) { group_arm_runtime_source_lines(ctx: c) } else { "" },
+    if host_identity_eq(a: h, b: ctx.host) { join([group_arm_engine_capacity_lines(ctx: c), group_arm_runtime_source_lines(ctx: c)], "") } else { "" },
+  ], "")
+}
+
+// THE RUNNING ENGINE'S OWN CAPACITY REPORT, read-only, on the session host: its /metrics cache_config_info
+// (num_gpu_blocks, block_size, kv_cache_size_tokens, kv_cache_max_concurrency) and the startup lines the
+// engine logged into the arm's declared head log (KV cache size, maximum concurrency, cudagraph capture
+// sizes, time to ready). One reading per incarnation; the ceiling sweep records one per launch.
+fn group_arm_engine_capacity_lines(ctx: SparkMaterializeContext) -> String {
+  join([
+    observe_leg(ctx: ctx, what: "engine cache_config_info (this incarnation)", argv: ["sh", "-c", join(["curl -fsS --max-time 20 http://127.0.0.1:", to_string(spark_pair_serve_port), "/metrics | grep -E '^vllm:cache_config_info|^vllm:num_requests_running|^vllm:kv_cache_usage_perc'"], "")]),
+    observe_leg(ctx: ctx, what: "engine startup capacity lines (head log)", argv: ["sh", "-c", join(["grep -E 'GPU KV cache size|Maximum concurrency|cudagraph|Capturing CUDA graph|Graph capturing finished|init engine|Available KV cache memory|Model loading took|max_num_seqs' ", glm53_staircase_head_log_path as String, " | tail -40"], "")]),
   ], "")
 }
 
@@ -867,10 +879,11 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
 // running arm, no quoting. What the capacity plan cites is read from here, never from memory of
 // upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
 data group_arm_runtime_source_modules: List<String> = [
-  "vllm.config.compilation",
-  "vllm.v1.worker.gpu_input_batch",
-  "vllm.v1.worker.gpu_model_runner",
-  "vllm.v1.worker.gpu_worker",
+  "vllm.config.vllm",
+  "vllm.entrypoints.openai.serving_tokenization",
+  "vllm.entrypoints.serve.tokenize.serving",
+  "vllm.v1.engine.core",
+  "vllm.plugins",
 ]
 
 fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
