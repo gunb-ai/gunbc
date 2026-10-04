@@ -114,7 +114,6 @@ import extdeps.crypto.hash
 // the RECORD the confirming variants CARRY puts the forbidden literal back on the form the wall
 // does refuse.
 type OriginReading sole_constructor {
-  staged_path: NonEmptyStr
   observed_digest: Sha256Digest
 }
 
@@ -175,7 +174,7 @@ fn read_origin_staged_file(staged_path: NonEmptyStr) -> OriginReadingOutcome {
             }
           Present { value: digest } =>
             OriginReadingTaken {
-              reading: OriginReading { staged_path: staged_path, observed_digest: digest },
+              reading: OriginReading { observed_digest: digest },
             }
         }
     }
@@ -184,9 +183,5 @@ fn read_origin_staged_file(staged_path: NonEmptyStr) -> OriginReadingOutcome {
 
 fn origin_reading_digest(reading: OriginReading) -> Sha256Digest {
   reading.observed_digest
-}
-
-fn origin_reading_path(reading: OriginReading) -> NonEmptyStr {
-  reading.staged_path
 }
 

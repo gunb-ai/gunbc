@@ -45,7 +45,7 @@ import product.fabric.work { MaterializedProgram,
 import gunbc.fabric_m0_completion { ComputationSucceeded }
 import gunbc.fabric_m0_commit { CommitNamespace, ManifestRead }
 import gunbc.fabric_m0_job_ending { JobEnding, end_required_job }
-import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains, R2StagingNotCreated, R2StagingRemoved, R2StagingResidue }
 import gunbc.fabric_m0_origin_commit { transport_of_origin_put, object_readback_of_origin_put, process_exit_with_credential_custody }
 
 // READS THE LIVE TREE: the staged arm's reading is taken through read_origin_staged_file over a
@@ -216,7 +216,7 @@ fn a_successful_ending(r: OriginReading) -> JobEnding {
 test fn a_clean_successful_ending_exits_zero() -> Bool {
   match staged_fetch() {
     OriginObjectStaged { key: _, reading: r } =>
-      exit_ok(e: process_exit_with_credential_custody(ending: a_successful_ending(r: r), custodies: [WriteCredentialShredded, WriteCredentialShredded]))
+      exit_ok(e: process_exit_with_credential_custody(ending: a_successful_ending(r: r), custodies: [WriteCredentialShredded, WriteCredentialShredded], stagings: [R2StagingRemoved, R2StagingNotCreated]))
     other => false
   }
 }
@@ -226,7 +226,22 @@ test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool
     OriginObjectStaged { key: _, reading: r } =>
       exit_ok(e: process_exit_with_credential_custody(
         ending: a_successful_ending(r: r),
-        custodies: [WriteCredentialShredded, WriteCredentialResidueRemains { cause: "left on disk" }]
+        custodies: [WriteCredentialShredded, WriteCredentialResidueRemains { cause: "left on disk" }],
+        stagings: [R2StagingRemoved, R2StagingRemoved],
+      )) == false
+    other => false
+  }
+}
+
+// A FETCH'S STAGING DIRECTORY LEFT ON DISK refuses the zero exit exactly as a credential residue
+// does, with every credential shredded -- so the staging list alone is what reddens it.
+test fn a_successful_ending_with_staging_residue_does_not_exit_zero() -> Bool {
+  match staged_fetch() {
+    OriginObjectStaged { key: _, reading: r } =>
+      exit_ok(e: process_exit_with_credential_custody(
+        ending: a_successful_ending(r: r),
+        custodies: [WriteCredentialShredded, WriteCredentialShredded],
+        stagings: [R2StagingRemoved, R2StagingResidue { path: "/tmp/stage.X" }],
       )) == false
     other => false
   }

@@ -23,7 +23,10 @@ import gunbc.fabric_m0_origin_readback {
   origin_reading_digest,
 }
 import gunbc.fabric_m0_job_ending { JobEnding, process_exit_of_job_ending, publication_exit_reason }
-import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains }
+import gunbc.cloudflare.r2_staged_transfer {
+  WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
+  R2StagingCustody, R2StagingNotCreated, R2StagingRemoved, R2StagingResidue,
+}
 import gunbc.cloudflare.r2_origin_object {
   OriginPut,
   OriginPutOutcome,
@@ -32,6 +35,7 @@ import gunbc.cloudflare.r2_origin_object {
   OriginPutRefused,
   OriginPutOutcomeUnknown,
   put_origin_object,
+  OriginFetch,
   fetch_origin_object,
 }
 import gunbc.fabric_m0_completion { OriginReadback, ReadbackAbsent, ReadbackUnknown, origin_readback_of_fetch }
@@ -124,6 +128,7 @@ type OriginCommitObservation sole_constructor {
   transport: CommitTransportOutcome
   observed: ManifestReadbackObservation
   credential: WriteCredentialCustody
+  staging: R2StagingCustody
 }
 
 // ONE PUT, ONE FETCH, ONE SLOT. The manifest file is the caller's (what was owed is a claim the
@@ -146,9 +151,10 @@ fn commit_manifest_to_origin(
   let fetch = fetch_origin_object(key: slot, token_source: token_source)
   OriginCommitObservation {
     slot: slot,
-    transport: transport_of_origin_put(slot: slot, manifest_digest: manifest_digest, put: put.verdict, fetch: fetch),
-    observed: manifest_read_of_origin_fetch(fetch: fetch),
+    transport: transport_of_origin_put(slot: slot, manifest_digest: manifest_digest, put: put.verdict, fetch: fetch.outcome),
+    observed: manifest_read_of_origin_fetch(fetch: fetch.outcome),
     credential: put.credential,
+    staging: fetch.staging,
   }
 }
 
@@ -239,6 +245,7 @@ fn fabric_durable_origin_route() -> ProviderRoute {
 type OriginObjectCommit sole_constructor {
   readback: OriginReadback
   credential: WriteCredentialCustody
+  staging: R2StagingCustody
 }
 
 // THE PERMIT MUST BE FOR THIS EFFECT, NOT MERELY FOR THIS CATEGORY (review 65175). The type binds
@@ -279,8 +286,9 @@ fn commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key:
       let put = put_origin_object(local_path: permit.value, key: key, token_source: token_source)
       let fetch = fetch_origin_object(key: key, token_source: token_source)
       OriginObjectWritten { commit: OriginObjectCommit {
-        readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch),
+        readback: object_readback_of_origin_put(put: put.verdict, fetch: fetch.outcome),
         credential: put.credential,
+        staging: fetch.staging,
       } }
     }
     other => OriginObjectWriteRefused { standing: other }
@@ -288,15 +296,24 @@ fn commit_object_to_origin(permit: DataEffectPermit<BuildOutput, FilePath>, key:
 }
 
 // THE EXIT, WITH CUSTODY IN IT. The publication decides the conclusion and, on a clean run, the
-// exit follows it unchanged. A run that left write-credential material on disk may NOT exit zero
-// whatever it published: that is a typed, located refusal naming the leak AND what the publication
-// decided, so nothing true is discarded in either direction -- the reader learns both that the
-// object is durable and that cleanup is owed. It is not a fallback: there is no arm here that
-// answers success for anything but a clean publication of success.
+// exit follows it unchanged. A run that left write-credential material or a fetch's staging
+// directory on disk may NOT exit zero whatever it published: that is a typed, located refusal
+// naming the residue AND what the publication decided, so nothing true is discarded in either
+// direction -- the reader learns both that the object is durable and that cleanup is owed. It is
+// not a fallback: there is no arm here that answers success for anything but a clean publication
+// of success.
 fn residue_cause_text(c: WriteCredentialCustody) -> String {
   match c {
     WriteCredentialShredded => ""
-    WriteCredentialResidueRemains { cause: r } => r as String
+    WriteCredentialResidueRemains { cause: r } => "write credential material may remain: " + (r as String)
+  }
+}
+
+fn staging_residue_text(s: R2StagingCustody) -> String {
+  match s {
+    R2StagingNotCreated => ""
+    R2StagingRemoved => ""
+    R2StagingResidue { path: p } => "the origin fetch's staging directory was not removed: " + (p as String)
   }
 }
 
@@ -304,12 +321,16 @@ fn credential_residue_causes(custodies: List<WriteCredentialCustody>) -> List<St
   custodies |> map(c => residue_cause_text(c: c)) |> filter(t => (t == "") == false)
 }
 
-fn process_exit_with_credential_custody(ending: JobEnding, custodies: List<WriteCredentialCustody>) -> ProcessExit {
-  let residue = credential_residue_causes(custodies: custodies)
+fn staging_residue_causes(stagings: List<R2StagingCustody>) -> List<String> {
+  stagings |> map(s => staging_residue_text(s: s)) |> filter(t => (t == "") == false)
+}
+
+fn process_exit_with_credential_custody(ending: JobEnding, custodies: List<WriteCredentialCustody>, stagings: List<R2StagingCustody>) -> ProcessExit {
+  let residue = [join(credential_residue_causes(custodies: custodies), "; "), join(staging_residue_causes(stagings: stagings), "; ")] |> filter(t => (t == "") == false)
   if residue.count() == 0 {
     process_exit_of_job_ending(ending: ending)
   } else {
-    let joined = fold(residue, init: "", f: (acc, r) => if acc == "" { r } else { acc + "; " + r })
-    exit_failure(reason: "write credential material may remain and requires cleanup (" + joined + "); publication: " + publication_exit_reason(publication: ending.publication))
+    let joined = join(residue, "; ")
+    exit_failure(reason: "residue remains and requires cleanup (" + joined + "); publication: " + publication_exit_reason(publication: ending.publication))
   }
 }
