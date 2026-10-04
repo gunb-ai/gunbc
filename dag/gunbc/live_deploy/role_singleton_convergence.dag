@@ -171,8 +171,8 @@ fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>,
     Present { value: cause } => HostRoleSingletonsUnobservable { host: host, cause: cause }
     Absent => HostRoleSingletonsRead {
       host: host,
-      holders: stores |> filter(s => match s.presence { EntryPresent => true  _ => false }) |> map(s => s.deployment),
-      broker_present: match broker { EntryPresent => true  _ => false },
+      holders: stores |> filter(s => match s.presence { EntryPresent => true  EntryAbsent => false  EntryPresenceIndeterminate { cause: _ } => false }) |> map(s => s.deployment),
+      broker_present: match broker { EntryPresent => true  EntryAbsent => false  EntryPresenceIndeterminate { cause: _ } => false },
     }
   }
 }
