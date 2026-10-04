@@ -59,6 +59,7 @@ import gunbc.live_deploy.spec {
   FabricStorageStoreDirectory,
   FabricStorageOwnershipMarker,
   EnsuredOwnershipMarker,
+  EnsuredAdoptionRecord,
   deployment_srv1_target,
   srv1_live_deployment_names,
   deployment_spec_for,
@@ -93,6 +94,8 @@ import gunbc.live_deploy.role_singleton_convergence {
   SightedBroker,
   FabricUnitMember,
   StoreMarkerMember,
+  AdoptionRecordMember,
+  spec_for_decision,
   HostRoleSingletonReading,
   HostRoleSingletonsRead,
   HostRoleSingletonsUnobservable,
@@ -116,6 +119,7 @@ import gunbc.fabric_storage_placement {
   fabric_storage_store_directories_for,
   fabric_storage_door_socket,
   fabric_storage_ownership_marker_path,
+  fabric_storage_adoption_record_path,
 }
 import gunbc.auth.approval_request_client {
   ApprovalLoopbackOriginResolved,
@@ -559,6 +563,36 @@ fn blocking_of(source: String, class: String) -> Int {
     Present { value: n } => n
     Absent => 0
   }
+}
+
+// THE LEGACY ADOPTION RECORD. Only the adoption plan writes it (Noop and Install plans do not), it
+// names the legacy subject and the adopting revision, and once it is observed a marker deleted from
+// the adopted store refuses as partial rather than being adopted again.
+fn spec_writes_adoption_record(spec: DeploymentSpec) -> Bool {
+  any(spec.steps, s => match s {
+    Dependency { step } => match step.subject {
+      EnsuredAdoptionRecord { path, content } =>
+        (path as String) == (fabric_storage_adoption_record_path(instance: srv1_live_dashboard_instance()) as String)
+          && string_contains(s: content as String, pattern: "deployment=srv1-daily-workspace")
+          && string_contains(s: content as String, pattern: "adopting_revision=feedface")
+      _ => false
+    }
+    ArtifactStep { step: _ } => false
+  })
+}
+
+test fn only_the_adoption_plan_writes_the_record_and_a_recorded_adoption_never_readopts() -> Bool {
+  let real = prod_role_actuated_realization()
+  let live = spec_of(realization: real, id: srv1_live_dashboard_instance().instance_id as String)
+  let adopt = decide(desired: real, readings: adopt_world())
+  let recorded_marker_deleted = [read_on(host: "srv1", sightings: concat(units_without_marker(host: "srv1", d: srv1_daily_workspace_deployment), [
+    SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: AdoptionRecordMember },
+  ])), read_on(host: "srv2", sightings: [])]
+  count(live) == 1
+    && all(live, s => spec_writes_adoption_record(spec: spec_for_decision(spec: s, decision: adopt, revision: "feedface" as NonEmptyStr)))
+    && all(live, s => !spec_writes_adoption_record(spec: spec_for_decision(spec: s, decision: decide(desired: real, readings: srv1_holds()), revision: "feedface" as NonEmptyStr)))
+    && all(live, s => !spec_writes_adoption_record(spec: s))
+    && refused_with(c: decide(desired: real, readings: recorded_marker_deleted), label: "partial")
 }
 
 test fn no_outside_module_can_mint_an_admission_or_state_a_legacy_standing() -> Bool {

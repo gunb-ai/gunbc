@@ -82,6 +82,14 @@ fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // store root, auth state and door directories are Ensured and no retract removes them, so a unit file
 // alone cannot say whether a host holds a store; the marker can, and the role-singleton observation
 // reads it (gunbc.live_deploy.role_singleton_convergence).
+// THE LEGACY ADOPTION RECORD, beside the marker in the same store root: written once, by the apply
+// that adopts the one pre-marker realization (gunbc.live_deploy.role_singleton_convergence
+// AdoptUnmarkedHolder), and read back by every later observation, so a marker deleted after the
+// adoption reads as partial state rather than as a realization still waiting to be adopted.
+fn fabric_storage_adoption_record_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_instance_child(root: dashboard_instance_fabric_storage_root(instance: instance), child: join([".gunbc-legacy-adoption-", instance.instance_id as String], "")) as String as NonEmptyStr
+}
+
 fn fabric_storage_ownership_marker_path(instance: HostDashboardInstance) -> NonEmptyStr {
   dashboard_ownership_marker_in(root: dashboard_instance_fabric_storage_root(instance: instance), instance_id: instance.instance_id) as String as NonEmptyStr
 }

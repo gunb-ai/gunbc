@@ -1427,6 +1427,10 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredOwnershipMarker { path, owner } => [
       deploy_raw(command: install_file_owned_command(mode: "0644" as NonEmptyStr, owner: owner, group: owner, source: "/dev/null", dest: path as String)),
     ]
+    EnsuredAdoptionRecord { path, content } => [
+      deploy_raw(command: deploy_stage_write_command(stage_name: "legacy-adoption-record", content: content as String)),
+      deploy_raw(command: deploy_stage_install_command(stage_name: "legacy-adoption-record", mode: install_file_shared_mode, dest: path as String)),
+    ]
   }
 }
 

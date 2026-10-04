@@ -68,7 +68,7 @@ import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.live_deploy.role_singleton_convergence {
-  assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
+  assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_spec_for_candidate, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
   RoleSingletonNoop, RoleSingletonInstall, AdoptUnmarkedHolder, RoleSingletonRefused, RoleSingletonConvergence,
 }
@@ -283,7 +283,7 @@ fn live_deploy_apply_mutation_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_member_plan_via_transport(spec: admitted_spec(admission: admission), candidate: candidate, transport: transport, access: access)
+  live_deploy_apply_member_plan_via_transport(spec: admitted_spec_for_candidate(admission: admission, revision: candidate.revision as String as NonEmptyStr), candidate: candidate, transport: transport, access: access)
 }
 
 // THE PLAN IS DERIVED FROM THE HOST BEFORE THE MUTATION IS BUILT (gunbc.live_deploy.member_observe):
@@ -435,7 +435,7 @@ fn live_deploy_apply_admitted_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let spec = admitted_spec(admission: admission)
+  let spec = admitted_spec_for_candidate(admission: admission, revision: candidate.revision as String as NonEmptyStr)
   let mutation = live_deploy_apply_mutation_via_transport(
     admission: admission,
     candidate: candidate,

@@ -22,12 +22,16 @@ import gunbc.roadmap_dashboard_instance {
 import gunbc.host_effect { HostEffectTransport, SshShell }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
+  DeploymentDependencyStep,
+  Dependency,
+  FabricStorageLegacyAdoptionRecord,
+  EnsuredAdoptionRecord,
   HoldsProdRoleSingletons,
   HoldsNoRoleSingleton,
   deployment_fabric_storage_unit_path,
   gunbc_approval_broker_unit_path,
 }
-import gunbc.fabric_storage_placement { fabric_storage_ownership_marker_path }
+import gunbc.fabric_storage_placement { fabric_storage_ownership_marker_path, fabric_storage_adoption_record_path }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization }
 import gunbc.live_deploy.member_observe {
   ObservationArm,
@@ -68,6 +72,7 @@ type RoleSingletonMember
   = BrokerUnitMember
   | FabricUnitMember
   | StoreMarkerMember
+  | AdoptionRecordMember
 
 // ONE SIGHTING, KEPT AT (host, deployment, member) GRAIN until multiplicity is adjudicated -- never
 // deduplicated by DeploymentId first, which is how the same deployment on two hosts, or a deployment
@@ -167,9 +172,10 @@ type RoleSingletonObservation
 
 fn member_eq(a: RoleSingletonMember, b: RoleSingletonMember) -> Bool {
   match a {
-    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false }
-    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false }
-    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true }
+    BrokerUnitMember => match b { BrokerUnitMember => true  FabricUnitMember => false  StoreMarkerMember => false  AdoptionRecordMember => false }
+    FabricUnitMember => match b { BrokerUnitMember => false  FabricUnitMember => true  StoreMarkerMember => false  AdoptionRecordMember => false }
+    StoreMarkerMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => true  AdoptionRecordMember => false }
+    AdoptionRecordMember => match b { BrokerUnitMember => false  FabricUnitMember => false  StoreMarkerMember => false  AdoptionRecordMember => true }
   }
 }
 
@@ -313,7 +319,7 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
           } else {
             let missing = missing_members(r: r)
             if count(missing) == 0 { RoleSingletonNoop }
-            else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) {
+            else if count(missing) == 1 && all(missing, m => member_eq(a: m, b: StoreMarkerMember)) && !any(r.members, x => member_eq(a: x, b: AdoptionRecordMember)) {
               match legacy_standing_for(legacy: legacy, deployment: r.deployment, host: r.host, marker_path: fabric_storage_ownership_marker_path(instance: holder.instance)) {
                 Present { value: standing } => AdoptUnmarkedHolder { holder: holder, host: r.host, standing: standing, retirement: adopt_unmarked_holder_frontier }
                 Absent => RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
@@ -355,6 +361,54 @@ fn admitted_spec(admission: RoleSingletonAdmission) -> DeploymentSpec {
 
 fn admitted_decision(admission: RoleSingletonAdmission) -> RoleSingletonConvergence {
   admission.decision
+}
+
+// THE LEGACY ADOPTION RECORD, its own type: the marker says WHO OWNS the store; this says THAT the one
+// legacy adoption happened, naming the legacy subject and the revision that adopted it. Written only
+// by the adopting apply (admitted_spec_for_candidate appends it for AdoptUnmarkedHolder and for nothing
+// else), and read back as AdoptionRecordMember: with the record present, a missing marker is partial
+// state and refuses -- it is never adopted a second time.
+type LegacyAdoptionRecord {
+  deployment: DeploymentId
+  host: NonEmptyStr
+  marker_path: NonEmptyStr
+  adopting_revision: NonEmptyStr
+}
+
+fn legacy_adoption_record_text(r: LegacyAdoptionRecord) -> NonEmptyStr {
+  join(["deployment=", r.deployment.name as String, "\nhost=", r.host as String, "\nmarker=", r.marker_path as String, "\nadopting_revision=", r.adopting_revision as String, "\n"], "") as NonEmptyStr
+}
+
+// THE SPEC THE APPLY RUNS, from the token and the candidate it installs. For every decision but
+// AdoptUnmarkedHolder it is the admitted spec unchanged; for an adoption it is that spec with the
+// legacy adoption record appended, written after the marker so an interrupted adoption leaves a marked
+// realization (Noop next time) rather than a recorded one without its marker.
+fn admitted_spec_for_candidate(admission: RoleSingletonAdmission, revision: NonEmptyStr) -> DeploymentSpec {
+  spec_for_decision(spec: admission.spec, decision: admission.decision, revision: revision)
+}
+
+// The pure half, so a witness can read the adoption plan without minting a token.
+fn spec_for_decision(spec: DeploymentSpec, decision: RoleSingletonConvergence, revision: NonEmptyStr) -> DeploymentSpec {
+  match decision {
+    AdoptUnmarkedHolder { holder, host, standing, retirement: _ } => {
+      let record = LegacyAdoptionRecord { deployment: standing.deployment, host: host, marker_path: standing.marker_path, adopting_revision: revision }
+      DeploymentSpec {
+        target: spec.target,
+        steps: concat(spec.steps, [Dependency { step: DeploymentDependencyStep {
+          kind: FabricStorageLegacyAdoptionRecord,
+          subject: EnsuredAdoptionRecord { path: fabric_storage_adoption_record_path(instance: holder.instance), content: legacy_adoption_record_text(r: record) },
+        } }]),
+        service: spec.service,
+        approval_broker: spec.approval_broker,
+        names: spec.names,
+        instance_id: spec.instance_id,
+        role_singletons: spec.role_singletons,
+      }
+    }
+    RoleSingletonNoop => spec
+    RoleSingletonInstall { holder: _ } => spec
+    RoleSingletonRefused { cause: _ } => spec
+  }
 }
 
 fn stale(spec: DeploymentSpec, detail: String) -> RoleSingletonAdmissionStanding {
@@ -460,6 +514,7 @@ fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>,
     rows |> flat_map(r => [
       MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) },
       MemberProbe { deployment: Present { value: r.instance.deployment }, member: StoreMarkerMember, presence: entry_presence(arm: arm, path: fabric_storage_ownership_marker_path(instance: r.instance) as String) },
+      MemberProbe { deployment: Present { value: r.instance.deployment }, member: AdoptionRecordMember, presence: entry_presence(arm: arm, path: fabric_storage_adoption_record_path(instance: r.instance) as String) },
     ]),
   )
   match probes |> flat_map(p => match presence_cause(p: p.presence) { Present { value: c } => [c]  Absent => [] }) |> first {

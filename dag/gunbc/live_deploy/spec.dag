@@ -121,6 +121,7 @@ type EnsuredDependencyKind =
   | CodexRuntimeReleaseDirectory
   | FabricStorageStoreDirectory
   | FabricStorageOwnershipMarker
+  | FabricStorageLegacyAdoptionRecord
   | ProviderStateRootDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
@@ -147,6 +148,7 @@ type EnsuredSubject
   | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
   | EnsuredManagedHostDirectory { admission: ManagedDirectoryAdmission }
   | EnsuredOwnershipMarker { path: NonEmptyStr, owner: NonEmptyStr }
+  | EnsuredAdoptionRecord { path: NonEmptyStr, content: NonEmptyStr }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
@@ -154,6 +156,7 @@ fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
     EnsuredHostDirectory { path, owner } => path
     EnsuredManagedHostDirectory { admission } => managed_directory_admission_path(a: admission) as String as NonEmptyStr
     EnsuredOwnershipMarker { path, owner: _ } => path
+    EnsuredAdoptionRecord { path, content: _ } => path
   }
 }
 
