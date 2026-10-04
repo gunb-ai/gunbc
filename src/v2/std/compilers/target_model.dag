@@ -168,7 +168,7 @@ import v2.std.node {
   production_edge_label,
   Bind,
   Loop,
-  PositionalPlusOneNamedEdges,
+  PositionalPlusNamedMarkerEdges,
   PositionalPrefixThenLabeledEdges
 }
 import v2.std.witness {
