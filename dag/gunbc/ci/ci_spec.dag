@@ -806,6 +806,16 @@ data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "run_object_write",
 }
 
+data gunbc_ci_r2_workspace_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_workspace_object_read",
+}
+
+data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_workspace_object_write",
+}
+
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
 // this repository's ordering law is what keeps them apart: an observation reports a host's standing
 // and repairs nothing, so it may run anywhere at any time; a converge builds an image on the host it
@@ -1305,6 +1315,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_r2_bucket_ensure_target,
     gunbc_ci_r2_bucket_admin_mint_target,
     gunbc_ci_r2_object_write_mint_target,
+    gunbc_ci_r2_workspace_object_read_mint_target,
+    gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
@@ -2574,6 +2586,26 @@ fn gunbc_ci_r2_object_write_mint_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_r2_object_write_mint_target.entry,
     function: gunbc_ci_r2_object_write_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_workspace_object_read_mint_target.entry,
+    function: gunbc_ci_r2_workspace_object_read_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
+    function: gunbc_ci_r2_workspace_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
   )
