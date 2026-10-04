@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_event_carrier
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, GitRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
 import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
@@ -179,21 +179,37 @@ fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsur
 // Every operation owns its worktree. A concurrent read cannot reset a writer's index or FETCH_HEAD.
 // The remote publication is conditional on the EXACT fetched commit, not merely fast-forward.
 // The issue-parent decision and operation receipt are made inside that same immutable snapshot.
-// A SNAPSHOT'S PATH SAYS WHOSE IT IS. Every private snapshot of one carrier layout is created under
-// that layout's own namespace: a fixed stem, then the layout's long-lived worktree path with its
-// separators folded (an underscore is doubled first, so two different worktree paths never fold to
-// one token), then a dot. The worktree path is per instance, so the namespace is per instance, and
-// the census of one instance (gunbc.roadmap.roadmap_event_snapshot_census) selects exactly the
-// snapshots that instance's operations created -- not those of another instance sharing the
-// repository. The mktemp template is the namespace and mktemp's placeholder, nothing else.
+// A SNAPSHOT'S PATH SAYS WHOSE IT IS. Every private snapshot of one carrier layout is created at
+// stem, then a fixed-width structural digest of the layout's complete long-lived worktree path,
+// then a dot, then mktemp's suffix. The worktree path is per instance, so the namespace is per
+// instance. The digest is over the whole path and has one width, so two worktree paths that differ
+// anywhere have different namespaces, no namespace is a prefix of another, and an instance root of
+// any length costs the same one filename component.
+//
+// OWNERSHIP IS THE WHOLE SHAPE, not a prefix: a path is one of this layout's snapshots only when it
+// is the namespace followed by exactly the suffix mktemp writes in place of the template's
+// placeholder (roadmap_event_snapshot_path_owned). The census of one instance
+// (gunbc.roadmap.roadmap_event_snapshot_census) selects by that, so a worktree someone registered
+// at a longer path beginning with the namespace is not counted as a snapshot.
 data roadmap_event_snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
+data roadmap_event_snapshot_placeholder: String = "XXXXXXXXXX"
 
 fn roadmap_event_snapshot_namespace(layout: RoadmapEventCarrierLayout) -> String {
-  join([roadmap_event_snapshot_stem, replace(replace(layout.worktree as String, "_", "__"), "/", "_"), "."], "")
+  join([
+    roadmap_event_snapshot_stem,
+    content_hash_tagged_structural(tag: "roadmap-event-snapshot-namespace" as NonEmptyStr, payload: content_hash_atom(value: layout.worktree as String as NonEmptyStr)).digest as String,
+    ".",
+  ], "")
 }
 
 fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePath {
-  concat(roadmap_event_snapshot_namespace(layout: layout), "XXXXXXXXXX") as FilePath
+  concat(roadmap_event_snapshot_namespace(layout: layout), roadmap_event_snapshot_placeholder) as FilePath
+}
+
+fn roadmap_event_snapshot_path_owned(namespace: String, path: String) -> Bool {
+  starts_with(s: path, prefix: namespace)
+    && string_length(s: path) == string_length(s: namespace) + string_length(s: roadmap_event_snapshot_placeholder)
+    && all((path |> chars).skip(n: string_length(s: namespace)), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
 }
 
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }

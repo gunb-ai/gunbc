@@ -17,15 +17,16 @@ import extdeps.git.worktree_enumeration {
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_namespace,
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_snapshot_namespace, roadmap_event_snapshot_path_owned,
   carrier_exec, CarrierExecOk, CarrierExecFailed,
 }
 
 // THE CENSUS OF ONE INSTANCE'S EVENT-LOG SNAPSHOT WORKTREES. Every carrier operation works in a
 // private worktree created under its layout's namespace
 // (gunbc.roadmap.roadmap_event_carrier roadmap_event_snapshot_namespace) and removes it. This
-// census reads the repository's own registry of worktrees and keeps the ones in ONE layout's
-// namespace, so its subject is one instance: its receipt is per instance and so is the population
+// census reads the repository's own registry of worktrees and keeps the ones whose whole path is
+// a snapshot path of ONE layout's namespace (roadmap_event_snapshot_path_owned), so its subject is
+// one instance: its receipt is per instance and so is the population
 // it describes, even where two instances share a repository.
 //
 // WHAT IT ESTABLISHES, AND WHAT IT DOES NOT. It establishes which of the instance's snapshots are
@@ -47,7 +48,7 @@ type RoadmapSnapshotCensus
 fn roadmap_snapshot_census_of(namespace: String, observation: GitWorktreeSetObservation) -> RoadmapSnapshotCensus {
   match observation {
     GitWorktreeSetObserved { primary: _, linked } =>
-      SnapshotCensusRead { snapshots: map(filter(linked, w => starts_with(s: w.path, prefix: namespace)), w => w.path) }
+      SnapshotCensusRead { snapshots: map(filter(linked, w => roadmap_event_snapshot_path_owned(namespace: namespace, path: w.path)), w => w.path) }
     GitWorktreeSetReadRefused { exit_code, stderr } =>
       SnapshotCensusUnreadable { reason: join(["git worktree list exited ", to_string(value: exit_code), ": ", trim(stderr)], "") }
     GitWorktreeSetUndecodable { entry_index, raw_entry: _, reason } =>
@@ -108,12 +109,13 @@ fn roadmap_snapshot_census_receipt(observed_at: String, namespace: String, snaps
 }
 
 // WHETHER A RECEIPT IS ONE THIS CENSUS COULD HAVE WRITTEN FOR THIS NAMESPACE, as the sentence that
-// says why not, and none when it is. A receipt for another namespace, a path outside the namespace,
+// says why not, and none when it is. A receipt for another namespace, a path that is not a
+// snapshot path of the namespace,
 // a path listed twice, and a present-across list that is not exactly the current population the
 // previous one also held are each refused: a file that disagrees with itself is not a census.
 fn snapshot_census_population_fault(label: String, namespace: String, paths: List<String>) -> String? {
-  match filter(paths, p => !starts_with(s: p, prefix: namespace)).first() {
-    Present { value: outside } => Present { value: join(["the snapshot census receipt ", label, " holds ", outside, ", which is outside the namespace ", namespace], "") }
+  match filter(paths, p => !roadmap_event_snapshot_path_owned(namespace: namespace, path: p)).first() {
+    Present { value: outside } => Present { value: join(["the snapshot census receipt ", label, " holds ", outside, ", which is not a snapshot path of the namespace ", namespace], "") }
     Absent =>
       match first_duplicate_by_key(paths, p => p) {
         Present { value: twice } => Present { value: join(["the snapshot census receipt ", label, " holds ", twice, " more than once"], "") }
