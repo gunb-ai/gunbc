@@ -1,0 +1,19 @@
+module v2.test.long.variant_field_infer_round_trip
+
+// THE ONE REAL-PATH INHABITANCE CLAIM over the variant round-trip fixture. The probe module's
+// controls (v2.test.claim.variant_field_infer_probe) read a warm producer, so each is a value read;
+// this claim runs the pipeline in its own claim frame, which is the billed work -- a
+// new-witness-budget bill, reported rather than decided here. It is the row that goes red if the
+// warm lane ever short-circuits the route the controls are supposed to witness.
+//
+// The fixture is the enrolled variant_field_native_binding claims' own shape: a positional
+// construction, a variant-scrutinee match over the closed coproduct, and a binder read from the
+// variant's payload. On the rostered refusal (gunbc.recurring_failure_mode
+// native_infer_accepts_only_bool_and_int_match_scrutinees) this fixture refused
+// infer_match_scrutinee_not_bool; the claims it feeds are the evidence the retirement cites.
+
+import v2.test.claim.variant_field_infer_probe { vfp_infers, vfp_reading, vfp_round_trip_src }
+
+test fn vfp_the_round_trip_fixture_infers_holds() -> Bool {
+  vfp_infers(reading: vfp_reading(src: vfp_round_trip_src))
+}

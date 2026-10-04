@@ -1,7 +1,14 @@
 module v2.test.claim.variant_field_infer_probe
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.compiler.infer {
+  ConstructIsRecord,
+  ConstructIsVariantArm,
+  ConstructNotARecord,
+  infer,
+  infer_record_construct_read,
+  inferred_facts_resolved_type
+}
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
 import v2.std.witness { Holds, Violates }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -27,7 +34,6 @@ import v2.std.node {
 }
 import v2.compiler.inferred_tree { ObligatedInferredTree }
 import v2.std.node_query { construct_tag_optional }
-import v2.std.symbol_index { SymbolIndex }
 import v2.std.qualified_name { qualified_name_init }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -115,14 +121,14 @@ fn vfp_type_name(t: Node) -> Symbol {
   }
 }
 
-fn vfp_construction_tag_carrier(index: SymbolIndex, n: Optional<Node>) -> Symbol {
+fn vfp_construction_tag_carrier(n: Optional<Node>) -> Symbol {
   match n {
     Absent => ^vfp_subject_absent
     Present { value: node } =>
       match construct_tag_optional(n: node) {
         Absent => ^vfp_tag_unresolved
         Present { value: reference } =>
-          match infer_construct_variant_declaring_path(index: index, reference: reference) {
+          match declaration_reference_path_optional(node: reference) {
             Absent => ^vfp_tag_unresolved
             Present { value: p } =>
               match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
@@ -160,6 +166,27 @@ fn vfp_infers(reading: VfpReading) -> Bool {
   }
 }
 
+// THE CONSTRUCT READ, DECODED: what infer_record_construct_read answers for the fixture's
+// construction, read directly on the resolved tree. The variant arm is named by its declaring
+// path's last segment (^Boxed when the read mints the variant row); the sentinels say where the
+// read stopped instead. TEMPORARY decode instrument: goes out with the RFM retirement once the
+// per-identity evidence is recorded.
+fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.arm_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_arm_path_absent
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
 // WHAT THE FIXTURE ESTABLISHES, decided once per program by one nullary producer enrolled WARM in
 // v2.workflow.floor_pure_producer_share. `reasons` is the whole chain in order: a resolve or infer
 // refusal's reasons, or `^infers` followed by the accepted inference's advisories. A FACT field is
@@ -173,6 +200,7 @@ type VfpReading {
   construction_tag_carrier: Symbol
   match_fact: Symbol
   arm_body_fact: Symbol
+  construct_read: Symbol
 }
 
 // THE ROUND-TRIP FIXTURE, the enrolled variant_field_native_binding claims' own shape: a positional
@@ -197,7 +225,8 @@ fn vfp_reading(src: String) -> VfpReading {
       construction_fact: r.head.reason,
       construction_tag_carrier: ^vfp_refused_at_resolve,
       match_fact: r.head.reason,
-      arm_body_fact: r.head.reason
+      arm_body_fact: r.head.reason,
+      construct_read: ^vfp_refused_at_resolve
     }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
@@ -205,11 +234,11 @@ fn vfp_reading(src: String) -> VfpReading {
           reasons: vfp_reasons(r: r),
           construction_fact: vfp_last(xs: vfp_reasons(r: r)),
           construction_tag_carrier: vfp_construction_tag_carrier(
-            index: resolved.symbol_index,
             n: vfp_find_construction(n: resolved.root)
           ),
           match_fact: vfp_last(xs: vfp_reasons(r: r)),
-          arm_body_fact: vfp_last(xs: vfp_reasons(r: r))
+          arm_body_fact: vfp_last(xs: vfp_reasons(r: r)),
+          construct_read: vfp_construct_read_decode(resolved: resolved)
         }
         Accepted { value: inferred, diagnostics: d } => VfpReading {
           reasons: match d {
@@ -221,7 +250,6 @@ fn vfp_reading(src: String) -> VfpReading {
             subject: vfp_find_construction(n: resolved.root)
           ),
           construction_tag_carrier: vfp_construction_tag_carrier(
-            index: resolved.symbol_index,
             n: vfp_find_construction(n: resolved.root)
           ),
           match_fact: vfp_fact_in(
@@ -234,7 +262,8 @@ fn vfp_reading(src: String) -> VfpReading {
               Absent => Absent
               Present { value: m } => vfp_first_arm_body_of(m: m)
             }
-          )
+          ),
+          construct_read: vfp_construct_read_decode(resolved: resolved)
         }
       }
   }
@@ -244,12 +273,12 @@ fn vfp_reading(src: String) -> VfpReading {
 // the carrier's declaration, the match types from its arms, and the arm's binder types from the
 // variant's payload field. Together they are the positive control for the native route's
 // variant-scrutinee inference: each names one stage, so a regression lands on one row, not four.
-test fn vfp_the_round_trip_fixture_infers_holds() -> Bool {
-  vfp_infers(reading: vfp_round_trip_reading())
-}
-
 test fn vfp_the_construction_types_as_its_carrier_holds() -> Bool {
   vfp_round_trip_reading().construction_fact == ^Seal
+}
+
+test fn vfp_the_construct_read_names_the_variant_holds() -> Bool {
+  vfp_round_trip_reading().construct_read == ^Boxed
 }
 
 test fn vfp_the_construction_tag_resolves_to_its_carrier_holds() -> Bool {
@@ -269,145 +298,11 @@ test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
 test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
   vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
 }
-// ---- TEMPORARY BISECTION LADDER (deleted once the route gap is fixed): each row asserts one
-// ---- property of the round-trip reading so CI's adjudication decodes the refusal chain into
-// ---- pass/fail bits instead of a single Bool(false).
-test fn vfp_rt_chain_has_arrow_body_uninhabited_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
-}
-
-test fn vfp_rt_chain_has_grounding_not_derived_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_grounding_not_derived)
-}
-
-test fn vfp_rt_chain_has_undecidable_argument_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
-}
-
-test fn vfp_rt_chain_has_non_exhaustive_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_match_non_exhaustive)
-}
-
-test fn vfp_rt_chain_has_lexical_reference_unrecorded_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_reason_lexical_reference_unrecorded)
-}
-
-test fn vfp_rt_chain_has_match_scrutinee_not_bool_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_match_scrutinee_not_bool)
-}
-
-test fn vfp_rt_chain_has_relation_coverage_reason_holds() -> Bool {
-  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_reason_match_arms_do_not_cover_scrutinee)
-}
-
-test fn vfp_rt_construction_fact_is_underived_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().construction_fact == ^vfp_underived
-}
-
-test fn vfp_rt_construction_fact_is_absent_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().construction_fact == ^vfp_subject_absent
-}
-
-test fn vfp_rt_construction_fact_is_no_facts_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().construction_fact == ^vfp_no_facts
-}
-
-test fn vfp_rt_match_fact_is_underived_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().match_fact == ^vfp_underived
-}
-
-test fn vfp_rt_match_fact_is_absent_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().match_fact == ^vfp_subject_absent
-}
-
-test fn vfp_rt_match_fact_is_no_facts_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().match_fact == ^vfp_no_facts
-}
-
-test fn vfp_rt_arm_fact_is_underived_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().arm_body_fact == ^vfp_underived
-}
-
-test fn vfp_rt_arm_fact_is_absent_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().arm_body_fact == ^vfp_subject_absent
-}
-
-test fn vfp_rt_arm_fact_is_no_facts_sentinel_holds() -> Bool {
-  vfp_round_trip_reading().arm_body_fact == ^vfp_no_facts
-}
-
-test fn vfp_rt_tag_carrier_refused_at_resolve_holds() -> Bool {
-  vfp_round_trip_reading().construction_tag_carrier == ^vfp_refused_at_resolve
-}
-
-test fn vfp_rt_tag_carrier_is_seal_holds() -> Bool {
-  vfp_round_trip_reading().construction_tag_carrier == ^Seal
-}
-// ---- BISECTION: the construction route alone (no match) -- separates the construct-read gap from
-// ---- the coproduct-match gap. Same temporary status as the ladder above.
-data vfp_construction_only_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn make_boxed() -> Seal {\n  Boxed(41)\n}"
-
-fn vfp_construction_only_reading() -> VfpReading { vfp_reading(src: vfp_construction_only_src) }
-
-test fn vfp_co_the_fixture_infers_holds() -> Bool {
-  vfp_infers(reading: vfp_construction_only_reading())
-}
-
-test fn vfp_co_chain_has_arrow_body_uninhabited_holds() -> Bool {
-  vfp_reports(reading: vfp_construction_only_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
-}
-
-test fn vfp_co_chain_has_undecidable_argument_holds() -> Bool {
-  vfp_reports(reading: vfp_construction_only_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
-}
-
-test fn vfp_co_the_construction_types_as_its_carrier_holds() -> Bool {
-  vfp_construction_only_reading().construction_fact == ^Seal
-}
-
-test fn vfp_co_the_construction_tag_resolves_to_its_carrier_holds() -> Bool {
-  vfp_construction_only_reading().construction_tag_carrier == ^Seal
-}
-
-// ---- BISECTION: the match route alone (no construction fn) -- the mirror separation.
-data vfp_match_only_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn seal_unbox(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}"
-
-fn vfp_match_only_reading() -> VfpReading { vfp_reading(src: vfp_match_only_src) }
-
-test fn vfp_mo_the_fixture_infers_holds() -> Bool {
-  vfp_infers(reading: vfp_match_only_reading())
-}
-
-test fn vfp_mo_chain_has_arrow_body_uninhabited_holds() -> Bool {
-  vfp_reports(reading: vfp_match_only_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
-}
-
-test fn vfp_mo_chain_has_undecidable_argument_holds() -> Bool {
-  vfp_reports(reading: vfp_match_only_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
-}
-
-test fn vfp_mo_chain_has_non_exhaustive_holds() -> Bool {
-  vfp_reports(reading: vfp_match_only_reading(), reason: ^infer_match_non_exhaustive)
-}
-
-test fn vfp_mo_the_match_types_from_its_arms_holds() -> Bool {
-  vfp_match_only_reading().match_fact == ^Int
-}
-
-test fn vfp_mo_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
-  vfp_match_only_reading().arm_body_fact == ^Int
-}
-// ---- BISECTION: verdict agreement between the full fixture and each half. The full fixture is
-// ---- known to refuse (the infers row above fails), so a PASS here means the half refuses too and
-// ---- a FAIL means the half infers. Same temporary status as the ladder.
-test fn vfp_rt_and_mo_agree_on_the_verdict_holds() -> Bool {
-  (vfp_infers(reading: vfp_round_trip_reading()) == vfp_infers(reading: vfp_match_only_reading()))
-}
-
-test fn vfp_rt_and_co_agree_on_the_verdict_holds() -> Bool {
-  (vfp_infers(reading: vfp_round_trip_reading()) == vfp_infers(reading: vfp_construction_only_reading()))
-}
-
-test fn vfp_mo_and_co_agree_on_the_verdict_holds() -> Bool {
-  (vfp_infers(reading: vfp_match_only_reading()) == vfp_infers(reading: vfp_construction_only_reading()))
+// THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
+// want of coverage, resolve has already bound the construction's tag to its variant's declaring
+// path -- the control separates the resolve binding (green on both sides of the fix) from the
+// infer facts (red on main, green here), and gives the partial reading its second consumer under
+// the warm-producer sharing conjunct.
+test fn vfp_the_partial_fixture_resolves_its_construction_tag_to_its_carrier_holds() -> Bool {
+  vfp_partial_reading().construction_tag_carrier == ^Seal
 }
