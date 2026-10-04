@@ -1496,7 +1496,14 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
   "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",
   "v2.test.claim.compiler.collection_callback_realization.ccr_all_binds_its_row",
-  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop"
+  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop",
+  // generic_formal_instantiation: each fixture is assembled and inferred once by a nullary producer; the
+  // claim reads the decided reason Symbol (v2.test.claim.compiler.generic_formal_instantiation).
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_not_a_list_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_two_instances_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_nested_mismatch_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_one_instance_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_nested_agrees_reason"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
