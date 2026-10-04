@@ -184,7 +184,8 @@ fn passwd_probe_for_user(user: ProcessOutcome) -> ProcessOutcome?
           transport: LocalExec,
         ) }
       }
-    _ => none
+    ProcessOutputAbsent => none
+    ProcessRefused { exit_code: _, stderr: _ } => none
   }
 }
 

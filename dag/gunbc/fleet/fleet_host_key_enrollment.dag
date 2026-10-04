@@ -496,7 +496,8 @@ fn pinned_config_content(existing: String, endpoints: String, fragment_path: Str
 fn cwd_capture_stdout(outcome: ProcessOutcome) -> String {
   match outcome {
     ProcessOutputPresent { text: t } => trim(s: t)
-    _ => ""
+    ProcessOutputAbsent => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
   }
 }
 
