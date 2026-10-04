@@ -69,7 +69,8 @@ fn program_assembly_emitted_contract_holds(inject_fault: Bool) -> Bool {
 // tried and does not change that: the floor still executed it as a newly enrolled claim under the
 // same budget.
 //
-// So this function carries no test marker and the floor does not execute it. ITS EXECUTING
+// So this function carries no test marker and the floor does not execute it, and the file is not
+// named *_test.dag, because a file so named must declare a floor claim and this one has none. ITS EXECUTING
 // CONSUMER IS THE SELF-HOST BEHAVIORAL RECEIPT: tools.self_host_curated_seed_linked_harness
 // cssl_driver_claim_runs names it by derivation from the roster row, and the receipt runs it
 // interpreted (gunbc run --claim-run executes a named Bool function and reports its verdict)
