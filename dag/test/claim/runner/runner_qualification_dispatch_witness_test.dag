@@ -18,7 +18,7 @@ import gunbc.runner_jit_mint { HostUnitSlotBinding }
 import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
 import gunbc.runner.runner_jit_perform { JitMintDispatch, JitCredentialDelivery, dispatch_jit_mint, receive_jit_mint }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels }
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, ephemeral_slot_unit }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome }
 import gunbc.runner.runner_qualification_dispatch {
   qualification_attempt_dispatch_input, qualification_dispatch_inputs, qualification_selected_workflow,
@@ -31,7 +31,7 @@ import gunbc.runner.runner_qualification_dispatch {
   hold_covers_subject,
   decide_qualification_run, QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused,
   RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunNotCompleted,
-  RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique, RunNeverReachedAttemptRunner,
+  RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique, RunNeverReachedAttemptRunner, RunRegisteredRunnerRanAnotherJob, RunFloorJobNotStarted,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -39,7 +39,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data attempt: NonEmptyStr = "q-1"
 data branch: NonEmptyStr = "main"
 data revision: CommitSha = "1111111111111111111111111111111111111111"
-data minted_runner: Int = 4242
 data floor_job_id: NonEmptyStr = "qualification-floor"
 
 // ── THE SUBJECT, THROUGH THE REAL MINT ──────────────────────────────────────────────────────────
@@ -114,7 +113,7 @@ test fn the_subject_binds_the_minted_runner_and_the_attempt_input() -> Bool {
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } =>
-      s.attempt == attempt && s.runner_id == minted_runner
+      s.attempt == attempt && (s.registration.name.value as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
         && (s.floor_job_name as String) == "qualification floor"
         && (s.host as String) == (h.host as String)
         && count(map_keys(qualification_dispatch_inputs(attempt: s.attempt))) == 1
@@ -146,8 +145,6 @@ fn slot_refuses(h: ManagedHost, slot_workflow: NonEmptyStr) -> Bool {
         QualificationSubjectRefused { refusal: SubjectSlotForAnotherWorkflow { slot_workflow: sw, qualification_workflow: _ } } => (sw as String) == (slot_workflow as String)
         _ => false
       }
-      Absent => false
-    }
     Absent => false
   }
 }
@@ -269,7 +266,7 @@ fn dispatched_run(attempt_n: Int) -> WorkflowRun {
   run(id: 77, attempt_n: attempt_n, event: "workflow_dispatch", path: qualification_workflow_path() as String, sha: revision, completed: true, concluded: true)
 }
 
-fn job(id: Int, name: String, runner_id: Int, started: Bool, attempt_n: Int) -> WorkflowJobRun {
+fn job(id: Int, name: String, runner: String, started: Bool, attempt_n: Int) -> WorkflowJobRun {
   WorkflowJobRun {
     id: id,
     run_id: 77,
@@ -278,16 +275,19 @@ fn job(id: Int, name: String, runner_id: Int, started: Bool, attempt_n: Int) -> 
     status: Completed,
     conclusion: Present { value: Success },
     labels: [attempt as String],
-    runner_id: Present { value: runner_id },
-    runner_name: Present { value: "fixture-runner" },
+    runner_name: Present { value: runner },
     created_at: Present { value: "2026-10-04T00:00:10Z" },
     started_at: if started { Present { value: "2026-10-04T00:01:00Z" } } else { none },
     completed_at: Present { value: "2026-10-04T00:50:00Z" },
   }
 }
 
-fn floor_on(runner_id: Int) -> WorkflowJobRun {
-  job(id: 1, name: "qualification floor", runner_id: runner_id, started: true, attempt_n: 1)
+fn floor_on(runner: String) -> WorkflowJobRun {
+  job(id: 1, name: "qualification floor", runner: runner, started: true, attempt_n: 1)
+}
+
+fn registered(s: QualificationDispatchSubject) -> String {
+  s.registration.name.value as String
 }
 
 fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
@@ -304,7 +304,7 @@ fn decide_run(s: QualificationDispatchSubject, r: WorkflowRun, js: WorkflowJobRu
 
 fn never_reached(v: QualificationRunVerdict) -> Bool {
   match v {
-    RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { minted_runner_id: m, observed_runner_id: _, observed_runner_name: _, started: _ } } => m == minted_runner
+    RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner: _, runner_names_seen: seen } } => count(seen) > 0
     _ => false
   }
 }
@@ -329,17 +329,23 @@ test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
-      (match decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: minted_runner)])) {
+      (match decide_jobs(s: s, js: jobs(js: [floor_on(runner: registered(s: s))])) {
         RunVerdictCollected { run: r, floor_job: f, conclusion: c } => r.id == 77 && f.id == 1 && (match c { Failure => true _ => false })
         _ => false
       })
-        && never_reached(v: decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: 99)])))
-        && never_reached(v: decide_jobs(s: s, js: jobs(js: [
-          job(id: 2, name: "helper", runner_id: minted_runner, started: true, attempt_n: 1),
-          floor_on(runner_id: 99),
-        ])))
-        && never_reached(v: decide_jobs(s: s, js: jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: false, attempt_n: 1)])))
-        && (match decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: minted_runner), job(id: 2, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 1)])) {
+        && never_reached(v: decide_jobs(s: s, js: jobs(js: [floor_on(runner: "another-runner-with-the-same-labels")])))
+        && (match decide_jobs(s: s, js: jobs(js: [
+          job(id: 2, name: "helper", runner: registered(s: s), started: true, attempt_n: 1),
+          floor_on(runner: "another-runner-with-the-same-labels"),
+        ])) {
+          RunVerdictRefused { refusal: RunRegisteredRunnerRanAnotherJob { registered_runner: _, job_name: n } } => n == "helper"
+          _ => false
+        })
+        && (match decide_jobs(s: s, js: jobs(js: [job(id: 1, name: "qualification floor", runner: registered(s: s), started: false, attempt_n: 1)])) {
+          RunVerdictRefused { refusal: RunFloorJobNotStarted { job_id: id } } => id == 1
+          _ => false
+        })
+        && (match decide_jobs(s: s, js: jobs(js: [floor_on(runner: registered(s: s)), job(id: 2, name: "qualification floor", runner: registered(s: s), started: true, attempt_n: 1)])) {
           RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: _, matching: m } } => m == 2
           _ => false
         })
@@ -360,18 +366,18 @@ test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
       Present { value: reg } => {
-  let floor = jobs(js: [floor_on(runner_id: minted_runner)])
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
     registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
+      let floor = jobs(js: [floor_on(runner: registered(s: s))])
       (match decide_run(s: s, r: dispatched_run(attempt_n: 2), js: floor) {
         RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: a } } => a == 2
         _ => false
       })
-        && mismatch(v: decide_run(s: s, r: dispatched_run(attempt_n: 1), js: jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 2)])))
+        && mismatch(v: decide_run(s: s, r: dispatched_run(attempt_n: 1), js: jobs(js: [job(id: 1, name: "qualification floor", runner: registered(s: s), started: true, attempt_n: 2)])))
         && mismatch(v: decide_run(s: s, r: run(id: 78, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: true), js: floor))
         && mismatch(v: decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "push", path: path, sha: revision, completed: true, concluded: true), js: floor))
         && mismatch(v: decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: ".github/workflows/witnesses.yml", sha: revision, completed: true, concluded: true), js: floor))
@@ -389,13 +395,13 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
       Present { value: reg } => {
-  let floor = jobs(js: [floor_on(runner_id: minted_runner)])
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
     registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
+      let floor = jobs(js: [floor_on(runner: registered(s: s))])
       (match decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: false, concluded: false), js: floor) {
         RunVerdictRefused { refusal: RunNotCompleted { status: InProgress } } => true
         _ => false

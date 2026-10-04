@@ -46,7 +46,7 @@ import gunbc.runner_throughput_qualification_route { QualificationInstrument, qu
 // THE SUBJECT IS SEALED AND ITS SCOPE IS FIXED BY CONSTRUCTION. QualificationDispatchSubject is
 // minted only by qualification_dispatch_subject_over, and only from:
 //   - the JIT registration the route minted and the credential delivered for that same slot -- so
-//     the attempt is the slot's own and the runner id is the one GitHub returned for it;
+//     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
 //     supplies its model as gunbc.fleet_converge_workflow fleet_converge_workflow, where the route's
@@ -100,7 +100,6 @@ type QualificationDispatchSubject sole_constructor {
   registration: JitRegistration
   host: HostIdentity
   attempt: NonEmptyStr
-  runner_id: Int
   branch: NonEmptyStr
   revision: CommitSha
   floor_job_name: NonEmptyStr
@@ -185,7 +184,7 @@ fn qualification_dispatch_subject_over(
   ]
 {
   match delivery {
-    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: runner_id } =>
+    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: _ } =>
       if delivered_slot != registration.slot {
         QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherSlot }
       } else {
@@ -210,7 +209,6 @@ fn qualification_dispatch_subject_over(
                         registration: registration,
                         host: h.host.host.host,
                         attempt: h.attempt,
-                        runner_id: runner_id,
                         branch: branch,
                         revision: revision,
                         floor_job_name: job_display_name(job: job),
@@ -347,10 +345,10 @@ fn dispatch_qualification_floor(
 // its conclusion is no longer the dispatch's.
 //
 // THE RUNNER IS JOINED BY IDENTITY, NOT BY LABEL. Two runners can carry the same labels, and a
-// helper job on the attempt's runner says nothing about where the floor ran. So the collection finds
-// THE floor job by the name the subject fixed and requires its runner_id to be the one GitHub
-// returned when the registration was minted, and that it started. Anything else is
-// RunNeverReachedAttemptRunner, carrying what was observed.
+// helper job on the attempt's runner says nothing about where the floor ran. So the collection takes
+// the one job whose runner_name is the registration's minted name (job_ran_on), and requires it to
+// be the floor job the subject fixed, and to have started. An ephemeral JIT runner takes exactly one
+// job, so no job on it, several, or a different job are each a typed refusal carrying what was seen.
 //
 // THE CONCLUSION IS READ BACK AND CARRIED, NOT FILTERED: a failed floor on the attempt's runner is
 // still a run of this host. The collected payload keeps the sealed dispatch and the whole observed
@@ -367,7 +365,9 @@ type QualificationRunRefusal
   | RunJobsUnreadable { performance: RestExchangePerformance }
   | RunJobsTruncated { returned: Int, total: Int }
   | RunFloorJobNotUnique { floor_job_name: NonEmptyStr, matching: Int }
-  | RunNeverReachedAttemptRunner { minted_runner_id: Int, observed_runner_id: Int?, observed_runner_name: String?, started: Bool }
+  | RunNeverReachedAttemptRunner { registered_runner: NonEmptyStr, runner_names_seen: List<String> }
+  | RunRegisteredRunnerRanAnotherJob { registered_runner: NonEmptyStr, job_name: String }
+  | RunFloorJobNotStarted { job_id: Int }
 
 // INSTRUMENT EXTRACTION IS A DECLARED FRONTIER, carried on the collected arm as the instruments the
 // run was read for and not yet extracted from (qualification_instrument_extraction_frontier_rows).
@@ -396,8 +396,15 @@ fn optional_text_is(o: String?, expected: String) -> Bool {
   match o { Present { value: v } => v == expected Absent => false }
 }
 
-fn optional_int_is(o: Int?, expected: Int) -> Bool {
-  match o { Present { value: v } => v == expected Absent => false }
+// THE ONE JOIN FROM A JOB TO A JIT REGISTRATION: the runner GitHub reports took the job is the
+// name the authorized mint fixed (gunbc.runner.runner_jit_deregistration JitRegistration name).
+// Labels cannot make this join -- two runners can carry identical labels.
+fn job_ran_on(job: WorkflowJobRun, runner_name: NonEmptyStr) -> Bool {
+  optional_text_is(o: job.runner_name, expected: runner_name as String)
+}
+
+fn job_runner_name_seen(job: WorkflowJobRun) -> String {
+  match job.runner_name { Present { value: n } => n Absent => "(no runner assigned)" }
 }
 
 fn job_started(job: WorkflowJobRun) -> Bool {
@@ -412,23 +419,19 @@ type QualificationRunVerdict
   | RunVerdictRefused { refusal: QualificationRunRefusal }
 
 fn decide_floor_job(subject: QualificationDispatchSubject, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
-  let floors = jobs |> filter(j => j.name == (subject.floor_job_name as String))
-  match first(floors) {
-    Absent => RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: 0 } }
-    Present { value: floor } =>
-      if count(floors) != 1 {
-        RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: count(floors) } }
-      } else if optional_int_is(o: floor.runner_id, expected: subject.runner_id) && job_started(job: floor) {
-        RunVerdictCollected { run: run, floor_job: floor, conclusion: conclusion }
+  let registered = subject.registration.name.value
+  let on_runner = jobs |> filter(j => job_ran_on(job: j, runner_name: registered))
+  match first(on_runner) {
+    Absent => RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner: registered, runner_names_seen: jobs |> map(j => job_runner_name_seen(job: j)) } }
+    Present { value: job } =>
+      if count(on_runner) != 1 {
+        RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: count(on_runner) } }
+      } else if job.name != (subject.floor_job_name as String) {
+        RunVerdictRefused { refusal: RunRegisteredRunnerRanAnotherJob { registered_runner: registered, job_name: job.name } }
+      } else if !job_started(job: job) {
+        RunVerdictRefused { refusal: RunFloorJobNotStarted { job_id: job.id } }
       } else {
-        RunVerdictRefused {
-          refusal: RunNeverReachedAttemptRunner {
-            minted_runner_id: subject.runner_id,
-            observed_runner_id: floor.runner_id,
-            observed_runner_name: floor.runner_name,
-            started: job_started(job: floor),
-          },
-        }
+        RunVerdictCollected { run: run, floor_job: job, conclusion: conclusion }
       }
   }
 }

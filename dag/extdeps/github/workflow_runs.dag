@@ -194,12 +194,11 @@ fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
 // rendered name. The parenthetical of combination VALUES in axis order is the rendering this
 // tree observed on those names; it is not a REST field. Standing is TranscribedUncited until
 // GitHub's Jobs docs state that encoding.
-// runner_id AND runner_name ARE WHICH RUNNER TOOK THE JOB, a third fact beside the declared
-// runs-on and the observed labels: two runners can carry identical labels, and only the runner
-// identity joins a job to one registration (GitHub returns both null until a runner is assigned).
-// The census rows transcribed before these fields existed carry none for both: the field was not
-// read, which is the same absence a reader of an unassigned job sees, and no consumer of those rows
-// asks it.
+// runner_name IS WHICH RUNNER TOOK THE JOB, a third fact beside the declared runs-on and the
+// observed labels: two runners can carry identical labels, and the runner's name is what a JIT
+// registration fixes before GitHub answers (gunbc.runner.runner_qualification_dispatch job_ran_on
+// joins on it). Upstream publishes it as nullable -- null until a runner takes the job -- and every
+// record in this tree written before the field existed carries none rather than a guessed name.
 type WorkflowJobRun {
   id: Int
   run_id: Int
@@ -208,7 +207,6 @@ type WorkflowJobRun {
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
   labels: List<String>
-  runner_id: Int?
   runner_name: String?
   created_at: Timestamp?
   started_at: Timestamp?
