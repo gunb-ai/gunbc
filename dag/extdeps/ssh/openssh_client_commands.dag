@@ -52,6 +52,7 @@ data ssh_add_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+fn openssh_client_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh")
 fn ssh_keygen_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-keygen")
 fn ssh_keyscan_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-keyscan")
 fn ssh_add_program() -> ProgramIdentity = uncataloged_program(invocation: "ssh-add")

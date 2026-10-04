@@ -4,7 +4,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 import gunbc.fleet_converge_plan {
-  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly,
 }
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
@@ -666,6 +666,7 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
       LaunchEnvironment => false
       FabricExecutionCellsOnly => false
       FabricAllocationStoreOnly => false
+    WorkspaceAllocationOnly => false
     }
   }
   let plans_present = all(

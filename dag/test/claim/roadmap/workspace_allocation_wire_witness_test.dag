@@ -1,0 +1,58 @@
+module test.claim.workspace_allocation_wire_witness_test
+
+import gunbc.workspace_allocation_wire { workspace_create_submission, workspace_release_submission }
+import extdeps.uri_path { parse_path_template, match_path_template, path_param_value, ParsedPathTemplate, MalformedPathTemplate, PathMatched, PathNotMatched }
+
+
+
+test fn witness_allocation_browser_cannot_supply_owner() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"t\",\"idempotency_key\":\"a\",\"profile\":\"2cpu-4gib\",\"owner\":\"other\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_allocation_duplicate_fields_refuse() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"a\",\"csrf_token\":\"b\",\"idempotency_key\":\"k\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_allocation_browser_json_decodes() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"t\",\"idempotency_key\":\"a\",\"profile\":\"2cpu-4gib\"}") {
+    Absent => false
+    Present { value: submission } => submission.idempotency_key.value == "a" && submission.profile == "2cpu-4gib"
+  }
+}
+
+test fn witness_release_negative_generation_refuses() -> Bool {
+  match workspace_release_submission(body: "{\"csrf_token\":\"t\",\"generation\":\"-1\"}") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// Discriminating red: a key the routes could not bind back as one segment is never admitted.
+test fn unaddressable_allocation_keys_are_refused() -> Bool {
+  all(["a/b", "a?b", "a b", "a%2Fb", "café", "", "a.b"], key =>
+    match workspace_create_submission(body: concat("{\"csrf_token\":\"t\",\"idempotency_key\":\"", concat(key, "\",\"profile\":\"2cpu-4gib\"}"))) {
+      Absent => true
+      Present { value: _ } => false
+    })
+}
+
+// Positive control through the real route matcher: an admitted id rendered into the release
+// route binds back to exactly the same value.
+test fn admitted_allocation_id_round_trips_through_the_release_route() -> Bool {
+  match workspace_create_submission(body: "{\"csrf_token\":\"t\",\"idempotency_key\":\"Ab_9-x\",\"profile\":\"2cpu-4gib\"}") {
+    Absent => false
+    Present { value: submission } => match parse_path_template(raw: "/allocations/\{allocation_id\}/release") {
+      MalformedPathTemplate { raw: _, segment: _, reason: _ } => false
+      ParsedPathTemplate { template } => match match_path_template(template: template, path: concat("/allocations/", concat(submission.idempotency_key.value as String, "/release"))) {
+        PathNotMatched => false
+        PathMatched { params } => path_param_value(params: params, name: "allocation_id") == (submission.idempotency_key.value as String)
+      }
+    }
+  }
+}

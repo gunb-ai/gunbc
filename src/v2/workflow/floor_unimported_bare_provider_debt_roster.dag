@@ -1702,7 +1702,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/spatial_projection_witness_test.dag", name: "length", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/supplier/hetzner_route_witness_test.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_directive_value_grain_test.dag", name: "any", standing: Retired { cause: NotAReference } },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_property_directive_overlap_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_property_directive_overlap_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_property_directive_overlap_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_property_directive_overlap_test.dag", name: "filter", standing: Retired { cause: BindsWithoutDeclaration } },
   UnimportedBareProviderDisposition { file: "dag/test/claim/systemd_unit_file_witness_test.dag", name: "ends_with", standing: Retired { cause: ImportsFixed } },

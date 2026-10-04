@@ -1,0 +1,101 @@
+module gunbc.workspace_allocation_launch_directive
+
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.algebra { trim }
+import std.durable_compare_and_set { ExpectSlotGeneration }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_int, json_field_string, json_object_unique_member, JsonMemberFound, FieldRead }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_allocation_decode, workspace_allocation_coherent, workspace_owner_key }
+import gunbc.workspace_allocation_convergence { WorkspaceConvergenceBasis }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
+
+// systemd LoadCredential copies this DATA document into the invocation's readonly credential
+// directory before ExecStart. It has no environment or command interpretation.
+type WorkspaceLaunchDirective sole_constructor {
+  owner_generation: Int,
+  allocation: WorkspaceAllocation,
+  release_dir: NonEmptyStr,
+}
+type WorkspaceLaunchDirectiveRead
+  = WorkspaceLaunchDirectiveReady { directive: WorkspaceLaunchDirective }
+  | WorkspaceLaunchDirectiveRefused { reason: String }
+
+fn workspace_launch_directive(basis: WorkspaceConvergenceBasis, release_dir: NonEmptyStr) -> WorkspaceLaunchDirective {
+  WorkspaceLaunchDirective { owner_generation: basis.owner_generation, allocation: basis.allocation, release_dir: release_dir }
+}
+
+fn workspace_launch_directive_json(directive: WorkspaceLaunchDirective) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "workspace-launch/1")),
+    json_kv(key: "owner_generation", value: json_int(n: directive.owner_generation)),
+    json_kv(key: "owner_head", value: json_string(s: workspace_owner_key(owner: directive.allocation.request.owner) as String)),
+    json_kv(key: "allocation", value: workspace_allocation_json(allocation: directive.allocation)),
+    json_kv(key: "installed_release", value: json_string(s: directive.release_dir as String)),
+  ])
+}
+
+fn workspace_launch_directive_text(directive: WorkspaceLaunchDirective) -> String {
+  serialize_json(v: workspace_launch_directive_json(directive: directive))
+}
+
+fn workspace_launch_directive_from_text(text: String) -> WorkspaceLaunchDirectiveRead {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => WorkspaceLaunchDirectiveRefused { reason: "workspace launch credential JSON is unreadable" }
+    JsonDocumentParsed { value: body } => match json_field_int(obj: body, key: "owner_generation") {
+      FieldRead { value: revision } => if revision < 1 { WorkspaceLaunchDirectiveRefused { reason: "workspace owner revision is invalid" } }
+      else { match json_field_string(obj: body, key: "installed_release") {
+        FieldRead { value: installed } => if trim(s: installed) == "" { WorkspaceLaunchDirectiveRefused { reason: "workspace installed artifact identity is absent" } }
+        else { match json_object_unique_member(v: body, key: "allocation") {
+          JsonMemberFound { value: record } => match workspace_allocation_decode(value: record) {
+            Absent => WorkspaceLaunchDirectiveRefused { reason: "workspace allocation credential is malformed" }
+            Present { value: allocation } => if !workspace_allocation_coherent(allocation: allocation) {
+              WorkspaceLaunchDirectiveRefused { reason: "workspace allocation credential is incoherent" }
+            } else { match allocation.plan {
+              Absent => WorkspaceLaunchDirectiveRefused { reason: "workspace launch lacks a committed selected-host plan" }
+              Present { value: _ } => {
+                let decoded = WorkspaceLaunchDirective { owner_generation: revision, allocation: allocation, release_dir: installed as NonEmptyStr }
+                if workspace_launch_directive_text(directive: decoded) == serialize_json(v: body) {
+                  WorkspaceLaunchDirectiveReady { directive: decoded }
+                } else { WorkspaceLaunchDirectiveRefused { reason: "workspace launch credential has unknown, duplicate or inconsistent fields" } }
+              }
+            } }
+          }
+          other => WorkspaceLaunchDirectiveRefused { reason: "workspace launch credential has no unique allocation" }
+        } }
+        other => WorkspaceLaunchDirectiveRefused { reason: "workspace launch credential has no installed artifact identity" }
+      } }
+      other => WorkspaceLaunchDirectiveRefused { reason: "workspace launch credential has no owner revision" }
+    }
+  }
+}
+
+fn workspace_launch_directive_load(path: String) -> WorkspaceLaunchDirectiveRead {
+  let read = Filesystem.Read(path: path)
+  if read.success { workspace_launch_directive_from_text(text: read.content) }
+  else { WorkspaceLaunchDirectiveRefused { reason: "workspace launch invocation credential is unreadable" } }
+}
+
+// The controller reads the live owner head again and supplies its actual kernel host, systemd
+// slot and installed release. The request cannot substitute any of these authorities.
+fn workspace_launch_directive_matches(
+  directive: WorkspaceLaunchDirective, observed: WorkspaceOwnerSnapshot, authorized_owner: PrincipalRef,
+  host: NonEmptyStr, slot_instance: NonEmptyStr, release_dir: NonEmptyStr, fabric_root: NonEmptyStr,
+) -> Bool {
+  principal_ref_eq(a: directive.allocation.request.owner, b: authorized_owner)
+    && principal_ref_eq(a: observed.owner, b: authorized_owner)
+    && directive.release_dir == release_dir
+    && (match observed.expected { ExpectSlotGeneration { generation: current } => current == directive.owner_generation other => false })
+    && (match filter(observed.allocations, a => a.request.idempotency_key == directive.allocation.request.idempotency_key).first() {
+      Present { value: current } => serialize_json(v: workspace_allocation_json(allocation: current)) == serialize_json(v: workspace_allocation_json(allocation: directive.allocation))
+      Absent => false
+    })
+    && (match directive.allocation.plan {
+      Absent => false
+      Present { value: selected } => selected.root == fabric_root
+        && (selected.reservation.slot.host as String) == (host as String)
+        && runner_slot_instance_name(slot: selected.reservation.slot) == slot_instance
+    })
+}

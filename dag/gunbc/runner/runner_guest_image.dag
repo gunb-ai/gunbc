@@ -1,5 +1,15 @@
 module gunbc.runner_guest_image
 
+import gunbc.microvm_guest_artifacts {
+  GuestArtifactDigestProvenance, PublishedByUpstream, FirstObservedOnFetch,
+  GuestArtifactIntegrity, ArtifactDigestPinned, ArtifactDigestUnpinned, ArtifactDigestNotPinnable,
+  GuestBaseArtifact, runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
+  runner_guest_base_dir, runner_guest_base_artifact_path,
+  GuestArtifactVerdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
+  ArtifactContradictsPin, ArtifactNotMeasured, guest_artifact_verdict,
+  guest_artifact_verdict_text, guest_artifact_verdict_admits_build,
+}
+
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import std.algebra { trim }
@@ -63,81 +73,6 @@ data runner_guest_image_disposition: ConstructionMechanism = SingleAuthority
 // runner release cannot land on the same path as one built from this release -- the drift the
 // identity type exists to prevent is prevented in the filesystem too, by derivation rather than by
 // a convention someone follows.
-
-// THE BASE ARTIFACTS ARE CITED BY URL AND NOT BY DIGEST, AND THAT IS UPSTREAM'S GAP RATHER THAN
-// OURS. extdeps.virtualization.firecracker records it in full: the vendor publishes a kernel and an
-// Ubuntu rootfs for its own CI with no digests beside them, so a consumer needing integrity must
-// pin one it MEASURED.
-//
-// Measuring one is what this module does, and the measurement is a RECEIPT IN THIS LAYER rather
-// than a fact appended to the upstream module -- DESIGN section 3's external-upstream rule, exactly
-// as it reads: observations produced by this repository belong to the observing product, never to
-// the observed upstream. Writing an observed digest into extdeps.virtualization.firecracker would
-// have made this fleet's first fetch look like something the vendor published.
-//
-// THESE TWO ROWS ARE NOW PINNED, AND WHAT THEY ARE PINNED **TO** IS ONE FETCH. The digests below
-// were measured on srv2 by fleet-converge run 33985760921 on 2026-09-05, and FirstObservedOnFetch is
-// the honest arm: trust-on-first-use. They ground every LATER fetch against that first one and
-// nothing more. They are NOT a vendor publication and must never be cited as one -- upstream still
-// publishes no digest beside either artifact, which is exactly why this fleet had to measure them.
-// If the vendor ever publishes its own, that is a different provenance arm and a different claim.
-//
-// THE PROVENANCE IS THE HOST-KEY VOCABULARY BECAUSE IT IS THE SAME PROBLEM. gunbc.fleet_host_key_
-// enrollment already settled that a fingerprint row is only as trustworthy as the fact behind it,
-// and split trust-on-first-use from an independently anchored join. An artifact digest is that
-// distinction over bytes instead of keys: a digest taken from the first successful fetch grounds
-// EVERY LATER FETCH against the first one and nothing more, and saying so is what keeps a
-// first-contact observation from being read as a vendor's publication.
-type GuestArtifactDigestProvenance
-  = PublishedByUpstream { authority: NonEmptyStr }
-  | FirstObservedOnFetch { observed_from: NonEmptyStr, observed_on: NonEmptyStr }
-
-// A DIGEST THIS FLEET HAS NOT TAKEN YET IS ABSENT, NOT EMPTY, and the two arms are why the observe
-// entry point below exists at all. An unpinned artifact is fetched and MEASURED and the measurement
-// is printed for a human to commit as a row; it is never silently accepted as whatever arrived.
-// Filling the pinned arm with a plausible-looking hex string would be the fabricated output DESIGN
-// section 5 forbids, wearing a security control's clothes.
-// A BUILT ARTIFACT IS NOT "NOT PINNED YET", IT IS NOT PINNABLE, and collapsing the two made the
-// receipt instruct a reader to do what this module forbids: the standing printed "author this as
-// ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THIS BUILD had just
-// produced. Following that advice would pin a digest that legitimately changes whenever the tree
-// does, and demand byte-reproducible mke2fs output to stay green. The distinction is the artifact's
-// to carry, because only the artifact knows whether a pin could ever be authored for it, so
-// ArtifactDigestNotPinnable is a third arm rather than a flag on the second.
-type GuestArtifactIntegrity
-  = ArtifactDigestPinned { digest: Digest, provenance: GuestArtifactDigestProvenance }
-  | ArtifactDigestUnpinned { cause: String }
-  | ArtifactDigestNotPinnable { cause: String }
-
-type GuestBaseArtifact {
-  url: NonEmptyStr
-  filename: NonEmptyStr
-  integrity: GuestArtifactIntegrity
-}
-
-data runner_guest_kernel_artifact: GuestBaseArtifact = GuestBaseArtifact {
-  url: firecracker_ci_smoke_kernel_url as NonEmptyStr,
-  filename: "vmlinux-6.1.128" as NonEmptyStr,
-  integrity: ArtifactDigestPinned {
-    digest: sha256_digest(hex: "cb1291c66bca75bc11cb9c8357fcef9965bb1786dffcb42a60923c3e0e49f319" as NonEmptyStr),
-    provenance: FirstObservedOnFetch {
-      observed_from: "srv2 via fleet-converge guest_image_converge run 33985760921" as NonEmptyStr,
-      observed_on: "2026-09-05" as NonEmptyStr,
-    },
-  },
-}
-
-data runner_guest_base_rootfs_artifact: GuestBaseArtifact = GuestBaseArtifact {
-  url: firecracker_ci_smoke_rootfs_url as NonEmptyStr,
-  filename: "ubuntu-24.04.squashfs" as NonEmptyStr,
-  integrity: ArtifactDigestPinned {
-    digest: sha256_digest(hex: "c61b6ff3b34cb3d393f9c7d8e274f11c356ca7346609532fcffa415bb7d62d70" as NonEmptyStr),
-    provenance: FirstObservedOnFetch {
-      observed_from: "srv2 via fleet-converge guest_image_converge run 33985760921" as NonEmptyStr,
-      observed_on: "2026-09-05" as NonEmptyStr,
-    },
-  },
-}
 
 // THE IMAGE THIS MODULE PRODUCES, AS ONE ROW, BECAUSE ASKING IT TWICE ANSWERED DIFFERENTLY.
 // A built artifact has NO pin to verify against -- its digest is a RECEIPT of the build that just
@@ -204,13 +139,6 @@ fn runner_guest_image_root(executor_home: String) -> String {
   join([executor_home, "/.local/share/gunbc-microvm"], "")
 }
 
-fn runner_guest_base_dir(root: String) -> String {
-  join([root, "/base"], "")
-}
-
-fn runner_guest_base_artifact_path(root: String, artifact: GuestBaseArtifact) -> String {
-  join([runner_guest_base_dir(root: root), "/", artifact.filename as String], "")
-}
 
 fn runner_guest_tree_dir(root: String, image: RunnerGuestImage) -> String {
   join([root, "/tree/", runner_guest_image_name(image: image)], "")
@@ -401,7 +329,7 @@ fn guest_console_carries(console: String, kind: GuestObservationKind) -> Bool {
 // credential would be the out-of-band actuation DESIGN section 6 names, so the run waits for the
 // real path.
 data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_jit_device, which writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_guest_image runner_guest_agent_unit, credential arm. TRIGGER: the modeled host path -- gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device, which writes gunbc.runner_microvm jit_drive_content to the attempt's credential drive -- is executed by the lifecycle controller (gunbc.github_effect_perform jit_mint_lifecycle_controller_consumer_frontier). SUFFICIENT FOR deleting this row only together with one real job run on srv1 under a test label whose console shows GuestBooted, RunnerStarted, the listener's Listening line, RunnerExited, and a VMM that exited. NOT satisfied by the boot probe, by a hand-staged credential, or by a floor-label job." as NonEmptyStr,
 )
 
 // --- the agent ---
@@ -689,65 +617,6 @@ fn runner_guest_image_commands(root: String, image: RunnerGuestImage) -> List<Ar
 }
 
 // --- the observed standing ---
-
-// THE COMPARISON IS AGAINST THE PIN WHEN THERE IS ONE AND IS A REPORT WHEN THERE IS NOT, and the
-// two are different arms rather than one lenient check. An unpinned artifact reports what arrived
-// so a row can be authored from it; a pinned artifact whose bytes disagree is a REFUSAL, because a
-// mismatch after a pin exists is the exact event a pin is for.
-type GuestArtifactVerdict
-  = ArtifactMatchesPin
-  | ArtifactUnpinnedFirstContact { digest_hex: String }
-  | ArtifactBuildReceipt { digest_hex: String }
-  | ArtifactContradictsPin { expected_hex: String, observed_hex: String }
-  | ArtifactNotMeasured { reason: String }
-
-fn guest_artifact_verdict(artifact: GuestBaseArtifact, observed: Sha256FileDigest) -> GuestArtifactVerdict {
-  match observed {
-    Sha256FileDigestUnavailable { path: _, reason: r } => ArtifactNotMeasured { reason: r }
-    Sha256FileDigest { digest: d } =>
-      match artifact.integrity {
-        ArtifactDigestUnpinned { cause: _ } =>
-          ArtifactUnpinnedFirstContact { digest_hex: d.hex as String }
-        ArtifactDigestNotPinnable { cause: _ } =>
-          ArtifactBuildReceipt { digest_hex: d.hex as String }
-        ArtifactDigestPinned { digest: expected, provenance: _ } =>
-          if expected == d {
-            ArtifactMatchesPin
-          } else {
-            ArtifactContradictsPin { expected_hex: expected.hex as String, observed_hex: d.hex as String }
-          }
-      }
-  }
-}
-
-fn guest_artifact_verdict_text(artifact: GuestBaseArtifact, verdict: GuestArtifactVerdict) -> String {
-  match verdict {
-    ArtifactMatchesPin => join([artifact.filename as String, "=matches-pin"], "")
-    ArtifactUnpinnedFirstContact { digest_hex: h } =>
-      join([artifact.filename as String, "=unpinned-first-contact sha256=", h,
-            " (author this as ArtifactDigestPinned with FirstObservedOnFetch provenance)"], "")
-    ArtifactBuildReceipt { digest_hex: h } =>
-      join([artifact.filename as String, "=build-receipt sha256=", h,
-            " (this build's output; not a pin, and not to be authored as one)"], "")
-    ArtifactContradictsPin { expected_hex: e, observed_hex: o } =>
-      join([artifact.filename as String, "=CONTRADICTS-PIN expected=", e, " observed=", o], "")
-    ArtifactNotMeasured { reason: r } =>
-      join([artifact.filename as String, "=not-measured (", r, ")"], "")
-  }
-}
-
-// A CONTRADICTED PIN IS THE ONLY ARM THAT REFUSES. Unpinned first contact is the state this fleet
-// is IN today and refusing on it would refuse every build; not-measured is a fault in the measuring
-// tool and is reported as one. Neither is bytes disagreeing with a recorded expectation, which is.
-fn guest_artifact_verdict_admits_build(verdict: GuestArtifactVerdict) -> Bool {
-  match verdict {
-    ArtifactMatchesPin => true
-    ArtifactUnpinnedFirstContact { digest_hex: _ } => true
-    ArtifactBuildReceipt { digest_hex: _ } => true
-    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
-    ArtifactNotMeasured { reason: _ } => false
-  }
-}
 
 type RunnerGuestImageStanding {
   kernel: GuestArtifactVerdict

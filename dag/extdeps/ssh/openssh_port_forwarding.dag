@@ -1,11 +1,14 @@
 module extdeps.ssh.openssh_port_forwarding
 
-import std.types { String, NonEmptyStr, Bool }
-import extdeps.ssh.client_options { SshClientOption, BatchMode, ExitOnForwardFailure }
+import std.types { String, NonEmptyStr, Bool, List }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessObservation }
+import extdeps.ssh.client_options { SshClientOption, BatchMode, ExitOnForwardFailure, serialize_ssh_config_file_flag }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.ssh.openssh_client_commands { openssh_client_program }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host }
 import extdeps.access.posix { PosixLoginName }
 
@@ -164,4 +167,42 @@ fn render_forward_argument(spec: PortForwardSpec) -> NonEmptyStr? {
           }
       }
   }
+}
+
+// -W requests direct-tcpip without executing a remote command. Options are modeled by the
+// caller's credential/trust authority; this module alone owns the OpenSSH argv spelling.
+fn ssh_stdio_forward_command(subject: ForwardingAdmissionSubject, options: List<SshClientOption>) -> ArgvCommand? {
+  match subject.principal {
+    SshCertificatePrincipal { principal: _ } => none
+    SshLoginPrincipal { login: observed_login } => if subject.direction != LocalForward { none } else {
+      match render_network_host(host: subject.relay) {
+        Absent => none
+        Present { value: relay_wire } => match render_network_host(host: subject.target.host) {
+          Absent => none
+          Present { value: target_wire } => Present { value: argv_command(program: openssh_client_program(),
+            arguments: concat(flat_map(options, option => serialize_ssh_config_file_flag(option: option)),
+              ["-W", join([target_wire as String, ":", to_string(subject.target.port)], ""), "-l", observed_login as String, relay_wire as String])) }
+        }
+      }
+    }
+  }
+}
+
+// OpenSSH serverloop.c server_request_direct_tcpip checks forwarding policy before calling
+// channels.c channel_connect_to_port, which checks PermitOpen before trying the target.
+// Sources: https://github.com/openssh/openssh-portable/blob/master/serverloop.c and channels.c.
+// A connect-failed channel reply therefore observes forwarding permission, not guest readiness.
+// Only exact known client diagnostics are accepted; unknown/localized/authentication failures
+// remain unobserved. A banner over the authenticated direct-tcpip channel also proves admission.
+fn ssh_stdio_forward_admission(subject: ForwardingAdmissionSubject, observation: ProcessObservation) -> ForwardingAdmission {
+  let diagnostic = trim(s: replace(s: observation.stderr, from: "\r", to: ""))
+  let connected_banner = starts_with(s: observation.stdout, prefix: "SSH-2.0-")
+  let target_absent = diagnostic == "channel 0: open failed: connect failed: Connection refused\nstdio forwarding failed"
+  let prohibited = diagnostic == "channel 0: open failed: administratively prohibited: open failed\nstdio forwarding failed"
+  if prohibited { ForwardingAdministrativelyProhibited { subject: subject } }
+  else if connected_banner && (observation.exit_code == 0 || observation.exit_code == 124) {
+    ForwardingAdmitted { subject: subject }
+  } else if target_absent && observation.exit_code == 255 {
+    ForwardingAdmitted { subject: subject }
+  } else { ForwardingAdmissionUnobserved { subject: subject } }
 }

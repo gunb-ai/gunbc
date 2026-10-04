@@ -443,6 +443,15 @@ fn df_available_bytes_argv(path: String) -> List<String> {
 }
 
 
+// Copy a file with ownership established before an unprivileged consumer can open it.
+fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [
+    coreutils_install_mode_flag as String, mode as String,
+    coreutils_install_owner_flag as String, to_string(uid),
+    coreutils_install_group_flag as String, to_string(gid), source, destination,
+  ])
+}
+
 // mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
 // a directory to move into -- so publishing a staged tree over an absent path renames it, and a
 // destination that still exists as a non-empty directory is an error rather than a nested copy.

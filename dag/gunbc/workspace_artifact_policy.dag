@@ -1,0 +1,8 @@
+module gunbc.workspace_artifact_policy
+
+import std.types { NonEmptyStr }
+
+// The key bytes remain under the existing fleet SSH principal authority.
+fn workspace_fleet_operator_public_key_ref() -> NonEmptyStr {
+  "gunbc.fleet_ssh_access.operator_ssh_principal"
+}

@@ -1,5 +1,6 @@
 module gunbc.runner_microvm_cell_readiness_store
 
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
@@ -24,7 +25,7 @@ import extdeps.languages.json.parse {
 }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.build_cache_instance { RunnerSlotIdentity, HostIdentity }
-import gunbc.runner_microvm_attempt {
+import gunbc.runner_microvm_attempt_identity {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   attempt_segment_refusal_text,
 }
@@ -37,7 +38,7 @@ import product.fabric.sanitation {
 }
 import gunbc.runner_microvm_cell_readiness {
   CellReadinessRecord, CellAttemptInFlight, CellSettled,
-  InFlightAttempt,
+  InFlightAttempt, MicroVmWorkload, GitHubRunnerWorkload, WorkspaceWorkload,
   CellReadinessStoreRead, StoreRead, StoreUnreadable,
   CellReadinessStoreOwnership, StoreRootOwned, StoreNotRootOwned,
   CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
@@ -121,7 +122,7 @@ data cell_readiness_store_filesystem_receipt_gap: DissolutionCondition = unbound
   description: "gunbc.runner_microvm_cell_readiness_store reaches the filesystem -- read_cell_readiness_store lists and reads, persist_one_record writes and reads back -- and none of it has executed against a real filesystem, because the only addressable path is the production store root. TRIGGER: the store root carried as a value (the std.artifact_store MaterializationStoreRoot shape), so a receipt can address a directory it owns. SUFFICIENT FOR deleting this row. NOT satisfied by a wet claim against the production path." as NonEmptyStr,
 )
 
-data cell_readiness_store_dir: String = "/var/lib/gunbc/microvm-cell-readiness"
+data cell_readiness_store_dir: String = cell_readiness_store_location
 
 data cell_record_suffix: String = ".json"
 
@@ -432,7 +433,7 @@ fn encode_attempt(a: InFlightAttempt) -> JsonValue {
     json_kv(key: "slot_index", value: json_int(n: a.attempt.slot.slot_index as Int)),
     json_kv(key: "attempt_id", value: json_string(s: a.attempt.attempt_id.value as String)),
     json_kv(key: "invocation_id", value: json_string(s: a.invocation_id as String)),
-    json_kv(key: "jit_registration_id", value: json_string(s: a.jit_registration_id as String)),
+    json_kv(key: "workload", value: encode_workload(workload: a.workload)),
     json_kv(key: "credential_device_path", value: json_string(s: a.credential_device_path)),
   ])
 }
@@ -478,26 +479,79 @@ fn decode_attempt_after_slot(v: JsonValue, slot: RunnerSlotIdentity) -> Decoded<
   }
 }
 
+fn encode_workload(workload: MicroVmWorkload) -> JsonValue {
+  match workload {
+    GitHubRunnerWorkload { registration_id: r } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "github-runner")),
+      json_kv(key: "registration_id", value: json_string(s: r as String)),
+    ])
+    WorkspaceWorkload { bootstrap_identity: b, image_identity: i, lease_expires_unix: e } => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: "workspace")),
+      json_kv(key: "bootstrap_identity", value: json_string(s: b as String)),
+      json_kv(key: "image_identity", value: json_string(s: i as String)),
+      json_kv(key: "lease_expires_unix", value: json_int(n: e)),
+    ])
+  }
+}
+
+// Existing runner records remain recoverable. An absent workload only selects the historical
+// codec, which still requires the real registration and credential cleanup path.
+fn decode_attempt_workload(v: JsonValue) -> Decoded<MicroVmWorkload> {
+  match json_field(obj: v, key: "workload") {
+    FieldAbsent => match decoded_nonempty(obj: v, key: "jit_registration_id") {
+      DecodeRefused { reason: r } => DecodeRefused { reason: r }
+      DecodeOk { value: r } => DecodeOk { value: GitHubRunnerWorkload { registration_id: r } }
+    }
+    FieldMalformed { cause: r } => DecodeRefused { reason: r as NonEmptyStr }
+    FieldRead { value: w } => decode_workload(v: w)
+  }
+}
+
+fn decode_workload(v: JsonValue) -> Decoded<MicroVmWorkload> {
+  match decoded_string(obj: v, key: "kind") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: k } => if k == "github-runner" {
+      match decoded_nonempty(obj: v, key: "registration_id") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: r } => DecodeOk { value: GitHubRunnerWorkload { registration_id: r } }
+      }
+    } else if k == "workspace" {
+      decode_workspace_workload(v: v)
+    } else {
+      DecodeRefused { reason: "unknown microVM workload kind" as NonEmptyStr }
+    }
+  }
+}
+
+fn decode_workspace_workload(v: JsonValue) -> Decoded<MicroVmWorkload> {
+  match decoded_nonempty(obj: v, key: "bootstrap_identity") {
+    DecodeRefused { reason: r } => DecodeRefused { reason: r }
+    DecodeOk { value: b } => match decoded_nonempty(obj: v, key: "image_identity") {
+      DecodeRefused { reason: r } => DecodeRefused { reason: r }
+      DecodeOk { value: i } => match decoded_int(obj: v, key: "lease_expires_unix") {
+        DecodeRefused { reason: r } => DecodeRefused { reason: r }
+        DecodeOk { value: e } => if e <= 0 {
+          DecodeRefused { reason: "workspace lease expiry must be an absolute positive Unix time" as NonEmptyStr }
+        } else {
+          DecodeOk { value: WorkspaceWorkload { bootstrap_identity: b, image_identity: i, lease_expires_unix: e } }
+        }
+      }
+    }
+  }
+}
+
 fn decode_attempt_after_identity(v: JsonValue, attempt: MicroVmAttempt) -> Decoded<InFlightAttempt> {
   match decoded_nonempty(obj: v, key: "invocation_id") {
     DecodeRefused { reason: r } => DecodeRefused { reason: r }
-    DecodeOk { value: inv } =>
-      match decoded_nonempty(obj: v, key: "jit_registration_id") {
+    DecodeOk { value: inv } => match decode_attempt_workload(v: v) {
+      DecodeRefused { reason: r } => DecodeRefused { reason: r }
+      DecodeOk { value: w } => match decoded_nonempty(obj: v, key: "credential_device_path") {
         DecodeRefused { reason: r } => DecodeRefused { reason: r }
-        DecodeOk { value: reg } =>
-          match decoded_nonempty(obj: v, key: "credential_device_path") {
-            DecodeRefused { reason: r } => DecodeRefused { reason: r }
-            DecodeOk { value: dev } =>
-              DecodeOk {
-                value: InFlightAttempt {
-                  attempt: attempt,
-                  invocation_id: inv,
-                  jit_registration_id: reg,
-                  credential_device_path: dev as String,
-                },
-              }
-          }
+        DecodeOk { value: dev } => DecodeOk {
+          value: InFlightAttempt { attempt: attempt, invocation_id: inv, workload: w, credential_device_path: dev as String },
+        }
       }
+    }
   }
 }
 

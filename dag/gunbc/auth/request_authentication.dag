@@ -196,15 +196,21 @@ type ServeRouteAction
   = ServeActionAssignIssue
   | ServeActionCommentIssue
   | ServeActionApproveDecision
+  | ServeActionCreateAllocation
+  | ServeActionReleaseAllocation
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
     ServeActionAssignIssue => "assign-issue" as NonEmptyStr
     ServeActionCommentIssue => "comment-issue" as NonEmptyStr
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
+    ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
+    ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
   }
 }
 
+// Allocation writes are never admitted by this generic human gate: their authority is
+// gunbc.workspace_allocation_admission, which binds the request to a resource grant.
 // THE ACTION-AUTHORIZATION POLICY. assign/comment: any authenticated gunb.ai human -- the hd
 // gate already ran inside the verdict, so the principal arriving here IS a Workspace human.
 // approve: the exact stable-principal roster (the ruling's first production cut; hd alone is
@@ -304,6 +310,8 @@ fn human_action_authorization_decision(
       match action {
         ServeActionAssignIssue => Permit
         ServeActionCommentIssue => Permit
+        ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
+        ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
           if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
             Permit

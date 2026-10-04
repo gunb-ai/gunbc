@@ -5,6 +5,7 @@ import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, capacity_class_eq, capacity_class_wire,
 }
+import gunbc.runner_slot_allocation { identity_is_workspace_execution_member }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 
 // WHAT AN EXECUTOR IS SANCTIONED FOR IS OUR FACT, NOT THE SUPPLIER'S.
@@ -45,14 +46,13 @@ type ExecutorSanction
   = ExecutorSanctioned { executor: NonEmptyStr, sanctioned: CapacityClass }
   | ExecutorUnclassified { executor: NonEmptyStr }
 
-// OUR OWN FLEET CELLS ARE CONTROL-PLANE BY CONSTRUCTION, not by a roster row
-// someone must remember to add. A RunnerSlotIdentity IS a cell in our build
-// fleet -- the type cannot name anything else -- so the classification falls
-// out of the identity rather than out of a lookup that could be missing.
+// The shared purpose disposition withdraws explicitly designated workspace cells from CI.
+// Other fleet slots retain their existing control-plane sanction; an empty workspace roster
+// grants no workspace capacity. Both brokers consume this same authority.
 fn fleet_cell_sanction(slot: RunnerSlotIdentity) -> ExecutorSanction {
   ExecutorSanctioned {
     executor: runner_slot_instance_name(slot: slot) as NonEmptyStr,
-    sanctioned: ControlPlaneCapacity,
+    sanctioned: if identity_is_workspace_execution_member(identity: slot) { CustomerExecutableCapacity } else { ControlPlaneCapacity },
   }
 }
 
