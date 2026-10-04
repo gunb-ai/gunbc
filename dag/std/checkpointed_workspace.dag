@@ -123,63 +123,84 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // decode that misreads is refused there rather than trusted here. Every malformed body is absent.
 // The parent is the object's single link, or none; more than one link is not an entry this module
 // wrote.
-// THE ENTRIES ARE PREPENDED AND REVERSED ONCE, so decoding is linear in the entry count: appending
-// each entry to a copied accumulator would be quadratic over a real workspace (DESIGN 6, bare minimum
-// cost), and the tail-recursive prepend keeps the walk a loop rather than a recursion as deep as the
-// workspace.
+// THE DECODE WALKS ONE BODY STRING BY OFFSET. Every read is either one character at an offset or the
+// bounded slice of one field, never the remainder of the body: on the interpreter's string carrier
+// both are O(1) per character on ASCII text (v1_rt RcStr char_at / substring), so the whole decode
+// is linear in the body. Entries are prepended and reversed once, so the result list is never a
+// copied accumulator, and the walk is tail-recursive -- a loop, not a recursion as deep as the
+// workspace (DESIGN 6, bare minimum cost). A non-ASCII body takes the carrier's code-point fallback,
+// O(offset) per read; the cursor surface that removes it is the carrier's own named next rung.
 type WorkspaceBodyField {
   value: String
-  next: String
+  next: Int
 }
 
-fn workspace_body_prefixed(text: String, tag: String) -> WorkspaceBodyField? {
-  if !starts_with(s: text, prefix: tag) {
+fn workspace_body_literal_at(body: String, at: Int, literal: String) -> Bool {
+  at + length(literal) <= length(body) && substring(s: body, start: at, end: at + length(literal)) == literal
+}
+
+// The offset of the first `stop` at or after `at`, or absent if the body ends first.
+fn workspace_body_find(body: String, at: Int, stop: String) -> Int? {
+  if at >= length(body) {
+    none
+  } else if char_at(s: body, pos: at) == stop {
+    Present { value: at }
+  } else {
+    workspace_body_find(body: body, at: at + 1, stop: stop)
+  }
+}
+
+// `<tag><decimal length>:<that many characters>` starting at `at`.
+fn workspace_body_prefixed(body: String, at: Int, tag: String) -> WorkspaceBodyField? {
+  if !workspace_body_literal_at(body: body, at: at, literal: tag) {
     none
   } else {
-    let tail = substring(s: text, start: length(tag), end: length(text))
-    match first(split(tail, separator: ":")) {
+    let digits_at = at + length(tag)
+    match workspace_body_find(body: body, at: digits_at, stop: ":") {
       Absent => none
-      Present { value: digits } =>
-        match parse_int(s: digits) {
-          Absent => none
-          Present { value: n } => {
-            let start = length(digits) + 1
-            if n < 0 || length(digits) == length(tail) || start + n > length(tail) {
-              none
-            } else {
-              Present { value: WorkspaceBodyField { value: substring(s: tail, start: start, end: start + n), next: substring(s: tail, start: start + n, end: length(tail)) } }
-            }
+      Present { value: colon } =>
+        if colon == digits_at {
+          none
+        } else {
+          match parse_int(s: substring(s: body, start: digits_at, end: colon)) {
+            Absent => none
+            Present { value: n } =>
+              if n < 0 || colon + 1 + n > length(body) {
+                none
+              } else {
+                Present { value: WorkspaceBodyField { value: substring(s: body, start: colon + 1, end: colon + 1 + n), next: colon + 1 + n } }
+              }
           }
         }
     }
   }
 }
 
-fn workspace_body_until(text: String, separator: String) -> WorkspaceBodyField? {
-  match first(split(text, separator: separator)) {
+// The characters from `at` up to the next `stop`, and the offset just past it.
+fn workspace_body_until(body: String, at: Int, stop: String) -> WorkspaceBodyField? {
+  match workspace_body_find(body: body, at: at, stop: stop) {
     Absent => none
-    Present { value: v } =>
-      if length(v) == length(text) { none } else { Present { value: WorkspaceBodyField { value: v, next: substring(s: text, start: length(v) + 1, end: length(text)) } } }
+    Present { value: end } => Present { value: WorkspaceBodyField { value: substring(s: body, start: at, end: end), next: end + 1 } }
   }
 }
 
-fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
-  if text == "" {
+fn workspace_body_entries(body: String, at: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
+  if at == length(body) {
     Present { value: reverse(acc) }
   } else {
-    match workspace_body_prefixed(text: text, tag: "F") {
+    match workspace_body_prefixed(body: body, at: at, tag: "F") {
       Absent => none
       Present { value: path } =>
-        if path.value == "" || !starts_with(s: path.next, prefix: " ") {
+        if path.value == "" || !workspace_body_literal_at(body: body, at: path.next, literal: " ") {
           none
         } else {
-          match workspace_body_until(text: substring(s: path.next, start: 1, end: length(path.next)), separator: " ") {
+          match workspace_body_until(body: body, at: path.next + 1, stop: " ") {
             Absent => none
             Present { value: hex } =>
               match sha256_hex_digest(hex: hex.value) {
                 Absent => none
                 Present { value: digest } =>
-                  match workspace_body_until(text: hex.next, separator: ";") {
+                  match workspace_body_until(body: body, at: hex.next, stop: ";") {
                     Absent => none
                     Present { value: size } =>
                       match parse_int(s: size.value) {
@@ -188,7 +209,7 @@ fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<Works
                           if n < 0 {
                             none
                           } else {
-                            workspace_body_entries(text: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
+                            workspace_body_entries(body: body, at: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
                           }
                       }
                   }
@@ -201,25 +222,25 @@ fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<Works
 
 type WorkspaceBodyHeader {
   writer: WorkspaceWriterEpoch
-  rest: String
+  next: Int
 }
 
-fn workspace_body_header(text: String, kind: String) -> WorkspaceBodyHeader? {
-  if !starts_with(s: text, prefix: kind) {
+fn workspace_body_header(body: String, kind: String) -> WorkspaceBodyHeader? {
+  if !workspace_body_literal_at(body: body, at: 0, literal: kind) {
     none
   } else {
-    match workspace_body_prefixed(text: substring(s: text, start: length(kind), end: length(text)), tag: "W") {
+    match workspace_body_prefixed(body: body, at: length(kind), tag: "W") {
       Absent => none
       Present { value: ws } =>
-        if ws.value == "" || !starts_with(s: ws.next, prefix: ";epoch=") {
+        if ws.value == "" || !workspace_body_literal_at(body: body, at: ws.next, literal: ";epoch=") {
           none
         } else {
-          match workspace_body_until(text: substring(s: ws.next, start: 7, end: length(ws.next)), separator: ";") {
+          match workspace_body_until(body: body, at: ws.next + 7, stop: ";") {
             Absent => none
             Present { value: e } =>
               match parse_int(s: e.value) {
                 Absent => none
-                Present { value: epoch } => Present { value: WorkspaceBodyHeader { writer: WorkspaceWriterEpoch { workspace: ws.value as NonEmptyStr, epoch: epoch }, rest: e.next } }
+                Present { value: epoch } => Present { value: WorkspaceBodyHeader { writer: WorkspaceWriterEpoch { workspace: ws.value as NonEmptyStr, epoch: epoch }, next: e.next } }
               }
           }
         }
@@ -237,16 +258,16 @@ fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
     Absent => none
     Present { value: link } => {
       let body = object.body as String
-      match workspace_body_header(text: body, kind: "workspace.revision;") {
+      match workspace_body_header(body: body, kind: "workspace.revision;") {
         Present { value: h } =>
-          match workspace_body_entries(text: h.rest, acc: []) {
+          match workspace_body_entries(body: body, at: h.next, acc: []) {
             Absent => none
             Present { value: es } => Present { value: WorkspaceRevision { writer: h.writer, parent: link, entries: es } }
           }
         Absent =>
-          match workspace_body_header(text: body, kind: "workspace.fence;") {
+          match workspace_body_header(body: body, kind: "workspace.fence;") {
             Absent => none
-            Present { value: h } => if h.rest == "" { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
+            Present { value: h } => if h.next == length(body) { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
           }
       }
     }
