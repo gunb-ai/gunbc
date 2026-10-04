@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanMountingPattern,
   fan_mounting_pattern,
-  ConventionUnverified,
+  ConventionUnverified, ReadFromVendorDrawing,
   FanCatalogRow,
   FanSpeedRangePublished,
   FanStopsBelowPwm,
@@ -148,3 +148,12 @@ data arctic_p8_pwm_sharing: PwmSharingChain = PstPassThrough {
     read_obligation: "Read ARCTIC's PST statement for the maximum number of fans per chain; the model name and the listings establish the pass-through exists, not its limit.",
   },
 }
+
+// Publisher mounting drawings visually read on 2026-10-04. Nominal dimensions;
+// drawing tolerance is +/- 0.3 mm on these frame edges and pitches. Printed fit is separate.
+data arctic_p14_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p14-pwm-pst/techdocs/140mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p14_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:140000),hole_pitch:micrometer(count:125000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p14_mounting_authority})
+data arctic_p12_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/p12-pwm-pst/techdocs/120mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_p12_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:120000),hole_pitch:micrometer(count:105000),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_p12_mounting_authority})
+data arctic_f9_mounting_authority: ExternalAuthority = ExternalAuthority {uri:Uri {scheme:Https,locator:"support.arctic.de/products/f9-pwm-pst/techdocs/92mm_fan-Mounting_hole_pattern.pdf"}}
+data arctic_f9_mounting_pattern: FanMountingPattern = fan_mounting_pattern(frame_edge:micrometer(count:92000),hole_pitch:micrometer(count:82500),hole_clearance_diameter:micrometer(count:4300),evidence:ReadFromVendorDrawing {authority:arctic_f9_mounting_authority})

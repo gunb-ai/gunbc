@@ -1,3 +1,5 @@
+**Current execution queue:** [CAS-1–CAS-7](cassette-completion-tasks.md) tracks shared profiles, height-related rear cooling, integrated stacking, power/harness placement, qualification and print release.
+
 **Unified multi-platform design, 4 October 2026:** [cassette profiles and consolidation](cassette-platforms.md) defines one shared design for ALTRAD8UD, GH200 P4261, Mt. Collins and Mt. Jade. New platforms retain their native power/management assemblies where appropriate; no copied board-specific tray generators.
 
 # Printed node chassis — program plan

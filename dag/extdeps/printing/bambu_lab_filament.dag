@@ -42,7 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.printing.bambu_lab_filament",
-      decl_name: "FilamentTechnicalDataSheetRow",
+      decl_name: "bambu_filament_sheets",
       field: WholeDeclaration
     }
   },

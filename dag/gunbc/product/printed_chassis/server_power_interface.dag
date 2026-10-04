@@ -76,7 +76,7 @@ fn pairing_screen(supplies:List<PowerCassetteBudget>,assignments:List<NodePowerA
   }}
   node_unique && branch_unique && count(sources)==1 && compatible
  })
- let totals_fit=all(supplies,s=>match capacity_screen(node_loads:map(filter(assignments,a=>a.power_cassette==s.id),a=>a.load),overhead:s.overhead,reserve:s.reserve,available:s.usable_main) {PsuAdequate {dc_load:_,rated:_,headroom:_}=>true _=>false})
+ let totals_fit=all(supplies,s=>match capacity_screen(node_loads:map(filter(assignments,a=>a.power_cassette==s.id),a=>a.load),overhead:s.overhead,reserve:s.reserve,available:s.usable_main) {PsuAdequate {dc_load:_,rated:_,headroom:_}=>true PsuUndersized {dc_load:_,rated:_,shortfall:_}=>false PsuUndecidable {cause:_}=>false})
  if supply_ids_unique && assignments_valid && totals_fit {PairingCapacityOnly} else {PairingRefused}
 }
 type BranchLookup {index:Int,matched:Bool}

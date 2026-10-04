@@ -12,7 +12,7 @@ import extdeps.memory.types {HostMemoryPopulation}
 import extdeps.cooling.dynatron {dynatron_w1_mass_active,dynatron_w1_mass_tolerance}
 import extdeps.storage.samsung {samsung_970_evo_family_max_mass}
 import extdeps.fans.arctic {arctic_p8_mass}
-import product.printed_chassis.assembly_geometry {AssemblyPart,Printed,placed}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Printed,Purchased,Metal,Clearance,placed}
 import product.printed_chassis.stack_geometry {cassette_parts,part_bounds}
 
 // Each component has its own mass and position evidence. This roster replaces the
@@ -59,7 +59,7 @@ fn dimm_count(population:HostMemoryPopulation) -> Int {fold(population.rows,init
 // Until surveyed, all DIMMs share a central placement placeholder: the ledger reports
 // that fact, so its mass completeness is never confused with stability qualification.
 fn node_components(population:HostMemoryPopulation) -> List<MassComponent> {
- let geometry=map(filter(cassette_parts(),p=>match p.kind {Printed=>true _=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3"}),p=>geometry_component(p:p))
+ let geometry=map(filter(cassette_parts(),p=>match p.kind {Printed=>true Purchased=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3" Metal=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3" Clearance=>p.id=="CPU" || p.id=="F1" || p.id=="F2" || p.id=="F3"}),p=>geometry_component(p:p))
  concat(geometry,[
   component(id:"BOARD",quantity:1,mass:board_planning_mass,x:0,y:27000,z:0,position:EnvelopeCentre),
   component(id:"PROCESSOR",quantity:1,mass:VendorNominal {mass:ampere_altra_max_typical_package_mass},x:0,y:29000,z:0,position:PlacementNeeded),
@@ -93,7 +93,7 @@ fn mass_ledger(components:List<MassComponent>,measurements:List<MassMeasurement>
   if count(filter(rows,q=>q.id==r.id))!=1 {[DuplicateComponent {id:r.id}]} else {[]},
   concat(if r.quantity<=0 {[InvalidQuantity {id:r.id}]} else {[]},
   concat(if !mass_range_valid(m:r.mass) {[InvalidMassRange {id:r.id}]} else {[]},
-  match r.mass {MassNeeded {reason:n}=>[MissingMass {id:r.id,reason:n}] _=>[]}))))
+  match r.mass {MassNeeded {reason:n}=>[MissingMass {id:r.id,reason:n}] VendorNominal {mass:_}=>[] PlanningMassRange {lower:_,upper:_,basis:_}=>[] BoundedMass {lower:_,upper:_,basis:_}=>[]}))))
  let measurement_issues=flat_map(measurements,m=>concat(
   if count(filter(measurements,q=>q.id==m.id))!=1 {[DuplicateMeasurement {id:m.id}]} else {[]},
   if !any(rows,r=>r.id==m.id) {[UnknownMeasurement {id:m.id}]} else {[]}))
@@ -103,8 +103,8 @@ fn mass_ledger(components:List<MassComponent>,measurements:List<MassMeasurement>
    lower:gram(count:fold(rows,init:0,f:(g,r)=>g+r.quantity*gram_count(g:lower_mass(m:r.mass)))),
    upper:gram(count:fold(rows,init:0,f:(g,r)=>g+r.quantity*gram_count(g:upper_mass(m:r.mass)))),
    components:fold(rows,init:0,f:(n,r)=>n+r.quantity),
-   nominal_vendor_rows:count(filter(rows,r=>match r.mass {VendorNominal {mass:_}=>true _=>false})),
-   estimated_rows:count(filter(rows,r=>match r.mass {PlanningMassRange {lower:_,upper:_,basis:_}=>true _=>false})),
+   nominal_vendor_rows:count(filter(rows,r=>match r.mass {VendorNominal {mass:_}=>true PlanningMassRange {lower:_,upper:_,basis:_}=>false BoundedMass {lower:_,upper:_,basis:_}=>false MassNeeded {reason:_}=>false})),
+   estimated_rows:count(filter(rows,r=>match r.mass {PlanningMassRange {lower:_,upper:_,basis:_}=>true VendorNominal {mass:_}=>false BoundedMass {lower:_,upper:_,basis:_}=>false MassNeeded {reason:_}=>false})),
    provisional_positions:count(filter(rows,r=>r.position!=SurveyedCentre)),
   }}
  }

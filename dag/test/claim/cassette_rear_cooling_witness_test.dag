@@ -1,0 +1,22 @@
+module test.claim.cassette_rear_cooling_witness
+import std.types {Bool}
+import std.measure {micrometer_count}
+import product.printed_chassis.rear_cooling {RearOpening,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,select_rear_fans,rear_fan_candidates,rear_mount}
+import product.printed_chassis.fan_mount {FanMountAdmitted,FanMountBoreReachesMountingHoles,FanMountBoreNotEnclosedByPlate,FanMountPlateSmallerThanPattern}
+test fn tall_narrow_opening_selects_one_140mm_without_widening_tray() -> Bool {
+ match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:231840,height_um:190000,depth_um:60000},bed_um:170000) {
+  RearFanGeometry {bank:b}=>b.count==1 && micrometer_count(m:b.fan.pattern.frame_edge)==140000 && b.centres_x_um==[0] && match rear_mount(bank:b) {FanMountAdmitted {geometry:_}=>true FanMountBoreReachesMountingHoles {bore_radius:_,hole_center_distance:_}=>false FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_}=>false FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_}=>false}
+  RearCoolingInvalidInput=>false RearCoolingNoFit=>false
+ }
+}
+test fn height_and_width_both_constrain_standard_fan_selection() -> Bool {
+ let short=match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:310000,height_um:132000,depth_um:60000},bed_um:170000) {RearFanGeometry {bank:b}=>b.count==2 && micrometer_count(m:b.fan.pattern.frame_edge)==120000 RearCoolingInvalidInput=>false RearCoolingNoFit=>false}
+ let narrow=match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:104000,height_um:190000,depth_um:60000},bed_um:170000) {RearFanGeometry {bank:b}=>b.count==1 && micrometer_count(m:b.fan.pattern.frame_edge)==92000 RearCoolingInvalidInput=>false RearCoolingNoFit=>false}
+ short && narrow
+}
+test fn inadequate_depth_and_bed_refuse_and_bad_opening_is_distinct() -> Bool {
+ let depth=match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:310000,height_um:190000,depth_um:59999},bed_um:170000) {RearCoolingNoFit=>true RearFanGeometry {bank:_}=>false RearCoolingInvalidInput=>false}
+ let bed=match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:310000,height_um:190000,depth_um:60000},bed_um:91999) {RearCoolingNoFit=>true RearFanGeometry {bank:_}=>false RearCoolingInvalidInput=>false}
+ let invalid=match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:0,height_um:190000,depth_um:60000},bed_um:170000) {RearCoolingInvalidInput=>true RearCoolingNoFit=>false RearFanGeometry {bank:_}=>false}
+ depth && bed && invalid
+}

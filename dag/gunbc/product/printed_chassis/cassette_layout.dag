@@ -1,5 +1,6 @@
 module product.printed_chassis.cassette_layout
-import std.types {Int}
+import std.types {Int,List}
+import std.nat {nat_range_inclusive}
 import std.measure {micrometer_count}
 import product.printed_chassis.cassette_profile {CassetteProfile,PublishedBoardOutline,BoardOutlinePending}
 import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth}
@@ -18,4 +19,27 @@ fn layout_from_outline(width_um:Int,depth_um:Int,edge_margin_um:Int) -> Cassette
 // known outline explicitly; unknown profiles never fall back to this row.
 fn current_layout() -> CassetteLayout {
  layout_from_outline(width_um:micrometer_count(m:asrock_altrad8ud_extent_along_rear_io),depth_um:micrometer_count(m:asrock_altrad8ud_extent_depth),edge_margin_um:14000)
+}
+
+// Bed allocation includes an explicit budget for protruding joints, handles and brim.
+// This graph is shared across board profiles; solid realization still owes local keep-outs.
+type TrayCell {index:Int,column:Int,row:Int,x0_um:Int,x1_um:Int,z0_um:Int,z1_um:Int}
+type TrayEdge = AcrossColumns {donor:Int,receiver:Int} | AcrossRows {donor:Int,receiver:Int}
+type TrayPartition {columns:Int,rows:Int,cells:List<TrayCell>,edges:List<TrayEdge>,feature_budget_um:Int}
+type TrayPartitionReading = TrayPartitionKnown {partition:TrayPartition} | TrayPartitionInvalid | TrayPartitionNeedsOutline
+fn partition_layout(layout:CassetteLayout,bed_um:Int,feature_budget_um:Int) -> TrayPartitionReading {
+ let usable=bed_um-feature_budget_um
+ if usable<=0 || feature_budget_um<0 || layout.tray_width<=0 || layout.tray_depth<=0 {return TrayPartitionInvalid}
+ let cols=(layout.tray_width+usable-1)/usable
+ let rows=(layout.tray_depth+usable-1)/usable
+ let cells=flat_map(nat_range_inclusive(lo:0,hi:rows-1),r=>map(nat_range_inclusive(lo:0,hi:cols-1),c=>TrayCell {index:r*cols+c,column:c,row:r,x0_um:c*layout.tray_width/cols,x1_um:(c+1)*layout.tray_width/cols,z0_um:r*layout.tray_depth/rows,z1_um:(r+1)*layout.tray_depth/rows}))
+ let edges=flat_map(cells,c=>concat(if c.column+1<cols {[AcrossColumns {donor:c.index,receiver:c.index+1}]} else {[]},if c.row+1<rows {[AcrossRows {donor:c.index,receiver:c.index+cols}]} else {[]}))
+ TrayPartitionKnown {partition:TrayPartition {columns:cols,rows:rows,cells:cells,edges:edges,feature_budget_um:feature_budget_um}}
+}
+fn partition_profile(profile:CassetteProfile,edge_margin_um:Int,bed_um:Int,feature_budget_um:Int) -> TrayPartitionReading {
+ match layout_for(profile:profile,edge_margin_um:edge_margin_um) {
+  LayoutKnown {layout:l}=>partition_layout(layout:l,bed_um:bed_um,feature_budget_um:feature_budget_um)
+  LayoutNeedsBoardOutline=>TrayPartitionNeedsOutline
+  InvalidEdgeMargin=>TrayPartitionInvalid
+ }
 }
