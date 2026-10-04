@@ -2,8 +2,7 @@ module gunbc.materialization_store_budgets
 
 import std.types { List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.measure { ByteSize, byte_size, measure_count }
-import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import std.cache_identity { typed_module_artifact_kind, compute_work_artifact_kind }
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget, local_store_budget_sum, materialization_store_local_facts_at }
 import extdeps.cache.types { CacheInterfaceCatalogFacts }
@@ -21,21 +20,15 @@ import extdeps.cache.types { CacheInterfaceCatalogFacts }
 // consumer (PR C2) measuring real per-module entries on the durable root.
 data materialization_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967296)
 
-// THE COMPUTE FAMILY'S BUDGET IS RETAINED RECORDS x RECORD SIZE, and both factors are named.
-// Retained records: a build's record must stay served for as long as a dependent compile or claim run
-// of the same tree is in flight, and a host runs at most gunbc.compute.host_capacity compute_pool_slots
-// (2) compute units at once, so at most two builds can be under an outstanding dependent obligation.
-// Record size: one release build of the default bins, binaries carried as byte parts -- gunbc 38814272 +
-// claim_batch 36982312 bytes under rustc 1.93.0, measured 2026-10-03 by `cargo build --release -p
-// v1-compiler --bin gunbc --bin claim_batch` + `stat -c %s` on a BuildBuddy runner; the text parts
-// (outcome, log, output manifest) are a rounding error beside them. REVISION TRIGGER: the compute
-// family's own commits measured on the durable root (its occupancy index), or a change to
-// compute_pool_slots.
-data materialization_store_compute_work_record_size_measured: ByteSize = byte_size(count: 75796584)
-
-data materialization_store_compute_work_retained_records: Nat = 2
-
-data materialization_store_compute_work_budget_policy: ByteSize = byte_size(count: measure_count(m: materialization_store_compute_work_record_size_measured) * materialization_store_compute_work_retained_records)
+// POLICY, NAMED AS POLICY: 1 GiB for compute records per host. A compute record carries a release
+// build's binaries as byte parts, and at most gunbc.compute.host_capacity compute_pool_slots builds can
+// have a dependent compile or claim run in flight at once, so the budget must hold that many build
+// records with room to spare; 1 GiB is chosen as that ceiling with an order of magnitude of headroom
+// over a release build of the default bins, not derived from a reading. No instrument re-derives a
+// build's size today, so no figure of one is carried here. REVISION TRIGGER: a build record refused
+// StoreCommitDidNotFit, or evicted while a dependent of its tree is in flight, on the durable root --
+// either says the policy is below the obligation it exists to hold.
+data materialization_store_compute_work_budget_policy: ByteSize = byte_size(count: 1073741824)
 
 data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
   LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: materialization_store_typed_module_budget_policy },
