@@ -1,0 +1,111 @@
+module v2.test.claim.compiler.collection_concat_realization
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.fold_lowering { collection_roster_primitive_call_row_optional }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
+import std.primitives { CarrierSensitive, concat_contract }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a bare `concat` whose name no declaration claims binds to the std.algebra collection roster's
+// primitive-call row (v2.compiler.fold_lowering collection_roster_rows, collection_concat_shape) through
+// v2.compiler.resolve resolve_atom_unscoped, and v2.compiler.infer types the call BY THAT ROW
+// (collection_roster_signature_arrow: ReceiverSelf is the free monoid over one element binder). BOUNDARY:
+// source text in, through the production assembly route (v2.test.claim.compiler.infer_fold_member_instance
+// fmi_assemble), then v2.compiler.infer infer. RED ON THE BASE for every row-route control: the base had no
+// route, so `concat(` refused resolve_reason_unbound_symbol and the module never reached infer.
+// MUTATION RECEIPT (the route, not the answer): delete the concat row from collection_roster_rows and the
+// accepted control reds on resolve_reason_unbound_symbol; drop the carrier from
+// collection_roster_signature_arrow (ReceiverSelf read as the bare element) and the Int control greens on
+// a refusal it no longer earns, which cca_int_concat_refuses_by_the_row_not_by_resolve then reds on.
+
+data cca_records: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  concat(a, b)\n}\n"
+
+data cca_element_mismatch: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(a: List<Pair>, b: List<Int>) -> List<Pair> {\n  concat(a, b)\n}\n"
+
+data cca_int_operands: String = "module p\n\nfn f(a: Int, b: Int) -> Int {\n  concat(a, b)\n}\n"
+
+data cca_local_declaration: String = "module p\n\nimport v2.std.collection { List }\n\nfn concat(a: Int, b: Int) -> Int {\n  a\n}\n\nfn f(a: Int, b: Int) -> Int {\n  concat(a, b)\n}\n"
+
+data cca_row_path: String = "std.algebra.collection_concat_shape"
+
+fn cca_references_to(tree: ResolvedTree, path: String) -> Int {
+  fold(node_subtree_nodes(root: tree.root), init: 0, f: fn(acc, n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } => if qualified_name_to_dotted_string(qn: p) == path { acc + 1 } else { acc }
+      Absent => acc
+    }
+  })
+}
+
+// What one fixture establishes, decided once: whether resolve accepted it, whether its call head is the
+// roster row, and infer's verdict.
+type CcaReading {
+  resolved: Bool
+  binds_row: Bool
+  infer_reason: Symbol
+}
+
+fn cca_reading(src: String) -> CcaReading {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } =>
+      CcaReading { resolved: false, binds_row: false, infer_reason: fmi_reason(o: Rejected { diagnostics: d }) }
+    Accepted { value: tree, diagnostics: _ } =>
+      CcaReading {
+        resolved: true,
+        binds_row: cca_references_to(tree: tree, path: cca_row_path) >= 1,
+        infer_reason: fmi_reason(o: fmi_infer_tree(tree: tree))
+      }
+  }
+}
+
+fn cca_records_reading() -> CcaReading { cca_reading(src: cca_records) }
+fn cca_element_mismatch_reading() -> CcaReading { cca_reading(src: cca_element_mismatch) }
+fn cca_int_operands_reading() -> CcaReading { cca_reading(src: cca_int_operands) }
+fn cca_local_declaration_reading() -> CcaReading { cca_reading(src: cca_local_declaration) }
+
+// POSITIVE, ON THE REAL ROUTE: List<Pair> concat List<Pair> binds the row and infer accepts it.
+test fn cca_list_concat_binds_the_row_and_is_accepted() -> Bool {
+  let r = cca_records_reading()
+  r.resolved && r.binds_row && r.infer_reason == ^accepted
+}
+
+// RED: a mismatched element type resolves through the row and is refused by infer, typed and located.
+test fn cca_element_mismatch_refuses_in_infer() -> Bool {
+  let r = cca_element_mismatch_reading()
+  r.resolved && r.binds_row && r.infer_reason != ^accepted
+}
+
+// RED, THE BINDER TRAP: Int operands bind the row (the name is the row's) and the row's carrier refuses
+// them -- the refusal is infer's, after resolve accepted, never a resolve-side unbound name.
+test fn cca_int_concat_refuses_by_the_row_not_by_resolve() -> Bool {
+  let r = cca_int_operands_reading()
+  r.resolved && r.binds_row && r.infer_reason != ^accepted
+}
+
+// PRECEDENCE: a declaration that claims the name wins; the roster row never shadows the corpus.
+test fn cca_a_declared_concat_takes_precedence_over_the_row() -> Bool {
+  let r = cca_local_declaration_reading()
+  r.resolved && !r.binds_row && r.infer_reason == ^accepted
+}
+
+// COST AUTHORITY: the row the head binds is the primitive whose contract is std.primitives concat_contract,
+// and that contract -- not the row's ShapeLinearScan (gunbc.recurring_failure_mode
+// primitive_operation_carries_two_cost_authorities) -- carries the persistent-carrier cost log(n + m).
+test fn cca_bound_row_is_the_concat_primitive_at_log_cost() -> Bool {
+  let row_is_concat = match collection_roster_primitive_call_row_optional(head: symbol_intern_lexeme(lexeme: concat_contract.name)) {
+    Present { value: r } => r.template.name == concat_contract.name
+    Absent => false
+  }
+  row_is_concat && match concat_contract.carrier_cost {
+    CarrierSensitive { ephemeral_work: _, persistent_work: w } => w == "log(n + m)"
+    _ => false
+  }
+}
