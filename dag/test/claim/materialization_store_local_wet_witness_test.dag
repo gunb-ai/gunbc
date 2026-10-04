@@ -734,7 +734,7 @@ test fn a_writer_evicted_between_reservation_and_publish_refuses_and_leaves_noth
     Present { value: store } => {
       let rx = bundle_req(module: "x")
       let px = store_commit_prepare(req: rx, payloads: half_budget_verdicts(module: "x"), blobs: [])
-      let reserved_x = local_store_reserve_prepared(root: root, budgets: witness_family_budgets, req: rx, prepared: px, part_bytes: 0)
+      let reserved_x = local_store_reserve_prepared(root: root, budgets: witness_family_budgets, req: rx, prepared: px, part_bytes: byte_size(count: 0))
       let x_reserved = match reserved_x {
         LocalStoreReserved { budget: _, evicted: _, retired: _, reclamation: _ } => true
         LocalStoreReservationRefused { refusal: _ } => false

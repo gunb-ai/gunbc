@@ -62,7 +62,7 @@ import std.artifact_store {
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
 import std.cache_identity { ArtifactKindId }
-import std.measure { ByteSize, byte_size, measure_count }
+import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
   cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
@@ -1170,7 +1170,7 @@ fn local_store_publish_reserved(
         LocalStoreReservationNotAttempted =>
           local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: "a prepared commit was given no reservation attempt" } })
         LocalStoreReserved { budget: budget, evicted: evicted, retired: retired, reclamation: rc } => {
-          let bytes = byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + local_store_parts_bytes(parts: blobs))
+          let bytes = measure_add(a: local_store_object_bytes(object: object), b: local_store_parts_bytes(parts: blobs))
           let deletes = local_store_delete_records(root_path: root_path, records: evicted |> map(e => e.name))
           let split = local_store_record_delete_split(attempts: deletes)
           let unconfirmed_set = local_store_name_set(names: split.refused |> map(t => t.name))
@@ -1233,7 +1233,7 @@ fn local_store_publish_reserved(
   }
 }
 
-fn local_store_reserve_prepared(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, req: ArtifactRequest, prepared: StoreCommitPreparation, part_bytes: Int) -> LocalStoreReservation {
+fn local_store_reserve_prepared(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, req: ArtifactRequest, prepared: StoreCommitPreparation, part_bytes: ByteSize) -> LocalStoreReservation {
   let root_path = materialization_store_root_path(root: root)
   match prepared {
     StoreCommitNotPrepared { commit: _ } => LocalStoreReservationNotAttempted
@@ -1241,7 +1241,7 @@ fn local_store_reserve_prepared(root: MaterializationStoreRoot, budgets: List<Lo
       match materialization_store_admissible(root: root, verb: Write) {
         Deny { refusal: _ } =>
           LocalStoreReservationRefused { refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } }
-        Permit => local_store_reserve(root: root, budgets: budgets, family: request_kind(req: req), name: name, bytes: byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + part_bytes), attempt: 1)
+        Permit => local_store_reserve(root: root, budgets: budgets, family: request_kind(req: req), name: name, bytes: measure_add(a: local_store_object_bytes(object: object), b: part_bytes), attempt: 1)
       }
   }
 }
@@ -1302,8 +1302,8 @@ fn local_store_blob_parts_agree(a: List<ArtifactBlobPart>, b: List<ArtifactBlobP
   count(a) == count(b) && a |> all(x => b |> any(y => y.id == x.id && (y.digest.hex as String) == (x.digest.hex as String) && measure_count(m: y.size) == measure_count(m: x.size)))
 }
 
-fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> Int {
-  fold(parts, init: 0, f: (acc, p) => acc + measure_count(m: p.size))
+fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> ByteSize {
+  fold(parts, init: byte_size(count: 0), f: (acc, p) => measure_add(a: acc, b: p.size))
 }
 
 // THE COMMIT ORDER, and why: (1) read every staged part (its SHA-256 and size shape the record and
