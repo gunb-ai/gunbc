@@ -12,6 +12,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
+  filesystem_established_absence_detail,
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
@@ -581,24 +582,33 @@ fn served_observation_entry_lookup(index: ServedObservationIndex, kind: ServedOb
 type ServedObservationBodyRead
   = ServedObservationBodyPresent { body: String }
   | ServedObservationBodyMissing { reason: String }
+  | ServedObservationBodyUnreadable { cause: String }
   | ServedObservationBodyMismatch { expected: String, actual: String }
 
-fn served_observation_body_read_from_filesystem(entry: ServedObservationEntry, success: Bool, content: String, error: String) -> ServedObservationBodyRead {
-  if !success {
-    ServedObservationBodyMissing { reason: error }
-  } else {
-    let actual = served_observation_body_digest(body: content)
-    if actual == entry.digest {
-      ServedObservationBodyPresent { body: content }
-    } else {
-      ServedObservationBodyMismatch { expected: entry.digest, actual: actual }
+fn served_observation_body_read_from_observation(entry: ServedObservationEntry, observation: FilesystemFileObservation) -> ServedObservationBodyRead {
+  match observation {
+    FilesystemFileAbsent(absence) => ServedObservationBodyMissing { reason: filesystem_established_absence_detail(absence: absence) }
+    FilesystemFileRead { path: _, content } => {
+      let actual = served_observation_body_digest(body: content)
+      if actual == entry.digest {
+        ServedObservationBodyPresent { body: content }
+      } else {
+        ServedObservationBodyMismatch { expected: entry.digest, actual: actual }
+      }
     }
+    FilesystemFileIndeterminate { cause } => ServedObservationBodyUnreadable { cause: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => ServedObservationBodyUnreadable { cause: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => ServedObservationBodyUnreadable { cause: cause }
   }
 }
 
 fn served_observation_body_read_for_instance(instance: HostDashboardInstance, entry: ServedObservationEntry) -> ServedObservationBodyRead {
-  let read = Filesystem.Read(path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind))
-  served_observation_body_read_from_filesystem(entry: entry, success: read.success, content: read.content, error: read.error)
+  served_observation_body_read_from_observation(
+    entry: entry,
+    observation: filesystem_file_observation_of_path(
+      path: served_observation_body_path_for_instance(instance: instance, kind: entry.kind),
+    ),
+  )
 }
 
 fn served_observation_refusal_body(refusal: String, detail: String) -> String {
@@ -624,6 +634,11 @@ fn served_observation_body_response(entry: ServedObservationEntry, body: ServedO
       served_observation_refusal_response(
         refusal: "ServedObservationBodyMissing",
         detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index could not be read: ", reason], ""),
+      )
+    ServedObservationBodyUnreadable { cause } =>
+      served_observation_refusal_response(
+        refusal: "ServedObservationBodyUnreadable",
+        detail: join(["the ", served_observation_kind_key(kind: entry.kind), " body named by the index exists but could not be read: ", cause], ""),
       )
     ServedObservationBodyMismatch { expected, actual } =>
       served_observation_refusal_response(

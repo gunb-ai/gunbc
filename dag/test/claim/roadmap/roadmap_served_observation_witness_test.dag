@@ -1,6 +1,6 @@
 module test.claim.roadmap_served_observation_witness
 
-import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
+import extdeps.filesystem.filesystem_io { filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemReadSucceeded, FilesystemFileObservation }
 
 import std.types { String, Int, Bool, List, FilePath }
 import extdeps.http.server { text_html_utf8, text_plain_utf8, application_json_utf8 }
@@ -18,7 +18,7 @@ import gunbc.roadmap_served_observation {
   ServedObservationEntry,
   ServedObservationIndex,
   ServedObservationRead, ServedObservationPresent, ServedObservationAbsent, ServedObservationUnreadable,
-  ServedObservationBodyRead, ServedObservationBodyPresent, ServedObservationBodyMissing, ServedObservationBodyMismatch,
+  ServedObservationBodyRead, ServedObservationBodyPresent, ServedObservationBodyMissing, ServedObservationBodyUnreadable, ServedObservationBodyMismatch,
   ServedObservationEntryLookup, ServedObservationEntryFound, ServedObservationEntryMissing,
   served_observation_schema,
   served_observation_path_for_instance,
@@ -29,7 +29,7 @@ import gunbc.roadmap_served_observation {
   served_observation_read_from_observation,
   served_observation_identity_hex,
   served_observation_body_digest,
-  served_observation_body_read_from_filesystem,
+  served_observation_body_read_from_observation,
   served_observation_body_response,
   served_observation_index_refusal,
   served_observation_entry_for,
@@ -170,11 +170,27 @@ test fn a_body_matching_its_entry_is_served_with_stored_status_and_media_type() 
   let workflow = fixture_entry(kind: WorkflowJson)
   let daily_r = served_observation_body_response(
     entry: daily,
-    body: served_observation_body_read_from_filesystem(entry: daily, success: true, content: fixture_daily_body, error: ""),
+    body: served_observation_body_read_from_observation(
+      entry: daily,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "daily.html", error: "unused on success"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadSucceeded { content: fixture_daily_body },
+    ),
+  ),
   )
   let workflow_r = served_observation_body_response(
     entry: workflow,
-    body: served_observation_body_read_from_filesystem(entry: workflow, success: true, content: "{\"refused\":\"tmux unavailable\"}", error: ""),
+    body: served_observation_body_read_from_observation(
+      entry: workflow,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "workflow.json", error: "unused on success"),
+      name: "workflow.json",
+      path: "/srv/gunbc/served/workflow.json",
+      read: FilesystemReadSucceeded { content: "{\\"refused\\":\\"tmux unavailable\\"}" },
+    ),
+  ),
   )
   daily_r.status == 200 && daily_r.content_type == text_html_utf8 && daily_r.body == fixture_daily_body
     && workflow_r.status == 503 && workflow_r.content_type == application_json_utf8 && string_contains(s: workflow_r.body, pattern: "tmux unavailable")
@@ -185,7 +201,15 @@ test fn red_control_a_body_that_does_not_hash_to_its_entry_is_refused() -> Bool 
   let daily = fixture_entry(kind: DailyPage)
   let r = served_observation_body_response(
     entry: daily,
-    body: served_observation_body_read_from_filesystem(entry: daily, success: true, content: "<html>stale</html>", error: ""),
+    body: served_observation_body_read_from_observation(
+      entry: daily,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "daily.html", error: "unused on success"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadSucceeded { content: "<html>stale</html>" },
+    ),
+  ),
   )
   r.status == 503
     && string_contains(s: r.body, pattern: "ServedObservationBodyMismatch")
@@ -196,16 +220,53 @@ test fn a_body_the_index_names_but_disk_lacks_is_a_typed_503() -> Bool {
   let daily = fixture_entry(kind: DailyPage)
   let r = served_observation_body_response(
     entry: daily,
-    body: served_observation_body_read_from_filesystem(entry: daily, success: false, content: "", error: "No such file or directory"),
+    body: served_observation_body_read_from_observation(
+      entry: daily,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "workflow.json", error: "unused on success"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    ),
+  ),
   )
   r.status == 503 && string_contains(s: r.body, pattern: "ServedObservationBodyMissing")
+}
+
+// RED control: the body the index names is present but unreadable -- the listing establishes it
+// and the read refusal says so -- so the refusal says "unreadable", never "missing": a failed
+// read is not evidence of absence.
+test fn red_control_a_listed_body_that_cannot_be_read_is_unreadable_not_missing() -> Bool {
+  let daily = fixture_entry(kind: DailyPage)
+  let r = served_observation_body_response(
+    entry: daily,
+    body: served_observation_body_read_from_observation(
+      entry: daily,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "daily.html", error: "unused on success"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    ),
+  ),
+  )
+  r.status == 503 && string_contains(s: r.body, pattern: "ServedObservationBodyUnreadable")
+    && !string_contains(s: r.body, pattern: "ServedObservationBodyMissing")
 }
 
 test fn a_refused_daily_render_is_served_as_plain_text_not_html() -> Bool {
   let entry = ServedObservationEntry { kind: DailyPage, status: 500, digest: served_observation_body_digest(body: "page render refused") }
   let r = served_observation_body_response(
     entry: entry,
-    body: served_observation_body_read_from_filesystem(entry: entry, success: true, content: "page render refused", error: ""),
+    body: served_observation_body_read_from_observation(
+      entry: entry,
+    observation: filesystem_file_observation(
+      listing: filesystem_listing_observation(directory: "/srv/gunbc/served", success: true, entries: "daily.html", error: "unused on success"),
+      name: "daily.html",
+      path: "/srv/gunbc/served/daily.html",
+      read: FilesystemReadSucceeded { content: "page render refused" },
+    ),
+  ),
   )
   r.status == 500 && r.content_type == text_plain_utf8
 }
