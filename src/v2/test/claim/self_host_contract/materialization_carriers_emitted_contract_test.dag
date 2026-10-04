@@ -1,0 +1,26 @@
+module v2.test.claim.self_host_contract.materialization_carriers_emitted_contract
+
+import std.logic { Bool }
+import std.realization { Memoize, Recompute, Share }
+import v2.compiler.materialization_carriers { materialization_allows_memo_store }
+
+// THE materialization_carriers ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the
+// authority: v2.compiler.materialization_carriers materialization_allows_memo_store admits a memo
+// store for Memoize and for neither Recompute nor Share.
+//
+// The planted fault asserts ONLY the wrong acceptance: Recompute admitting a store.
+fn materialization_carriers_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  let recompute_stores = materialization_allows_memo_store(m: Recompute)
+  if inject_fault {
+    recompute_stores
+  } else {
+    materialization_allows_memo_store(m: Memoize)
+      && !recompute_stores
+      && !materialization_allows_memo_store(m: Share)
+  }
+}
+
+test fn materialization_carriers_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  materialization_carriers_emitted_contract_holds(inject_fault: false)
+    && !materialization_carriers_emitted_contract_holds(inject_fault: true)
+}

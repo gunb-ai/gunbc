@@ -7,7 +7,7 @@ import tools.self_host_module_behavioral_transport_roster { ModuleBehavioralTran
 import tools.self_host_behavioral_equivalence_take { no_verdict_cause }
 import tools.host_prelude { WitnessBinReady, WitnessBinRefused, WitnessBinArtifactAbsent, WitnessBinBuildFailed }
 import tools.self_host_curated_seed_linked_harness {
-  HandDriverFile,
+  CsslWitnessDriver,
   CsslReceiptOutcome,
   CsslBehaviorHeld,
   CsslBehaviorDiverged,
@@ -47,8 +47,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reads the persisted series through the same standing, and is no longer NotDerivable.
 
 data fixture_roster: List<ModuleBehavioralTransportConfig> = [
-  ModuleBehavioralTransportConfig { module_path: "a.dag", driver: HandDriverFile { driver_rel: "a_main.rs" }, pass_marker: "A: PASS", claim_runs: [] },
-  ModuleBehavioralTransportConfig { module_path: "b.dag", driver: HandDriverFile { driver_rel: "b_main.rs" }, pass_marker: "B: PASS", claim_runs: [] },
+  ModuleBehavioralTransportConfig { module_path: "a.dag", driver: CsslWitnessDriver { contract_entry_rel: "a_contract.dag", contract_module: "a.contract", contract_function: "a_contract_holds" }, pass_marker: "A: PASS", claim_runs: [] },
+  ModuleBehavioralTransportConfig { module_path: "b.dag", driver: CsslWitnessDriver { contract_entry_rel: "b_contract.dag", contract_module: "b.contract", contract_function: "b_contract_holds" }, pass_marker: "B: PASS", claim_runs: [] },
 ]
 
 fn row(module_path: String, verdict: BehavioralRowVerdict) -> BehavioralEquivalenceRow {

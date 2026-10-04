@@ -1,0 +1,54 @@
+module v2.test.claim.self_host_contract.resolve_emitted_contract
+
+import std.logic { Bool }
+import std.algebra { Cons, Empty }
+import v2.compiler.normalized_tree { admit_unmarked_normalized_roots }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.node { Node, Edge, Positional, ComputationNode, Value, node_synthetic }
+
+// THE 03_resolve ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.resolve resolve accepts a well-formed normalized tree and refuses one whose root is
+// not well formed. The normalized tree is admitted through admit_unmarked_normalized_roots, the
+// carrier's own constructor, so the contract is about resolve and not about normalize.
+fn rsc_value_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn rsc_value_with_child() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Value },
+    children: [Edge { label: Positional, target: rsc_value_node() }]
+  )
+}
+
+type RscReading = RscResolved | RscRefused | RscRootNotAdmitted
+
+fn rsc_resolve(root: Node) -> RscReading {
+  match admit_unmarked_normalized_roots(roots: [root], diagnostics: None) {
+    Rejected { diagnostics: _ } => RscRootNotAdmitted
+    Accepted { value: trees, diagnostics: _ } => match trees {
+      Empty => RscRootNotAdmitted
+      Cons { head: tree, tail: _ } => match resolve(tree: tree, lm: dag_language_model()) {
+        Accepted { value: _, diagnostics: _ } => RscResolved
+        Rejected { diagnostics: _ } => RscRefused
+      }
+    }
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: the malformed root resolving.
+fn resolve_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  if inject_fault {
+    rsc_resolve(root: rsc_value_with_child()) == RscResolved
+  } else {
+    rsc_resolve(root: rsc_value_node()) == RscResolved
+      && rsc_resolve(root: rsc_value_with_child()) == RscRefused
+  }
+}
+
+test fn resolve_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  resolve_emitted_contract_holds(inject_fault: false)
+    && !resolve_emitted_contract_holds(inject_fault: true)
+}
