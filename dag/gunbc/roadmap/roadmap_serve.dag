@@ -2060,9 +2060,10 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
 // to its own request -- a page, a redirect, a refusal it can act on -- and the path of a scratch
 // worktree on the host is neither the client's to act on nor the client's to see; the serve process
 // writes no operator log of its own. So in the three functions below the snapshot's standing is
-// matched by name and the carrier's result passes through unchanged. The belt tick, which runs the
-// same carrier on the same host, is the caller that states a leak
-// (gunbc.roadmap_belt_tick_cli belt_tick_exit_with_snapshot_closes).
+// matched by name and the carrier's result passes through unchanged. A LEAK HERE IS REPORTED BY
+// NOTHING: the belt tick states only the snapshots its own pass owned, never one a served request
+// left behind. What would report it is a census of the repository's registered snapshot worktrees
+// read by the tick, which sees every process's leaks; that capability does not exist yet.
 fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) -> RoadmapEventsRead {
   match read.close {
     SnapshotNotOpened => read.result

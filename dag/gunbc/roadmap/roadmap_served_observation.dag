@@ -259,8 +259,9 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
 // THE DAILY PAGE HAS NO SURFACE FOR A LEAKED STANDINGS SNAPSHOT. The page renders standings or the
 // reason they are unobserved; a worktree the read could not remove is neither, and writing it into
 // StandingsUnobserved would replace standings that WERE read with a refusal. So the standing of the
-// snapshot is matched here by name and the standings pass through unchanged. A page surface for it
-// is deferred until a leak has been observed.
+// snapshot is matched here by name and the standings pass through unchanged. A LEAK HERE IS
+// REPORTED BY NOTHING. What would report it is a census of the repository's registered snapshot
+// worktrees, read by the tick and rendered on this page; that capability does not exist yet.
 fn served_standings_after_snapshot_close(read: CarrierClosed<RoadmapStandings>) -> RoadmapStandings {
   match read.close {
     SnapshotNotOpened => read.result

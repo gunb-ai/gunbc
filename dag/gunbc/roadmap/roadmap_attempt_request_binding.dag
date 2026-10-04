@@ -107,7 +107,9 @@ fn attempt_request_binding_admission(request: AttemptLaunchRequest, node_id: Roa
 // THE LAUNCH-TIME COMMIT HAS NO SURFACE FOR A LEAKED HISTORY SNAPSHOT. Its answer is committed or
 // refused, and a refusal fails the launch; a worktree the history read could not remove is not a
 // reason to refuse a launch whose claim was read and established. So the snapshot's standing is
-// matched here by name and the history passes through unchanged.
+// matched here by name and the history passes through unchanged. A leak here is reported by
+// nothing; see gunbc.roadmap_served_observation served_standings_after_snapshot_close for the
+// capability that would report it.
 fn request_binding_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) -> RoadmapEventsRead {
   match read.close {
     SnapshotNotOpened => read.result
