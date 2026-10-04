@@ -1,5 +1,7 @@
 module gunbc.workspace_commissioning_executor_submission
 
+import gunbc.workspace_commissioning_apply_readback { workspace_commissioning_controller_start_subject, workspace_commissioning_terminal_succeeded }
+import gunbc.runner_microvm_slot_start { MicrovmInvocationWait, InvocationStillRunning, InvocationTerminated, InvocationWaitRefused, microvm_invocation_observe, microvm_unit_start_observed, MicrovmSlotStartRun, SlotStartCompleted, SlotStartWrongHost, SlotStartRefused, SlotStartAlreadyActive, SlotStartInvocationUnread, SlotStartInvocationUnchanged, SlotStartStillActiveAtBound }
 import std.types { String, NonEmptyStr, Bool }
 import std.decl_ref { decl_ref }
 import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
@@ -10,7 +12,7 @@ import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
 import gunbc.workspace_commissioning_executor_input { WorkspaceExecutorInput, workspace_executor_input_observe, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
 import gunbc.workspace_commissioning_executor_journal {
   WorkspaceExecutorRecord, WorkspaceExecutorSubject, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
-  workspace_executor_recorded_directive, ExecutorGenerationCommitted, ExecutorInvocationRecorded, ExecutorReadbackAccepted, ExecutorReleaseObserved,
+  workspace_executor_recorded_directive, ExecutorGenerationCommitted, ExecutorInvocationRecorded, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorControllerRetryFenced,
 }
 import gunbc.workspace_commissioning_executor_store {
   WorkspaceExecutorJournalSnapshot, workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
@@ -116,6 +118,67 @@ fn workspace_executor_initial_guard(slot: NonEmptyStr, plan: NonEmptyStr) -> Cas
   }
 }
 
+// WHAT A RECORDED CONTROLLER INVOCATION PERMITS. The decision reads the exact recorded
+// invocation A once (running/terminated/unreadable), then its stable terminal (A re-observed
+// terminated around the status and receipt reads). Running A, or any terminal that cannot be
+// read, retains A. A successful terminal resumes through finish, never a restart. Only an
+// unsuccessful stable terminal, under the exact mutation generation and from another executor,
+// may fence A so that exactly one replacement controller can be started over the same plan.
+type WorkspaceExecutorControllerRetryDecision
+  = ControllerRetryAwaitRecorded
+  | ControllerRetryFence
+  | ControllerRetryRefused { reason: String }
+
+fn workspace_executor_controller_retry_decision(observed: MicrovmInvocationWait, terminal: MicrovmSlotStartRun,
+  succeeded: Bool, mutation_matches: Bool, replacement_actor: Bool) -> WorkspaceExecutorControllerRetryDecision {
+  match observed {
+    InvocationStillRunning => ControllerRetryAwaitRecorded
+    InvocationWaitRefused { detail: _ } => ControllerRetryRefused { reason: "the recorded controller invocation is unreadable or changing; obligation retained" }
+    InvocationTerminated => if succeeded { ControllerRetryAwaitRecorded } else { match terminal {
+      SlotStartCompleted { unit: _, invocation_id: _, exec_main_status: _, controller_receipt: _ } =>
+        if !mutation_matches { ControllerRetryRefused { reason: "controller retry lost the exact mutation generation" } }
+        else if !replacement_actor { ControllerRetryRefused { reason: "the submitting executor cannot fence its own controller" } }
+        else { ControllerRetryFence }
+      SlotStartWrongHost { detail: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+      SlotStartRefused { unit: _, detail: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+      SlotStartAlreadyActive { unit: _, invocation: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+      SlotStartInvocationUnread { unit: _, detail: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+      SlotStartInvocationUnchanged { unit: _, invocation_id: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+      SlotStartStillActiveAtBound { unit: _, invocation_id: _, bound: _ } => ControllerRetryRefused { reason: "the recorded controller terminal is not stably observed" }
+    } }
+  }
+}
+
+// Observe the recorded controller A, decide, and act. The fence is a CAS from the exact journal
+// generation just read: of two replacements only one commits, and only its drain/rearm can start B.
+fn workspace_executor_controller_retry(snapshot: WorkspaceExecutorJournalSnapshot,
+  record: WorkspaceExecutorRecord, executor: NonEmptyStr) -> WorkspaceExecutorPreparation
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_prepare")]
+{
+  let subject = workspace_commissioning_controller_start_subject(instance: record.subject.slot as String)
+  let recorded = record.invocation as NonEmptyStr
+  let observed = microvm_invocation_observe(unit: subject.unit, invocation: recorded)
+  let terminal = match observed {
+    InvocationTerminated => microvm_unit_start_observed(subject: subject, invocation: recorded)
+    InvocationStillRunning => SlotStartRefused { unit: subject.unit, detail: "controller is running" }
+    InvocationWaitRefused { detail } => SlotStartRefused { unit: subject.unit, detail: detail }
+  }
+  match workspace_executor_controller_retry_decision(observed: observed, terminal: terminal,
+    succeeded: workspace_commissioning_terminal_succeeded(instance: record.subject.slot as String, invocation: recorded, result: terminal),
+    mutation_matches: workspace_executor_mutation_matches(record: record), replacement_actor: record.submitter != executor) {
+    ControllerRetryAwaitRecorded => workspace_executor_recorded_preparation(record: record)
+    ControllerRetryRefused { reason } => WorkspaceExecutorPreparationRefused { reason: reason }
+    ControllerRetryFence => match workspace_executor_journal_publish(snapshot: snapshot, record: WorkspaceExecutorRecord {
+      subject: record.subject, submitter: record.submitter, previous_invocation: record.previous_invocation,
+      invocation: record.invocation, phase: ExecutorControllerRetryFenced,
+    }) {
+      WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorPrepared { directive: "drain:none" }
+      WorkspaceExecutorJournalConflict => WorkspaceExecutorPreparationRefused { reason: "controller retry fence lost CAS; reread the winner" }
+      WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "controller retry fence lost CAS; reread the winner" }
+    }
+  }
+}
+
 // A submission past invocation recording recovers only through its recorded directive.
 fn workspace_executor_recorded_preparation(record: WorkspaceExecutorRecord) -> WorkspaceExecutorPreparation {
   match workspace_executor_recorded_directive(record: record) {
@@ -153,7 +216,10 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
           ExecutorSubmissionFenced => if workspace_executor_mutation_matches(record: record) && record.submitter != executor {
             WorkspaceExecutorPrepared { directive: "drain:none" }
           } else { WorkspaceExecutorPreparationRefused { reason: "fenced submission has no replacement actor and exact guard" } }
-          ExecutorInvocationRecorded => workspace_executor_recorded_preparation(record: record)
+          ExecutorInvocationRecorded => workspace_executor_controller_retry(snapshot: snapshot, record: record, executor: executor)
+          ExecutorControllerRetryFenced => if workspace_executor_mutation_matches(record: record) && record.submitter != executor {
+            WorkspaceExecutorPrepared { directive: "drain:none" }
+          } else { WorkspaceExecutorPreparationRefused { reason: "retry-fenced controller has no replacement actor and exact guard" } }
           ExecutorReadbackAccepted => workspace_executor_recorded_preparation(record: record)
           ExecutorReleaseObserved => workspace_executor_recorded_preparation(record: record)
           ExecutorGenerationCommitted => workspace_executor_recorded_preparation(record: record)
@@ -189,7 +255,7 @@ fn workspace_executor_rearm(slot: NonEmptyStr, executor: NonEmptyStr) -> Workspa
   match workspace_executor_input_observe(slot: slot, executor: executor) {
     WorkspaceExecutorInputObserved { input } => match workspace_executor_journal_observe(slot_key: slot) {
       WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
-        Present { value: record } => if record.phase != ExecutorSubmissionFenced
+        Present { value: record } => if (record.phase != ExecutorSubmissionFenced && record.phase != ExecutorControllerRetryFenced)
           || record.submitter == executor || record.subject.plan_hash != input.plan.provenance.plan_hash
           || record.subject.fleet_bundle_hash != input.plan.bundle || !workspace_executor_mutation_matches(record: record) {
           WorkspaceExecutorPreparationRefused { reason: "rearm has no matching fenced submission" }

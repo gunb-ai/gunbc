@@ -60,11 +60,19 @@ type WorkspaceCommissioningApplyReadbackResult
   = WorkspaceCommissioningApplyObserved { readback: WorkspaceCommissioningApplyReadback }
   | WorkspaceCommissioningApplyReadbackRefused { reason: String }
 
-fn workspace_commissioning_terminal_succeeded(slot: RunnerSlotIdentity,
+// The slot controller unit and receipt location a commissioning invocation is observed through.
+fn workspace_commissioning_controller_start_subject(instance: String) -> MicrovmUnitStartSubject {
+  MicrovmUnitStartSubject {
+    unit: microvm_slot_unit_instance_name(slot_instance: instance),
+    receipt_prefix: slot_controller_receipt_prefix(instance: instance), bound: microvm_slot_unit_timeout_stop(),
+  }
+}
+
+fn workspace_commissioning_terminal_succeeded(instance: String,
   invocation: NonEmptyStr, result: MicrovmSlotStartRun) -> Bool {
   match result {
     SlotStartCompleted { unit, invocation_id, exec_main_status, controller_receipt } =>
-      unit == microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: slot) as String)
+      unit == microvm_slot_unit_instance_name(slot_instance: instance)
         && invocation_id == invocation
         && (match exec_main_status { UnitPropertyRead { value } => value == "0" UnitPropertyUnread { property: _, detail: _ } => false })
         && (match controller_receipt {
@@ -103,13 +111,9 @@ fn workspace_commissioning_initial_ready(slot: RunnerSlotIdentity, reading: Cell
 fn workspace_commissioning_apply_observe(provenance: WorkspaceCommissioningProvenance,
   release_dir: NonEmptyStr, login: NonEmptyStr, network: SlotNetworkSanitationSubject,
   invocation: NonEmptyStr) -> WorkspaceCommissioningApplyReadbackResult {
-  let instance = runner_slot_instance_name(slot: provenance.slot) as String
-  let subject = MicrovmUnitStartSubject {
-    unit: microvm_slot_unit_instance_name(slot_instance: instance),
-    receipt_prefix: slot_controller_receipt_prefix(instance: instance), bound: microvm_slot_unit_timeout_stop(),
-  }
+  let subject = workspace_commissioning_controller_start_subject(instance: runner_slot_instance_name(slot: provenance.slot) as String)
   let terminal = microvm_unit_start_observed(subject: subject, invocation: invocation)
-  if !workspace_commissioning_terminal_succeeded(slot: provenance.slot, invocation: invocation, result: terminal) {
+  if !workspace_commissioning_terminal_succeeded(instance: runner_slot_instance_name(slot: provenance.slot) as String, invocation: invocation, result: terminal) {
     WorkspaceCommissioningApplyReadbackRefused { reason: "the exact controller invocation has no successful commissioning terminal" }
   } else { match workspace_commissioning_runtime_refusal(provenance: provenance, release_dir: release_dir, login: login) {
     Present { value: reason } => WorkspaceCommissioningApplyReadbackRefused { reason: reason }

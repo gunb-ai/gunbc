@@ -78,6 +78,7 @@ fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot
   record: WorkspaceExecutorRecord) -> WorkspaceExecutorJournalPublication
   admit_callers: [
     decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_fence_submission"),
+    decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_controller_retry"),
     decl_ref(module_path: "gunbc.workspace_commissioning_executor_submission", decl_name: "workspace_executor_arm"),
     decl_ref(module_path: "gunbc.workspace_commissioning_executor_helper", decl_name: "workspace_executor_helper_publish"),
     decl_ref(module_path: "gunbc.workspace_commissioning_executor_helper", decl_name: "workspace_executor_helper_bind"),

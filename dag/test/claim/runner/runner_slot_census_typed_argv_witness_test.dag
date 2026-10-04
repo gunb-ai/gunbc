@@ -7,7 +7,7 @@ import gunbc.runner_slot_population_census {
   CensusDerived, CensusRefused, SlotCensusRow,
   slot_census_from_typed_argv_outcome,
 }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,

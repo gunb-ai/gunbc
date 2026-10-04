@@ -12,7 +12,7 @@ import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
 import gunbc.workspace_commissioning_executor_journal {
   WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorInvocationRecorded,
-  workspace_executor_record_coherent, ExecutorGenerationCommitted, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorSubmissionFenced,
+  workspace_executor_record_coherent, ExecutorGenerationCommitted, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorSubmissionFenced, ExecutorControllerRetryFenced
 }
 import gunbc.workspace_commissioning_executor_store {
   workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
@@ -72,6 +72,7 @@ fn workspace_executor_claim_controller(provenance: WorkspaceCommissioningProvena
           WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit { record: record } }
         } else { WorkspaceExecutorControllerRefused { reason: "another invocation already owns commissioning; this delayed start is fenced" } }
         ExecutorSubmissionFenced => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorControllerRetryFenced => WorkspaceExecutorControllerRefused { reason: "the failed controller is retry-fenced; only a rearmed submission may bind a replacement" }
         ExecutorReadbackAccepted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
         ExecutorReleaseObserved => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
         ExecutorGenerationCommitted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }

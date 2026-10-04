@@ -21,7 +21,7 @@ import extdeps.filesystem.linux {
   LinuxFilePublicationProtocolUnsynchronized,
   LinuxSynchronizedRenameReplacePublication,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.bmc_fan_alignment_standing {
   AlignmentAdmitsApplyEvaluation,
   AlignmentRefused,
