@@ -62,7 +62,7 @@ fn btar_refused_at_authored_q(o: Outcome<ResolvedTree>) -> Bool {
 // annotation is now CARRIED on its Bind (v2.std.type_binder <type-annotation>) and resolved in the
 // type-role frame, so the refusal is resolve's unbound name rather than the lowering's
 // not-carried; before the carrier it was the lowering's, and before that it was Accepted.
-test fn btar_let_annotation_refuses() -> Bool {
+test fn btar_let_annotation_refuses() -> Bool  {
   match btar_let_annotated() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -106,7 +106,7 @@ fn btar_resolve_refused_at_authored_q(o: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
-test fn btar_fn_literal_return_annotation_reaches_resolve() -> Bool {
+test fn btar_fn_literal_return_annotation_reaches_resolve() -> Bool  {
   btar_fn_literal_outcomes().annotated_reaches_resolve
 }
 
@@ -120,7 +120,7 @@ fn btar_plain_literal_not_erased(o: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
-test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
+test fn btar_unannotated_fn_literal_is_not_erased() -> Bool  {
   btar_fn_literal_outcomes().plain_not_erased
 }
 
@@ -141,7 +141,7 @@ fn btar_fn_literal_outcomes() -> BtarFnLiteralOutcomes {
 
 // (5) A fn literal in an if arm is not erased either: the first-atom operand fallback no longer
 // answers with a keyword token. RED BEFORE: Accepted with `zz` declared nowhere.
-test fn btar_if_arm_fn_literal_is_not_erased() -> Bool {
+test fn btar_if_arm_fn_literal_is_not_erased() -> Bool  {
   match btar_if_arm_fn_literal() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -149,6 +149,6 @@ test fn btar_if_arm_fn_literal_is_not_erased() -> Bool {
 }
 
 // (2) An unannotated let still lowers.
-test fn btar_unannotated_let_accepts() -> Bool {
+test fn btar_unannotated_let_accepts() -> Bool  {
   tpb_accepts(o: btar_let_plain())
 }

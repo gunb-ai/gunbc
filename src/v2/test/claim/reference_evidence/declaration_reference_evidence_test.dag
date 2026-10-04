@@ -207,7 +207,7 @@ fn dre_reference_reading() -> DreReading {
   dre_reading(o: dre_reference_source(), wanted: ^callee)
 }
 
-test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
+test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool  {
   dre_labels_are_exactly(labels: dre_reference_reading().domain_labels, wanted: ^only_arg)
 }
 
@@ -224,7 +224,7 @@ fn dre_same_leaf_reading() -> DreReading {
   dre_reading(o: dre_same_leaf_source(), wanted: ^shared)
 }
 
-test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool {
+test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool  {
   dre_labels_are_exactly(labels: dre_same_leaf_reading().domain_labels, wanted: ^alpha)
 }
 
@@ -258,7 +258,7 @@ test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> 
 // be a DECLARATION's Arrow reached through the use's facts, it is a node of the declaring module with
 // no entry in this tree, so the lookup answered Absent and the application dropped to the frontier
 // however well the callee was typed.
-test fn dre_a_named_call_is_grounded_holds() -> Bool {
+test fn dre_a_named_call_is_grounded_holds() -> Bool  {
   dre_reference_reading().call_grounded
 }
 
@@ -282,7 +282,7 @@ fn dre_execution_reading() -> DreReading {
   dre_reading(o: dre_execution_source(), wanted: ^truth)
 }
 
-test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool {
+test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool  {
   dre_execution_reading().call_grounded
 }
 
@@ -391,11 +391,11 @@ fn dre_int_declared_bool_body_reading() -> DreReading {
 //
 // These are the controls that distinguish a return-type recognition which activates the check from one
 // that merely admits more nodes. Recognition alone would have left them red.
-test fn dre_a_bool_declared_int_body_still_refuses_holds() -> Bool {
+test fn dre_a_bool_declared_int_body_still_refuses_holds() -> Bool  {
   dre_bool_declared_int_body_reading().infer_refuses
 }
 
-test fn dre_an_int_declared_bool_body_still_refuses_holds() -> Bool {
+test fn dre_an_int_declared_bool_body_still_refuses_holds() -> Bool  {
   dre_int_declared_bool_body_reading().infer_refuses
 }
 
@@ -420,7 +420,7 @@ fn dre_unresolved_signature_reading() -> DreReading {
   dre_reading(o: dre_unresolved_signature_source(), wanted: ^opaque)
 }
 
-test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool {
+test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool  {
   match dre_unresolved_signature_reading().domain_labels {
     Absent => true
     Present { value: _ } => false
@@ -437,7 +437,7 @@ fn dre_invalid_argument_reading() -> DreReading {
   dre_reading(o: dre_invalid_argument_source(), wanted: ^wants_int)
 }
 
-test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
+test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool  {
   dre_invalid_argument_reading().call_grounded == false
 }
 
@@ -496,7 +496,7 @@ fn dre_imported_reference_reading() -> DreReading {
   dre_reading(o: dre_imported_reference_source(), wanted: ^helper)
 }
 
-test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool {
+test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool  {
   dre_imported_reference_reading().call_grounded
 }
 
@@ -534,14 +534,14 @@ fn dre_declared_return_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
   }
 }
 
-test fn dre_a_declared_bool_return_is_already_the_bool_value_type_holds() -> Bool {
+test fn dre_a_declared_bool_return_is_already_the_bool_value_type_holds() -> Bool  {
   match dre_bool_declared_int_body_reading().declared_return {
     Absent => false
     Present { value: ret } => infer_type_equal_ignoring_provenance(a: ret, b: bool_node())
   }
 }
 
-test fn dre_a_declared_int_return_is_the_int_binding_holds() -> Bool {
+test fn dre_a_declared_int_return_is_the_int_binding_holds() -> Bool  {
   match dre_int_declared_bool_body_reading().declared_return {
     Absent => false
     Present { value: ret } =>

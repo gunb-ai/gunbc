@@ -88,7 +88,7 @@ fn fmi_undeclared_field_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_un
 fn fmi_sum_fold_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_sum_fold)) }
 fn fmi_body_not_carrier_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_body_not_carrier_fold)) }
 
-test fn fmi_fold_member_projects_a_declared_field() -> Bool {
+test fn fmi_fold_member_projects_a_declared_field() -> Bool  {
   fmi_record_fold_reading().no_projection_refusal
 }
 
@@ -109,7 +109,7 @@ fn fmi_has_reason(o: Outcome<Bool>, reason: Symbol) -> Bool {
 // the `e` of `e.target` through v2.compiler.resolve resolve_frame_bound_reference, so its binding is
 // recorded and infer can type it. RED ON THE BASE: the base was the bare canonical atom `e`, which nothing
 // typed, so the projection landed in the non-refusing ReceiverTypeUnderived arm.
-test fn fmi_lambda_binder_projection_base_is_a_lexical_reference() -> Bool {
+test fn fmi_lambda_binder_projection_base_is_a_lexical_reference() -> Bool  {
   fmi_record_fold_reading().base_is_lexical_reference
 }
 
@@ -127,12 +127,12 @@ fn fmi_base_is_lexical_reference(tree: ResolvedTree) -> Bool {
 }
 
 // (2) THE SAME FOLD WITH AN UNDECLARED FIELD REFUSES AT THAT FIELD.
-test fn fmi_fold_member_undeclared_field_refuses() -> Bool {
+test fn fmi_fold_member_undeclared_field_refuses() -> Bool  {
   fmi_undeclared_field_reason() == ^infer_reason_field_not_declared_on_receiver
 }
 
 // (3) A STEP FORMAL INCOMPATIBLE WITH THE DOMAIN ELEMENT REFUSES.
-test fn fmi_fold_member_incompatible_formal_refuses() -> Bool {
+test fn fmi_fold_member_incompatible_formal_refuses() -> Bool  {
   fmi_record_fold_reading().authored_member_formal_reason == ^application_argument_does_not_inhabit
 }
 
@@ -231,14 +231,14 @@ fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
 // used here: infer derives no Bool join, a separate frontier.)
 data fmi_sum_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(found, e) { found + e.target })\n}\n"
 
-test fn fmi_fold_over_records_is_accepted() -> Bool {
+test fn fmi_fold_over_records_is_accepted() -> Bool  {
   fmi_sum_fold_reason() == ^accepted
 }
 
 data fmi_body_not_carrier_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { e.target })\n}\n"
 
 // (a) A STEP WHOSE BODY DOES NOT INHABIT THE CARRIER REFUSES AT THE BODY: init is Bool, the body is Int.
-test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool {
+test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool  {
   fmi_body_not_carrier_reason() == ^arrow_body_does_not_inhabit_declared_return
 }
 

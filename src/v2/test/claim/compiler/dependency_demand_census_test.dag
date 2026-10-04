@@ -120,7 +120,7 @@ fn ddc_is_equal(function: String) -> Bool {
 
 // COUNT CONSERVATION: the strip found six uses fns and the route emitted six rows -- one per fn, from a
 // different fold than the one that counted them.
-test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
+test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool  {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
@@ -128,15 +128,15 @@ test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   }
 }
 
-test fn a_row_restating_a_called_network_operation_is_equal_holds() -> Bool {
+test fn a_row_restating_a_called_network_operation_is_equal_holds() -> Bool  {
   ddc_is_equal(function: "t.app.restates")
 }
 
-test fn demand_through_a_transparent_callee_is_equal_holds() -> Bool {
+test fn demand_through_a_transparent_callee_is_equal_holds() -> Bool  {
   ddc_is_equal(function: "t.app.transitive")
 }
 
-test fn a_row_claiming_network_the_body_never_reaches_is_a_mismatch_RED() -> Bool {
+test fn a_row_claiming_network_the_body_never_reaches_is_a_mismatch_RED() -> Bool  {
   match ddc_verdict(function: "t.app.over_claims") {
     Absent => false
     Present { value: v } =>
@@ -149,7 +149,7 @@ test fn a_row_claiming_network_the_body_never_reaches_is_a_mismatch_RED() -> Boo
   }
 }
 
-test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
+test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool  {
   match ddc_verdict(function: "t.app.opaque_reach") {
     Absent => false
     Present { value: v } =>
@@ -163,7 +163,7 @@ test fn reaching_an_opaque_operation_is_undecided_by_that_cause_RED() -> Bool {
   }
 }
 
-test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Bool {
+test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Bool  {
   match ddc_verdict(function: "t.aliasing.alias_used") {
     Absent => false
     Present { value: v } =>
@@ -179,7 +179,7 @@ test fn a_body_still_naming_its_alias_is_never_judged_a_restatement_RED() -> Boo
 
 // Only the in-vocabulary rows of Equal fns are deletable: the Network rows of restates, transitive and
 // mixed. The Filesystem rows of fs_only and mixed are out of vocabulary and count only toward that audit.
-test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool {
+test fn only_equal_network_rows_are_deletable_and_filesystem_is_counted_apart_holds() -> Bool  {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
@@ -200,7 +200,7 @@ fn ddc_app_production_refuses_at_the_clause() -> Bool {
   }
 }
 
-test fn production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds() -> Bool {
+test fn production_lowering_of_the_same_fns_still_refuses_at_the_clause_holds() -> Bool  {
   ddc_app_production_refuses_at_the_clause()
 }
 
@@ -238,7 +238,7 @@ fn ddc_is_out_of_vocabulary(st: AuthoredRowStanding, resource: String) -> Bool {
 
 // A FUNCTION-LEVEL EQUAL NEVER LICENSES BOTH ROWS. mixed restates Network and also authors Filesystem;
 // its Network row is deletable and its Filesystem row is out of vocabulary, row by row.
-test fn a_mixed_fn_licenses_only_its_in_vocabulary_row_RED() -> Bool {
+test fn a_mixed_fn_licenses_only_its_in_vocabulary_row_RED() -> Bool  {
   let sts = ddc_row_standings(function: "t.app.mixed")
   (length(xs: sts) == 2)
     && fold_list(xs: sts, empty: false, cons: fn(any, st) { any || ddc_is_deletable(st: st, resource: "std.resources.Network") })
@@ -248,7 +248,7 @@ test fn a_mixed_fn_licenses_only_its_in_vocabulary_row_RED() -> Bool {
 
 // THE REAL ROUTE READS A CALL THROUGH A FUNCTION VALUE: via_value's direct Network call would make it
 // Equal, and the call through `g` makes it undecided by that cause instead.
-test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> Bool {
+test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> Bool  {
   match ddc_verdict(function: "t.valued.via_value") {
     Absent => false
     Present { value: v } =>
@@ -264,7 +264,7 @@ test fn a_call_through_a_function_value_is_undecided_on_the_real_route_RED() -> 
 
 // A USES FILE REFUSED BEFORE AUTHORSHIP MAKES THE POPULATION INCOMPLETE: the census counts it and exits 2
 // (no observation), so conservation holding over the files that WERE read cannot read as held.
-test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() -> Bool {
+test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() -> Bool  {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } => (r.unreadable_files == 1) && (demand_census_exit(r: r) == 2)
@@ -274,7 +274,7 @@ test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() 
 // A CALL THROUGH A NAMED FUNCTION PARAMETER: via_param's direct Network call would make it Equal, and the
 // call through its parameter `g` -- minted as a parameter reference, not a lexical one -- makes it
 // undecided by that cause instead (review of gunbc#12992).
-test fn a_call_through_a_function_parameter_is_undecided_on_the_real_route_RED() -> Bool {
+test fn a_call_through_a_function_parameter_is_undecided_on_the_real_route_RED() -> Bool  {
   match ddc_verdict(function: "t.valued.via_param") {
     Absent => false
     Present { value: v } =>

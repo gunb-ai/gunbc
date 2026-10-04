@@ -258,7 +258,7 @@ fn iasl_is_unbound_at(v: IaslVerdict, spelling: Symbol) -> Bool {
   }
 }
 
-test fn a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool {
+test fn a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: v, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_ifarm)
@@ -266,7 +266,7 @@ test fn a_call_argument_in_a_then_arm_refuses_at_resolve_at_its_atom() -> Bool {
   }
 }
 
-test fn a_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool {
+test fn a_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: v, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_else)
@@ -274,7 +274,7 @@ test fn a_call_argument_in_an_else_arm_refuses_at_resolve_at_its_atom() -> Bool 
   }
 }
 
-test fn a_call_argument_in_a_nested_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+test fn a_call_argument_in_a_nested_if_arm_refuses_at_resolve_at_its_atom() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: v, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_nested)
@@ -282,7 +282,7 @@ test fn a_call_argument_in_a_nested_if_arm_refuses_at_resolve_at_its_atom() -> B
   }
 }
 
-test fn a_bare_name_in_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
+test fn a_bare_name_in_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: v, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_unbound_at(v: v, spelling: ^iasl_undeclared_ifarm_bare)
@@ -290,7 +290,7 @@ test fn a_bare_name_in_an_if_arm_refuses_at_resolve_at_its_atom() -> Bool {
   }
 }
 
-test fn a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize() -> Bool {
+test fn a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: v, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_statement_refused(v: v)
@@ -298,7 +298,7 @@ test fn a_statement_followed_by_another_in_a_fn_body_refuses_at_normalize() -> B
   }
 }
 
-test fn a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize() -> Bool {
+test fn a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: v, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_statement_refused(v: v)
@@ -306,7 +306,7 @@ test fn a_statement_followed_by_another_in_an_if_arm_refuses_at_normalize() -> B
   }
 }
 
-test fn a_statement_after_a_let_followed_by_another_refuses_at_normalize() -> Bool {
+test fn a_statement_after_a_let_followed_by_another_refuses_at_normalize() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: v, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_statement_refused(v: v)
@@ -314,7 +314,7 @@ test fn a_statement_after_a_let_followed_by_another_refuses_at_normalize() -> Bo
   }
 }
 
-test fn a_literal_statement_followed_by_a_declared_name_refuses_at_normalize() -> Bool {
+test fn a_literal_statement_followed_by_a_declared_name_refuses_at_normalize() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: v, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_statement_refused(v: v)
@@ -322,7 +322,7 @@ test fn a_literal_statement_followed_by_a_declared_name_refuses_at_normalize() -
   }
 }
 
-test fn declared_call_arguments_in_if_arms_resolve() -> Bool {
+test fn declared_call_arguments_in_if_arms_resolve() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: v, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_resolved(v: v)
@@ -330,7 +330,7 @@ test fn declared_call_arguments_in_if_arms_resolve() -> Bool {
   }
 }
 
-test fn declared_call_arguments_in_nested_if_arms_resolve() -> Bool {
+test fn declared_call_arguments_in_nested_if_arms_resolve() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: v, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_resolved(v: v)
@@ -338,7 +338,7 @@ test fn declared_call_arguments_in_nested_if_arms_resolve() -> Bool {
   }
 }
 
-test fn a_let_block_in_an_if_arm_resolves() -> Bool {
+test fn a_let_block_in_an_if_arm_resolves() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: v, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_resolved(v: v)
@@ -346,7 +346,7 @@ test fn a_let_block_in_an_if_arm_resolves() -> Bool {
   }
 }
 
-test fn a_let_followed_by_its_body_resolves() -> Bool {
+test fn a_let_followed_by_its_body_resolves() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: v, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: _ } =>
       iasl_is_resolved(v: v)
@@ -354,7 +354,7 @@ test fn a_let_followed_by_its_body_resolves() -> Bool {
   }
 }
 
-test fn a_match_in_an_if_arm_resolves() -> Bool {
+test fn a_match_in_an_if_arm_resolves() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: v, ifarm_match_if_binder: _ } =>
       iasl_is_resolved(v: v)
@@ -362,7 +362,7 @@ test fn a_match_in_an_if_arm_resolves() -> Bool {
   }
 }
 
-test fn a_match_binder_used_in_a_nested_if_in_an_if_arm_resolves() -> Bool {
+test fn a_match_binder_used_in_a_nested_if_in_an_if_arm_resolves() -> Bool  {
   match iasl_outcomes() {
     IaslOutcomesDecided { ifarm_und: _, ifarm_else_und: _, ifarm_nested_und: _, block_und: _, ifarm_block_und: _, let_then_bare_und: _, block_ctl: _, ifarm_ctl: _, ifarm_nested_ctl: _, ifarm_letblock_ctl: _, let_block_ctl: _, ifarm_bare_und: _, ifarm_match_ctl: _, ifarm_match_if_binder: v } =>
       iasl_is_resolved(v: v)

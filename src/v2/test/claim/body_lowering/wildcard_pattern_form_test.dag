@@ -121,18 +121,18 @@ fn wpf_atom_is(n: Node, spelling: Symbol) -> Bool {
   }
 }
 
-test fn the_arm_list_lowers_all_four_arms() -> Bool {
+test fn the_arm_list_lowers_all_four_arms() -> Bool  {
   length(wpf_patterns()) == 4
 }
 
-test fn a_bare_wildcard_arm_lowers_to_the_wildcard_form() -> Bool {
+test fn a_bare_wildcard_arm_lowers_to_the_wildcard_form() -> Bool  {
   match wpf_pattern_at(index: 3) {
     Present { value: p } => is_wildcard_pattern(pattern: p) && !wpf_atom_is(n: p, spelling: pattern_wildcard_name())
     Absent => false
   }
 }
 
-test fn a_wildcard_constructor_field_lowers_to_the_wildcard_form() -> Bool {
+test fn a_wildcard_constructor_field_lowers_to_the_wildcard_form() -> Bool  {
   match wpf_pattern_at(index: 1) {
     Present { value: p } =>
       match construct_tag_optional(n: p) {
@@ -147,14 +147,14 @@ test fn a_wildcard_constructor_field_lowers_to_the_wildcard_form() -> Bool {
   }
 }
 
-test fn a_nullary_constructor_arm_stays_its_named_atom() -> Bool {
+test fn a_nullary_constructor_arm_stays_its_named_atom() -> Bool  {
   match wpf_pattern_at(index: 0) {
     Present { value: p } => wpf_atom_is(n: p, spelling: ^WpfA) && !is_wildcard_pattern(pattern: p)
     Absent => false
   }
 }
 
-test fn a_binder_arm_stays_its_named_atom() -> Bool {
+test fn a_binder_arm_stays_its_named_atom() -> Bool  {
   match wpf_pattern_at(index: 2) {
     Present { value: p } => wpf_atom_is(n: p, spelling: ^wpf_bound) && !is_wildcard_pattern(pattern: p)
     Absent => false

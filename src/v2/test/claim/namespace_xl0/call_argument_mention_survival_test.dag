@@ -248,22 +248,22 @@ fn sites_mention(sites: FreeMonoid<ReferenceSite>, spelling: String) -> Bool {
 // arity and every operand in order at its authored occurrence, compared against the authored
 // source -- are v2.test.claim.namespace_xl0.body_shape_contract.
 
-test fn the_call_argument_fixture_ingests_holds() -> Bool {
+test fn the_call_argument_fixture_ingests_holds() -> Bool  {
   fixture_ingest_accepted()
 }
 
-test fn the_call_argument_fixture_yields_two_module_roots_holds() -> Bool {
+test fn the_call_argument_fixture_yields_two_module_roots_holds() -> Bool  {
   fixture_root_count() == 2
 }
 
 // THE CONTROL THAT MAKES EVERY ROW BELOW MEAN SOMETHING: a mention outside any call, found by the
 // same walk over the same tree. If this ever reds, the collector is blind generally and every
 // deficiency row below is uninformative rather than a measurement.
-test fn a_mention_outside_any_call_reaches_the_collector_holds() -> Bool {
+test fn a_mention_outside_any_call_reaches_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "xl0_no_call")
 }
 
-test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
+test fn a_parameter_reference_reaches_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "probe")
 }
 
@@ -281,14 +281,14 @@ test fn a_parameter_reference_reaches_the_collector_holds() -> Bool {
 // -- for positional arguments as well as named ones. The tree-grain row below is the control that
 // keeps the two grains apart: if it holds and this row reds, the collector is the defect, not
 // lowering.
-test fn a_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool {
+test fn a_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "xl0_call_only")
 }
 
 // THE POSITIONAL TWIN. `xl0_positional_only` is referenced once, as the sole POSITIONAL argument of
 // a call; the reader it replaced dropped this spelling too, so the repair is not specific to the
 // named form.
-test fn a_positional_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool {
+test fn a_positional_call_argument_mention_is_reachable_by_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "xl0_positional_only")
 }
 
@@ -307,7 +307,7 @@ fn fixture_atom_count(spelling: Symbol) -> Int {
 // THE TREE-GRAIN READING OF THE SAME FACT, independent of the collector: exactly one atom spells the
 // argument in the normalized roots. It was 0 at b8e0cc4eb9, beside 1 for the callee and 1 for the
 // out-of-call mention, which is what located the loss at lowering rather than at the collector.
-test fn a_call_argument_atom_is_reachable_in_the_normalized_tree_holds() -> Bool {
+test fn a_call_argument_atom_is_reachable_in_the_normalized_tree_holds() -> Bool  {
   fixture_atom_count(spelling: ^xl0_call_only) == 1
     && fixture_atom_count(spelling: ^xl0_positional_only) == 1
     && fixture_atom_count(spelling: ^xl0_no_call) == 1
@@ -315,7 +315,7 @@ test fn a_call_argument_atom_is_reachable_in_the_normalized_tree_holds() -> Bool
 
 // The brace-body call lowering repair keeps the callee in the normalized tree, so the collector
 // now sees it. The argument-only miss above is a separate class and stays asserted-absent.
-test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool {
+test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "xl0_callee")
 }
 
@@ -356,7 +356,7 @@ test fn a_callee_name_is_reachable_by_the_collector_holds() -> Bool {
 // THE DISCRIMINATOR THAT SEPARATES A REAL TYPE-POSITION HIT FROM AN IMPORT-STATEMENT HIT.
 // `Xl0UserType` is declared in this module and used ONLY as a parameter type -- it appears in no
 // import statement anywhere, so a site spelling it can only have come from the type position.
-test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds() -> Bool {
+test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
@@ -364,7 +364,7 @@ test fn a_user_declared_type_in_parameter_position_reaches_the_collector_holds()
 // fixture_sites(), in the same file, one screen below it. Answering for the last root while reading
 // as though it answered for all of them is the identical silent truncation, so it is fixed the
 // same way: the fold conjoins, and the empty case is the identity rather than a verdict.
-test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
+test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool  {
   fold_list(
     xs: fixture_roots(),
     empty: true,
@@ -392,7 +392,7 @@ test fn characterise_the_module_header_resolves_on_a_normalized_root() -> Bool {
 // it is what rules out the one way a spelling match could green wrongly -- four bare mentions
 // `v2`, `test`, `xl0_provider`, `xl0_provided_value` emitted separately would each fail the whole-
 // spelling match, but a reader should not have to reason that out.
-test fn a_qualified_cross_module_reference_reaches_the_collector_holds() -> Bool {
+test fn a_qualified_cross_module_reference_reaches_the_collector_holds() -> Bool  {
   sites_mention(
     sites: fixture_sites(),
     spelling: "v2.test.xl0_provider.xl0_provided_value"
@@ -402,7 +402,7 @@ test fn a_qualified_cross_module_reference_reaches_the_collector_holds() -> Bool
 // THE CHAIN IS ONE SITE, NOT ONE PER SEGMENT. If lowering ever emitted the segments as separate
 // bare atoms, `xl0_provider` would appear as a mention of its own; it is a module-path segment and
 // must never be one.
-test fn a_qualified_chain_is_one_site_and_its_segments_are_not_mentions_holds() -> Bool {
+test fn a_qualified_chain_is_one_site_and_its_segments_are_not_mentions_holds() -> Bool  {
   !sites_mention(sites: fixture_sites(), spelling: "xl0_provider")
     && !sites_mention(sites: fixture_sites(), spelling: "test")
 }
@@ -412,7 +412,7 @@ test fn a_qualified_chain_is_one_site_and_its_segments_are_not_mentions_holds() 
 // provider declares no such type; the collector measures mention, not binding, so that is
 // deliberate -- the row isolates the LOWERING of a qualified type-position spelling from whether
 // its target exists.
-test fn a_qualified_cross_module_type_in_parameter_position_reaches_the_collector_holds() -> Bool {
+test fn a_qualified_cross_module_type_in_parameter_position_reaches_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "v2.test.xl0_provider.Xl0ProvidedType")
     && !sites_mention(sites: fixture_sites(), spelling: "Xl0ProvidedType")
 }
@@ -437,11 +437,11 @@ test fn a_qualified_cross_module_type_in_parameter_position_reaches_the_collecto
 // speaks for, so a fold that silently covers fewer reds instead of quietly agreeing. The second
 // requires the collection to be total, so a root that could not be read can never be the reason an
 // "is absent" row is green.
-test fn the_census_population_covers_every_ingested_root_holds() -> Bool {
+test fn the_census_population_covers_every_ingested_root_holds() -> Bool  {
   length(xs: fixture_roots()) == 2 && fixture_root_count() == 2
 }
 
-test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
+test fn the_census_population_has_no_unreadable_roots_holds() -> Bool  {
   reference_site_collection_is_total(collection: fixture_collection())
 }
 
@@ -472,12 +472,12 @@ test fn the_census_population_has_no_unreadable_roots_holds() -> Bool {
 // `data` lowered to a named member (v2.compiler.body_lowering_fold body_lower_data_decl_to_member),
 // the mention went with the surface. The positive half is now `Xl0UserType`, a parameter-position
 // mention of a user-declared type, so the row still proves the collector is not empty.
-test fn an_import_only_spelling_does_not_reach_this_route_holds() -> Bool {
+test fn an_import_only_spelling_does_not_reach_this_route_holds() -> Bool  {
   !sites_mention(sites: fixture_sites(), spelling: "Absent")
     && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
-test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool {
+test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }
 
@@ -499,7 +499,7 @@ test fn a_type_name_in_parameter_position_reaches_the_collector_holds() -> Bool 
 // Residual reconstruct keeps the field_decl_block unit, so a bare field type
 // is in the tree the collector walks. Parameter type still reaches (control).
 // gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
-test fn a_bare_field_type_survives_in_the_denominator_today() -> Bool {
+test fn a_bare_field_type_survives_in_the_denominator_today() -> Bool  {
   sites_mention(sites: fixture_sites(), spelling: "Xl0FieldOnly")
     && sites_mention(sites: fixture_sites(), spelling: "Xl0UserType")
 }

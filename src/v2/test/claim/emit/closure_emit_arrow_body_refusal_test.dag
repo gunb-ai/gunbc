@@ -95,7 +95,7 @@ fn arrow_body_empty_probe_verdict() -> ArrowBodyProbeVerdict {
   arrow_body_probe_verdict_of(source: arrow_body_empty_probe_source)
 }
 
-test fn a_function_body_is_rendered_with_its_declaration_holds() -> Bool {
+test fn a_function_body_is_rendered_with_its_declaration_holds() -> Bool  {
   match arrow_body_probe_verdict() {
     ArrowBodyProbeAccepted { text: text } =>
       string_contains(s: text, pattern: "fn add(") && string_contains(s: text, pattern: "x + y")
@@ -105,7 +105,7 @@ test fn a_function_body_is_rendered_with_its_declaration_holds() -> Bool {
 
 // THE SIGNATURE IS RUST'S, NOT THE RECORD PROJECTION'S: the old defect printed `add` as a field of a
 // record whose type was the arrow, which also contains `add`; this row is false on that rendering.
-test fn the_rendered_function_is_a_rust_item_not_a_record_field_holds() -> Bool {
+test fn the_rendered_function_is_a_rust_item_not_a_record_field_holds() -> Bool  {
   match arrow_body_probe_verdict() {
     ArrowBodyProbeAccepted { text: text } =>
       string_contains(s: text, pattern: "fn add(x: i32, y: i32) -> i32")
@@ -113,7 +113,7 @@ test fn the_rendered_function_is_a_rust_item_not_a_record_field_holds() -> Bool 
   }
 }
 
-test fn a_module_the_rows_cannot_render_whole_refuses_rather_than_dropping_holds() -> Bool {
+test fn a_module_the_rows_cannot_render_whole_refuses_rather_than_dropping_holds() -> Bool  {
   match arrow_body_mixed_probe_verdict() {
     ArrowBodyProbeAccepted { text: _ } => false
     ArrowBodyProbeRefused { reason: reason, locus: _ } =>
@@ -123,7 +123,7 @@ test fn a_module_the_rows_cannot_render_whole_refuses_rather_than_dropping_holds
 
 // LOCATED MEANS IN THE AUTHORED FILE: a refusal rendered as a synthetic occurrence would satisfy the
 // reason row and leave the operator with nothing to open.
-test fn the_module_refusal_is_located_in_the_authored_file_holds() -> Bool {
+test fn the_module_refusal_is_located_in_the_authored_file_holds() -> Bool  {
   match arrow_body_mixed_probe_verdict() {
     ArrowBodyProbeAccepted { text: _ } => false
     ArrowBodyProbeRefused { reason: _, locus: locus } =>
@@ -131,7 +131,7 @@ test fn the_module_refusal_is_located_in_the_authored_file_holds() -> Bool {
   }
 }
 
-test fn a_module_declaring_nothing_refuses_rather_than_emitting_nothing_holds() -> Bool {
+test fn a_module_declaring_nothing_refuses_rather_than_emitting_nothing_holds() -> Bool  {
   match arrow_body_empty_probe_verdict() {
     ArrowBodyProbeAccepted { text: _ } => false
     ArrowBodyProbeRefused { reason: reason, locus: locus } =>

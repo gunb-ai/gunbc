@@ -173,43 +173,43 @@ fn alb_verdicts() -> AlbVerdicts {
   }
 }
 
-test fn fold_step_arrow_block_body_lowers_holds() -> Bool {
+test fn fold_step_arrow_block_body_lowers_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_block
 }
 
-test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool {
+test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_block_let_record
 }
 
-test fn value_position_arrow_block_body_lowers_holds() -> Bool {
+test fn value_position_arrow_block_body_lowers_holds() -> Bool  {
   alb_verdicts().value_arrow_block
 }
 
-test fn fold_step_fn_literal_block_control_holds() -> Bool {
+test fn fold_step_fn_literal_block_control_holds() -> Bool  {
   alb_verdicts().fold_step_fn_literal_block
 }
 
-test fn fold_step_arrow_expression_body_control_holds() -> Bool {
+test fn fold_step_arrow_expression_body_control_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_expr
 }
 
-test fn fold_step_arrow_unbraced_statement_body_lowers_holds() -> Bool {
+test fn fold_step_arrow_unbraced_statement_body_lowers_holds() -> Bool  {
   alb_verdicts().fold_step_arrow_statements
 }
 
-test fn graph_adjacency_real_site_normalizes_holds() -> Bool {
+test fn graph_adjacency_real_site_normalizes_holds() -> Bool  {
   alb_verdicts().graph_site_normalizes
 }
 
-test fn graph_adjacency_real_site_takes_the_statement_route_holds() -> Bool {
+test fn graph_adjacency_real_site_takes_the_statement_route_holds() -> Bool  {
   alb_verdicts().graph_site_statement_route
 }
 
-test fn expression_body_takes_no_statement_route_holds() -> Bool {
+test fn expression_body_takes_no_statement_route_holds() -> Bool  {
   alb_verdicts().expression_body_not_statement_route
 }
 
-test fn value_arrow_statement_body_ends_at_the_next_argument_holds() -> Bool {
+test fn value_arrow_statement_body_ends_at_the_next_argument_holds() -> Bool  {
   alb_verdicts().value_arrow_statements_then_comma
 }
 
@@ -221,7 +221,7 @@ fn alb_first_has(keys: List<FirstKey>, token_class: Symbol) -> Bool {
   any(xs: keys, predicate: fn(k) { first_key_class(key: k) == token_class })
 }
 
-test fn no_statement_begins_with_a_comma_or_a_close_paren_holds() -> Bool {
+test fn no_statement_begins_with_a_comma_or_a_close_paren_holds() -> Bool  {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => false
     Accepted { value: prepared, diagnostics: _ } =>

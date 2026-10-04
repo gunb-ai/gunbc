@@ -134,18 +134,18 @@ fn ror_accepted(v: RorVerdict) -> Bool {
   }
 }
 
-test fn a_refused_transform_argument_refuses_with_the_operands_own_cause() -> Bool {
+test fn a_refused_transform_argument_refuses_with_the_operands_own_cause() -> Bool  {
   ror_refuses_with_the_operands_cause(v: ror_verdicts().refused_transform)
 }
 
-test fn a_refused_branch_target_refuses_with_the_operands_own_cause() -> Bool {
+test fn a_refused_branch_target_refuses_with_the_operands_own_cause() -> Bool  {
   ror_refuses_with_the_operands_cause(v: ror_verdicts().refused_branch)
 }
 
-test fn a_read_transform_argument_reifies() -> Bool {
+test fn a_read_transform_argument_reifies() -> Bool  {
   ror_accepted(v: ror_verdicts().read_transform)
 }
 
-test fn a_read_branch_target_reifies() -> Bool {
+test fn a_read_branch_target_reifies() -> Bool  {
   ror_accepted(v: ror_verdicts().read_branch)
 }

@@ -207,7 +207,7 @@ fn bvr_is_unbound_at_the_undeclared_atom(v: BvrVerdict) -> Bool {
   }
 }
 
-test fn an_undeclared_parenthesised_operand_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_parenthesised_operand_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: v, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -215,7 +215,7 @@ test fn an_undeclared_parenthesised_operand_in_a_bound_value_refuses_at_resolve_
   }
 }
 
-test fn an_undeclared_call_argument_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_call_argument_in_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: v, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -223,7 +223,7 @@ test fn an_undeclared_call_argument_in_a_bound_value_refuses_at_resolve_at_its_a
   }
 }
 
-test fn an_undeclared_parenthesised_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_parenthesised_bound_value_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: v, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -231,7 +231,7 @@ test fn an_undeclared_parenthesised_bound_value_refuses_at_resolve_at_its_atom()
   }
 }
 
-test fn an_undeclared_name_in_an_if_arm_of_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_an_if_arm_of_a_bound_value_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: v, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -239,7 +239,7 @@ test fn an_undeclared_name_in_an_if_arm_of_a_bound_value_refuses_at_resolve_at_i
   }
 }
 
-test fn a_declared_parenthesised_operand_in_a_bound_value_resolves() -> Bool {
+test fn a_declared_parenthesised_operand_in_a_bound_value_resolves() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: v, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_resolved(v: v)
@@ -247,7 +247,7 @@ test fn a_declared_parenthesised_operand_in_a_bound_value_resolves() -> Bool {
   }
 }
 
-test fn a_declared_call_argument_in_a_bound_value_resolves() -> Bool {
+test fn a_declared_call_argument_in_a_bound_value_resolves() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: v, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_resolved(v: v)
@@ -255,7 +255,7 @@ test fn a_declared_call_argument_in_a_bound_value_resolves() -> Bool {
   }
 }
 
-test fn a_declared_if_expression_bound_value_resolves() -> Bool {
+test fn a_declared_if_expression_bound_value_resolves() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: v, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_resolved(v: v)
@@ -263,7 +263,7 @@ test fn a_declared_if_expression_bound_value_resolves() -> Bool {
   }
 }
 
-test fn a_let_name_carried_into_the_next_lets_call_argument_resolves() -> Bool {
+test fn a_let_name_carried_into_the_next_lets_call_argument_resolves() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: v, else_if_condition: _, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_resolved(v: v)
@@ -271,7 +271,7 @@ test fn a_let_name_carried_into_the_next_lets_call_argument_resolves() -> Bool {
   }
 }
 
-test fn an_undeclared_operand_in_an_else_if_condition_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_operand_in_an_else_if_condition_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: v, else_after_else_if: _, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -279,7 +279,7 @@ test fn an_undeclared_operand_in_an_else_if_condition_refuses_at_resolve_at_its_
   }
 }
 
-test fn an_undeclared_name_in_the_else_after_an_else_if_refuses_at_resolve_at_its_atom() -> Bool {
+test fn an_undeclared_name_in_the_else_after_an_else_if_refuses_at_resolve_at_its_atom() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: v, declared_else_if: _ } =>
       bvr_is_unbound_at_the_undeclared_atom(v: v)
@@ -287,7 +287,7 @@ test fn an_undeclared_name_in_the_else_after_an_else_if_refuses_at_resolve_at_it
   }
 }
 
-test fn a_declared_else_if_chain_resolves() -> Bool {
+test fn a_declared_else_if_chain_resolves() -> Bool  {
   match bvr_outcomes() {
     BvrOutcomesDecided { paren_operand: _, call_argument: _, paren_group: _, if_value: _, declared_paren_operand: _, declared_call_argument: _, declared_if_value: _, chained_lets: _, else_if_condition: _, else_after_else_if: _, declared_else_if: v } =>
       bvr_is_resolved(v: v)

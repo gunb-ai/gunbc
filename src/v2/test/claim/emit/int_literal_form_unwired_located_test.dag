@@ -139,14 +139,14 @@ fn int_literal_refused_unwired_at_the_literal(v: IntLiteralTargetVerdict) -> Boo
   }
 }
 
-test fn c_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+test fn c_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool  {
   int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().c)
 }
 
-test fn typescript_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+test fn typescript_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool  {
   int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().typescript)
 }
 
-test fn dag_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool {
+test fn dag_refuses_an_integer_literal_at_the_authored_literal_holds() -> Bool  {
   int_literal_refused_unwired_at_the_literal(v: int_literal_probe_table().dag)
 }

@@ -95,7 +95,7 @@ fn is_host(v: ImporterVerdict) -> Bool {
   }
 }
 
-test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
+test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool  {
   let c = classified(atoms: atoms_host_literal)
   is_host(v: c.verdict)
     && any(xs: c.sites, predicate: fn(s) {
@@ -106,7 +106,7 @@ test fn tsic_literal_at_bare_string_annotation_is_host() -> Bool {
     })
 }
 
-test fn tsic_host_primitive_call_is_host() -> Bool {
+test fn tsic_host_primitive_call_is_host() -> Bool  {
   let c = classified(atoms: atoms_host_primitive)
   is_host(v: c.verdict)
     && any(xs: c.sites, predicate: fn(s) {
@@ -117,7 +117,7 @@ test fn tsic_host_primitive_call_is_host() -> Bool {
     })
 }
 
-test fn tsic_host_method_call_is_host() -> Bool {
+test fn tsic_host_method_call_is_host() -> Bool  {
   let c = classified(atoms: atoms_host_method)
   is_host(v: c.verdict)
     && any(xs: c.sites, predicate: fn(s) {
@@ -130,7 +130,7 @@ test fn tsic_host_method_call_is_host() -> Bool {
 
 // `+` over two binders annotated bare `String` is host concatenation; the same `+` over Int is
 // not, which is why the route is asserted and not only the verdict.
-test fn tsic_plus_over_string_binders_is_host() -> Bool {
+test fn tsic_plus_over_string_binders_is_host() -> Bool  {
   let c = classified(atoms: atoms_host_plus)
   is_host(v: c.verdict)
     && any(xs: c.sites, predicate: fn(s) {
@@ -141,14 +141,14 @@ test fn tsic_plus_over_string_binders_is_host() -> Bool {
     })
 }
 
-test fn tsic_structural_only_is_structural() -> Bool {
+test fn tsic_structural_only_is_structural() -> Bool  {
   match verdict_of_atoms(atoms: atoms_structural) {
     StructuralUsing => true
     _ => false
   }
 }
 
-test fn tsic_host_and_structural_is_mixed_with_the_other_site_at_the_let() -> Bool {
+test fn tsic_host_and_structural_is_mixed_with_the_other_site_at_the_let() -> Bool  {
   let c = classified(atoms: atoms_mixed)
   let mixed = match c.verdict {
     Mixed => true
@@ -164,7 +164,7 @@ test fn tsic_host_and_structural_is_mixed_with_the_other_site_at_the_let() -> Bo
 
 // A text-carrier result that is itself an argument of another structural call is CALL-ARGUMENT,
 // not OTHER: the route the MIXED split depends on.
-test fn tsic_structural_result_at_a_structural_argument_is_call_argument() -> Bool {
+test fn tsic_structural_result_at_a_structural_argument_is_call_argument() -> Bool  {
   let c = classified(atoms: atoms_nested_structural)
   let structural = match c.verdict {
     StructuralUsing => true
@@ -178,21 +178,21 @@ test fn tsic_structural_result_at_a_structural_argument_is_call_argument() -> Bo
   })
 }
 
-test fn tsic_import_without_a_bare_spelling_is_import_unused() -> Bool {
+test fn tsic_import_without_a_bare_spelling_is_import_unused() -> Bool  {
   match verdict_of_atoms(atoms: atoms_import_unused) {
     ImportUnused => true
     _ => false
   }
 }
 
-test fn tsic_bare_spelling_without_operations_is_unclassified_no_evidence() -> Bool {
+test fn tsic_bare_spelling_without_operations_is_unclassified_no_evidence() -> Bool  {
   match verdict_of_atoms(atoms: atoms_no_evidence) {
     Unclassified { cause: NoOperationEvidence } => true
     _ => false
   }
 }
 
-test fn tsic_import_without_string_member_is_outside_the_population() -> Bool {
+test fn tsic_import_without_string_member_is_outside_the_population() -> Bool  {
   !walk_of(atoms: atoms_not_a_member).imports_text_string && walk_of(atoms: atoms_structural).imports_text_string
 }
 
@@ -215,18 +215,18 @@ fn tsic_crossing_outcome() -> TsicCrossingOutcome {
   }
 }
 
-test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool {
+test fn tsic_crossing_into_a_kernel_string_parameter_is_host() -> Bool  {
   is_host(v: tsic_crossing_outcome().kernel_parameter)
 }
 
-test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool {
+test fn tsic_crossing_into_a_free_monoid_parameter_is_structural() -> Bool  {
   match tsic_crossing_outcome().free_monoid_parameter {
     StructuralUsing => true
     _ => false
   }
 }
 
-test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool {
+test fn tsic_crossing_into_an_imported_string_parameter_stays_undecided() -> Bool  {
   match tsic_crossing_outcome().imported_string_parameter {
     Unclassified { cause: UndecidedCrossings } => true
     _ => false
@@ -248,7 +248,7 @@ fn tsic_roster_outcome() -> Bool {
   }
 }
 
-test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool {
+test fn tsic_rosters_are_derived_from_the_text_module_walk() -> Bool  {
   tsic_roster_outcome()
 }
 
@@ -260,7 +260,7 @@ data every_verdict: List<ImporterVerdict> = [
   Unclassified { cause: NotEstablished { cause: SourceParseRejected } }, Unclassified { cause: NotEstablished { cause: SourceUnreadable } }
 ]
 
-test fn tsic_every_verdict_token_decodes_to_its_arm() -> Bool {
+test fn tsic_every_verdict_token_decodes_to_its_arm() -> Bool  {
   !any(xs: every_verdict, predicate: fn(v) {
     match verdict_of_token(token: verdict_token(v: v)) {
       DecodedAs { value: back } => !(verdict_token(v: back) == verdict_token(v: v))
@@ -295,7 +295,7 @@ type Cursor {
   value: String
 }
 
-test fn tsic_every_crossing_cause_decodes_to_its_arm() -> Bool {
+test fn tsic_every_crossing_cause_decodes_to_its_arm() -> Bool  {
   !any(xs: every_crossing, predicate: fn(c) { !(decoded_crossing_tokens(c: c) == crossing_tokens(v: c)) })
 }
 
@@ -338,33 +338,33 @@ fn fixpoint_verdict_for(lines: List<String>, path: String) -> String {
   }
 }
 
-test fn tsic_fixpoint_decides_a_crossing_into_a_host_module() -> Bool {
+test fn tsic_fixpoint_decides_a_crossing_into_a_host_module() -> Bool  {
   fixpoint_verdict_for(lines: fixpoint_lines, path: "caller.dag") == "HOST"
 }
 
-test fn tsic_fixpoint_leaves_a_self_cycle_undecided() -> Bool {
+test fn tsic_fixpoint_leaves_a_self_cycle_undecided() -> Bool  {
   fixpoint_verdict_for(lines: fixpoint_lines, path: "loop.dag") == "UNCLASSIFIED:UndecidedAtFixpoint"
 }
 
 // The regression the real rows exposed: inheriting a MIXED callee's flags turned HOST modules
 // MIXED although both ends drop the import.
-test fn tsic_fixpoint_crossing_into_a_dropping_mixed_callee_stays_host() -> Bool {
+test fn tsic_fixpoint_crossing_into_a_dropping_mixed_callee_stays_host() -> Bool  {
   fixpoint_verdict_for(lines: fixpoint_lines, path: "host_caller.dag") == "HOST"
 }
 
-test fn tsic_fixpoint_crossing_into_a_keeping_callee_is_structural() -> Bool {
+test fn tsic_fixpoint_crossing_into_a_keeping_callee_is_structural() -> Bool  {
   fixpoint_verdict_for(lines: fixpoint_lines, path: "keep_caller.dag") == "STRUCTURAL"
 }
 
 // A row the reader cannot decode REFUSES the fixpoint, located; it is never skipped.
-test fn tsic_fixpoint_refuses_an_unknown_row_kind() -> Bool {
+test fn tsic_fixpoint_refuses_an_unknown_row_kind() -> Bool  {
   match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0\tHYPOTHESIS", "Q\twhat"], decls: fixpoint_decls) {
     FixpointInputRefused { line: l, reason: _ } => l == "Q\twhat"
     FixpointComputed { outcome: _ } => false
   }
 }
 
-test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool {
+test fn tsic_fixpoint_refuses_an_undecodable_verdict() -> Bool  {
   match fixpoint_over_lines(lines: ["M\thost.dag\tHOSTISH\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
     FixpointInputRefused { line: _, reason: _ } => true
     FixpointComputed { outcome: _ } => false
@@ -410,12 +410,12 @@ fn tsic_real_route_outcome() -> TsicRealRoute {
   }
 }
 
-test fn tsic_real_route_subject_is_the_committed_file() -> Bool {
+test fn tsic_real_route_subject_is_the_committed_file() -> Bool  {
   let read = Filesystem.Read(path: real_route_subject)
   read.success && (read.content == real_route_source)
 }
 
-test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool {
+test fn tsic_real_raw_parse_route_reaches_the_classifier() -> Bool  {
   let o = tsic_real_route_outcome()
   o.established && o.imports_text_string && o.host_site_at_the_note && o.verdict_is_host
 }
@@ -429,7 +429,7 @@ data every_standing: List<VerdictStanding> = [
   ExecutionContradicted { receipt: decl_ref(module_path: "gunbc.self_host_compile_phase_frontier" as NonEmptyStr, decl_name: "receipt_4_e0d0e01e_receipt" as NonEmptyStr) }
 ]
 
-test fn tsic_every_verdict_standing_decodes_to_its_arm() -> Bool {
+test fn tsic_every_verdict_standing_decodes_to_its_arm() -> Bool  {
   !any(xs: every_standing, predicate: fn(s) {
     match standing_of_token(token: standing_token(s: s)) {
       DecodedAs { value: back } => !(standing_token(s: back) == standing_token(s: s))
@@ -438,7 +438,7 @@ test fn tsic_every_verdict_standing_decodes_to_its_arm() -> Bool {
   })
 }
 
-test fn tsic_fixpoint_refuses_a_row_without_a_standing() -> Bool {
+test fn tsic_fixpoint_refuses_a_row_without_a_standing() -> Bool  {
   match fixpoint_over_lines(lines: ["M\thost.dag\tHOST\t1\t0\t0\t1\t0"], decls: fixpoint_decls) {
     FixpointInputRefused { line: _, reason: _ } => true
     FixpointComputed { outcome: _ } => false
@@ -491,7 +491,7 @@ fn tsic_window_coverage_outcome() -> WindowCoverage {
   }
 }
 
-test fn tsic_every_window_predicate_matches_the_real_parse() -> Bool {
+test fn tsic_every_window_predicate_matches_the_real_parse() -> Bool  {
   let c = tsic_window_coverage_outcome()
   c.established && c.text_import_read && c.literal_at_annotation && c.plus_concatenation
     && c.primitive_call && c.method_call && c.literal_argument && c.binder_argument
@@ -528,7 +528,7 @@ fn has_row(rows: FreeMonoid<String>, row: String) -> Bool {
   any(xs: rows, predicate: fn(x) { x == concat(row, "\n") })
 }
 
-test fn tsil_literal_subjects_are_the_committed_files() -> Bool {
+test fn tsil_literal_subjects_are_the_committed_files() -> Bool  {
   let m = Filesystem.Read(path: literal_module_subject)
   let c = Filesystem.Read(path: literal_callee_subject)
   let s = Filesystem.Read(path: literal_string_type_subject)
@@ -536,41 +536,41 @@ test fn tsil_literal_subjects_are_the_committed_files() -> Bool {
 }
 
 // The module's count row partitions its literal positions: 8 structural, 1 unresolved, 2 host.
-test fn tsil_counts_partition_the_literal_positions() -> Bool {
+test fn tsil_counts_partition_the_literal_positions() -> Bool  {
   has_row(rows: tsil_literal_rows_outcome(), row: "C\tlit_module.dag\t8\t1\t2\t0")
 }
 
-test fn tsil_annotation_literals_bare_and_qualified_are_structural() -> Bool {
+test fn tsil_annotation_literals_bare_and_qualified_are_structural() -> Bool  {
   let rows = tsil_literal_rows_outcome()
   has_row(rows: rows, row: "L\tlit_module.dag\ta\t8:18\tannotation\tSTRUCTURAL:String")
     && has_row(rows: rows, row: "L\tlit_module.dag\tq\t9:30\tannotation\tSTRUCTURAL:v2.std.text.String")
 }
 
-test fn tsil_return_literals_at_tail_and_arms_are_structural() -> Bool {
+test fn tsil_return_literals_at_tail_and_arms_are_structural() -> Bool  {
   let rows = tsil_literal_rows_outcome()
   has_row(rows: rows, row: "L\tlit_module.dag\tret\t11:3\treturn\tSTRUCTURAL:String")
     && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t15:13\treturn\tSTRUCTURAL:String")
     && has_row(rows: rows, row: "L\tlit_module.dag\tarm\t16:14\treturn\tSTRUCTURAL:String")
 }
 
-test fn tsil_field_literal_resolves_through_the_local_record() -> Bool {
+test fn tsil_field_literal_resolves_through_the_local_record() -> Bool  {
   has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\trec\t20:15\tfield\tRec.name\tSTRUCTURAL:String")
 }
 
 // The callee's declared parameter decides: FreeMonoid is structural; kernel String (in a module
 // that does not import v2.std.text) is host and is counted, not listed.
-test fn tsil_argument_literal_resolves_through_the_callee_declaration() -> Bool {
+test fn tsil_argument_literal_resolves_through_the_callee_declaration() -> Bool  {
   let rows = tsil_literal_rows_outcome()
   has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tSTRUCTURAL:FreeMonoid")
     && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\targ\t") })
     && !any(xs: rows, predicate: fn(x) { starts_with(s: x, prefix: "L\tlit_module.dag\tboxed\t") })
 }
 
-test fn tsil_positional_literal_is_listed_unresolved_never_dropped() -> Bool {
+test fn tsil_positional_literal_is_listed_unresolved_never_dropped() -> Bool  {
   has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tpos\t32:8\targument\ttake.\tUNRESOLVED:positional_argument:take")
 }
 
-test fn tsil_literal_to_a_population_function_is_structural() -> Bool {
+test fn tsil_literal_to_a_population_function_is_structural() -> Bool  {
   has_row(rows: tsil_literal_rows_outcome(), row: "L\tlit_module.dag\tstr_op\t35:22\tstructural_argument\tstring_is_empty\tSTRUCTURAL:v2.std.text.string_is_empty")
 }
 
@@ -605,13 +605,13 @@ fn tsil_alias_rows_outcome() -> FreeMonoid<String> {
   literal_rows_for(source: literal_alias_source, path: "lit_alias.dag", r: rosters_supplied, callees: Cons { head: CalleeModule { module: "fixture.tsil.lit_refined", standing: refined }, tail: Empty })
 }
 
-test fn tsil_alias_subjects_are_the_committed_files() -> Bool {
+test fn tsil_alias_subjects_are_the_committed_files() -> Bool  {
   let a = Filesystem.Read(path: literal_alias_subject)
   let r = Filesystem.Read(path: literal_refined_subject)
   a.success && r.success && (a.content == literal_alias_source) && (r.content == literal_refined_source)
 }
 
-test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool {
+test fn tsil_aliases_are_chased_to_their_declaring_module() -> Bool  {
   let rows = tsil_alias_rows_outcome()
   has_row(rows: rows, row: "L\tlit_alias.dag\ta\t9:16\targument\ttake_name.n\tSTRUCTURAL:String")
     && has_row(rows: rows, row: "C\tlit_alias.dag\t1\t0\t3\t0")
@@ -623,13 +623,13 @@ fn tsil_declined_rows_outcome() -> FreeMonoid<String> {
   literal_lines(path: "lit_module.dag", standing: raw_tree_of_text(text: literal_module_source), r: rosters_supplied, callees: Empty, declined: Cons { head: "fixture.tsil.lit_callee", tail: Empty })
 }
 
-test fn tsil_a_declined_module_is_a_named_unresolved_gap() -> Bool {
+test fn tsil_a_declined_module_is_a_named_unresolved_gap() -> Bool  {
   let rows = tsil_declined_rows_outcome()
   has_row(rows: rows, row: "L\tlit_module.dag\targ2\t29:13\targument\ttake_s.t\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
     && has_row(rows: rows, row: "L\tlit_module.dag\tboxed\t23:16\tfield\tBox.label\tUNRESOLVED:callee_module_declined:fixture.tsil.lit_callee")
 }
 
-test fn tsil_population_module_decides_the_bare_string() -> Bool {
+test fn tsil_population_module_decides_the_bare_string() -> Bool  {
   let o = tsil_population_outcome()
   has_row(rows: o.under_string_type, row: "L\tst.dag\ts\t3:18\tannotation\tSTRUCTURAL:String")
     && has_row(rows: o.under_text, row: "C\tst.dag\t0\t0\t1\t0")

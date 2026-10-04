@@ -45,27 +45,27 @@ data modifier_spelling_as_data_name_source: String = "module m\ndata sole_constr
 data modifier_spelling_as_caret_source: String = "module m\nfn f() -> Int { ^sole_constructor }\n"
 data modifier_spelling_as_generic_param_source: String = "module m\ntype T<sole_constructor> = Int\n"
 
-test fn unmodified_type_alias_still_parses_holds() -> Bool {
+test fn unmodified_type_alias_still_parses_holds() -> Bool  {
   parse_outcome(src: unmodified_alias_source) == "ACCEPTED"
 }
 
-test fn nominal_opaque_type_alias_parses_holds() -> Bool {
+test fn nominal_opaque_type_alias_parses_holds() -> Bool  {
   parse_outcome(src: nominal_opaque_alias_source) == "ACCEPTED"
 }
 
-test fn sole_constructor_type_record_still_parses_holds() -> Bool {
+test fn sole_constructor_type_record_still_parses_holds() -> Bool  {
   parse_outcome(src: sole_constructor_record_source) == "ACCEPTED"
 }
 
-test fn unknown_type_decl_modifier_still_refuses_holds() -> Bool {
+test fn unknown_type_decl_modifier_still_refuses_holds() -> Bool  {
   parse_outcome(src: unknown_modifier_red_source) == "parse_g0_tokens_remain"
 }
 
-test fn sole_constructor_as_a_data_name_still_parses_holds() -> Bool {
+test fn sole_constructor_as_a_data_name_still_parses_holds() -> Bool  {
   parse_outcome(src: modifier_spelling_as_data_name_source) == "ACCEPTED"
 }
 
-test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
+test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool  {
   parse_outcome(src: modifier_spelling_as_caret_source) == "ACCEPTED"
 }
 
@@ -131,11 +131,11 @@ fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
   }
 }
 
-test fn caret_referenced_ident_publishes_the_lexeme_holds() -> Bool {
+test fn caret_referenced_ident_publishes_the_lexeme_holds() -> Bool  {
   caret_tree_carries(identity: ^sole_constructor)
 }
 
-test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
+test fn data_decl_name_is_lexeme_stamped_holds() -> Bool  {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_data_name_source,
     identity: ^sole_constructor
@@ -152,11 +152,11 @@ test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
 // publishes ^dag_token_ident, and it is the only site in this fixture that did; inverted below as
 // caret_referenced_ident_does_not_publish_the_generic_ident_class_holds.
 
-test fn caret_referenced_ident_does_not_publish_the_generic_ident_class_holds() -> Bool {
+test fn caret_referenced_ident_does_not_publish_the_generic_ident_class_holds() -> Bool  {
   caret_tree_carries(identity: ^dag_token_ident) == false
 }
 
-test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
+test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool  {
   caret_tree_carries(identity: ^dag_token_kw_sole_constructor) == false
 }
 
@@ -165,21 +165,21 @@ test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Boo
 // this fixture publishes ^dag_token_ident. The positive half asserts the lexeme the site carries, not
 // only the class it no longer does: an answer-only "not the ident class" would stay green if the site
 // published nothing at all.
-test fn generic_param_publishes_the_lexeme_holds() -> Bool {
+test fn generic_param_publishes_the_lexeme_holds() -> Bool  {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_generic_param_source,
     identity: ^sole_constructor
   )
 }
 
-test fn generic_param_does_not_publish_the_generic_ident_class_holds() -> Bool {
+test fn generic_param_does_not_publish_the_generic_ident_class_holds() -> Bool  {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_generic_param_source,
     identity: ^dag_token_ident
   ) == false
 }
 
-test fn generic_param_does_not_publish_the_keyword_class_holds() -> Bool {
+test fn generic_param_does_not_publish_the_keyword_class_holds() -> Bool  {
   parsed_tree_carries_atom(
     src: modifier_spelling_as_generic_param_source,
     identity: ^dag_token_kw_sole_constructor

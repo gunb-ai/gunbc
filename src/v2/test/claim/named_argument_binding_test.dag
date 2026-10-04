@@ -162,14 +162,14 @@ fn nab_refused_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
 
 // (1) THE LABEL RIDES THE APPLICATION. f(b: true, a: 1) lowers to the callee plus two Named edges in
 // AUTHORED order, b then a, and the application is well formed. RED BEFORE: two Positional edges.
-test fn nab_named_actuals_lower_as_named_edges_in_authored_order() -> Bool {
+test fn nab_named_actuals_lower_as_named_edges_in_authored_order() -> Bool  {
   let apps = nab_named_applications(o: nab_reordered())
   (count(apps) == 1) && fold(apps, init: true, f: fn(acc, a) { acc && (nab_actual_labels(app: a) == [^b, ^a]) && well_formed(n: a) })
 }
 
 // (2) NAMED ORDER IS NOT PART OF IDENTITY. The two calls differ only in the order their named actuals
 // are written; the applications hash equal (the named suffix is sorted for the hash).
-test fn nab_reordering_named_actuals_preserves_identity() -> Bool {
+test fn nab_reordering_named_actuals_preserves_identity() -> Bool  {
   let r = nab_named_applications(o: nab_reordered())
   let i = nab_named_applications(o: nab_in_order())
   (count(r) == 1) && (count(i) == 1)
@@ -179,7 +179,7 @@ test fn nab_reordering_named_actuals_preserves_identity() -> Bool {
 // (3) BINDING IS BY NAME. Over the production-emitted Arrow of `f` and the application, the plan
 // fills declared slot `a` from authored actual 1 and `b` from authored actual 0. Binding by position
 // fills a from 0 and b from 1.
-test fn nab_the_plan_binds_named_actuals_by_name() -> Bool {
+test fn nab_the_plan_binds_named_actuals_by_name() -> Bool  {
   let o = nab_reordered()
   let arrows = nab_callee_arrows(o: o)
   let apps = nab_named_applications(o: o)
@@ -192,7 +192,7 @@ test fn nab_the_plan_binds_named_actuals_by_name() -> Bool {
 // (4) EVALUATION ORDER IS AUTHORED ORDER. Eval evaluates every actual after the callee -- named ones
 // included -- in the stored node's order, b then a, and binds through the plan's indices; it never
 // reorders into binding order. RED if named actuals are filtered out (the silent drop this retires).
-test fn nab_eval_evaluates_every_actual_in_authored_order() -> Bool {
+test fn nab_eval_evaluates_every_actual_in_authored_order() -> Bool  {
   let apps = nab_named_applications(o: nab_reordered())
   (count(apps) == 1)
     && fold(apps, init: true, f: fn(acc, ap) {
@@ -230,7 +230,7 @@ fn nab_runtime_argument_labels(app: Node) -> List<Symbol> {
 
 // (5) EVERY BINDING CONFLICT REFUSES, TYPED. Over the Arrow of `f`: an unknown label, a slot a
 // positional actual and a named actual both fill, a missing slot, and a surplus positional actual.
-test fn nab_binding_conflicts_refuse_typed() -> Bool {
+test fn nab_binding_conflicts_refuse_typed() -> Bool  {
   let arrows = nab_callee_arrows(o: nab_reordered())
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, ar) {
@@ -267,7 +267,7 @@ fn nab_unit() -> Node {
 
 // (6) TWO SHAPES HAVE NO WELL-FORMED APPLICATION AND REFUSE AT LOWERING, located: a positional actual
 // after a named one, and a label written twice.
-test fn nab_malformed_named_mixes_refuse_at_lowering() -> Bool {
+test fn nab_malformed_named_mixes_refuse_at_lowering() -> Bool  {
   nab_refused_with(o: nab_positional_after_named(), reason: ^body_lowering_reason_positional_argument_after_named)
     && nab_refused_with(o: nab_label_repeated(), reason: ^body_lowering_reason_argument_label_repeated)
 }

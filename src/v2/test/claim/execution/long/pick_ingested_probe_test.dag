@@ -148,7 +148,7 @@ fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) ->
 // is deleted with a receipt in the gunbc.witness_deferral_freeze shrink log, and its
 // roster row goes in this change, since a frozen row naming an absent witness is a
 // StaleFrozenPathDeferral refusal.
-test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {
+test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool  {
   let resolved = bind_outcome(
     o: pick_probe_normalized_module(),
     f: fn(normalized) { v2.compiler.resolve.resolve(tree: normalized, lm: dag_language_model()) }
@@ -165,7 +165,7 @@ fn pick_probe_normalized_module() -> Outcome<NormalizedTree> {
   pick_ingested_normalized_module_from_source(source: pick_ingested_source)
 }
 
-test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
+test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool  {
   match pick_probe_normalized_module() {
     Accepted { value: normalized, diagnostics: diagnostics } =>
       pick_probe_module_arm_has_magnitude_child_holds(
@@ -176,7 +176,7 @@ test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
   }
 }
 
-test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool {
+test fn pick_probe_parsed_then_arm_has_magnitude_child_holds() -> Bool  {
   match pick_probe_parsed_then_arm_literal_optional(
     module_outcome: pick_ingested_parsed_module_from_source(source: pick_ingested_source)
   ) {

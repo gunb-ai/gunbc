@@ -198,7 +198,7 @@ fn rc_closure_contains(entry: String, name: String) -> Bool {
 
 // SET EQUALITY AT MODULE IDENTITY: every expected module is reached and nothing else is, so the
 // count and the memberships together exclude both a missing member and an extra one.
-test fn the_closure_is_exactly_the_modules_the_entry_reaches_holds() -> Bool {
+test fn the_closure_is_exactly_the_modules_the_entry_reaches_holds() -> Bool  {
   rc_closure_is(
     entry: "v2.test.rc_entry",
     expected: [
@@ -212,16 +212,16 @@ test fn the_closure_is_exactly_the_modules_the_entry_reaches_holds() -> Bool {
 }
 
 // An import no body mentions leaves no reference in the resolved tree; it is followed anyway.
-test fn an_import_no_body_mentions_is_a_member_holds() -> Bool {
+test fn an_import_no_body_mentions_is_a_member_holds() -> Bool  {
   rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_imported")
 }
 
 // The seed-closure shape the import graph misses: a qualified reference with no import.
-test fn a_qualified_reference_with_no_import_is_a_member_holds() -> Bool {
+test fn a_qualified_reference_with_no_import_is_a_member_holds() -> Bool  {
   rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_dotted")
 }
 
-test fn a_module_reached_only_through_a_member_is_a_member_holds() -> Bool {
+test fn a_module_reached_only_through_a_member_is_a_member_holds() -> Bool  {
   rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_transitive")
 }
 
@@ -232,18 +232,18 @@ test fn a_module_reached_only_through_a_member_is_a_member_holds() -> Bool {
 // was on fixtures/native_cli_door at gunbc#12218).
 
 // THE DISCRIMINATING RED: a fold that answered the roster would pass every row above and fail here.
-test fn a_declared_module_nothing_reaches_is_not_a_member_holds() -> Bool {
+test fn a_declared_module_nothing_reaches_is_not_a_member_holds() -> Bool  {
   !rc_closure_contains(entry: "v2.test.rc_entry", name: "v2.test.rc_outside")
 }
 
-test fn a_member_whose_reference_does_not_resolve_refuses_the_closure_holds() -> Bool {
+test fn a_member_whose_reference_does_not_resolve_refuses_the_closure_holds() -> Bool  {
   match rc_closure_of(entry: "v2.test.rc_broken_entry") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
 
-test fn an_entry_that_is_not_rostered_refuses_with_its_own_cause_holds() -> Bool {
+test fn an_entry_that_is_not_rostered_refuses_with_its_own_cause_holds() -> Bool  {
   match rc_closure_of(entry: "v2.test.rc_no_such_entry") {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^reference_closure_entry_not_rostered

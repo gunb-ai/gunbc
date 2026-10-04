@@ -97,22 +97,22 @@ fn wpb_resolved_labelled_and_marker() -> Outcome<ResolvedTree> {
 }
 
 // A declared predicate binds and the module assembles: the positive control.
-test fn wpb_declared_predicate_binds() -> Bool {
+test fn wpb_declared_predicate_binds() -> Bool  {
   wpb_outcome_accepts(o: wpb_resolved_declared())
 }
 
 // THE DISCRIMINATING RED: an undeclared predicate refuses, typed as a where predicate.
-test fn wpb_unbound_predicate_refuses() -> Bool {
+test fn wpb_unbound_predicate_refuses() -> Bool  {
   wpb_outcome_refuses_with(o: wpb_resolved_undeclared(), reason: ^resolve_reason_where_predicate_unbound)
 }
 
 // The SECOND predicate of a clause is carried and bound: the first is declared, the second is not.
-test fn wpb_second_predicate_is_bound() -> Bool {
+test fn wpb_second_predicate_is_bound() -> Bool  {
   wpb_outcome_refuses_with(o: wpb_resolved_labelled_then_undeclared(), reason: ^resolve_reason_where_predicate_unbound)
 }
 
 // Labelled arguments and a marker with a positional string argument, both declared, assemble.
-test fn wpb_labelled_arguments_and_marker_bind() -> Bool {
+test fn wpb_labelled_arguments_and_marker_bind() -> Bool  {
   wpb_outcome_accepts(o: wpb_resolved_labelled_and_marker())
 }
 

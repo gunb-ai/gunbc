@@ -45,15 +45,15 @@ fn kc_verdicts() -> KcVerdicts {
   }
 }
 
-test fn kc_a_reference_beside_an_int_literal_infers_holds() -> Bool {
+test fn kc_a_reference_beside_an_int_literal_infers_holds() -> Bool  {
   kc_verdicts().ref_and_int
 }
 
 // Controls: each shape on its own infers, so a red above is the combination, not either part.
-test fn kc_an_int_literal_alone_infers_holds() -> Bool {
+test fn kc_an_int_literal_alone_infers_holds() -> Bool  {
   kc_verdicts().int_alone
 }
 
-test fn kc_two_int_literals_infer_holds() -> Bool {
+test fn kc_two_int_literals_infer_holds() -> Bool  {
   kc_verdicts().two_ints
 }

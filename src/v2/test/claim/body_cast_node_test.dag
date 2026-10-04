@@ -236,49 +236,49 @@ fn bcn_refused_at(o: Outcome<ResolvedTree>, reason: Symbol, id: Symbol) -> Bool 
 
 // (1)-(5) A cast to a declared type lowers and resolves on every route the as-cast refusal stopped:
 // tail, let value, named call argument, if arm, match arm. Each carries exactly one cast node.
-test fn bcn_tail_cast_carries_its_target() -> Bool {
+test fn bcn_tail_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_tail_cast())
 }
 
-test fn bcn_let_value_cast_carries_its_target() -> Bool {
+test fn bcn_let_value_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_let_value_cast())
 }
 
-test fn bcn_call_argument_cast_carries_its_target() -> Bool {
+test fn bcn_call_argument_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_call_argument_cast())
 }
 
-test fn bcn_if_arm_cast_carries_its_target() -> Bool {
+test fn bcn_if_arm_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_if_arm_cast())
 }
 
-test fn bcn_match_arm_cast_carries_its_target() -> Bool {
+test fn bcn_match_arm_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_match_arm_cast())
 }
 
 // (5b) A CAST WHOSE OPERAND IS A CALL is carried too. RED BEFORE (measured): the chain door
 // declined a head the operand reader does not read, and the tail reader behind it lowered only the
 // primary `g(v: x)` -- Accepted with no cast node. A chain carrying a cast now never declines.
-test fn bcn_call_operand_cast_carries_its_target() -> Bool {
+test fn bcn_call_operand_cast_carries_its_target() -> Bool  {
   bcn_one_cast(o: bcn_call_operand_cast())
 }
 
 // (6) An undeclared target refuses at resolve, located at the authored `Q` -- never dropped, and
 // never at the operand or the `as`. The discriminating red for (1)-(5): the same routes with `Q`.
-test fn bcn_undeclared_target_refuses_at_q() -> Bool {
+test fn bcn_undeclared_target_refuses_at_q() -> Bool  {
   bcn_refused_at(o: bcn_tail_undeclared(), reason: ^resolve_reason_unbound_symbol, id: ^Q)
     && bcn_refused_at(o: bcn_match_arm_undeclared(), reason: ^resolve_reason_unbound_symbol, id: ^Q)
 }
 
 // (7) THE TARGET RESOLVES IN TYPE ROLE. In `fn f<T>` the target `T` binds to the fn's binder through
 // the type-role frame (v2.compiler.resolve resolve_type_role_target) ...
-test fn bcn_generic_target_binds_the_type_parameter() -> Bool {
+test fn bcn_generic_target_binds_the_type_parameter() -> Bool  {
   bcn_cast_target_identity(o: bcn_generic_cast()) == optional_present(value: ^T)
 }
 
 // (8) ... and a VALUE binder never answers for a type: a parameter named `Q` leaves the target `Q`
 // unbound, refused at the target.
-test fn bcn_value_binder_does_not_answer_the_target() -> Bool {
+test fn bcn_value_binder_does_not_answer_the_target() -> Bool  {
   match bcn_value_param_as_type() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
@@ -312,14 +312,14 @@ fn bcn_int_sum_as_bool_inferred() -> Outcome<Bool> {
   bcn_infers(o: bcn_int_sum_as_bool())
 }
 
-test fn bcn_infer_admits_int_to_int() -> Bool {
+test fn bcn_infer_admits_int_to_int() -> Bool  {
   match bcn_int_sum_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bcn_infer_refuses_int_to_bool() -> Bool {
+test fn bcn_infer_refuses_int_to_bool() -> Bool  {
   tpb_accepts(o: bcn_int_sum_as_bool())
     && match bcn_int_sum_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
@@ -371,14 +371,14 @@ fn bcn_emitted_cast_without_target() -> Outcome<String> {
 
 // (10) TRANSLATE REALIZES THE CAST AS ITS OPERAND (the rust extdep's OperandUnchanged row -- how v1
 // spells a representation-preserving crossing, not Rust `as`) ...
-test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool {
+test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool  {
   bcn_emitted_cast()
     == Accepted { value: "fn add(x: i32, y: i32) -> i32 { x }", diagnostics: None }
 }
 
 // (11) ... and THE MUTANT THAT DROPS THE CAST TARGET is refused, typed: a coercion with no target is
 // not a cast, so the target is load-bearing on the translate route.
-test fn bcn_cast_without_its_target_refuses() -> Bool {
+test fn bcn_cast_without_its_target_refuses() -> Bool  {
   match bcn_emitted_cast_without_target() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => bcn_has_reason(d: d, reason: ^target_value_expr_reason_transform_shape_invalid)
@@ -414,7 +414,7 @@ fn bcn_coerce_wire() -> Node {
 
 // (12) EVAL REALIZES THE CAST AS ITS OPERAND'S VALUE: `7 as Int` evaluates to the value `7` does,
 // and not to the value `8` does -- the result is the operand's, not a constant.
-test fn bcn_eval_realizes_the_operand_value() -> Bool {
+test fn bcn_eval_realizes_the_operand_value() -> Bool  {
   let seven = bcn_eval(root: bcn_int(lexeme: "7"))
   (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)) == seven)
     && (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)) != seven)
@@ -422,7 +422,7 @@ test fn bcn_eval_realizes_the_operand_value() -> Bool {
 
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
 // canonicalize_positional_then_named): the target first or last is one node.
-test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool {
+test fn bcn_cast_target_order_does_not_move_the_hash() -> Bool  {
   let op = Edge { label: Positional, target: bcn_coerce_wire() }
   let operand = Edge { label: Positional, target: bcn_int(lexeme: "7") }
   let target = cast_target_edge(target_type: dag_type_atom_node(identity: ^dag_binding_type_int))
@@ -451,7 +451,7 @@ fn bcn_mismatch_at_literal(x: Diagnostic) -> Bool {
     }
 }
 
-test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool {
+test fn bcn_cast_into_a_refinement_refuses_at_infer() -> Bool  {
   tpb_accepts(o: bcn_into_refinement())
     && match bcn_into_refinement_inferred() {
       Accepted { value: _, diagnostics: _ } => false
@@ -502,7 +502,7 @@ fn bcn_operand_mismatch(x: Diagnostic) -> Bool {
 // 980761c838): infer refused NoTargetCandidate at the operand, because coercion judged only exact
 // structural equality and Pos is not structurally Int. The route is asserted, not only the verdict:
 // the quality is Widened, not Exact, so an admission through some other rule cannot green this row.
-test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool {
+test fn bcn_cast_out_of_a_refinement_to_its_declared_carrier_widens() -> Bool  {
   match bcn_out_of_refinement_inferred() {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: _ } =>
@@ -549,7 +549,7 @@ fn bcn_supplied_quality(o: Outcome<CoercionResult>) -> Optional<CoercionQuality>
 // and `x as Int` from x: Pos2 REFUSES: the carrier edge is not walked to a fixed point. Supplied values
 // at coercion's interface, in the shape the production route emits. RED if the widening arm admitted a
 // non-carrier target or walked the carrier chain.
-test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool {
+test fn bcn_cast_out_of_a_refinement_to_a_non_carrier_refuses() -> Bool  {
   bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_bool_type()))
     && bcn_is_widened(q: bcn_supplied_quality(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_ref(leaf: ^Pos))))
     && bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos2, carrier: bcn_ref(leaf: ^Pos), target: bcn_int_type()))
@@ -566,7 +566,7 @@ fn bcn_refinement_of_refinement_as_its_carrier() -> Outcome<ResolvedTree> {
   tpb_assemble(src: "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\ntype Pos2 = Pos where positive\n\nfn f(x: Pos2) -> Pos {\n  x as Pos\n}\n")
 }
 
-test fn bcn_refinement_of_a_refinement_widens_one_step() -> Bool {
+test fn bcn_refinement_of_a_refinement_widens_one_step() -> Bool  {
   bcn_is_widened(q: bcn_crossing_quality(o: bcn_refinement_of_refinement_as_its_carrier(), reference_path: Cons { head: ^p, tail: Cons { head: ^Pos2, tail: Empty } }))
 }
 
@@ -575,7 +575,7 @@ test fn bcn_refinement_of_a_refinement_widens_one_step() -> Bool {
 // holding no declarations), or an index with no unambiguous entry at the path -- no carrier reaches
 // coercion, and `x as Int` from a refinement-typed x keeps the exact crossing's refusal. RED if a
 // miss were read as permission (the widening arm admitting with no declared carrier).
-test fn bcn_a_refinement_lookup_miss_refuses() -> Bool {
+test fn bcn_a_refinement_lookup_miss_refuses() -> Bool  {
   bcn_supplied_refuses(o: coercion_cast_crossing(
     source: claim_canonical_grounding(type_symbol: ^bcn_refinement_operand, algebra_symbol: ^bcn_refinement_operand),
     source_type: bcn_ref(leaf: ^Pos),
@@ -586,7 +586,7 @@ test fn bcn_a_refinement_lookup_miss_refuses() -> Bool {
 
 // (15c) A SIBLING REFINEMENT OVER THE SAME CARRIER IS NOT A CARRIER: `x as Neg` from x: Pos, both
 // `Int where ..`, refuses. RED if sharing a carrier admitted a crossing between refinements.
-test fn bcn_cast_between_sibling_refinements_refuses() -> Bool {
+test fn bcn_cast_between_sibling_refinements_refuses() -> Bool  {
   bcn_supplied_refuses(o: bcn_supplied_crossing(source_leaf: ^Pos, carrier: bcn_int_type(), target: bcn_ref(leaf: ^Neg)))
 }
 
@@ -599,7 +599,7 @@ test fn bcn_cast_between_sibling_refinements_refuses() -> Bool {
 // (main at 21f4d0c): refused NoTargetCandidate, because the unscoped walk bound x to
 // `positive(x: Int)`; renaming f's parameter to `y` alone made it admit, which located the defect at
 // the parameter lookup's scope, not at coercion.
-test fn bcn_identity_cast_into_a_refinement_admits() -> Bool {
+test fn bcn_identity_cast_into_a_refinement_admits() -> Bool  {
   bcn_refused_with_mismatch(o: bcn_refinement_param_as_bool_inferred())
     && match bcn_refinement_identity_cast_inferred() {
       Accepted { value: _, diagnostics: _ } => true
@@ -615,7 +615,7 @@ test fn bcn_identity_cast_into_a_refinement_admits() -> Bool {
 // tree on (well_formed && type_binder_labels_conform). RED BEFORE (gunbc#12315 at 4f4b67ed62):
 // the label rule refused every named edge on a behavior carrying no marker, so every Loop failed it
 // (reported by neat-boar-16).
-test fn bcn_a_loop_passes_the_resolver_gate() -> Bool {
+test fn bcn_a_loop_passes_the_resolver_gate() -> Bool  {
   match lowered_fixture_loop() {
     Present { value: l } => well_formed(n: l) && type_binder_labels_conform(root: l)
     Absent => false
@@ -626,7 +626,7 @@ test fn bcn_a_loop_passes_the_resolver_gate() -> Bool {
 // application with named actuals are different forms, and this node is neither. Named actuals alone
 // are an application's (MQ-1); the gate admits those, and a label that names no parameter of the
 // callee refuses at binding instead (bcn_an_unknown_named_label_refuses_at_binding).
-test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
+test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool  {
   !type_binder_labels_conform(root: node_synthetic(
     kind: ComputationNode { behavior: Transform },
     children: [
@@ -642,7 +642,7 @@ test fn bcn_a_foreign_label_on_a_transform_refuses() -> Bool {
 // (18b) THE OTHER HALF OF THE SPLIT WALL: a named label that names no parameter of the callee has no
 // slot, and the one binding authority refuses it -- so no Accepted program holds a foreign label on an
 // application either. The callee declares `x`; the actual is labelled `bcn_not_a_marker`.
-test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool {
+test fn bcn_an_unknown_named_label_refuses_at_binding() -> Bool  {
   let signature = declared_signature(
     params: [binder_edge(name: ^x, type_node: dag_type_atom_node(identity: ^dag_binding_type_int))],
     source: dag_type_atom_node(identity: ^dag_binding_type_int)

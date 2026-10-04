@@ -87,7 +87,7 @@ fn refused_cast_route_verdict() -> IdentityCastRouteVerdict {
 
 // The admitted cast reaches Rust as the entry's only member, with the parameter and result at the
 // target's Int spelling. A refusal anywhere in the closure, or a second member, is false.
-test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool {
+test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool  {
   match identity_cast_route_verdict() {
     IdentityCastEntryEmitted { text: t, members: n } =>
       n == 1 && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
@@ -100,7 +100,7 @@ test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Boo
 // MEMBER by coercion's mismatch (v2.std.find_witness), not by a parse, resolve or emission failure.
 // Asserting the reason is what makes this a control of admission: a closure that refused for any
 // other cause would satisfy a bare "was refused".
-test fn a_cast_with_no_witness_refuses_before_realization_holds() -> Bool {
+test fn a_cast_with_no_witness_refuses_before_realization_holds() -> Bool  {
   match refused_cast_route_verdict() {
     IdentityCastEntryEmitted { text: _, members: _ } => false
     IdentityCastEntryRefused { reason: r, members: n } =>

@@ -119,13 +119,13 @@ fn vbp_undeclared_field_is_carried() -> Bool {
 }
 
 // (1) A VALUE-BASE PROJECTION RESOLVES ITS BASE AND KEEPS ITS FIELD.
-test fn vbp_value_base_projection_keeps_its_field() -> Bool {
+test fn vbp_value_base_projection_keeps_its_field() -> Bool  {
   vbp_call_projection_reading().keeps_field
 }
 
 // (2) A BOUND NAME SPELLED LIKE THE FIELD IS NOT CAPTURED AS THE FIELD: `reason` is also a parameter of r,
 // and the projection still names the field.
-test fn vbp_a_param_spelled_like_the_field_is_not_captured() -> Bool {
+test fn vbp_a_param_spelled_like_the_field_is_not_captured() -> Bool  {
   vbp_field_spelled_like_a_param_keeps_field()
 }
 
@@ -142,7 +142,7 @@ fn vbp_infer_assembled(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
 
 // (1b) THE BASE IS RESOLVED EXACTLY: the call's operator is the declaration reference p.mk and its argument the
 // parameter reference p.r.x. RED under the mutation that keeps the field but leaves the base verbatim.
-test fn vbp_value_base_is_resolved_exactly() -> Bool {
+test fn vbp_value_base_is_resolved_exactly() -> Bool  {
   vbp_call_projection_reading().base_resolved_exactly
 }
 
@@ -150,7 +150,7 @@ test fn vbp_value_base_is_resolved_exactly() -> Bool {
 // infer (gunbc.recurring_failure_mode application_result_type_not_derived_in_v2_infer), so the field is NOT
 // checked against D here -- the program is accepted with the infer_grounding_not_derived frontier entry carried
 // on the direct infer outcome. This claims only that; it does not claim infer judges the field.
-test fn vbp_call_result_projection_is_accepted_through_the_frontier() -> Bool {
+test fn vbp_call_result_projection_is_accepted_through_the_frontier() -> Bool  {
   vbp_call_projection_reading().accepted_through_the_frontier
 }
 
@@ -161,6 +161,6 @@ test fn vbp_call_result_projection_is_accepted_through_the_frontier() -> Bool {
 // accepted outcomes. Its row is
 // gunbc.recurring_failure_mode application_result_type_not_derived_in_v2_infer; when application results
 // are typed, this flips to a refusal at the field and is inverted into its control.
-test fn vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome() -> Bool {
+test fn vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome() -> Bool  {
   vbp_undeclared_field_is_carried()
 }

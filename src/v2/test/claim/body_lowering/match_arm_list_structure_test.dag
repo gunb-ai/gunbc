@@ -193,14 +193,14 @@ fn mals_nth_is(arms: List<Node>, i: Int, pattern: Symbol, body: Symbol) -> Bool 
   }
 }
 
-test fn a_four_arm_match_lowers_exactly_four_arms() -> Bool {
+test fn a_four_arm_match_lowers_exactly_four_arms() -> Bool  {
   match mals_lowered() {
     MalsArmsLowered { arms: arms } => length(xs: arms) == 4
     _ => false
   }
 }
 
-test fn the_arms_keep_source_order_and_each_pattern_keeps_its_own_body() -> Bool {
+test fn the_arms_keep_source_order_and_each_pattern_keeps_its_own_body() -> Bool  {
   match mals_lowered() {
     MalsArmsLowered { arms: arms } =>
       mals_nth_is(arms: arms, i: 0, pattern: ^MalsA, body: ^mals_wa)
@@ -211,7 +211,7 @@ test fn the_arms_keep_source_order_and_each_pattern_keeps_its_own_body() -> Bool
   }
 }
 
-test fn a_malformed_third_arm_refuses_rather_than_shortening_the_list() -> Bool {
+test fn a_malformed_third_arm_refuses_rather_than_shortening_the_list() -> Bool  {
   match mals_third_arm_malformed() {
     MalsArmsRefused => true
     _ => false

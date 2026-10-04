@@ -82,18 +82,18 @@ fn bhr_verdicts() -> BhrVerdicts {
   }
 }
 
-test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
+test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool  {
   bhr_verdicts().empty_literal
 }
 
-test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool {
+test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool  {
   bhr_verdicts().empty_arm
 }
 
-test fn parenthesised_parameter_list_takes_the_lambda_route() -> Bool {
+test fn parenthesised_parameter_list_takes_the_lambda_route() -> Bool  {
   bhr_verdicts().lambda
 }
 
-test fn grouped_expression_takes_no_lambda_route() -> Bool {
+test fn grouped_expression_takes_no_lambda_route() -> Bool  {
   bhr_verdicts().group
 }

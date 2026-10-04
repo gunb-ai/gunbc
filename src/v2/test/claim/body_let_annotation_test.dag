@@ -152,7 +152,7 @@ fn bla_has_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
 
 // (1) A let annotation naming a declared type lowers and resolves, carrying exactly one annotation
 // whose target is a resolved atom. A lowering that drops the edge reds this row: the count is 0.
-test fn bla_concrete_annotation_is_carried() -> Bool {
+test fn bla_concrete_annotation_is_carried() -> Bool  {
   match bla_annotation_identity(o: bla_concrete()) {
     Present { value: _ } => true
     Absent => false
@@ -161,13 +161,13 @@ test fn bla_concrete_annotation_is_carried() -> Bool {
 
 // (2) The annotation resolves in the TYPE-ROLE frame: the enclosing fn's <T> binds a body
 // annotation's `T`.
-test fn bla_generic_annotation_binds_the_type_parameter() -> Bool {
+test fn bla_generic_annotation_binds_the_type_parameter() -> Bool  {
   bla_annotation_identity(o: bla_generic()) == optional_present(value: ^T)
 }
 
 // (3) A type parameter in VALUE position still refuses, with its own reason, located at the value
 // use: the frame that binds the annotation's `T` does not answer for the bound value's.
-test fn bla_type_parameter_in_value_position_refuses_located() -> Bool {
+test fn bla_type_parameter_in_value_position_refuses_located() -> Bool  {
   match bla_type_param_as_value() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -184,7 +184,7 @@ test fn bla_type_parameter_in_value_position_refuses_located() -> Bool {
 
 // (4) ... and a VALUE binder never answers for the annotation: a parameter named `Q` leaves the
 // annotation `Q` unbound.
-test fn bla_value_binder_does_not_answer_the_annotation() -> Bool {
+test fn bla_value_binder_does_not_answer_the_annotation() -> Bool  {
   match bla_value_param_as_type() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
@@ -231,14 +231,14 @@ fn bla_int_sum_as_bool_inferred() -> Outcome<Bool> {
   bla_infers(o: bla_int_sum_as_bool())
 }
 
-test fn bla_infer_admits_int_sum_ascribed_int() -> Bool {
+test fn bla_infer_admits_int_sum_ascribed_int() -> Bool  {
   match bla_int_sum_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool {
+test fn bla_infer_refuses_int_sum_ascribed_bool() -> Bool  {
   tpb_accepts(o: bla_int_sum_as_bool())
     && match bla_int_sum_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
@@ -264,14 +264,14 @@ fn bla_int_literal_as_bool_inferred() -> Outcome<Bool> {
   bla_infers(o: bla_int_literal_as_bool())
 }
 
-test fn bla_infer_admits_int_literal_ascribed_int() -> Bool {
+test fn bla_infer_admits_int_literal_ascribed_int() -> Bool  {
   match bla_int_literal_as_int_inferred() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool {
+test fn bla_infer_refuses_int_literal_ascribed_bool() -> Bool  {
   tpb_accepts(o: bla_int_literal_as_bool())
     && match bla_int_literal_as_bool_inferred() {
       Accepted { value: _, diagnostics: _ } => false
@@ -419,19 +419,19 @@ fn bla_refuses_for(o: Outcome<Bool>, reason: Symbol) -> Bool {
   }
 }
 
-test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> Bool {
+test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> Bool  {
   bla_refuses_for(o: bla_let_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
     && bla_refuses_for(o: bla_ret_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
     && bla_refuses_for(o: bla_fld_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
 }
 
-test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field() -> Bool {
+test fn bla_refinement_inhabits_its_declared_carrier_at_a_let_a_return_and_a_field() -> Bool  {
   bla_let_admits_decided(annotated: bla_let_pos_int(), plain: bla_plain_let_pos())
     && bla_admits_decided(o: bla_ret_pos_int())
     && bla_admits_decided(o: bla_fld_pos_int())
 }
 
-test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field() -> Bool {
+test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_field() -> Bool  {
   bla_let_admits_decided(annotated: bla_let_pos2_pos(), plain: bla_plain_let_pos2())
     && bla_admits_decided(o: bla_ret_pos2_pos())
     && bla_admits_decided(o: bla_fld_pos2_pos())
@@ -440,7 +440,7 @@ test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_f
     && bla_refuses_for(o: bla_fld_pos2_int(), reason: ^record_field_value_does_not_inhabit)
 }
 
-test fn bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field() -> Bool {
+test fn bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field() -> Bool  {
   bla_refuses_for(o: bla_let_neg_pos(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
     && bla_refuses_for(o: bla_ret_neg_pos(), reason: ^arrow_body_does_not_inhabit_declared_return)
     && bla_refuses_for(o: bla_fld_neg_pos(), reason: ^record_field_value_does_not_inhabit)
@@ -558,25 +558,25 @@ fn bla_annotation_is(o: Outcome<ResolvedTree>, id: Symbol) -> Bool {
   }
 }
 
-test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool {
+test fn bla_module_declared_int_shadows_the_kernel_int() -> Bool  {
   !bla_annotation_is(o: bla_declared_int_literal(), id: ^dag_binding_type_int)
     && bla_refuses_at_the_annotation(o: bla_declared_int_literal(), inferred: bla_declared_int_literal_inferred())
 }
 
-test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool {
+test fn bla_module_declared_bool_shadows_the_kernel_bool() -> Bool  {
   !bla_annotation_is(o: bla_declared_bool_literal(), id: ^bool_node_symbol)
     && bla_refuses_at_the_annotation(o: bla_declared_bool_literal(), inferred: bla_declared_bool_literal_inferred())
 }
 
-test fn bla_imported_user_int_refuses_rather_than_binding_the_kernel_int() -> Bool {
+test fn bla_imported_user_int_refuses_rather_than_binding_the_kernel_int() -> Bool  {
   tpb_refuses_with(o: bla_imported_int_literal(), reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration)
 }
 
-test fn bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel() -> Bool {
+test fn bla_ambiguous_imported_int_refuses_rather_than_defaulting_to_the_kernel() -> Bool  {
   tpb_refuses_with(o: bla_ambiguous_imported_int_literal(), reason: ^resolve_reason_ambiguous_symbol)
 }
 
-test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool {
+test fn bla_ambiguous_kernel_declarations_bind_the_kernel_type() -> Bool  {
   bla_annotation_is(o: bla_ambiguous_kernel_int_literal(), id: ^dag_binding_type_int)
 }
 
@@ -616,18 +616,18 @@ fn bla_single_tree_undeclared_int() -> Outcome<ResolvedTree> {
   bla_single_tree_resolved(text: "module m.t\n\nfn f(x: Int) -> Int {\n  let y: Int = x\n  x\n}\n")
 }
 
-test fn bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration() -> Bool {
+test fn bla_single_tree_module_declared_int_and_bool_bind_the_local_declaration() -> Bool  {
   tpb_accepts(o: bla_single_tree_declared_int())
     && tpb_accepts(o: bla_single_tree_declared_bool())
     && !bla_annotation_is(o: bla_single_tree_declared_int(), id: ^dag_binding_type_int)
     && !bla_annotation_is(o: bla_single_tree_declared_bool(), id: ^bool_node_symbol)
 }
 
-test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool {
+test fn bla_single_tree_undeclared_int_binds_the_kernel_type() -> Bool  {
   bla_annotation_is(o: bla_single_tree_undeclared_int(), id: ^dag_binding_type_int)
 }
 
-test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool {
+test fn bla_undeclared_kernel_spelling_binds_the_kernel_type() -> Bool  {
   bla_annotation_is(o: bla_int_literal_as_int(), id: ^dag_binding_type_int)
     && bla_annotation_is(o: bla_int_literal_as_bool(), id: ^bool_node_symbol)
 }
@@ -760,16 +760,16 @@ fn bla_int_literal_payload_digit_verdict() -> Bool {
   }
 }
 
-test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool {
+test fn bla_symbol_literal_payload_is_typed_symbol_not_digit() -> Bool  {
   let v = bla_symbol_literal_payload_verdict()
   v.typed_symbol && !v.typed_digit
 }
 
-test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool {
+test fn bla_int_literal_payload_digits_stay_decimal_digits() -> Bool  {
   bla_int_literal_payload_digit_verdict()
 }
 
-test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
+test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool  {
   tpb_accepts(o: bla_symbol_literal_as_int())
     && match bla_symbol_literal_as_int_inferred() {
       Accepted { value: _, diagnostics: _ } => false
@@ -779,7 +779,7 @@ test fn bla_symbol_literal_ascribed_int_refuses_at_the_annotation() -> Bool {
     }
 }
 
-test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool {
+test fn bla_symbol_literal_ascribed_symbol_is_admitted_and_derived() -> Bool  {
   bla_annotation_is(o: bla_symbol_literal_as_symbol(), id: ^symbol_node_symbol)
     && match bla_symbol_literal_as_symbol_inferred() {
       Rejected { diagnostics: _ } => false
@@ -909,7 +909,7 @@ fn bla_refuses_with_annotation_reason(o: Outcome<Bool>) -> Bool {
   }
 }
 
-test fn bla_unimported_string_binds_kernel_host_text() -> Bool {
+test fn bla_unimported_string_binds_kernel_host_text() -> Bool  {
   bla_annotation_is(o: bla_string_literal_unimported(), id: ^string_node_symbol)
     && match bla_string_literal_unimported_inferred() {
       Accepted { value: _, diagnostics: _ } => true
@@ -917,21 +917,21 @@ test fn bla_unimported_string_binds_kernel_host_text() -> Bool {
     }
 }
 
-test fn bla_string_literal_is_typed_host_text() -> Bool {
+test fn bla_string_literal_is_typed_host_text() -> Bool  {
   bla_string_literal_typed_host_text_verdict()
 }
 
-test fn bla_string_literal_ascribed_int_refuses() -> Bool {
+test fn bla_string_literal_ascribed_int_refuses() -> Bool  {
   tpb_accepts(o: bla_string_literal_as_int())
     && bla_refuses_with_annotation_reason(o: bla_string_literal_as_int_inferred())
 }
 
-test fn bla_imported_structural_string_binds_its_declaration() -> Bool {
+test fn bla_imported_structural_string_binds_its_declaration() -> Bool  {
   tpb_accepts(o: bla_structural_string_literal())
     && !bla_annotation_is(o: bla_structural_string_literal(), id: ^string_node_symbol)
 }
 
-test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
+test fn bla_host_text_literal_at_structural_string_refuses() -> Bool  {
   tpb_accepts(o: bla_structural_string_literal())
     && bla_refuses_with_annotation_reason(o: bla_structural_string_literal_inferred())
 }
@@ -941,7 +941,7 @@ test fn bla_host_text_literal_at_structural_string_refuses() -> Bool {
 // reference nor a call result is typed from its source), so the value stays on the counted
 // GroundingNotDerived frontier. This row pins that it is refused or carries that frontier, never a
 // clean admit. It flips to a refusal control when non-literal values derive their types.
-test fn bla_host_text_value_at_structural_string_is_never_matched() -> Bool {
+test fn bla_host_text_value_at_structural_string_is_never_matched() -> Bool  {
   tpb_accepts(o: bla_structural_string_host_value())
     && match bla_structural_string_host_value_inferred() {
       Rejected { diagnostics: _ } => true
@@ -951,7 +951,7 @@ test fn bla_host_text_value_at_structural_string_is_never_matched() -> Bool {
     }
 }
 
-test fn bla_unknown_unimported_type_name_still_refuses() -> Bool {
+test fn bla_unknown_unimported_type_name_still_refuses() -> Bool  {
   tpb_refuses_with(o: bla_unknown_unimported_type(), reason: ^resolve_reason_unbound_symbol)
 }
 
@@ -998,21 +998,21 @@ fn bla_annotated_bind_emitted() -> Outcome<String> {
   bla_emit_rust(body: bla_bind(annotated: true))
 }
 
-test fn bla_translate_refuses_an_annotated_bind() -> Bool {
+test fn bla_translate_refuses_an_annotated_bind() -> Bool  {
   bla_refused_for_annotation(o: bla_annotated_bind_emitted())
 }
 
 // ... and the refusal is the annotation's: the accessor translate branches on answers the annotation
 // for the annotated Bind and Absent for the same Bind without the edge. Read at the accessor, not
 // through a second full emit.
-test fn bla_translate_gate_is_the_annotations() -> Bool {
+test fn bla_translate_gate_is_the_annotations() -> Bool  {
   (type_annotation_optional(n: bla_bind(annotated: true)) == optional_present(value: dag_type_atom_node(identity: ^dag_binding_type_int)))
     && (type_annotation_optional(n: bla_bind(annotated: false)) == Absent)
 }
 
 // (7) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node
 // canonicalize_positional_then_named): the annotation first or last is one node.
-test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
+test fn bla_annotation_order_does_not_move_the_hash() -> Bool  {
   let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
   let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
   let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
@@ -1025,7 +1025,7 @@ test fn bla_annotation_order_does_not_move_the_hash() -> Bool {
 // Named edge on a Bind by shape, so a Bind carrying a cast's <cast-target> passes the shape and must
 // be refused here, by v2.std.type_binder type_binder_labels_conform, which resolve runs on the whole
 // tree. Dropping the Bind arm of that rule greens the mislabelled Bind and reds this row.
-test fn bla_bind_admits_only_its_annotation_label() -> Bool {
+test fn bla_bind_admits_only_its_annotation_label() -> Bool  {
   let key = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
   let value = Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_param_x) }
   let body = Edge { label: Positional, target: dag_type_atom_node(identity: ^bla_y) }
@@ -1105,7 +1105,7 @@ fn bla_reordered_outer_reference() -> BlaReorderedResolve {
   bla_reordered_resolve(text: "module m.t\nfn f(x: Int) -> Int {\n  let y: Int = x\n  y\n}\n")
 }
 
-test fn bla_reordered_annotation_keeps_the_initializer_outside_its_binder() -> Bool {
+test fn bla_reordered_annotation_keeps_the_initializer_outside_its_binder() -> Bool  {
   let bad = bla_reordered_self_reference()
   let good = bla_reordered_outer_reference()
   bad.reordered

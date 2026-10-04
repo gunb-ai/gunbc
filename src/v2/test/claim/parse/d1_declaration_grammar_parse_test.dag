@@ -172,13 +172,13 @@ fn d1_parsed_normalizes(parsed: Outcome<Node>) -> Bool {
   }
 }
 
-test fn cause_a_where_refinement_clause_parses_holds() -> Bool {
+test fn cause_a_where_refinement_clause_parses_holds() -> Bool  {
   d1_parsed_accepted(parsed: d1_where_reproducer_parsed())
     && d1_parsed_accepted(parsed: d1_where_bare_parsed())
     && d1_parsed_accepted(parsed: d1_where_control_parsed())
 }
 
-test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
+test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool  {
   match d1_where_reproducer_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
@@ -191,11 +191,11 @@ test fn cause_a_where_clause_parse_tree_carries_holds() -> Bool {
   }
 }
 
-test fn cause_a_where_control_normalizes_holds() -> Bool {
+test fn cause_a_where_control_normalizes_holds() -> Bool  {
   d1_parsed_normalizes(parsed: d1_where_control_parsed())
 }
 
-test fn cause_a_where_reproducer_normalizes_holds() -> Bool {
+test fn cause_a_where_reproducer_normalizes_holds() -> Bool  {
   d1_parsed_normalizes(parsed: d1_where_reproducer_parsed())
 }
 
@@ -251,7 +251,7 @@ fn cause_a_where_clause_survives_normalize_locus() -> ProcessExit {
   }
 }
 
-test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
+test fn cause_a_where_clause_survives_normalize_holds() -> Bool  {
   match d1_where_reproducer_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: brand_tree, diagnostics: _ } =>
@@ -272,15 +272,15 @@ test fn cause_a_where_clause_survives_normalize_holds() -> Bool {
   }
 }
 
-test fn cause_a_empty_where_clause_refuses_holds() -> Bool {
+test fn cause_a_empty_where_clause_refuses_holds() -> Bool  {
   !d1_parse_accepted(text: d1_where_empty, file: ^d1_where_empty)
 }
 
-test fn cause_a_cache_identity_where_normalizes_holds() -> Bool {
+test fn cause_a_cache_identity_where_normalizes_holds() -> Bool  {
   d1_parsed_normalizes(parsed: d1_cache_identity_where_parsed())
 }
 
-test fn cause_a_cache_identity_where_normalizes_well_formed_holds() -> Bool {
+test fn cause_a_cache_identity_where_normalizes_well_formed_holds() -> Bool  {
   match d1_cache_identity_where_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

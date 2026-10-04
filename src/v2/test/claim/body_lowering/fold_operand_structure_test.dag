@@ -237,27 +237,27 @@ fn fos_outcomes() -> FosOutcomes {
 
 // POSITIVE CONTROLS: `fos_t && fold(..)` is Transform(&&, fos_t, Loop) and `fos_h(a: fold(..), b: fos_s)`
 // is Transform(fos_h, Loop, fos_s), on the value-reader and the body-walker route.
-test fn an_operand_beside_a_fold_lowers_as_the_operator_over_the_loop() -> Bool {
+test fn an_operand_beside_a_fold_lowers_as_the_operator_over_the_loop() -> Bool  {
   fos_outcomes().and_reader_over_loop
 }
 
-test fn the_body_walker_lowers_an_operand_beside_a_fold_as_the_operator_over_the_loop() -> Bool {
+test fn the_body_walker_lowers_an_operand_beside_a_fold_as_the_operator_over_the_loop() -> Bool  {
   fos_outcomes().and_walker_over_loop
 }
 
-test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool {
+test fn a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop() -> Bool  {
   fos_outcomes().call_reader_over_loop
 }
 
-test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool {
+test fn the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop() -> Bool  {
   fos_outcomes().call_walker_over_loop
 }
 
 // THE DISCRIMINATING RED: re-adding the descent answers Present at an identity-less encloser.
-test fn no_identity_less_node_answers_an_enclosed_fold_beside_an_operator() -> Bool {
+test fn no_identity_less_node_answers_an_enclosed_fold_beside_an_operator() -> Bool  {
   fos_outcomes().and_decision_holds
 }
 
-test fn no_identity_less_node_answers_an_enclosed_fold_argument() -> Bool {
+test fn no_identity_less_node_answers_an_enclosed_fold_argument() -> Bool  {
   fos_outcomes().call_decision_holds
 }

@@ -178,31 +178,31 @@ fn qc_pairwise_equal(xs: List<Hash>, ys: List<Hash>) -> Bool {
 
 // (a) and (c): the construction and the fielded pattern, spelled qualified, resolve to the same
 // constructs as their imported bare spelling -- two constructs each, equal by content.
-test fn qc_qualified_constructs_equal_their_unqualified_form_holds() -> Bool {
+test fn qc_qualified_constructs_equal_their_unqualified_form_holds() -> Bool  {
   let bare = qc_construct_hashes(o: qc_resolved_bare())
   (length(xs: bare) == 2) && qc_pairwise_equal(xs: bare, ys: qc_construct_hashes(o: qc_resolved_qualified()))
 }
 
 // The tag binds the VARIANT's own declaration, never its coproduct, in both spellings.
-test fn qc_a_resolved_user_construct_reads_its_tag_holds() -> Bool {
+test fn qc_a_resolved_user_construct_reads_its_tag_holds() -> Bool  {
   qc_construct_paths(o: qc_resolved_qualified()) == ["v2.test.qcp.QcRow", "v2.test.qcp.QcRow"]
     && qc_construct_paths(o: qc_resolved_bare()) == ["v2.test.qcp.QcRow", "v2.test.qcp.QcRow"]
 }
 
 // (b): the nullary value and the nullary pattern, spelled qualified, are references to the variant,
 // as the bare spelling is. The first-atom pattern reader answered `v2` for the qualified pattern.
-test fn qc_qualified_nullary_binds_the_variant_holds() -> Bool {
+test fn qc_qualified_nullary_binds_the_variant_holds() -> Bool  {
   (qc_reference_count(o: qc_resolved_qualified(), dotted: "v2.test.qcp.QcNone") == 2)
     && (qc_reference_count(o: qc_resolved_bare(), dotted: "v2.test.qcp.QcNone") == 2)
 }
 
 // Identity, not spelling: two variants with one leaf in two modules bind two declarations.
-test fn qc_same_leaf_in_two_modules_binds_two_declarations_holds() -> Bool {
+test fn qc_same_leaf_in_two_modules_binds_two_declarations_holds() -> Bool  {
   qc_construct_paths(o: qc_resolved_twins()) == ["v2.test.qcp.QcRow", "v2.test.qcp_b.QcRow"]
 }
 
 // A tag that resolves to the coproduct TYPE rather than a variant refuses, located, by identity.
-test fn qc_a_type_tag_refuses_as_not_a_constructor_holds() -> Bool {
+test fn qc_a_type_tag_refuses_as_not_a_constructor_holds() -> Bool  {
   match qc_resolved_type_tag() {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_construct_tag_not_a_constructor
     Accepted { value: _, diagnostics: _ } => false
@@ -211,7 +211,7 @@ test fn qc_a_type_tag_refuses_as_not_a_constructor_holds() -> Bool {
 
 // MUTATION, THE QUALIFIER DROPPED: without it and without an import the constructor is unbound --
 // the path is what bound it, not a corpus search for its leaf.
-test fn qc_dropping_the_qualifier_unbinds_the_constructor_holds() -> Bool {
+test fn qc_dropping_the_qualifier_unbinds_the_constructor_holds() -> Bool  {
   match qc_resolved_unimported() {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
     Accepted { value: _, diagnostics: _ } => false
@@ -220,7 +220,7 @@ test fn qc_dropping_the_qualifier_unbinds_the_constructor_holds() -> Bool {
 
 // MUTATION, THE RECORD BODY DROPPED: the same path with no body is a reference to the variant and
 // no construct at all.
-test fn qc_dropping_the_record_body_is_not_a_construct_holds() -> Bool {
+test fn qc_dropping_the_record_body_is_not_a_construct_holds() -> Bool  {
   (length(xs: qc_construct_hashes(o: qc_resolved_bodyless())) == 0)
     && (qc_reference_count(o: qc_resolved_bodyless(), dotted: "v2.test.qcp.QcRow") == 1)
 }
@@ -243,13 +243,13 @@ fn qc_normalized_constructs_of(module_dotted: String) -> List<Node> {
 
 // THE SEVEN'S FORM REACHES THE CONSTRUCT PRODUCTION WITH ITS WHOLE PATH (the file refusal that held
 // v2.compiler.tokenize out of the index was this form declining to a fatal unsupported_form).
-test fn qc_the_sevens_form_lowers_to_a_construct_holds() -> Bool {
+test fn qc_the_sevens_form_lowers_to_a_construct_holds() -> Bool  {
   length(xs: qc_normalized_constructs_of(module_dotted: "v2.std.diagnostic.Rejected")) == 1
 }
 
 // THE EMISSION GATE, BOTH WAYS: a resolved construct is admitted, and the same construct before
 // resolution -- an authored path, not an identity -- is refused.
-test fn qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds() -> Bool {
+test fn qc_the_emission_gate_admits_a_resolved_construct_and_refuses_an_unresolved_one_holds() -> Bool  {
   let resolved_admitted = match qc_resolved_qualified() {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>

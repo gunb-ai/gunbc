@@ -169,18 +169,18 @@ fn elif_verdicts() -> ElifVerdicts {
   }
 }
 
-test fn statement_guard_parses_to_one_else_less_if_route() -> Bool {
+test fn statement_guard_parses_to_one_else_less_if_route() -> Bool  {
   elif_verdicts().guard_one_route
 }
 
-test fn value_if_parses_to_one_else_less_if_route() -> Bool {
+test fn value_if_parses_to_one_else_less_if_route() -> Bool  {
   elif_verdicts().value_one_route
 }
 
-test fn statement_position_guard_is_admitted() -> Bool {
+test fn statement_position_guard_is_admitted() -> Bool  {
   elif_verdicts().guard_admitted
 }
 
-test fn value_position_else_less_if_refuses_at_the_if() -> Bool {
+test fn value_position_else_less_if_refuses_at_the_if() -> Bool  {
   elif_verdicts().value_refuses
 }

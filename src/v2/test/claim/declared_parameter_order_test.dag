@@ -243,7 +243,7 @@ fn dpo_refusal_reason(arrow: Node) -> List<Symbol> {
 
 // (1) A DECLARED FN'S ARROW CARRIES ITS PARAMETERS IN DECLARED ORDER, and is well formed. `b` is
 // written before `a`, so label order would answer [a, b].
-test fn dpo_the_arrow_carries_declared_order() -> Bool {
+test fn dpo_the_arrow_carries_declared_order() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) { acc && (dpo_order(arrow: a) == [^b, ^a]) && well_formed(n: a) })
@@ -252,7 +252,7 @@ test fn dpo_the_arrow_carries_declared_order() -> Bool {
 // (2) DECLARED ORDER IS PART OF THE TYPE. fn(a: Bool, b: Int) and fn(b: Int, a: Bool) have one domain
 // Conj (sorted by label) and differ only in declared order; their Arrows hash differently. Without
 // the order edge the two Arrows are one node.
-test fn dpo_parameter_order_distinguishes_function_types() -> Bool {
+test fn dpo_parameter_order_distinguishes_function_types() -> Bool  {
   let ab = dpo_arrow_of_arity(o: dpo_a_then_b(), arity: 2)
   let ba = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(ab) == 1) && (count(ba) == 1)
@@ -267,7 +267,7 @@ test fn dpo_parameter_order_distinguishes_function_types() -> Bool {
 
 // (3) INFER BINDS POSITIONALLY IN DECLARED ORDER. The formals come out [b, a]; the domain's stored
 // fold answers [a, b].
-test fn dpo_infer_formals_follow_declared_order() -> Bool {
+test fn dpo_infer_formals_follow_declared_order() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
@@ -279,7 +279,7 @@ test fn dpo_infer_formals_follow_declared_order() -> Bool {
 
 // (4) TEN OR MORE ANONYMOUS SLOTS BIND IN SLOT ORDER. Minted labels sort as text, so label order puts
 // slot 10 and 11 before slot 2; the order edge, and the formals infer reads from it, do not.
-test fn dpo_eleven_anonymous_slots_bind_in_declared_order() -> Bool {
+test fn dpo_eleven_anonymous_slots_bind_in_declared_order() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_eleven_anonymous(), arity: 11)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
@@ -293,7 +293,7 @@ test fn dpo_eleven_anonymous_slots_bind_in_declared_order() -> Bool {
 // (5) THE WALL: an order that is not exactly a permutation of the domain's binders is ill formed --
 // a missing label, an extra label, a repeated label -- and positional binding refuses it located at
 // the application. The unmutated Arrow is the positive control.
-test fn dpo_an_order_that_is_not_a_permutation_is_refused() -> Bool {
+test fn dpo_an_order_that_is_not_a_permutation_is_refused() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
@@ -315,7 +315,7 @@ test fn dpo_an_order_that_is_not_a_permutation_is_refused() -> Bool {
 // order edge is well formed"). The same Arrow with its order edge removed is refused at Node admission
 // by v2.std.node well_formed; the unmutated Arrow is the positive control, and its parameters still
 // come out in declared order.
-test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
+test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
@@ -336,7 +336,7 @@ test fn dpo_positional_binding_refuses_an_arrow_without_order() -> Bool {
 // (v2.std.arrow_signature arrow_declared_parameter_order) checks the Arrow's edges conform before it
 // reads the order, and since A4 a Named-binder domain without its order does not conform. _absent
 // remains the answer for an Arrow whose domain binds no name.
-test fn dpo_binding_refuses_an_arrow_without_order() -> Bool {
+test fn dpo_binding_refuses_an_arrow_without_order() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_b_then_a(), arity: 2)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {
@@ -373,7 +373,7 @@ fn dpo_eval_refuses_with(arrow: Node, reason: Symbol) -> Bool {
 // (7) THE ORDER'S ATOMS ARE LABELS, NOT REFERENCES. `f(y: Int)` sits beside a declaration `y`; resolve
 // does not walk the order edge, so its atom stays the bare label `y` rather than binding to the
 // declaration. RED if resolve walks the edge: the atom becomes a resolved reference.
-test fn dpo_an_order_label_does_not_bind_to_a_name_in_scope() -> Bool {
+test fn dpo_an_order_label_does_not_bind_to_a_name_in_scope() -> Bool  {
   let arrows = dpo_arrow_of_arity(o: dpo_label_shadows_a_declaration(), arity: 1)
   (count(arrows) == 1)
     && fold(arrows, init: true, f: fn(acc, a) {

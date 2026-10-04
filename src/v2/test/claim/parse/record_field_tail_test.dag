@@ -42,8 +42,8 @@ fn plain_normalized() -> Bool {
   }
 }
 
-test fn a_record_field_with_a_default_parses_holds() -> Bool { default_parsed() }
+test fn a_record_field_with_a_default_parses_holds() -> Bool  { default_parsed() }
 
-test fn a_record_field_with_a_wire_key_refuses_at_its_tail_holds() -> Bool { from_key_refused_as_unmodeled() }
+test fn a_record_field_with_a_wire_key_refuses_at_its_tail_holds() -> Bool  { from_key_refused_as_unmodeled() }
 
-test fn a_record_without_a_tail_still_normalizes_holds() -> Bool { plain_normalized() }
+test fn a_record_without_a_tail_still_normalizes_holds() -> Bool  { plain_normalized() }

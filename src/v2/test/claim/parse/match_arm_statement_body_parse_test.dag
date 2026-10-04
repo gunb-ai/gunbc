@@ -48,7 +48,7 @@ fn match_arm_statement_body_parsed() -> Outcome<Node> {
   g_tokenize_parse(text: match_arm_statement_body_source, file: ^probe_match_arm_statement_body)
 }
 
-test fn a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds() -> Bool {
+test fn a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds() -> Bool  {
   match match_arm_statement_body_parsed() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

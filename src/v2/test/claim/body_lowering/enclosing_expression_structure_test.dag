@@ -157,7 +157,7 @@ fn ees_call_match_value() -> EesValue {
 }
 
 // `ees_t && match ees_w {..}` is Transform(&&, ees_t, Match(ees_w, arm, arm)).
-test fn an_operand_beside_a_match_lowers_as_the_operator_over_both_operands() -> Bool {
+test fn an_operand_beside_a_match_lowers_as_the_operator_over_both_operands() -> Bool  {
   match ees_and_match_value() {
     EesLowered { value: v } =>
       ees_is_transform(n: v, arity: 3)
@@ -172,7 +172,7 @@ test fn an_operand_beside_a_match_lowers_as_the_operator_over_both_operands() ->
 // A CONTROL, NOT A DISCRIMINATOR, on this route: the value reader already lowered a match-valued
 // argument whole before this change (green on the base fold and under either revert). It pins that
 // the value-reader route stays correct; the discriminating call claim is the body-walker one below.
-test fn a_call_with_a_match_argument_lowers_as_the_call_over_every_argument() -> Bool {
+test fn a_call_with_a_match_argument_lowers_as_the_call_over_every_argument() -> Bool  {
   match ees_call_match_value() {
     EesLowered { value: v } =>
       ees_is_transform(n: v, arity: 3)
@@ -192,7 +192,7 @@ fn ees_call_match_walked() -> EesValue {
 }
 
 // The same two expressions through the body walker, the fn-body route.
-test fn the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands() -> Bool {
+test fn the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_both_operands() -> Bool  {
   match ees_and_match_walked() {
     EesLowered { value: v } =>
       ees_is_transform(n: v, arity: 3)
@@ -203,7 +203,7 @@ test fn the_body_walker_lowers_an_operand_beside_a_match_as_the_operator_over_bo
   }
 }
 
-test fn the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument() -> Bool {
+test fn the_body_walker_lowers_a_call_with_a_match_argument_as_the_call_over_every_argument() -> Bool  {
   match ees_call_match_walked() {
     EesLowered { value: v } =>
       ees_is_transform(n: v, arity: 3)

@@ -36,13 +36,13 @@ fn fvb_lowering_verdicts() -> FvbLoweringVerdicts {
 }
 
 // A fn whose whole body is a fn literal (no let above it, so no Bind carries it).
-test fn a_fn_whose_body_is_a_fn_literal_lowers_well_formed() -> Bool {
+test fn a_fn_whose_body_is_a_fn_literal_lowers_well_formed() -> Bool  {
   let v = fvb_lowering_verdicts()
   v.fn_literal_body
 }
 
 // A curried lambda: the outer lambda's body is itself a lambda.
-test fn a_curried_lambda_argument_lowers_well_formed() -> Bool {
+test fn a_curried_lambda_argument_lowers_well_formed() -> Bool  {
   let v = fvb_lowering_verdicts()
   v.curried_lambda
 }

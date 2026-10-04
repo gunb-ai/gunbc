@@ -39,7 +39,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // directions; each refusal is planted at the interface (a supplied grammar root or row list) rather
 // than by editing the language, and the positive control is the real table against the real grammar.
 
-test fn the_dag_name_table_covers_the_dag_grammar_holds() -> Bool {
+test fn the_dag_name_table_covers_the_dag_grammar_holds() -> Bool  {
   match name_production_table_admission(root: dag_grammar_root(), rows: dag_name_production_rows()) {
     NameProductionTableAdmitted { by_emitted: _ } => true
     NameProductionTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
@@ -61,7 +61,7 @@ fn planted_grammar() -> GrammarRoot {
   }
 }
 
-test fn a_planted_unlisted_binder_production_refuses_by_name_holds() -> Bool {
+test fn a_planted_unlisted_binder_production_refuses_by_name_holds() -> Bool  {
   match name_production_table_admission(root: planted_grammar(), rows: dag_name_production_rows()) {
     NameProductionTableAdmitted { by_emitted: _ } => false
     NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => u == [^occurrence_role_planted_binder_production] && length(xs: k) == 0 && length(xs: x) == 0
@@ -73,7 +73,7 @@ fn rows_without(production: Symbol) -> List<NameProductionRow> {
   fold(dag_name_production_rows(), init: [], f: fn(acc, row) { if row.production == production { acc } else { list_snoc_item(xs: acc, item: row) } })
 }
 
-test fn a_missing_row_refuses_by_name_holds() -> Bool {
+test fn a_missing_row_refuses_by_name_holds() -> Bool  {
   match name_production_table_admission(root: dag_grammar_root(), rows: rows_without(production: ^dag_production_fn_decl)) {
     NameProductionTableAdmitted { by_emitted: _ } => false
     NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => u == [^dag_production_fn_decl] && length(xs: k) == 0 && length(xs: x) == 0
@@ -81,7 +81,7 @@ test fn a_missing_row_refuses_by_name_holds() -> Bool {
 }
 
 // A STALE ROW: a row naming a production the grammar does not have refuses as unknown.
-test fn a_row_for_an_absent_production_refuses_as_unknown_holds() -> Bool {
+test fn a_row_for_an_absent_production_refuses_as_unknown_holds() -> Bool  {
   let rows = list_snoc_item(xs: dag_name_production_rows(), item: name_row(production: ^occurrence_role_absent_production, disposition: NamesAreReferences))
   match name_production_table_admission(root: dag_grammar_root(), rows: rows) {
     NameProductionTableAdmitted { by_emitted: _ } => false
@@ -111,7 +111,7 @@ fn unkeyed_grammar() -> GrammarRoot {
   }
 }
 
-test fn a_row_whose_production_has_no_atom_identity_refuses_as_unkeyed_holds() -> Bool {
+test fn a_row_whose_production_has_no_atom_identity_refuses_as_unkeyed_holds() -> Bool  {
   match name_production_table_admission(root: unkeyed_grammar(), rows: dag_name_production_rows()) {
     NameProductionTableAdmitted { by_emitted: _ } => false
     NameProductionTableRefused { unlisted: u, unknown: k, unkeyed: x } => length(xs: u) == 0 && length(xs: k) == 0 && x == [^dag_production_fn_decl]
@@ -143,7 +143,7 @@ fn roles_count(outcome: OccurrenceRoleOutcome, role: OccurrenceRole, category: O
 // record field (`v:` in RcRow { v: .. }) and one call argument (`k:` in rc_callee(k: n));
 // `rc_callee(n)` is a positional argument, which carries no name. Every other name in it is a
 // reference, which is not recorded.
-test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool {
+test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool  {
   let o = roles_fixture_outcome()
   roles_count(outcome: o, role: DeclarationRole, category: TypeOccurrence) == 1
     && roles_count(outcome: o, role: DeclarationRole, category: CallableOccurrence) == 3
@@ -156,7 +156,7 @@ test fn the_fixture_declarations_and_labels_are_recorded_holds() -> Bool {
 // The references are not recorded: exactly the eleven names above and nothing else. And the
 // positional argument is a lawful absence of a name, not a reader refusal: no production of the
 // fixture counts one.
-test fn the_fixture_records_no_reference_to_a_module_scope_name_holds() -> Bool {
+test fn the_fixture_records_no_reference_to_a_module_scope_name_holds() -> Bool  {
   match roles_fixture_outcome() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
@@ -189,7 +189,7 @@ fn planted_unreadable_fn_decl() -> Node {
   )
 }
 
-test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool {
+test fn an_unreadable_binder_is_counted_as_a_reader_refusal_holds() -> Bool  {
   match occurrence_roles_of_tree(tree: planted_unreadable_fn_decl(), root: dag_grammar_root(), rows: dag_name_production_rows()) {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } => refused_at(roles: r, emitted: ^dag_surface_fn_decl) == 1 && length(xs: r.roles) == 0
@@ -216,7 +216,7 @@ fn binders_fixture_outcome() -> OccurrenceRoleOutcome {
 // (parameters), bf_y (let), bf_p (lambda), bf_a, bf_b (fn literal). Fields: bf_v (record), bf_q
 // (input), bf_r (output). Labels: bf_g, bf_h (arguments) and bf_argv (the transport's field init).
 // The transport kind `shell` is a literal terminal of the grammar, not a name, so it records nothing.
-test fn every_binder_production_records_its_binders_holds() -> Bool {
+test fn every_binder_production_records_its_binders_holds() -> Bool  {
   let o = binders_fixture_outcome()
   roles_count(outcome: o, role: DeclarationRole, category: TypeOccurrence) == 3
     && roles_count(outcome: o, role: DeclarationRole, category: CallableOccurrence) == 3
@@ -239,7 +239,7 @@ fn count_total(m: Map<Symbol, Int>) -> Int {
 // Nothing in the fixture is left unread or refused: the gap the NameRoleNotYetRead rows used to
 // count is gone for every production the fixture writes, the transport member included, and each new reader read, rather than
 // declined, its production.
-test fn the_binder_productions_are_neither_unread_nor_refused_holds() -> Bool {
+test fn the_binder_productions_are_neither_unread_nor_refused_holds() -> Bool  {
   match binders_fixture_outcome() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
@@ -298,7 +298,7 @@ fn mixed_param_list_walk(plant: Bool) -> OccurrenceRoleOutcome {
 }
 
 // The positive control ON THE SAME PARSE, unplanted: both parameters are read, nothing is refused.
-test fn the_unplanted_mixed_fixture_reads_both_parameters_holds() -> Bool {
+test fn the_unplanted_mixed_fixture_reads_both_parameters_holds() -> Bool  {
   match mixed_param_list_parsed() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>
@@ -307,7 +307,7 @@ test fn the_unplanted_mixed_fixture_reads_both_parameters_holds() -> Bool {
   }
 }
 
-test fn a_param_list_with_one_unreadable_binder_refuses_whole_holds() -> Bool {
+test fn a_param_list_with_one_unreadable_binder_refuses_whole_holds() -> Bool  {
   match mixed_param_list_planted() {
     OccurrenceRoleTableRefused { unlisted: _, unknown: _, unkeyed: _ } => false
     OccurrenceRolesRead { roles: r } =>

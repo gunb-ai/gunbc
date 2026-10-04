@@ -293,7 +293,7 @@ fn ndp_unbound_refusal() -> Optional<NonEmptyDiagnostics> {
 // fatal (last) diagnostic's reason -- the same symbol the admission authority classifies by --
 // and the occurrence is the node the resolver anchored it at, carried as a minted occurrence
 // identity rather than dropped. A verdict that kept only the reason has no locus to read here.
-test fn unbound_reference_row_locates_its_source_occurrence_holds() -> Bool {
+test fn unbound_reference_row_locates_its_source_occurrence_holds() -> Bool  {
   match ndp_unbound_refusal() {
     Absent => false
     Present { value: d } =>
@@ -305,7 +305,7 @@ test fn unbound_reference_row_locates_its_source_occurrence_holds() -> Bool {
 // AMBIGUITY NAMES ITS LOOKUP CLASS AND BOTH COMPETING DECLARATIONS. The fatal stays the reason
 // every roster owns; the class and the two binders ride in front of it. Either binder alone is
 // not enough: a chain that named one has picked, which is what the refusal exists not to do.
-test fn shadowed_reference_row_names_lookup_class_and_both_competing_declarations_holds() -> Bool {
+test fn shadowed_reference_row_names_lookup_class_and_both_competing_declarations_holds() -> Bool  {
   match ndp_shadow_refusal() {
     Absent => false
     Present { value: d } =>
@@ -329,7 +329,7 @@ test fn shadowed_reference_row_names_lookup_class_and_both_competing_declaration
 // Reinstating a corpus-wide bare-name search moves this arm back -- to ambiguous if the search
 // refuses over the spelling, to resolved if it picks -- and the two negative clauses below say
 // which wrong answer would be reported, so neither can pass quietly.
-test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool {
+test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool  {
   match ndp_collision_refusal() {
     Absent => false
     Present { value: d } =>
@@ -345,7 +345,7 @@ test fn a_bare_name_bound_on_no_chain_is_unbound_not_ambiguous_holds() -> Bool {
 // carries through -- the position: here, a competing declaration by its qualified path. A
 // mutation that folds the verdict back to its fatal reason keeps the first three words and loses
 // the fourth, which is exactly the clause that goes red.
-test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds() -> Bool {
+test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds() -> Bool  {
   match ndp_resolutions() {
     NdpContextRefused => false
     NdpResolutionsDecided { shadow: shadow, collision: _, unbound: _, clean: _ } =>
@@ -364,7 +364,7 @@ test fn operator_line_names_subject_stage_cause_and_competing_declaration_holds(
 // THE UNBOUND ROW'S LINE RENDERS THE OCCURRENCE, NOT ITS ABSENCE. lens_verdict_diagnostic_locus_text
 // answered "<node locus, no file>" for every node-anchored diagnostic; the line now carries the
 // occurrence the failing stage anchored at.
-test fn operator_line_renders_the_source_occurrence_holds() -> Bool {
+test fn operator_line_renders_the_source_occurrence_holds() -> Bool  {
   match ndp_unbound_refusal() {
     Absent => false
     Present { value: d } =>
@@ -376,7 +376,7 @@ test fn operator_line_renders_the_source_occurrence_holds() -> Bool {
 // ndp_absent_callee; the persisted row carried that identity while the text line rendered only
 // the ordinal, so a reader of the line could not tell which reference failed. A locus renderer
 // that dropped the atom reds here.
-test fn operator_line_names_the_refused_symbol_holds() -> Bool {
+test fn operator_line_names_the_refused_symbol_holds() -> Bool  {
   match ndp_unbound_refusal() {
     Absent => false
     Present { value: d } =>
@@ -386,7 +386,7 @@ test fn operator_line_names_the_refused_symbol_holds() -> Bool {
 
 // THE DENOMINATOR: a module that resolves. Without it every claim above is satisfied by a route
 // that refuses everything for any reason.
-test fn clean_module_resolves_holds() -> Bool {
+test fn clean_module_resolves_holds() -> Bool  {
   match ndp_resolutions() {
     NdpContextRefused => false
     NdpResolutionsDecided { shadow: _, collision: _, unbound: _, clean: clean } =>
@@ -411,22 +411,22 @@ fn atom_locus_text(lexeme: String) -> String {
   })
 }
 
-test fn an_ordinary_atom_renders_readably_holds() -> Bool {
+test fn an_ordinary_atom_renders_readably_holds() -> Bool  {
   atom_locus_text(lexeme: "SubstrateInputsOnly") == "<synthetic node occurrence \"SubstrateInputsOnly\">"
 }
 
-test fn an_embedded_backtick_and_backslash_stay_unambiguous_holds() -> Bool {
+test fn an_embedded_backtick_and_backslash_stay_unambiguous_holds() -> Bool  {
   atom_locus_text(lexeme: concat("left`right", concat(from_code_point(cp: 92), "x")))
     == concat("<synthetic node occurrence \"left`right", concat(from_code_point(cp: 92), concat(from_code_point(cp: 92), "x\">")))
 }
 
-test fn newline_cr_and_esc_become_visible_escapes_holds() -> Bool {
+test fn newline_cr_and_esc_become_visible_escapes_holds() -> Bool  {
   let bs = from_code_point(cp: 92)
   atom_locus_text(lexeme: concat("a", concat(from_code_point(cp: 10), concat("b", concat(from_code_point(cp: 13), concat("c", concat(from_code_point(cp: 27), "d")))))))
     == concat("<synthetic node occurrence \"a", concat(bs, concat("nb", concat(bs, concat("rc", concat(bs, "u001Bd\">"))))))
 }
 
-test fn a_composite_anchor_renders_unchanged_holds() -> Bool {
+test fn a_composite_anchor_renders_unchanged_holds() -> Bool  {
   lens_verdict_diagnostic_locus_text(d: Diagnostic {
     reason: ^native_refusal_detail_quoting_probe,
     at: node_locus(node: node_synthetic(kind: TypeNode { connective: Conj }, children: [])),

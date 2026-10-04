@@ -146,7 +146,7 @@ fn sfk_bool_pair_counts() -> SfkCounts {
 
 // THE POSITIVE CONTROL FOR THE INSTRUMENT: infer produces entries for this program at all, so a zero
 // count below is a shared key and not a failed inference.
-test fn sfk_infer_produces_entries_holds() -> Bool {
+test fn sfk_infer_produces_entries_holds() -> Bool  {
   sfk_cref_source_counts().produced
 }
 
@@ -168,14 +168,14 @@ test fn sfk_infer_produces_entries_holds() -> Bool {
 // counting proves how many stand under the key. Asserting `== 1` rather than `<= 1` is deliberate -- it
 // keeps the row non-vacuous, because a fixture that stopped producing the node at all would answer 0 and a
 // `<= 1` row would stay green while testing nothing.
-test fn sfk_exactly_one_entry_stands_under_the_key_holds() -> Bool {
+test fn sfk_exactly_one_entry_stands_under_the_key_holds() -> Bool  {
   sfk_cref_source_counts().under_key == 1
 }
 
 // AND THAT ENTRY IS GROUNDED, which is the half of the original pair that still says something about
 // quality rather than about cardinality: separation would be worthless if the surviving entry were
 // underived.
-test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool {
+test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool  {
   let counts = sfk_cref_source_counts()
   let total = counts.under_key
   let derived = counts.derived_under_key
@@ -186,7 +186,7 @@ test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool {
 // the opposite direction: a second fixture reached the same collision, so it was a property of the keying
 // relation over ordinary programs. It now reaches the same separation, so the property still holds of the
 // relation and not of one text.
-test fn sfk_the_separation_is_not_specific_to_one_fixture_holds() -> Bool {
+test fn sfk_the_separation_is_not_specific_to_one_fixture_holds() -> Bool  {
   let counts = sfk_bool_pair_counts()
   let total = counts.under_key
   let derived = counts.derived_under_key

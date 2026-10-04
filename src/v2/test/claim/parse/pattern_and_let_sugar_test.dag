@@ -84,16 +84,16 @@ fn pattern_eq_body_refused() -> Bool {
   }
 }
 
-test fn a_generic_pattern_refuses_at_its_generic_params_holds() -> Bool { pattern_generic_refused_at_generics() }
+test fn a_generic_pattern_refuses_at_its_generic_params_holds() -> Bool  { pattern_generic_refused_at_generics() }
 
-test fn a_pattern_with_an_expression_body_refuses_holds() -> Bool { pattern_eq_body_refused() }
+test fn a_pattern_with_an_expression_body_refuses_holds() -> Bool  { pattern_eq_body_refused() }
 
-test fn a_pattern_lowers_to_the_identical_tree_as_its_fn_holds() -> Bool { same_tree(a: pattern_tree(), b: fn_tree()) }
+test fn a_pattern_lowers_to_the_identical_tree_as_its_fn_holds() -> Bool  { same_tree(a: pattern_tree(), b: fn_tree()) }
 
-test fn node_colon_lowers_identically_to_let_holds() -> Bool { same_tree(a: node_colon_tree(), b: fn_tree()) }
+test fn node_colon_lowers_identically_to_let_holds() -> Bool  { same_tree(a: node_colon_tree(), b: fn_tree()) }
 
-test fn node_eq_lowers_identically_to_let_holds() -> Bool { same_tree(a: node_eq_tree(), b: fn_tree()) }
+test fn node_eq_lowers_identically_to_let_holds() -> Bool  { same_tree(a: node_eq_tree(), b: fn_tree()) }
 
-test fn a_bare_assignment_lowers_identically_to_let_holds() -> Bool { same_tree(a: bare_assign_tree(), b: fn_tree()) }
+test fn a_bare_assignment_lowers_identically_to_let_holds() -> Bool  { same_tree(a: bare_assign_tree(), b: fn_tree()) }
 
-test fn a_pattern_with_a_uses_clause_still_refuses_at_the_clause_holds() -> Bool { pattern_uses_refused_as_unmodeled() }
+test fn a_pattern_with_a_uses_clause_still_refuses_at_the_clause_holds() -> Bool  { pattern_uses_refused_as_unmodeled() }

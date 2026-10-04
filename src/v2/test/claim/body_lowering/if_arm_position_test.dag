@@ -112,18 +112,18 @@ fn iap_verdicts() -> IapVerdicts {
   }
 }
 
-test fn an_if_nested_in_the_then_arm_keeps_the_outer_else_holds() -> Bool {
+test fn an_if_nested_in_the_then_arm_keeps_the_outer_else_holds() -> Bool  {
   iap_verdicts().nested_in_then_keeps_outer_else
 }
 
-test fn a_function_value_in_a_nested_else_lowers_once_holds() -> Bool {
+test fn a_function_value_in_a_nested_else_lowers_once_holds() -> Bool  {
   iap_verdicts().function_value_in_nested_else_lowers
 }
 
-test fn a_fn_literal_in_a_nested_else_lowers_once_holds() -> Bool {
+test fn a_fn_literal_in_a_nested_else_lowers_once_holds() -> Bool  {
   iap_verdicts().fn_literal_in_nested_else_lowers
 }
 
-test fn an_else_if_chain_keeps_every_arm_control_holds() -> Bool {
+test fn an_else_if_chain_keeps_every_arm_control_holds() -> Bool  {
   iap_verdicts().else_if_chain_keeps_every_arm
 }

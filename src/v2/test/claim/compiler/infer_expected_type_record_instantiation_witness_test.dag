@@ -77,7 +77,7 @@ fn etr_resolved_two_good() -> Outcome<ResolvedTree> { etr_resolve_subject(subjec
 
 // A PHANTOM BINDER IS FIXED BY THE DECLARED TYPE: `data p: Ph<Bool> = Ph { n: 1 }` is decided at
 // Ph<Bool> -- accepted with no counted obligation.
-test fn etr_a_phantom_binder_is_fixed_by_the_declared_type_holds() -> Bool {
+test fn etr_a_phantom_binder_is_fixed_by_the_declared_type_holds() -> Bool  {
   rcf_member_accepted_and_decided(resolved: etr_resolved_phantom(), member: ^p)
 }
 
@@ -85,6 +85,6 @@ test fn etr_a_phantom_binder_is_fixed_by_the_declared_type_holds() -> Bool {
 // typed at Ph<Bool> by the same context, so the whole initializer is decided -- accepted with no
 // counted obligation, including none from Two's own row (its field `a: Ph<T>` is judged at Ph<Bool>
 // because the row runs with T already fixed).
-test fn etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds() -> Bool {
+test fn etr_a_nested_construct_typed_only_by_its_context_is_decided_at_its_declared_return_holds() -> Bool  {
   rcf_member_accepted_and_decided(resolved: etr_resolved_two_good(), member: ^t)
 }

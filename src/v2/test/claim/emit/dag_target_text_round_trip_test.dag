@@ -233,23 +233,23 @@ fn trt_verdicts() -> TrtVerdicts {
 
 // THE BLOCK-SCOPED BIND `{ let k = (v) { b } }`, AT TEXT GRAIN, for each body the emitter may be
 // handed: a bare name, an empty brace literal, a `-`-led expression, and a Bind.
-test fn a_bind_with_a_bare_name_body_round_trips_as_text() -> Bool {
+test fn a_bind_with_a_bare_name_body_round_trips_as_text() -> Bool  {
   trt_verdicts().bare_body
 }
 
-test fn a_bind_with_an_empty_brace_literal_body_round_trips_as_text() -> Bool {
+test fn a_bind_with_an_empty_brace_literal_body_round_trips_as_text() -> Bool  {
   trt_verdicts().empty_literal_body
 }
 
-test fn a_bind_with_a_minus_led_body_round_trips_as_text() -> Bool {
+test fn a_bind_with_a_minus_led_body_round_trips_as_text() -> Bool  {
   trt_verdicts().minus_body
 }
 
-test fn a_bind_with_a_bind_body_round_trips_as_text() -> Bool {
+test fn a_bind_with_a_bind_body_round_trips_as_text() -> Bool  {
   trt_verdicts().bind_body
 }
 
-test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool {
+test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool  {
   trt_verdicts().bind_value
 }
 
@@ -257,23 +257,23 @@ test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool {
 // they do not read back as the tokens emitted (`let` `x` is the one identifier `letx`). That text
 // still PARSES, and to two nested lets (`letx = (..)` reads as a bare-assignment binding), so a
 // claim that counted lets passed on it; the token join is what refuses it.
-test fn nested_bind_text_without_separation_reads_back_as_other_tokens() -> Bool {
+test fn nested_bind_text_without_separation_reads_back_as_other_tokens() -> Bool  {
   trt_read_classes(text: trt_text(tokens: trt_nested_bind(), transforms: target_model_emit_transforms_empty))
     != trt_emitted_classes(tokens: trt_nested_bind())
 }
 
-test fn mixed_expression_text_round_trips() -> Bool {
+test fn mixed_expression_text_round_trips() -> Bool  {
   trt_verdicts().mixed
 }
 
 // THE CLASS, at its cheapest specimen: unseparated, the six tokens are ONE identifier, which is a
 // valid expression. A claim that only asked "does the emitted text parse" passes on it.
-test fn mixed_expression_text_without_separation_is_one_identifier() -> Bool {
+test fn mixed_expression_text_without_separation_is_one_identifier() -> Bool  {
   trt_read_classes(text: trt_text(tokens: trt_mixed(), transforms: target_model_emit_transforms_empty)) == [^dag_token_ident]
 }
 
 // Punctuation is not exempt: `>` then `=` unseparated is the one token `>=`.
-test fn adjacent_punctuation_reads_back_as_two_tokens() -> Bool {
+test fn adjacent_punctuation_reads_back_as_two_tokens() -> Bool  {
   let pair = [FixedToken { token_class: ^dag_token_gt }, FixedToken { token_class: ^dag_token_eq }]
   trt_read_classes(text: trt_text(tokens: pair, transforms: dag_token_class_emit_transforms())) == [^dag_token_gt, ^dag_token_eq]
     && trt_read_classes(text: trt_text(tokens: pair, transforms: target_model_emit_transforms_empty)) == [^dag_token_gte]
@@ -288,7 +288,7 @@ fn trt_model_bind() -> List<ConcreteSyntaxToken> {
   trt_bind(value: trt_ident(binding: ^dag_binding_bind_x))
 }
 
-test fn the_dag_target_model_serializes_a_bind_with_its_tokens_separated() -> Bool {
+test fn the_dag_target_model_serializes_a_bind_with_its_tokens_separated() -> Bool  {
   match serialize_concrete_syntax_tokens_to_source_string(target: dag_target_model(), tokens: trt_model_bind()) {
     Accepted { value: t, diagnostics: _ } =>
       trt_read_classes(text: render_target_text(t: t)) == trt_emitted_classes(tokens: trt_model_bind())

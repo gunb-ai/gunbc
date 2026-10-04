@@ -52,8 +52,8 @@ fn uses_refusal() -> UsesRefusal {
   }
 }
 
-test fn a_fn_with_a_uses_clause_parses_holds() -> Bool { uses_parsed() }
+test fn a_fn_with_a_uses_clause_parses_holds() -> Bool  { uses_parsed() }
 
-test fn a_fn_with_a_uses_clause_refuses_at_the_clause_holds() -> Bool { uses_refusal().is_unmodeled }
+test fn a_fn_with_a_uses_clause_refuses_at_the_clause_holds() -> Bool  { uses_refusal().is_unmodeled }
 
-test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool { uses_refusal().at_clause }
+test fn the_uses_refusal_is_located_at_the_clause_holds() -> Bool  { uses_refusal().at_clause }

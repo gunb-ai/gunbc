@@ -127,7 +127,7 @@ fn observation_is_entry_not_found(observation: NativeTestObservation) -> Bool {
   }
 }
 
-test fn the_requested_declaration_is_selected_and_evaluated() -> Bool {
+test fn the_requested_declaration_is_selected_and_evaluated() -> Bool  {
   match collision_prepared() {
     Absent => false
     Present { value: prepared } =>
@@ -139,7 +139,7 @@ test fn the_requested_declaration_is_selected_and_evaluated() -> Bool {
   }
 }
 
-test fn a_nested_same_named_graft_edge_is_not_selected() -> Bool {
+test fn a_nested_same_named_graft_edge_is_not_selected() -> Bool  {
   match collision_prepared() {
     Absent => false
     Present { value: prepared } =>
@@ -149,7 +149,7 @@ test fn a_nested_same_named_graft_edge_is_not_selected() -> Bool {
   }
 }
 
-test fn an_absent_declaration_is_not_found() -> Bool {
+test fn an_absent_declaration_is_not_found() -> Bool  {
   match collision_prepared() {
     Absent => false
     Present { value: prepared } =>
@@ -159,7 +159,7 @@ test fn an_absent_declaration_is_not_found() -> Bool {
   }
 }
 
-test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
+test fn a_sibling_modules_declaration_is_not_selected() -> Bool  {
   match collision_prepared() {
     Absent => false
     Present { value: prepared } =>
@@ -172,7 +172,7 @@ test fn a_sibling_modules_declaration_is_not_selected() -> Bool {
 
 // This witness prices refusal routing, so begin at the normalized-root boundary.
 // Re-tokenizing and parsing source with the full language model is unrelated work here.
-test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> Bool {
+test fn shared_root_validation_refusal_stays_at_prepare_for_each_identity() -> Bool  {
   match fc_duplicate_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>

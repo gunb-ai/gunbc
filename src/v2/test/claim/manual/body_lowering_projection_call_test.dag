@@ -64,7 +64,7 @@ fn body_lowering_parsed_module() -> Optional<Node> {
   }
 }
 
-test fn body_lowering_projection_lowers_to_transform() -> Bool {
+test fn body_lowering_projection_lowers_to_transform() -> Bool  {
   match body_lowering_parsed_module() {
     Absent => false
     Present { value: tree } =>
@@ -100,7 +100,7 @@ data body_lowering_field_access_source: String = "module fa\n\nfn f(x: Int) -> I
 // reachable by calling the reader directly, as this row did. gunbc#12033's PR2 deleted the reader,
 // and the row now asserts what the one door actually answers. What the chain DENOTES stays the
 // resolver's question (v2.compiler.resolve try_resolve_qualified_name_node), not lowering's.
-test fn body_lowering_field_access_lowers_whole() -> Bool {
+test fn body_lowering_field_access_lowers_whole() -> Bool  {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_field_access_source,
@@ -132,7 +132,7 @@ test fn body_lowering_field_access_lowers_whole() -> Bool {
   }
 }
 
-test fn body_lowering_normalize_accepts_projection_module() -> Bool {
+test fn body_lowering_normalize_accepts_projection_module() -> Bool  {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_projection_source,
