@@ -1,0 +1,31 @@
+module v2.test.claim.compiler.gfi_probe
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
+import v2.test.claim.compiler.generic_formal_instantiation { gfi_alias_agrees }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.optional { Absent, Present }
+import v2.std.logic { Bool }
+
+test fn gfi_probe_list_in_resolved_declarations() -> Bool {
+  match fmi_assemble(src: gfi_alias_agrees) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: "v2.std.collection.List")) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+test fn gfi_probe_list_in_symbol_index() -> Bool {
+  match fmi_assemble(src: gfi_alias_agrees) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match symbol_index_lookup(index: tree.symbol_index, qualified_path: qualified_name_from_dotted_string(dotted: "v2.std.collection.List")) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
