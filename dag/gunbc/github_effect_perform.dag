@@ -441,10 +441,11 @@ fn create_ruleset_with(
   enforcement: String,
   conditions: RulesetConditionsWire,
   rules: List<RulesetRuleWire>,
+  bypass_actors: List<RulesetBypassActor>,
 ) -> RulesetCreateAnswer uses net: Network {
   let created = github.Rulesets.Create(
     auth_token: token.token, owner: owner as String, repo: repo as String, name: name, target: target,
-    enforcement: enforcement, conditions: conditions, rules: rules, bypass_actors: [],
+    enforcement: enforcement, conditions: conditions, rules: rules, bypass_actors: bypass_actors,
   )
   RulesetCreateAnswer { performance: classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }), ruleset_id: created.id }
 }
