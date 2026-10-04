@@ -1874,44 +1874,63 @@ pub fn text_crossing_or_type_mismatch_error(
 ) -> Rc<ErrorNode> {
     {
         let si = env.source_indices.clone();
+        let plain = type_mismatch_error(
+            crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            span.clone(),
+            module_name.clone(),
+        );
         if crate::v1_compiler_infer_env::text_crossing_by_identity(
             expected.clone(),
             got.clone(),
             env.clone(),
         ) {
-            {
-                let route = match crate::v1_compiler_infer_env::text_representation_by_identity(
+            match crate::v1_compiler_infer_env::text_representation_by_identity(
+                got.clone(),
+                env.clone(),
+            ) {
+                TextRepresentation::HostText => text_crossing_route_error(
+                    expected.clone(),
                     got.clone(),
-                    env.clone(),
-                ) {
-                    TextRepresentation::HostText => "unicode_scalar_unfold".to_string(),
-                    _ => "unicode_scalar_fold".to_string(),
-                };
-                crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::TextCrossingHasNoImplicitRoute {
-                        expected: crate::v1_compiler_infer_types::node_type_shape(
-                            expected.clone(),
-                            si.clone(),
-                        ),
-                        got: crate::v1_compiler_infer_types::node_type_shape(
-                            got.clone(),
-                            si.clone(),
-                        ),
-                        route: route.clone(),
-                        span: span.clone(),
-                    }),
+                    "unicode_scalar_unfold".to_string(),
+                    si.clone(),
+                    span.clone(),
                     module_name.clone(),
-                )
+                ),
+                TextRepresentation::CodePointSequence => text_crossing_route_error(
+                    expected.clone(),
+                    got.clone(),
+                    "unicode_scalar_fold".to_string(),
+                    si.clone(),
+                    span.clone(),
+                    module_name.clone(),
+                ),
+                TextRepresentation::NotText => plain,
+                TextRepresentation::TextRepresentationUnidentified => plain,
             }
         } else {
-            type_mismatch_error(
-                crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
-                crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
-                span.clone(),
-                module_name.clone(),
-            )
+            plain
         }
     }
+}
+
+pub fn text_crossing_route_error(
+    expected: Rc<Node>,
+    got: Rc<Node>,
+    route: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    crate::v1_std_core::make_error_node(
+        Rc::new(CompilerDiagnostic::TextCrossingHasNoImplicitRoute {
+            expected: crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            got: crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            route: route.clone(),
+            span: span.clone(),
+        }),
+        module_name.clone(),
+    )
 }
 
 pub fn type_mismatch_error(
