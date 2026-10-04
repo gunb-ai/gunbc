@@ -1,0 +1,1317 @@
+module gunbc.fleet.mtcollins_firmware_converge
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }
+import std.decision { SelectionReceipt }
+import std.human_intervention { HumanIntervention, DeviceOnce, DischargedAt }
+import v2.std.optional { Present, Absent }
+import extdeps.crypto.hash { Digest }
+import extdeps.standards.picmg_hpm1 {
+  HpmUpgradeOutcome, HpmUpgradeCompleted, HpmUpgradeFailed, HpmUpgradeStage,
+}
+import extdeps.firmware.types {
+  FirmwareReleaseRow, FirmwareTarget, FirmwareSemanticVersion,
+  BmcController, HostBios, ScpFirmware, MainboardCpld,
+}
+import extdeps.ampere.mt_collins_firmware_release {
+  MtCollinsHpmStepProcedure, BiosSiliconSupportStatement, mt_collins_0acod_silicon_support,
+  mt_collins_vendor_upgrade_order, mt_collins_hpm_procedures, mt_collins_minimum_ac_off,
+  mt_collins_mb_cpld_v06_hpm,
+}
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.types { RedfishAccountRole }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
+  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
+}
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+import gunbc.machine_intake_receipt { same_intake_subject }
+import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_socket_count }
+import std.measure { byte_size }
+import gunbc.ensure {
+  EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible,
+  EnsurePlanAvailable, ensure_decide, ensure_reconcile,
+}
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, HumanSurfaceOnly, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, MintsResourceScopedCredential,
+  ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+  AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  select_authorization_pattern,
+}
+import gunbc.machine_intake_bmc_secure {
+  BmcSecureStanding, BmcSecureRefusalCause, BmcSecured, BmcSecureRefused, ManagedCredentialReference,
+}
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  FirmwareSetBootReadback, BootReachedUefiAfterSet, BootProgressLostAfterSet, BootReadbackUnobservable,
+  HostEnding, RestartedRepeatedly, ReachedCensus, StoppedWithStatedFailure, StoppedWithoutRestart, HostEndingNotEstablished,
+}
+import gunbc.machine_intake_ampere_checkpoint_console_observation { AmpereCheckpointRelation }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  SelSnapshotReading, SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken,
+}
+import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
+  MtCollins1SocketCpu, EngineeringSample, ProductionPart,
+}
+import std.nat { Nat }
+import std.measure { Second, second_count, byte_size_count }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
+import gunbc.fleet.mtcollins_firmware_baseline {
+  FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
+}
+
+// ── MT. COLLINS FIRMWARE UPDATE AS A CONVERGENCE ─────────────────────────────────────────────────
+//
+// On 2026-10-02 mtcollins1 was updated by hand from srv1, following Foxconn's SOPs step by step. This
+// module is that session as a convergence: handed a baseline chosen by gunbc.fleet.mtcollins_firmware_baseline
+// (§3d: selection precedes convergence), it reads what is installed, decides Noop / Apply(step) /
+// Refuse per target through gunbc.ensure ensure_decide, and grounds each applied step on an
+// INDEPENDENT readback through ensure_reconcile. It invents no decision vocabulary of its own: the step
+// decision is std.upsert_decision's, the grounding is std.realization_reconcile's.
+//
+// THE FOLD IS RE-ENTRANT, NOT A LOOP THAT WAITS. Its input is everything observed so far -- the world now
+// and one record per executed step -- and its output is the single next thing: a step due, a human step
+// to witness, convergence, or a typed refusal. Every human pause is therefore a return, never a sleep:
+// the caller performs or witnesses the step, appends the record, and asks again.
+//
+// ORDERING AND PRECONDITIONS ARE DATA. The order is extdeps.ampere.mt_collins_firmware_release
+// mt_collins_vendor_upgrade_order (the vendor's 1) BMC 2) BIOS 3) SCP 4) MB CPLD); host powered off and a
+// BMC that answers are read from the world before any step is due; the BIOS/SCP pairing is checked on
+// the baseline before anything else, so a baseline that never passed through selection still refuses.
+//
+// THE AC POWER CYCLE IS A HUMAN-ONLY STEP CHOSEN BY gunbc.auth.authorization_pattern_selection. Pulling
+// both PSU cords for ten seconds has no API on this host, so the effect is declared HumanSurfaceOnly and
+// the selection returns ManualStepRequired naming the step; the fold returns that arm and stops. If the
+// selection ever returns anything else -- a PDU gains an API, say -- this fold refuses rather than
+// assuming the step happened, because only the selection may say how the effect is authorized.
+//
+// EVERY FAILURE ARM REFUSES, AND NOTHING RETRIES. A digest that does not match, an hpm upgrade the BMC
+// reported failed, a readback that disagrees, a BMC that stops answering: each is a typed
+// FirmwareConvergenceRefusal and the line stops (DESIGN §5). A retry would absorb exactly the signal an
+// operator needs on a machine whose next failure may be a brick.
+
+// ── What is observed ───────────────────────────────────────────────────────────────────────────
+type HostPowerReading
+  = HostPoweredOff
+  | HostPoweredOn
+  | HostPowerUnreadable { reason: NonEmptyStr }
+
+type BmcAnswer
+  = BmcAnswering
+  | BmcNotAnswering { reason: NonEmptyStr }
+
+// A BMC REFLASH IMPLIES A CREDENTIAL SWAP (operator requirement, 2026-10-02). On the manual mtcollins1
+// run, BMC 0.32 -> 0.45.3 RESET THE USER TABLE: user 3 `gunbc` -- the account behind gunbc.secret_provision
+// mtcollins1_bmc_gunbc_secret_ref -- was erased and factory admin/admin came back with ADMINISTRATOR
+// access. So a step carries what it does to the managed credential, and one that invalidates it is not
+// converged until the credential is re-established:
+//
+//   - the re-provision is ITS OWN EFFECT, not part of the flash: re-create the user from the SecretRef,
+//     set its privilege, enable it and its SOL payload, then close factory admin. It is a credential
+//     rotation at the next epoch, so it is gunbc.machine_intake_bmc_secure's to judge -- its
+//     BmcSecureStanding is sealed, minted only by derive_bmc_secure, and is BmcSecured exactly when the
+//     managed credential is accepted AND the published one is refused. This fold reads that standing
+//     and builds no second credential vocabulary.
+//   - the window in which only the factory credential works is a typed state: the fold returns
+//     FirmwareCredentialReprovisionDue there and refuses any later step recorded inside it.
+//   - reaching the BMC in that window needs the factory credential, which is a privileged use and is
+//     classified by gunbc.auth.authorization_pattern_selection like any other (DESIGN §3b grants row).
+//
+// WHAT THE STANDING DOES NOT COVER, typed as a bet (§4d): MegaRAC keeps one user table for IPMI, Redfish
+// and the web UI, so the reset presumably also ends the web-UI and KVM sessions the boot workflow
+// opens. BmcSecured is established from IPMI LAN probes only; a web-session probe is not part of it.
+// THE RE-ESTABLISHMENT COVERS EVERY CHANNEL AND EVERY ROLE (mtcollins1, 2026-10-02, second pass). After
+// the reflash the operator closed factory admin on LAN channel 1 only; admin kept ADMINISTRATOR on
+// channels 2 and 3, and `gunbc` came back without its Redfish role (extended privilege 256; Redfish
+// AccessDenied). The IPMI half is BmcSecureStanding, whose census refuses a published credential still
+// accepted on ANY addressable LAN channel. The other rights (Redfish, KVM, VMEDIA, web) are surfaces the
+// standing does not probe, so they are a second readback beside it: the ManagedRightsReceipt below.
+//
+// THE RE-ESTABLISHMENT IS BOUND TO THIS CONTROLLER AND THIS FLASH (review on ff66edd). A standing or a
+// probe is evidence about the window only if it is about the same intake subject, the same controller
+// endpoint, the same managed account/role/SecretRef the flash invalidated, at a LATER epoch than the one
+// it invalidated, and taken after the flash completed. The invalidated reference is the world's
+// credential in force (MtCollinsFirmwareWorld.managed), never a hard-coded historical row, so a second
+// BMC flash invalidates the epoch the first one minted and that epoch's standing cannot be replayed.
+//
+// THE RE-PROVISION RESTORES EVERY RIGHT THE BOOT WORKFLOW USES, NOT ONE SESSION (operator, 2026-10-03).
+// BMC 0.45.3's reset also dropped the managed user's KVM and VMEDIA rights (web /api/settings/users: kvm 0,
+// vmedia 0) and left ADMINISTRATOR on LAN channel 1 only (channels 7 and 8: none); restoring them took
+// `channel setaccess 7|8 3 privilege=4` and a web user PUT with kvm=1, vmedia=1. Redfish stayed refused
+// (401, also via SessionService) after every IPMI and web command, so Redfish authorization on this
+// MegaRAC is a separate store no IPMI user command sets. A successful IPMI session therefore says nothing
+// about the rest: the readback is a receipt of every required right, each observed, for this endpoint and
+// account, after the flash. The required set is data; a right missing from the receipt, not granted, or
+// read twice refuses.
+type ManagedAccountRight
+  = IpmiAdministratorOnLanChannel { channel: Int }
+  | SolPayloadRight
+  | KvmRight
+  | VirtualMediaRight
+  | WebLoginRight
+  | RedfishSessionRight
+
+data mtcollins1_required_managed_rights: List<ManagedAccountRight> = [
+  IpmiAdministratorOnLanChannel { channel: 1 },
+  IpmiAdministratorOnLanChannel { channel: 7 },
+  IpmiAdministratorOnLanChannel { channel: 8 },
+  SolPayloadRight,
+  KvmRight,
+  VirtualMediaRight,
+  WebLoginRight,
+  RedfishSessionRight,
+]
+
+type RightObservation
+  = RightGranted
+  | RightNotGranted { detail: NonEmptyStr }
+  | RightUnobserved { detail: NonEmptyStr }
+
+type RightReading {
+  right: ManagedAccountRight
+  observation: RightObservation
+}
+
+type ManagedRightsReceipt {
+  endpoint: BmcControllerEndpoint
+  account: NonEmptyStr
+  observed_at: EpochMs
+  rights: List<RightReading>
+}
+
+// THE RESET ALSO WIPES CONTROLLER CONFIGURATION THE BOOT WORKFLOW USES (operator, 2026-10-03). BMC 0.45.3
+// reset remote media (media/general: remote_media_support 0, empty server/path/share, mount_cd 0), and the
+// boot run refused at media_attach. The restoring PUT /api/settings/media/general answered code 16425
+// "Error in setting Remote Media Misc Configuration" YET APPLIED: the readback showed cd_error_code 0 and
+// 15 images enumerated. So the readback is the images the controller enumerates, and the PUT's status is
+// not a field here at all -- a carrier with no slot for it cannot be satisfied by it.
+type RemoteMediaReadback
+  = RemoteMediaImagesEnumerated { image_count: Int, cd_error_code: Int }
+  | RemoteMediaNotConfigured { detail: NonEmptyStr }
+  | RemoteMediaUnobserved { detail: NonEmptyStr }
+
+type RemoteMediaReceipt {
+  endpoint: BmcControllerEndpoint
+  observed_at: EpochMs
+  readback: RemoteMediaReadback
+}
+
+type BmcCredentialReestablishment {
+  ipmi: BmcSecureStanding
+  rights: ManagedRightsReceipt
+  remote_media: RemoteMediaReceipt
+}
+type BmcCredentialEffect
+  = PreservesBmcCredential
+  | InvalidatesBmcCredential { observed: NonEmptyStr }
+
+fn credential_effect_of(t: FirmwareTarget) -> BmcCredentialEffect {
+  match t {
+    BmcController => InvalidatesBmcCredential {
+      observed: "2026-10-02 mtcollins1 BMC 0.32 -> 0.45.3: user 3 erased, factory admin/admin re-enabled at ADMINISTRATOR",
+    }
+    HostBios => PreservesBmcCredential
+    ScpFirmware => PreservesBmcCredential
+    MainboardCpld => PreservesBmcCredential
+  }
+}
+fn secret_ref_same(a: SecretRef, b: SecretRef) -> Bool {
+  (a.project as String) == (b.project as String) && a.secret == b.secret && a.version == b.version
+}
+
+// Same account, role and SecretRef: the identity of the managed credential apart from its epoch.
+fn same_managed_account(a: ManagedCredentialReference, b: ManagedCredentialReference) -> Bool {
+  a.account == b.account && (a.role == b.role) && secret_ref_same(a: a.secret, b: b.secret)
+}
+
+data mtcollins1_factory_credential_reprovision_effect: PrivilegedEffect = PrivilegedEffect {
+  subject: "use the factory BMC credential on mtcollins1 to re-provision the managed user and close factory admin",
+  frequency: DeviceOnce,
+  reversibility: ReversibleByReapply,
+  surface: ApiSurface,
+  workload_identity: WorkloadIdentityUnbindable { cause: "the factory credential is the vendor's published default, not a grant any federated principal holds" },
+  minted_reach: MintsResourceScopedCredential,
+  billing: NoBillingConsequence,
+  witness_discharge: NoWitnessDischarge,
+}
+
+// A BMC REFLASH ALSO CLEARS THE SEL (mtcollins1, 2026-10-02: the event log was empty after 0.32 ->
+// 0.45.3). The SEL is the only record of what the host did before the flash, so a step that clears it is
+// not due until a snapshot has been READ: the convergence returns FirmwareSelSnapshotDue first, and an
+// unread or untaken snapshot refuses. The snapshot carrier is the boot diagnostic bundle's, not a second one.
+type SelEffect
+  = PreservesSel
+  | ClearsSel
+
+fn sel_effect_of(t: FirmwareTarget) -> SelEffect {
+  match t {
+    BmcController => ClearsSel
+    HostBios => PreservesSel
+    ScpFirmware => PreservesSel
+    MainboardCpld => PreservesSel
+  }
+}
+
+// WHERE EACH TARGET'S VERSION IS READ (mtcollins1, 2026-10-02/03). hpm check reports BMC, BIOS (0ACOD014
+// as 0.14) and the mainboard CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
+// (BOOTFW) read 0.00 before and after, so the SCP is read from SMpro register 0x01 instead. A readback
+// taken from the route that cannot see the target would be a reading of nothing.
+//
+// THE COMPONENT NAME IS THE ONE THE CONTROLLER PRINTS, NOT THE VENDOR'S PROSE. The mainboard CPLD is the
+// row `CPLD`, id 5, on BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32) and on
+// 0.45.3 (ipmitool_hpm_upgrade_cpld_row_bmc0_45_3); this route named it `MB CPLD`, which no table lists.
+type VersionReadbackRoute
+  = HpmCheckComponent { component: NonEmptyStr }
+  | SmproVersionRegister { offset: Int }
+
+fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
+  match t {
+    BmcController => HpmCheckComponent { component: "APP" }
+    HostBios => HpmCheckComponent { component: "BIOS" }
+    ScpFirmware => SmproVersionRegister { offset: 1 }
+    MainboardCpld => HpmCheckComponent { component: "CPLD" }
+  }
+}
+
+// THE SCP DECODE IS A TYPED BET, NOT A PUBLIC FACT (§4d). No public SMpro source defines register 0x01
+// or its layout. Two self-observed points fit "minor in the high byte, major in the low byte" -- 0x0801
+// read while the installed SCP was 1.08 and 0x0a02 after 2.10 -- so the decode is carried with that
+// standing, and a readback through it is never an unqualified observation: the converged verdict names
+// every target grounded through an uncited decode.
+data scp_smpro_version_decode_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an Ampere or Foxconn document defining SMpro register 0x01 as the SCP firmware version and its byte layout",
+}
+
+fn scp_version_of_smpro_word(word: Int) -> FirmwareSemanticVersion {
+  FirmwareSemanticVersion { major: word % 256, minor: word / 256, patch: 0 }
+}
+
+// A readback and the standing of the decode that produced it. hpm check is a component-properties read
+// under PICMG HPM.1, but the standard fixes only major.minor; every full version below is a
+// self-observed projection (hpm_component_projection) and carries that standing.
+// observed_at is when the route was read: it closes the step (step_closed_at) and orders the readback
+// after the AC cycle it must follow.
+type VersionReadback {
+  reading: EnsureObservation<FirmwareSemanticVersion>
+  decode: CitedFigureStanding
+  observed_at: EpochMs
+}
+
+fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>, decode: CitedFigureStanding, observed_at: EpochMs) -> VersionReadback {
+  VersionReadback { reading: reading, decode: decode, observed_at: observed_at }
+}
+
+// A TARGET'S VERSION FROM ONE hpm check TABLE, through its route's component name. A name the table
+// does not list, or lists twice, is inaccessible with the selection's own text, never an absence: the
+// route, not the target, is what is wrong then.
+//
+// THE CELL IS DECODED PER COMPONENT, AND THE DECODE IS SELF-OBSERVED, NOT HPM.1's. HPM.1 fixes the
+// major.minor revision and leaves the four auxiliary bytes to the vendor, so nothing here cites the
+// standard for a full version. Each projection below names the observation it rests on and carries
+// TranscribedUncited with what would ground it; a component with no projection is undecodable, and
+// no projection invents a patch level.
+type HpmVersionProjection
+  = HpmVersionProjected { version: FirmwareSemanticVersion, standing: CitedFigureStanding }
+  | HpmVersionUndecodable { reason: NonEmptyStr }
+
+// APP (the BMC firmware): the patch rides in auxiliary byte 0. The BMC 0.45.3 image read
+// `0.45 03000000` (artifacts/bmc/mtcollins1-bmc-hpm-upgrade-2026-10-02.log line 28, File column).
+data hpm_app_patch_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an AMI or Ampere statement that hpm check's APP auxiliary byte 0 is the BMC firmware patch level (self-observed once: the 0.45.3 image read 0.45 03000000)",
+}
+
+// BIOS and the mainboard CPLD: their releases carry no patch level -- 0ACOD014 reads 0.14, CPLD V06
+// reads 6.00 -- so major.minor is the whole version and the patch is the release's own zero.
+data hpm_major_minor_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an AMI or Ampere statement that hpm check's BIOS and CPLD revisions are the whole release version (self-observed: BIOS 0ACOD014 as 0.14, CPLD V06 as 6.00)",
+}
+
+data hpm_undecoded_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a component-specific decode of this hpm check cell",
+}
+
+fn hpm_hex_value(c: String) -> Int? {
+  if c >= "0" && c <= "9" { parse_int(s: c) }
+  else if c == "a" || c == "A" { Present { value: 10 } }
+  else if c == "b" || c == "B" { Present { value: 11 } }
+  else if c == "c" || c == "C" { Present { value: 12 } }
+  else if c == "d" || c == "D" { Present { value: 13 } }
+  else if c == "e" || c == "E" { Present { value: 14 } }
+  else if c == "f" || c == "F" { Present { value: 15 } }
+  else { none }
+}
+
+fn hpm_component_projection(name: NonEmptyStr, rendering: NonEmptyStr) -> HpmVersionProjection {
+  let words: List<String> = split(s: rendering as String, delimiter: " ")
+  let revision: List<String> = split(s: text_of(xs: words, i: 0), delimiter: ".")
+  let aux = text_of(xs: words, i: 1)
+  match parse_int(s: text_of(xs: revision, i: 0)) {
+    Absent => HpmVersionUndecodable { reason: concat("the revision is not major.minor: ", rendering as String) as NonEmptyStr }
+    Present { value: major } =>
+      match parse_int(s: text_of(xs: revision, i: 1)) {
+        Absent => HpmVersionUndecodable { reason: concat("the revision is not major.minor: ", rendering as String) as NonEmptyStr }
+        Present { value: minor } =>
+          if (name as String) == "APP" {
+            match hpm_hex_value(c: char_at(s: aux, pos: 0)) {
+              Absent => HpmVersionUndecodable { reason: concat("APP's auxiliary byte 0 is not hex: ", rendering as String) as NonEmptyStr }
+              Present { value: hi } =>
+                match hpm_hex_value(c: char_at(s: aux, pos: 1)) {
+                  Absent => HpmVersionUndecodable { reason: concat("APP's auxiliary byte 0 is not hex: ", rendering as String) as NonEmptyStr }
+                  Present { value: lo } => HpmVersionProjected { version: FirmwareSemanticVersion { major: major, minor: minor, patch: hi * 16 + lo }, standing: hpm_app_patch_standing }
+                }
+            }
+          } else if (name as String) == "BIOS" || (name as String) == "CPLD" {
+            HpmVersionProjected { version: FirmwareSemanticVersion { major: major, minor: minor, patch: 0 }, standing: hpm_major_minor_standing }
+          } else {
+            HpmVersionUndecodable { reason: concat(concat("no version decode is modeled for component '", name as String), "'") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// THE PRODUCTION hpm check READ FOR CONVERGENCE IS NOT BUILT: the converge renders hpm check as a dry
+// argv, and nothing executes it and hands the table to this readback. The consumer is declared here.
+data hpm_check_converge_reader_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "hpm_check_version_readback"),
+    reason: "hpm_check_version_readback reads a target's version from a parsed hpm check table through readback_route_of and hpm_component_named, and is executed only by test.claim.mtcollins_firmware_readback_route_witness over retained captures. No production effect runs `ipmitool hpm check` after a flash step and passes its table here: the converge's hpm check is a rendered dry argv (dry_step_commands), and its readbacks are supplied.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the wet realization of gunbc.fleet.mtcollins_firmware_converge's post-step readback. TRIGGER, every part required: (a) an extdeps.bmc.ipmi HpmCheck execution bound to the managed host's admitted controller endpoint and account, authenticated, and bounded by a deadline; (b) a process standing that admits the read only on a successful exit; (c) the exact raw stdout retained as evidence with a SHA-256 identity; (d) ordered after the step it verifies -- after the flash for steps that need no AC cycle, after the AC cycle for those that do; (e) hpm_check_table_of applied to exactly those retained bytes; and (f) hpm_check_version_readback for the step's selected target producing the step's VersionReadback. A nonzero exit, a timeout, unreadable output, or a read whose controller or target does not match the step must yield an inaccessible or refused readback, never a version. SUFFICIENT FOR deleting this row. NOT satisfied by a fixture or retained capture, by a supplied table or supplied readback, by a witness, or by the power-on account's pre-power hpm check read (slice B2, a different consumer of the same table)"),
+  ),
+]
+
+fn hpm_check_version_readback(table: HpmCheckTable, component: NonEmptyStr, observed_at: EpochMs) -> VersionReadback {
+  match hpm_check_version_projection(table: table, component: component) {
+    HpmVersionProjected { version: v, standing: st } => VersionReadback { reading: EnsureObserved { evidence: v }, decode: st, observed_at: observed_at }
+    HpmVersionUndecodable { reason: r } => VersionReadback { reading: EnsureInaccessible { reason: r as String }, decode: hpm_undecoded_standing, observed_at: observed_at }
+  }
+}
+
+fn hpm_check_version_reading(table: HpmCheckTable, component: NonEmptyStr) -> EnsureObservation<FirmwareSemanticVersion> {
+  match hpm_check_version_projection(table: table, component: component) {
+    HpmVersionProjected { version: v, standing: _ } => EnsureObserved { evidence: v }
+    HpmVersionUndecodable { reason: r } => EnsureInaccessible { reason: r as String }
+  }
+}
+
+fn hpm_check_version_projection(table: HpmCheckTable, component: NonEmptyStr) -> HpmVersionProjection {
+  match table {
+    HpmCheckUpgradeVariant { header: h } => HpmVersionUndecodable { reason: concat("hpm check printed the upgrade-progress table: ", h as String) as NonEmptyStr }
+    HpmCheckUnreadable { detail: d } => HpmVersionUndecodable { reason: concat("hpm check output is unreadable: ", d as String) as NonEmptyStr }
+    HpmCheckRead { rows: rs } =>
+      match hpm_component_named(rows: rs, name: component) {
+        HpmComponentNotListed { name: n, listed: ls } => HpmVersionUndecodable { reason: join(["hpm check lists no component named '", n as String, "'; it lists ", join(map(ls, x => x as String), ", ")], "") as NonEmptyStr }
+        HpmComponentListedTwice { name: n, ids: ids } => HpmVersionUndecodable { reason: join(["hpm check lists '", n as String, "' under ", to_string(count(ids)), " ids"], "") as NonEmptyStr }
+        HpmComponentSelected { row: r } =>
+          match r.active {
+            HpmVersionAbsent => HpmVersionUndecodable { reason: join(["hpm check lists '", r.name as String, "' with no active version"], "") as NonEmptyStr }
+            HpmVersionHeld { rendering: v } => hpm_component_projection(name: r.name, rendering: v)
+          }
+      }
+  }
+}
+
+fn text_of(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// The SCP readback, from the SMpro probe the boot diagnostics already realize: a word read is a version
+// under the uncited decode, and every other outcome is an inaccessible observation carrying the probe's
+// own text, never a guess.
+fn scp_readback_of(o: SmproProbeOutcome, observed_at: EpochMs) -> VersionReadback {
+  match smpro_outcome_word(o: o) {
+    Present { value: w } => VersionReadback { reading: EnsureObserved { evidence: scp_version_of_smpro_word(word: w) }, decode: scp_smpro_version_decode_standing, observed_at: observed_at }
+    Absent => VersionReadback { reading: EnsureInaccessible { reason: smpro_outcome_text(o: o) }, decode: scp_smpro_version_decode_standing, observed_at: observed_at }
+  }
+}
+
+type UncitedReadback {
+  target: FirmwareTarget
+  read_obligation: NonEmptyStr
+}
+
+// ── The pre-flight the manual run lacked (fact 7, learned the hard way) ─────────────────────────
+// A step is not due until (a) every installed CPU is silicon the target BIOS family STATES it supports,
+// and (b) the image now installed on that target is retained, so the step can be undone. On mtcollins1
+// socket 0 is an engineering sample, which the 0ACOD notes never mention, and no 0ACOC017 image was kept.
+type RollbackImageReading
+  = RollbackImageRetained { target: FirmwareTarget, version: FirmwareSemanticVersion, digest: Digest }
+  | RollbackImageUnavailable { target: FirmwareTarget, reason: NonEmptyStr }
+
+fn rollback_target(r: RollbackImageReading) -> FirmwareTarget {
+  match r {
+    RollbackImageRetained { target: t, version: _, digest: _ } => t
+    RollbackImageUnavailable { target: t, reason: _ } => t
+  }
+}
+
+fn silicon_stated(statement: BiosSiliconSupportStatement, cpu: MtCollins1SocketCpu) -> Bool {
+  match cpu.issue {
+    ProductionPart => true
+    EngineeringSample => statement.engineering_samples_stated
+  }
+}
+
+type InstalledVersionReading {
+  target: FirmwareTarget
+  reading: EnsureObservation<FirmwareSemanticVersion>
+}
+
+// A SEL snapshot with the time it was read, so it can be ordered against the attempt and the flash.
+type SelCapture {
+  snapshot: SelSnapshotReading
+  read_at: EpochMs
+}
+
+// THE WORLD IS ONE ATTEMPT ON ONE CONTROLLER. subject and endpoint name it; managed is the credential in
+// force when the attempt opened (its epoch is what a BMC flash invalidates); opened_at bounds every
+// observation the attempt may rely on, so a SEL or power reading from an earlier attempt is stale.
+// installed, cpus and rollback_images are the attempt's OPENING evidence and stay the same on every
+// re-entry: installed is each step's `before`, and the whole-set pre-flight re-reads all three however
+// many steps have been recorded.
+type MtCollinsFirmwareWorld {
+  subject: MachineIntakeSubject
+  endpoint: BmcControllerEndpoint
+  managed: ManagedCredentialReference
+  opened_at: EpochMs
+  host_power: HostPowerReading
+  bmc: BmcAnswer
+  installed: List<InstalledVersionReading>
+  cpus: List<MtCollins1SocketCpu>
+  rollback_images: List<RollbackImageReading>
+  sel_snapshot: SelCapture?
+}
+
+// WHAT THE HOST DID WHEN IT FIRST BOOTED AFTER THE SET is the only observation that says the set worked,
+// and it is the power-on account's fact (gunbc.machine_intake_mtcollins1_power_on_account
+// firmware_set_boot_readback), not this module's. A UEFI milestone grounds the set unless the session
+// then restarted repeatedly; lost progress refuses (boot_verdict).
+
+// The witnessed AC power cycle. It is an operator-attested record: the substrate cannot see a power
+// cord, which is why selecting HumanOnlyStep was the honest answer. ac_off is what the
+// operator observed, and the vendor minimum is checked against it. completed_at is when AC was restored:
+// it must follow the flash, and the readback must follow it.
+type AcPowerCycleWitness {
+  ac_off: Second
+  completed_at: EpochMs
+  witnessed_by: NonEmptyStr
+}
+
+// THE HARD PRECONDITIONS AS THEY STOOD WHEN THE FLASH RAN, carried on the record (review on ff66edd): a
+// record that proves only that a flash completed cannot prove the host was off or the SEL was kept, so
+// each executed step carries its own pre-flash power reading and, for a step that clears the SEL, the
+// snapshot it was taken behind -- each timed, and each must fall inside the attempt and before the flash.
+type PreFlashSel
+  = SelNotRequired
+  | SelCaptured { capture: SelCapture }
+
+type PreFlashReceipt {
+  host_power: HostPowerReading
+  power_observed_at: EpochMs
+  sel: PreFlashSel
+}
+
+// One executed step, as the realization recorded it. readback is a SECOND observation taken after the
+// AC cycle -- hpm check, or SMpro for the SCP -- and never the upgrade command's own claim, which is
+// `upgrade`. flash_started_at / flash_completed_at order it against its preconditions, its predecessor,
+// and the credential evidence that follows it.
+type FlashStepRecord {
+  target: FirmwareTarget
+  pre_flash: PreFlashReceipt
+  flash_started_at: EpochMs
+  flash_completed_at: EpochMs
+  sent_image_digest: Digest
+  upgrade: HpmUpgradeOutcome
+  bmc_after: BmcAnswer
+  credential_after: BmcCredentialReestablishment?
+  ac_cycle: AcPowerCycleWitness?
+  readback: VersionReadback?
+}
+
+// ── What is decided ─────────────────────────────────────────────────────────────────────────────
+type FirmwareFlashStep {
+  procedure: MtCollinsHpmStepProcedure
+}
+
+type FirmwareConvergenceRefusal
+  = BaselineNotAdmitted { cause: BaselineAdmissionRefusal }
+  | NoVendorProcedure { target: FirmwareTarget }
+  | ReleaseDigestUnpinned { target: FirmwareTarget }
+  | HostNotPoweredOff
+  | HostPowerUnobservable { reason: NonEmptyStr }
+  | BmcNotAnsweringBeforeStep { target: FirmwareTarget, reason: NonEmptyStr }
+  | InstalledVersionUnobservable { target: FirmwareTarget, reason: NonEmptyStr }
+  | StepOutOfOrder { attempted: FirmwareTarget, unconverged_predecessor: FirmwareTarget }
+  | ImageDigestMismatch { target: FirmwareTarget, expected: NonEmptyStr, sent: NonEmptyStr }
+  | HpmUpgradeRefused { target: FirmwareTarget, stage: HpmUpgradeStage, diagnostic: NonEmptyStr }
+  | BmcNotAnsweringAfterFlash { target: FirmwareTarget, reason: NonEmptyStr }
+  | CredentialNotReestablished { target: FirmwareTarget, cause: BmcSecureRefusalCause }
+  | CredentialForAnotherSubject { target: FirmwareTarget }
+  | CredentialForAnotherEndpoint { target: FirmwareTarget, expected: NonEmptyStr, found: NonEmptyStr }
+  | CredentialForAnotherAccount { target: FirmwareTarget }
+  | CredentialProbePrecedesFlash { target: FirmwareTarget, flash_completed_at: EpochMs, probed_at: EpochMs }
+  | RightsReceiptForAnotherEndpointOrAccount { target: FirmwareTarget }
+  | RemoteMediaNotRestored { target: FirmwareTarget, detail: NonEmptyStr }
+  | RemoteMediaReceiptForAnotherEndpoint { target: FirmwareTarget }
+  | RemoteMediaReceiptPrecedesFlash { target: FirmwareTarget, flash_completed_at: EpochMs, observed_at: EpochMs }
+  | RightsReceiptPrecedesFlash { target: FirmwareTarget, flash_completed_at: EpochMs, observed_at: EpochMs }
+  | ManagedRightNotRestored { target: FirmwareTarget, right: ManagedAccountRight, detail: NonEmptyStr }
+  | ManagedRightUnobserved { target: FirmwareTarget, right: ManagedAccountRight, detail: NonEmptyStr }
+  | ManagedRightMissingFromReceipt { target: FirmwareTarget, right: ManagedAccountRight }
+  | ManagedRightReadTwice { target: FirmwareTarget, right: ManagedAccountRight }
+  | CredentialEpochNotAdvancedPastFlash { target: FirmwareTarget, invalidated_epoch: Int, observed_epoch: Int }
+  | StepDuringFactoryCredentialWindow { attempted: FirmwareTarget, window_opened_by: FirmwareTarget }
+  | AcPowerCycleTooShort { target: FirmwareTarget, observed: Second, minimum: Second }
+  | ReadbackMismatch { target: FirmwareTarget, reason: String }
+  | AcCycleNotAHumanStep { target: FirmwareTarget }
+  | BootProgressLostAfterFirmwareSet { ending: HostEnding, last_relation: AmpereCheckpointRelation? }
+  | BootReachedUefiThenRestartedRepeatedly { cycle: Int, ending: HostEnding }
+  | CpuSiliconSupportUnstated { socket: Nat, bios_family: NonEmptyStr }
+  | NoRollbackImageRetained { target: FirmwareTarget, reason: NonEmptyStr }
+  | RollbackImageNotTheInstalledVersion { target: FirmwareTarget }
+  | SelSnapshotUnreadBeforeStep { target: FirmwareTarget }
+  | SelSnapshotStale { target: FirmwareTarget, read_at: EpochMs, bound: EpochMs }
+  | SelSnapshotMissingFromExecutedStep { target: FirmwareTarget }
+  | HostNotPoweredOffWhenFlashed { target: FirmwareTarget }
+  | PreFlashPowerReadingOutsideAttempt { target: FirmwareTarget, observed_at: EpochMs }
+  | StepStartedBeforePredecessorCompleted { target: FirmwareTarget, predecessor: FirmwareTarget }
+  | StepStartedBeforePredecessorClosed { target: FirmwareTarget, predecessor: FirmwareTarget, predecessor_closed_at: EpochMs }
+  | AcCycleWitnessPrecedesFlash { target: FirmwareTarget, flash_completed_at: EpochMs, completed_at: EpochMs }
+  | ReadbackPrecedesAcCycle { target: FirmwareTarget, ac_completed_at: EpochMs, observed_at: EpochMs }
+  | FlashCompletedBeforeItStarted { target: FirmwareTarget }
+  | DuplicateRecord { target: FirmwareTarget }
+  | DuplicateInstalledReading { target: FirmwareTarget }
+  | DuplicateRollbackReading { target: FirmwareTarget }
+  | CpuInventoryIncomplete { observed: Int, expected: Int }
+  | CpuSocketOutOfRange { socket: Nat, socket_count: Int }
+  | CpuSocketReadTwice { socket: Nat }
+  | SelSnapshotNotTakenBeforeStep { target: FirmwareTarget, reason: NonEmptyStr }
+  | BootOutcomeUnobservable { reason: NonEmptyStr }
+
+type FirmwareConvergenceVerdict
+  = FirmwareBaselineConverged { uncited_readbacks: List<UncitedReadback> }
+  | FirmwareBootReadbackDue
+  | FirmwareSelSnapshotDue { before: FirmwareTarget }
+  | FirmwareStepDue { target: FirmwareTarget, decision: UpsertDecision<FirmwareFlashStep> }
+  | FirmwareCredentialReprovisionDue { after: FirmwareTarget, invalidated: ManagedCredentialReference, factory_use: AuthorizationPatternSelection }
+  | FirmwareAwaitingHumanStep { after: FirmwareTarget, step: HumanIntervention, receipt: SelectionReceipt }
+  | FirmwareConvergenceRefused { cause: FirmwareConvergenceRefusal }
+
+// ── The AC power cycle, as a privileged effect the authorization selection classifies ────────────
+data mtcollins1_ac_power_cycle_step: HumanIntervention = HumanIntervention {
+  identity: "mtcollins1_ac_power_cycle_after_firmware_step",
+  frequency: DeviceOnce,
+  subject: "mtcollins1 AC input power, after each HPM firmware step",
+  instruction: "Remove AC power from both PSUs for at least 10 seconds, restore it, then record an AcPowerCycleWitness with the time observed.",
+  completion_evidence: DischargedAt {
+    evidence: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "AcPowerCycleWitness"),
+  },
+}
+
+data mtcollins1_ac_power_cycle_effect: PrivilegedEffect = PrivilegedEffect {
+  subject: "AC power cycle of mtcollins1 after a firmware step",
+  frequency: DeviceOnce,
+  reversibility: ReversibleByReapply,
+  surface: HumanSurfaceOnly { step: mtcollins1_ac_power_cycle_step },
+  workload_identity: WorkloadIdentityUnbindable { cause: "mtcollins1's AC feed is not on a switchable PDU; no API reaches the cords" },
+  minted_reach: MintsNoCredential,
+  billing: NoBillingConsequence,
+  witness_discharge: NoWitnessDischarge,
+}
+
+fn await_ac_cycle(target: FirmwareTarget) -> FirmwareConvergenceVerdict {
+  match select_authorization_pattern(e: mtcollins1_ac_power_cycle_effect) {
+    ManualStepRequired { step: s, receipt: r } => FirmwareAwaitingHumanStep { after: target, step: s, receipt: r }
+    PatternSelected { pattern: _, receipt: _ } => FirmwareConvergenceRefused { cause: AcCycleNotAHumanStep { target: target } }
+    NoAdmissiblePattern { causes: _, scope: _ } => FirmwareConvergenceRefused { cause: AcCycleNotAHumanStep { target: target } }
+    PatternSelectionNeedsEvidence { needs: _ } => FirmwareConvergenceRefused { cause: AcCycleNotAHumanStep { target: target } }
+    PatternSelectionNeedsPolicy { survivors: _ } => FirmwareConvergenceRefused { cause: AcCycleNotAHumanStep { target: target } }
+    PatternSelectionRefused { defects: _ } => FirmwareConvergenceRefused { cause: AcCycleNotAHumanStep { target: target } }
+  }
+}
+
+// ── The fold ───────────────────────────────────────────────────────────────────────────────────
+fn refused(cause: FirmwareConvergenceRefusal) -> FirmwareConvergenceVerdict {
+  FirmwareConvergenceRefused { cause: cause }
+}
+
+// THE MB CPLD STEP IS OBSERVED, NOT VENDOR-STATED, so it is bound here and not in extdeps.ampere: the
+// 2026-10-02 manual run uploaded the V06 image with a 30000-byte block and the new image was active only
+// after the AC cycle (hpm check 4.00 -> 6.00). Its SOP was not read for a notice, so it is not cited.
+data mtcollins1_observed_mb_cpld_procedure: MtCollinsHpmStepProcedure = MtCollinsHpmStepProcedure {
+  firmware_release: mt_collins_mb_cpld_v06_hpm,
+  upload_block: byte_size(count: 30000),
+}
+
+fn procedure_for(t: FirmwareTarget) -> MtCollinsHpmStepProcedure? {
+  (filter(concat(mt_collins_hpm_procedures, [mtcollins1_observed_mb_cpld_procedure]), p => (p.firmware_release.target == t))).first()
+}
+
+fn record_for(records: List<FlashStepRecord>, t: FirmwareTarget) -> FlashStepRecord? {
+  (filter(records, r => (r.target == t))).first()
+}
+
+fn installed_reading(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> EnsureObservation<FirmwareSemanticVersion> {
+  match (filter(world.installed, i => (i.target == t))).first() {
+    Present { value: i } => i.reading
+    Absent => EnsureInaccessible { reason: "no installed-version reading was supplied for this target" }
+  }
+}
+
+fn reading_satisfies(reading: EnsureObservation<FirmwareSemanticVersion>, desired: FirmwareSemanticVersion) -> Bool {
+  match reading {
+    EnsureObserved { evidence: v } => (v == desired)
+    EnsureAbsent { reason: _ } => false
+    EnsureInaccessible { reason: _ } => false
+  }
+}
+
+fn version_text(v: FirmwareSemanticVersion) -> String {
+  join([v.major as String, ".", v.minor as String, ".", v.patch as String], "")
+}
+
+fn mismatch_reason(t: FirmwareTarget, desired: FirmwareSemanticVersion) -> String {
+  concat("installed version is not the baseline's ", version_text(v: desired))
+}
+
+fn step_for(p: MtCollinsHpmStepProcedure) -> FirmwareFlashStep {
+  FirmwareFlashStep {
+    procedure: p,
+  }
+}
+
+// The rights half: a receipt from this endpoint, for the managed account, observed after the flash, in
+// which every required right reads granted exactly once.
+fn right_refusal(t: FirmwareTarget, receipt: ManagedRightsReceipt, right: ManagedAccountRight) -> FirmwareConvergenceRefusal? {
+  let readings = filter(receipt.rights, x => (x.right == right))
+  match list_length(readings) {
+    0 => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
+    1 =>
+      match readings.first() {
+        Absent => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
+        Present { value: x } =>
+          match x.observation {
+            RightGranted => Absent
+            RightNotGranted { detail: d } => Present { value: ManagedRightNotRestored { target: t, right: right, detail: d } }
+            RightUnobserved { detail: d } => Present { value: ManagedRightUnobserved { target: t, right: right, detail: d } }
+          }
+      }
+    _ => Present { value: ManagedRightReadTwice { target: t, right: right } }
+  }
+}
+
+fn rights_verdict(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord, re: BmcCredentialReestablishment) -> FirmwareConvergenceVerdict? {
+  if re.rights.endpoint.host != world.endpoint.host || re.rights.account != world.managed.account {
+    Present { value: refused(cause: RightsReceiptForAnotherEndpointOrAccount { target: t }) }
+  } else if re.rights.observed_at <= rec.flash_completed_at {
+    Present { value: refused(cause: RightsReceiptPrecedesFlash { target: t, flash_completed_at: rec.flash_completed_at, observed_at: re.rights.observed_at }) }
+  } else {
+    match fold(mtcollins1_required_managed_rights, init: Absent, f: (acc, right) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => right_refusal(t: t, receipt: re.rights, right: right)
+      }) {
+      Present { value: c } => Present { value: refused(cause: c) }
+      Absent => remote_media_verdict(t: t, world: world, rec: rec, m: re.remote_media)
+    }
+  }
+}
+
+// Remote media is restored when THIS controller, after the flash, enumerates at least one image with no
+// CD error.
+fn remote_media_verdict(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord, m: RemoteMediaReceipt) -> FirmwareConvergenceVerdict? {
+  if m.endpoint.host != world.endpoint.host {
+    Present { value: refused(cause: RemoteMediaReceiptForAnotherEndpoint { target: t }) }
+  } else if m.observed_at <= rec.flash_completed_at {
+    Present { value: refused(cause: RemoteMediaReceiptPrecedesFlash { target: t, flash_completed_at: rec.flash_completed_at, observed_at: m.observed_at }) }
+  } else {
+    match m.readback {
+      RemoteMediaNotConfigured { detail: d } => Present { value: refused(cause: RemoteMediaNotRestored { target: t, detail: d }) }
+      RemoteMediaUnobserved { detail: d } => Present { value: refused(cause: RemoteMediaNotRestored { target: t, detail: d }) }
+      RemoteMediaImagesEnumerated { image_count: n, cd_error_code: e } =>
+        match n > 0 && e == 0 {
+          true => Absent
+          false => Present { value: refused(cause: RemoteMediaNotRestored { target: t, detail: "no image enumerated, or the CD reported an error" }) }
+        }
+    }
+  }
+}
+
+// The IPMI half: the sealed standing, joined to this subject, this controller, this account at a later
+// epoch than the one in force, with its probes after the flash.
+fn secured_verdict(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord, re: BmcCredentialReestablishment) -> FirmwareConvergenceVerdict? {
+  if !same_intake_subject(left: re.ipmi.subject, right: world.subject) {
+    Present { value: refused(cause: CredentialForAnotherSubject { target: t }) }
+  } else {
+    match re.ipmi.outcome {
+      BmcSecureRefused { cause: c } => Present { value: refused(cause: CredentialNotReestablished { target: t, cause: c }) }
+      BmcSecured { endpoint: e, reference: r, evidence: _, latest_admitted_probe_at: probed, published_credential: _ } =>
+        if e.host != world.endpoint.host {
+          Present { value: refused(cause: CredentialForAnotherEndpoint { target: t, expected: world.endpoint.host, found: e.host }) }
+        } else if !same_managed_account(a: r, b: world.managed) {
+          Present { value: refused(cause: CredentialForAnotherAccount { target: t }) }
+        } else if r.credential_epoch <= world.managed.credential_epoch {
+          Present { value: refused(cause: CredentialEpochNotAdvancedPastFlash { target: t, invalidated_epoch: world.managed.credential_epoch, observed_epoch: r.credential_epoch }) }
+        } else if probed <= rec.flash_completed_at {
+          Present { value: refused(cause: CredentialProbePrecedesFlash { target: t, flash_completed_at: rec.flash_completed_at, probed_at: probed }) }
+        } else {
+          rights_verdict(t: t, world: world, rec: rec, re: re)
+        }
+    }
+  }
+}
+
+// The credential half of an executed step. Absent: the credential is intact or re-established, walk on.
+fn credential_verdict(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord, later_records: List<FlashStepRecord>) -> FirmwareConvergenceVerdict? {
+  match credential_effect_of(t: t) {
+    PreservesBmcCredential => Absent
+    InvalidatesBmcCredential { observed: _ } =>
+      match rec.credential_after {
+        Absent =>
+          match later_records.first() {
+            Present { value: later } => Present { value: refused(cause: StepDuringFactoryCredentialWindow { attempted: later.target, window_opened_by: t }) }
+            Absent => Present { value: FirmwareCredentialReprovisionDue {
+              after: t,
+              invalidated: world.managed,
+              factory_use: select_authorization_pattern(e: mtcollins1_factory_credential_reprovision_effect),
+            } }
+          }
+        Present { value: re } => secured_verdict(t: t, world: world, rec: rec, re: re)
+      }
+  }
+}
+
+// THE PRECONDITIONS AS THEY STOOD AT EXECUTION. The pre-flash power reading and (for a SEL-clearing step)
+// the SEL snapshot must fall inside the attempt and before the flash started; the flash must start after
+// its predecessor in the vendor order completed. Absent: the step was admissible when it ran.
+fn execution_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord, predecessor: FlashStepRecord?) -> FirmwareConvergenceRefusal? {
+  if rec.flash_completed_at < rec.flash_started_at {
+    Present { value: FlashCompletedBeforeItStarted { target: t } }
+  } else if rec.pre_flash.power_observed_at < world.opened_at || rec.pre_flash.power_observed_at > rec.flash_started_at {
+    Present { value: PreFlashPowerReadingOutsideAttempt { target: t, observed_at: rec.pre_flash.power_observed_at } }
+  } else {
+    match rec.pre_flash.host_power {
+      HostPoweredOn => Present { value: HostNotPoweredOffWhenFlashed { target: t } }
+      HostPowerUnreadable { reason: why } => Present { value: HostPowerUnobservable { reason: why } }
+      HostPoweredOff =>
+        match predecessor_refusal(t: t, rec: rec, predecessor: predecessor) {
+          Present { value: c } => Present { value: c }
+          Absent => executed_sel_refusal(t: t, world: world, rec: rec)
+        }
+    }
+  }
+}
+
+fn later_of(a: EpochMs, b: EpochMs) -> EpochMs {
+  if a > b { a } else { b }
+}
+
+// WHEN A STEP CLOSED (review on 76e6f8c). A step is not over when its flash completes: the factory
+// credential window stays open until the LAST piece of re-establishment evidence, and the step itself
+// until its AC cycle and readback. credential_closed_at is the latest of the flash completion, the
+// standing's latest admitted probe, the rights receipt and the remote-media receipt; step_closed_at adds
+// the AC cycle and the readback. Evidence not recorded contributes nothing -- the walk has already
+// stopped on such a predecessor before any successor is examined.
+fn credential_closed_at(rec: FlashStepRecord) -> EpochMs {
+  match rec.credential_after {
+    Absent => rec.flash_completed_at
+    Present { value: re } =>
+      later_of(a: later_of(a: ipmi_probed_at(rec: rec, re: re), b: re.rights.observed_at), b: re.remote_media.observed_at)
+  }
+}
+
+fn ipmi_probed_at(rec: FlashStepRecord, re: BmcCredentialReestablishment) -> EpochMs {
+  match re.ipmi.outcome {
+    BmcSecureRefused { cause: _ } => rec.flash_completed_at
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: probed, published_credential: _ } => later_of(a: rec.flash_completed_at, b: probed)
+  }
+}
+
+fn step_closed_at(rec: FlashStepRecord) -> EpochMs {
+  let ac = match rec.ac_cycle {
+    Absent => rec.flash_completed_at
+    Present { value: w } => w.completed_at
+  }
+  let read = match rec.readback {
+    Absent => rec.flash_completed_at
+    Present { value: rb } => rb.observed_at
+  }
+  later_of(a: credential_closed_at(rec: rec), b: later_of(a: ac, b: read))
+}
+
+// A successor must START after its predecessor CLOSED. A start inside the predecessor's credential
+// window refuses as that window even when the re-establishment succeeded later: evidence recorded
+// afterwards cannot move the flash out of the interval in which only the factory credential worked.
+fn predecessor_refusal(t: FirmwareTarget, rec: FlashStepRecord, predecessor: FlashStepRecord?) -> FirmwareConvergenceRefusal? {
+  match predecessor {
+    Absent => Absent
+    Present { value: p } =>
+      match rec.flash_started_at < p.flash_completed_at {
+        true => Present { value: StepStartedBeforePredecessorCompleted { target: t, predecessor: p.target } }
+        false =>
+          match rec.flash_started_at <= credential_closed_at(rec: p) {
+            true =>
+              match credential_effect_of(t: p.target) {
+                InvalidatesBmcCredential { observed: _ } => Present { value: StepDuringFactoryCredentialWindow { attempted: t, window_opened_by: p.target } }
+                PreservesBmcCredential => Present { value: StepStartedBeforePredecessorClosed { target: t, predecessor: p.target, predecessor_closed_at: step_closed_at(rec: p) } }
+              }
+            false =>
+              match rec.flash_started_at <= step_closed_at(rec: p) {
+                true => Present { value: StepStartedBeforePredecessorClosed { target: t, predecessor: p.target, predecessor_closed_at: step_closed_at(rec: p) } }
+                false => Absent
+              }
+          }
+      }
+  }
+}
+
+fn executed_sel_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: FlashStepRecord) -> FirmwareConvergenceRefusal? {
+  match sel_effect_of(t: t) {
+    PreservesSel => Absent
+    ClearsSel =>
+      match rec.pre_flash.sel {
+        SelNotRequired => Present { value: SelSnapshotMissingFromExecutedStep { target: t } }
+        SelCaptured { capture: c } => sel_capture_refusal(t: t, c: c, opened_at: world.opened_at, before: rec.flash_started_at)
+      }
+  }
+}
+
+// A capture is admissible when it was READ, inside the attempt, and before the flash it protects.
+fn sel_capture_refusal(t: FirmwareTarget, c: SelCapture, opened_at: EpochMs, before: EpochMs) -> FirmwareConvergenceRefusal? {
+  match c.snapshot {
+    SelSnapshotUnread { cause: _ } => Present { value: SelSnapshotUnreadBeforeStep { target: t } }
+    SelSnapshotNotTaken { reason: why } => Present { value: SelSnapshotNotTakenBeforeStep { target: t, reason: why } }
+    SelSnapshotRead { raw: _, at: _ } =>
+      match c.read_at < opened_at {
+        true => Present { value: SelSnapshotStale { target: t, read_at: c.read_at, bound: opened_at } }
+        false =>
+          match c.read_at > before {
+            true => Present { value: SelSnapshotStale { target: t, read_at: c.read_at, bound: before } }
+            false => Absent
+          }
+      }
+  }
+}
+
+// One executed step, checked in the order the realization performed it: the bytes sent, the upgrade
+// the BMC reported, the BMC answering after it, the witnessed AC cycle, then the independent readback.
+// Absent means the step is grounded and the walk continues.
+fn executed_step_verdict(
+  t: FirmwareTarget,
+  rel: FirmwareReleaseRow,
+  world: MtCollinsFirmwareWorld,
+  before: EnsureObservation<FirmwareSemanticVersion>,
+  rec: FlashStepRecord,
+  predecessor: FlashStepRecord?,
+  later_records: List<FlashStepRecord>,
+) -> FirmwareConvergenceVerdict? {
+  match execution_refusal(t: t, world: world, rec: rec, predecessor: predecessor) {
+    Present { value: cause } => Present { value: refused(cause: cause) }
+    Absent =>
+  match rel.image_digest {
+    Absent => Present { value: refused(cause: ReleaseDigestUnpinned { target: t }) }
+    Present { value: expected } =>
+      if expected.hex != rec.sent_image_digest.hex {
+        Present { value: refused(cause: ImageDigestMismatch { target: t, expected: expected.hex, sent: rec.sent_image_digest.hex }) }
+      } else {
+        match rec.upgrade {
+          HpmUpgradeFailed { stage: s, diagnostic: d } =>
+            Present { value: refused(cause: HpmUpgradeRefused { target: t, stage: s, diagnostic: d }) }
+          HpmUpgradeCompleted =>
+            match rec.bmc_after {
+              BmcNotAnswering { reason: why } => Present { value: refused(cause: BmcNotAnsweringAfterFlash { target: t, reason: why }) }
+              BmcAnswering =>
+                match credential_verdict(t: t, world: world, rec: rec, later_records: later_records) {
+                  Present { value: stop } => Present { value: stop }
+                  Absent =>
+                match rec.ac_cycle {
+                  Absent => Present { value: await_ac_cycle(target: t) }
+                  Present { value: w } =>
+                    if second_count(s: w.ac_off) < second_count(s: mt_collins_minimum_ac_off) {
+                      Present { value: refused(cause: AcPowerCycleTooShort { target: t, observed: w.ac_off, minimum: mt_collins_minimum_ac_off }) }
+                    } else if w.completed_at <= rec.flash_completed_at {
+                      Present { value: refused(cause: AcCycleWitnessPrecedesFlash { target: t, flash_completed_at: rec.flash_completed_at, completed_at: w.completed_at }) }
+                    } else {
+                      match rec.readback {
+                        Absent => Present { value: refused(cause: ReadbackMismatch { target: t, reason: "no readback was recorded after the AC power cycle" }) }
+                        Present { value: after } =>
+                          match after.observed_at <= w.completed_at {
+                            true => Present { value: refused(cause: ReadbackPrecedesAcCycle { target: t, ac_completed_at: w.completed_at, observed_at: after.observed_at }) }
+                            false =>
+                          match classify_reconciled(r: ensure_reconcile(
+                            policy: EnsureMayApply,
+                            before: before,
+                            before_satisfies: reading_satisfies(reading: before, desired: rel.version),
+                            mismatch_reason: mismatch_reason(t: t, desired: rel.version),
+                            plan: EnsurePlanAvailable { plan: t },
+                            application: Applied,
+                            after: after.reading,
+                            after_satisfies: reading_satisfies(reading: after.reading, desired: rel.version),
+                            after_mismatch_reason: concat("readback after flash is not ", version_text(v: rel.version)),
+                          )) {
+                            EffectConverged { converged: _ } => Absent
+                            EffectNotConverged { reason: why, attempt: _ } =>
+                              Present { value: refused(cause: ReadbackMismatch { target: t, reason: why }) }
+                          }
+                          }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+  }
+  }
+}
+
+// A step not yet executed: decide it from the installed reading. Noop continues the walk; Apply is due
+// only when the host is off, the BMC answers, and no LATER target already carries a record -- a later
+// step executed while this one is unconverged is out of order and refuses.
+fn pending_step_verdict(
+  t: FirmwareTarget,
+  rel: FirmwareReleaseRow,
+  world: MtCollinsFirmwareWorld,
+  later_records: List<FlashStepRecord>,
+) -> FirmwareConvergenceVerdict? {
+  let before = installed_reading(world: world, t: t)
+  match procedure_for(t: t) {
+    Absent => Present { value: refused(cause: NoVendorProcedure { target: t }) }
+    Present { value: p } =>
+      match ensure_decide(
+        policy: EnsureMayApply,
+        observation: before,
+        observation_satisfies: reading_satisfies(reading: before, desired: rel.version),
+        mismatch_reason: mismatch_reason(t: t, desired: rel.version),
+        plan: EnsurePlanAvailable { plan: step_for(p: p) },
+      ) {
+        Noop => Absent
+        Refuse { reason: why } => Present { value: refused(cause: InstalledVersionUnobservable { target: t, reason: why }) }
+        Apply { plan: step } =>
+          match later_records.first() {
+            Present { value: later } => Present { value: refused(cause: StepOutOfOrder { attempted: later.target, unconverged_predecessor: t }) }
+            Absent =>
+              match world.host_power {
+                HostPoweredOn => Present { value: refused(cause: HostNotPoweredOff) }
+                HostPowerUnreadable { reason: why } => Present { value: refused(cause: HostPowerUnobservable { reason: why }) }
+                HostPoweredOff =>
+                  match world.bmc {
+                    BmcNotAnswering { reason: why } => Present { value: refused(cause: BmcNotAnsweringBeforeStep { target: t, reason: why }) }
+                    BmcAnswering => sel_gate(t: t, world: world, step: step)
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── THE WHOLE-SET PRE-FLIGHT, before ANY step is returned (review on ff66edd) ─────────────────────
+// The four steps are one set, so what would stop step four stops step one: if the BIOS rollback image is
+// missing, the BMC step is not due either. Missing evidence is never success -- an empty or short CPU
+// inventory refuses, and a duplicated installed or rollback reading refuses rather than taking the first.
+//
+// IT IS RE-READ ON EVERY ENTRY, RECORDS OR NOT (review on 76e6f8c). The pre-flight is a fact about the
+// attempt's opening evidence, so a recorded flash does not discharge it: a target whose opening reading
+// is not the baseline needs its rollback image and stated silicon whether its step is still pending or
+// already recorded. Gating either check on "no record yet" let a history of four records converge over
+// an empty CPU inventory and no retained image.
+fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
+  list_length(filter(world.installed, i => (i.target == t)))
+}
+
+fn count_rollback(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
+  list_length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
+}
+
+fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
+  list_length(filter(records, r => (r.target == t)))
+}
+
+// THE INVENTORY IS ONE ROW PER SOCKET, NOT A ROW COUNT (review on 76e6f8c). Sockets are 0 up to the
+// socket count: a row naming a socket outside that range refuses, a socket named twice refuses, and --
+// with neither -- a count short of the socket count means a socket is missing. Two rows both naming
+// socket 0 are therefore not a complete inventory of a two-socket board.
+fn cpu_inventory_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
+  let expected = mtcollins1_socket_count as Int
+  match (filter(world.cpus, c => (c.socket as Int) >= expected)).first() {
+    Present { value: c } => Present { value: CpuSocketOutOfRange { socket: c.socket, socket_count: expected } }
+    Absent =>
+      match (filter(world.cpus, c => list_length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
+        Present { value: c } => Present { value: CpuSocketReadTwice { socket: c.socket } }
+        Absent =>
+          match list_length(world.cpus) == expected {
+            true => Absent
+            false => Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: expected } }
+          }
+      }
+  }
+}
+
+fn silicon_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRefusal? {
+  match cpu_inventory_refusal(world: world) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match (filter(world.cpus, c => !silicon_stated(statement: mt_collins_0acod_silicon_support, cpu: c))).first() {
+        Present { value: cpu } => Present { value: CpuSiliconSupportUnstated { socket: cpu.socket, bios_family: mt_collins_0acod_silicon_support.bios_family } }
+        Absent => Absent
+      }
+  }
+}
+
+// One target's admissibility for the set: one installed reading, one record at most, and -- if its
+// opening reading is not the baseline, flashed already or not -- exactly one retained rollback image of
+// that opening version.
+fn target_preflight_refusal(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, records: List<FlashStepRecord>, t: FirmwareTarget) -> FirmwareConvergenceRefusal? {
+  match count_installed(world: world, t: t) > 1 {
+    true => Present { value: DuplicateInstalledReading { target: t } }
+    false =>
+      match count_records(records: records, t: t) > 1 {
+        true => Present { value: DuplicateRecord { target: t } }
+        false =>
+          match baseline_release_for(b: b, t: t) {
+            Absent => Absent
+            Present { value: rel } =>
+              match reading_satisfies(reading: installed_reading(world: world, t: t), desired: rel.version) {
+                true => Absent
+                false => rollback_refusal(world: world, t: t)
+              }
+          }
+      }
+  }
+}
+
+fn rollback_refusal(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> FirmwareConvergenceRefusal? {
+  match count_rollback(world: world, t: t) > 1 {
+    true => Present { value: DuplicateRollbackReading { target: t } }
+    false =>
+    match (filter(world.rollback_images, r => (rollback_target(r: r) == t))).first() {
+      Absent => Present { value: NoRollbackImageRetained { target: t, reason: "no rollback image reading was supplied for this target" } }
+      Present { value: r } =>
+        match r {
+          RollbackImageUnavailable { target: _, reason: why } => Present { value: NoRollbackImageRetained { target: t, reason: why } }
+          RollbackImageRetained { target: _, version: kept, digest: _ } =>
+            match reading_satisfies(reading: installed_reading(world: world, t: t), desired: kept) {
+              true => Absent
+              false => Present { value: RollbackImageNotTheInstalledVersion { target: t } }
+            }
+        }
+    }
+  }
+}
+
+// Silicon is checked whenever the set has, or had, a step: a host whose opening readings are all at the
+// baseline has nothing to flash, and that -- never the presence of records -- is the only exemption.
+fn set_preflight_refusal(b: FirmwareBaseline, world: MtCollinsFirmwareWorld, records: List<FlashStepRecord>) -> FirmwareConvergenceRefusal? {
+  match fold(mt_collins_vendor_upgrade_order, init: Absent, f: (acc, t) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => target_preflight_refusal(b: b, world: world, records: records, t: t)
+    }) {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      match set_needs_a_step(b: b, world: world) {
+        true => silicon_refusal(world: world)
+        false => Absent
+      }
+  }
+}
+
+fn set_needs_a_step(b: FirmwareBaseline, world: MtCollinsFirmwareWorld) -> Bool {
+  any(mt_collins_vendor_upgrade_order, t =>
+    match baseline_release_for(b: b, t: t) {
+      Absent => false
+      Present { value: rel } => !reading_satisfies(reading: installed_reading(world: world, t: t), desired: rel.version)
+    })
+}
+
+fn sel_gate(t: FirmwareTarget, world: MtCollinsFirmwareWorld, step: FirmwareFlashStep) -> FirmwareConvergenceVerdict? {
+  match sel_effect_of(t: t) {
+    PreservesSel => Present { value: FirmwareStepDue { target: t, decision: Apply { plan: step } } }
+    ClearsSel =>
+      match world.sel_snapshot {
+        Absent => Present { value: FirmwareSelSnapshotDue { before: t } }
+        Present { value: c } =>
+          match c.snapshot {
+            SelSnapshotRead { raw: _, at: _ } =>
+              if c.read_at < world.opened_at {
+                Present { value: refused(cause: SelSnapshotStale { target: t, read_at: c.read_at, bound: world.opened_at }) }
+              } else {
+                Present { value: FirmwareStepDue { target: t, decision: Apply { plan: step } } }
+              }
+            SelSnapshotUnread { cause: _ } => Present { value: refused(cause: SelSnapshotUnreadBeforeStep { target: t }) }
+            SelSnapshotNotTaken { reason: why } => Present { value: refused(cause: SelSnapshotNotTakenBeforeStep { target: t, reason: why }) }
+          }
+      }
+  }
+}
+
+fn order_position(t: FirmwareTarget) -> Int {
+  fold(enumerate(mt_collins_vendor_upgrade_order), init: -1, f: (acc, e) =>
+    if (e.second == t) { e.first } else { acc })
+}
+
+fn records_after(records: List<FlashStepRecord>, t: FirmwareTarget) -> List<FlashStepRecord> {
+  filter(records, r => order_position(t: r.target) > order_position(t: t))
+}
+
+// The nearest earlier target in the vendor order that carries a record.
+fn predecessor_record(records: List<FlashStepRecord>, t: FirmwareTarget) -> FlashStepRecord? {
+  fold(mt_collins_vendor_upgrade_order, init: Absent, f: (acc, u) =>
+    match order_position(t: u) < order_position(t: t) {
+      false => acc
+      true =>
+        match record_for(records: records, t: u) {
+          Absent => acc
+          Present { value: r } => Present { value: r }
+        }
+    })
+}
+
+fn target_verdict(
+  b: FirmwareBaseline,
+  world: MtCollinsFirmwareWorld,
+  records: List<FlashStepRecord>,
+  t: FirmwareTarget,
+) -> FirmwareConvergenceVerdict? {
+  match baseline_release_for(b: b, t: t) {
+    Absent => Absent
+    Present { value: rel } =>
+      match record_for(records: records, t: t) {
+        Present { value: rec } => executed_step_verdict(t: t, rel: rel, world: world, before: installed_reading(world: world, t: t), rec: rec, predecessor: predecessor_record(records: records, t: t), later_records: records_after(records: records, t: t))
+        Absent => pending_step_verdict(t: t, rel: rel, world: world, later_records: records_after(records: records, t: t))
+      }
+  }
+}
+
+// AFTER EVERY STEP HAS GROUNDED, AND ONLY THEN, THE HOST MAY BOOT. The four steps are one set: no boot
+// attempt between them (every pending step refuses a powered-on host), and the set is not converged until
+// the first boot after it is observed. A host that needed no step this run is converged on its readings.
+fn uncited_readbacks(records: List<FlashStepRecord>) -> List<UncitedReadback> {
+  fold(records, init: [], f: (acc, r) =>
+    match r.readback {
+      Absent => acc
+      Present { value: rb } =>
+        match rb.decode {
+          CitedToAuthority { authority: _ } => acc
+          TranscribedUncited { read_obligation: o } => concat(acc, [UncitedReadback { target: r.target, read_obligation: o }])
+        }
+    })
+}
+
+// THE POST-SET READBACK IS A PROJECTION OF THE WHOLE POWER-ON ACCOUNT (gunbc.machine_intake_mtcollins1_power_on_account
+// firmware_set_boot_readback; ruling R1 on #13041 and #13071), never an authored observation. A UEFI
+// milestone in any cycle grounds the set unless the session then restarted repeatedly: reaching UEFI
+// and looping afterwards is not a converged boot, so both facts are read together.
+fn boot_verdict(records: List<FlashStepRecord>, boot: FirmwareSetBootReadback?) -> FirmwareConvergenceVerdict {
+  match records.first() {
+    Absent => FirmwareBaselineConverged { uncited_readbacks: [] }
+    Present { value: _ } =>
+      match boot {
+        Absent => FirmwareBootReadbackDue
+        Present { value: o } =>
+          match o {
+            BootReachedUefiAfterSet { cycle: c, milestone: _, ending: e, degradations: _, account: _ } => match e {
+              RestartedRepeatedly { cycles: _, last_cycle_ended_after: _, cadence: _, console_errors: _, sel_restarts: _, watchdog: _, reset_cause: _ } => refused(cause: BootReachedUefiThenRestartedRepeatedly { cycle: c, ending: e })
+              ReachedCensus => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithStatedFailure { subject: _, error: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              StoppedWithoutRestart { last_milestone: _, ended_after: _, console_errors: _, restarts_before: _ } => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+              HostEndingNotEstablished => FirmwareBaselineConverged { uncited_readbacks: uncited_readbacks(records: records) }
+            }
+            BootProgressLostAfterSet { ending: e, last_relation: r, account: _ } => refused(cause: BootProgressLostAfterFirmwareSet { ending: e, last_relation: r })
+            BootReadbackUnobservable { account: _ } => refused(cause: BootOutcomeUnobservable { reason: "the power-on account establishes neither a UEFI milestone nor a lost-progress ending" })
+          }
+      }
+  }
+}
+
+fn converge_firmware(
+  baseline: FirmwareBaseline,
+  world: MtCollinsFirmwareWorld,
+  records: List<FlashStepRecord>,
+  boot: FirmwareSetBootReadback?,
+) -> FirmwareConvergenceVerdict {
+  match baseline_admission_refusal(b: baseline) {
+    Present { value: cause } => refused(cause: BaselineNotAdmitted { cause: cause })
+    Absent =>
+      match set_preflight_refusal(b: baseline, world: world, records: records) {
+        Present { value: cause } => refused(cause: cause)
+        Absent =>
+          match fold(mt_collins_vendor_upgrade_order, init: Absent, f: (acc, t) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => target_verdict(b: baseline, world: world, records: records, t: t)
+            }) {
+            Present { value: v } => v
+            Absent => boot_verdict(records: records, boot: boot)
+          }
+      }
+  }
+}
+
+// ── The dry realization ───────────────────────────────────────────────────────────────────────
+//
+// What the operator would run for a due step, rendered and NOT executed. The transport is ipmitool over
+// lanplus with the credential read from a file (-f, never -P: extdeps.bmc.ipmi's standing rule), and the
+// block size and the `force` mode are the vendor procedure's. The `force` answers the image-versus-board
+// product-ID prompt (image 0x0201 against board 0x0202 on mtcollins1), as the SOP does. Binding these argv to the
+// extdeps.bmc.ipmi Tool service and running them from fleet-converge is the wet realization; it is NOT
+// built here, because a new fleet-converge mode or job needs the operator's sign-off (DESIGN, Building &
+// checks: the job roster is closed to growth), and this lane flashes no hardware.
+fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> List<String> {
+  ["ipmitool", "-I", "lanplus", "-H", bmc_host as String, "-U", username as String, "-f", password_file as String]
+}
+
+// The readback is rendered only on the route that can see the target; the SMpro route is realized by
+// gunbc.machine_intake_mtcollins1_smpro_observation and read back through scp_readback_of.
+fn dry_step_commands(
+  step: FirmwareFlashStep,
+  image_path: NonEmptyStr,
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+) -> List<List<String>> {
+  let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file)
+  let flash = [
+    concat(prefix, ["chassis", "status"]),
+    concat(prefix, ["-z", byte_size_count(b: step.procedure.upload_block) as String, "hpm", "upgrade", image_path as String, "force"]),
+  ]
+  match readback_route_of(t: step.procedure.firmware_release.target) {
+    HpmCheckComponent { component: _ } => concat(flash, [concat(prefix, ["hpm", "check"])])
+    SmproVersionRegister { offset: _ } => flash
+  }
+}
+
+// The dry realization's single entry: decide, and if a step is due render its commands. Anything else
+// renders nothing -- a pause or a refusal is reported by the verdict, never papered over with argv.
+fn dry_realize(
+  baseline: FirmwareBaseline,
+  world: MtCollinsFirmwareWorld,
+  records: List<FlashStepRecord>,
+  image_path: NonEmptyStr,
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+) -> List<List<String>> {
+  match converge_firmware(baseline: baseline, world: world, records: records, boot: Absent) {
+    FirmwareStepDue { target: _, decision: d } =>
+      match d {
+        Apply { plan: step } => dry_step_commands(step: step, image_path: image_path, bmc_host: bmc_host, username: username, password_file: password_file)
+        Noop => []
+        Refuse { reason: _ } => []
+      }
+    FirmwareBaselineConverged { uncited_readbacks: _ } => []
+    FirmwareBootReadbackDue => []
+    FirmwareSelSnapshotDue { before: _ } => []
+    FirmwareAwaitingHumanStep { after: _, step: _, receipt: _ } => []
+    FirmwareCredentialReprovisionDue { after: _, invalidated: _, factory_use: _ } => []
+    FirmwareConvergenceRefused { cause: _ } => []
+  }
+}

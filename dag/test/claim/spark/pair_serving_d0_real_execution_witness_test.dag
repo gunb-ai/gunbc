@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { second, measure_count, Measure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash, content_hash_equal }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash, content_hash_equal, content_hash_of_value }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
 import gunbc.harness.harness_seat {
@@ -44,7 +44,7 @@ import gunbc.spark.pair_serving_authority_log {
 import product.capacity.event_chain { PartitionId, ChainWalked }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.spark.pair_serving_d0 {
-  d0_dispatch,
+  d0_dispatch, d0_subject_successor, D0SuspendForSuccessor, RankVacancyReading,
   D0Subject, RankOccupancyReading, IncumbentDidNotAnswer, IncumbentAnswered, D0Observation, HeadEndpointQuiet,
   D0Outcome, D0Settled, D0Refused, D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, DeclaredOccupantDrifted, d0_transaction, d0_held_lease,
   D0GrantAdmission,
@@ -53,20 +53,24 @@ import gunbc.spark.pair_serving_d0 {
   D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
   d0_intent_text, d0_frozen_filing_text, d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused, d0_read_filing, D0FilingAt, D0FilingAbsent, D0FilingUnreadable,
   D0GrantRefused,
+  D0ReleaseToFleet, D0GrantRowApproved, D0GrantRowUnproven, d0_freeze_filing_with, d0_claim_grant, D0ClaimHeld,
 }
 import gunbc.spark.pair_serving_d0_authorization { d0_filed_request, D0FiledRequestFor, D0FiledRequestRefused }
-import gunbc.spark.pair_serving_d0_door { d0_run_kind, D0FirstRun, D0Rerun, D0RunRefused }
+import gunbc.spark.pair_serving_d0_door { d0_run_kind, d0_run_kind_with, D0FirstRun, D0Rerun, D0RunRefused, d0_filed_grant_proof, d0_honored_standing_grant, ExecutedGrantRowRead }
+import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord }
+import test.claim.spark.pair_serving_d0_witness { d0w_rec_of, d0w_pending }
+import gunbc.spark.pair_serving_authority { ReleasedToFleet, PairRealizationUnestablished }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import std.scoped_authorization { ClaimedBy, CompletedBy, AbortedBy }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.host_commitment {
   spark_claimed_members_under, spark_host_standings_current, CurrentStandings, CurrentStandingsRead, CurrentStandingsUnread, admit_unplaced_host_in, SparkHostAdmission, SparkHostAdmitted, SparkHostRefused,
   SparkHostStanding, SparkHostUncommitted, SparkHostCommitted, spark_standing_of, spark_authority_held_causes_of, MemberOfClaimedServingGroup,
 }
-import gunbc.fleet_intent_network { operator_host_srv10 }
-import product.placement_supply { host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_srv10 }
+import product.host_identity { host_identity_eq }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -132,7 +136,7 @@ fn d0r_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 // baseline, a 1000-second term, the write scope over the authority, the transaction as attempt,
 // the intent over the exact operation -- everything admit_d0_grant decides on.
 fn d0r_w_authorization_over(hosts: List<HostIdentity>, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr) -> ScopedAuthorization<D0Subject>? {
-  let subject = D0Subject { group: FabricGroupA, hosts: hosts, successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+  let subject = D0Subject { group: FabricGroupA, hosts: hosts, operation: D0SuspendForSuccessor { successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
   match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
     Absent => none
     Present { value: intent } =>
@@ -213,7 +217,7 @@ fn d0r_w_observe(group: FabricGroup) -> D0Observation {
         map(d.workers, w => RankOccupancyReading { host: w.host, unit_name: w.unit_name, occupancy: UnitInstalled { active: false, unit_digest: w.digest } }),
       )
   }
-  D0Observation { group: group, incumbent: IncumbentDidNotAnswer { receipt: "witness: the route did not answer" as NonEmptyStr, head: HeadEndpointQuiet }, ranks: ranks }
+  D0Observation { group: group, incumbent: IncumbentDidNotAnswer { receipt: "witness: the route did not answer" as NonEmptyStr, head: HeadEndpointQuiet }, ranks: ranks, vacancy: [] as List<RankVacancyReading> }
 }
 
 
@@ -407,6 +411,7 @@ fn d0r_w_observe_uninstalled(group: FabricGroup) -> D0Observation {
   D0Observation {
     group: group, incumbent: base.incumbent,
     ranks: map(base.ranks, r => if (r.unit_name as String) == "gunbc-spark-pair-head.service" { RankOccupancyReading { host: r.host, unit_name: r.unit_name, occupancy: UnitNotInstalled } } else { r }),
+    vacancy: [] as List<RankVacancyReading>,
   }
 }
 
@@ -427,7 +432,7 @@ fn d0r_w_observe_live_declared(group: FabricGroup) -> D0Observation {
         declared: DeclaredPairRealizationKeyed { declared: d },
         observed: ObservedPairRealizationRead { observed: observed_pair_realization_of(group: group, head: head, workers: workers, receipt: "test.claim.spark.pair_serving_d0_real_execution fixture" as ObservationReceiptRef) },
       )
-      D0Observation { group: group, incumbent: IncumbentAnswered { agreement: agreement }, ranks: d0r_w_observe(group: group).ranks }
+      D0Observation { group: group, incumbent: IncumbentAnswered { agreement: agreement }, ranks: d0r_w_observe(group: group).ranks, vacancy: [] as List<RankVacancyReading> }
     }
   }
 }
@@ -910,7 +915,7 @@ fn d0r_committed_to_group_a(standings: List<SparkHostStanding>, host: HostIdenti
 test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution() -> Bool {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_remote(scenario: fn(dir, store) {
-      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
       let text = (match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
       let esc = "esc-d0-filing" as NonEmptyStr
       let absent_before = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
@@ -922,7 +927,7 @@ test fn a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_sub
         Absent => false
         Present { value: AuthorizationGranted { grant: g, claim: _ } } =>
           match d0_filed_request(text: frozen_text, group: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
-            D0FiledRequestFor { request: r, intent_text: _ } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: g.intent_hash) as String) && content_hash_equal(left: r.subject.successor, right: h)
+            D0FiledRequestFor { request: r, intent_text: _ } => (request_revision_of(request: r) as String) == (serialize_content_hash(hash: g.intent_hash) as String) && (match d0_subject_successor(s: r.subject) { Present { value: x } => content_hash_equal(left: x, right: h)  Absent => false })
             D0FiledRequestRefused { reason: _ } => false
           }
         Present { value: _ } => false
@@ -976,7 +981,7 @@ test fn a_grant_whose_window_passed_before_the_claim_takes_no_claim_by_real_exec
 fn d0r_after_frozen(store: FabricStorageBinding, esc: NonEmptyStr, successor: ContentHash) -> Bool {
   let other_revision = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("filed by revision aaaa")  _ => false }
   let rerun = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-d0" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) {
-    D0Rerun { request: r } => content_hash_equal(left: r.subject.successor, right: successor) && (r.escalation_id as String) == (esc as String)
+    D0Rerun { request: r } => (match d0_subject_successor(s: r.subject) { Present { value: x } => content_hash_equal(left: x, right: successor)  Absent => false }) && (r.escalation_id as String) == (esc as String)
     _ => false
   }
   let other = match d0_run_kind(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-else" as NonEmptyStr, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0RunRefused { reason: r } => r.contains("tx-d0")  _ => false }
@@ -991,15 +996,61 @@ test fn the_door_reads_the_frozen_filing_to_decide_a_rerun_without_a_live_subjec
         D0Rerun { request: _ } => false
         D0FirstRun { request: live } =>
           (match d0_read_filing(store: store, escalation_id: esc) { D0FilingAt { text: _ } => true  _ => false })
-            && d0r_after_frozen(store: store, esc: esc, successor: live.subject.successor)
+            && d0r_after_frozen(store: store, esc: esc, successor: match d0_subject_successor(s: live.subject) { Present { value: x } => x  Absent => content_hash_of_value(value: "no successor" as NonEmptyStr) })
         D0RunRefused { reason: _ } => {
           let nothing_frozen = match d0_read_filing(store: store, escalation_id: esc) { D0FilingAbsent => true  _ => false }
-          let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+          let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: h, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
           let frozen = match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr) {
             Absent => false
             Present { value: text } => match d0_freeze_filing(store: store, escalation_id: esc, intent_text: text, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr) { D0FilingFrozen => true  _ => false }
           }
           nothing_frozen && frozen && d0r_after_frozen(store: store, esc: esc, successor: h)
+        }
+      }
+    })
+  })
+}
+
+// ── A STANDING-GRANT LIFECYCLE RESUMES FROM ITS FROZEN APPROVAL, NOT CURRENT MAIN (side-chat review of
+// #13102), BY REAL EXECUTION ON THE STORE ────────────────────────────────────────────────────────────
+//
+// The fresh start freezes the approved row's digest into the filing. Then the row on main CHANGES, which is
+// modelled at the rerun's interface as the unproven fresh proof a run would take now -- yet the door reads the frozen proof back from the store, honors the grant because
+// the executed row still digests to it, and the recovery join reaches the original lifecycle's next step in
+// all three crash states. No broker decision is read anywhere on this path.
+fn d0r_release_subject() -> D0Subject {
+  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0ReleaseToFleet { cause: "witness cause" as NonEmptyStr, approval: "witness approval" as NonEmptyStr } }
+}
+
+data d0r_row_digest: NonEmptyStr = "sha256:4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr
+
+test fn a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_remote(scenario: fn(dir, store) {
+      let esc = "d0-group-a-release-glm53-standing-2026-10-03" as NonEmptyStr
+      let rev = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr
+      match d0_intent_text(subject: d0r_release_subject(), group: FabricGroupA, transaction: "tx-rel" as NonEmptyStr) {
+        Absent => false
+        Present { value: text } => {
+          let frozen = match d0_freeze_filing_with(store: store, escalation_id: esc, intent_text: text, execution_revision: rev, proof: D0GrantRowApproved { row_digest: d0r_row_digest }) { D0FilingFrozen => true  _ => false }
+          let proof_read_back = match d0_filed_grant_proof(store: store, escalation_id: esc) { D0GrantRowApproved { row_digest: d } => (d as String) == (d0r_row_digest as String)  D0GrantRowUnproven => false }
+          match d0_run_kind_with(store: store, g: FabricGroupA, escalation_id: esc, transaction: "tx-rel" as NonEmptyStr, execution_revision: rev, fresh_proof: D0GrantRowUnproven) {
+            D0Rerun { request: req } => {
+              let fp = d0_filed_grant_proof(store: store, escalation_id: esc)
+              let honored = match d0_honored_standing_grant(request: req, frozen: fp, executed: ExecutedGrantRowRead { content: "the approved row", digest: d0r_row_digest }) { Present { value: _ } => true  Absent => false }
+              let edited_refused = match d0_honored_standing_grant(request: req, frozen: fp, executed: ExecutedGrantRowRead { content: "a branch edit", digest: "sha256:5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr }) { Present { value: _ } => false  Absent => true }
+              let claimed = match d0_claim_grant(store: store, escalation_id: esc, transaction: "tx-rel" as NonEmptyStr, now: "2026-10-03T12:00:00Z") { D0ClaimHeld { generation: _ } => true  _ => false }
+              let lc = h
+              let active = PairServingActive { group: FabricGroupA, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }
+              let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+              let claim = d0_read_claim(store: store, escalation_id: esc)
+              let first_write = match d0_recovery(claim: claim, transaction: "tx-rel" as NonEmptyStr, lifecycle: Present { value: lc }, executor: "witness" as NonEmptyStr, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false }
+              let resume = match d0_recovery(claim: claim, transaction: "tx-rel" as NonEmptyStr, lifecycle: Present { value: lc }, executor: "witness" as NonEmptyStr, current: d0w_pending(tx: "tx-rel", h: lc), transitions: [d0w_rec_of(id: "e1", tx: "tx-rel", lifecycle: Present { value: lc }, next: d0w_pending(tx: "tx-rel", h: lc))]) { D0RecoverResume { claim_generation: _ } => true  _ => false }
+              let complete = match d0_recovery(claim: claim, transaction: "tx-rel" as NonEmptyStr, lifecycle: Present { value: lc }, executor: "witness" as NonEmptyStr, current: released, transitions: [d0w_rec_of(id: "e2", tx: "tx-rel", lifecycle: Present { value: lc }, next: released)]) { D0RecoverComplete { claim_generation: _, settled: _ } => true  _ => false }
+              frozen && proof_read_back && honored && edited_refused && claimed && first_write && resume && complete
+            }
+            _ => false
+          }
         }
       }
     })

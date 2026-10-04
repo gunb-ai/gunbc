@@ -7,9 +7,9 @@ import v2.std.optional { Present, Absent }
 import std.measure { second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
@@ -35,6 +35,7 @@ import gunbc.rung_drop { Standing, Retired }
 import gunbc.rung_drop.fabric_storage_append_principal_unrefused { fabric_storage_append_principal_unrefused }
 import gunbc.rung_drop.d0_store_walls_single_lifecycle { d0_store_walls_single_lifecycle }
 import gunbc.spark.pair_serving_d0 {
+  D0SuspendForSuccessor, RankVacancyReading,
   d0_store_write_wall_standing, d0_store_operation_wall, StoreOperationWallMissing, StoreOperationWallRestored,
   d0_single_lifecycle_escalation_id, d0_single_lifecycle_admits_under,
   D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
@@ -111,7 +112,7 @@ fn d0w_t_lease(h: ContentHash) -> HeldLease {
 data d0w_t_tx: NonEmptyStr = "tx-w" as NonEmptyStr
 
 fn d0w_t_subject(successor: ContentHash) -> D0Subject {
-  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
 }
 
 // A grant over the exact operation: the write scope over the authority, the transaction as the
@@ -159,7 +160,7 @@ fn d0w_t_decide(declared: DeclaredPairRealization, incumbent: IncumbentReading, 
     Present { value: grant } =>
       d0_decide(
         declared: DeclaredPairRealizationKeyed { declared: declared },
-        observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: ranks },
+        observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: ranks, vacancy: [] as List<RankVacancyReading> },
         active: d0w_t_active(),
         lease: d0w_t_lease(h: h),
         grant: grant,
@@ -365,7 +366,7 @@ fn d0w_with_four_hosts(scenario: fn(HostIdentity, HostIdentity, HostIdentity, Ho
 }
 
 fn d0w_t_subject_over(hs: List<HostIdentity>, successor: ContentHash, term: Nat) -> D0Subject {
-  D0Subject { group: FabricGroupA, hosts: hs, successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: term) }
+  D0Subject { group: FabricGroupA, hosts: hs, operation: D0SuspendForSuccessor { successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: term) } }
 }
 
 // THE SUBJECT NAMES THE EXACT HOSTS. A grant whose host list is the group's current population,
@@ -515,7 +516,7 @@ test fn an_unavailable_declaration_fences() -> Bool {
       Present { value: grant } =>
     match d0_decide(
       declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "witness" as NonEmptyStr },
-      observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: [] as List<RankOccupancyReading> },
+      observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: [] as List<RankOccupancyReading>, vacancy: [] as List<RankVacancyReading> },
       active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant,
     ) {
       D0DecidedFence { next: _, cause: D0DeclarationUnavailable { obligation: _ } } => true
@@ -596,11 +597,11 @@ test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Boo
         Absent => false
         Present { value: g0 } => {
           let grant = OperatorGrant { escalation_id: g0.escalation_id, subject: subject, scopes: g0.scopes, purpose: g0.purpose, attempt: g0.attempt, intent_hash: g0.intent_hash, granted_by: g0.granted_by, granted_at: g0.granted_at, expires_at: g0.expires_at }
-          (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }) }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+          (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), vacancy: [] as List<RankVacancyReading> }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
              D0DecidedSuspend { next: n, reconciliation: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
              _ => false
            })
-            && (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: IncumbentRouteUnread { cause: "w" as NonEmptyStr }, ranks: [] as List<RankOccupancyReading> }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+            && (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: IncumbentRouteUnread { cause: "w" as NonEmptyStr }, ranks: [] as List<RankOccupancyReading>, vacancy: [] as List<RankVacancyReading> }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
                   D0DecidedFence { next: n, cause: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
                   _ => false
                 })

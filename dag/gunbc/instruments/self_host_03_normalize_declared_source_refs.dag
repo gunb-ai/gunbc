@@ -1,7 +1,7 @@
 module tools.self_host_03_normalize_declared_source_refs
 
+import std.types { List }
 import v2.compiler.source_authority { SourceRef, source_ref_for_storage_path }
-import v2.std.collection { List }
 
 // declared_source_refs for the 03_normalize behavioral witness only (review 41433 fix): this list
 // opts src/v2/compiler/03_normalize.dag's witness entry into the cli_run.rs affected-set selection
@@ -11,15 +11,16 @@ import v2.std.collection { List }
 // share. cli_run.rs's declared_source_ref scan is closure-wide (every file in a witness entry's
 // transitive import closure), so a declared_source_refs list living in the shared roster would leak
 // this selection axis onto all 16 entries; a dedicated per-entry module keeps the axis scoped to
-// 03_normalize alone, matching the roster row's module_path/driver_rel exactly.
+// 03_normalize alone, matching the roster row's module_path and contract entry exactly.
 
 data sn_source_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/03_normalize.dag")
 
-data sn_shim_driver_ref: SourceRef = source_ref_for_storage_path(path: "dag/gunbc/instruments/self_host_03_normalize_shims/witness_main.rs")
+data sn_contract_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/test/claim/self_host_contract/normalize_emitted_contract_test.dag")
 
 // Hand-verified completeness (docs/plans/declared-source-ref-selection-design.md §5.1 flagship):
-// every storage path this transport reads from the repository is listed -- the entry .dag and the
-// witness driver. It used to list a shim lib and thirteen shim writes as well; those hand Rust
+// every storage path this transport reads from the repository is listed -- the subject .dag and the
+// contract module the harness emits beside it (the hand-written witness driver it used to list is
+// deleted; the driver is rendered from the roster row). It used to list a shim lib and thirteen shim writes as well; those hand Rust
 // copies were deleted when every row moved to whole-closure assembly
 // (tools.self_host_curated_seed_linked_harness), so the receipt now builds only emitted bytes.
 
@@ -33,5 +34,5 @@ data sn_shim_driver_ref: SourceRef = source_ref_for_storage_path(path: "dag/gunb
 
 data declared_source_refs: List<SourceRef> = [
   sn_source_ref,
-  sn_shim_driver_ref
+  sn_contract_ref
 ]

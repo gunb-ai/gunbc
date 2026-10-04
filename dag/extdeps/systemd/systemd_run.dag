@@ -147,18 +147,15 @@ fn systemd_run_user_scope_command(properties: List<SystemdRunProperty>, command:
   )
 }
 
-// ONE COMMAND IN A TRANSIENT SCOPE OF THE SYSTEM MANAGER, RUN AS A NAMED ACCOUNT
-// (`systemd-run --scope --uid=U --gid=G -p NAME=VALUE ... -- CMD`). The user-manager form above needs
-// the account's own session bus, which a command elevated with `sudo -u` from another login does not
-// have. The system manager starts the scope, and systemd-run drops to the named uid and gid before it
-// execs the command (systemd-run(1) --uid/--gid; src/run/run.c start_transient_scope applies
-// arg_exec_user/arg_exec_group to the scope's child). So the command runs as that account inside a
-// cgroup the kernel bounds. The caller must be root, since only the system manager can start a scope
-// for another uid, and elevation is the caller's business, not this rendering's. The words come in
-// the same order as the user form, so the property rendering stays in one place.
-fn systemd_run_scope_as_account_argv(account: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
-  let head = ["systemd-run", "--scope", concat("--uid=", account as String), concat("--gid=", account as String)]
-  let with_properties = fold(systemd_run_property_argv(properties: properties), init: head, f: (acc, word) => list_push(acc, word))
+// ONE COMMAND IN A TRANSIENT SCOPE OF THE SYSTEM MANAGER (`systemd-run --scope -p NAME=VALUE ... -- CMD`).
+// The user-manager form above needs the caller's own session bus, which a command elevated from
+// another login does not have; the system manager starts the scope and the kernel bounds its
+// cgroup. The caller must be root. The command runs with the caller's credentials: systemd-run's
+// --uid/--gid are not rendered, because in scope mode they switch uid and gid without initialising
+// the target's supplementary groups and leave the caller's in place (fleet-converge run
+// 37098981121). A caller that needs another account composes its own privilege drop as CMD.
+fn systemd_run_system_scope_argv(properties: List<SystemdRunProperty>, command_argv: List<String>) -> List<String> {
+  let with_properties = fold(systemd_run_property_argv(properties: properties), init: ["systemd-run", "--scope"], f: (acc, word) => list_push(acc, word))
   let with_separator = list_push(with_properties, "--")
   fold(command_argv, init: with_separator, f: (acc, arg) => list_push(acc, arg))
 }

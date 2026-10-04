@@ -1,6 +1,6 @@
 module v2.std.find_witness
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.algebra { contains }
 import v2.std.diagnostic {
   Accepted,
@@ -11,7 +11,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  outcome_rejected
+  outcome_rejected,
+  diagnostics_fatal_reason
 }
 import v2.std.constraint_satisfaction_predicate {
   constraint_satisfaction_preservation_holds
@@ -294,7 +295,7 @@ fn find_witness_derivation_rejection_better(
       match candidate {
         Accepted { value: _, diagnostics: _ } => candidate
         Rejected { diagnostics: candidate_diagnostics } =>
-          if find_witness_rejection_priority(reason: candidate_diagnostics.head.reason) > find_witness_rejection_priority(reason: current_diagnostics.head.reason) {
+          if find_witness_rejection_priority(reason: diagnostics_fatal_reason(d: candidate_diagnostics)) > find_witness_rejection_priority(reason: diagnostics_fatal_reason(d: current_diagnostics)) {
             candidate
           } else {
             current

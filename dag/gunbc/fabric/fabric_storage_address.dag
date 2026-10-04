@@ -1,0 +1,16 @@
+module gunbc.fabric_storage_address
+
+import std.types { String, NonEmptyStr }
+import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root }
+
+data fabric_storage_route_prefix: String = "/fabric-storage"
+
+data fabric_storage_state_suffix: String = "/state"
+
+fn fabric_storage_state_root(store_root: NonEmptyStr) -> NonEmptyStr {
+  concat(store_root as String, fabric_storage_state_suffix) as NonEmptyStr
+}
+
+fn fabric_storage_state_file_root(store_root: NonEmptyStr) -> FabricStorageFileRoot {
+  fabric_storage_file_root(root: fabric_storage_state_root(store_root: store_root))
+}

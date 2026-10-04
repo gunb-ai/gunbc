@@ -85,12 +85,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -361,6 +361,22 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    // FIVE ROWS, EACH NET OF THE OTHERS. The import-edge facts are the module path index's first
+    // demander, and that index is the first demander of every pool file's lexing, newline index
+    // and heads parse (`pool_acquire`, which records those three as `pool_source_tokenize`,
+    // `pool_source_newline_index` and `pool_heads_parse`). So the index is forced here on
+    // the key the facts read it under and timed net of the acquisitions it forces, and the facts
+    // row is what remains: the walk, the read and the import-line scan.
+    let acquired_before = super::pool_acquire::attributed();
+    let index_started = std::time::Instant::now();
+    with_module_path_index(&pool_roots_abs(&roots), |_| ());
+    super::pre_entry_phase::record(
+        "module_path_index_build",
+        super::pre_entry_phase::PhaseScale::Tree,
+        index_started
+            .elapsed()
+            .saturating_sub(super::pool_acquire::attributed() - acquired_before),
+    );
     let observation = super::pre_entry_phase::timed(
         "graph_facts_import_edges",
         super::pre_entry_phase::PhaseScale::Tree,
@@ -693,10 +709,6 @@ thread_local! {
     // the end of the floor and of a regen round as the positive control.
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
         const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
-
-    // While loading the materialization-provider authority, cross-process disk hits
-    // must not re-enter provider routing (review 44268: bootstrap recursion).
-    pub(crate) static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -1021,7 +1033,6 @@ pub fn try_process_shared_index_for_pool(
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
@@ -1034,10 +1045,6 @@ pub fn try_process_shared_index_for_pool(
         walk_started.elapsed(),
     );
     let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
-    discovery_phase_totals::add(
-        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
-        build_started.elapsed(),
-    );
     PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
@@ -1164,7 +1171,6 @@ pub(crate) fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        resolved_graph_memo_cross_process_subjects: RefCell::new(std::collections::HashSet::new()),
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
@@ -1399,24 +1405,7 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_with_parse_cache(index, entry_file, ResolveTypecheckGate::Strict)
-}
-
-pub fn resolve_entry_with_index_for_discovery_corpus(
-    index: &MultiEntryIndex,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    resolve_entry_with_parse_cache(
-        index,
-        entry_file,
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-    )
+    resolve_entry_with_parse_cache(index, entry_file)
 }
 
 /// Cumulative per-worker stage attribution across every entry resolve this thread
@@ -1524,7 +1513,6 @@ pub(crate) fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u12
 pub(crate) fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1534,7 +1522,7 @@ pub(crate) fn resolve_entry_with_parse_cache(
 > {
     let depth = resolve_span_enter();
     let span_started = std::time::Instant::now();
-    let out = resolve_entry_with_parse_cache_inner(index, entry_file, typecheck_gate);
+    let out = resolve_entry_with_parse_cache_inner(index, entry_file);
     resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
     out
 }
@@ -1542,7 +1530,6 @@ pub(crate) fn resolve_entry_with_parse_cache(
 pub(crate) fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1559,7 +1546,6 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
     resolved_graph_from_sources_with_index(
         index,
         sources,
-        typecheck_gate,
         entry_file,
         ResolvedGraphMemoShare::Memoize,
     )
@@ -1662,74 +1648,6 @@ pub(crate) fn via_index_parse_one_source(
     entry
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ResolvedGraphCacheDegradation {
-    JsonRepresentationCannotServe,
-}
-
-impl ResolvedGraphCacheDegradation {
-    fn stable_tag(self) -> &'static str {
-        match self {
-            Self::JsonRepresentationCannotServe => "json-representation-cannot-serve",
-        }
-    }
-
-    fn reason(self) -> &'static str {
-        match self {
-            Self::JsonRepresentationCannotServe => {
-                "canonical JSON cold write exceeded 31 GiB; bounded experiment remained \
-                 incomplete after 28 minutes at 1.2 GiB compressed, so production payoff is \
-                 negative"
-            }
-        }
-    }
-}
-
-static RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-fn format_resolved_graph_cache_degradation(
-    diagnostic: ResolvedGraphCacheDegradation,
-    subject: &str,
-    count: usize,
-) -> String {
-    format!(
-        "[resolved-graph-cache] degradation tag={} count={count} subject={subject} \
-         disposition=cold-recompute reason={}",
-        diagnostic.stable_tag(),
-        diagnostic.reason(),
-    )
-}
-
-fn report_resolved_graph_cache_degradation(
-    diagnostic: ResolvedGraphCacheDegradation,
-    subject: &str,
-) {
-    let count = RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    eprintln!(
-        "{}",
-        format_resolved_graph_cache_degradation(diagnostic, subject, count)
-    );
-}
-
-#[cfg(test)]
-mod resolved_graph_cache_degradation_tests {
-    use super::{format_resolved_graph_cache_degradation, ResolvedGraphCacheDegradation};
-
-    #[test]
-    fn unavailable_optional_tier_is_typed_located_counted_cold_recompute() {
-        let diagnostic = format_resolved_graph_cache_degradation(
-            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
-            "subject-abc",
-            7,
-        );
-        assert!(diagnostic.contains("tag=json-representation-cannot-serve"));
-        assert!(diagnostic.contains("count=7"));
-        assert!(diagnostic.contains("subject=subject-abc"));
-        assert!(diagnostic.contains("disposition=cold-recompute"));
-        assert!(!diagnostic.contains("refus"));
-    }
-}
-
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -1744,15 +1662,14 @@ mod resolved_graph_cache_degradation_tests {
 /// diagnostics before refusing (parse errors across every file, resolve/normalize/
 /// typecheck/ownership across every module), so a multi-error tree reports its full
 /// failing-stage set in one run, never one error per run. Hardness predicates:
-/// typecheck refusals use `is_resolve_typecheck_blocking(typecheck_gate)` and the
-/// other stages use `is_error_diagnostic` — for the gate's `Strict` mode both reduce
+/// typecheck refusals use `is_interpreter_blocking_diagnostic` and the
+/// other stages use `is_error_diagnostic` — both reduce
 /// to the `00_core.dag` interpreter-blocking authority on every class those stages
 /// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
 /// only produced by complexity analysis, which does not run on this path).
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
 ) -> Result<
@@ -1769,37 +1686,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .selection
         .admit_pool_names(|| reference_pool_names_for_index(index))?;
     let subject = subject_digest_for_closure(&sources);
-    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in front of the
-    // opt-in cross-process store. `install_cross_process_materialization_hit` can populate this
-    // otherwise process-local map from disk, so its companion provenance set is load-bearing:
-    // an in-run judgment and a content-addressed prior judgment remain separate observations.
+    // In-process share tier (resolved_graph_memo): always on. Every value in it was computed by
+    // this process, so a hit is an in-run judgment.
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            if index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow()
-                .contains(&subject)
-            {
-                record_required_lane_cross_process_content_judged_sources(&sources);
-            } else {
-                record_required_lane_judged_sources(&sources);
-            }
-        }
+        record_required_lane_judged_sources(&sources);
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
-    }
-    // Arming the optional tier while its JSON representation cannot serve is a
-    // deliberate, bounded degradation to the authoritative cold computation. It
-    // never changes the compiler answer or enters the OOMing encoder. Keep the
-    // degradation typed, subject-located, and process-counted until the
-    // `real-production-invocation` clause lands a representation with positive
-    // measured cold/write and warm/hit payoff, at which point this arm dissolves.
-    let cross_process_cache_degraded = resolved_graph_cache_root_from_env().is_some();
-    if cross_process_cache_degraded {
-        report_resolved_graph_cache_degradation(
-            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
-            &subject,
-        );
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -1912,13 +1804,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
             .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
-    if typecheck_gate == ResolveTypecheckGate::Strict {
-        // `typed` carries the completed per-module typecheck and its diagnostics. Record the
-        // verdict before testing whether it is positive: a blocking diagnostic is stronger
-        // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
-        // produced no typed result never reach this boundary and are not credited.
-        record_required_lane_judged_sources(&sources);
-    }
+    // `typed` carries the completed per-module typecheck and its diagnostics. Record the
+    // verdict before testing whether it is positive: a blocking diagnostic is stronger
+    // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
+    // produced no typed result never reach this boundary and are not credited.
+    record_required_lane_judged_sources(&sources);
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -1948,12 +1838,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(join_via_index_stage_refusal(
@@ -2020,10 +1910,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // leak D0.1 removes (ci-two-tier §5). Per-module typed-cache warming already happened
     // above, in reconcile, and is unaffected.
     if memo_share == ResolvedGraphMemoShare::Memoize {
-        index
-            .resolved_graph_memo_cross_process_subjects
-            .borrow_mut()
-            .remove(&subject);
         index.resolved_graph_memo.borrow_mut().insert(
             subject.clone(),
             (
@@ -2032,18 +1918,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 compile_clean_diags.clone(),
             ),
         );
-    }
-    // The store direction of the seam obeys the SAME bootstrap suppression as the
-    // read direction. The flag names a window in which provider routing may not be
-    // re-entered at all; honouring it on the probe alone left the store calling
-    // `resolve_closure_request_key_from_digests` while the provider ctx was still
-    // mid-construction, so `materialization_provider_ctx` saw an empty memo slot and
-    // rebuilt the whole provider closure — a nested resolve that re-entered this same
-    // store, unbounded, ~1GB per level (repeat-resolve OOM, root-caused 2026-08-03).
-    // Counted, never silent: a suppressed store is a bounded bootstrap-window skip
-    // whose frequency stays observable (§5 — a failure arm must refuse, never widen).
-    if cross_process_provider_routing_suppressed() && !cross_process_cache_degraded {
-        record_provider_bootstrap_store_skip();
     }
 
     Ok((typed, source_indices, compile_clean_diags))
@@ -2101,7 +1975,6 @@ pub(crate) fn parse_module_node_from_index_source(
 
 pub(crate) fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -2109,30 +1982,19 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
-    let strict_sources = (typecheck_gate == ResolveTypecheckGate::Strict).then(|| sources.clone());
-    let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
-        }
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
-                sources.into(),
-            ))
-        }
-    };
+    let judged_sources = sources.clone();
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
-    if typecheck_gate == ResolveTypecheckGate::Strict && result.graph.is_some() {
+    if result.graph.is_some() {
         // A produced graph is the compile-to-resolved path's completed strict judgment receipt,
         // whether its diagnostics are positive or negative.
-        if let Some(strict_sources) = strict_sources.as_ref() {
-            record_required_lane_judged_sources(strict_sources);
-        }
+        record_required_lane_judged_sources(&judged_sources);
     }
 
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2146,7 +2008,7 @@ pub(crate) fn resolved_graph_from_sources(
         // the owning module beside its location, so a line is attributable without mapping a path.
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -2164,13 +2026,11 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            // The refused graph is discarded here either way; attributing it takes the only
-            // owner, so an `Rc` another holder keeps reports itself as unattributable.
-            if let Ok(owned) = Rc::try_unwrap(result) {
-                if let Some(graph) = owned.graph {
-                    typed_graph_byte_attribution("strict-refused", graph);
-                }
+        // The refused graph is discarded here either way; attributing it takes the only
+        // owner, so an `Rc` another holder keeps reports itself as unattributable.
+        if let Ok(owned) = Rc::try_unwrap(result) {
+            if let Some(graph) = owned.graph {
+                typed_graph_byte_attribution("strict-refused", graph);
             }
         }
         return Err(format!(
@@ -2192,12 +2052,6 @@ fn required_lane_judged_module_identities_store() -> &'static Mutex<BTreeSet<Str
     STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
 
-fn required_lane_cross_process_content_judged_module_identities_store(
-) -> &'static Mutex<BTreeSet<String>> {
-    static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
-}
-
 fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
     let mut identities = required_lane_judged_module_identities_store()
         .lock()
@@ -2209,32 +2063,10 @@ fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::Source
     }
 }
 
-fn record_required_lane_cross_process_content_judged_sources(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) {
-    let mut identities = required_lane_cross_process_content_judged_module_identities_store()
-        .lock()
-        .expect("required-lane cross-process-content judgment identity store poisoned");
-    for source in sources {
-        if let Some(module_path) = extract_module_path(&source.content) {
-            identities.insert(module_path);
-        }
-    }
-}
-
 pub fn required_lane_judged_module_identities() -> Vec<String> {
     required_lane_judged_module_identities_store()
         .lock()
         .expect("required-lane resolved-module identity store poisoned")
-        .iter()
-        .cloned()
-        .collect()
-}
-
-pub fn required_lane_cross_process_content_judged_module_identities() -> Vec<String> {
-    required_lane_cross_process_content_judged_module_identities_store()
-        .lock()
-        .expect("required-lane cross-process-content judgment identity store poisoned")
         .iter()
         .cloned()
         .collect()
@@ -2277,8 +2109,7 @@ pub fn whole_tree_resolved_ctx(
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let modules_resolved = picked.modules_resolved;
     let modules_excluded = picked.modules_excluded;
-    let (graph, source_indices) =
-        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(picked.sources)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -3669,7 +3500,7 @@ mod live_pool_entry_resolve_attribution {
         ] {
             let entry = root.join(e);
             let t = std::time::Instant::now();
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
             assert!(r.is_ok(), "{e} resolves");
             eprintln!("PROBE resolve {e} {:?}", t.elapsed());
             eprintln!("PROBE   stages {:?}", resolve_stage_totals());
@@ -4072,7 +3903,7 @@ mod cross_tree_bare_census {
                 sf,
                 &index,
                 |root| super::super::closure_name_census(&index, root),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
             );
             if let Err(e) = r {
                 refusals.push(e);
@@ -4228,7 +4059,7 @@ mod cross_tree_migrated_entries_resolve {
             "dag/test/claim/builtin_get_resolver_test.dag",
         ] {
             let entry = root.join(e);
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
             eprintln!("MIGRATED {e} ok={}", r.is_ok());
             if let Err(err) = &r {
                 eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
@@ -4565,10 +4396,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     .diagnostics
                     .iter()
                     .filter(|d| {
-                        !is_resolve_typecheck_blocking(
-                            d.diagnostic.clone(),
-                            ResolveTypecheckGate::Strict,
-                        )
+                        !is_interpreter_blocking_diagnostic(d.diagnostic.clone())
                     })
                     .count();
                 assert!(
@@ -4577,7 +4405,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     raw.diagnostics
                 );
                 let refusal =
-                    match resolved_graph_from_sources(fixture_sources(), ResolveTypecheckGate::Strict) {
+                    match resolved_graph_from_sources(fixture_sources()) {
                         Err(text) => text,
                         Ok(_) => panic!("a fixture with a blocking diagnostic must refuse"),
                     };

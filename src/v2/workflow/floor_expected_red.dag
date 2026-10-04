@@ -1,7 +1,7 @@
 module v2.workflow.floor_expected_red
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty, list_flat_map }
-import v2.std.collection { List }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.
@@ -1178,18 +1178,16 @@ fn floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke() -> List<String> {
   Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_prelude_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_ci_heal_regen_invoke_witness_test.heal_regen_invoke_has_no_pwd_fallback", tail: Empty {} } }
 }
 
-// SHELL-DAG-COMPILE-POOL-SLICE-INSTALL'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
-// cron-entry chunk above states the admission shape. Three identities from
-// dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness_test.dag: the two red arms
-// over the rendered install body (the benign body's `set -euo pipefail` opener, and an adversarial
-// slice unit name carrying a command separator) and the acceptance conjunction. Each reaches its
-// subject and answers Bool(false) on BEHAVIOR — the module's two positive controls pass on the
-// same run. The worker rebinds the three construction sites to a typed systemd unit-file install
-// plus typed staging argv; when the arms pass, this roster's self-emptying arm names them for
-// removal (DESIGN 4b(4)).
-fn floor_expected_red_chunk_shell_dag_compile_pool_slice_install() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.benign_install_body_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_compile_pool_slice_install_witness_test.adversarial_slice_unit_name_renders_no_shell_control_word", tail: Empty {} } }
-}
+// SHELL-DAG-COMPILE-POOL-SLICE-INSTALL'S ACCEPTANCE ORACLE: WITHDRAWN. The chunk named the two
+// red-by-design arms over the rendered install body of compile_pool_slice_install_body -- the
+// benign body's `set -euo pipefail` opener and an adversarial slice unit name carrying a command
+// separator. The body is deleted and the install is a typed staging fold
+// (compile_pool_slice_install_staging over run_argv_over_host_effect_transport), so the arms green
+// at the same names in the same file and the transition red -> green happened in the diff that
+// deleted the body. A listing whose claim was that the probes fail does not outlive its red
+// (DESIGN 4b(4)): the probes stay enrolled as permanent regression controls; the listing is
+// withdrawn in that same motion, and the roadmap contract still binds the file's four function
+// names, so the node's acceptance surface is unchanged.
 
 // SHELL-DAG-CODEX-APP-SERVER-TRIP-SCRIPT'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
 // cron-entry chunk above states the admission shape. Four identities from
@@ -1294,7 +1292,7 @@ fn floor_expected_red_chunk_infer_checking_mode() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_compile_pool_slice_install(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_loaded_carrier_body_receipt(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_floor_peak_calibration_rows(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_fmt_gate_line(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_deploy_invoke_prelude(), tail: Cons { head: floor_expected_red_chunk_shell_dag_ci_heal_regen_invoke(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 // The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run

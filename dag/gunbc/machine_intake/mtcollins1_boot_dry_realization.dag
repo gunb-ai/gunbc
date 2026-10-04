@@ -148,7 +148,7 @@ fn proc_cmdline_path(pid: Int) -> String {
 // THE WORKER'S OWN PROCESS, as procfs shows it (proc(5), proc_pid_stat(5)): the host's boot id, and
 // one stat line per process -- pid, a parenthesized comm, then fields 3.. with starttime at field 22 --
 // under /proc/<pid>/stat and, for the reader itself, /proc/self/stat. The boot's unit-hold owner is
-// read from these (gunbc.machine_intake_mtcollins1_maintenance_hold self_process_identity) and a
+// read from these (gunbc.managed_host_unit_hold self_process_identity) and a
 // successor observes the holder through them (holder_process_liveness), so a worker that starts writes
 // both, and a worker that is killed loses its /proc/<pid>/stat: the kernel removes a dead process's
 // directory. Only the fields a reader uses are meaningful; the others are zeros. The worker's pid

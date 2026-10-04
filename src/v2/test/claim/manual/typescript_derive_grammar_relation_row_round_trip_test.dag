@@ -27,7 +27,6 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 
-import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash }
 import v2.test.fixture.task_manager_demo { Task, create_task }

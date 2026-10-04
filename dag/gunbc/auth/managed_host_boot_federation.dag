@@ -1,0 +1,220 @@
+module gunbc.auth.managed_host_boot_federation
+
+import std.types { Bool, List, Map, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
+import extdeps.cloud.gcp.iam { IamCondition, role_secretmanager_secret_accessor }
+import extdeps.cloud.gcp.secret_ref { SecretRef, gcp_version_resource_by_number }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, claim_pins_admit, fleet_converge_job_claim_pins }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.machine_intake_bmc_secure { BmcSecured, BmcSecureRefused }
+import gunbc.managed_host {
+  ManagedHost, ManagedHostBindingStanding, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured,
+  ManagedHostEndpointMismatch, managed_host_binding, managed_hosts,
+}
+
+// ── THE BOOT'S FEDERATION IS POLICY FOR THE PAIR (MANAGED HOST, BOOT), NOT HOST IDENTITY ───────
+// (docs/plans/managed-host-untangle.md, cut 4c; operator ruling (b), 2026-10-03.) A boot of a
+// managed host is a recurring automated effect, so gunbc.auth.privileged_effect_census derives
+// FederatedScopedGrant for it: the run's own workload identity, holding one cell per secret it reads,
+// with no human per run, scoped to ONE job -- this repository, the fleet-converge workflow file at
+// main, a workflow_dispatch on refs/heads/main, and the job's GitHub environment -- never repo-wide.
+// None of the ids below is a field of gunbc.managed_host ManagedHost: a second operation on the same
+// host federates through its own pool, and the same host under another policy is a different pair.
+//
+// WHY A DEDICATED POOL, NOT gunbc.auth.github_gcp_federation github_wif_provider. That pool's one
+// provider admits every job in the repository, and a WIF principal is POOL-scoped: a binding scoped
+// to the boot job's subject inside the repo pool is reachable by any provider or claim path in that
+// pool that can produce the subject. gunbc#10887 is the receipt (a heal job reached an App key that
+// way), which is why gunbc.auth.heal_publisher_federation has its own pool; this inhabits that
+// precedent: one pool per pair with one provider whose attribute condition is the whole membership
+// rule, and one service account reachable only from that pool.
+//
+// THE JOB IS PINNED BY THE ENVIRONMENT CLAIM. OIDC tokens carry no job id; the one job-grain claim
+// GitHub asserts is `environment`, present only for a job that declares one. The honest residue: any
+// job in fleet-converge.yml AT MAIN that declared the same environment would also be admitted, which
+// is the same reviewed-main trust the workflow file itself carries. THE RUNNER IS NOT PINNED: the
+// boot runs on the hold store host's self-hosted runner, so `runner_environment == 'github-hosted'`
+// would refuse it; workflow_ref at main plus workflow_dispatch already keeps pull-request code off it.
+
+// THE LIVE NAMES OF ONE PAIR'S FEDERATION, which ruling (b) keeps byte-identical: they exist in GCP
+// and GitHub today, and a renamed id is a different pool, account, environment or cell to
+// reconcile_gcp_policy. The cell title prefix and description are the strings the cells were
+// PROVISIONED with, so they are policy values of the pair too, not derived from any one job name.
+type BootFederationNames {
+  pool_id: NonEmptyStr
+  pool_display_name: NonEmptyStr
+  provider_id: NonEmptyStr
+  service_account_id: NonEmptyStr
+  service_account: ServiceAccountEmail
+  service_account_display_name: NonEmptyStr
+  environment: NonEmptyStr
+  cell_title_prefix: String
+  cell_description: String
+}
+
+// THE BINDING TABLE: which managed hosts have a provisioned boot federation, and under which names.
+// Mt. Collins unit 1 is the one pair provisioned in GCP and GitHub (pool created 2026-09-24). Any
+// other host is unprovisioned and the admission below refuses it; a row here is added only by
+// provisioning the pair, never to make a host bootable.
+// The pool display name is under the 32-character ceiling createWorkloadIdentityPool enforces
+// (measured on the heal pool).
+fn boot_federation_names(host: HostIdentity) -> BootFederationNames? {
+  if host_identity_eq(a: host, b: operator_host_mtcollins1) {
+    Present { value: BootFederationNames {
+      pool_id: "github-mtcollins1-boot",
+      pool_display_name: "Mt. Collins boot (one job)",
+      provider_id: "github-mtcollins1-boot-oidc",
+      service_account_id: "mtcollins1-boot",
+      service_account: "mtcollins1-boot@gunbai-secrets.iam.gserviceaccount.com",
+      service_account_display_name: "Mt. Collins boot (WIF-only, pinned versions, no keys)",
+      environment: "mtcollins1-boot",
+      cell_title_prefix: "mtcollins1-boot",
+      cell_description: "gunbc.auth.mtcollins1_boot_federation: the one version the mtcollins1 boot job reads",
+    } }
+  } else {
+    none
+  }
+}
+
+// THE ADMITTED FEDERATION, and the only value a boot's effects take: the provisioner, the IAM
+// converge target, the workflow job's WIF step and environment, and the census's workload identity
+// all read it. sole_constructor, so admit_boot_federation is its only mint and no module can pair one
+// host with another pair's pool or hand an effect a federation that skipped the admission.
+type ManagedHostBootFederation sole_constructor {
+  host: HostIdentity
+  names: BootFederationNames
+  claim_pins: List<OidcClaimPin>
+  secret_grants: List<SecretAccessGrant>
+}
+
+type BootFederationUnprovisionedCause
+  = BootFederationHostNotManaged
+  | BootFederationHostUnbound { standing: ManagedHostBindingStanding }
+  | BootFederationNoPolicy
+
+type ManagedHostBootFederationStanding
+  = BootFederationProvisioned { federation: ManagedHostBootFederation }
+  | BootFederationUnprovisioned { host: HostIdentity, cause: BootFederationUnprovisionedCause }
+
+// THE PAIR'S ADMISSION INCLUDES ITS POLICY, and its cells are the ROW's values. The BMC credential
+// cell is the version the row's secure standing published (gunbc.machine_intake_bmc_secure
+// ManagedCredentialReference secret), read through managed_host_binding so it is never a secured
+// account beside some other controller's access; the fleet key cell is the census medium readback
+// on the store host, which runs over fleet ssh. The approval submission MAC key is NOT a cell: the
+// boot no longer signs an approval filing. Each cell is conditioned on its one version resource, so a
+// rotation is refused until the pin and the cell move together.
+fn admit_boot_federation(host: ManagedHost) -> ManagedHostBootFederationStanding {
+  match managed_host_binding(host: host) {
+    ManagedHostBound { binding: _ } =>
+      match host.secure.outcome {
+        BmcSecureRefused { cause: c } =>
+          BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
+        BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+          match boot_federation_names(host: host.host) {
+            Absent => BootFederationUnprovisioned { host: host.host, cause: BootFederationNoPolicy }
+            Present { value: n } =>
+              BootFederationProvisioned { federation: ManagedHostBootFederation {
+                host: host.host,
+                names: n,
+                claim_pins: fleet_converge_job_claim_pins(environment: n.environment),
+                secret_grants: [
+                  pinned_version_accessor_grant_for(title_prefix: n.cell_title_prefix, description: n.cell_description, target: r.secret),
+                  pinned_version_accessor_grant_for(title_prefix: n.cell_title_prefix, description: n.cell_description, target: fleet_automation_ssh_privkey_secret),
+                ],
+              } }
+          }
+      }
+    ManagedHostAccessUnobserved { endpoint: e } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } } }
+    ManagedHostNotSecured { cause: c } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostNotSecured { cause: c } } }
+    ManagedHostEndpointMismatch { observed: o, secured: s } =>
+      BootFederationUnprovisioned { host: host.host, cause: BootFederationHostUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: s } } }
+  }
+}
+
+// THE STANDING FOR ONE HOST NAME: a host that is not a managed host is unprovisioned by that cause,
+// never booted with defaults.
+fn boot_federation_for(host: HostIdentity) -> ManagedHostBootFederationStanding {
+  fold(
+    managed_hosts(),
+    init: BootFederationUnprovisioned { host: host, cause: BootFederationHostNotManaged },
+    f: (acc, h) => if host_identity_eq(a: h.host, b: host) { admit_boot_federation(host: h) } else { acc },
+  )
+}
+
+// EVERY PROVISIONED PAIR, in managed-host order: the population gunbc.auth.gcp_iam_converge converges
+// as targets. An unprovisioned host is a non-member, not a loss -- it has no pool to converge.
+fn provisioned_boot_federations() -> List<ManagedHostBootFederation> {
+  fold(
+    managed_hosts(),
+    init: [],
+    f: (acc, h) => match admit_boot_federation(host: h) {
+      BootFederationProvisioned { federation: f } => concat(acc, [f])
+      BootFederationUnprovisioned { host: _, cause: _ } => acc
+    },
+  )
+}
+
+data boot_federation_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+// The pin list and both of its projections are gunbc.auth.oidc_claim_pins's.
+fn boot_federation_attribute_condition(f: ManagedHostBootFederation) -> String {
+  claim_pins_attribute_condition(pins: f.claim_pins)
+}
+
+fn boot_federation_claims_admitted(f: ManagedHostBootFederation, claims: List<OidcClaimPin>) -> Bool {
+  claim_pins_admit(pins: f.claim_pins, claims: claims)
+}
+
+fn boot_federation_wif_provider(f: ManagedHostBootFederation) -> WifProvider {
+  WifProvider {
+    name: f.names.provider_id
+    pool: f.names.pool_id
+    issuer_uri: github_wif_issuer_uri
+    attribute_mapping: Present { value: boot_federation_wif_attribute_mapping }
+    attribute_condition: Present { value: boot_federation_attribute_condition(f: f) }
+  }
+}
+
+fn boot_federation_provider_resource(f: ManagedHostBootFederation) -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: boot_federation_wif_provider(f: f))
+}
+
+// Who may impersonate the service account: every identity in the dedicated pool, which is exactly
+// the identities the one provider's condition admitted.
+fn boot_federation_principal_set(f: ManagedHostBootFederation) -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: f.names.pool_id as String),
+    "/*"
+  ], "")
+}
+
+fn boot_federation_service_account_member(f: ManagedHostBootFederation) -> String {
+  federated_service_account_member(email: f.names.service_account)
+}
+
+// ONE PINNED-VERSION CELL CONSTRUCTION for every dedicated job: gunbc.auth.gcp_iam_converge pins its
+// own version the same way under its own prefix and description.
+fn pinned_version_accessor_grant_for(title_prefix: String, description: String, target: SecretRef) -> SecretAccessGrant {
+  let resource = gcp_version_resource_by_number(project_number: fleet_secrets_project_number, secret: target.secret, version: target.version)
+  SecretAccessGrant {
+    target: target,
+    role: role_secretmanager_secret_accessor,
+    condition: Present { value: IamCondition {
+      title: join([title_prefix, " pinned ", target.secret as String, " v", target.version as String], ""),
+      expression: join(["resource.name == \"", resource, "\""], ""),
+      description: Present { value: description },
+    } },
+  }
+}

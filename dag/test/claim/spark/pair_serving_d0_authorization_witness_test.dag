@@ -15,7 +15,8 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import std.measure { second }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_text, d0_intent_hash, d0_frozen_filing_text, parse_d0_frozen_filing }
+import gunbc.spark.pair_serving_d0 {
+  D0SuspendForSuccessor, RankVacancyReading, D0Subject, d0_request, d0_intent_text, d0_intent_hash, d0_frozen_filing_text, parse_d0_frozen_filing }
 import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateRefused, V41CandidateUnestablished, V41CandidateKeyed, V41DerivationEvidence }
 import gunbc.spark.v41_engram_row_store { V41StoreReadbackUnread, V41StoreReadbackVerified }
 import std.content_hash { content_hash_atom, Fnv1a64 }
@@ -35,7 +36,7 @@ fn w_sha(hex: String) -> ContentHash? {
 }
 
 fn w_request(intent: ContentHash) -> AuthorizationRequest<D0Subject> {
-  d0_request(escalation_id: "d0-esc-1" as NonEmptyStr, subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: intent, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }, transaction: "tx-1" as NonEmptyStr, intent: intent)
+  d0_request(escalation_id: "d0-esc-1" as NonEmptyStr, subject: D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: intent, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }, transaction: "tx-1" as NonEmptyStr, intent: intent)
 }
 
 // THE LIVE SUBJECT FOLLOWS THE CANDIDATE AND ITS DERIVATION EVIDENCE: the candidate is keyed, and until
@@ -91,7 +92,7 @@ test fn a_frozen_intent_re_derives_the_filed_request_and_refuses_another_transac
   match w_sha(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: successor } => {
-      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+      let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0SuspendForSuccessor { successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) } }
       let intent = (match d0_intent_text(subject: subject, group: FabricGroupA, transaction: "tx-1" as NonEmptyStr) { Present { value: intent_text_w } => intent_text_w  Absent => "d0-intent-refused" })
       let text = d0_frozen_filing_text(intent_text: intent, execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr)
       let round_trip = match parse_d0_frozen_filing(text: text) { Present { value: f } => f.intent_text == intent && (f.execution_revision as String) == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  Absent => false }

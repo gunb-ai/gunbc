@@ -1,5 +1,6 @@
 module v2.compiler.target_serialize
 
+import std.types { List }
 import std.occurrence_identity {
   OccurrenceSynthetic
 }
@@ -28,7 +29,9 @@ import v2.std.compilers.target_model {
   target_value_expr_arrow_has_value_expression_body,
   target_value_expr_diagnostic,
   target_value_expression_projection_from_target,
-  target_value_expression_tokens_from_target
+  target_value_expression_tokens_from_target,
+  TypeExprKindAuthority,
+  TypeExprKindNotEmitted
 }
 import v2.compiler.wrap_decision {
   wrap_decision_gate
@@ -49,7 +52,8 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  diagnostics_fatal_reason
 }
 import v2.std.node {
   Atom,
@@ -97,7 +101,7 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   type_expression_projection_from_target,
   lex_rules_literal,
-  bound_tokens_source_text,
+  bound_tokens_source_text_with_transforms,
   TargetText,
   text_atom,
   target_text_seq,
@@ -134,7 +138,6 @@ import v2.std.compilers.target_model {
   target_import_to_concrete_tokens
 }
 import v2.std.collection {
-  List,
   list_at_optional,
   map_get
 }
@@ -155,9 +158,6 @@ import v2.std.algebra {
   fold_list,
   is_empty,
   list_tail
-}
-import v2.std.logic {
-  Bool
 }
 import v2.std.text {
   String
@@ -349,7 +349,7 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
     Accepted { value: row, diagnostics: d } =>
       Accepted { value: row, diagnostics: d }
     Rejected { diagnostics: r } =>
-      if r.head.reason == ^grammar_relation_row_backward_selection_ambiguous {
+      if diagnostics_fatal_reason(d: r) == ^grammar_relation_row_backward_selection_ambiguous {
         Rejected { diagnostics: r }
       } else {
         outcome_rejected(translate_grammar_relation_row_not_found_diagnostic(emitted: emitted))
@@ -624,10 +624,11 @@ fn serialize_concrete_syntax_tokens_to_source_string(
   target: TargetModel,
   tokens: List<ConcreteSyntaxToken>
 ) -> Outcome<TargetText> {
-  bound_tokens_source_text(
+  bound_tokens_source_text_with_transforms(
     tokens: tokens,
     lex: target.lex,
-    binding_spellings: target.binding_spellings
+    binding_spellings: target.binding_spellings,
+    transforms: target.token_class_emit_transforms
   )
 }
 
@@ -1997,7 +1998,7 @@ fn translate_apply_use_site_ownership_to_type_shell(
 fn translate_outcome_is_signature_realization_miss(
   diagnostics: NonEmptyDiagnostics
 ) -> Bool {
-  diagnostics.head.reason == ^target_function_signature_realization_lookup_miss
+  diagnostics_fatal_reason(d: diagnostics) == ^target_function_signature_realization_lookup_miss
 }
 
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {

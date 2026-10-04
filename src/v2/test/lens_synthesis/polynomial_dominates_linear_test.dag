@@ -9,7 +9,6 @@ import v2.lens.cost {
   symbolic_cost_dominates
 }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.logic { Bool }
 import std.nat { Zero }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -8,7 +8,6 @@ import v2.compiler.compile {
 }
 import v2.compiler.infer { InferredTree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

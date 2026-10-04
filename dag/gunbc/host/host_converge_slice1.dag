@@ -3,7 +3,7 @@ module gunbc.host_converge_slice1
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import gunbc.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.systemd {
   systemd_memory_max_property,
   MemoryMax,
@@ -22,7 +22,7 @@ import gunbc.systemctl_show_read {
   SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation {
@@ -33,7 +33,7 @@ import gunbc.runner_slot_allocation {
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
-  VerdictConverged,
+  VerdictConverged, VerdictAbsent,
   Drifted,
   ConvergePolicy,
   ConvergePolicyDerived,
@@ -385,7 +385,7 @@ fn host_converge_slice1_tasks_verdict(limit: SystemdCgroupTaskLimit, knob: Conve
     TaskLimitCount { count: n } =>
       if to_string(n) == knob.desired { VerdictConverged } else { Drifted }
     TaskLimitUnbounded => Drifted
-    TaskLimitAbsent => Absent
+    TaskLimitAbsent => VerdictAbsent
   }
 }
 
@@ -502,7 +502,7 @@ fn host_converge_slice1_prove_tasks_reapply_noop(unit: NonEmptyStr, knob: Conver
             Present {
               value: "host_converge_slice1: tasks reapply-noop failed — still drifted after second apply; fail-closed",
             }
-          Absent =>
+          VerdictAbsent =>
             Present {
               value: "host_converge_slice1: tasks reapply-noop read returned Absent verdict after second apply; fail-closed",
             }
@@ -576,7 +576,7 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
                                 }
                               Drifted =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply still drifted; fail-closed" }
-                              Absent =>
+                              VerdictAbsent =>
                                 HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks read-back after apply returned Absent verdict; fail-closed" }
                             }
                           Absent => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: tasks independent read-back after apply returned absent; fail-closed" }
@@ -585,7 +585,7 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
                     }
                   }
               }
-            Absent =>
+            VerdictAbsent =>
               HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live TasksMax parsed Absent (empty/untyped wire) for ", unit as String) }
           }
         Absent => HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live systemctl show TasksMax read absent for ", unit as String) }

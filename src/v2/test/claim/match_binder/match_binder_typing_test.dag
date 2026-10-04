@@ -49,7 +49,8 @@ import v2.compiler.infer {
 import v2.compiler.inferred_tree { InferredFacts, InferredFactsEntry, ObligatedInferredTree }
 import v2.std.algebra { list_append }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.collection { List, empty_map }
+import std.types { List }
+import v2.std.collection { empty_map }
 import v2.std.integer { Int }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -604,7 +605,8 @@ fn mbt_resolved() -> ResolvedTree {
     root: mbt_atom(s: ^mbt_unused_root),
     symbol_index: mbt_index(),
     resolved_declarations: empty_symbol_index(),
-    lexical_bindings: empty_map()
+    lexical_bindings: empty_map(),
+    unavailable_providers: []
   }
 }
 

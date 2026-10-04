@@ -15,9 +15,7 @@ import gunbc.roadmap.roadmap_supervisor {
   SupervisorTarget, SupervisorEscalation, supervisor_target_for,
 }
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, WorkflowSegmentKind, VerificationWorkflowSegment,
-  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
-  PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
@@ -111,23 +109,6 @@ data continuation_turn_cap: Int = 3
 
 fn continuation_turn_label(turn: Int) -> String {
   join(["turn ", to_string(value: turn), " of ", to_string(value: continuation_turn_cap)], "")
-}
-
-fn verification_segment_of(segments: List<WorkflowSegment>) -> WorkflowSegment? {
-  fold(segments, init: none, f: (acc, s) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent =>
-      match s.kind {
-        VerificationWorkflowSegment => Present { value: s }
-        EnvironmentWorkflowSegment => none
-        WorkspaceWorkflowSegment => none
-        AgentWorkflowSegment => none
-        SubmissionWorkflowSegment => none
-        PublicationWorkflowSegment => none
-        ReviewWorkflowSegment => none
-        GoalAuditWorkflowSegment => none
-      }
-  })
 }
 
 fn continuation_prior_turn(read: ContinuationTurnRead) -> Int? {

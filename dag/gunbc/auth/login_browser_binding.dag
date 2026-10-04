@@ -1,0 +1,45 @@
+module gunbc.auth.login_browser_binding
+
+import std.types { String, Bool, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.http.server { SetCookie, CookieSameSiteLax }
+import extdeps.auth.oidc { OidcLoginTransaction }
+import extdeps.crypto.sha2 { sha256_hex }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import gunbc.auth.session { session_cookie_id_of_header, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed }
+
+// THE LOGIN-BINDING COOKIE'S ONE NAME, read by both the parse and the Set-Cookie construction.
+// The __Host- prefix (RFC 6265bis section 4.1.3.2) binds it to this origin with Secure and Path=/.
+data login_browser_cookie_name: NonEmptyStr = "__Host-gunbc-login" as NonEmptyStr
+
+// The cookie the login redirect sets: the browser's binding, scoped to the transaction lifetime.
+fn auth_login_browser_cookie(transaction: OidcLoginTransaction, max_age_seconds: Nat) -> SetCookie {
+  SetCookie {
+    name: login_browser_cookie_name,
+    value: auth_login_browser_binding(transaction: transaction),
+    path: "/" as NonEmptyStr,
+    secure: true,
+    http_only: true,
+    same_site: Present { value: CookieSameSiteLax },
+    max_age_seconds: max_age_seconds,
+  }
+}
+
+// Domain-separated from the public PKCE challenge and state; only the initiating browser receives it.
+fn auth_login_browser_binding(transaction: OidcLoginTransaction) -> String {
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: join(["gunbc/login-browser/v1", transaction.state as String, transaction.verifier.verifier as String], ":"))))
+}
+
+fn auth_login_browser_admitted(transaction: OidcLoginTransaction, cookie_header: String) -> Bool {
+  auth_login_browser_presents(binding: auth_login_browser_binding(transaction: transaction), cookie_header: cookie_header)
+}
+
+// The cookie half of the admission, over an already-derived binding: exactly one login cookie,
+// equal to the binding. The digest is paid once by the caller, not per comparison.
+fn auth_login_browser_presents(binding: String, cookie_header: String) -> Bool {
+  match session_cookie_id_of_header(cookie_header: cookie_header, cookie_name: login_browser_cookie_name) {
+    SessionCookieIdParsed { session_id: presented } => (presented as String) == binding
+    SessionCookieIdNotPresent => false
+    SessionCookieIdMalformed { detail: _ } => false
+  }
+}

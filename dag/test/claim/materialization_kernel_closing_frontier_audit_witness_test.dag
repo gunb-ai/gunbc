@@ -103,6 +103,6 @@ test fn production_invocation_clause_not_delivered() -> Bool {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "real-production-invocation") == false
 }
 
-test fn hand_rust_tracking_clause_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "hand-rust-growth-tracked-live")
+test fn hand_rust_tracking_clause_not_delivered_subject_removed() -> Bool {
+  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "hand-rust-growth-tracked-live") == false
 }

@@ -1,6 +1,7 @@
 module test.claim.spark.native_experiment_apply_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.native_experiment_apply {
@@ -53,13 +54,13 @@ fn fx_restoration_plan() -> ArmMemoryExperimentPlan? {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => none
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_experiment_plan(
             checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
             workload: subject.intent, policy_profile: profile,
-            targets: arm_memory_subject_open_components(subject: subject)) {
+            targets: arm_memory_subject_open_components(subject: subject), deployment_env: glm_group_b_deployment_env()) {
             ArmMemoryExperimentAdmitted { plan: p } => Present { value: p }
             ArmMemoryExperimentRefused { cause: _ } => none
           }
@@ -73,7 +74,7 @@ fn fx_unestablished() -> ArmMemoryFitVerdict {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
         profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => ArmMemoryFitUnestablished { obligations: ["unreachable" as NonEmptyStr] }
         ArmMemorySubjectReady { subject: subject } => arm_memory_fit_verdict(subject: subject)
@@ -117,12 +118,12 @@ test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => false
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_experiment_plan(
             checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-            workload: subject.intent, policy_profile: profile, targets: [ArmGraphCapture, ArmKvCache]) {
+            workload: subject.intent, policy_profile: profile, targets: [ArmGraphCapture, ArmKvCache], deployment_env: glm_group_b_deployment_env()) {
             ArmMemoryExperimentRefused { cause: _ } => false
             ArmMemoryExperimentAdmitted { plan: partial } =>
               match arm_experiment_actuation_admission(

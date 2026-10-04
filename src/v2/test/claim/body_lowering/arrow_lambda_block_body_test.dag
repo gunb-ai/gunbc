@@ -1,0 +1,237 @@
+module v2.test.claim.body_lowering.arrow_lambda_block_body
+
+import v2.compiler.fold_lowering {
+  FunctionLiteralBlockBody,
+  FunctionLiteralExprBody,
+  FunctionLiteralStatementBody,
+  arrow_lambda_parts_optional
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { FirstKey, PreparedModeled, PreparedVoidGrammar, first_key_class, parse_module, production_first_row_lookup }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.std.algebra { any }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.language_model { LanguageModel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BLOCK-BODIED ARROW LAMBDA HAS A BLOCK BODY. v2.compiler.fold_lowering fv_expr_parts read every
+// `=> ...` body as an expression, so a `{ .. }` body reached body lowering as an opaque block_expr and
+// refused as body_lowering_reason_function_value_body_unread -- the native route's prepare wall for
+// src/v2/std/node.dag (the fold step in allocate_pending_occurrences) and dag/extdeps/uri_path.dag
+// (path_param_value). The block is the grammar's fn_body, the same production a fn literal carries,
+// so the reader now answers FunctionLiteralBlockBody for it and both consumers take the fn-literal arm.
+//
+// The fn-literal and expression-bodied claims are the controls: they normalized before the change and
+// must still, so a regression in the shared fn_body arm or in the expression arm reds them, not only
+// the subject.
+//
+// THE NATIVE ROUTE'S OWN STAGES, tokenize -> parse -> normalize, and nothing above them. The
+// reference-conservation harness (body_lowering_normalize_outcome) is the wrong instrument here: the
+// fold seam desugars the `fold` call head away by design, so it refuses every fold fixture as
+// conservation_reason_dropped_reference whatever the step's body is, and the claims would not
+// discriminate the body reader at all. The answer is ACCEPTED or the FATAL reason, the last link,
+// which is the cause that refused.
+data claim_cached_lm: LanguageModel = dag_language_model()
+
+fn normalize_outcome(src: String) -> String {
+  let lm = claim_cached_lm
+  match tokenize(text: src, file: ^arrow_lambda_block_body_subject, rules: lm.lex) {
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+        Accepted { value: a, diagnostics: _ } =>
+          match normalize(parse_tree: a.tree) {
+            Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+            Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+          }
+      }
+  }
+}
+
+data src_fold_step_arrow_block: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => {\n    acc + x\n  })\n}\n"
+
+data src_fold_step_arrow_block_let_record: String = "module m.t\ntype P {\n  total: Int\n  count: Int\n}\nfn t(xs: List<Int>) -> P {\n  fold(xs, init: P { total: 0, count: 0 }, f: (acc, x) => {\n    let next = acc.total + x\n    P {\n      total: next,\n      count: acc.count + 1,\n    }\n  })\n}\n"
+
+data src_value_arrow_block: String = "module m.t\nfn apply(g: fn(Int) -> Int, v: Int) -> Int {\n  g(v)\n}\nfn t(v: Int) -> Int {\n  apply(g: a => {\n    a + 1\n  }, v: v)\n}\n"
+
+data src_fold_step_fn_literal_block: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    acc + x\n  })\n}\n"
+
+// AN UNBRACED STATEMENT BODY: `(acc, x) =>` then a let and the value on the lines after, ending at
+// the call's `)` (v2.extdeps.languages.dag dag_grammar_arrow_lambda_body_expr). Before, the body was
+// read as an expression, so the let refused the parse.
+data src_fold_step_arrow_statements: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) =>\n    let next = acc + x\n    next\n  )\n}\n"
+
+// THE REAL SITE, verbatim from dag/std/graph.dag build_adjacency_views (one of the corpus files the
+// unbraced form refused): a fold step whose body is two lets and a record.
+data src_graph_adjacency_site: String = "module std.graph_site\nfn build_adjacency_views(names: List<String>, graph: CallGraph) -> CallGraphAdjacencyViews {\n  let initial_forward = seed_adjacency_map(names: names)\n  let initial_reverse = seed_adjacency_map(names: names)\n  graph.edges |> fold(init: CallGraphAdjacencyViews { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>\n    let forward_neighbors = match map_get(acc.forward, edge.caller) {\n      Present { value: ns } => concat(ns, [edge.callee])\n      Absent => [edge.callee]\n    }\n    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {\n      Present { value: ns } => concat(ns, [edge.caller])\n      Absent => [edge.caller]\n    }\n    CallGraphAdjacencyViews {\n      forward: map_insert(acc.forward, edge.caller, forward_neighbors),\n      reverse: map_insert(acc.reverse, edge.callee, reverse_neighbors)\n    }\n  )\n}\n"
+
+// THE STATEMENT BODY ENDS AT `,` TOO: a value-position lambda whose unbraced body is followed by the
+// call's next argument.
+data src_value_arrow_statements_then_comma: String = "module m.t\nfn apply(g: fn(Int) -> Int, v: Int) -> Int {\n  g(v)\n}\nfn t(v: Int) -> Int {\n  apply(g: a =>\n    let b = a + 1\n    b, v: v)\n}\n"
+
+data src_fold_step_arrow_expr: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => acc + x)\n}\n"
+
+// THE ROUTE, NOT ONLY THE VERDICT: the real site parses, its lambda's body is the lambda_stmt_body
+// production, and the one decoder (v2.compiler.fold_lowering fv_arrow_body) classifies it as a
+// statement body -- so its acceptance is the statement route's, not an expression read that happened
+// to pass.
+fn alb_first_lambda(root: Node) -> Optional<Node> {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => id == ^dag_surface_arrow_lambda
+    Absent => false
+  }
+  if here {
+    alb_some(node: root)
+  } else {
+    fold(root.children, init: alb_no_node(), f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => alb_first_lambda(root: e.target)
+      }
+    })
+  }
+}
+
+fn alb_no_node() -> Optional<Node> { Absent }
+
+fn alb_some(node: Node) -> Optional<Node> { Present { value: node } }
+
+fn alb_body_is_statement_route(lambda: Node) -> Bool {
+  match parse_production_captured_child_optional(node: lambda) {
+    Absent => false
+    Present { value: captured } =>
+      match arrow_lambda_parts_optional(lambda: captured) {
+        Absent => false
+        Present { value: parts } =>
+          match parts.body {
+            FunctionLiteralStatementBody { body: _ } => true
+            FunctionLiteralBlockBody { fn_body: _ } => false
+            FunctionLiteralExprBody { expr: _ } => false
+          }
+      }
+  }
+}
+
+fn statement_route_of(src: String) -> Bool {
+  let lm = claim_cached_lm
+  match tokenize(text: src, file: ^arrow_lambda_block_body_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: a, diagnostics: _ } =>
+          match alb_first_lambda(root: a.tree) {
+            Absent => false
+            Present { value: lambda } => alb_body_is_statement_route(lambda: lambda)
+          }
+      }
+  }
+}
+
+// ONE PRODUCER FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: each verdict
+// pays a full tokenize -> parse -> normalize, which is over the new-witness enrolment margin per claim.
+// The stored value is nine Bools (no Node, no closure), so it is portable.
+type AlbVerdicts {
+  fold_step_arrow_block: Bool,
+  fold_step_arrow_block_let_record: Bool,
+  value_arrow_block: Bool,
+  fold_step_fn_literal_block: Bool,
+  fold_step_arrow_expr: Bool,
+  fold_step_arrow_statements: Bool,
+  graph_site_normalizes: Bool,
+  graph_site_statement_route: Bool,
+  expression_body_not_statement_route: Bool,
+  value_arrow_statements_then_comma: Bool,
+}
+
+fn alb_verdicts() -> AlbVerdicts {
+  AlbVerdicts {
+    fold_step_arrow_block: normalize_outcome(src: src_fold_step_arrow_block) == "ACCEPTED",
+    fold_step_arrow_block_let_record: normalize_outcome(src: src_fold_step_arrow_block_let_record) == "ACCEPTED",
+    value_arrow_block: normalize_outcome(src: src_value_arrow_block) == "ACCEPTED",
+    fold_step_fn_literal_block: normalize_outcome(src: src_fold_step_fn_literal_block) == "ACCEPTED",
+    fold_step_arrow_expr: normalize_outcome(src: src_fold_step_arrow_expr) == "ACCEPTED",
+    fold_step_arrow_statements: normalize_outcome(src: src_fold_step_arrow_statements) == "ACCEPTED",
+    graph_site_normalizes: normalize_outcome(src: src_graph_adjacency_site) == "ACCEPTED",
+    graph_site_statement_route: statement_route_of(src: src_graph_adjacency_site),
+    expression_body_not_statement_route: !statement_route_of(src: src_fold_step_arrow_expr),
+    value_arrow_statements_then_comma: normalize_outcome(src: src_value_arrow_statements_then_comma) == "ACCEPTED",
+  }
+}
+
+test fn fold_step_arrow_block_body_lowers_holds() -> Bool {
+  alb_verdicts().fold_step_arrow_block
+}
+
+test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool {
+  alb_verdicts().fold_step_arrow_block_let_record
+}
+
+test fn value_position_arrow_block_body_lowers_holds() -> Bool {
+  alb_verdicts().value_arrow_block
+}
+
+test fn fold_step_fn_literal_block_control_holds() -> Bool {
+  alb_verdicts().fold_step_fn_literal_block
+}
+
+test fn fold_step_arrow_expression_body_control_holds() -> Bool {
+  alb_verdicts().fold_step_arrow_expr
+}
+
+test fn fold_step_arrow_unbraced_statement_body_lowers_holds() -> Bool {
+  alb_verdicts().fold_step_arrow_statements
+}
+
+test fn graph_adjacency_real_site_normalizes_holds() -> Bool {
+  alb_verdicts().graph_site_normalizes
+}
+
+test fn graph_adjacency_real_site_takes_the_statement_route_holds() -> Bool {
+  alb_verdicts().graph_site_statement_route
+}
+
+test fn expression_body_takes_no_statement_route_holds() -> Bool {
+  alb_verdicts().expression_body_not_statement_route
+}
+
+test fn value_arrow_statement_body_ends_at_the_next_argument_holds() -> Bool {
+  alb_verdicts().value_arrow_statements_then_comma
+}
+
+// WHY THE STATEMENT BODY ENDS WHERE THE ARGUMENT LIST CONTINUES: its repetition is `stmt*`, and no
+// statement can begin with `,` or `)` -- the grammar's own FIRST row for stmt holds neither, so the
+// repetition stops there by construction rather than by order. Read off the prepared grammar's
+// analysis, the authority the choice proofs read.
+fn alb_first_has(keys: List<FirstKey>, token_class: Symbol) -> Bool {
+  any(xs: keys, predicate: fn(k) { first_key_class(key: k) == token_class })
+}
+
+test fn no_statement_begins_with_a_comma_or_a_close_paren_holds() -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => false
+        PreparedModeled { modeled: modeled, materialization: _ } =>
+          let first = production_first_row_lookup(rows: modeled.analysis.first_rows, name: ^dag_production_stmt)
+          !alb_first_has(keys: first, token_class: ^dag_token_comma)
+            && !alb_first_has(keys: first, token_class: ^dag_token_rparen)
+            && alb_first_has(keys: first, token_class: ^dag_token_kw_let)
+      }
+  }
+}

@@ -75,12 +75,12 @@ src/v1/stage0/src/behavioral_receipt_host.rs !merge
 src/v1/stage0/src/bounded_shell_host_drain.rs !merge
 src/v1/stage0/src/census_exclude_derive.rs !merge
 src/v1/stage0/src/cli_run.rs !merge
+src/v1/stage0/src/closure_identity.rs !merge
 src/v1/stage0/src/codex_app_server_stdio_session.rs !merge
 src/v1/stage0/src/coproduct_reflection.rs !merge
 src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs !merge
 src/v1/stage0/src/data_initializer_identity.rs !merge
 src/v1/stage0/src/declaration_index.rs !merge
-src/v1/stage0/src/derived_realization_schedule.rs !merge
 src/v1/stage0/src/emitted_closure_compile_host.rs !merge
 src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
@@ -93,7 +93,6 @@ src/v1/stage0/src/pre_push.rs !merge
 src/v1/stage0/src/process_group.rs !merge
 src/v1/stage0/src/recorded_fixture.rs !merge
 src/v1/stage0/src/required_regen_host.rs !merge
-src/v1/stage0/src/resolved_graph_cache.rs !merge
 src/v1/stage0/src/shared_typecheck_store.rs !merge
 src/v1/stage0/src/std_logic.rs !merge
 src/v1/stage0/src/target_invocation_host.rs !merge

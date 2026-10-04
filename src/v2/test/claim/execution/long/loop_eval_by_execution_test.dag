@@ -1,5 +1,6 @@
 module v2.test.long.loop_eval_by_execution
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
@@ -22,7 +23,6 @@ import v2.compiler.eval {
 }
 import v2.compiler.inferred_tree { InferredFacts, InferredTree }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional,
   map_insert
@@ -59,7 +59,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,

@@ -1,5 +1,6 @@
 module v2.std.generic_instantiation
 
+import v2.std.optional { Present, Absent }
 import v2.std.collection { empty_map }
 type GenericSubstitution = Map<String, Node>
 
