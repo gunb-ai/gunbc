@@ -3347,11 +3347,9 @@ fn issue_query_snapshot_for_projection(proj: RoadmapAuthorityProjection, attempt
         match try_serialize_html_source(node: issue_line_li(row: row, observation: ws.observation, memberships: index, dependencies: deps)) {
           EmitRejected { reason: _ } => acc
           EmitOk { html } => concat(acc, [issue_query_row_wire(row: IssueQueryRow { node_id: view.node_id,
-            project:
-            match project_root_for_node_in(node_id: view.node_id, index: index) { Present { value } => value Absent => "" },
+            project: match project_root_for_node_in(node_id: view.node_id, index: index) { Present { value } => value Absent => "" },
             band: row_filter_band_key(view: view), search: issue_search_value(view: view), title: view.headline,
-            assignee:
-            match issue_assignee_holder(view: view, attempts: []) { Absent => "" Present { value: holder } => workspace_assignee_label(holder: holder, profiles: view.profiles) },
+            assignee: match issue_assignee_holder(view: view, attempts: []) { Absent => "" Present { value: holder } => workspace_assignee_label(holder: holder, profiles: view.profiles) },
             priority: roadmap_priority_rank(priority: issue_priority_of(node_id: view.node_id, index: index).priority),
             status: issue_status_sort_rank(view: view), html: html })])
         }
