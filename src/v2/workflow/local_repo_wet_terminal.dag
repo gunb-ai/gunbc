@@ -2656,6 +2656,96 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "legacy_acquiring_without_actor_journal_retains_quota" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "legacy_acquiring_without_actor_journal_retains_quota",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "marked_unelected_actor_cancellation_releases_owner_quota" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "marked_unelected_actor_cancellation_releases_owner_quota",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "elected_actor_cannot_be_cancelled_from_absent_hold_assumption" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "elected_actor_cannot_be_cancelled_from_absent_hold_assumption",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "terminal_elected_actor_without_hold_settles_retirement" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "terminal_elected_actor_without_hold_settles_retirement",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "running_elected_actor_retains_quota" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "running_elected_actor_retains_quota",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_acquisition_storage_wet_witness_test", function: "concurrent_actor_replacement_admits_exactly_one" },
+      entry: "dag/test/claim/workspace_acquisition_storage_wet_witness_test.dag",
+      function: "concurrent_actor_replacement_admits_exactly_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "gunbc.test.claim.workspace_allocation_storage_wet_witness_test", function: "workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head" },
+      entry: "dag/test/claim/workspace_allocation_storage_wet_witness_test.dag",
+      function: "workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_gateway_refresh_witness_test", function: "refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers" },
+      entry: "dag/test/claim/workspace_gateway_refresh_witness_test.dag",
+      function: "refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_prelaunch_expiry_hold_witness_test", function: "expired_reserved_controller_retires_even_when_cleanup_is_uncertain" },
+      entry: "dag/test/claim/workspace_prelaunch_expiry_hold_witness_test.dag",
+      function: "expired_reserved_controller_retires_even_when_cleanup_is_uncertain",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "unreadable_discovery_is_not_idle" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "unreadable_discovery_is_not_idle",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "expired_unplanned_request_retires_without_supply" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "expired_unplanned_request_retires_without_supply",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "explicit_retirement_does_not_require_a_readable_clock_or_supply" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "explicit_retirement_does_not_require_a_readable_clock_or_supply",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "live_unplanned_request_selects_preparation_without_extending_lease" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "live_unplanned_request_selects_preparation_without_extending_lease",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "persisted_expired_request_settles_after_reader_restart_without_offers" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "persisted_expired_request_settles_after_reader_restart_without_offers",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_request_consumer_witness_test", function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement" },
+      entry: "dag/test/claim/workspace_request_consumer_witness_test.dag",
+      function: "waiting_reason_is_durable_but_cannot_refresh_readiness_or_overwrite_retirement",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_state_namespace_wet_witness", function: "witness_public_head_cannot_alias_private_state_object" },
       entry: "dag/test/claim/fabric/fabric_state_namespace_wet_witness_test.dag",
       function: "witness_public_head_cannot_alias_private_state_object",
