@@ -9,7 +9,7 @@ import gunbc.generated_artifact_emit {
   ArtifactGenerationRefused,
 }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_grants {
   runner_slot_teardown_grant_index_bound,
   runner_slot_grammar_dirs_to_bound,

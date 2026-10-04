@@ -2,7 +2,7 @@ module gunbc.fleet_fan_wiring
 
 import std.types { Bool, Int, List, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.operator_fan_declaration {
   DeclarationCoversHeader,
   arctic_p8_2u_chassis_declaration,

@@ -1,12 +1,14 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
+import gunbc.spark.remote_leg_began { remote_leg_began_word }
+
 import std.types { Bool, String, NonEmptyStr, Int }
 import gunbc.fleet_host_identity { operator_host_srv9 }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.pair_serving_apply {
   SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached,
   spark_pair_host_applied, spark_pair_host_unreached, spark_pair_leg_outcome_of, spark_pair_leg_payload,
-  spark_pair_leg_began_word, spark_pair_leg_exit_prefix,
+  spark_pair_leg_exit_prefix,
 }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.native_serving_apply {
@@ -56,7 +58,7 @@ test fn w_a_connect_timeout_with_no_began_line_reads_unreached() -> Bool {
 // Failed and never retry-eligible.
 test fn w_a_255_after_the_script_began_is_failed_not_unreached() -> Bool {
   let o = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
-    exit_code: 255, success: false, stdout: join([spark_pair_leg_began_word, "\nrestarted\n"], ""),
+    exit_code: 255, success: false, stdout: join([remote_leg_began_word, "\nrestarted\n"], ""),
     stderr: "Connection to 192.168.1.232 closed by remote host.",
   })
   !spark_pair_host_unreached(o: o) && !spark_pair_host_applied(o: o)
@@ -65,7 +67,7 @@ test fn w_a_255_after_the_script_began_is_failed_not_unreached() -> Bool {
 test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> Bool {
   let o = spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 1, success: false,
-    stdout: join([spark_pair_leg_began_word, "\nPREFLIGHT-REFUSED-image-absent\n", spark_pair_leg_exit_prefix, "1\n"], ""),
+    stdout: join([remote_leg_began_word, "\nPREFLIGHT-REFUSED-image-absent\n", spark_pair_leg_exit_prefix, "1\n"], ""),
     stderr: "",
   })
   match o {
@@ -78,7 +80,7 @@ test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> 
 test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
   match spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 0, success: true,
-    stdout: join([spark_pair_leg_began_word, "\npreflight-ok\n", spark_pair_leg_exit_prefix, "0\n"], ""),
+    stdout: join([remote_leg_began_word, "\npreflight-ok\n", spark_pair_leg_exit_prefix, "0\n"], ""),
     stderr: "",
   }) {
     SparkPairHostApplied { host: _, detail: d, standing: _ } =>
@@ -93,7 +95,7 @@ test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
 // the exit line.
 test fn w_the_privileged_payload_reports_began_and_exit_around_the_script() -> Bool {
   let p = spark_pair_leg_payload(script: "set -e\necho preflight-ok\n")
-  string_contains(s: p, pattern: join(["echo ", spark_pair_leg_began_word, "\n(\nset -e\necho preflight-ok\n"], ""))
+  string_contains(s: p, pattern: join(["echo ", remote_leg_began_word, "\n(\nset -e\necho preflight-ok\n"], ""))
     && string_contains(s: p, pattern: join(["echo ", spark_pair_leg_exit_prefix, "$gunbc_leg_rc"], ""))
     && string_contains(s: p, pattern: "exit $gunbc_leg_rc")
 }

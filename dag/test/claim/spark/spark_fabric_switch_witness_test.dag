@@ -1,7 +1,7 @@
 module test.claim.spark.spark_fabric_switch_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12, operator_host_srv1 }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_wire, Lane50GCr2, crs812_passive_dac_requires_forced_mode }
 import extdeps.transceiver.sff_8636 {

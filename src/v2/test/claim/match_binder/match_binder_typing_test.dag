@@ -32,7 +32,6 @@ import v2.std.node {
   core_edge_label
 }
 import v2.std.node_query { binder_node, construct_node, field_projection_optional }
-import v2.std.type_binder { type_binder_set_children }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -593,7 +592,7 @@ fn mbt_index() -> SymbolIndex {
       resolved: mbt_parse_artifact_declaration()
     ),
     qualified_path: mbt_qn(segs: [^p, ^Outcome]),
-    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic } }], source: mbt_conj(fields: [])))
+    params: [^T]
   )
 }
 
