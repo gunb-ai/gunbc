@@ -141,11 +141,11 @@ test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
 
 fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
   match reading {
-    SystemdRunCommandRefused { reason: _ } => -2
+    SystemdRunCommandRefused { reason: _ } => 0 - 2
     SystemdRunCommandReady { command: command } =>
       match systemd_run_transient_wait_operation_argv(command: command) {
         ArgvMaterialized { argv: words } => count(words)
-        ArgvMaterializationRefused { at: _, cause: _ } => -1
+        ArgvMaterializationRefused { at: _, cause: _ } => 0 - 1
       }
   }
 }
@@ -154,7 +154,7 @@ fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
 test fn probe_materialized_cardinality_11() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 11 }
 test fn probe_materialized_cardinality_1() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 1 }
 test fn probe_materialized_cardinality_10() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 10 }
-test fn probe_materialized_cardinality_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == -1 }
-test fn probe_materialized_cardinality_command_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == -2 }
+test fn probe_materialized_cardinality_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 - 1 }
+test fn probe_materialized_cardinality_command_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 - 2 }
 test fn probe_materialized_cardinality_0() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 }
 
