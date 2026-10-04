@@ -128,7 +128,11 @@ type QualificationRunRefusal
 //
 // THE SUCCESS PAYLOAD IS SEALED: CollectedQualificationRun is sole_constructor, written only by
 // conclude_qualification_run, whose callers are admitted by name -- the one production reader,
-// collect_qualification_run, and the witness declarations that supply readbacks at that interface.
+// collect_qualification_run, and the witness claims that supply readbacks at that interface. An
+// admit list constrains the call edge, not where the result goes, so every admitted witness entry
+// is a `test fn` returning Bool that consumes the collection internally; a helper returning the
+// collection would be a public constructor proxy, and none is admitted. collect_qualification_run
+// returns the collection, but only from a sealed DispatchedQualificationRun.
 // A module elsewhere cannot mint "this host ran the floor" without a readback.
 type CollectedQualificationRun sole_constructor {
   attempt: NonEmptyStr
@@ -161,7 +165,9 @@ fn conclude_qualification_run(
 ) -> QualificationRunCollection
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_run"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "conclude"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_or_unconcluded_run_refuses_rather_than_collecting"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_truncated_or_unreadable_readback_refuses"),
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_readback_of_another_run_refuses_on_the_subject"),
   ]

@@ -75,20 +75,13 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
   WorkflowJobRunList { total_count: count(js), jobs: js }
 }
 
-fn conclude(run_completed: Bool, concluded: Bool, js: WorkflowJobRunList) -> QualificationRunCollection {
-  conclude_qualification_run(
-    attempt: attempt, run_id: 77,
-    run_outcome: RestOk, run: run(status_completed: run_completed, concluded: concluded),
-    jobs_outcome: RestOk, jobs: js,
-  )
-}
 
 // THE POSITIVE CONTROL: a completed run whose job was taken under the attempt label is collected,
 // its conclusion is the one read back (a FAILED floor is still collected and says so), and every
 // qualification_instrument is carried as unextracted -- the declared extraction frontier, not a
 // silent empty reading.
 test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion() -> Bool {
-  match conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
+  match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
     QualificationRunCollected { collected: c } =>
       c.attempt == attempt && c.run_id == 77 && count(c.attempt_jobs) == 1
         && (match c.conclusion { Failure => true _ => false })
@@ -100,8 +93,8 @@ test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_concl
 // THE BRIEF'S REFUSAL: the run completed but no job carried the attempt label, or the one that did
 // never started (no runner under the attempt took it). Both refuse, and carry the labels observed.
 test fn a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw() -> Bool {
-  let other = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", "srv1"], started: true)]))
-  let unstarted = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: [attempt as String], started: false)]))
+  let other = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: ["self-hosted", "srv1"], started: true)]))
+  let unstarted = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [job(labels: [attempt as String], started: false)]))
   (match other {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunNeverReachedAttemptRunner { job_labels: ls } } =>
       count(ls) == 1 && (ls |> all(l => l |> any(x => x == "srv1")))
@@ -113,11 +106,11 @@ test fn a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw() -
 
 test fn an_unfinished_or_unconcluded_run_refuses_rather_than_collecting() -> Bool {
   let served = jobs(js: [job(labels: [attempt as String], started: true)])
-  (match conclude(run_completed: false, concluded: false, js: served) {
+  (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: false, concluded: false), jobs_outcome: RestOk, jobs: served) {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunNotCompleted { status: InProgress } } => true
     _ => false
   })
-    && (match conclude(run_completed: true, concluded: false, js: served) {
+    && (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: false), jobs_outcome: RestOk, jobs: served) {
       QualificationRunRefused { attempt: _, run_id: _, refusal: RunCompletedWithoutConclusion } => true
       _ => false
     })
@@ -127,7 +120,7 @@ test fn an_unfinished_or_unconcluded_run_refuses_rather_than_collecting() -> Boo
 // page, so the fold refuses rather than reporting the runner never reached.
 test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
   let truncated = WorkflowJobRunList { total_count: 2, jobs: [job(labels: [attempt as String], started: true)] }
-  (match conclude(run_completed: true, concluded: true, js: truncated) {
+  (match conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: truncated) {
     QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsTruncated { returned: 1, total: 2 } } => true
     _ => false
   })
@@ -159,7 +152,7 @@ test fn a_readback_of_another_run_refuses_on_the_subject() -> Bool {
     run_outcome: RestOk, run: run(status_completed: true, concluded: true),
     jobs_outcome: RestOk, jobs: served,
   )
-  let foreign_job = conclude(run_completed: true, concluded: true, js: jobs(js: [WorkflowJobRun {
+  let foreign_job = conclude_qualification_run(attempt: attempt, run_id: 77, run_outcome: RestOk, run: run(status_completed: true, concluded: true), jobs_outcome: RestOk, jobs: jobs(js: [WorkflowJobRun {
     id: 501, run_id: 99, run_attempt: 1, name: "floor", status: Completed,
     conclusion: Present { value: Success }, labels: [attempt as String],
     created_at: none, started_at: Present { value: "2026-10-04T00:01:00Z" }, completed_at: none,
