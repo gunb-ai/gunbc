@@ -592,6 +592,9 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/tailscale/acl_api.dag",
   "dag/extdeps/process/gnu_bash_exit.dag",
   "dag/extdeps/llm/openai_rest.dag",
+  "dag/extdeps/auth/jwt.dag",
+  "dag/extdeps/uuid/uuid.dag",
+  "dag/extdeps/time/rfc3339.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
