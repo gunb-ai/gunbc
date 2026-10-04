@@ -1,0 +1,56 @@
+module test.claim.jit_deregistration_forged_probe_witness
+
+import std.types { String, Bool, Int, List }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE FORGED DEREGISTRATION ROUTES, ENROLLED AS EXECUTED REDS (DESIGN §4b: a state unrepresentable
+// in the accepted corpus is still representable as source handed to the compiler, and the refusal
+// is the enrollable evidence). test.probe.jit_deregistration_forged_probe authors an authorized
+// dispatch, a deregistration subject, a listing and a receipt for `victim-runner`, and calls the
+// receipt's constructor from outside the ensure; each must refuse at its own subject, so the forged
+// name reaches neither a listing nor a delete. Counts are scoped to class AND subject, and a control
+// source that only NAMES the modules must refuse at none of them, so the refusals are attributable
+// to the forgeries rather than to importing the modules at all.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn probe() -> CompileDiagnosticCensus {
+  census_of(source: filesystem_read(path: "dag/test/probe/jit_deregistration_forged_probe.dag").content)
+}
+
+fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data control_source: String = "module probe_jit_deregistration_harness_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { JitMintDispatch }\nimport gunbc.runner.runner_jit_deregistration { JitDeregistration, jit_runner_deregistered }\nfn done(d: JitDeregistration) -> Bool { jit_runner_deregistered(result: d) }\n"
+
+data sealed_records: List<String> = ["AuthorizedJitMintDispatch", "JitRegistration", "OrganizationRunnerListRead", "JitDeregistrationReceipt"]
+
+test fn a_source_that_only_names_the_modules_forges_nothing() -> Bool {
+  let c = census_of(source: control_source)
+  (sealed_records |> all(s => blocking(c: c, wanted: "SoleConstructorViolation", subject: s) == 0))
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "conclude_from_readback") == 0
+}
+
+test fn every_forged_record_refuses_at_its_own_name() -> Bool {
+  let c = probe()
+  sealed_records |> all(s => blocking(c: c, wanted: "SoleConstructorViolation", subject: s) >= 1)
+}
+
+test fn the_receipt_constructor_refuses_a_caller_other_than_the_ensure() -> Bool {
+  blocking(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "conclude_from_readback") >= 1
+}
