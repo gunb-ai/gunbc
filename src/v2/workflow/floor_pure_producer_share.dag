@@ -1501,7 +1501,9 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.generic_formal_instantiation.gfi_two_instances_reason",
   "v2.test.claim.compiler.generic_formal_instantiation.gfi_nested_mismatch_reason",
   "v2.test.claim.compiler.generic_formal_instantiation.gfi_one_instance_reason",
-  "v2.test.claim.compiler.generic_formal_instantiation.gfi_nested_agrees_reason"
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_nested_agrees_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_alias_agrees_reason",
+  "v2.test.claim.compiler.generic_formal_instantiation.gfi_alias_disagrees_reason"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
