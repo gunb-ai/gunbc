@@ -1,11 +1,9 @@
 module gunbc.fleet_capacity_control
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.llm.cli_lifecycle { ProviderKind, ClaudeCliProvider, CodexCliProvider, CursorCliProvider, provider_kind_label }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THE OPERATOR'S CONTROL OVER ACTIVE FLEET CAPACITY, ON TWO AXES THAT ARE NOT THE SAME FACT.
 //

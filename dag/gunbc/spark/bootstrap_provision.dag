@@ -15,7 +15,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 
 import std.types { List, String, Int, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import v2.std.operation_argv { OperationRef }
 import std.measure { Second, second }
 

@@ -31,11 +31,8 @@ import gunbc.spark.v41_published_image_observation {
 import gunbc.spark.runtime_architecture_registry_reading {
   gunbc_vllm_dsv41_gb10_registry_reading,
 }
-import product.placement_supply { HostIdentity, host_identity_eq }
-import gunbc.fleet_intent_network {
-  operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
-  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
-}
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12 }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.serving_subject {

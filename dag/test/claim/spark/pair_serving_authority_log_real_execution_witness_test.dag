@@ -19,7 +19,7 @@ import gunbc.spark.host_commitment {
   SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over,
   HostEffectSettled, HostEffectStillHeld, settle_host_effect_over, spark_host_standings_over, CurrentStandingsRead, CurrentStandingsUnread, spark_standing_of, SparkHostCommitted, SparkHostUncommitted, spark_commitment_causes, AuthorityHeldCommitment, OccupiedByHostEffect,
 }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import std.measure { second }
 import extdeps.shell
 import extdeps.python

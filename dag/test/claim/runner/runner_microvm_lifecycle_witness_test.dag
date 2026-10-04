@@ -1,9 +1,11 @@
 module gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test
 
+import gunbc.runner_microvm_cell_readiness { GitHubRunnerWorkload }
+
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready, cell_readiness_line }
 import gunbc.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner_microvm_attempt {
@@ -96,9 +98,9 @@ fn identity_on(slot: RunnerSlotIdentity, generation: Int, invocation: String) ->
           attempt: a,
           allocation_generation: generation,
           invocation_id: invocation as NonEmptyStr,
-          jit_registration_id: "reg-1" as NonEmptyStr,
+          workload: GitHubRunnerWorkload { registration_id: "reg-1" as NonEmptyStr },
           credential_device_path: witness_credential_device_path(attempt: a),
-          guest_image: gunbc_runner_guest_image,
+
         },
       }
     _ => none
@@ -211,7 +213,7 @@ fn in_flight(id: AttemptIdentity) -> InFlightAttempt {
   InFlightAttempt {
     attempt: id.attempt,
     invocation_id: id.invocation_id,
-    jit_registration_id: id.jit_registration_id,
+    workload: id.workload,
     credential_device_path: id.credential_device_path,
   }
 }

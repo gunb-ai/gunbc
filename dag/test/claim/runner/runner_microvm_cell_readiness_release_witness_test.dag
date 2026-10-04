@@ -1,0 +1,64 @@
+module test.claim.runner.runner_microvm_cell_readiness_release_witness_test
+
+import std.types { Bool, List }
+import product.fabric.sanitation { CellId, CellReady, CellQuarantined }
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessRecord, CellSettled, CellReadinessWriteResult, apply_cell_readiness_write,
+  cell_reservation_released_write, cell_incarnation_admission, StoreRead, StoreRootOwned,
+  CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn,
+  WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine, WriteRefusedAttemptMismatch,
+  WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted, WriteRefusedStoreUnsound,
+  WriteRefusedRecoveryOwed, WriteRefusedIncoherent,
+}
+// The records an accepted write leaves; every refusal is named so a new refusal arm must decide here.
+fn cell_readiness_write_accepted_records(result: CellReadinessWriteResult) -> List<CellReadinessRecord>? {
+  match result {
+    WriteAccepted { records: records } => Present { value: records }
+    WriteRefusedStale { cell: _, stored: _, offered: _ } => none
+    WriteRefusedWouldLoosenQuarantine { cell: _, generation: _ } => none
+    WriteRefusedAttemptMismatch { cell: _, stored_attempt: _, offered_attempt: _ } => none
+    WriteRefusedAttemptAlreadyRecorded { cell: _, generation: _ } => none
+    WriteRefusedNotAdmitted { cell: _, admission: _ } => none
+    WriteRefusedStoreUnsound { withdrawal: _ } => none
+    WriteRefusedRecoveryOwed { cell: _, in_flight_generation: _, in_flight_attempt: _ } => none
+    WriteRefusedIncoherent { withdrawal: _ } => none
+  }
+}
+
+test fn a_released_reservation_advances_readiness_without_inventing_an_attempt() -> Bool {
+  let cell = "workspace-release-test" as CellId
+  let write = cell_reservation_released_write(cell: cell, held_generation: 1, freed_generation: 2)
+  match cell_readiness_write_accepted_records(result: apply_cell_readiness_write(records: [CellSettled { cell: cell, generation: 1, readiness: CellReady { cell: cell } }], write: write)) {
+    Absent => false
+    Present { value: advanced } => match cell_readiness_write_accepted_records(result: apply_cell_readiness_write(records: advanced, write: write)) {
+      Absent => false
+      Present { value: again } => match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: again }, cell: cell, allocation_generation: 3) {
+        CellIncarnationAdmitted { cell: _, generation: admitted } => admitted == 3
+        CellRecoveryRequired { bound: _ } => false
+        CellWithdrawn { cell: _, withdrawal: _ } => false
+        HostWithdrawn { withdrawal: _ } => false
+      }
+    }
+  }
+}
+
+// A release receipt cannot clear uncertainty or skip a CAS generation.
+test fn release_generation_advance_refuses_quarantine_and_skips() -> Bool {
+  let cell = "workspace-release-test" as CellId
+  let held = CellSettled { cell: cell, generation: 1, readiness: CellReady { cell: cell } }
+  let skips = cell_reservation_released_write(cell: cell, held_generation: 1, freed_generation: 3)
+  let next = cell_reservation_released_write(cell: cell, held_generation: 1, freed_generation: 2)
+  let quarantined = CellSettled { cell: cell, generation: 1, readiness: CellQuarantined { cell: cell, unproven: [] } }
+  (match cell_readiness_write_accepted_records(result: apply_cell_readiness_write(records: [held], write: skips)) { Present { value: _ } => false Absent => true })
+  && (match apply_cell_readiness_write(records: [quarantined], write: next) {
+    WriteRefusedWouldLoosenQuarantine { cell: _, generation: refused } => refused == 1
+    WriteAccepted { records: _ } => false
+    WriteRefusedStale { cell: _, stored: _, offered: _ } => false
+    WriteRefusedAttemptMismatch { cell: _, stored_attempt: _, offered_attempt: _ } => false
+    WriteRefusedAttemptAlreadyRecorded { cell: _, generation: _ } => false
+    WriteRefusedNotAdmitted { cell: _, admission: _ } => false
+    WriteRefusedStoreUnsound { withdrawal: _ } => false
+    WriteRefusedRecoveryOwed { cell: _, in_flight_generation: _, in_flight_attempt: _ } => false
+    WriteRefusedIncoherent { withdrawal: _ } => false
+  })
+}

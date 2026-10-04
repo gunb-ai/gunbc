@@ -28,7 +28,7 @@ import gunbc.spark.serving_deployment_selection {
   RuntimeRevision, runtime_revision, artifact_glm_53_flash_2bit,
 }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_kv_cache_dtype_wire, glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_tool_call_parser,

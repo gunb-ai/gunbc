@@ -1,9 +1,10 @@
 module test.claim.auth.login_callback_hold_wet_witness
 
-import std.types { Bool, FilePath, String }
+import std.types { NonEmptyStr, Bool, FilePath, String }
 import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
 import extdeps.shell
 import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance, login_transaction_store_save, login_transaction_store_lookup, LoginTransactionSaved, LoginTransactionStoreFound, LoginTransactionStoreUnknown }
 import gunbc.auth.login_browser_binding { auth_login_browser_binding }
@@ -14,7 +15,7 @@ import gunbc.roadmap_auth_routes { auth_google_callback_response, auth_callback_
 test fn foreign_browser_cannot_consume_and_cached_replay_cannot_exchange() -> Bool {
   let directory = shell.Mktemp.Dir()
   if !directory.success { false } else {
-    let instance = isolated_dashboard_instance(instance_id: "login-hold-fixture", layout: srv1_host_layout(), root: directory.path as FilePath,
+    let instance = isolated_dashboard_instance(deployment: deployment_id(name: "login-hold-fixture" as NonEmptyStr), instance_id: "login-hold-fixture", layout: srv1_host_layout(), root: directory.path as FilePath,
       serve_function: "unused", listen_port: 18744, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
     let layout = login_transaction_store_layout_for_instance(instance: instance)
     let made = shell.Mkdir.Parents(path: layout.root as String)

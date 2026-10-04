@@ -19,7 +19,7 @@ import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDige
 import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.tools.chown { chown_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, actions_variable_trimmed }
 import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_path_env,

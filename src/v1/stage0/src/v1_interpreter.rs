@@ -63,16 +63,16 @@ use crate::v1_std_core::{
     binop_right, block_stmts, cast_expr, cast_target, expr_call_func_at, expr_field_access_summary,
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, is_file_transport, is_rest_transport,
-    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    param_node_default_value, param_node_name_at, qualified_last_segment, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    field_init_node_value, find_property, foreach_body, foreach_collection, foreach_variable_at,
+    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
+    index_base, index_expr, is_file_transport, is_rest_transport, is_shell_transport, lambda_body,
+    lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
+    param_node_name_at, qualified_last_segment, record_lit_type_name_at, return_value, slice_base,
+    slice_end, slice_start, transport_stdin, type_name_compatible, unaryop_operand, CallSemantics,
+    Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -13632,6 +13632,18 @@ fn dispatch_service_wet(
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
 
+    // Native `posix.Process.StartDetached` + `posix.Process.Reap`: the spawn detaches (own
+    // process group, stdio to declared files, NOT waited) and waitpid is answerable only about
+    // THIS process's own children (otherwise ECHILD). No foreign argv can realize either edge,
+    // so like shell.Env.Get these are native handlers; the modeled authority is
+    // dag/extdeps/posix/process.dag (POSIX spawn anchor), which the seed only realizes.
+    if intent == "posix.Process.StartDetached" {
+        return dispatch_start_detached_native(op_node, param_env, ctx, intent);
+    }
+    if intent == "posix.Process.Reap" {
+        return dispatch_process_reap_native(op_node, param_env, ctx);
+    }
+
     if is_shell_transport(transport.clone()) {
         // An operation declaring an `extdeps.transports.shell` `ShellOutcome` field receives the
         // spawn failure as a value, with every other declared field absent; one declaring none
@@ -16903,6 +16915,362 @@ fn shell_spawn_refused(argv0: &str, err: &std::io::Error) -> InterpError {
     }
 }
 
+/// `extdeps.posix.process` `ProcessSpawnOutcome`, projected the way `shell_outcome_variant`
+/// projects `ShellOutcome`.
+fn process_spawn_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ProcessSpawnOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// The closed waitpid observation, projected the same way (`ProcessReapOutcome`).
+fn process_reap_outcome_variant(
+    ctx: &InterpContext,
+    variant: &str,
+    mut fields: Vec<(Symbol, Value)>,
+) -> Value {
+    fields.sort_unstable_by_key(|(name, _)| name.0);
+    Value::Variant {
+        type_name: ctx.sym("ProcessReapOutcome"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(fields),
+    }
+}
+
+/// Outputs of a detached-spawn operation OTHER than the `ProcessSpawnOutcome` field (StartDetached
+/// declares none today; fail-closed Nulls keep a future extra field honest instead of guessed).
+fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
+    let return_type = match op_node.inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
+        _ => return Ok(Value::Unit),
+    };
+    let mut fields: Vec<(Symbol, Value)> = Vec::new();
+    for child in return_type.children.iter() {
+        let field_name = authored_name_at(ctx.si(), child.clone());
+        let short = field_name.rsplit('.').next().unwrap_or(&field_name);
+        if short == "spawn" {
+            continue;
+        }
+        fields.push((ctx.sym(&field_name), Value::Null));
+    }
+    fields.sort_unstable_by_key(|(k, _)| k.0);
+    Ok(Value::Record {
+        type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
+        fields: Rc::new(fields),
+    })
+}
+
+/// Detached children of THIS process, keyed by pid. `posix.Process.Reap` is answerable only about
+/// these (waitpid(3) semantics: a pid that is not our child is ECHILD, and an arbitrary pid is
+/// simply not ours to wait on). A spawned-but-never-reaped child stays a zombie until this
+/// process exits; callers that start servers reap them (the node-http smoke does).
+static DETACHED_CHILDREN: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<u32, std::process::Child>>,
+> = std::sync::OnceLock::new();
+
+fn detached_children(
+) -> &'static std::sync::Mutex<std::collections::HashMap<u32, std::process::Child>> {
+    DETACHED_CHILDREN.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// The detached half of `extdeps.posix.process` StartDetached: spawn argv into its own process
+/// group with stdio redirected to the declared files and do NOT wait. The upstream is POSIX
+/// spawn(3) with POSIX_SPAWN_SETPGROUP (pgid 0) and stdio file actions -- the child is its own
+/// process group so a wall-deadline group-kill aimed at a LATER transport call cannot reach it,
+/// and a kill can name exactly one process (the fact `&` / `$!` carried in the retired heredoc,
+/// now typed). File actions fail the spawn per POSIX, so an unopenable stdio file is a typed
+/// SpawnRefused, not a panic and not a silent fallback.
+fn spawn_shell_detached(
+    argv: &[String],
+    stdout_path: &str,
+    stderr_path: &str,
+    _ctx: &InterpContext,
+    intent: &str,
+) -> InterpResult<u32> {
+    let open_stdio = |path: &str| -> InterpResult<std::fs::File> {
+        std::fs::File::create(path).map_err(|err| InterpError::ShellSpawnRefused {
+            argv0: argv[0].clone(),
+            cause: format!("posix_spawn file action failed on '{path}': {err}"),
+        })
+    };
+    let stdout_file = open_stdio(stdout_path)?;
+    let stderr_file = open_stdio(stderr_path)?;
+
+    let mut cmd = std::process::Command::new(&argv[0]);
+    cmd.args(&argv[1..])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(stdout_file))
+        .stderr(std::process::Stdio::from(stderr_file));
+    // The child leads its own process group: detached by contract, killable by exactly one pid.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let child = cmd
+        .spawn()
+        .map_err(|err| shell_spawn_refused(&argv[0], &err))?;
+    let pid = child.id();
+    detached_children()
+        .lock()
+        .expect("detached child registry poisoned")
+        .insert(pid, child);
+
+    render_shell_detached_trace(pid, stdout_path, argv, intent);
+    Ok(pid)
+}
+
+/// Native realization of `extdeps.posix.process` StartDetached. The op is transport-less in the
+/// model: no argv can spawn a process that survives its own transport call while this process
+/// holds the pid, so the seed IS the realization domain (the fact `&` / `$!` carried in the
+/// retired heredoc). Inputs arrive as modeled: the argv is `program` followed by `arguments`
+/// words (never a joined script), stdio lands in the two declared files, and the typed answer is
+/// the ProcessSpawnOutcome field.
+fn dispatch_start_detached_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+    intent: &str,
+) -> InterpResult<Value> {
+    let word_list = |name: &str| -> InterpResult<Vec<String>> {
+        match param_env.lookup(ctx.sym(name)) {
+            Some(Value::List(words)) => words
+                .iter()
+                .map(|w| match w {
+                    Value::Str(s) => Ok(s.to_string()),
+                    other => Err(InterpError::TypeError {
+                        msg: format!(
+                            "posix.Process.StartDetached `{name}` must carry String words, found `{other}`"
+                        ),
+                    }),
+                })
+                .collect(),
+            Some(other) => Err(InterpError::TypeError {
+                msg: format!(
+                    "posix.Process.StartDetached `{name}` must be a List of String words, found `{other}`"
+                ),
+            }),
+            None => Err(InterpError::TypeError {
+                msg: format!("posix.Process.StartDetached requires `{name}`"),
+            }),
+        }
+    };
+    let program = match param_env.lookup(ctx.sym("program")) {
+        Some(Value::Str(s)) if !s.is_empty() => s.to_string(),
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                "posix.Process.StartDetached `program` must be a non-empty String, found `{other}`"
+            ),
+            })
+        }
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "posix.Process.StartDetached requires `program`".to_string(),
+            })
+        }
+    };
+    let arguments = word_list("arguments")?;
+    let stdout_path = stdio_path_input(param_env, ctx, "stdout_file")?;
+    let stderr_path = stdio_path_input(param_env, ctx, "stderr_file")?;
+
+    let mut argv: Vec<String> = Vec::with_capacity(arguments.len() + 1);
+    argv.push(program.clone());
+    argv.extend(arguments);
+
+    // Same ceilings as the piped shell transport: no spawn past the receipt wall, no oversized argv.
+    if let Some(err) = ctx.wall_deadline_exceeded_error() {
+        return Err(err);
+    }
+    if let Some(err) = argv_arg_limit_refusal(&argv, HOST_ARG_MAX_STRLEN_BYTES) {
+        return Err(err);
+    }
+
+    spawn_shell_detached(&argv, &stdout_path, &stderr_path, ctx, intent)
+        .and_then(|pid| {
+            let mapped = map_detached_outputs(op_node, ctx)?;
+            let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "posix.Process.StartDetached detached a child (pid {pid}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
+                    ),
+                })?;
+            Ok(attach_transport_outcome(
+                Some(mapped),
+                op_node,
+                &field,
+                process_spawn_outcome_variant(
+                    ctx,
+                    "Spawned",
+                    vec![(ctx.sym("pid"), Value::Int(pid as i64))],
+                ),
+                ctx,
+            ))
+        })
+        .or_else(|err| match err {
+            InterpError::ShellSpawnRefused { argv0, cause } => {
+                let field = transport_outcome_output_field(op_node, ctx, "ProcessSpawnOutcome")
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: format!(
+                            "posix.Process.StartDetached spawn refused ({cause}) but the operation declares no `ProcessSpawnOutcome` field to answer with"
+                        ),
+                    })?;
+                Ok(attach_transport_outcome(
+                    None,
+                    op_node,
+                    &field,
+                    process_spawn_outcome_variant(
+                        ctx,
+                        "SpawnRefused",
+                        vec![
+                            (ctx.sym("program"), str_value(argv0)),
+                            (ctx.sym("cause"), str_value(cause)),
+                        ],
+                    ),
+                    ctx,
+                ))
+            }
+            other => Err(other),
+        })
+}
+
+fn stdio_path_input(param_env: &Rc<Env>, ctx: &InterpContext, name: &str) -> InterpResult<String> {
+    match param_env.lookup(ctx.sym(name)) {
+        Some(Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Some(Value::Str(_)) => Err(InterpError::TypeError {
+            msg: format!("posix.Process.StartDetached `{name}` is empty"),
+        }),
+        Some(other) => Err(InterpError::TypeError {
+            msg: format!(
+                "posix.Process.StartDetached `{name}` must be a String path, found `{other}`"
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("posix.Process.StartDetached requires `{name}`"),
+        }),
+    }
+}
+
+fn render_shell_detached_trace(pid: u32, stdout_path: &str, argv: &[String], intent: &str) {
+    let collapsed = shell_argv_collapsed(argv);
+    let line = format!(
+        "[{intent}] detached pid {pid}: {collapsed} (stdio -> {stdout_path}, own process group, not waited)"
+    );
+    eprintln!("{line}");
+}
+
+/// Native realization of `extdeps.posix.process` `Reap` for THIS process's detached children.
+/// waitpid(3) is parent-only; no argv transport can answer it for a pid that is not our child,
+/// so the registry the detached spawn keeps IS the realization. Non-blocking (WNOHANG): a server
+/// still running answers `StillRunning`; a reaped child is removed from the registry so the pid
+/// cannot be answered twice. The answer is the closed `ProcessReapOutcome`: `Exited { code }`
+/// decomposes by WIFEXITED, `Signaled { signal }` by WIFSIGNALED (SIGTERM is not an exit 143),
+/// and ECHILD -- a pid this process never owned, already reaped, or nonpositive -- answers
+/// `ReapRefused { cause }`, never a fabricated "still running".
+fn dispatch_process_reap_native(
+    op_node: &Rc<Node>,
+    param_env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let pid_value = match param_env.lookup(ctx.sym("pid")) {
+        Some(value) => value.clone(),
+        None => {
+            return Err(InterpError::TypeError {
+                msg: "posix.Process.Reap requires a `pid` argument".to_string(),
+            })
+        }
+    };
+
+    // One waitpid(2) observation, typed exactly as the modeled authority
+    // (dag/extdeps/posix/process.dag ProcessReapOutcome) reports it: StillRunning is WNOHANG's 0,
+    // Exited is WIFEXITED's raw code, Signaled is WIFSIGNALED's signal number (a killed child is
+    // NOT an exit; folding 15 into 128+15 would make SIGTERM indistinguishable from a normal exit
+    // 143), and ReapRefused is ECHILD or any waitpid error -- a typed answer about a pid this
+    // process does not own, never a fabricated "still running". A nonpositive pid is closed over
+    // the same way: it is a ReapRefused answer about a pid no child can have, not an interpreter
+    // error.
+    enum ReapObservation {
+        StillRunning,
+        Exited(i32),
+        Signaled(i32),
+        Refused(String),
+    }
+    let observation: ReapObservation = match pid_value {
+        Value::Int(pid) if pid > 0 => {
+            let pid = pid as u32;
+            let mut registry = detached_children()
+                .lock()
+                .expect("detached child registry poisoned");
+            match registry.get_mut(&pid) {
+                Some(child) => match child.try_wait() {
+                    Ok(Some(status)) => {
+                        registry.remove(&pid);
+                        #[cfg(unix)]
+                        {
+                            match std::os::unix::process::ExitStatusExt::signal(&status) {
+                                Some(signal) => ReapObservation::Signaled(signal),
+                                None => ReapObservation::Exited(status.code().unwrap_or(-1)),
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            ReapObservation::Exited(status.code().unwrap_or(-1))
+                        }
+                    }
+                    Ok(None) => ReapObservation::StillRunning,
+                    Err(err) => ReapObservation::Refused(format!(
+                        "waitpid on pid {pid} failed: {err}"
+                    )),
+                },
+                None => ReapObservation::Refused(format!(
+                    "pid {pid} was not started by this process (waitpid ECHILD): Reap answers only about detached children of the calling process"
+                )),
+            }
+        }
+        other => ReapObservation::Refused(format!(
+            "pid `{other}` is not a positive Int (waitpid: no such child)"
+        )),
+    };
+    let outcome = match observation {
+        ReapObservation::StillRunning => {
+            process_reap_outcome_variant(ctx, "StillRunning", Vec::new())
+        }
+        ReapObservation::Exited(code) => process_reap_outcome_variant(
+            ctx,
+            "Exited",
+            vec![(ctx.sym("code"), Value::Int(code as i64))],
+        ),
+        ReapObservation::Signaled(signal) => process_reap_outcome_variant(
+            ctx,
+            "Signaled",
+            vec![(ctx.sym("signal"), Value::Int(signal as i64))],
+        ),
+        ReapObservation::Refused(cause) => process_reap_outcome_variant(
+            ctx,
+            "ReapRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+    };
+    let outcome_field = transport_outcome_output_field(op_node, ctx, "ProcessReapOutcome")
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "posix.Process.Reap declares no ProcessReapOutcome output field".to_string(),
+        })?;
+    Ok(attach_transport_outcome(
+        None,
+        op_node,
+        &outcome_field,
+        outcome,
+        ctx,
+    ))
+}
+
 pub(crate) fn shell_result_from_capture(
     capture: &bounded_shell_host_drain::ShellCaptureResult,
     argv0: &str,
@@ -19094,12 +19462,35 @@ fn dispatch_rest(
             None => None,
         };
 
-    let response_format = find_property_string(
-        transport.properties.clone(),
-        "response_format".to_string(),
+    // THE RESPONSE FORMAT IS THE AUTHORED std.serialization WireFormat VARIANT, READ THE WAY THE
+    // EMITTER READS IT (v1.compiler.emit_rust emit_plain_response_body: transport_response_format,
+    // then authored_name_at), so the interpreter and emitted code cannot disagree on one
+    // declaration. This site used to read only a string literal and default every other spelling
+    // to Json, so `response_format: Text` -- the typed spelling github.Pulls.Diff writes -- was
+    // silently JSON-decoded here while emitted code read it as text
+    // (gunbc.recurring_failure_mode response_format_variant_silently_read_as_json). Absent is
+    // Json, as before; a present value that is not a WireFormat variant refuses rather than
+    // defaulting.
+    let response_format = match crate::v1_std_core::transport_response_format(
+        transport.clone(),
         si.clone(),
-    )
-    .unwrap_or_else(|| "Json".to_string());
+    ) {
+        None => "Json".to_string(),
+        Some(node) => {
+            let authored = crate::v1_std_core::authored_name_at(si.clone(), node.clone());
+            if authored == "Text" || authored == "Json" {
+                authored
+            } else {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "transport rest response_format must be a std.serialization WireFormat variant (Json or Text); \
+                         found {:?} on {}",
+                        authored, op_node.name
+                    ),
+                });
+            }
+        }
+    };
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
