@@ -3,7 +3,7 @@ module test.claim.fabric.node_qualification_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,

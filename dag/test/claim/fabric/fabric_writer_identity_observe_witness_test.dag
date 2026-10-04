@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.fabric_storage { FabricStoreUnreachable }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles, FabricStorageBindingUnplaced }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused }
