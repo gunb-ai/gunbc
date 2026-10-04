@@ -2,7 +2,7 @@ module gunbc.roadmap_attempt_metering
 
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, TokenCount, token_count }
+import std.measure { Second, second, second_count, TokenCount, token_count, token_count_value }
 import std.checked_arithmetic { checked_int_to_nat }
 import v2.std.optional { Present, Absent }
 import extdeps.languages.json.emit {
@@ -167,12 +167,12 @@ fn metered_role_seat_owner(node_id: String, attempt_key: String, role: MeteredRo
 // usage is unknown). Rows are decoded by the throughput module's row reader -- one decoder. An
 // unclocked row still carries its counts: a token total has no interval to place it in.
 type RoleTokens
-  = TokensObserved { rounds: Int, input_tokens: Int, output_tokens: Int, terminal: Bool }
+  = TokensObserved { rounds: Int, input_tokens: TokenCount, output_tokens: TokenCount, terminal: Bool }
   | TokensStreamAbsent
   | TokensRefused { cause: String }
 
 type StrictLine
-  = StrictLineRow { input_tokens: Int, output_tokens: Int }
+  = StrictLineRow { input_tokens: TokenCount, output_tokens: TokenCount }
   | StrictLineSkipped
   | StrictLineRefused { cause: String }
 
@@ -193,13 +193,29 @@ fn metering_event_type(doc: JsonValue) -> String {
   }
 }
 
+// A ROUND'S COUNTS ENTER AS TokenCount AT THE STREAM BOUNDARY; a negative count refuses there.
+fn metering_round_row(input_tokens: Int, output_tokens: Int) -> StrictLine {
+  match checked_int_to_nat(n: input_tokens) {
+    Absent => StrictLineRefused { cause: "a round.usage row carries a negative input_tokens" }
+    Present { value: i } =>
+      match checked_int_to_nat(n: output_tokens) {
+        Absent => StrictLineRefused { cause: "a round.usage row carries a negative output_tokens" }
+        Present { value: o } => StrictLineRow { input_tokens: token_count(count: i), output_tokens: token_count(count: o) }
+      }
+  }
+}
+
+fn token_count_sum(a: TokenCount, b: TokenCount) -> TokenCount {
+  token_count(count: token_count_value(t: a) + token_count_value(t: b))
+}
+
 fn metering_unclocked_row(doc: JsonValue) -> StrictLine {
   match metering_member_int(doc: doc, key: "input_tokens") {
     MemberIntGap { cause: c } => StrictLineRefused { cause: c }
     MemberInt { value: i } =>
       match metering_member_int(doc: doc, key: "output_tokens") {
         MemberIntGap { cause: c } => StrictLineRefused { cause: c }
-        MemberInt { value: o } => StrictLineRow { input_tokens: i, output_tokens: o }
+        MemberInt { value: o } => metering_round_row(input_tokens: i, output_tokens: o)
       }
   }
 }
@@ -219,7 +235,7 @@ fn metering_strict_line(line: String) -> StrictLine {
             UsageRowUnreadable { cause: c } => StrictLineRefused { cause: c }
             UsageRowIsOurs =>
               match round_observation_of(doc: doc) {
-                RoundReadOk { round: r } => StrictLineRow { input_tokens: r.input_tokens, output_tokens: r.output_tokens }
+                RoundReadOk { round: r } => metering_round_row(input_tokens: r.input_tokens, output_tokens: r.output_tokens)
                 RoundReadUnclocked => metering_unclocked_row(doc: doc)
                 RoundReadGap { cause: c } => StrictLineRefused { cause: c }
               }
@@ -243,8 +259,8 @@ fn metering_role_terminal(body: String) -> Bool {
 }
 
 type RoundTokens {
-  input_tokens: Int
-  output_tokens: Int
+  input_tokens: TokenCount
+  output_tokens: TokenCount
 }
 
 fn role_tokens_from_events(body: String) -> RoleTokens {
@@ -263,8 +279,8 @@ fn role_tokens_from_events(body: String) -> RoleTokens {
       })
       TokensObserved {
         rounds: list_length(items: rows),
-        input_tokens: fold(rows, init: 0, f: (acc, r) => acc + r.input_tokens),
-        output_tokens: fold(rows, init: 0, f: (acc, r) => acc + r.output_tokens),
+        input_tokens: fold(rows, init: token_count(count: 0), f: (acc, r) => token_count_sum(a: acc, b: r.input_tokens)),
+        output_tokens: fold(rows, init: token_count(count: 0), f: (acc, r) => token_count_sum(a: acc, b: r.output_tokens)),
         terminal: metering_role_terminal(body: body),
       }
     }
@@ -458,35 +474,23 @@ type MeteringSeatTimeTotal
   = MeteringSeatTimeObserved { held: Second }
   | MeteringSeatTimeIncomplete { cause: String }
 
-type IntTotal
-  = IntTotalObserved { value: Int }
-  | IntTotalIncomplete { cause: String }
-
 fn metering_token_total(record: AttemptMeteringRecord, output: Bool) -> MeteringTokenTotal {
-  let summed = fold(record.roles, init: IntTotalObserved { value: 0 }, f: (acc, u) =>
-    match acc {
-      IntTotalIncomplete { cause: _ } => acc
-      IntTotalObserved { value: v } =>
-        match u.tokens {
-          TokensObserved { rounds: _, input_tokens: i, output_tokens: o, terminal: _ } =>
-            IntTotalObserved { value: v + (if output { o } else { i }) }
-          TokensStreamAbsent =>
-            IntTotalIncomplete { cause: join([metered_role_wire(role: u.role), ": the launch has no events stream"], "") }
-          TokensRefused { cause: c } =>
-            IntTotalIncomplete { cause: join([metered_role_wire(role: u.role), ": ", c], "") }
-        }
-    })
   if list_length(items: record.roles) == 0 {
     MeteringTokensIncomplete { cause: "the record meters no launch" }
   } else {
-    match summed {
-      IntTotalIncomplete { cause: c } => MeteringTokensIncomplete { cause: c }
-      IntTotalObserved { value: v } =>
-        match checked_int_to_nat(n: v) {
-          Present { value: n } => MeteringTokensObserved { value: token_count(count: n) }
-          Absent => MeteringTokensIncomplete { cause: "the token rows sum to a negative count" }
-        }
-    }
+    fold(record.roles, init: MeteringTokensObserved { value: token_count(count: 0) }, f: (acc, u) =>
+      match acc {
+        MeteringTokensIncomplete { cause: _ } => acc
+        MeteringTokensObserved { value: v } =>
+          match u.tokens {
+            TokensObserved { rounds: _, input_tokens: i, output_tokens: o, terminal: _ } =>
+              MeteringTokensObserved { value: token_count_sum(a: v, b: if output { o } else { i }) }
+            TokensStreamAbsent =>
+              MeteringTokensIncomplete { cause: join([metered_role_wire(role: u.role), ": the launch has no events stream"], "") }
+            TokensRefused { cause: c } =>
+              MeteringTokensIncomplete { cause: join([metered_role_wire(role: u.role), ": ", c], "") }
+          }
+      })
   }
 }
 
@@ -500,26 +504,18 @@ fn metering_seat_gap(u: MeteredRoleUsage) -> String {
 }
 
 fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTotal {
-  let summed = fold(record.roles, init: IntTotalObserved { value: 0 }, f: (acc, u) =>
-    match acc {
-      IntTotalIncomplete { cause: _ } => acc
-      IntTotalObserved { value: v } =>
-        match seat_held_seconds(seat: u.seat) {
-          Present { value: h } => IntTotalObserved { value: v + second_count(s: h) }
-          Absent => IntTotalIncomplete { cause: join([metered_role_wire(role: u.role), ": ", metering_seat_gap(u: u)], "") }
-        }
-    })
   if list_length(items: record.roles) == 0 {
     MeteringSeatTimeIncomplete { cause: "the record meters no launch" }
   } else {
-    match summed {
-      IntTotalIncomplete { cause: c } => MeteringSeatTimeIncomplete { cause: c }
-      IntTotalObserved { value: v } =>
-        match checked_int_to_nat(n: v) {
-          Present { value: n } => MeteringSeatTimeObserved { held: second(count: n) }
-          Absent => MeteringSeatTimeIncomplete { cause: "the seat intervals sum to a negative duration" }
-        }
-    }
+    fold(record.roles, init: MeteringSeatTimeObserved { held: second(count: 0) }, f: (acc, u) =>
+      match acc {
+        MeteringSeatTimeIncomplete { cause: _ } => acc
+        MeteringSeatTimeObserved { held: v } =>
+          match seat_held_seconds(seat: u.seat) {
+            Present { value: h } => MeteringSeatTimeObserved { held: second(count: second_count(s: v) + second_count(s: h)) }
+            Absent => MeteringSeatTimeIncomplete { cause: join([metered_role_wire(role: u.role), ": ", metering_seat_gap(u: u)], "") }
+          }
+      })
   }
 }
 
@@ -534,8 +530,8 @@ fn role_tokens_json(t: RoleTokens) -> JsonValue {
     TokensObserved { rounds: n, input_tokens: i, output_tokens: o, terminal: term } => json_object(members: [
       json_kv(key: "state", value: json_string(s: "observed")),
       json_kv(key: "rounds", value: json_int(n: n)),
-      json_kv(key: "input_tokens", value: json_int(n: i)),
-      json_kv(key: "output_tokens", value: json_int(n: o)),
+      json_kv(key: "input_tokens", value: json_int(n: token_count_value(t: i))),
+      json_kv(key: "output_tokens", value: json_int(n: token_count_value(t: o))),
       json_kv(key: "terminal", value: json_string(s: if term { "yes" } else { "no" })),
     ])
     TokensStreamAbsent => json_object(members: [json_kv(key: "state", value: json_string(s: "absent"))])
@@ -714,7 +710,12 @@ fn role_tokens_decode(v: JsonValue) -> RowDecode<RoleTokens> {
                       MemberTextGap { cause: c } => RowUndecodable { cause: join(["a token row ", c], "") }
                       MemberText { value: t } =>
                         if t == "yes" || t == "no" {
-                          RowDecoded { row: TokensObserved { rounds: n, input_tokens: i, output_tokens: o, terminal: t == "yes" } }
+                          match metering_round_row(input_tokens: i, output_tokens: o) {
+                            StrictLineRow { input_tokens: ti, output_tokens: to } =>
+                              RowDecoded { row: TokensObserved { rounds: n, input_tokens: ti, output_tokens: to, terminal: t == "yes" } }
+                            StrictLineRefused { cause: c } => RowUndecodable { cause: c }
+                            StrictLineSkipped => RowUndecodable { cause: "a token row carries no counts" }
+                          }
                         } else {
                           RowUndecodable { cause: "a token row's 'terminal' is neither yes nor no" }
                         }

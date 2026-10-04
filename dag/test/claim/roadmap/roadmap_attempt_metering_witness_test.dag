@@ -359,7 +359,7 @@ test fn the_harness_writers_are_what_the_metering_totals() -> Bool {
     harness_event_type_only(event_type: "turn.completed"),
   ], "\n")
   match role_tokens_from_events(body: body) {
-    TokensObserved { rounds: n, input_tokens: i, output_tokens: o, terminal: t } => n == 2 && i == 28 && o == 32 && t
+    TokensObserved { rounds: n, input_tokens: i, output_tokens: o, terminal: t } => n == 2 && token_count_value(t: i) == 28 && token_count_value(t: o) == 32 && t
     TokensRefused { cause: _ } => false
     TokensStreamAbsent => false
   }
