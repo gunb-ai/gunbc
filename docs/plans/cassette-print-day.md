@@ -206,3 +206,14 @@ uncertain publishes, with durable raw reports and final receipt. The previous wa
 scripts remain historical receipts and must not be rerun. The new workflow passed 35 local
 checks; its full live start path has not yet been exercised. Use fresh attempts and the same
 approval/bed-clear/claim requirements for future jobs.
+
+
+The operator subsequently reports printer-01's E1/E2 plate finished. Record both arms as
+reported completed, awaiting removal/inspection; do not schedule them again merely because
+packing is replanned. Bed clearance for another plate has not been confirmed. Printer-02's
+crossmember job has no new completion report in this update.
+
+Future batching requirement: use the [desired-set print orchestration plan](print-batch-orchestration.md)
+to pack compatible outstanding items densely and reconcile quantities across both printers.
+The sparse arms plate is a scheduling limitation of the manual queue, not a constraint that
+each part family requires its own plate. The batch controller is not implemented yet.

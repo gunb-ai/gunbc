@@ -12,6 +12,7 @@ This is the current queue; dated gauge and rack-frame plans are historical. No n
 | CAS-5 | Complete power cassette and harness layout | CAS-2, CAS-4 | Electrical/interface planning exists; physical placement open |
 | CAS-6 | Validate final loads, airflow and materials | CAS-3, CAS-4, CAS-5 | Preliminary screens exist; final assembly qualification open |
 | CAS-7 | Publish combined review and prepare remaining prints | CAS-6 | Tall-cassette joinery review updated; power layout and fabrication release remain open |
+| CAS-8 | Desired-set print orchestration and plate packing | Existing CAD/slicing/start routes | Planned; BATCH-1 through BATCH-6 defined |
 
 ## CAS-1 — Restore green CI
 
@@ -84,3 +85,8 @@ The operator supplied a mechanical-source survey and authorized provisional infe
 This is 12 planned panels instead of 16 for Collins/Jade, and 17 adjacent joins instead of 24. It is the minimum axis-aligned grid under the declared side envelopes, not an unrestricted nesting optimum. A different brim, bed, feature envelope or board outline recomputes the count. Multi-cell solid realization remains open; no change to printer jobs or to fabrication admission follows from this plan.
 
 Validation of this allocator change: six allocation checks, eight mechanical-reference/emitter checks and five platform checks passed. The combined review emitter succeeded. All 34 Altra part descriptions and its emitted CAD program are identical to the prior reviewed bundle, including P1–P4. Full required CI remains separate and pending.
+
+## CAS-8 — Desired-set print orchestration
+
+Requested next workflow milestone: [batch planning, dense plate packing and durable execution](print-batch-orchestration.md). BATCH-1 through BATCH-6 define the implementation and release checks. This replaces manual per-file queueing; it is planned, not implemented.
+
