@@ -632,15 +632,6 @@ import v2.std.algebra { any }
 // .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
 // six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
 // against the new-witness budget. Portable for the same reason.
-// THE GRAMMAR-OVERLAP ROUTE ROWS ARE THE SAME GROUND AT TWO FILES: v2.test.parse.else_less_if_value_category
-// elif_verdicts parses its two sources once each (a fn body and an expression) and stores four Bool
-// verdicts; v2.test.parse.brace_and_lambda_head_route bhr_verdicts parses four one-line modules and
-// stores four. Each claim that paid its own parse measured at the new-witness budget's edge on the
-// floor runs of #13056 (eval steps 66-72k, enrolment margin refused on cpu). Portable because each
-// holds only Bools.
-// THE BARE node STATEMENT ROW: v2.test.parse.bare_node_statement_route bns_verdicts parses three
-// one-function modules once each and stores three Bool verdicts, on the same ground. Portable because it
-// holds only Bools.
 // THE dag BIND BLOCK-SCOPED ROW: v2.test.emit.dag_bind_let_block_scoped dbl_verdicts parses five emitted
 // token sequences once each and stores five Bool verdicts; each claim that paid its own parse measured
 // over the new-witness budget on the floor runs of #13099 (eval steps 72-105k). Portable because it
@@ -930,9 +921,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
   "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
-  "v2.test.parse.else_less_if_value_category.elif_verdicts",
-  "v2.test.parse.brace_and_lambda_head_route.bhr_verdicts",
-  "v2.test.parse.bare_node_statement_route.bns_verdicts",
   "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
   "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
