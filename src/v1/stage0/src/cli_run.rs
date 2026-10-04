@@ -6786,6 +6786,208 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
     }
 }
 
+#[cfg(test)]
+mod typed_module_content_key_tests {
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch (deleted)
+    //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
+    //!
+    //! The typed store keys on `std.interface_summary.typed_module_key` — module source hash ⊕
+    //! direct-import interface hashes ⊕ compiler identity — never on authored module name. Each
+    //! test is a discriminating control for one live key term, proven BY EXECUTION against the
+    //! KEY ITSELF: each side of an edit is resolved in a fresh private index and the set of
+    //! keys `typed_module_content_key` minted into `typed_module_cache` is compared. (Until
+    //! 2026-10-04 these ran through the cross-worker store, deleted as test-only; the property
+    //! is the key's, so the tests now read the key's output directly.)
+    //!
+    //!  - **source term**: mutate a module's source (same path, same authored name) between two
+    //!    resolves → the mutated module's key MUST change. RED under
+    //!    the dissolved name key (stale serve, 0 computes).
+    //!  - **import-interface term**: change an imported module's export surface (its v0
+    //!    interface hash) without touching the dependent → the dependent MUST recompute. RED
+    //!    under the name key the same way.
+    //!  - **interface-grain minimality** (signed decision 1): a body-only edit in the import
+    //!    leaves its v0 interface hash unchanged → the dependent must HIT (only the edited
+    //!    module recomputes). A conservative source-transitive key would go RED here.
+    //!
+    //! The compiler-identity term cannot vary within one test process; it is witnessed at the
+    //! algebra level by the PR1 .dag witnesses
+    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
+    //!
+    //! Mutations rewrite the SAME file path so the `module_source_identity` collision wall
+    //! (name→file, unchanged by the re-key) never fires.
+
+    use super::{build_multi_entry_index, resolve_entry_with_index, workspace_root};
+    use std::collections::HashSet;
+    use std::fs;
+
+    const IMPORT_MODULE: &str = "module k.imp\nfn base() -> Int { 10 }\n";
+    const IMPORT_MODULE_BODY_EDIT: &str = "module k.imp\nfn base() -> Int { 4 + 6 }\n";
+    const IMPORT_MODULE_SURFACE_EDIT: &str =
+        "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
+    const DEPENDENT_MODULE: &str =
+        "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
+    // No `import` line: a namespace-wave-1 stripped module (PR #6848) that resolves `base`
+    // through the corpus-wide bare-name census instead of a declared import.
+    const DEPENDENT_MODULE_STRIPPED: &str = "module k.dep\nfn wit() -> Bool { base() == 10 }\n";
+
+    struct Fixture {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        entry: String,
+    }
+
+    impl Fixture {
+        fn new(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        /// Same shape as `new`, but `dep.dag` is import-less (stripped) and depends on
+        /// `k.imp.base` only through the bare-name census — the PR #6848 case
+        /// `typed_module_content_key`'s reference-derived term now covers.
+        fn new_stripped(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE_STRIPPED).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        fn rewrite_import(&self, src: &str) {
+            fs::write(self.dir.join("imp.dag"), src).expect("rewrite imp.dag");
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// The typed-module content keys one resolve of `entry` mints, read from a fresh private
+    /// index's `typed_module_cache` (keyed by `typed_module_content_key`, never by name).
+    fn minted_keys(roots: &[String], entry: &str) -> HashSet<String> {
+        let index = build_multi_entry_index(roots);
+        resolve_entry_with_index(&index, entry).expect("resolve");
+        let keys: HashSet<String> = index.typed_module_cache.borrow().keys().cloned().collect();
+        keys
+    }
+
+    fn new_keys(before: &HashSet<String>, after: &HashSet<String>) -> usize {
+        after.difference(before).count()
+    }
+
+    #[test]
+    fn source_term_recomputes_mutated_module() {
+        let fx = Fixture::new("source-term");
+        let before = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            before.len(),
+            2,
+            "the closure mints one key per module: {before:?}"
+        );
+        // Unchanged sources, fresh index: the content key is stable.
+        assert_eq!(
+            minted_keys(&fx.roots, &fx.entry),
+            before,
+            "an unchanged snapshot must mint the same keys"
+        );
+        // Body-only mutation of the import: its source hash moves, so its key moves.
+        fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+        let after = minted_keys(&fx.roots, &fx.entry);
+        assert!(
+            new_keys(&before, &after) >= 1,
+            "the mutated module's key must change (a stale key is a §5 fail-open)"
+        );
+    }
+
+    #[test]
+    fn import_interface_term_recomputes_dependent() {
+        let fx = Fixture::new("import-term");
+        let before = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            before.len(),
+            2,
+            "the closure mints one key per module: {before:?}"
+        );
+        // Export-surface edit: a new exported fn changes k.imp's interface rollup.
+        fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+        let after = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            new_keys(&before, &after),
+            2,
+            "an interface change in the import must change the import's key AND its \
+             dependent's (the dependent's typed result consumed that interface)"
+        );
+    }
+
+    #[test]
+    fn body_only_edit_leaves_dependent_warm() {
+        let fx = Fixture::new("minimality");
+        let before = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            before.len(),
+            2,
+            "the closure mints one key per module: {before:?}"
+        );
+        fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+        let after = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            new_keys(&before, &after),
+            1,
+            "body-only import edit: only the import's key changes; the dependent's key is \
+             unchanged (interface-grain minimality, signed decision 1)"
+        );
+    }
+
+    /// The stripped-module discriminating RED (namespace wave 1, PR #6848 follow-up): a
+    /// dependent with NO `import` line reaches its provider only through the corpus-wide
+    /// bare-name census (`selection_adjacency`'s reference-derived edges). Before that fix
+    /// `typed_module_content_key` folded only `resolved.resolved_imports` -- empty here -- so the
+    /// dependent's key was invariant under the provider's export-surface change. Same control
+    /// as `import_interface_term_recomputes_dependent` above, over a stripped dependent.
+    #[test]
+    fn reference_derived_interface_term_recomputes_stripped_dependent() {
+        let fx = Fixture::new_stripped("stripped-reference-term");
+        let before = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            before.len(),
+            2,
+            "the closure (imp pulled in via bare-reference loading) mints one key per module"
+        );
+        fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+        let after = minted_keys(&fx.roots, &fx.entry);
+        assert_eq!(
+            new_keys(&before, &after),
+            2,
+            "a provider export-surface change must change a STRIPPED dependent's key too: the \
+             key must consume the reference-derived import term, not just `resolved_imports`"
+        );
+    }
+}
+
 thread_local! {
     static MODULE_PATH_INDEX_CACHE: RefCell<HashMap<String, HashMap<String, String>>> =
         RefCell::new(HashMap::new());
