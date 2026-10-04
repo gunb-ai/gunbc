@@ -11,10 +11,6 @@ import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release
 import extdeps.bmc.access_profile { BmcAccessSurface }
 import extdeps.bmc.ipmi_channel { IpmiUserId }
 import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.machine_intake_bmc_secure {
-  CredentialRotationApplication,
-  AccountManagementUnavailable,
-}
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts }
@@ -369,40 +365,16 @@ fn admit_rotation_apply(
   }
 }
 
-// ── THE ADJUDICATION'S APPLICATION ARM, from the standing ──────────────────────────────────────
+// ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
 //
-// An ungrounded or candidate route yields AccountManagementUnavailable naming the controller, build
-// and state, which gunbc.machine_intake_bmc_secure adjudicates into a typed, located BmcSecure refusal
-// before any controller write. A grounded route yields none: the application is what the actuator
-// then does over it.
-//
-// WHO CONSUMES THIS, AND BY WHAT ROUTE (DESIGN §3c). The executing consumer today is
-// test.claim.machine_intake_bmc_rotation_route_witness_test; the named later consumer is the cut O1c
-// arrival convergence, which derives the rotation field from this standing inside AccessDiscover
-// rather than receiving it as a supplied argument (rotation_route_consumption_frontier).
+// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. The BmcSecure
+// Apply (cut O1b) imports admit_rotation_apply and refuses on any arm but RotationApplyAdmitted, so
+// the refusal for an ungrounded route is that module's to type; mapping a route onto its rotation-event
+// vocabulary here would make the import graph cyclic the moment O1b lands. The executing consumer
+// today is test.claim.machine_intake_bmc_rotation_route_witness_test.
 data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the cut O1c arrival convergence (gunbc.machine_intake_arrival_converge) derives the BmcCredentialRotationObservation rotation field by calling rotation_application_for_standing on the route standing derived inside AccessDiscover for the controller and build it observed, rather than receiving rotation as a supplied argument; NOT satisfied by this module typechecking, by the witness exercising the arms, or by a caller that passes a standing for another controller or build" as NonEmptyStr,
+  description: "dissolves when the cut O1b BmcSecure Apply in gunbc.machine_intake_bmc_secure calls admit_rotation_apply on the route standing for the controller and build it writes, and refuses before any account write on every arm other than RotationApplyAdmitted; NOT satisfied by this module typechecking, by the witness exercising the arms, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
 )
-
-fn rotation_application_for_standing(standing: BmcRotationRouteStanding) -> CredentialRotationApplication? {
-  let subject = join([standing.endpoint.host as String, " at firmware ", standing.firmware.raw_version as String], "")
-  match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => none
-    RouteGroundedByCitedSource { request: _, citation: _ } => none
-    RouteQualificationCandidate { request: r, evidence: _ } =>
-      Present {
-        value: AccountManagementUnavailable {
-          detail: join([subject, ": the account-write route is only a qualification candidate (", account_write_request_text(request: r) as String, "); no executed request or build-scoped citation grounds it"], "") as NonEmptyStr,
-        },
-      }
-    RouteUngrounded =>
-      Present {
-        value: AccountManagementUnavailable {
-          detail: join([subject, ": no account-write route is grounded for this controller and build"], "") as NonEmptyStr,
-        },
-      }
-  }
-}
 
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate
 // naming an observed Redfish surface.

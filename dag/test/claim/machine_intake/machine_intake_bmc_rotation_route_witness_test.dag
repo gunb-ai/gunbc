@@ -12,9 +12,6 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity, SurfaceAccountManagement }
 import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.machine_intake_bmc_secure {
-  CredentialRotationApplication, AccountManagementUnavailable, RotationApplied, RotationNotAttempted,
-}
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, ProposeDeny, approval_capability_protocol }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
@@ -39,7 +36,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
   rotation_route_request_identity, rotation_route_is_grounded,
   dry_route_qualification_request, qualify_rotation_route, admit_rotation_apply,
-  rotation_application_for_standing, redfish_account_password_write,
+  redfish_account_password_write,
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence {
   mtcollins1_rotation_route_standing, mtjade1_rotation_route_standing, rotation_route_standing_from_manager_read,
@@ -228,21 +225,13 @@ test fn two_megarac_controllers_with_different_surfaces_have_different_standings
 
 // CONTROL: a Manager GET alone cannot construct an account-write route. The only standing the
 // Manager read can produce is a candidate; the rotation Apply refuses it even beside an operator
-// approval of the rotation, and the adjudication's application arm is AccountManagementUnavailable.
+// approval of the rotation.
 test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
   match rotation_route_standing_from_manager_read(read: read_mtjade1_recorded_manager_identity()) {
     Absent => false
     Present { value: s } =>
       !rotation_route_is_grounded(standing: s)
         && apply_verdict(standing: s, target: s.endpoint, firmware: s.firmware, approval_value: rotation_approval_for(s: s)) == "route-not-grounded"
-        && match rotation_application_for_standing(standing: s) {
-          Present { value: app } => match app {
-            AccountManagementUnavailable { detail: _ } => true
-            RotationApplied { reference: _, applied_at: _, evidence: _ } => false
-            RotationNotAttempted => false
-          }
-          Absent => false
-        }
   }
 }
 
@@ -327,25 +316,6 @@ test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
   grounding_kind(standing: s) == "cited"
     && apply_verdict(standing: s, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: s)) == "admitted"
     && apply_verdict(standing: s, target: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), approval_value: rotation_approval_for(s: s)) == "another-build"
-}
-
-fn is_account_management_unavailable(a: CredentialRotationApplication?) -> Bool {
-  match a {
-    Present { value: app } => match app {
-      AccountManagementUnavailable { detail: _ } => true
-      RotationApplied { reference: _, applied_at: _, evidence: _ } => false
-      RotationNotAttempted => false
-    }
-    Absent => false
-  }
-}
-
-// The adjudication's application arm: ungrounded and candidate yield AccountManagementUnavailable, a
-// grounded route yields none.
-test fn the_application_arm_refuses_only_an_ungrounded_route() -> Bool {
-  is_account_management_unavailable(a: rotation_application_for_standing(standing: rotation_route_ungrounded(endpoint: mtcollins1_endpoint, firmware: mtcollins1_firmware)))
-    && is_account_management_unavailable(a: rotation_application_for_standing(standing: lab_candidate(request: IpmiSetUserPassword { user: 3 })))
-    && match rotation_application_for_standing(standing: mtcollins1_rotation_route_standing()) { Absent => true  Present { value: _ } => false }
 }
 
 // ── the qualification effect's authorization, by executing the selection ────────────────────────
