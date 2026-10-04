@@ -1,6 +1,6 @@
 module gunbc.fleet_probe_identity_observe
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -162,9 +162,30 @@ fn adc_file_observation_text(outcome: ProcessOutcome) -> String {
 }
 
 fn observe_text_line(label: String, value: String) -> String {
-  let line = join([label, " ", value, "\n"], "")
-  write_receipt_line(line: line)
-  line
+  join([label, " ", value, "\n"], "")
+}
+
+// THE PASSWD PROBE HAS ONE CONSTRUCTION SITE. The three inline copies it replaces (the probe
+// receipt's getent leg, the enrollment's decision probe, and the enrollment's post-apply
+// verification probe) were the same whoami-then-getent pair each, with the optional constructed
+// in if-branches where no expected type reaches it. Here the fn's declared return type
+// instantiates the variant, and each wet caller runs the probe ONCE and hands the outcome onward,
+// so one passwd decision serves every consumer. The pure decision over the outcome is
+// passwd_home_observation, witnessed separately.
+fn passwd_probe_for_user(user: ProcessOutcome) -> ProcessOutcome?
+{
+  match user {
+    ProcessOutputPresent { text: ut } =>
+      if trim(s: ut) == "" {
+        none
+      } else {
+        Present { value: run_shell_command_capture(
+          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
+          transport: LocalExec,
+        ) }
+      }
+    _ => none
+  }
 }
 
 // THE GROCERY LIST'S SCHEMA NOTES, DECIDED AT THE CUTOVER. gcloud-binary: the old value was
@@ -177,18 +198,7 @@ fn observe_text_line(label: String, value: String) -> String {
 fn fleet_probe_identity_observe_wet() -> ProcessExit
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
-  let passwd_probe: ProcessOutcome? = match user {
-    ProcessOutputPresent { text: ut } =>
-      if trim(s: ut) == "" {
-        Absent
-      } else {
-        Present { value: run_shell_command_capture(
-          command: getent_passwd_command(key: trim(s: ut) as NonEmptyStr),
-          transport: LocalExec,
-        ) }
-      }
-    _ => Absent
-  }
+  let passwd_probe = passwd_probe_for_user(user: user)
   let passwd_home = passwd_home_observation(user: user, passwd: passwd_probe)
   let ph = passwd_home_of(obs: passwd_home)
   let job_home = shell.Env.Get(name: "HOME" as NonEmptyStr).value

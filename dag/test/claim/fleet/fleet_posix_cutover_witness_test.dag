@@ -19,6 +19,17 @@ import gunbc.fleet_host_key_enrollment {
   PinConfigAlreadyPinned,
   PinConfigNextContent,
   cwd_capture_stdout,
+  self_enroll_presence_decision,
+  SelfEnrollAlreadyPresent,
+  SelfEnrollApply,
+  SelfEnrollRefuse,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  FilesystemPermissionDenied,
 }
 
 // WITNESSES FOR THE FLEET PROBE/ENROLLMENT POSIX CUTOVER (DP-M2, PR3). Every shell row these
@@ -160,4 +171,76 @@ test fn witness_cwd_capture_answers_empty_unless_admitted() -> Bool {
   cwd_capture_stdout(outcome: ProcessOutputPresent { text: " /run/checkout \n" }) == "/run/checkout"
     && cwd_capture_stdout(outcome: ProcessRefused { exit_code: 1, stderr: "no tty" }) == ""
     && trim(s: cwd_capture_stdout(outcome: ProcessOutputAbsent)) == ""
+}
+
+// THE PRESENCE VERDICT, PURE OVER A SUPPLIED READ. The deleted script answered
+// `grep -qxF ... 2>/dev/null && echo present || echo absent`: a MISSING key file folded into the
+// same `||` as a non-matching one and the apply branch created it, so a fresh home enrolled. The
+// typed read keeps that route and refuses only what the old script never distinguished. These
+// witnesses pin each verdict; each goes red if the arm is deleted or degraded.
+
+// RED WITHOUT THE ABSENT ARM: a missing key file routes to the apply, exactly as the deleted
+// grep's `|| echo absent` did -- a fresh home enrolls rather than being refused.
+test fn witness_self_enroll_presence_absent_applies() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathAbsent { path: "/home/srvuser/.ssh/authorized_keys" },
+    content: "",
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollApply => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: an admitted read whose lines already carry the key answers already-present --
+// no write is planned for that verdict.
+test fn witness_self_enroll_presence_admitted_read_already_present() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA fleet\n" },
+    content: "ssh-ed25519 AAAA fleet\n",
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollAlreadyPresent => true
+    _ => false
+  }
+}
+
+// RED WITHOUT THE APPLY-ON-MISSING-KEY ARM: an admitted read that does not carry the key falls to
+// the apply -- the create-or-append the deleted script's grep-not-present branch took.
+test fn witness_self_enroll_presence_admitted_read_without_the_key_applies() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA other\n" },
+    content: "ssh-ed25519 AAAA other\n",
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollApply => true
+    _ => false
+  }
+}
+
+// RED WITHOUT THE UNREADABLE REFUSAL: a file that exists but cannot be read refuses with the
+// cause named -- the state the deleted grep could not tell from absent, where the remedy is the
+// opposite (stop, not write).
+test fn witness_self_enroll_presence_unreadable_refuses() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathUnreadable { path: "/home/srvuser/.ssh/authorized_keys", kind: FilesystemPermissionDenied, error: "open refused" },
+    content: "",
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unreadable")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE KIND TABLE: a host error kind the table does not know refuses with the kind
+// named, instead of guessing absent (and writing) or present (and skipping).
+test fn witness_self_enroll_presence_kind_unrecognized_refuses() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathKindUnrecognized { path: "/home/srvuser/.ssh/authorized_keys", observed: "E_GREETING", error: "mystery" },
+    content: "",
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unrecognized")
+    _ => false
+  }
 }
