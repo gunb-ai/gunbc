@@ -146,11 +146,9 @@ type ReferenceConservationUnmeasured
 //     an argument label).
 //   `header_channel`: a segment of the module header. HeaderSegmentsNotRefusalSites: no resolve
 //     refusal is located at a header segment (measured on the XL-2 rehearsal composition with a
-//     module whose header names no existing path). CAVEAT, stated so the exclusion is not read
-//     wider than it is: a header DOES change what resolves -- a module nested under a provider's
-//     namespace resolves that provider's names with no import -- so relocating a module would make
-//     its header a rewrite target. That is the rehearsal's NestingScopedReferencesUncounted
-//     population, not this count.
+//     module whose header names no existing path). Nesting under a namespace grants no scope
+//     (operator ruling 2026-10-04), so a header does not change what a module's own references
+//     resolve to.
 // `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
 // producer could not read is a number here too; such a binder stays in `locus_erased`.
 type ReferenceConservationReport {
