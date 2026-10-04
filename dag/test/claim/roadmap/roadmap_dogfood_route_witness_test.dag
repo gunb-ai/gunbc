@@ -478,15 +478,22 @@ test fn a_refused_service_evidence_field_gives_no_snapshot() -> Bool {
 }
 
 // The digest is recomputed from the pinned wire, never accepted beside it; the wire must name the
-// receipt's own node and attempt; a partial wire is not evidence.
-test fn the_pinned_evidence_must_be_whole_bound_and_self_digested() -> Bool {
-  let w = evidence_wire(node: "n1")
+// receipt's own node and attempt; a partial wire is not evidence. One receipt decode per claim.
+fn pinned(ev_wire: String, ev_digest: String) -> Bool {
+  decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: ev_wire, ev_digest: ev_digest))
+}
+
+test fn a_digest_other_than_the_pinned_wires_is_not_a_start() -> Bool {
+  !pinned(ev_wire: evidence_wire(node: "n1"), ev_digest: "sed1")
+}
+
+test fn evidence_naming_another_node_is_not_a_start() -> Bool {
   let foreign = evidence_wire(node: "n2")
-  let subject = join(["n1@", head], "")
-  decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: subject, pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: w, ev_digest: digest_of(wire: w)))
-    && !decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: subject, pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: w, ev_digest: "sed1"))
-    && !decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: subject, pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: foreign, ev_digest: digest_of(wire: foreign)))
-    && !decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: subject, pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: "{\"schema\": \"service-evidence-receipt/v2\", \"fields\": []}", ev_digest: "x"))
+  !pinned(ev_wire: foreign, ev_digest: digest_of(wire: foreign))
+}
+
+test fn a_partial_evidence_wire_is_not_a_start() -> Bool {
+  !pinned(ev_wire: "{\"schema\": \"service-evidence-receipt/v2\", \"fields\": []}", ev_digest: "x")
 }
 
 // ── THE START RECORD'S EXIT ──

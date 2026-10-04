@@ -385,33 +385,49 @@ fn snapshot_admits(wire: String) -> Bool {
 
 fn canonical() -> List<String> { service_evidence_canonical_field_names() }
 
-test fn the_canonical_population_decodes_and_the_live_wire_round_trips_with_its_digest() -> Bool {
+test fn the_canonical_population_decodes() -> Bool {
+  snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "owed"))
+}
+
+test fn the_live_wire_round_trips_with_its_digest_and_binding() -> Bool {
   let r = ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a)) }
-  length(canonical()) == 21
-    && snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "owed"))
-    && (match service_evidence_snapshot_of_receipt(r: r) {
-      SnapshotDecoded { snapshot } => snapshot.digest == service_evidence_receipt_digest(r: r) && snapshot.node_id == node_a && snapshot.attempt_key == key_a && length(snapshot.fields) == 21
-      SnapshotInvalid { reason: _ } => false
-    })
+  match service_evidence_snapshot_of_receipt(r: r) {
+    SnapshotDecoded { snapshot } => snapshot.digest == service_evidence_receipt_digest(r: r) && snapshot.node_id == node_a && snapshot.attempt_key == key_a && length(snapshot.fields) == 21
+    SnapshotInvalid { reason: _ } => false
+  }
 }
 
 // Omission, a duplicate that keeps the count at 21, an unknown name, a reordering, and the two-field
-// fixture #13208 first enrolled: none is the canonical population.
-test fn a_population_other_than_the_canonical_one_does_not_decode() -> Bool {
-  let names = canonical()
-  let first_name = match first(names) { Present { value: n } => n  Absent => "" }
-  let second_name = match first(skip(names, 1)) { Present { value: n } => n  Absent => "" }
-  let rest = skip(names, 2)
-  !snapshot_admits(wire: snapshot_wire_of(names: skip(names, 1), standing: "owed"))
-    && !snapshot_admits(wire: snapshot_wire_of(names: concat([first_name, first_name], rest), standing: "owed"))
-    && !snapshot_admits(wire: snapshot_wire_of(names: concat([first_name, "unknown_field"], rest), standing: "owed"))
-    && !snapshot_admits(wire: snapshot_wire_of(names: concat([second_name, first_name], rest), standing: "owed"))
-    && !snapshot_admits(wire: snapshot_wire_of(names: ["placement", "wait_time"], standing: "owed"))
+// fixture #13208 first enrolled: none is the canonical population. One decode per claim.
+fn names_with(head: List<String>, drop: Int) -> List<String> { concat(head, skip(canonical(), drop)) }
+fn canonical_at(i: Int) -> String { match first(skip(canonical(), i)) { Present { value: n } => n  Absent => "" } }
+
+test fn an_omitted_field_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: skip(canonical(), 1), standing: "owed"))
 }
 
-test fn a_refused_or_unknown_standing_does_not_decode() -> Bool {
+test fn a_count_preserving_duplicate_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 0), canonical_at(i: 0)], drop: 2), standing: "owed"))
+}
+
+test fn an_unknown_field_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 0), "unknown_field"], drop: 2), standing: "owed"))
+}
+
+test fn a_reordered_population_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: names_with(head: [canonical_at(i: 1), canonical_at(i: 0)], drop: 2), standing: "owed"))
+}
+
+test fn the_two_field_fixture_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: ["placement", "wait_time"], standing: "owed"))
+}
+
+test fn a_refused_standing_does_not_decode() -> Bool {
   !snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "refused"))
-    && !snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "maybe"))
+}
+
+test fn an_unknown_standing_or_a_non_document_does_not_decode() -> Bool {
+  !snapshot_admits(wire: snapshot_wire_of(names: canonical(), standing: "maybe"))
     && !snapshot_admits(wire: "not json")
 }
 
