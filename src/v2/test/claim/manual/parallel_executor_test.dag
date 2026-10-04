@@ -2,7 +2,6 @@ module v2.test.manual.parallel_executor
 
 import std.types { List }
 import v2.std.dependency { ReadinessLayer }
-import v2.std.logic { Bool }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 import v2.workflow.executor {
   ExecutorBatch,

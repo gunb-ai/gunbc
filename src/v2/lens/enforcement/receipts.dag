@@ -5,7 +5,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, contains }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.node { Atom, ComputationNode, Edge, Loop, Authored, Node, Positional, TypeNode, LoopBoundEdge, core_edge_label }
 import v2.std.witness { Holds, Violates, Witness }

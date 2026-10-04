@@ -49,7 +49,6 @@ import v2.workflow.floor_terminal_ledger {
   PassedOverBudget, BudgetRefusedBeforeVerdict,
 }
 import v2.std.algebra { Cons, Empty, any }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.nat { Nat }
 import std.measure { CpuClock, WallClock, millisecond, millisecond_count, nanosecond, nanosecond_count }

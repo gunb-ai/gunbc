@@ -43,7 +43,6 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ParseTree, node_atom_identity_optional }
 import v2.std.compilers.lexing { TokenStream }
-import v2.std.logic { Bool }
 import v2.std.node {
   Node,
   Symbol,

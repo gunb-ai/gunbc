@@ -110,7 +110,11 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_store_host }
+import gunbc.managed_host_unit_hold {
+  UnitHoldHostAdmission, UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
+  unit_hold_admission_for, unit_hold_host_admission_refusal,
+}
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_converge_environment, gcp_iam_observe_wif_provider_resource }
 import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_service_account, iam_converge_token_lifetime }
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
@@ -2753,7 +2757,7 @@ fn fleet_converge_approval_keyring_converge_step() -> Step {
   }
 }
 
-// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_routes
+// THE ENROLMENT-CODE STEP: one remote invocation of gunbc.auth.approval_device_enrolment_code
 // issue_device_enrolment_code on srv1 as the operator's user, from the release the dispatch names;
 // the step prints the delivery receipt and NEVER the code (decision msg_a1d8d1b9 -- the code goes
 // over the operator's ntfy topic, whose deny-by-default policy is DECLARED and not yet read back:
@@ -3750,13 +3754,44 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
 // or the fleet key exist; the wet entry re-runs the same fold.
 data fleet_converge_mtcollins1_boot_job_if: String = fleet_converge_mtcollins1_boot_step_if
-data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, mtcollins1_unit_hold_store_host as String], "")
+data fleet_converge_mtcollins1_boot_concurrency_group: String = join([fleet_host_mutation_group_prefix, fleet_converge_mtcollins1_boot_store_host()], "")
+
+// THE STORE HOST IS READ OFF THE UNIT'S MANAGED ROW, through the hold admission
+// (gunbc.managed_host_unit_hold unit_hold_admission_for): the row's hold decision names where its
+// store lives, and this job is pinned there. A unit that is not a managed host, or whose row declares
+// no hold, has no store host, and there is no label to fall back to: the reading below carries the
+// refusal in place of a host, and fleet_converge_yml_after_reset_assignment refuses to emit any yaml
+// while it stands, so the refusal text never reaches a runs-on.
+data fleet_converge_mtcollins1_boot_hold_admission: UnitHoldHostAdmission = unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr)
+
+fn fleet_converge_mtcollins1_boot_store_host_refusal() -> String? {
+  match unit_hold_host_admission_refusal(admission: fleet_converge_mtcollins1_boot_hold_admission) {
+    Absent => none
+    Present { value: r } =>
+      Present { value: join(["REFUSED gunbc.fleet_converge_workflow: the mtcollins1 boot job runs on its unit hold's store host, and ", r as String, ". No workflow yaml was emitted."], "") }
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_store_host() -> String {
+  match fleet_converge_mtcollins1_boot_hold_admission {
+    UnitHoldHostAdmitted { subject: s } => s.store_host as String
+    UnitHoldHostNotManaged { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
+    UnitHoldHostNotRequired { host: _ } => fleet_converge_mtcollins1_boot_store_host_unread()
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_store_host_unread() -> String {
+  match fleet_converge_mtcollins1_boot_store_host_refusal() {
+    Present { value: r } => r
+    Absent => "REFUSED gunbc.fleet_converge_workflow: the mtcollins1 unit hold admission is unclassified. No workflow yaml was emitted."
+  }
+}
 
 // THE BOOT JOB'S RUNNER AND STEPS ARE THEIR OWN PRODUCERS for the same reason as the credential
 // prelude below: which runner holds the credentials, and which bytes the steps fetch and execute, are
 // facts a witness reads, and reading them here costs those parts rather than the whole job's.
 fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
-  SelfHosted { labels: ["self-hosted", "linux", "arm64", mtcollins1_unit_hold_store_host as String] }
+  SelfHosted { labels: ["self-hosted", "linux", "arm64", fleet_converge_mtcollins1_boot_store_host()] }
 }
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
@@ -4564,6 +4599,13 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
 }
 
 fn fleet_converge_yml_after_reset_assignment() -> FleetConvergeYamlGenerationOutcome {
+  match fleet_converge_mtcollins1_boot_store_host_refusal() {
+    Present { value: r } => FleetConvergeYamlGenerationRefused { reason: r }
+    Absent => fleet_converge_yml_after_unit_hold_admission()
+  }
+}
+
+fn fleet_converge_yml_after_unit_hold_admission() -> FleetConvergeYamlGenerationOutcome {
   if fleet_converge_build_job_capability_closure_holds() {
     match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>

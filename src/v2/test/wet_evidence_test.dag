@@ -32,7 +32,6 @@ import v2.workflow.required_floor {
   ClaimPreemptionReachability, CooperativelyPollable
 }
 import v2.std.algebra { fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 fn alpha_identity() -> WitnessIdentity {

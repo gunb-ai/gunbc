@@ -4,7 +4,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }

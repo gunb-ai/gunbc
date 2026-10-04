@@ -31,7 +31,6 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { GrammarProduction, GrammarRoot, grammar_atom, grammar_expr_terminal_lexeme }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

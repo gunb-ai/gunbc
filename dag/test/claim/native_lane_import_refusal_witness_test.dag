@@ -14,7 +14,6 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import v2.std.algebra { any, contains, fold_list, length }

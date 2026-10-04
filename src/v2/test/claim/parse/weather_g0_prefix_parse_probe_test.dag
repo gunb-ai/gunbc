@@ -32,7 +32,6 @@ import v2.std.diagnostic {
 import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module, lens_verdict_diagnostic_locus_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   Node,
   TypeNode,

@@ -5,7 +5,6 @@ import v2.std.diagnostic { Accepted, ByteRange, Locus, WholeFile, NodeLocus, Rej
 import v2.std.optional { Absent, Present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import std.types { List }
 import v2.std.node { Arrow, ArrowEffectClaimsEdge, ArrowExecutionModeClaimEdge, Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, core_edge_target_lookup, Found, symbol_intern_lexeme }
 import v2.std.text { String }

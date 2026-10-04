@@ -31,7 +31,6 @@ import v2.std.diagnostic {
   Unavailable,
   correction_eq
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Diff,

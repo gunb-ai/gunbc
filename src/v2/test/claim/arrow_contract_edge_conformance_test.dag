@@ -1,7 +1,6 @@
 module v2.test.claim.arrow_contract_edge_conformance
 
 import std.types { List }
-import v2.std.logic { Bool }
 import std.effects { ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { Hermetic }
 import v2.std.arrow_contract { effect_claim_label, execution_mode_claims_label }

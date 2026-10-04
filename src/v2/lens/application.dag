@@ -7,7 +7,6 @@ import std.disposition { RealizationDispatch }
 
 import std.algebra { Cons, Empty, list_snoc_item }
 import v2.std.algebra { is_empty, fold_list }
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -21,7 +20,8 @@ import v2.std.diagnostic {
   node_locus,
   non_empty_diagnostics_append,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  diagnostics_fatal_reason
 }
 import v2.std.node {
   Conj,
@@ -156,7 +156,7 @@ fn find_child_by_label(root: Node, label: EdgeLabel) -> Outcome<Node> {
   match find_labeled_child(root: root, label: label) {
     Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
     Rejected { diagnostics: diags } =>
-      if diags.head.reason == ^named_child_ambiguous {
+      if diagnostics_fatal_reason(d: diags) == ^named_child_ambiguous {
         outcome_rejected(d: path_ambiguous_diagnostic(at: root))
       } else {
         outcome_rejected(d: path_unresolvable_diagnostic(at: root))

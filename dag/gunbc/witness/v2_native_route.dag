@@ -3,7 +3,6 @@ module gunbc.witness_v2_native_route
 import v2.std.algebra { any, count_where, filter, fold_list, is_empty, length, list_find_first }
 import std.algebra { list_append, list_snoc_item }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import std.types { NonEmptyStr, List }
@@ -16,7 +15,7 @@ import v2.compiler.native_test_vocabulary {
 }
 import v2.std.diagnostic { Some, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.workflow.compile_door_cause_ownership {
-  CauseLane, DiagnosticGrain, FatalGrain, FrontierRetirement, HeadGrain, cause_ownership_lookup,
+  CauseLane, FrontierRetirement, cause_ownership_lookup,
   known_frontier_causes, known_frontier_retirements
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -264,11 +263,8 @@ fn native_route_reason_member(reason: Symbol, roster: List<Symbol>) -> Bool {
   any(xs: roster, predicate: fn(r) { r == reason })
 }
 
-// THE CLASSIFICATION QUESTION IS ASKED AT FATAL GRAIN for the compiler-frontier arm: the fatal
-// reason is the cause that actually refused, so its ownership row is the FatalGrain one. Asking
-// the head-grain question of a fatal reason was the grain crossing the review named — the same
-// symbol can be owned at one grain and unowned at the other, and only the fatal-grain answer
-// classifies an exclusion.
+// THE CLASSIFICATION QUESTION IS ASKED OF THE FATAL REASON for the compiler-frontier arm: it is the
+// cause that actually refused, and the ownership table is keyed by that cause.
 fn classify_native_refusal(stage: NativeTestStage, reason: Symbol) -> NativeRouteExclusionCause {
   match stage {
     NativeTestStageEntry =>
@@ -281,18 +277,18 @@ fn classify_native_refusal(stage: NativeTestStage, reason: Symbol) -> NativeRout
       if native_route_reason_member(reason: reason, roster: native_route_effect_boundary_reasons) {
         NativeEvalBoundary { reason: reason }
       } else {
-        match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+        match cause_ownership_lookup(cause: reason) {
           Present { value: _ } => CompilerFrontierAttributed { reason: reason }
           Absent => UnattributedRefusal { reason: reason }
         }
       }
     NativeTestStageContext =>
-      match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+      match cause_ownership_lookup(cause: reason) {
         Present { value: _ } => CompilerFrontierAttributed { reason: reason }
         Absent => UnattributedRefusal { reason: reason }
       }
     NativeTestStagePrepare =>
-      match cause_ownership_lookup(cause: reason, grain: FatalGrain) {
+      match cause_ownership_lookup(cause: reason) {
         Present { value: _ } => CompilerFrontierAttributed { reason: reason }
         Absent => UnattributedRefusal { reason: reason }
       }
@@ -647,7 +643,6 @@ type NativeRouteAdmissionRefusalCause
   | DivergencesPresent
   | UnattributedExclusionsPresent
   | UnattributedFileRefusalsPresent
-  | UnattributedHeadAdvisoriesPresent
   | ContextRefusalsUnbacked
   | FrontierRetirementCausesUnowned
   | FalseControlNotObserved
@@ -801,12 +796,12 @@ fn native_route_exclusions_all_classified(census: NativeRouteCensus) -> Bool {
   census.excluded_unattributed == 0
 }
 
-// EVERY FILE REFUSAL IS OWNED AT FATAL GRAIN: the fatal reason is the cause that refused the
-// file, so its ownership row is the FatalGrain one. An unowned fatal cause is a new front-end
+// EVERY FILE REFUSAL'S FATAL CAUSE IS OWNED: the fatal reason is the cause that refused the
+// file, so it is the one the ownership table must carry. An unowned fatal cause is a new front-end
 // frontier fact surfacing where nobody counted it, and it blocks admission by its own name.
 fn native_route_file_refusals_attributed(receipt: NativeRouteReceipt) -> Bool {
   !any(xs: receipt.file_refusals, predicate: fn(fr) {
-    match cause_ownership_lookup(cause: fr.fatal_reason, grain: FatalGrain) {
+    match cause_ownership_lookup(cause: fr.fatal_reason) {
       Present { value: _ } => false
       Absent => true
     }
@@ -833,17 +828,13 @@ fn native_route_file_refusal_tally(receipt: NativeRouteReceipt) -> List<NativeRo
     xs: known_frontier_causes,
     empty: [],
     cons: fn(acc, row) {
-      match row.grain {
-        HeadGrain => acc
-        FatalGrain =>
-          list_snoc_item(xs: acc, item: NativeRouteCauseTally {
-            cause: row.cause,
-            lane: row.lane,
-            file_refusals: count_where(xs: receipt.file_refusals, predicate: fn(fr) {
-              fr.fatal_reason == row.cause
-            })
-          })
-      }
+      list_snoc_item(xs: acc, item: NativeRouteCauseTally {
+        cause: row.cause,
+        lane: row.lane,
+        file_refusals: count_where(xs: receipt.file_refusals, predicate: fn(fr) {
+          fr.fatal_reason == row.cause
+        })
+      })
     }
   )
 }
@@ -881,7 +872,7 @@ fn native_route_frontier_retirement_standing(
   receipt: NativeRouteReceipt
 ) -> FrontierRetirementStanding {
   let unowned: Optional<Symbol> = list_find_first(xs: retirement.causes, predicate: fn(c) {
-    match cause_ownership_lookup(cause: c, grain: FatalGrain) {
+    match cause_ownership_lookup(cause: c) {
       Present { value: _ } => false
       Absent => true
     }
@@ -900,20 +891,6 @@ fn native_route_frontier_retirements_owned(receipt: NativeRouteReceipt) -> Bool 
       FrontierRetirementCauseUnowned { cause: _ } => true
       FrontierOpen { remaining: _ } => false
       FrontierRetired => false
-    }
-  })
-}
-
-// THE HEAD REASON IS NOT DEAD RECEIPT DATA. rejected_with_pending prepends the non-fatal
-// advisory, so the head reason is a real observation of the frontier at a different grain — the
-// same observation the door ledger's own rows carry. Every file refusal's head reason must be
-// owned at HEAD grain: an unowned advisory is a new frontier cause surfacing where nobody
-// counted it, and it blocks admission by its own name rather than riding along unclassified.
-fn native_route_head_advisories_attributed(receipt: NativeRouteReceipt) -> Bool {
-  !any(xs: receipt.file_refusals, predicate: fn(fr) {
-    match cause_ownership_lookup(cause: fr.head_reason, grain: HeadGrain) {
-      Present { value: _ } => false
-      Absent => true
     }
   })
 }
@@ -1148,7 +1125,6 @@ fn native_route_admission_with(receipt: NativeRouteReceipt, live_pair: NativeRou
     NativeRouteClauseCheck { holds: native_route_no_divergences(census: census), cause: DivergencesPresent },
     NativeRouteClauseCheck { holds: native_route_exclusions_all_classified(census: census), cause: UnattributedExclusionsPresent },
     NativeRouteClauseCheck { holds: native_route_file_refusals_attributed(receipt: receipt), cause: UnattributedFileRefusalsPresent },
-    NativeRouteClauseCheck { holds: native_route_head_advisories_attributed(receipt: receipt), cause: UnattributedHeadAdvisoriesPresent },
     NativeRouteClauseCheck { holds: native_route_context_refusals_backed(receipt: receipt), cause: ContextRefusalsUnbacked },
     NativeRouteClauseCheck { holds: native_route_frontier_retirements_owned(receipt: receipt), cause: FrontierRetirementCausesUnowned }
   ]
@@ -1195,7 +1171,6 @@ fn native_route_admission_refusal_cause_name(cause: NativeRouteAdmissionRefusalC
     DivergencesPresent => "divergences_present"
     UnattributedExclusionsPresent => "unattributed_exclusions_present"
     UnattributedFileRefusalsPresent => "unattributed_file_refusals_present"
-    UnattributedHeadAdvisoriesPresent => "unattributed_head_advisories_present"
     ContextRefusalsUnbacked => "context_refusals_unbacked"
     FrontierRetirementCausesUnowned => "frontier_retirement_causes_unowned"
     FalseControlNotObserved => "false_control_not_observed"

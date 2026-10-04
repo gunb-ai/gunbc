@@ -27,7 +27,6 @@ import v2.std.compilers.body_lowering {
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.fn_index { FnArrowDecl, callees_from_decl, fn_arrow_decl_facts_live }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.node {
   Atom,

@@ -1,0 +1,144 @@
+module test.claim.type_declaration_use_census_witness_test
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import gunbc.instruments.type_declaration_use_census {
+  TypeDeclRow, TypeDeclForm, AliasForm, BodylessForm, CoproductForm, RecordForm, RefinementForm,
+  TypeRefText, DeclaredRef, KernelRef, NoBase,
+  AsSiteRow, AsOperandRead, OperandTyped, OperandTypeUndecided,
+  AsParentRead, ParentCompare, ParentOrder, ParentAdd, ParentCall, ParentReturn, ParentOther,
+  TypeCensusModule, TypeCensusRun, UnreachedModule,
+  type_census_receipt
+}
+import v2.compiler.body_lowering_fold { NominalOpaqueModifier }
+import std.compiler_entry { NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
+
+// THE CLASSIFICATION, AT ITS ONE INTERFACE: per-module rows in, receipt lines and terminal out
+// (gunbc.instruments.type_declaration_use_census type_census_receipt). The rows are SUPPLIED -- one
+// declaration of each class and one cast of each class, as the per-module folds would emit them --
+// because the subject is the join and the classes, not the parse/resolve/infer that produces rows
+// (DESIGN section 3, a witness discriminates at one interface). The pairing obligation is discharged
+// by the instrument's own fixture control, which runs the same receipt over rows the REAL census-infer
+// walk emits for a fixture root (the instrument row's fixture control), and by the whole-tree run.
+//
+// Each claim asserts the LINE the receipt prints for one witness, so a class decided by a different
+// mechanism than the one named in its evidence reads red, not green.
+
+fn decl(symbol: String, form: TypeDeclForm, base: TypeRefText, predicates: FreeMonoid<String>) -> TypeDeclRow {
+  TypeDeclRow { module: "fx", symbol: symbol, generic: false, form: form, modifiers: Empty, base: base, predicates: predicates }
+}
+
+fn cast(enclosing: String, target: TypeRefText, operand: AsOperandRead, parent: AsParentRead) -> AsSiteRow {
+  AsSiteRow { module: "fx", enclosing: enclosing, occurrence: 7, target: target, operand: operand, parent: parent }
+}
+
+data int_ref: TypeRefText = KernelRef { name: "Int" }
+data str_ref: TypeRefText = KernelRef { name: "String" }
+
+// One declaration of each class. `Unused` is declared and referenced by nothing.
+fn fixture_declarations() -> FreeMonoid<TypeDeclRow> {
+  [
+    decl(symbol: "Alias", form: AliasForm, base: str_ref, predicates: Empty),
+    decl(symbol: "Brand", form: RefinementForm, base: str_ref, predicates: ["std.types.brand"]),
+    decl(symbol: "Port", form: RefinementForm, base: int_ref, predicates: ["std.types.range"]),
+    TypeDeclRow { module: "fx", symbol: "Sealed", generic: false, form: AliasForm, modifiers: [NominalOpaqueModifier], base: str_ref, predicates: Empty },
+    decl(symbol: "Pair", form: RecordForm { fields: 2 }, base: NoBase, predicates: Empty),
+    decl(symbol: "Choice", form: CoproductForm { variants: 2 }, base: NoBase, predicates: Empty),
+    decl(symbol: "Unused", form: AliasForm, base: int_ref, predicates: Empty)
+  ]
+}
+
+// One cast of each class. The projection, workaround and exception casts all strip fx.Port to Int;
+// only their parent evidence differs, which is the distinction the plan's M3 rewrite depends on.
+fn fixture_casts() -> FreeMonoid<AsSiteRow> {
+  [
+    cast(enclosing: "alias_noop", target: DeclaredRef { path: "fx.Alias" }, operand: OperandTyped { type_ref: str_ref }, parent: ParentOther),
+    cast(enclosing: "introduce", target: DeclaredRef { path: "fx.Port" }, operand: OperandTyped { type_ref: int_ref }, parent: ParentOther),
+    cast(enclosing: "project", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentReturn { declared: int_ref }),
+    cast(enclosing: "compare", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentCompare),
+    cast(enclosing: "hash", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentCall { callee: DeclaredRef { path: "std.content_hash.fnv1a64" }, declared: int_ref }),
+    cast(enclosing: "convert", target: KernelRef { name: "Float" }, operand: OperandTyped { type_ref: int_ref }, parent: ParentOther),
+    cast(enclosing: "exception", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentOther),
+    cast(enclosing: "untyped", target: DeclaredRef { path: "fx.Port" }, operand: OperandTypeUndecided { cause: "module did not infer: x" }, parent: ParentOther)
+  ]
+}
+
+// Every fixture declaration but `Unused` is referenced somewhere.
+fn fixture_references() -> Map<String, Bool> {
+  fold(["fx.Alias", "fx.Brand", "fx.Port", "fx.Sealed", "fx.Pair", "fx.Choice"], init: empty_map(), f: fn(acc, p) { map_insert(acc, p, true) })
+}
+
+fn fixture_run(casts: FreeMonoid<AsSiteRow>, unreached: FreeMonoid<UnreachedModule>) -> TypeCensusRun {
+  TypeCensusRun {
+    modules: [TypeCensusModule { module: "fx", declarations: fixture_declarations(), casts: casts, references: fixture_references() }],
+    unreached: unreached
+  }
+}
+
+fn receipt_has_line_starting(run: TypeCensusRun, prefix: String) -> Bool {
+  fold_list(xs: type_census_receipt(run: run).lines, empty: false, cons: fn(acc, l) { acc || starts_with(s: l, prefix: prefix) })
+}
+
+fn decl_class_is(symbol: String, class: String) -> Bool {
+  receipt_has_line_starting(run: fixture_run(casts: fixture_casts(), unreached: Empty), prefix: "decl fx " + symbol + " ")
+    && fold_list(xs: type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: Empty)).lines, empty: false, cons: fn(acc, l) {
+      acc || (starts_with(s: l, prefix: "decl fx " + symbol + " ") && string_contains(s: l, pattern: " class=" + class + " "))
+    })
+}
+
+fn cast_class_is(enclosing: String, class: String) -> Bool {
+  fold_list(xs: type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: Empty)).lines, empty: false, cons: fn(acc, l) {
+    acc || (starts_with(s: l, prefix: "cast fx " + enclosing + "@") && string_contains(s: l, pattern: " class=" + class + " "))
+  })
+}
+
+test fn an_alias_classifies_true_alias_holds() -> Bool { decl_class_is(symbol: "Alias", class: "TrueAlias") }
+test fn a_brand_only_refinement_classifies_unconstrained_nominal_holds() -> Bool { decl_class_is(symbol: "Brand", class: "UnconstrainedNominal") }
+test fn a_predicated_refinement_classifies_checked_construction_stage_holds() -> Bool { decl_class_is(symbol: "Port", class: "CheckedConstructionStage") }
+test fn a_nominal_opaque_modifier_classifies_opaque_holds() -> Bool { decl_class_is(symbol: "Sealed", class: "Opaque") }
+test fn a_two_field_record_classifies_multi_field_record_holds() -> Bool { decl_class_is(symbol: "Pair", class: "MultiFieldRecord") }
+test fn a_coproduct_classifies_sum_holds() -> Bool { decl_class_is(symbol: "Choice", class: "Sum") }
+test fn an_unreferenced_declaration_is_unconsumed_not_alias_holds() -> Bool { decl_class_is(symbol: "Unused", class: "UNCONSUMED") }
+
+test fn a_cast_into_its_own_alias_is_alias_noop_holds() -> Bool { cast_class_is(enclosing: "alias_noop", class: "AliasNoOp") }
+test fn a_cast_from_the_base_into_a_stage_is_nominal_introduction_holds() -> Bool { cast_class_is(enclosing: "introduce", class: "NominalIntroduction") }
+test fn a_strip_returned_where_the_base_is_declared_is_nominal_projection_holds() -> Bool { cast_class_is(enclosing: "project", class: "NominalProjection") }
+test fn a_strip_then_compare_is_an_operation_workaround_compare_holds() -> Bool { cast_class_is(enclosing: "compare", class: "OperationWorkaround:compare") }
+test fn a_strip_then_hash_is_an_operation_workaround_hash_holds() -> Bool { cast_class_is(enclosing: "hash", class: "OperationWorkaround:hash") }
+test fn a_cast_between_two_kernel_representations_is_genuine_conversion_holds() -> Bool { cast_class_is(enclosing: "convert", class: "GenuineConversion") }
+
+// NO DEFAULT BUCKET: a strip with neither workaround nor projection evidence is an EXCEPTION, never
+// NominalProjection (ruling by the plan's author), and an untyped operand is its own class.
+test fn a_strip_with_no_parent_evidence_is_an_exception_not_a_projection_holds() -> Bool { cast_class_is(enclosing: "exception", class: "EXCEPTION") }
+test fn an_operand_infer_did_not_type_is_operand_type_undecided_holds() -> Bool { cast_class_is(enclosing: "untyped", class: "OperandTypeUndecided") }
+
+// THE MUTATION CONTROL: the introduction's row rewritten as a projection (operand and target swapped,
+// return evidence supplied) must change the class. A classifier that read the class off anything
+// but the rows' direction would leave it unchanged.
+test fn an_introduction_rewritten_as_a_projection_changes_class_holds() -> Bool {
+  let mutated = [cast(enclosing: "introduce", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentReturn { declared: int_ref })]
+  fold_list(xs: type_census_receipt(run: fixture_run(casts: mutated, unreached: Empty)).lines, empty: false, cons: fn(acc, l) {
+    acc || (starts_with(s: l, prefix: "cast fx introduce@") && string_contains(s: l, pattern: " class=NominalProjection "))
+  })
+    && cast_class_is(enclosing: "introduce", class: "NominalIntroduction")
+}
+
+// THE REFUSAL: a module with no reference index makes the whole run refuse with NO OBSERVATION
+// (exit 2), never a default class -- and the complete run beside it holds.
+test fn an_unindexed_module_refuses_the_run_with_no_observation_holds() -> Bool {
+  match type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: [UnreachedModule { module: "fx.broken", stage: "resolve", cause: "resolve_reason_unbound_symbol" }])).terminal {
+    NativeClaimNoObservation { reason: _ } => true
+    NativeClaimHeld => false
+    NativeClaimNotHeld { reason: _ } => false
+  }
+}
+
+test fn the_complete_fixture_run_holds() -> Bool {
+  match type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: Empty)).terminal {
+    NativeClaimHeld => true
+    NativeClaimNoObservation { reason: _ } => false
+    NativeClaimNotHeld { reason: _ } => false
+  }
+}

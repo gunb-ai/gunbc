@@ -8,7 +8,6 @@ import std.realization_schedule {
   schedule_witness_entry_eq
 }
 import v2.std.algebra { any, fold_list, length }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // The six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under

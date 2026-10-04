@@ -1,7 +1,6 @@
 module v2.test.manual.fold_source
 
 import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
 import v2.std.text { SourceFold, String, fold_source }
 
 type CountAcc {

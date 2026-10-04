@@ -7,7 +7,6 @@ import v2.std.compilers.semantic_decl_emission {
 }
 import v2.extdeps.languages.rust { rust_decl_derive_lex_spelling }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 fn round_trip_ok(s: String) -> Bool {

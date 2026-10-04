@@ -30,7 +30,6 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
   Authored,

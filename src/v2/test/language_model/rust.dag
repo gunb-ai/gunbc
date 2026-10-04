@@ -16,7 +16,6 @@ import v2.std.leaf_model_verification {
   LeafModelClaim,
   TargetInvocation
 }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.runtime { Panic, RuntimeOutcome, Wrap }
 import v2.std.rust_leaf_model_claim {

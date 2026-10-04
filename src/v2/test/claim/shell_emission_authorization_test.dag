@@ -26,7 +26,6 @@ import v2.std.execution_surface {
   authorize_shell_emission,
   shell_emission_authorization_is_authorized
 }
-import v2.std.logic { Bool }
 import std.dissolution { unbound_dissolution }
 
 fn empty_roster() -> List<ShellEmissionRosterEntry> {

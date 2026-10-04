@@ -4,7 +4,6 @@ import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { contains, count_where, filter, fold_list, fold_list_right, length }
 import v2.std.change { AffectedSet }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 import v2.lens.affected_set {

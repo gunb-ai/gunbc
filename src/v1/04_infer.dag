@@ -14,7 +14,7 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous
@@ -117,7 +117,8 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  is_empty_map_constructor, is_empty_set_constructor
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
@@ -3929,6 +3930,12 @@ fn foreign_concrete_coproduct_where_parent_required(
 // older chains (declared_type_conformance_diags, the record-literal field chain) whose agreement
 // with this relation has not been measured on the corpus. So at these four the honest claim is one
 // verdict judged, not the position judged.
+//
+// PositionRecordLiteralField additionally consumes nominal_product_inhabitance_refusal -- the arm
+// the declared-return chain and the whole relation already consume -- for a NON-LITERAL field value
+// (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value). That is two verdicts
+// judged there through the shared authorities, still not the position judged: the trigger below
+// stands for it unchanged.
 //
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
 // PositionParameterDefault, PositionCallableReturn. These occur solely in
@@ -8012,16 +8019,6 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
           )
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
       }
-    BooleanUnfold { true_variant: t, false_variant: f } =>
-      match lit {
-        LitBool { value: b } =>
-          elaborated_expr_node(
-            name: if b { t.decl_name as String } else { f.decl_name as String },
-            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String, parent_identity: VariantParentIdentified { key: VariantParentDeclaration { declaration: elaboration.destination } } } } },
-            children: [], destination_type: destination_type, span: span
-          )
-        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
-      }
   }
 }
 
@@ -8713,7 +8710,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
-        } else if !callee_is_body_binding && func_name == "empty_map" {
+        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -8781,7 +8778,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && func_name == "empty_set" {
+        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -10771,6 +10768,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if nominal_product_inhabitance_refusal(
+              declared: with_required_cardinality(n: expected_node), produced: got_node, scope: scope) != none {
+            [make_error_node(
+              diagnostic: DeclaredTypeNotInhabited {
+                position: declared_type_position_label(position: PositionRecordLiteralField, subject: fi_name),
+                expected: obligation_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+                got: obligation_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
+                span: ar_typed.span
+              },
               module_name: scope.module_name
             )]
           } else if expected_node.return_cardinality != CardOptional

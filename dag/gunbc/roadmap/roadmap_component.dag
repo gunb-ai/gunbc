@@ -3552,15 +3552,16 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 // name and the avatar initials render from the SESSION RESPONSE ALONE (the wire's OPTIONAL
 // name member, the verified token's name claim, preferred; the principal label's short form
 // when the login projected no name) — anything else (rejected standing, absent flag, read
-// failure) leaves the target hidden: never an identity claim from a failed fetch, and the empty catch
+// failure) leaves Sign in: never an identity claim from a failed fetch, and the empty catch
 // swallows the rejection so the static bytes stand. THE PFP rides the wire's OPTIONAL
 // picture member (shape
 // (a) of the identity doctrine: the verified Google picture URL rendered directly; the
 // /avatar/<principal> proxy is the tailnet-privacy follow-up): when present, an <img> layers
 // over the initials INSIDE the same chip and the standing flips to data-avatar="resolved" —
 // the initials are NEVER removed, so a slow or failed image renders the initials fallback
-// under the never-blocks law (alt="" keeps a broken image invisible). There is no Sign in,
-// Sign out or account menu to drive: the login/logout routes moved to a follow-up PR (#12787).
+// under the never-blocks law (alt="" keeps a broken image invisible). Sign out is the target's
+// native form POSTing /auth/logout; the 303 lands back here, the read re-runs against the
+// cleared cookie, and Sign in returns.
 fn account_query_expr(selector: String) -> TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -3570,8 +3571,9 @@ fn account_query_expr(selector: String) -> TsExpr {
 fn account_swap_statements() -> List<TsStmt> {
   [
     ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
+    ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
     ts_if(
-      cond: ts_ident(name: "gunbcAccountSlot"),
+      cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
       then_stmt: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(
         callee: ts_member(
@@ -3598,6 +3600,7 @@ fn account_swap_statements() -> List<TsStmt> {
                         args: [ts_lit_str(value: "/")]),
                       property: "pop"),
                     args: [])),
+                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
                   ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
                   ts_expr_stmt(expr: ts_binop(
                     left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
@@ -3639,6 +3642,46 @@ fn account_swap_statements() -> List<TsStmt> {
             ]))]),
           property: "catch"),
         args: [ts_arrow(params: [], body: ts_block(stmts: []))])),
+        ts_const(name: "gunbcAccountTrigger", value: account_query_expr(selector: "[data-account-trigger]")),
+        ts_const(name: "gunbcAccountMenu", value: account_query_expr(selector: "[data-account-menu]")),
+        ts_if(
+          cond: ts_binop(left: ts_ident(name: "gunbcAccountTrigger"), op: "&&", right: ts_ident(name: "gunbcAccountMenu")),
+          then_stmt: ts_block(stmts: [
+            ts_on_click(obj: "gunbcAccountTrigger", body: [
+              ts_const(name: "gunbcMenuOpen", value: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
+              ts_expr_stmt(expr: ts_binop(
+                left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"),
+                op: "=",
+                right: ts_prefix(op: "!", expr: ts_ident(name: "gunbcMenuOpen")))),
+              ts_expr_stmt(expr: ts_call(
+                callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
+                args: [
+                  ts_lit_str(value: "aria-expanded"),
+                  ts_cond(test: ts_ident(name: "gunbcMenuOpen"), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false")),
+                ])),
+            ]),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
+              args: [
+                ts_lit_str(value: "click"),
+                ts_arrow(params: ["e"], body: ts_block(stmts: [
+                  ts_if(
+                    cond: ts_binop(
+                      left: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
+                      op: "&&",
+                      right: ts_binop(
+                        left: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])),
+                        op: "&&",
+                        right: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])))),
+                    then_stmt: ts_block(stmts: [
+                      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
+                      ts_expr_stmt(expr: ts_call(
+                        callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
+                        args: [ts_lit_str(value: "aria-expanded"), ts_lit_str(value: "false")])),
+                    ]), else_stmt: none),
+                ])),
+              ])),
+          ]), else_stmt: none),
       ]),
       else_stmt: none),
   ]

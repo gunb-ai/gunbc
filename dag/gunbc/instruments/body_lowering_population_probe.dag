@@ -19,7 +19,6 @@ import gunbc.tools.frontier_ingestion_probe {
   take_census_over
 }
 import v2.std.algebra { fold_list }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }

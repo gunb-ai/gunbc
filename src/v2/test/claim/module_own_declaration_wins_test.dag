@@ -4,7 +4,6 @@ import v2.test.claim.module_own_declaration_peer_alpha { alpha_entry }
 import v2.test.claim.module_own_declaration_peer_beta { beta_entry, shared_anchor }
 import v2.test.claim.module_own_declaration_importer_alpha { via_alpha }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -11,7 +11,6 @@ pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -67,11 +66,31 @@ pub enum LiteralUnfolding {
         succ: Rc<DeclarationRef>,
         prev_field: NonEmptyStr,
     },
-    BooleanUnfold {
-        true_variant: Rc<DeclarationRef>,
-        false_variant: Rc<DeclarationRef>,
-    },
     UnicodeScalarSequenceUnfold,
+}
+impl LiteralUnfolding {
+    pub fn zero(&self) -> Rc<DeclarationRef> {
+        match self {
+            LiteralUnfolding::PeanoUnfold { zero: __val, .. } => __val.clone(),
+            LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no zero on unit variant"),
+        }
+    }
+    pub fn succ(&self) -> Rc<DeclarationRef> {
+        match self {
+            LiteralUnfolding::PeanoUnfold { succ: __val, .. } => __val.clone(),
+            LiteralUnfolding::UnicodeScalarSequenceUnfold => panic!("no succ on unit variant"),
+        }
+    }
+    pub fn prev_field(&self) -> NonEmptyStr {
+        match self {
+            LiteralUnfolding::PeanoUnfold {
+                prev_field: __val, ..
+            } => __val.clone(),
+            LiteralUnfolding::UnicodeScalarSequenceUnfold => {
+                panic!("no prev_field on unit variant")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

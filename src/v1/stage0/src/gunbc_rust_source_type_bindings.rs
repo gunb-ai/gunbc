@@ -25,7 +25,6 @@ pub use crate::std_target_representation::{
     CheckpointRowDisposition, CheckpointRowMigration, RepresentationValue, SourceTypeTargetBinding,
     SourceVariantTargetValue, VariantParentKey,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -152,7 +151,7 @@ pub fn checkpoint_row_migration_rows() -> Rc<Vec<Rc<CheckpointRowMigration>>> {
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Bool".to_string(),
     disposition: Rc::new(CheckpointRowDisposition::ProvenUniqueKernelBinding {
-    proof: "std.types Bool has an exact row (RustBool); v2.std.logic Bool is gated structural by structural_declaration_modules_for and never reaches this row; what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow.".to_string(),
+    proof: "std.types Bool has an exact row (RustBool) and is the only declaration of Bool (v2.std.logic's second declaration and its structural route were retired by the Bool de-fork, gunbc.defork_type_name_census ResolvedByDeletingV2); what remains is the kernel bool_type mint (LitBool), and `bool` is a primitive token no use-line can shadow.".to_string(),
 }),
 }), Rc::new(CheckpointRowMigration {
     dag_name: "Unit".to_string(),

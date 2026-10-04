@@ -81,7 +81,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
@@ -224,7 +224,7 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
   ecmascript_facts_null
 ]
 
-data ecmascript_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
   Node {
