@@ -999,7 +999,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "Guaranteed", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "GuaranteedShortfall", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "LineItem", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
+  UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "Surplus", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "ZeroBased", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/test/claim/budget_tree_witness_test.dag", name: "admit_all", standing: ActiveDebt },
