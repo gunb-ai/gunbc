@@ -69,7 +69,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
 import gunbc.live_deploy.apply { role_singleton_disposition_of_decision }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
-import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 import gunbc.live_deploy.apply_receipt { RoleSingletonsAdopted }
 import gunbc.live_deploy.role_singleton_convergence {
   adopt_unmarked_holder_frontier,
@@ -553,7 +553,7 @@ data canonical_assessor_source: String = "module probe_canonical_assessor\nimpor
 
 fn blocking_rows(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows } => fold(rows |> filter(r => r.blocking), init: 0, f: (acc, r) => acc + r.count)
+    CensusObserved { rows } => census_total_count(rows: census_blocking_rows(rows: rows))
     CensusNotRunnable { cause: _ } => 0
   }
 }
