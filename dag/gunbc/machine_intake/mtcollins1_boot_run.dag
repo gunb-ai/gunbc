@@ -1804,14 +1804,14 @@ fn mtcollins1_census_phase(capture: String, subject: AdmittedBootSubject) -> Cen
   }
 }
 
+// runner_host IS THE ONE ACCEPTED RUNNER-HOST READING (gunbc.runner.runner_host_medium RunnerHostUp),
+// carried whole so the qualification receipt's GuestIdleMeminfoAndNproc reads it here rather than
+// re-parsing the capture; none for every other medium and every non-accepting end.
 type TerminalWatch {
   outcome: ProcessExit
   census_ended: Bool
   smpro_census: SmproReading
   screen_reported: List<String>
-  // THE ONE ACCEPTED RUNNER-HOST READING (gunbc.runner.runner_host_medium RunnerHostUp), carried
-  // whole so the qualification receipt's GuestIdleMeminfoAndNproc reads it here rather than
-  // re-parsing the capture; none for every other medium and every non-accepting end.
   runner_host: RunnerHostUp?
 }
 
