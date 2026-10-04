@@ -3,7 +3,7 @@ module test.claim.mtcollins1_runner_offer_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ci_fleet { mtcollins1_offer, mtcollins1_runner_host, mtcollins1_socket0_cpu }
 import gunbc.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }

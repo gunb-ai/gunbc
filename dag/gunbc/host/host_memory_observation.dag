@@ -7,7 +7,7 @@ import std.realization_width { byte_size_saturating_sub }
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.measure { kibibyte_count, kibibyte_to_byte_size }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
