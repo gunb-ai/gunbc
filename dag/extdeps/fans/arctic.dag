@@ -1,7 +1,7 @@
 module extdeps.fans.arctic
 
 import std.types { List }
-import std.measure { Micrometer, micrometer, millimeter, percent, rpm }
+import std.measure { micrometer, millimeter, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanMountingPattern,
@@ -106,6 +106,3 @@ data arctic_p8_mounting_pattern: FanMountingPattern = fan_mounting_pattern(
     convention: "80 mm axial fan square mounting pattern, unverified against a held part",
   },
 )
-
-// Published axial frame depth, separate from the conventional mounting-hole pattern.
-data arctic_p8_frame_depth: Micrometer = micrometer(count: 25000)
