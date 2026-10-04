@@ -1,5 +1,8 @@
 module gunbc.runner_microvm_slot_unit
 
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot, identity_is_workspace_execution_member }
+import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_credential_id, workspace_commissioning_submitter_credential_prefix }
+
 import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 
 import std.types { String, NonEmptyStr, List, Bool }
@@ -275,6 +278,7 @@ fn microvm_slot_unit_file(release_dir: String, timeout_stop_sec: String) -> Syst
         Environment { assignment: join([microvm_slot_env_name, "=", systemd_instance_name_specifier], "") as NonEmptyStr },
         Environment { assignment: join([microvm_release_dir_env_name, "=", release_dir], "") as NonEmptyStr },
         LoadCredential { identifier: workspace_launch_credential_id, source: join([workspace_launch_credential_prefix, systemd_instance_name_specifier], "") as NonEmptyStr },
+        LoadCredential { identifier: workspace_commissioning_submitter_credential_id, source: join([workspace_commissioning_submitter_credential_prefix, systemd_instance_name_specifier], "") as NonEmptyStr },
         ExecStart { command: microvm_slot_unit_execstart(release_dir: release_dir) },
         Restart { policy: "no" as NonEmptyStr },
       ],
@@ -389,4 +393,10 @@ fn microvm_slot_reserve_unit_file(release_dir: String) -> SystemdUnitFile {
     ],
     install: NotInstallable,
   }
+}
+
+// Installation must not recreate the CI reservation source after the shared purpose authority
+// transfers its dedicated slot to workspace use. Existing installed residue needs retirement.
+fn microvm_controller_requires_ci_reservation_unit() -> Bool {
+  !identity_is_workspace_execution_member(identity: srv1_microvm_shakedown_slot())
 }
