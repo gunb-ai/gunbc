@@ -1,7 +1,6 @@
 module gunbc.floor_non_verdict_classification
 
-import std.types { String }
-import v2.std.collection { List }
+import std.types { String, List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.algebra { any, count_where, fold_list, length }

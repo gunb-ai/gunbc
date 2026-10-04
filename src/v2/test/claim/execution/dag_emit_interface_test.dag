@@ -11,7 +11,7 @@ import v2.extdeps.languages.dag {
   dag_string_literal_encoded,
   dag_string_literal_node
 }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { AfterLineBreak, GrammarExpr, Choice, GrammarProduction, GrammarRoot, Nonterminal, RefuseOnMatch, Sequence, grammar_atom, grammar_expr_terminal, grammar_expr_terminal_lexeme }
 import v2.std.parse_refusal_reason { DataValueMissingAfterEq }

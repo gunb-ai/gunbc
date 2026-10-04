@@ -632,17 +632,6 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
     }
 }
 
-pub fn is_collection_filter_template(t: Rc<AlgebraFieldTemplate>) -> bool {
-    {
-        let proto = collection_filter_shape();
-        (((((t.return_type.clone() == proto.return_type.clone())
-            && (t.size_effect.clone() == proto.size_effect.clone()))
-            && (t.cost_shape.clone() == proto.cost_shape.clone()))
-            && (t.callback_element_position.clone() == proto.callback_element_position.clone()))
-            && (t.param_types.clone() == proto.param_types.clone()))
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CarrierRowMembership {

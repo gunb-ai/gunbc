@@ -41,6 +41,9 @@ import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
+import gunbc.instruments.type_declaration_use_census {
+  TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
+}
 import v2.compiler.name_resolve {
   resolution_context_namespace,
   closure_declarations_demand,
@@ -196,10 +199,10 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -2201,6 +2204,7 @@ type NativeLaneUniverse {
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
   | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
@@ -2212,11 +2216,16 @@ data native_driver_verb_census: String = "census"
 
 data native_driver_verb_census_resolve: String = "census-resolve"
 
+// THE FOURTH MODE, ITS OWN WORD: resolve AND infer every ingested module (native_census_module_inference),
+// for the folds that read inferred trees. Not census-resolve widened -- that verb's cost and meaning
+// stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
+data native_driver_verb_census_infer: String = "census-infer"
+
 data native_driver_verb_demand_census: String = "demand-census"
 
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | demand-census <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -2241,6 +2250,7 @@ type NativeDriverParseState
   = DriverSeekVerb
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverCensusInferRoots { roots: FreeMonoid<String> }
   | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateSeekPattern { facts_path: String }
@@ -2250,7 +2260,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census, census-resolve or demand-census"
+    " -- expected adjudicate, census, census-resolve, census-infer or demand-census"
   )
 }
 
@@ -2266,6 +2276,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_resolve {
         DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_census_infer {
+        DriverCensusInferRoots { roots: [] }
       } else if word == native_driver_verb_demand_census {
         DriverDemandCensusRoots { roots: [] }
       } else if word == native_driver_verb_adjudicate {
@@ -2280,6 +2292,8 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusResolveRoots { roots: roots } =>
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusInferRoots { roots: roots } =>
+      DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverDemandCensusRoots { roots: roots } =>
       DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
@@ -2324,6 +2338,8 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
     DriverCensusResolveRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverCensusInferRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
     DriverDemandCensusRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
     DriverAdjudicateSeekPattern { facts_path: _ } =>
@@ -2355,6 +2371,7 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
       match verb {
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverCensusInfer { source_roots: roots } => roots
         NativeDriverDemandCensus { source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
@@ -3904,6 +3921,88 @@ fn native_census_module_resolution(
       NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
     },
     context: step.context
+  }
+}
+
+// THE census-infer SUBJECT: ONE MODULE RESOLVED, THEN INFERRED. Shared by two folds, by agreement
+// (docs/plans/census-part-2-inference-design.md section 2a; the nominal-type plan's M0,
+// docs/plans/nominal-type-declaration-plan.md section 2): census part 2 reads the refused arm, one row
+// per chain; gunbc.instruments.type_declaration_use_census reads the resolved tree on BOTH infer arms
+// (declarations are resolve-level facts) and the inferred tree on the accepted one. It is the same
+// per-module infer the adjudicating lane demands (native_test_infer_resolved), so there is one infer
+// walk, not two. Unlike native_census_module_resolution it HOLDS the module's trees -- the folds need
+// them -- for the duration of one call; the loop keeps none of them past it.
+type NativeInferCensusOutcome
+  = NativeInferCensusFileRefused
+  | NativeInferCensusResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeInferCensusInferred { resolved: ResolvedTree, inferred: InferredTree }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
+
+type NativeInferCensusStep {
+  outcome: NativeInferCensusOutcome
+  context: NativeTestContext
+}
+
+fn native_census_module_inference(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeInferCensusStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeInferCensusStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
+          Accepted { value: prepared, diagnostics: _ } =>
+            NativeInferCensusInferred { resolved: resolved, inferred: prepared.inferred }
+          Rejected { diagnostics: d } =>
+            NativeInferCensusInferRefused { resolved: resolved, chain: d }
+        }
+    },
+    context: step.context
+  }
+}
+
+// THE TYPE-DECLARATION CENSUS'S FOLD, DISPATCHED FROM THE census-infer WALK (the nominal-type plan's
+// M0, gunbc.instruments.type_declaration_use_census). A module the context refused or that did not
+// resolve has no reference index and is UNREACHED with its stage and fatal reason; one that resolved
+// contributes its declarations, and its casts are typed by its inferred tree or, where infer refused,
+// counted undecided under the infer cause.
+fn native_census_infer_type_contribution(
+  context: NativeTestContext,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> TypeCensusContribution {
+  match outcome {
+    NativeInferCensusFileRefused =>
+      type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
+      type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
+    NativeInferCensusInferred { resolved: r, inferred: i } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
+    NativeInferCensusInferRefused { resolved: r, chain: c } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
+  }
+}
+
+fn native_census_normalized_tree(context: NativeTestContext, module: String) -> Optional<NormalizedTree> {
+  match context.resolution {
+    Accepted { value: shared, diagnostics: _ } => map_get(shared.roots.by_name, qualified_name_from_dotted_string(dotted: module))
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 

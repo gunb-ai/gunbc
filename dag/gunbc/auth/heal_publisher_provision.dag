@@ -55,7 +55,7 @@ fn rest_ok(o: RestOutcome) -> Bool {
 }
 
 // ONE DEDICATED FEDERATION, AS A RECORD. The heal publisher was the first job to get its own pool,
-// provider and service account; the Mt. Collins boot (gunbc.auth.mtcollins1_boot_federation) is the
+// provider and service account; the managed-host boot (gunbc.auth.managed_host_boot_federation) is the
 // second. The provisioning below was written against the heal publisher's names, and a second copy
 // differing only in those names would be two authorities for one provisioning protocol (DESIGN §3),
 // so the names are a record and each federation binds its own. Everything else -- the 409 handling,
