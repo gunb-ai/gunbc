@@ -1,0 +1,51 @@
+module test.claim.ipmitool_hpm_check_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable,
+  HpmVersionHeld, HpmVersionAbsent, hpm_check_table_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE TABLE READER AT ITS INTERFACE, over the one retained capture and edits of it.
+fn rows_of(t: HpmCheckTable) -> Int {
+  match t {
+    HpmCheckRead { rows: rs } => count(rs)
+    HpmCheckUpgradeVariant { header: _ } => -1
+    HpmCheckUnreadable { detail: _ } => -2
+  }
+}
+
+test fn the_retained_capture_reads_five_components_with_their_active_cells_verbatim() -> Bool {
+  match hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32) {
+    HpmCheckRead { rows: rs } => {
+      let app = filter(rs, r => (r.name as String) == "APP").first()
+      let app_ok = match app {
+        Present { value: r } =>
+          r.id == 1 && r.cold_reset_required
+            && (match r.active { HpmVersionHeld { rendering: v } => (v as String) == "0.32 01112100" HpmVersionAbsent => false })
+            && (match r.backup { HpmVersionAbsent => true HpmVersionHeld { rendering: _ } => false })
+        Absent => false
+      }
+      count(rs) == 5 && app_ok && any(rs, r => (r.name as String) == "CPLD" && r.id == 5)
+    }
+    HpmCheckUpgradeVariant { header: _ } => false
+    HpmCheckUnreadable { detail: _ } => false
+  }
+}
+
+// THE UPGRADE-PROGRESS TABLE NAMES A File COLUMN: it refuses by name instead of being read as versions.
+test fn the_upgrade_progress_table_refuses_by_name() -> Bool {
+  let upgrade = replace(s: ipmitool_hpm_check_bmc0_32, from: "|     Backup      |", to: "|      File       |")
+  rows_of(t: hpm_check_table_of(stdout: upgrade)) == -1
+}
+
+test fn a_row_that_is_not_five_cells_refuses_and_no_table_refuses() -> Bool {
+  let broken = replace(s: ipmitool_hpm_check_bmc0_32, from: "|*  2|BIOS         |", to: "|*  2 BIOS         |")
+  rows_of(t: hpm_check_table_of(stdout: broken)) == -2 && rows_of(t: hpm_check_table_of(stdout: "Error: Unable to establish IPMI v2 / RMCP+ session\n")) == -2
+}

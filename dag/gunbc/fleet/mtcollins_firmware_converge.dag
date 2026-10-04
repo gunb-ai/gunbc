@@ -25,6 +25,10 @@ import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import extdeps.standards.picmg_hpm1 { extdeps_external_authority_anchor }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
+  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
+}
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { same_intake_subject }
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_socket_count }
@@ -254,9 +258,13 @@ fn sel_effect_of(t: FirmwareTarget) -> SelEffect {
 }
 
 // WHERE EACH TARGET'S VERSION IS READ (mtcollins1, 2026-10-02/03). hpm check reports BMC, BIOS (0ACOD014
-// as 0.14) and the MB CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
+// as 0.14) and the mainboard CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
 // (BOOTFW) read 0.00 before and after, so the SCP is read from SMpro register 0x01 instead. A readback
 // taken from the route that cannot see the target would be a reading of nothing.
+//
+// THE COMPONENT NAME IS THE ONE THE CONTROLLER PRINTS, NOT THE VENDOR'S PROSE. The mainboard CPLD is the
+// row `CPLD`, id 5, on BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32) and on
+// 0.45.3 (ipmitool_hpm_upgrade_cpld_row_bmc0_45_3); this route named it `MB CPLD`, which no table lists.
 type VersionReadbackRoute
   = HpmCheckComponent { component: NonEmptyStr }
   | SmproVersionRegister { offset: Int }
@@ -266,7 +274,7 @@ fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
     BmcController => HpmCheckComponent { component: "APP" }
     HostBios => HpmCheckComponent { component: "BIOS" }
     ScpFirmware => SmproVersionRegister { offset: 1 }
-    MainboardCpld => HpmCheckComponent { component: "MB CPLD" }
+    MainboardCpld => HpmCheckComponent { component: "CPLD" }
   }
 }
 
@@ -295,6 +303,62 @@ type VersionReadback {
 
 fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>, observed_at: EpochMs) -> VersionReadback {
   VersionReadback { reading: reading, decode: CitedToAuthority { authority: extdeps_external_authority_anchor }, observed_at: observed_at }
+}
+
+// A TARGET'S VERSION FROM ONE hpm check TABLE, through its route's component name. The active cell's
+// leading `major.minor` is the HPM.1 firmware revision; its auxiliary bytes are not decoded. A name the
+// table does not list, or lists twice, is inaccessible with the selection's own text, never an
+// absence: the route, not the target, is what is wrong then.
+fn hpm_check_version_readback(table: HpmCheckTable, component: NonEmptyStr, observed_at: EpochMs) -> VersionReadback {
+  hpm_check_readback(reading: hpm_check_version_reading(table: table, component: component), observed_at: observed_at)
+}
+
+fn hpm_check_version_reading(table: HpmCheckTable, component: NonEmptyStr) -> EnsureObservation<FirmwareSemanticVersion> {
+  match table {
+    HpmCheckUpgradeVariant { header: h } => EnsureInaccessible { reason: concat("hpm check printed the upgrade-progress table: ", h as String) }
+    HpmCheckUnreadable { detail: d } => EnsureInaccessible { reason: concat("hpm check output is unreadable: ", d as String) }
+    HpmCheckRead { rows: rs } =>
+      match hpm_component_named(rows: rs, name: component) {
+        HpmComponentNotListed { name: n, listed: ls } => EnsureInaccessible { reason: join(["hpm check lists no component named '", n as String, "'; it lists ", join(map(ls, x => x as String), ", ")], "") }
+        HpmComponentListedTwice { name: n, ids: ids } => EnsureInaccessible { reason: join(["hpm check lists '", n as String, "' under ", to_string(count(ids)), " ids"], "") }
+        HpmComponentSelected { row: r } =>
+          match r.active {
+            HpmVersionAbsent => EnsureInaccessible { reason: join(["hpm check lists '", r.name as String, "' with no active version"], "") }
+            HpmVersionHeld { rendering: v } =>
+              match hpm_revision_of(rendering: v) {
+                Present { value: version } => EnsureObserved { evidence: version }
+                Absent => EnsureInaccessible { reason: join(["hpm check's active cell for '", r.name as String, "' is not major.minor: ", v as String], "") }
+              }
+          }
+      }
+  }
+}
+
+fn hpm_revision_of(rendering: NonEmptyStr) -> FirmwareSemanticVersion? {
+  let words: List<String> = split(s: rendering as String, delimiter: " ")
+  match words.first() {
+    Absent => none
+    Present { value: w } => {
+      let parts: List<String> = split(s: w, delimiter: ".")
+      if count(parts) != 2 { none } else {
+        match parse_int(s: text_of(xs: parts, i: 0)) {
+          Absent => none
+          Present { value: major } =>
+            match parse_int(s: text_of(xs: parts, i: 1)) {
+              Absent => none
+              Present { value: minor } => Present { value: FirmwareSemanticVersion { major: major, minor: minor, patch: 0 } }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn text_of(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
 }
 
 // The SCP readback, from the SMpro probe the boot diagnostics already realize: a word read is a version
