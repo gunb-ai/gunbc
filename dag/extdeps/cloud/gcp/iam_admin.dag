@@ -4,9 +4,9 @@ module extdeps.cloud.gcp.iam_admin
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire }
-import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
+import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpPermissionProbeWire }
 import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
-import extdeps.ietf.http_semantics { POST }
+import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
 
@@ -60,11 +60,130 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // classification that could not see it would call a pool single-provider while a second admission
 // rule waits one call away. GetWorkloadIdentityPool and it are what a provisioning run reads before
 // it writes anything through an existing pool (gunbc.auth.heal_publisher_provision).
+
+// Custom roles are observed as exact permission sets, including disabled/deleted standing.
+type GcpCustomRoleWire {
+  name: String
+  title: String
+  included_permissions: List<String>? from "includedPermissions"
+  stage: String?
+  deleted: Bool?
+}
+
+// A newly observed pool may return HTTP 200 with an entirely empty policy. Missing
+// etag is a valid wire observation, not authority for an unconditional replacement.
+// Only presence is consumed: pool policies with audit configuration are refused
+// by this bootstrap rather than reconstructed without their logging settings.
+type GcpPoolAuditConfigWire { service: String? }
+
+type GcpPoolPolicyWire {
+  audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs"
+  bindings: List<GcpBinding>?
+  etag: String?
+  version: Int?
+}
+
 service gcp.IamAdmin {
   config {
     endpoint: "https://iam.googleapis.com"
     auth: Bearer
     auth_input: access_token
+  }
+
+  operation GetProjectRole {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr }
+    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool? }
+    readonly
+    transport rest { method: GET, path: "/v1/projects/\{project_id\}/roles/\{role_id\}" }
+    response {
+      200 => GcpCustomRoleWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreateProjectRole {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, role_id: NonEmptyStr, title: NonEmptyStr, permissions: List<String> }
+    output { name: String, included_permissions: List<String>? from "includedPermissions", stage: String?, deleted: Bool? }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/roles",
+      body: { roleId: role_id, role: { title: title, includedPermissions: permissions, stage: "GA" } } }
+    response {
+      200 => GcpCustomRoleWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation GetWorkloadIdentityPoolIamPolicy {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:getIamPolicy",
+      body: { options: { requestedPolicyVersion: 3 } } }
+    response {
+      200 => GcpPoolPolicyWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation SetWorkloadIdentityPoolIamPolicy {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, policy: GcpPolicy }
+    output { audit_configs: List<GcpPoolAuditConfigWire>? from "auditConfigs", bindings: List<GcpBinding>?, etag: String?, version: Int? }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:setIamPolicy", body: { policy: policy } }
+    response {
+      200 => GcpPoolPolicyWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation TestServiceAccountIamPermissions {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, service_account: ServiceAccountEmail, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/serviceAccounts/\{service_account\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation TestWorkloadIdentityPoolIamPermissions {
+    requires Network
+    input { access_token: Secret, project_id: GcpProjectId, pool_id: NonEmptyStr, permissions: List<String> }
+    output { permissions: List<String>? }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}/locations/global/workloadIdentityPools/\{pool_id\}:testIamPermissions", body: { permissions: permissions } }
+    response {
+      200 => GcpPermissionProbeWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
   }
 
   operation CreateServiceAccount {

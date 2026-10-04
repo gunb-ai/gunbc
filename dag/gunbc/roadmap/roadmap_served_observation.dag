@@ -2,7 +2,8 @@ module gunbc.roadmap_served_observation
 
 import gunbc.site.markup { page_render_refusal_body }
 
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read }
+import gunbc.roadmap.roadmap_event_log { RoadmapStandings }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_carrier_layout_for_instance, roadmap_standings_read, CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
@@ -231,7 +232,7 @@ fn served_attempt_revision_observations(instance: HostDashboardInstance, attempt
 // that refuses degrades to the empty roster, never a failed page.
 fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
   let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
-  let standings = roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
+  let standings = served_standings_after_snapshot_close(read: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)))
   let profiles = served_observation_profiles_for_instance(instance: instance)
   let page = match observed {
     WorkflowAttemptsObserved { attempts } =>
@@ -252,6 +253,21 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
   match try_serialize_html_source(node: page) {
     EmitOk { html } => ServedObservationSurface { kind: DailyPage, status: 200, body: html }
     EmitRejected { reason } => ServedObservationSurface { kind: DailyPage, status: 500, body: page_render_refusal_body(reason: reason) }
+  }
+}
+
+// THE DAILY PAGE HAS NO SURFACE FOR A LEAKED STANDINGS SNAPSHOT. The page renders standings or the
+// reason they are unobserved; a worktree the read could not remove is neither, and writing it into
+// StandingsUnobserved would replace standings that WERE read with a refusal. So the standing of the
+// snapshot is matched here by name and the standings pass through unchanged. THIS FAILURE ITSELF
+// IS RECORDED NOWHERE. A snapshot left registered is listed by the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance) for as long as
+// it stays registered; the census does not know a removal failed, and the page does not render it.
+fn served_standings_after_snapshot_close(read: CarrierClosed<RoadmapStandings>) -> RoadmapStandings {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
   }
 }
 
