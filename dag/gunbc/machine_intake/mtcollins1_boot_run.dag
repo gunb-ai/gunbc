@@ -77,12 +77,13 @@ import gunbc.machine_intake_sol_hold {
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_probes, mtcollins1_smpro_probe_count }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
+import gunbc.machine_intake_mtcollins1_power_on_account { CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootDiagnosticBundle, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
   SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
   SensorsNotTaken, mtcollins1_boot_sensors, SmproProbed, SmproNotTaken,
   mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_console,
-  mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_bundle_findings, bundle_write_receipt_line,
+  mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_findings, harness_finding_text, bundle_write_receipt_line,
   mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
   BmcReachability, bmc_reachability_text, mtcollins1_boot_bmc_reachability,
@@ -2551,6 +2552,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
   match stage {
     ActuationNotPoweredOn { reason: why } =>
       MtCollins1BootRunRecord {
+        census_ended: false,
         media: media,
         handoff_media: handoff_media,
         end_media: end_media,
@@ -2564,6 +2566,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
+        census_ended: false,
         media: media,
         handoff_media: handoff_media,
         end_media: end_media,
@@ -2577,6 +2580,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
       MtCollins1BootRunRecord {
+        census_ended: true,
         media: media,
         handoff_media: handoff_media,
         end_media: end_media,
@@ -2617,7 +2621,7 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
   let bundle = mtcollins1_boot_bundle_of_attempt(attempt: attempt, run: run, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env))
   let write = mtcollins1_boot_write_bundle(bundle: bundle)
   let concluded = mtcollins1_boot_outcome_after_bundle(outcome: attempt.outcome, bundle: bundle, write: write)
-  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  let findings = mtcollins1_boot_findings(bundle: bundle)
   let exit_word = match concluded { ExitSuccess => "ok"  ExitFailure { code: _, reason: _ } => "refused" }
   let receipt_body = join([
     "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
@@ -2625,7 +2629,9 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
     concat("exit=", exit_word),
     bundle_write_receipt_line(w: write),
     kvm_observer_receipt_line(rec: attempt.screen),
-    concat("findings=", if count(findings) == 0 { "none" } else { join(findings, "; ") }),
+    concat("account=", join(mtcollins1_power_on_account_notes(a: findings.account), "; ")),
+    concat("coverage=", join(map(filter(findings.account.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")),
+    concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)
   if !kept.success {

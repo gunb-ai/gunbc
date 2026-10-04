@@ -53,7 +53,6 @@ data shared_index_residency_asserted_after_the_run: RungDrop = RungDrop {
       "v1_compiler::cli_run::handle_serve",
       "v1_compiler::cli_run::install_group_syntax",
       "v1_compiler::cli_run::install_output_policy",
-      "v1_compiler::cli_run::materialization_provider_consumer::build_materialization_provider_ctx_cold",
       "v1_compiler::cli_run::measure_selected_entry_closure_overlap",
       "v1_compiler::cli_run::prime_witness_execution_legs_from_authority",
       "v1_compiler::cli_run::project_witness_cost_receipt",

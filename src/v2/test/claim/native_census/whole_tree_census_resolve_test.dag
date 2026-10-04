@@ -14,6 +14,11 @@ import v2.compiler.compile {
   native_census_module_resolution,
   native_census_modules,
   native_census_residual_rows,
+  NativeCensusCauseGroup,
+  native_census_cause_groups_add_residual,
+  native_census_cause_groups_empty,
+  native_census_cause_groups_from_file_refusals,
+  native_census_cause_group_rows,
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
@@ -465,4 +470,71 @@ fn census_probe_observed_complete(outcome: NativeCensusModuleOutcome) -> Bool {
         ObservationIncomplete { reason: _ } => false
       }
   }
+}
+
+// THE CENSUS GROUPS BY THE CAUSE THAT FIRED, AND THIS IS THE CONTROL THAT CAN TELL. The advised
+// module's one chain is [declared-elsewhere advisory, unbound fatal], produced by the real resolver
+// above: its head and its fatal DIFFER, which is the only shape in which grouping by head and
+// grouping by fatal give different answers. RED if the grouping keyed on the head -- the group would
+// be named resolve_unbound_name_is_declared_elsewhere, an advisory that refused nothing. The head is
+// still asserted on the member, so a grouping that dropped it is red too.
+fn census_cause_group_of(groups: List<NativeCensusCauseGroup>, reason: Symbol) -> Int {
+  fold_list(xs: groups, empty: 0, cons: fn(n, g) { if g.fatal_reason == reason { n + length(xs: g.members) } else { n } })
+}
+
+test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows, two: _, advised_two: _ } =>
+      {
+        let groups = fold_list(xs: rows, empty: native_census_cause_groups_empty(), cons: fn(acc, row) {
+          native_census_cause_groups_add_residual(groups: acc, row: row)
+        })
+        let listed = native_census_cause_group_rows(groups: groups)
+        length(xs: listed) == 1
+          && census_cause_group_of(groups: listed, reason: ^resolve_reason_unbound_symbol) == 1
+          && census_cause_group_of(groups: listed, reason: ^resolve_unbound_name_is_declared_elsewhere) == 0
+          && fold_list(xs: listed, empty: true, cons: fn(acc, g) {
+            fold_list(xs: g.members, empty: acc, cons: fn(acc2, m) { acc2 && m.head_reason == ^resolve_unbound_name_is_declared_elsewhere })
+          })
+      }
+  }
+}
+
+// THE FRONT-END HALF, AT ITS OWN INTERFACE. The rows are SUPPLIED (DESIGN section 3: a witness
+// discriminates at one interface) because the boundary under test is the grouping, and the real
+// front end's production of a head-distinct file refusal is the poison specimen above. Three rows
+// share ONE head and carry TWO fatals: grouped by head they are one group of three, grouped by fatal
+// two groups of two and one. Groups are in first-appearance order, so the tokenize group, first
+// seen on row a, leads; a fold that inverted the order is red here.
+fn census_first_group_reason(groups: List<NativeCensusCauseGroup>) -> Symbol {
+  match groups {
+    Empty => ^census_no_group
+    Cons { head: g, tail: _ } => g.fatal_reason
+  }
+}
+
+fn census_supplied_file_refusal(path: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
+  NativeTestFileRefusal {
+    path: path,
+    module: optional_absent(),
+    head_reason: ^parse_grammar_choice_overlap_residue,
+    fatal_reason: fatal,
+    chain: []
+  }
+}
+
+test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
+  let refusals = [
+    census_supplied_file_refusal(path: ^census_supplied_a, fatal: ^tokenize_lex_e0_source_not_exhausted),
+    census_supplied_file_refusal(path: ^census_supplied_b, fatal: ^parse_unexpected_token),
+    census_supplied_file_refusal(path: ^census_supplied_c, fatal: ^tokenize_lex_e0_source_not_exhausted)
+  ]
+  let groups = native_census_cause_groups_from_file_refusals(refusals: refusals)
+  let listed = native_census_cause_group_rows(groups: groups)
+  length(xs: listed) == 2
+    && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
+    && census_cause_group_of(groups: listed, reason: ^parse_unexpected_token) == 1
+    && census_cause_group_of(groups: listed, reason: ^parse_grammar_choice_overlap_residue) == 0
+    && census_first_group_reason(groups: listed) == ^tokenize_lex_e0_source_not_exhausted
 }

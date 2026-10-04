@@ -1,12 +1,13 @@
 module v2.compiler.test_marker_capture
 
+import std.types { List }
 import v2.compiler.parse { ParseTree }
 import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
-import v2.std.collection { Absent, List, Present, Optional }
+import v2.std.collection { Absent, Present, Optional }
 import std.algebra { list_snoc_item }
 import v2.std.declaration_marker { TestMarkedDeclaration, TestMarkerChannel }
 import v2.std.diagnostic {
@@ -97,36 +98,23 @@ fn test_marker_named_child(n: Node, name: Symbol) -> Optional<Node> {
   }
 }
 
-// The shell is `sequence(ident marker, fn_decl | data_decl)`. Both declaration forms put the
-// declared ident immediately after their leading keyword, so one reading covers both.
+// The shell is `sequence(test, fn_decl | data_decl)`. The marker is the grammar's exact word `test`
+// (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr), so the production's identity IS the mark
+// and there is no marker spelling left to check here; another word refuses at parse. Both declaration
+// forms put the declared ident immediately after their leading keyword, so one reading covers both.
 fn test_marked_declaration(shell: Node) -> Outcome<TestMarkedDeclaration> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
     Present { value: captured } =>
-      match test_marker_named_child(n: captured, name: ^grammar_sequence_left_node_projection) {
+      match test_marker_named_child(n: captured, name: ^grammar_sequence_right_node_projection) {
         Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
-        Present { value: marker_node } =>
-          if test_marker_lexeme_is_test(marker_node: marker_node) {
-            match test_marker_named_child(n: captured, name: ^grammar_sequence_right_node_projection) {
-              Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_shape_unread, n: shell))
-              Present { value: decl } =>
-                match test_marked_declared_name(decl: decl) {
-                  Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_name_unread, n: decl))
-                  Present { value: name } =>
-                    outcome_accepted(value: TestMarkedDeclaration { name: name })
-                }
-            }
-          } else {
-            outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_marker_not_test, n: marker_node))
+        Present { value: decl } =>
+          match test_marked_declared_name(decl: decl) {
+            Absent => outcome_rejected(d: test_marker_diagnostic(reason: ^test_marker_reason_name_unread, n: decl))
+            Present { value: name } =>
+              outcome_accepted(value: TestMarkedDeclaration { name: name })
           }
       }
-  }
-}
-
-fn test_marker_lexeme_is_test(marker_node: Node) -> Bool {
-  match dag_binding_branded_atom_identity(node: marker_node) {
-    Present { value: marker } => marker == ^test
-    Absent => false
   }
 }
 

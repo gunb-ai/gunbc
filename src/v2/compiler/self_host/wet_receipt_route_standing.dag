@@ -1,5 +1,6 @@
 module v2.compiler.self_host.wet_receipt_route_standing
 
+import std.types { List }
 import tools.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   module_behavioral_transport_config_for
@@ -15,7 +16,6 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
 import tools.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.text { String }

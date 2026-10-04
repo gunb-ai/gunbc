@@ -127,11 +127,6 @@ test fn table_present_string_refuses_under_structural_declaration_text() -> Bool
     == none
 }
 
-test fn table_present_string_refuses_under_structural_declaration_string_type() -> Bool {
-  rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/string_type.dag" }))
-    == none
-}
-
 test fn table_present_bool_refuses_under_structural_declaration_logic() -> Bool {
   rust_scalar_checkpoint_reference_base(decision: type_realization_decision(target: Rust, dag_name: "Bool", provenance: CorpusDeclared { decl_file: "src/v2/std/logic.dag" }))
     == none
@@ -171,11 +166,6 @@ test fn literal_suffix_positive_control_symbol_not_enrolled() -> Bool {
 // different consumer, its own executed specimen per declaration identity.
 test fn literal_suffix_refuses_under_structural_declaration_text() -> Bool {
   literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "src/v2/std/text.dag" }))
-    == none
-}
-
-test fn literal_suffix_refuses_under_structural_declaration_string_type() -> Bool {
-  literal_suffix(decision: type_realization_decision(target: Rust, dag_name: "String", provenance: CorpusDeclared { decl_file: "dag/std/string_type.dag" }))
     == none
 }
 

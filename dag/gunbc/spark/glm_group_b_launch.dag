@@ -1,6 +1,8 @@
 module gunbc.spark.glm_group_b_launch
 
 import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_vllm_engine_ready_timeout }
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Second, second, second_count, Mebibyte, mebibyte, mebibyte_count }
@@ -94,7 +96,7 @@ data glm_group_b_group: FabricGroup = glm_group_b_serving_assignment.group
 // rendezvous defaults to 601 seconds; a four-rank group whose members are still materialising exceeds
 // that and dies with "Timed out waiting for clients", which is a different failure from anything about
 // the model and reports nothing about it.
-data glm_group_b_engine_ready_timeout: Second = second(count: 3600)
+data glm_group_b_engine_ready_timeout: Second = glm_5_3_flash_vllm_engine_ready_timeout
 
 // A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
 // vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
@@ -125,7 +127,7 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
 //
 // THE PROFILE IS THE RESTORATION INTENT'S DERIVATION, NOT AN AUTHORED ROW. The executable profile
 // is gunbc.spark.group_b_serving_capacity group_b_restoration_executable: the declared seat
-// population (262144 tokens x the experiment subject's seats) put through profile_for_intent, which
+// population (262144 tokens x the experiment subject's seats) put through profile_for_envelope (at the floor envelope), which
 // is the same value gunbc.spark.arm_memory_fit prices and the experiment plan plans on. The authored
 // sixteen-sequence row (gunbc.spark.serving_arm glm_native_concurrent_profile) is the configuration
 // whose units crash-looped from 2026-09-18, and a launch that rendered it beside a proof priced on
@@ -155,6 +157,7 @@ fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
         profile: executable.profile,
         deployment_env: glm_group_b_deployment_env(),
         container: glm_native_arm_container,
+        promotion_receipts: no_promotion_receipts,
       )
   }
 }

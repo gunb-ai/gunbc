@@ -133,11 +133,10 @@ test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
   clean_control_report().import_channel > 0
 }
 
-// The `test` marker is consumed into NormalizedTree.test_markers; it is counted there, and the
-// test fn it marks is still found and conserved as an ordinary declaration.
-test fn the_clean_control_routes_the_test_marker_to_its_channel_holds() -> Bool {
-  clean_control_report().test_marker_channel == 1
-}
+// The `test` marker is the grammar's exact word (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr),
+// class-stamped like `service`, so it is not an authored atom and this population has no channel to
+// count it in; the clean control above, which carries a `test fn`, is admitted with it. The marker's
+// own capture and refusal are held by v2.test.claim.parse.test_marker_channel.
 
 // ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
 
@@ -500,8 +499,15 @@ fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
   r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
 }
 
+// The report is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share
+// (the clean_control_report pattern): building the planted admission over the whole grammar inside the
+// claim put it over the new-witness budget once the grammar grew its per-kind productions (XL-2 PR3b-i).
+fn refused_normalization_report() -> ReferenceConservationReport {
+  reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+}
+
 test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
-  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+  let r = refused_normalization_report()
   refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
 }
 

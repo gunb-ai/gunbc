@@ -394,15 +394,16 @@ data mtcollins1_socket1_hypotheses: List<MtCollins1DiagnosisHypothesis> = [
 // nominal, so "socket 1 is defective" says more than the readings do. What a boot establishes is
 // narrower: whether socket 1 joined the two-socket bring-up, and if not, the last stage its SMpro
 // reports while socket 0 carries on alone. A reading carries the firmware summary's active-socket
-// count and Inter Socket Connection lines, the console checkpoints socket 1 posted (the 1xxxxxxx
-// CP lines), and socket 1's SMpro CUR_BOOTSTAGE word as the BMC read it in that boot.
+// count and Inter Socket Connection lines, and socket 1's SMpro CUR_BOOTSTAGE and BOOTSTAGE words as
+// the BMC read them in that boot. It carries NO console checkpoint: attributing an opaque CP token to
+// a socket decodes the token, which the public corpus does not do (docs/plans/power-on-sequence-model.md,
+// ruling R2); that classification belongs to the gunbc-private refinement slice.
 type MtCollins1SecondaryJoinReading {
   run: NonEmptyStr
   capture_sha256: NonEmptyStr
   smpro_artifact_sha256: NonEmptyStr?
   active_sockets: Nat
   inter_socket_connection_lines: List<NonEmptyStr>
-  secondary_checkpoints: List<NonEmptyStr>
   secondary_cur_bootstage_word: Int?
   secondary_bootstage_word: Int?
 }
@@ -419,7 +420,6 @@ type MtCollins1SecondaryJoinOutcome
   | SecondaryJoinTimeout {
       secondary_last_stage: SmproBootProgress
       inter_socket_links_reported: Bool
-      secondary_host_checkpoints: List<NonEmptyStr>
     }
   | SecondaryJoinUnclassified { reason: NonEmptyStr }
 
@@ -436,7 +436,6 @@ fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1
         Present { value: r } => SecondaryJoinTimeout {
           secondary_last_stage: smpro_boot_progress_of(cur_bootstage_word: c, bootstage_word: r),
           inter_socket_links_reported: links,
-          secondary_host_checkpoints: reading.secondary_checkpoints,
         }
       }
     }
@@ -454,14 +453,13 @@ data mtcollins1_secondary_join_reading_reference: MtCollins1SecondaryJoinReading
     "Inter Socket Connection 1   : Width: x16 / Speed 25 GT/s",
   ],
   smpro_artifact_sha256: Absent,
-  secondary_checkpoints: ["CP: 1ff00900", "CP: 10f01902", "CP: 1ff00a00", "CP: 1ff00b01", "CP: 1ff00c00", "CP: 1ff01000", "CP: 1ff01101", "CP: 1ff01200"],
   secondary_cur_bootstage_word: Absent,
   secondary_bootstage_word: Absent,
 }
 
 // Run 37062170720 (2026-10-02): a second, different CPU in socket 1 (an engineering sample) and its
 // module moved to J25 (SK1 MC4, the other memory-power half). The summary reports one active
-// socket and no Inter Socket Connection lines, the console carries no socket-1 checkpoint, and the
+// socket and no Inter Socket Connection lines, and the
 // BMC read socket 1's pair mid-boot as CUR_BOOTSTAGE 0x0001 and BOOTSTAGE 0x03ff, while socket 0
 // read UEFI. That pair is inconsistent (reported stage DDR initialization ahead of current PMpro).
 data mtcollins1_secondary_join_reading_two_cpus: MtCollins1SecondaryJoinReading = MtCollins1SecondaryJoinReading {
@@ -470,7 +468,6 @@ data mtcollins1_secondary_join_reading_two_cpus: MtCollins1SecondaryJoinReading 
   smpro_artifact_sha256: Present { value: "023fa83b1814d1683d7bb835ec38a8bb0a2e54b86627283b3770ea89629aa7d9" },
   active_sockets: 1,
   inter_socket_connection_lines: [],
-  secondary_checkpoints: [],
   secondary_cur_bootstage_word: Present { value: 1 },
   secondary_bootstage_word: Present { value: 1023 },
 }
@@ -503,4 +500,40 @@ data mtcollins1_cpu0_fingerprint_comparison: MtCollins1CpuFingerprintComparison 
   reference_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1065), avs_voltage: millivolt(count: 1027), warranty: 0 },
   current: mtcollins1_secondary_join_reading_two_cpus,
   current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1065), avs_voltage: millivolt(count: 1027), warranty: 0 },
+}
+
+// SOCKET 1 PIN DAMAGE, REPORTED BY THE OPERATOR, 2026-10-03. While removing the socket-1 CPU for the
+// one-socket test, thermal paste fell onto socket 1's pins; cleaning it with a microfiber cloth
+// snagged the pins and probably bent some. From this date a socket-1 failure cannot be told apart
+// from this damage. That consequence is a typed gate, derived from the report's own date and read by
+// the history and hypothesis renderers, not prose. Socket 1 has been EMPTY since this removal.
+type MtCollins1SocketDamageReport {
+  socket: Nat
+  report: MtCollins1PhysicalFactStanding
+  account: NonEmptyStr
+}
+
+// THE GATE THE DAMAGE IMPOSES ON LATER SOCKET EVIDENCE. Evidence about that socket dated after the
+// damage says nothing about the pre-damage fault until the socket has been inspected; a damage
+// report with no date still gates, but from an unknown point.
+type MtCollins1SocketEvidenceGate
+  = SocketEvidenceRequiresInspectionSince { socket: Nat, since: SpecificationDocumentDate }
+  | SocketEvidenceRequiresInspectionUndated { socket: Nat }
+
+fn socket_evidence_gate(damage: MtCollins1SocketDamageReport) -> MtCollins1SocketEvidenceGate {
+  match damage.report {
+    OperatorByEyeReport { observed_on: d, relay: _, method: _ } => SocketEvidenceRequiresInspectionSince { socket: damage.socket, since: d }
+    VendorFigureFact { figure: _, standing: _ } => SocketEvidenceRequiresInspectionUndated { socket: damage.socket }
+    FirmwareTrainedFact { run_id: _, artifact: _, roster_lines: _ } => SocketEvidenceRequiresInspectionUndated { socket: damage.socket }
+  }
+}
+
+data mtcollins1_socket1_pin_damage_report: MtCollins1SocketDamageReport = MtCollins1SocketDamageReport {
+  socket: 1,
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 10, day: 3 },
+    relay: "operator to session eager-gull-22, chat, 2026-10-03",
+    method: "Operator's own account of the CPU removal; no magnified inspection has been made.",
+  },
+  account: "Thermal paste dropped onto the socket-1 pins during CPU removal; a microfiber cloth used to clean it snagged on the pins and probably bent some. The operator judged it not too bad.",
 }

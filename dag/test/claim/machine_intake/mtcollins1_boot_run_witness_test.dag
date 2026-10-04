@@ -532,7 +532,7 @@ test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool {
 }
 
 // THE FLEET KEY IS MATERIALIZED IN THE BOOT'S OWN JOB. Since the boot became its own job (its
-// identity is the dedicated mtcollins1-boot federation, gunbc.auth.mtcollins1_boot_federation), the
+// identity is the dedicated mtcollins1-boot federation, gunbc.auth.managed_host_boot_federation), the
 // key step is a step of that job, taken under the dedicated account's pinned cell. The census
 // medium readback on srv2 runs over fleet ssh, so a boot job without it could not re-measure the
 // served image. The approval submission MAC key is asserted ABSENT from the boot's script: it existed
