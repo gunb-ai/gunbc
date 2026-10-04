@@ -25,6 +25,11 @@ import product.superchip_assembly_qualification {
   unit_catalog_match,
   UnitGpuTierConsistentWithRow,
   UnitClaimOutsideCatalog,
+  unit_cpu_memory_match,
+  UnitCpuTierConsistentWithRow,
+  UnitCpuClaimOutsideRow,
+  CpuMemoryClaimed,
+  CpuMemoryNotClaimed,
   first_assembly,
   gh200_dv5_unit,
   gh200_dv5_second_unit,
@@ -59,19 +64,55 @@ test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bo
   }
 }
 
-// THE 480GB OVERCLAIM, held closed: a "96GB HBM3" listing is consistent with the GPU tier only, and
-// the inventory obligation says it establishes nothing about LPDDR5X.
-test fn a_gpu_tier_claim_says_nothing_about_lpddr5x() -> Bool {
-  let consistent = match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+// EACH TIER IS MATCHED ON ITS OWN CLAIM. The DV5 listing claims both, and both are consistent with
+// the 480GB row; the inventory obligation still stands, because a consistent claim is not a measured
+// unit. The CPU match DISCRIMINATES: a 240GB claim is named as outside the row, and a listing that
+// claims no LPDDR5X size gets no tier from its GPU claim.
+test fn each_memory_tier_is_matched_on_its_own_claim() -> Bool {
+  let gpu = match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
     UnitGpuTierConsistentWithRow { row: _, as_listed: l } => l == "96GB HBM3"
     _ => false
   }
-  let says_so = match assembly_qualification(a: first_assembly) {
-    AssemblyBlockedAt { stage: _, open_here: _, open_later: later } =>
-      mentions(lines: later, fragment: "says nothing of LPDDR5X, which the datasheet admits at 120, 240 or 480 GB")
+  let cpu = match unit_cpu_memory_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+    UnitCpuTierConsistentWithRow { as_listed: l } => contains(l as String, "480GB usable")
     _ => false
   }
-  consistent && says_so
+  let still_owed = match assembly_qualification(a: first_assembly) {
+    AssemblyBlockedAt { stage: _, open_here: _, open_later: later } =>
+      mentions(lines: later, fragment: "measure 699-2G530-0215-DV5's HBM and LPDDR5X")
+        && mentions(lines: later, fragment: "consistent with the row's LPDDR5X tier, as a seller's claim the unit's own inventory settles")
+    _ => false
+  }
+  let lower = SuperchipUnitObservation {
+    board_designation: gh200_dv5_unit.board_designation,
+    board_part_number: gh200_dv5_unit.board_part_number,
+    die_marking: gh200_dv5_unit.die_marking,
+    listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+    listed_cpu_memory: CpuMemoryClaimed { usable: gibibyte_to_byte_size(g: gibibyte(count: 240)), as_listed: "240GB LPDDR5X" },
+    mezzanine_face: gh200_dv5_unit.mezzanine_face,
+    measured_inventory: gh200_dv5_unit.measured_inventory,
+    source: "supplied",
+  }
+  let lower_named = match unit_cpu_memory_match(unit: lower, row: nvidia_gh200_480gb_catalog) {
+    UnitCpuClaimOutsideRow { as_listed: l } => l == "240GB LPDDR5X"
+    _ => false
+  }
+  let silent = SuperchipUnitObservation {
+    board_designation: gh200_dv5_unit.board_designation,
+    board_part_number: gh200_dv5_unit.board_part_number,
+    die_marking: gh200_dv5_unit.die_marking,
+    listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+    listed_cpu_memory: CpuMemoryNotClaimed,
+    mezzanine_face: gh200_dv5_unit.mezzanine_face,
+    measured_inventory: gh200_dv5_unit.measured_inventory,
+    source: "supplied",
+  }
+  let silent_unmatched = match unit_cpu_memory_match(unit: silent, row: nvidia_gh200_480gb_catalog) {
+    UnitCpuTierConsistentWithRow { as_listed: _ } => false
+    UnitCpuClaimOutsideRow { as_listed: _ } => false
+    _ => true
+  }
+  gpu && cpu && still_owed && lower_named && silent_unmatched
 }
 
 test fn a_claim_outside_every_configuration_is_named() -> Bool {
@@ -84,6 +125,7 @@ test fn a_claim_outside_every_configuration_is_named() -> Bool {
       memory_kind: nvidia_gh200_480gb_catalog.gpu.memory.memory_kind,
       as_listed: "80GB HBM2",
     },
+    listed_cpu_memory: CpuMemoryNotClaimed,
     mezzanine_face: gh200_dv5_unit.mezzanine_face,
     measured_inventory: gh200_dv5_unit.measured_inventory,
     source: "supplied",
@@ -126,6 +168,7 @@ fn booted_and_measured() -> SuperchipAssembly {
       board_part_number: gh200_dv5_unit.board_part_number,
       die_marking: gh200_dv5_unit.die_marking,
       listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+      listed_cpu_memory: gh200_dv5_unit.listed_cpu_memory,
       mezzanine_face: gh200_dv5_unit.mezzanine_face,
       measured_inventory: InventoryMeasured {
         gpu_memory: gibibyte_to_byte_size(g: gibibyte(count: 96)),

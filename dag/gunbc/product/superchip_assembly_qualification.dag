@@ -48,11 +48,20 @@ import product.p4261_carrier_layout {
 // external upstream decomposition): NVIDIA publishes the GH200 product family, and nothing about any
 // particular unit, revision suffix or carrier board. Three facts are kept apart because each settles a
 // different question: the PUBLISHED family configuration (extdeps.systems.nvidia_gh200), the SELLER'S
-// claim (listed_gpu_memory, kept as a claim so it can be checked rather than believed), and the
+// claims (listed_gpu_memory and listed_cpu_memory, kept as claims so they can be checked rather than
+// believed), and the
 // MEASURED inventory of a serial-numbered unit (measured_inventory), which only a running unit yields.
 type ListedGpuMemoryClaim
   = GpuMemoryClaimed { capacity: ByteSize, memory_kind: MemoryKind, as_listed: NonEmptyStr }
   | GpuMemoryNotClaimed
+
+// THE SELLER'S LPDDR5X CLAIM, at the grain it is stated: a usable size, with the listing's own wording
+// beside it. The datasheet prints an LPDDR5X SIZE (120, 240 or 480GB) and no physical-versus-usable
+// split, so a listing's "physical" figure has no published row to be compared with and stays in its
+// wording rather than becoming a second number.
+type ListedCpuMemoryClaim
+  = CpuMemoryClaimed { usable: ByteSize, as_listed: NonEmptyStr }
+  | CpuMemoryNotClaimed
 
 // THE FACE A MODULE AND ITS CARRIER MEET ON, as far as a photograph shows it. A GH200 module mates to
 // its carrier through high-density mezzanine connectors on its underside (ServeTheHome, below); what a
@@ -81,6 +90,7 @@ type SuperchipUnitObservation {
   board_part_number: NonEmptyStr
   die_marking: NonEmptyStr
   listed_gpu_memory: ListedGpuMemoryClaim
+  listed_cpu_memory: ListedCpuMemoryClaim
   mezzanine_face: MezzanineFaceObservation
   measured_inventory: UnitInventoryObservation
   source: NonEmptyStr
@@ -106,7 +116,9 @@ type CarrierUnitObservation {
 
 // The unit the operator is buying: listing title "NVIDIA GH200 699-2G530-0215-DV5 Grace Hopper Dev
 // Superchip 96GB H100 SXM5", item specifics Memory Size 96GB / Memory Type HBM3; the die photograph
-// reads "GH100-888K-A1 QUAL SAMPLE".
+// reads "GH100-888K-A1 QUAL SAMPLE". The listing DESCRIPTION (operator transcription, 2026-10-04) also
+// states "CPU Memory: 512GB physical LPDDR5X / roughly 480GB usable in the standard GH200 configuration"
+// and "DV5 development/pre-production revision; compatibility not guaranteed".
 data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   board_designation: "PG530",
   board_part_number: "699-2G530-0215-DV5",
@@ -116,6 +128,10 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
     memory_kind: Hbm,
     as_listed: "96GB HBM3",
   },
+  listed_cpu_memory: CpuMemoryClaimed {
+    usable: gibibyte_to_byte_size(g: gibibyte(count: 480)),
+    as_listed: "512GB physical LPDDR5X / roughly 480GB usable",
+  },
   mezzanine_face: MezzanineFacePhotographed {
     connector_count: 2,
     contact_rows_per_connector: 6,
@@ -123,7 +139,7 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
     source: "listing photograph of the module underside, label '699-2G530-0215-DV5 C1 Made in USA', model PG530",
   },
   measured_inventory: InventoryUnmeasured,
-  source: "eBay item 298619132349, transcribed by the operator 2026-10-03",
+  source: "eBay item 298619132349, transcribed by the operator 2026-10-03 (title, item specifics) and 2026-10-04 (description)",
 }
 
 
@@ -135,6 +151,7 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
   board_part_number: gh200_dv5_unit.board_part_number,
   die_marking: gh200_dv5_unit.die_marking,
   listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+  listed_cpu_memory: gh200_dv5_unit.listed_cpu_memory,
   mezzanine_face: gh200_dv5_unit.mezzanine_face,
   measured_inventory: InventoryUnmeasured,
   source: "second unit bought from eBay item 298619132349; its own serial and photographs not yet recorded",
@@ -166,11 +183,14 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
 
 // ── WHAT A LISTING CLAIM IS CONSISTENT WITH ──────────────────────────────────────────────────
 //
-// A listing can only be compared on what it claims, and these listings claim the GPU tier and nothing
-// else. So the agreeing arm is named for exactly that grain: a "96GB HBM3" claim is CONSISTENT with the
-// datasheet's GPU tier and establishes nothing about the unit's LPDDR5X, which the datasheet admits at
-// 120, 240 or 480 GB. (GH200-0 first named this arm UnitMatchesCatalogRow, which read a GPU-tier claim
-// as the whole 480GB row; the narrower name is the correction.) A claim outside every published
+// A listing can only be compared on what it claims, and each tier is compared on its own claim. A
+// "96GB HBM3" claim is CONSISTENT with the datasheet's GPU tier and establishes nothing about LPDDR5X,
+// which the datasheet admits at 120, 240 or 480 GB; whether the LPDDR5X tier agrees is a SEPARATE match
+// on the listing's separate CPU-memory claim (unit_cpu_memory_match below), never inferred from the GPU
+// tier. (GH200-0 first named the GPU arm UnitMatchesCatalogRow, which read a GPU-tier claim as the
+// whole 480GB row; the narrower name is the correction. GH200-5, 2026-10-04: an earlier revision of this
+// note said these listings claim "the GPU tier and nothing else", which the DV5 listing's description
+// contradicts -- the operator supplied it, and the CPU match is the repair.) A claim outside every published
 // configuration is either a mis-titled listing or a pre-production configuration, and the remedy is the
 // same -- measure the unit -- so both land in one arm that names the discriminator.
 type UnitCatalogMatch
@@ -198,12 +218,43 @@ fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCata
 fn listing_claim_note(m: UnitCatalogMatch) -> String {
   match m {
     UnitGpuTierConsistentWithRow { row: _, as_listed: l } =>
-      join(["the listing's '", l as String, "' is consistent with the datasheet GPU tier and says nothing of LPDDR5X, which the datasheet admits at 120, 240 or 480 GB"], "")
+      join(["the listing's '", l as String, "' is consistent with the datasheet GPU tier"], "")
     UnitClaimOutsideCatalog { as_listed: l } =>
       join(["the listing's '", l as String, "' is outside every published GH200 configuration (96GB HBM3, 144GB HBM3e)"], "")
     UnitDesignationOutsideRow { observed: o, row_designation: r } =>
       join(["the unit's designation ", o as String, " is not the row's ", r as String], "")
     UnitMemoryUnclaimed => "the listing claims no memory configuration"
+  }
+}
+
+// THE LPDDR5X CLAIM AGAINST THE ROW'S LPDDR5X TIER. Consistency is a seller's claim agreeing with a
+// published configuration -- it is not the unit's inventory, and a QUAL SAMPLE whose own listing says
+// "compatibility not guaranteed" is exactly the unit for which the two may differ. Only
+// measured_inventory settles it.
+type UnitCpuMemoryMatch
+  = UnitCpuTierConsistentWithRow { as_listed: NonEmptyStr }
+  | UnitCpuClaimOutsideRow { as_listed: NonEmptyStr }
+  | UnitCpuMemoryUnclaimed
+
+fn unit_cpu_memory_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCpuMemoryMatch {
+  match unit.listed_cpu_memory {
+    CpuMemoryNotClaimed => UnitCpuMemoryUnclaimed
+    CpuMemoryClaimed { usable: u, as_listed: l } =>
+      if byte_size_count(b: u) == byte_size_count(b: row.cpu_memory.memory.capacity) {
+        UnitCpuTierConsistentWithRow { as_listed: l }
+      } else {
+        UnitCpuClaimOutsideRow { as_listed: l }
+      }
+  }
+}
+
+fn cpu_claim_note(m: UnitCpuMemoryMatch) -> String {
+  match m {
+    UnitCpuTierConsistentWithRow { as_listed: l } =>
+      join(["the listing's '", l as String, "' is consistent with the row's LPDDR5X tier, as a seller's claim the unit's own inventory settles"], "")
+    UnitCpuClaimOutsideRow { as_listed: l } =>
+      join(["the listing's '", l as String, "' is not this row's LPDDR5X tier; the datasheet admits 120, 240 or 480 GB"], "")
+    UnitCpuMemoryUnclaimed => "the listing claims no LPDDR5X size, which the datasheet admits at 120, 240 or 480 GB"
   }
 }
 
@@ -476,6 +527,8 @@ fn inventory_requirement(a: SuperchipAssembly) -> QualificationRequirement {
       undetermined(requirement: name, obligation: join([
         "measure ", a.unit.board_part_number as String, "'s HBM and LPDDR5X on a running carrier (nvidia-smi -q, numactl -H, ipmitool fru print): ",
         listing_claim_note(m: unit_catalog_match(unit: a.unit, row: a.row)),
+        "; ",
+        cpu_claim_note(m: unit_cpu_memory_match(unit: a.unit, row: a.row)),
       ], ""))
   }
 }
