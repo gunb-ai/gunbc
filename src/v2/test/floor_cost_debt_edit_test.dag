@@ -17,7 +17,6 @@ import v2.workflow.required_floor {
   ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget, EvalStepsOverBudgetUnderDeclaredDrop,
   claim_eval_step_standing,
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }

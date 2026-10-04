@@ -1,13 +1,7 @@
 module v2.test.manual.model_core_anchor
 
 import v2.std.algebra { length }
-import v2.std.logic {
-  Bool,
-  bool_encoding_fact_node,
-  bool_primitive_facts,
-  bool_primitive_facts_node,
-  bool_width_fact_node
-}
+import v2.std.logic { bool_encoding_fact_node, bool_primitive_facts, bool_primitive_facts_node, bool_width_fact_node }
 import v2.std.model_core {
   ModelCoreFactAxisEncoding,
   ModelCoreFactAxisSignedness,

@@ -7,7 +7,6 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   assess_missing_translation_rule_refuses,
   refused,
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Fast per-PR controls for the INDEPENDENT missing-rule leaf — the one direct-door leaf not derived

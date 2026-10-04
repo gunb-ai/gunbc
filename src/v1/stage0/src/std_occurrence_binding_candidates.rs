@@ -68,7 +68,6 @@ pub use crate::std_occurrence_identity::{
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
 };
 pub use crate::std_roster_frontier::declaration_ref_eq;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

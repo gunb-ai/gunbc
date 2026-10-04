@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.wet_witness_stand_in_process_is_the_init_it_signals
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data wet_witness_stand_in_process_is_the_init_it_signals: RecurringFailureMode = RecurringFailureMode {
+  identity: "wet_witness_stand_in_process_is_the_init_it_signals" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a wet witness that executes a real signalling or release path over a STAND-IN process it did not create -- pid 1, chosen as 'a live process this user can neither signal nor reap' -- where the stand-in's safety is an unchecked premise about the executing user. The premise holds only for a non-root user who does not own pid 1. As root (CAP_KILL, CAP_DAC_OVERRIDE), or as the user that owns a container's pid 1, the path's `kill` / `kill -9` land on init, and a permission the claim relies on to make a record unreadable (`chmod 000`) does not bind, so a release script reads the stand-in record and judges, and may signal, pid 1.",
+
+    "SPECIMENS (nimble-ant-600, gunbc#13153, 2026-10-03). test.claim.machine_intake.sol_hold_stdin_wet_witness an_unconfirmed_termination_is_residue_and_the_supervisor_returns ran the real mtcollins1_sol_hold_supervisor_script with p=1; an_unreadable_record_is_unobservable_not_ended wrote a '1 1' record, relied on chmod 000, and ran mtcollins1_sol_hold_release_script over it. RECEIPTS: one root dispatch on BuildBuddy (2026-10-03) reached the file six times -- the initial run and five automatic 'transient' retries -- and each time the firecracker VM died at it ('error pausing VM ... fc.sock: connect: connection refused'; invocations 02e6efa3, eb6ab517, 2ae0dc57, 3c6cb804, 16096e57, 7cf207da), every earlier file in the same run having reported normally. In sessions the witness never completed because the container restarted under it. Inside a PID namespace on the same runner every other claim in the file passed and the runner survived, which isolates the two stand-in claims.",
+
+    "THE HARM is not a red: it is the EXECUTOR's death, so no verdict is reported at all. The run is retried as transient, retried again, and read as infrastructure flakiness; the claim never reaches a reader, so it rots outside the gate while appearing to have been attempted. And where the executor survives (a non-init victim the user happens to own), the claim can go green having signalled a process that is not its subject.",
+
+    "CENSUS at filing, over dag/** and src/v2/** *wet* witnesses: sol_hold_stdin_wet_witness_test.dag carried the only two instances. Witnesses that signal processes they launched themselves (owned_process, the KVM observer's term-ignoring child) are the correct shape: the identity they signal is one they created and recorded.",
+
+    "REPAIR, landed with the specimens: each claim checks its premise BEFORE executing the path -- `kill -0 1` must be refused, and `test -r` on the chmod-000 record must fail -- and where the premise does not hold the claim is RED without signalling anything: an environment that cannot host the claim, never a pass. Verified as root on BuildBuddy at 32cdaa21: both claims red, VM alive.",
+
+    "RECOGNITION RULE. A wet claim whose script or argv names a pid, process group or record it did not create (a literal 1, -1, 0, or a fixed pid) and sends it a signal or runs a path that may; or whose safety argument is a sentence about privilege ('this user can neither signal nor reap', 'unreadable to us') with no executed check of that privilege before the effect.",
+
+    "RUNG found at 1, mitigatable, and below it in practice: the harm is the loss of the verdict. Now at 1 for the two specimens (the premise is executed before the effect). ATTAINABLE CEILING 2, mechanically preventable: a wet lane's executing user and pid namespace are declarable facts of its runner class, so a lane that runs wet claims as root or outside a private pid namespace is refusable before any claim runs; and a claim whose stand-in is a literal pid is a lens over the .dag argv literals. Not structural: whether a given pid is signalable is an external fact of the host.",
+
+    "NEXT-RUNG TRIGGER, at capability grain: every wet-lane execution (floor-pool LocalRepoWetLane and any remote dispatch of a wet witness) runs inside a private pid namespace as a declared non-root user, so no wet claim, under any spelling, can signal the executor's init -- not a guard per claim, which covers only the claims a reviewer found.",
+  ],
+
+  evidence: [],
+}
